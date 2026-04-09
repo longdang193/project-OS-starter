@@ -18,8 +18,18 @@ function Ensure-ParentDirectory {
     }
 }
 
+function Get-RepoRelativePath {
+    param(
+        [string]$RepoRoot,
+        [string]$Path
+    )
+
+    return [System.IO.Path]::GetRelativePath($RepoRoot, $Path).Replace('\', '/')
+}
+
 function Write-GeneratedFile {
     param(
+        [string]$RepoRoot,
         [string]$SourcePath,
         [string]$DestinationPath,
         [string]$CommentPrefix = "#"
@@ -28,9 +38,10 @@ function Write-GeneratedFile {
     Ensure-ParentDirectory -Path $DestinationPath
 
     $sourceContent = Get-Content -Raw -LiteralPath $SourcePath
+    $relativeSourcePath = Get-RepoRelativePath -RepoRoot $RepoRoot -Path $SourcePath
     $header = @(
         "$CommentPrefix GENERATED FILE - do not edit directly."
-        "$CommentPrefix Source: ``$SourcePath``"
+        "$CommentPrefix Source: ``$relativeSourcePath``"
         ""
     ) -join [Environment]::NewLine
 
@@ -63,7 +74,7 @@ foreach ($mapping in $mappings) {
     $sourcePath = Join-Path $repoRoot $mapping.source
     $destinationPath = Join-Path $repoRoot $mapping.destination
     $prefix = if ($mapping.prefix) { [string]$mapping.prefix } else { '#' }
-    Write-GeneratedFile -SourcePath $sourcePath -DestinationPath $destinationPath -CommentPrefix $prefix
+    Write-GeneratedFile -RepoRoot $repoRoot -SourcePath $sourcePath -DestinationPath $destinationPath -CommentPrefix $prefix
 }
 
 Write-Host "Agent adapters synchronized."

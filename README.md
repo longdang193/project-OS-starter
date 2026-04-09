@@ -5,6 +5,7 @@ A private starter repository for carrying forward the repo operating system with
 ## What This Repo Owns
 
 - `docs/operating_system/`: human-readable repo governance and workflows
+- `docs/operating_system/agent_memory/`: compact reusable agent memory for repo work
 - `.agents/skills/`: canonical Codex skill discovery surface
 - `agent-core/adapters/codex/`: source templates for generated adapter outputs
 - `config/`: starter-level configuration for adapter generation and public publication
@@ -40,6 +41,40 @@ Do not edit generated outputs directly. Regenerate them from the source layers.
 .\scripts\sync_agent_adapters.ps1
 .\scripts\verify_agent_adapters.ps1
 ```
+
+## Agent Memory
+
+The starter includes `docs/operating_system/agent_memory/` as a compact repo-memory layer for:
+
+- stable invariants
+- recurring workflow patterns
+- important failures that should become guardrails
+- open questions that may affect future agent behavior
+
+Keep this layer short and operational. Add memory when a lesson is likely to help future sessions, and promote repeated failures into rules, tests, hooks, or explicit follow-up work.
+
+## Hook Workflow
+
+The starter includes `.github/workflows/repo-hooks.yml` as a default CI hook layer.
+
+It checks:
+
+- adapter sync and verification
+- generated-file drift
+- a baseline test command
+- publication-boundary dry runs
+
+The default workflow assumes a Python-style test command. Update the baseline-test step during project bootstrap if your repo uses a different test runner or no `tests/` directory.
+
+## Customize First
+
+When bootstrapping a new project, review these first:
+
+- `agent-core/adapters/codex/*.template.md`
+- `config/agent-adapter-mappings.json`
+- `config/publication-config.json`
+- `.github/workflows/repo-hooks.yml`
+- `docs/operating_system/agent_memory/*`
 
 ## Optional Nested AGENTS Templates
 
