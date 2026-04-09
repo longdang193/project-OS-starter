@@ -249,9 +249,12 @@ $requiredPaths = @($config.requiredPaths)
 $allowedGeneratedPaths = @($config.allowedGeneratedPaths)
 $scrubPrivateReferencePaths = @($config.scrubPrivateReferencePaths)
 
-$remoteUrl = git remote get-url $PublicRemote 2>$null
-if ($Push -and -not $remoteUrl) {
-    throw "Remote '$PublicRemote' is not configured."
+$remoteUrl = $null
+if ($Push) {
+    $remoteUrl = git remote get-url $PublicRemote 2>$null
+    if (-not $remoteUrl) {
+        throw "Remote '$PublicRemote' is not configured."
+    }
 }
 
 Ensure-CleanDirectory -Path $ExportRoot
