@@ -1,0 +1,25 @@
+{
+  "publicPaths": [
+    "README.md"
+  ],
+  "forbiddenPaths": [
+    "AGENTS.md",
+    ".agents",
+    ".cursor",
+    "agent-core",
+    "codex",
+    "docs/operating_system",
+    "docs/superpowers",
+    "logs",
+    "sample",
+    ".worktrees"
+  ],
+  "requiredPaths": [
+    "README.md"
+  ],
+  "allowedGeneratedPaths": [],
+  "scrubPrivateReferencePaths": [
+    "docs/features",
+    "docs/stages"
+  ]
+}
