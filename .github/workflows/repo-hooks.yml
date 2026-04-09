@@ -27,8 +27,12 @@ jobs:
           if (Test-Path requirements.txt) {
             python -m pip install -r requirements.txt
           }
-          python -m pip install pytest pytest-httpx
-          python -m pip install -e .
+          if (Test-Path tests) {
+            python -m pip install pytest pytest-httpx
+          }
+          if ((Test-Path pyproject.toml) -or (Test-Path setup.py)) {
+            python -m pip install -e .
+          }
 
       - name: Sync adapter outputs
         run: .\scripts\sync_agent_adapters.ps1
@@ -71,8 +75,12 @@ jobs:
           if (Test-Path requirements.txt) {
             python -m pip install -r requirements.txt
           }
-          python -m pip install pytest pytest-httpx
-          python -m pip install -e .
+          if (Test-Path tests) {
+            python -m pip install pytest pytest-httpx
+          }
+          if ((Test-Path pyproject.toml) -or (Test-Path setup.py)) {
+            python -m pip install -e .
+          }
 
       - name: Run baseline test command
         run: |
@@ -100,8 +108,12 @@ jobs:
           if (Test-Path requirements.txt) {
             python -m pip install -r requirements.txt
           }
-          python -m pip install pytest pytest-httpx
-          python -m pip install -e .
+          if (Test-Path tests) {
+            python -m pip install pytest pytest-httpx
+          }
+          if ((Test-Path pyproject.toml) -or (Test-Path setup.py)) {
+            python -m pip install -e .
+          }
 
       - name: Run publication boundary dry check
         run: .\scripts\publish_public_repo.ps1
