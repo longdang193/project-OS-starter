@@ -132,3 +132,12 @@ The repo hook workflow is part of normal enforcement.
 
 CI is expected to run adapter verification, baseline checks, and publication-boundary validation on push and pull request events so drift and broken changes are caught before merge.
 
+When hooks expose repeated or important failures:
+
+- summarize the reusable lesson in `docs/operating_system/agent_memory/`
+- then promote important recurring failures into stronger guardrails when appropriate:
+  - a repo rule
+  - a script check
+  - a test
+  - or an explicit follow-up plan
+

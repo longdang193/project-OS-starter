@@ -63,13 +63,18 @@ You MUST complete each phase before proceeding to the next.
    - Does it happen every time?
    - If not reproducible → gather more data, don't guess
 
-3. **Check Recent Changes**
+3. **Check Failure Memory When The Issue Looks Familiar**
+   - If the failure appears repeated, method-related, or suspiciously similar to a previous repo-operating issue, read `docs/operating_system/agent_memory/failure-ledger.md`
+   - Use it to recognize known failure modes earlier
+   - Do not skip direct investigation just because something looks familiar
+
+4. **Check Recent Changes**
    - What changed that could cause this?
    - Git diff, recent commits
    - New dependencies, config changes
    - Environmental differences
 
-4. **Gather Evidence in Multi-Component Systems**
+5. **Gather Evidence in Multi-Component Systems**
 
    **WHEN system has multiple components (CI → build → signing, API → service → database):**
 
@@ -107,7 +112,7 @@ You MUST complete each phase before proceeding to the next.
 
    **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
 
-5. **Trace Data Flow**
+6. **Trace Data Flow**
 
    **WHEN error is deep in call stack:**
 
