@@ -1,0 +1,4 @@
+runtime:
+  environment: dev
+  profile: starter
+  enable_debug_logging: false

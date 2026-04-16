@@ -2,7 +2,7 @@
 
 ## Adapter source changes
 
-- Change adapter sources in `agent-core/`, not generated `AGENTS.md` or `codex/rules/*.rules`.
+- Change adapter sources in `agent-core/`, not generated `AGENTS.md` or `.codex/rules/*.rules`.
 - After adapter-source edits, run sync and verify before calling the work complete.
 
 ## Cross-cutting repo work

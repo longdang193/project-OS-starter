@@ -43,7 +43,7 @@ jobs:
       - name: Fail on untracked generated outputs
         run: |
           $paths = @(
-            (Get-Content -Raw config/agent-adapter-mappings.json | ConvertFrom-Json | ForEach-Object {
+            (Get-Content -Raw repo_config/agent-adapter-mappings.json | ConvertFrom-Json | ForEach-Object {
               $_.destination
             })
           )

@@ -44,7 +44,7 @@ Those belong in:
 
 - `docs/operating_system/`
 - `agent-core/policies/`
-- `codex/rules/`
+- `.codex/rules/`
 
 ## Quality Rules
 

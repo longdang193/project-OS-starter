@@ -5,9 +5,9 @@
   "forbiddenPaths": [
     "AGENTS.md",
     ".agents",
+    ".codex",
     ".cursor",
     "agent-core",
-    "codex",
     "docs/operating_system",
     "docs/superpowers",
     "logs",

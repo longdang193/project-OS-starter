@@ -4,7 +4,7 @@ param(
     [string]$PublicRemote = "public",
     [string]$PublicBranch = "main",
     [string]$CommitMessage = "Publish curated public mirror",
-    [string]$ConfigPath = 'config/publication-config.json',
+    [string]$ConfigPath = 'repo_config/publication-config.json',
     [switch]$Push
 )
 
@@ -115,9 +115,9 @@ function Assert-NoPrivateReferences {
     $patterns = @(
         'AGENTS\.md',
         '\.agents/',
+        '\.codex/',
         '\.cursor/',
         'agent-core/',
-        'codex/rules/',
         'docs/operating_system/',
         'docs/superpowers/',
         '/[A-Za-z]:/',
@@ -210,7 +210,7 @@ function Remove-PrivateReferenceLines {
         'docs/superpowers/',
         'docs/operating_system/',
         'agent-core/',
-        'codex/rules/',
+        '\.codex/',
         '\.agents/',
         '\.cursor/'
     )

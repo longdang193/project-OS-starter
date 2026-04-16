@@ -38,12 +38,39 @@ Use code for:
 - validation logic
 - data and schema logic
 
+### `repo_config/`
+
+Use repo/system config for:
+
+- publication boundaries
+- adapter generation mappings
+- other starter-level system configuration
+
+### `configs/`
+
+Use runtime/workflow config for:
+
+- runtime defaults
+- workflow settings
+- smoke or environment profiles
+
 ### `docs/features/*/*.yaml`
 
 Use feature YAML for:
 
 - current feature contracts
 - identity, status, dependencies, capabilities, refs
+
+These files are human-authored contracts. They are not replacements for
+runtime/workflow config under `configs/`.
+
+Formatting rule:
+
+- keep feature YAML human-authored and readable
+- quote strings only when YAML requires it or exact literal preservation depends on it
+- avoid unnecessary quotes on ordinary prose entries
+- preserve field order unless the schema owner intentionally changes it
+- use `.\scripts\format_contract_yaml.py` as the canonical normalization/check path for these files
 
 ### `docs/features/<feature_id>/`
 
@@ -71,6 +98,9 @@ Use operating-system docs for:
 - tooling policy
 - instruction layering
 
+They may describe config ownership rules, but they are not the config surfaces
+themselves.
+
 ### `docs/generated/*`
 
 Use generated discovery for:
@@ -90,6 +120,8 @@ When behavior or structure changes:
 - update feature docs or cross-cutting docs as needed
 - update operating-system docs when repo rules or workflows change
 - refresh generated discovery from its source layers
+- normalize feature/stage YAML with `.\scripts\format_contract_yaml.py` when
+  contract-formatting drift is introduced or cleaned up
 
 ## Practical Heuristic
 

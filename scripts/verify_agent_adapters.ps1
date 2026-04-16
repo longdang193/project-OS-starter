@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = 'config/agent-adapter-mappings.json'
+    [string]$ConfigPath = 'repo_config/agent-adapter-mappings.json'
 )
 
 $ErrorActionPreference = "Stop"

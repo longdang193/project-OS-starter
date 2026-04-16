@@ -15,7 +15,7 @@ Normal development happens only in the private repo.
 
 ## Structure Model
 
-The repo uses five distinct internal layers:
+The repo uses four distinct internal layers plus generated outputs:
 
 1. `docs/operating_system/`
 - human-readable repo rules and workflows
@@ -37,8 +37,17 @@ The repo uses five distinct internal layers:
 4. adapter outputs
 - `AGENTS.md`
 - nested `AGENTS.md`
-- `codex/rules/*.rules`
+- `.codex/rules/*.rules`
 - sync and verification scripts under `scripts/`
+
+The repo also splits configuration ownership by purpose:
+
+- `repo_config/`
+  - repo/system configuration such as publication boundaries and adapter generation mappings
+- `configs/`
+  - runtime/workflow configuration such as starter runtime defaults and future smoke or environment profiles
+- `docs/features/*/*.yaml` and `docs/stages/*.yaml`
+  - human-authored lifecycle contracts, not generic config buckets
 
 ## Ownership Rules
 
@@ -92,7 +101,7 @@ The following are private-only by default:
 
 - `docs/operating_system/`
 - `agent-core/`
-- `codex/rules/`
+- `.codex/`
 - root and nested `AGENTS.md`
 - `.agents/`
 - `.cursor/`
@@ -117,14 +126,44 @@ When changing:
 - `agent-core/adapters/*`
 - `agent-core/policies/*`
 - generated `AGENTS.md`
-- generated `codex/rules/*.rules`
+- generated `.codex/rules/*.rules`
 
 run:
 
 ```powershell
 .\scripts\sync_agent_adapters.ps1
 .\scripts\verify_agent_adapters.ps1
+python .\scripts\validate_repo_config.py
 ```
+
+### `repo_config/`
+
+Owns:
+
+- repo/system configuration
+- publication boundary configuration
+- adapter generation mappings
+
+Does not own:
+
+- runtime workflow defaults
+- feature or stage contracts
+- generated outputs
+
+### `configs/`
+
+Owns:
+
+- runtime and workflow configuration
+- starter runtime defaults
+- future smoke or environment profiles
+
+Does not own:
+
+- repo governance
+- publication boundaries
+- generated outputs
+- feature or stage lifecycle contracts
 
 ## Hook Workflow
 

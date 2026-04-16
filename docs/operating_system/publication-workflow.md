@@ -34,7 +34,7 @@ The publication workflow must exclude internal-only material such as:
 - `docs/operating_system/`
 - `docs/operating_system/agent_memory/`
 - `agent-core/`
-- `codex/rules/`
+- `.codex/`
 - `AGENTS.md`
 - `.agents/`
 - `.cursor/`
@@ -62,3 +62,12 @@ If publication-boundary or adapter files changed first, run:
 before running the curated publish workflow.
 
 Dry-run publication checks should work without a configured public remote. The remote is only required when `-Push` is requested.
+
+If repo-level config ownership or publication config changes, run:
+
+```powershell
+python .\scripts\validate_repo_config.py
+```
+
+before publishing so publication boundaries and adapter mapping inputs are still
+internally consistent.
