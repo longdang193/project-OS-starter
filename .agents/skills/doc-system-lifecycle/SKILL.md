@@ -188,8 +188,8 @@ Rules:
 - feature contract: `docs/features/<feature_id>/<feature_id>.yaml`
 - stage contract when adopted: `docs/stages/<stage_id>.yaml`
 - feature docs/history: `docs/features/<feature_id>/`
-- spec: `docs/superpowers/archive/specs/YYYY-MM-DD-HH-MM-<feature>-spec.md`
-- plan: `docs/superpowers/archive/plans/YYYY-MM-DD-HH-MM-<feature>-plan.md`
+- spec: `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<feature>-spec.md`
+- plan: `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<feature>-plan.md`
 - generated files: descriptive names under `docs/generated/`
 
 ## Frontmatter for Specs and Plans

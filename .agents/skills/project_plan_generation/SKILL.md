@@ -19,14 +19,14 @@ Do not apply this rule to general documentation or other file generation tasks.
 
 ### File Locations
 
-- **Main plans**: `docs/superpowers/archive/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`
-- **Supporting docs**: `docs/superpowers/archive/plans/audit/<doc-name>.md`
+- **Main plans**: `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`
+- **Supporting docs**: `docs/superpowers/plans/audit/<doc-name>.md`
 - **All files MUST be `.md` format** (unless user explicitly requests otherwise)
 
 ### File Structure
 
 ```text
-docs/superpowers/archive/plans/
+docs/superpowers/plans/
     ├── YYYY-MM-DD-HH-MM-<topic>-plan.md
     └── audit/
         └── <supporting-docs>.md

@@ -13,7 +13,7 @@ Assume the engineer is capable but unfamiliar with the codebase and domain.
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
-**Default save path:** `docs/superpowers/archive/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`  
+**Default save path:** `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`
 (User preference overrides this.)
 
 ---
@@ -140,7 +140,7 @@ Every plan should start like this:
 # [Feature Name] Implementation Plan
 
 **Feature:** `docs/features/<feature_id>/<feature_id>.yaml`  
-**Spec:** `docs/superpowers/archive/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`  
+**Spec:** `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
 **Type:** add | modify | replace  
 **Status:** planned | building  
 
@@ -240,7 +240,7 @@ Provide the reviewer only:
 
 After saving the plan, offer:
 
-**"Plan complete and saved to `docs/superpowers/archive/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`. Two execution options:**
+**"Plan complete and saved to `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`. Two execution options:**
 
 1. **Subagent-Driven (recommended)** — fresh subagent per task
 2. **Inline Execution** — execute in this session with `executing-plans`

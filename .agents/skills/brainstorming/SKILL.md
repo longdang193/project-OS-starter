@@ -41,7 +41,7 @@ README.md                   → overview
 
 Rules:
 
-- Specs live under `docs/superpowers/archive/specs/`
+- Specs live under `docs/superpowers/specs/`
 - Feature YAML must exist before spec when a managed feature is changing; cross-cutting operating-system work may use `feature_yaml: none`
 - The spec must link back to the affected `docs/features/<feature_id>/<feature_id>.yaml` when one exists
 - Use stage classification when the work is pipeline-heavy, architecture-heavy, or boundary-heavy
@@ -101,7 +101,7 @@ Rules:
 
 7. **Write spec**
 
-- save to `docs/superpowers/archive/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
+- save to `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
 - follow frontmatter rules
 - link the spec to the affected `docs/features/<feature_id>/<feature_id>.yaml`
 
@@ -163,7 +163,7 @@ Each unit must answer:
 
 ## Spec Writing Rules
 
-- spec belongs in `docs/superpowers/archive/specs/`
+- spec belongs in `docs/superpowers/specs/`
 - YAML = current state
 - spec = explanation + design
 - spec must name the affected `docs/features/<feature_id>/<feature_id>.yaml` when one exists
