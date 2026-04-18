@@ -1,0 +1,109 @@
+"""
+@meta
+name: sync_architecture_docs
+type: script
+domain: docs
+responsibility:
+  - Run the canonical architecture metadata sync and verification workflow.
+  - Provide one stable entrypoint for local hooks and contributors to refresh and check generated architecture docs.
+  - Enforce metadata-derived refs for generated feature and stage contracts.
+inputs:
+  - docs/features/*/feature.source.yaml
+  - docs/stages/*.source.yaml
+  - docs/superpowers/specs/*.md
+  - docs/superpowers/plans/*.md
+  - YAML # @architecture metadata in configs and AML components
+  - Python @meta, @capability, and @proves markers
+outputs:
+  - docs/features/<feature_id>/<feature_id>.yaml
+  - docs/features/<feature_id>/lineage.generated.yaml
+  - docs/features/<feature_id>/history.md
+  - docs/stages/<stage_id>.yaml
+  - docs/generated/capability_lineage.yaml
+  - docs/generated/architecture_dag.yaml
+  - Awareness report for disallowed feature-source manual_refs
+tags:
+  - docs
+  - lineage
+  - sync
+lifecycle:
+  status: active
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import subprocess
+import sys
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def build_steps(*, check_only: bool, python_executable: str) -> list[list[str]]:
+    root = repo_root()
+    generator = str(root / "tools" / "docs" / "generate_architecture_metadata.py")
+    awareness_audit = str(root / "scripts" / "audit_architecture_linkage.py")
+    formatter = str(root / "scripts" / "format_contract_yaml.py")
+    steps: list[list[str]] = []
+    if not check_only:
+        steps.append([python_executable, generator])
+    steps.extend(
+        [
+            [python_executable, generator, "--validate-only"],
+            [python_executable, generator, "--check"],
+            [python_executable, awareness_audit, "--strict-awareness", "--report-awareness"],
+            [python_executable, formatter, "--check"],
+            [
+                python_executable,
+                "-m",
+                "pytest",
+                "tests/test_architecture_metadata_generation.py",
+                "tests/test_architecture_linkage_audit.py",
+                "tests/test_format_contract_yaml.py",
+                "tests/test_setup_hooks.py",
+                "-q",
+            ],
+        ]
+    )
+    return steps
+
+
+def run_step(command: list[str], *, cwd: Path) -> int:
+    rendered = " ".join(command)
+    print(f"> {rendered}")
+    completed = subprocess.run(command, cwd=cwd, check=False)
+    return completed.returncode
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run the canonical architecture metadata sync and verification workflow."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Run validation and verification without rewriting generated outputs first.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    root = repo_root()
+    for step in build_steps(check_only=args.check, python_executable=sys.executable):
+        status = run_step(step, cwd=root)
+        if status != 0:
+            return status
+    print(
+        "Architecture sync checks passed."
+        if args.check
+        else "Architecture sync and checks completed."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -26,86 +26,98 @@ Docs should explain code, not mirror it.
 ## 5-Layer Doc System with Stage-Aware Extension
 
 ```text
-code/                       → real truth
-docs/stages/*.yaml          → stage contracts (when stage-aware docs are in scope)
-docs/features/*/*.yaml        → structured truth
-docs/features/<feature_id>/ → feature-specific explanation + history
-docs/*.md                   → cross-cutting explanation
-README.md                   → overview
-docs/generated/             → generated discovery
+code/                                → real truth
+docs/stages/*.source.yaml            → human-owned stage source when stage-aware docs are in scope
+docs/stages/*.yaml                   → generated stage contracts when stage-aware docs are in scope
+docs/features/*/feature.source.yaml  → human-owned feature source
+docs/features/*/<feature_id>.yaml    → generated current feature contract
+docs/features/*/lineage.generated.yaml → generated feature-local evidence
+docs/features/<feature_id>/          → feature-specific explanation + partial-generated history
+docs/*.md                            → cross-cutting explanation
+README.md                            → overview
+docs/generated/                      → generated discovery
 ````
 
-| Layer                   | Form                           | Purpose                            | Rule                                |
-| ----------------------- | ------------------------------ | ---------------------------------- | ----------------------------------- |
-| Stage Contracts         | `docs/stages/*.yaml`           | Stage boundaries and ownership hints | Optional; architectural only      |
-| Real Truth              | code                           | Actual behavior                    | Deepest truth                       |
-| Structured Truth        | `docs/features/*/*.yaml`         | Current feature contracts          | One small file per feature          |
-| Feature Explanation     | `docs/features/<feature_id>/*` | Design, flow, ops notes, history   | Feature-specific only               |
-| Cross-Cutting Docs      | `docs/*.md`                    | Architecture, pipelines, shared ops| Cross-feature only                  |
-| Overview                | `README.md`                    | Purpose and navigation             | Entry point only                    |
-| Generated Discovery     | `docs/generated/*`             | Fast lookup                        | Generated only; never edit manually |
+| Layer                      | Form                                      | Purpose                               | Rule                                |
+| -------------------------- | ----------------------------------------- | ------------------------------------- | ----------------------------------- |
+| Real Truth                 | code                                      | Actual behavior                       | Deepest truth                       |
+| Stage Source               | `docs/stages/*.source.yaml`               | Human-owned stage intent              | Edit directly when stage meaning changes |
+| Stage Contract             | `docs/stages/*.yaml`                      | Generated stage boundary view         | Generated only                      |
+| Feature Source             | `docs/features/*/feature.source.yaml`     | Human-owned feature meaning           | Edit directly when feature meaning changes |
+| Feature Contract           | `docs/features/*/<feature_id>.yaml`       | Generated current feature contract    | Generated only                      |
+| Feature Local Evidence     | `docs/features/*/lineage.generated.yaml`  | Generated ownership and lineage facts | Generated only                      |
+| Feature Explanation/History| `docs/features/<feature_id>/*`            | Design, flow, ops notes, history      | Feature-specific only               |
+| Cross-Cutting Docs         | `docs/*.md`                               | Architecture, pipelines, shared ops   | Cross-feature only                  |
+| Overview                   | `README.md`                               | Purpose and navigation                | Entry point only                    |
+| Generated Discovery        | `docs/generated/*`                        | Fast lookup                           | Generated only; never edit manually |
 
 ### Layer 1 — Code
 
 Authoritative for behavior, routes/APIs, and schema/data logic.
 
-### Layer 2 — Feature YAML
-
-Authoritative for current feature state.
-
-Rules:
-
-- one file per real feature
-- current state only
-- small and stable
-- keep `depends_on`
-- generate inverse links like `used_by`
-
-### Stage Contracts When In Scope
+### Layer 2 — Stage Source And Stage Contracts
 
 Stage-aware projects may add:
 
 ```text
+docs/stages/*.source.yaml
 docs/stages/*.yaml
 ```
 
-Use this layer only for:
+Use the stage source layer for:
 
 - stage identity
 - purpose
 - inputs / outputs
 - architectural boundaries
 - stage-to-feature relationships
+- short human notes
 
 Rules:
 
 - stages are above features for navigation, not replacement lifecycle units
-- stage contracts must not duplicate full feature truth
+- humans edit `docs/stages/*.source.yaml`
+- generated stage contracts must not duplicate full feature truth
 - do not create placeholder stage files before a project-specific rollout is ready
 
-Recommended shape:
+Use the generated stage contract only as the assembled current view. Do not edit
+its generated refs directly.
+
+### Layer 3 — Feature Source, Generated Contract, And Evidence
+
+Use `docs/features/*/feature.source.yaml` as the human-owned semantic source.
+Use the generated `<feature_id>.yaml` only as the assembled current-state
+contract.
+
+Rules:
+
+- one real feature folder per managed feature
+- edit `feature.source.yaml`, not generated feature YAML
+- do not keep manual feature `version`
+- freshness fields such as `revision`, `latest_change_id`, and
+  `last_updated_at` are generated from completed plans
+- do not use `manual_refs`; refs come from metadata on the owning code, tests,
+  docs, specs, plans, configs, and AML components
+- use `lineage.generated.yaml` for detailed evidence, ownership, and timeline
+  facts
+
+Recommended feature-source shape:
 
 ```yaml
 feature_id:
 name:
-version:
 status:
 type:
-owner:
 summary:
 invariants: []
 domains: []
 depends_on: []
 capabilities: []
-refs:
-  docs: []
-  spec: []
-  plan: []
-  history:
-keywords: []
+stage_participation: []
+lineage_exceptions: []
 ```
 
-### Layer 3 — Explanation + History
+### Layer 4 — Explanation + History
 
 Use `docs/features/<feature_id>/` for focused docs such as design, flow, ops notes, and history for one feature. Use `docs/*.md` only for cross-feature architecture docs. Specs and plans continue to live under `docs/superpowers/`.
 
@@ -115,6 +127,16 @@ Rules:
 - current-state docs describe current behavior
 - rationale belongs here, not in YAML
 - prefer small focused docs over one large doc
+- `history.md` is partially generated when the feature is opted into the
+  architecture system:
+  - the block between `<!-- GENERATED HISTORY START -->` and
+    `<!-- GENERATED HISTORY END -->` is generator-owned
+  - `## Human Notes` stays human-authored
+- read feature folders minimally:
+  - `feature.source.yaml` first
+  - generated contract only when the assembled view is needed
+  - `lineage.generated.yaml` only for ownership/evidence/drift work
+  - `history.md` only when narrative context matters
 
 ### Placement Table
 
@@ -122,8 +144,11 @@ Use this default placement:
 
 | Information kind | Default location |
 | ---------------- | ---------------- |
-| Stage boundary contract (when adopted) | `docs/stages/<stage_id>.yaml` |
+| Stage boundary source (when adopted) | `docs/stages/<stage_id>.source.yaml` |
+| Generated stage boundary contract (when adopted) | `docs/stages/<stage_id>.yaml` |
+| Feature source | `docs/features/<feature_id>/feature.source.yaml` |
 | Current feature contract | `docs/features/<feature_id>/<feature_id>.yaml` |
+| Generated feature evidence | `docs/features/<feature_id>/lineage.generated.yaml` |
 | Feature-specific history / post-execution review | `docs/features/<feature_id>/history.md` |
 | Other feature-specific explanation | `docs/features/<feature_id>/*.md` |
 | Cross-cutting architecture / pipeline / shared ops | `docs/*.md` |
@@ -176,17 +201,20 @@ Rules:
 | Situation                                         | Update                                  |
 | ------------------------------------------------- | --------------------------------------- |
 | Behavior changes                                  | code                                    |
-| Feature added/changed                             | `docs/features/*/*.yaml`                  |
+| Stage meaning changes                             | `docs/stages/<stage_id>.source.yaml`    |
+| Feature meaning changes                           | `docs/features/<feature_id>/feature.source.yaml` |
 | Feature-specific explanation changes              | `docs/features/<feature_id>/*.md`       |
 | Architecture or cross-feature explanation changes | `docs/*.md`                             |
 | Purpose/navigation changes                        | `README.md`                             |
-| Feature history changes                           | `docs/features/<feature_id>/history.md` |
-| Lookup surfaces stale                             | regenerate `docs/generated/*`           |
+| Human feature history notes change                | `docs/features/<feature_id>/history.md` |
+| Generated surfaces stale                          | rerun the canonical architecture sync/check workflow |
 
 ## Naming
 
 - feature contract: `docs/features/<feature_id>/<feature_id>.yaml`
-- stage contract when adopted: `docs/stages/<stage_id>.yaml`
+- stage source when adopted: `docs/stages/<stage_id>.source.yaml`
+- generated stage contract when adopted: `docs/stages/<stage_id>.yaml`
+- feature source: `docs/features/<feature_id>/feature.source.yaml`
 - feature docs/history: `docs/features/<feature_id>/`
 - spec: `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<feature>-spec.md`
 - plan: `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<feature>-plan.md`
@@ -213,15 +241,20 @@ invariants:
 ## Sync Principle
 
 - update code when behavior changes
-- update feature YAML before or with feature changes
+- update stage source before or with stage-meaning changes
+- update feature source before or with feature-meaning changes
 - update docs before or with design/reasoning changes
 - update README when navigation changes
-- regenerate `docs/generated/` whenever sources change
+- rerun `scripts/sync_architecture_docs.py` whenever architecture metadata
+  sources change
 
 Before marking work complete, name the exact docs touched:
 
+- affected `docs/stages/<stage_id>.source.yaml` when stage-aware docs are in scope
 - affected `docs/features/<feature_id>/<feature_id>.yaml`
 - affected `docs/stages/<stage_id>.yaml` when stage-aware docs are in scope
+- affected `docs/features/<feature_id>/feature.source.yaml`
+- affected `docs/features/<feature_id>/lineage.generated.yaml` when evidence changed
 - `docs/features/<feature_id>/history.md` or other focused docs under `docs/features/<feature_id>/`
 - any cross-feature docs under `docs/*.md`
 - `README.md` if navigation changed
@@ -246,7 +279,7 @@ If a fact is generated, update the source and regenerate.
 - manually maintaining generated relationships
 - editing generated files manually
 - treating docs as more authoritative than code
-- changing code without updating feature YAML
+- changing code without updating the owning feature or stage source
 
 ## Migration Policy
 

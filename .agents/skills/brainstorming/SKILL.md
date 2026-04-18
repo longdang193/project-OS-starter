@@ -30,23 +30,35 @@ It does NOT produce implementation.
 Before writing any spec or doc, align with the 5-layer system:
 
 ```text
-code/                       → real truth
-docs/stages/*.yaml          → stage contracts (when stage-aware docs are in scope)
-docs/features/*/*.yaml        → feature contract (current state)
-docs/features/<feature_id>/ → feature-specific explanation + history
-docs/*.md                   → cross-cutting explanation
-docs/generated/             → discovery (auto)
-README.md                   → overview
+code/                                → real truth
+docs/stages/*.source.yaml            → human-owned stage source when stage-aware docs are in scope
+docs/stages/*.yaml                   → generated stage contracts when stage-aware docs are in scope
+docs/features/*/feature.source.yaml  → human-owned feature source
+docs/features/*/<feature_id>.yaml    → generated feature contract (current state)
+docs/features/*/lineage.generated.yaml → generated feature-local evidence
+docs/features/<feature_id>/          → feature-specific explanation + partial-generated history
+docs/*.md                            → cross-cutting explanation
+docs/generated/                      → discovery (auto)
+README.md                            → overview
 ```
 
 Rules:
 
 - Specs live under `docs/superpowers/specs/`
-- Feature YAML must exist before spec when a managed feature is changing; cross-cutting operating-system work may use `feature_yaml: none`
-- The spec must link back to the affected `docs/features/<feature_id>/<feature_id>.yaml` when one exists
+- `feature.source.yaml` must exist before spec when a managed feature is changing; cross-cutting operating-system work may use `feature_source: none`
+- The spec must link back to the affected `docs/features/<feature_id>/feature.source.yaml` and generated `docs/features/<feature_id>/<feature_id>.yaml` when they exist
+- `<feature_id>` is placeholder notation; use the concrete feature-id filename in real docs, for example `docs/features/model-training-pipeline/model-training-pipeline.yaml`
 - Use stage classification when the work is pipeline-heavy, architecture-heavy, or boundary-heavy
 - Feature-specific explanation/history belongs under `docs/features/<feature_id>/`
 - Cross-cutting explanation belongs under `docs/*.md`
+- Stage-aware work should name both `docs/stages/<stage_id>.source.yaml` and
+  `docs/stages/<stage_id>.yaml`
+- When one feature folder is in scope, read minimally:
+  - `feature.source.yaml` first
+  - generated `<feature_id>.yaml` only when the assembled contract view is needed
+  - `lineage.generated.yaml` only for ownership, evidence, or drift work
+  - `history.md` only for narrative context
+  - do not load the entire feature folder by default
 
 ---
 
@@ -55,7 +67,10 @@ Rules:
 ```text
 1. **Explore context**
 
-- read code + `docs/features/*/*.yaml`
+ - read code + `docs/features/*/feature.source.yaml` + generated `docs/features/*/<feature_id>.yaml`
+ - when stage-aware work is central, read `docs/stages/<stage_id>.source.yaml`
+   and the generated stage contract instead of only the generated stage path
+- when one feature folder is in scope, prefer the smallest truthful reading set instead of loading every file in that folder
 - check if feature already exists
 - recent commits
 - other docs
@@ -80,19 +95,23 @@ Rules:
 
 - identify `feature_id`
 - identify affected stages when relevant
-- decide the primary lens: stage | feature | mixed
+- decide the primary lens: stage | feature | mixed | cross-cutting
 - classify: add / modify / replace
 - name doc targets:
-- feature contract → `docs/features/<feature_id>/<feature_id>.yaml`
+- feature source → `docs/features/<feature_id>/feature.source.yaml`
+- feature contract → generated `docs/features/<feature_id>/<feature_id>.yaml`
+- feature lineage → `docs/features/<feature_id>/lineage.generated.yaml` or `none`
 - feature history → `docs/features/<feature_id>/history.md` or `none`
+- stage source → `docs/stages/<stage_id>.source.yaml` or `none`
+- stage contract → `docs/stages/<stage_id>.yaml` or `none`
 - feature-specific docs → `docs/features/<feature_id>/<doc>.md` or `none`
-- cross-cutting docs → `docs/<doc>.md` or `none`
+- cross-cutting docs → `docs/<doc>.md` or `docs/operating_system/<doc>.md` or `none`
 - README → `README.md` or `none`
 - generated discovery → `docs/generated/<file>` or `none`
 - confirm:
-- new feature → create YAML
-- existing → update YAML
-- cross-cutting operating-system or method change → `feature_yaml: none` is allowed
+- new feature → create `feature.source.yaml`
+- existing → update `feature.source.yaml`
+- cross-cutting operating-system or method change → `feature_source: none` is allowed
 
 6. **Invoke planning-dispatch**
 
@@ -103,7 +122,7 @@ Rules:
 
 - save to `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
 - follow frontmatter rules
-- link the spec to the affected `docs/features/<feature_id>/<feature_id>.yaml`
+- link the spec to the affected `docs/features/<feature_id>/feature.source.yaml` and generated contract
 
 8. **Spec review loop**
 
@@ -164,10 +183,11 @@ Each unit must answer:
 ## Spec Writing Rules
 
 - spec belongs in `docs/superpowers/specs/`
-- YAML = current state
+- `feature.source.yaml` = human-owned meaning; generated feature YAML = current state
 - spec = explanation + design
-- spec must name the affected `docs/features/<feature_id>/<feature_id>.yaml` when one exists
-- stage-heavy specs should also name affected stages and the primary lens
+- spec must name the affected `docs/features/<feature_id>/feature.source.yaml` and generated `docs/features/<feature_id>/<feature_id>.yaml` when one exists
+- stage-heavy specs should also name affected stages, the primary lens, and the
+  `stage_source` / `stage_contract` targets
 - spec should name any feature-specific docs or cross-cutting docs it expects to be updated
 
 ### Required frontmatter
@@ -194,7 +214,7 @@ invariants:
 
 - writing spec before feature classification
 - writing spec without classifying affected stages when the work is clearly boundary-heavy
-- writing spec without linking the affected feature YAML when one exists
+- writing spec without linking the affected feature source when one exists
 - assuming `FEATURES.md`
 - mixing design + implementation
 - skipping YAML alignment

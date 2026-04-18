@@ -4,8 +4,8 @@ type: test
 scope: unit
 domain: docs
 covers:
-  - Starter YAML contract formatting normalization for docs/features and docs/stages
-  - Check mode vs rewrite mode behavior for the starter contract YAML formatter
+  - YAML contract formatting normalization for docs/features and docs/stages
+  - Check mode vs rewrite mode behavior for the contract YAML formatter
 excludes:
   - Full-repo end-to-end normalization runs
 tags:
@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import unittest
 import uuid
-from pathlib import Path
 from shutil import rmtree
+from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -28,16 +27,15 @@ FORMATTER = REPO_ROOT / "scripts" / "format_contract_yaml.py"
 
 SAMPLE_YAML = """feature_id: sample-feature
 name: Sample feature
-version: 1
 status: active
 type: workflow
 summary: Example contract
 invariants:
-  - "Training behavior is controlled by `configs/runtime.yaml`."
+  - "Training behavior is controlled by `configs/train.yaml` and the AML train component."
   - Production retraining remains distinct from the optimization workflow.
 capabilities:
-  - "Apply experiment metadata from `configs/runtime.yaml`."
-  - Accept an explicit training config path.
+  - "Apply experiment and display metadata from `configs/train.yaml`."
+  - Accept an explicit training config path so smoke runs can use `configs/train_smoke.yaml` without changing production defaults.
 """
 
 
@@ -57,64 +55,99 @@ def make_test_root() -> Path:
     return root
 
 
-class FormatContractYamlTests(unittest.TestCase):
-    def test_check_mode_detects_drift_without_rewriting(self) -> None:
-        test_root = make_test_root()
-        try:
-            target = test_root / "docs" / "features" / "sample" / "sample.yaml"
-            target.parent.mkdir(parents=True)
-            target.write_text(SAMPLE_YAML, encoding="utf-8")
+def test_check_mode_detects_drift_without_rewriting() -> None:
+    test_root = make_test_root()
+    try:
+        target = test_root / "docs" / "features" / "sample" / "sample.yaml"
+        target.parent.mkdir(parents=True)
+        target.write_text(SAMPLE_YAML, encoding="utf-8")
 
-            result = run_formatter("--check", str(target))
+        result = run_formatter("--check", str(target))
 
-            self.assertEqual(result.returncode, 1)
-            self.assertEqual(target.read_text(encoding="utf-8"), SAMPLE_YAML)
-            self.assertIn("would reformat", result.stdout.lower())
-        finally:
-            rmtree(test_root, ignore_errors=True)
-
-    def test_rewrite_mode_normalizes_optional_quotes_and_is_idempotent(self) -> None:
-        test_root = make_test_root()
-        try:
-            target = test_root / "docs" / "stages" / "sample.yaml"
-            target.parent.mkdir(parents=True)
-            target.write_text(SAMPLE_YAML, encoding="utf-8")
-
-            first = run_formatter(str(target))
-            self.assertEqual(first.returncode, 0)
-
-            normalized_once = target.read_text(encoding="utf-8")
-            self.assertNotIn(
-                '"Training behavior is controlled by `configs/runtime.yaml`."',
-                normalized_once,
-            )
-            self.assertNotIn(
-                '"Apply experiment metadata from `configs/runtime.yaml`."',
-                normalized_once,
-            )
-
-            second = run_formatter(str(target))
-            self.assertEqual(second.returncode, 0)
-            self.assertEqual(target.read_text(encoding="utf-8"), normalized_once)
-        finally:
-            rmtree(test_root, ignore_errors=True)
-
-    def test_check_mode_passes_after_normalization(self) -> None:
-        test_root = make_test_root()
-        try:
-            target = test_root / "docs" / "features" / "sample" / "sample.yaml"
-            target.parent.mkdir(parents=True)
-            target.write_text(SAMPLE_YAML, encoding="utf-8")
-
-            rewrite = run_formatter(str(target))
-            self.assertEqual(rewrite.returncode, 0)
-
-            check = run_formatter("--check", str(target))
-            self.assertEqual(check.returncode, 0)
-            self.assertIn("already normalized", check.stdout.lower())
-        finally:
-            rmtree(test_root, ignore_errors=True)
+        assert result.returncode == 1
+        assert target.read_text(encoding="utf-8") == SAMPLE_YAML
+        assert "would reformat" in result.stdout.lower()
+    finally:
+        rmtree(test_root, ignore_errors=True)
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_rewrite_mode_normalizes_optional_quotes_and_is_idempotent() -> None:
+    test_root = make_test_root()
+    try:
+        target = test_root / "docs" / "stages" / "sample.yaml"
+        target.parent.mkdir(parents=True)
+        target.write_text(SAMPLE_YAML, encoding="utf-8")
+
+        first = run_formatter(str(target))
+        assert first.returncode == 0
+
+        normalized_once = target.read_text(encoding="utf-8")
+        assert (
+            '"Training behavior is controlled by `configs/train.yaml` and the AML train component."'
+            not in normalized_once
+        )
+        assert (
+            '"Apply experiment and display metadata from `configs/train.yaml`."'
+            not in normalized_once
+        )
+
+        second = run_formatter(str(target))
+        assert second.returncode == 0
+        assert target.read_text(encoding="utf-8") == normalized_once
+    finally:
+        rmtree(test_root, ignore_errors=True)
+
+
+def test_check_mode_passes_after_normalization() -> None:
+    test_root = make_test_root()
+    try:
+        target = test_root / "docs" / "features" / "sample" / "sample.yaml"
+        target.parent.mkdir(parents=True)
+        target.write_text(SAMPLE_YAML, encoding="utf-8")
+
+        rewrite = run_formatter(str(target))
+        assert rewrite.returncode == 0
+
+        check = run_formatter("--check", str(target))
+        assert check.returncode == 0
+        assert "already normalized" in check.stdout.lower()
+    finally:
+        rmtree(test_root, ignore_errors=True)
+
+
+def test_formatter_skips_generated_contracts() -> None:
+    test_root = make_test_root()
+    try:
+        target = test_root / "docs" / "features" / "sample" / "sample.yaml"
+        target.parent.mkdir(parents=True)
+        generated_text = "# GENERATED FILE - do not edit directly.\n" + SAMPLE_YAML
+        target.write_text(generated_text, encoding="utf-8")
+
+        result = run_formatter("--check", str(target))
+
+        assert result.returncode == 0
+        assert target.read_text(encoding="utf-8") == generated_text
+        assert "skipped generated" in result.stdout.lower()
+    finally:
+        rmtree(test_root, ignore_errors=True)
+
+
+def test_formatter_skips_generated_feature_local_lineage_in_check_and_rewrite_modes(
+) -> None:
+    test_root = make_test_root()
+    try:
+        target = test_root / "docs" / "features" / "sample" / "lineage.generated.yaml"
+        target.parent.mkdir(parents=True)
+        generated_text = "# GENERATED FILE - do not edit directly.\n" + SAMPLE_YAML
+        target.write_text(generated_text, encoding="utf-8")
+
+        check = run_formatter("--check", str(target))
+        rewrite = run_formatter(str(target))
+
+        assert check.returncode == 0
+        assert rewrite.returncode == 0
+        assert target.read_text(encoding="utf-8") == generated_text
+        assert "skipped generated" in check.stdout.lower()
+        assert "skipped generated" in rewrite.stdout.lower()
+    finally:
+        rmtree(test_root, ignore_errors=True)

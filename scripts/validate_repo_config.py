@@ -116,7 +116,11 @@ def validate_publication_config(payload: Any, errors: list[str]) -> None:
             errors.append(f"Publication config key `{key}` must be a list of strings.")
 
 
-def validate_adapter_mappings(payload: Any, repo_root: Path, errors: list[str]) -> None:
+def validate_adapter_mappings(
+    payload: Any,
+    repo_root: Path,
+    errors: list[str],
+) -> None:
     if not isinstance(payload, list):
         errors.append("Adapter mappings must be a JSON array.")
         return

@@ -80,7 +80,10 @@ jobs:
           }
           if ((Test-Path pyproject.toml) -or (Test-Path setup.py)) {
             python -m pip install -e .
-          }
+          }      - name: Run architecture sync check
+        run: python scripts/sync_architecture_docs.py --check
+
+
 
       - name: Run baseline test command
         run: |
@@ -117,3 +120,4 @@ jobs:
 
       - name: Run publication boundary dry check
         run: .\scripts\publish_public_repo.ps1
+

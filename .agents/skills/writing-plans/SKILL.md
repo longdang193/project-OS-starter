@@ -23,23 +23,32 @@ Assume the engineer is capable but unfamiliar with the codebase and domain.
 Use the project doc system:
 
 ```text
-code/                       → real truth
-docs/stages/*.yaml          → stage contracts when stage-aware docs are in scope
-docs/features/*/*.yaml        → structured truth
-docs/features/<feature_id>/ → feature-specific explanation + history
-docs/*.md                   → cross-cutting explanation
-README.md                   → overview
-docs/generated/             → generated discovery
+code/                                → real truth
+docs/stages/*.source.yaml            → human-owned stage source when stage-aware docs are in scope
+docs/stages/*.yaml                   → generated stage contracts when stage-aware docs are in scope
+docs/features/*/feature.source.yaml  → human-owned feature source
+docs/features/*/<feature_id>.yaml    → generated current feature contract
+docs/features/*/lineage.generated.yaml → generated feature-local evidence
+docs/features/<feature_id>/          → feature-specific explanation + partial-generated history
+docs/*.md                            → cross-cutting explanation
+README.md                            → overview
+docs/generated/                      → generated discovery
 ```
 
 Rules:
 
-- The affected `docs/features/<feature_id>/<feature_id>.yaml` file is the current-state anchor when a managed feature exists
+- The affected `docs/features/<feature_id>/feature.source.yaml` file is the
+  human-owned anchor when a managed feature exists
+- The generated `docs/features/<feature_id>/<feature_id>.yaml` file is the
+  assembled current-state view
 - Cross-cutting operating-system work may use `Feature: none`
 - Stage-heavy plans should name affected stages and the primary lens
+- Stage-heavy plans should also name `docs/stages/<stage_id>.source.yaml` and
+  `docs/stages/<stage_id>.yaml`
 - Feature-specific history belongs under `docs/features/<feature_id>/`
 - Cross-cutting architecture belongs under `docs/*.md`
-- The plan must link back to the feature contract when one exists, and to the spec
+- The plan must link back to the feature source, generated contract, and spec
+  when they exist
 - Generated discovery is refreshed after source updates; do not edit it manually
 
 ---
@@ -50,7 +59,9 @@ Do not write the plan until these are true:
 
 1. `planning-dispatch` triage exists
 2. the affected feature is identified, or the plan explicitly records that this is cross-cutting work with `Feature: none`
-3. the relevant `docs/features/<feature_id>/<feature_id>.yaml` exists when a managed feature is changing, or the plan explicitly says it must be created before implementation starts
+3. the relevant `docs/features/<feature_id>/feature.source.yaml` exists when a
+   managed feature is changing, or the plan explicitly says it must be created
+   before implementation starts
 4. the spec exists if the design is non-trivial
 
 Minimum triage:
@@ -67,18 +78,27 @@ Affected stages:
   - <stage_id> | none
 Affected features:
   - <feature_id> | none
-Primary lens: stage | feature | mixed
+Primary lens: stage | feature | mixed | cross-cutting
 Affected docs:
+  feature_source: `docs/features/<feature_id>/feature.source.yaml` | none
   feature_yaml: `docs/features/<feature_id>/<feature_id>.yaml` | none
+  feature_lineage: `docs/features/<feature_id>/lineage.generated.yaml` | none
   feature_history: `docs/features/<feature_id>/history.md` | none
+  stage_source: `docs/stages/<stage_id>.source.yaml` | none
+  stage_contract: `docs/stages/<stage_id>.yaml` | none
   feature_docs:
     - `docs/features/<feature_id>/<doc>.md`
   cross_cutting_docs:
     - `docs/<doc>.md`
+    - `docs/operating_system/<doc>.md`
   readme: `README.md` | none
   generated:
-    - `docs/generated/<file>`
+    - `docs/generated/<file>` | none
 Generated refresh required: yes | no
+Capability IDs:
+  - <capability_id> | none
+Invariant IDs:
+  - <invariant_id> | none
 Spec needed: yes | no
 Plan needed: yes | no
 ```
@@ -139,7 +159,8 @@ Every plan should start like this:
 ```md
 # [Feature Name] Implementation Plan
 
-**Feature:** `docs/features/<feature_id>/<feature_id>.yaml`  
+**Feature Source:** `docs/features/<feature_id>/feature.source.yaml` | `none`  
+**Feature Contract:** `docs/features/<feature_id>/<feature_id>.yaml` | `none`  
 **Spec:** `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
 **Type:** add | modify | replace  
 **Status:** planned | building  
@@ -166,7 +187,10 @@ Every plan must also include this section near the top:
 ```md
 ## Doc Update Matrix
 
+- Feature source: `docs/features/<feature_id>/feature.source.yaml` | none
 - Feature contract: `docs/features/<feature_id>/<feature_id>.yaml`
+- Feature lineage: `docs/features/<feature_id>/lineage.generated.yaml` | none
+- Stage source: `docs/stages/<stage_id>.source.yaml` | none
 - Stage contracts: `docs/stages/<stage_id>.yaml` | none
 - Feature history: `docs/features/<feature_id>/history.md` | none
 - Feature-specific docs: `docs/features/<feature_id>/<doc>.md` | none
@@ -210,8 +234,11 @@ A complete plan should specify:
 - exact file paths
 - test files and commands
 - doc targets split by contract / feature history / feature-specific docs / cross-cutting docs / README / generated discovery
-- which `docs/features/*/*.yaml` files change, or whether this is validly `Feature: none`
-- which `docs/stages/*.yaml` files change when stage-aware docs are in scope
+- which `docs/features/*/feature.source.yaml` files change, or whether this is
+  validly `Feature: none`
+- which generated feature contracts and lineage files refresh as outputs
+- which `docs/stages/*.source.yaml` files change and which generated stage
+  contracts refresh when stage-aware docs are in scope
 - whether `docs/generated/` must be regenerated
 - commit points
 
@@ -232,7 +259,8 @@ Provide the reviewer only:
 
 - plan path
 - spec path
-- feature YAML path
+- feature source path
+- generated contract path when one exists
 
 ---
 

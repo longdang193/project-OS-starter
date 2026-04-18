@@ -29,6 +29,7 @@ import yaml
 
 
 MAX_LINE_WIDTH = 10_000
+GENERATED_FILE_PREFIX = "# GENERATED FILE - do not edit directly."
 
 
 class IndentedSafeDumper(yaml.SafeDumper):
@@ -71,7 +72,7 @@ def resolve_targets(raw_targets: Iterable[str]) -> list[Path]:
 
 def normalize_yaml_text(raw_text: str) -> str:
     parsed = yaml.safe_load(raw_text)
-    return yaml.dump(
+    dumped = yaml.dump(
         parsed,
         Dumper=IndentedSafeDumper,
         sort_keys=False,
@@ -79,10 +80,18 @@ def normalize_yaml_text(raw_text: str) -> str:
         allow_unicode=False,
         width=MAX_LINE_WIDTH,
     )
+    return dumped
+
+
+def is_generated_contract(raw_text: str) -> bool:
+    return raw_text.startswith(GENERATED_FILE_PREFIX)
 
 
 def process_file(path: Path, check_only: bool) -> tuple[bool, str]:
     original = path.read_text(encoding="utf-8")
+    if is_generated_contract(original):
+        return False, f"Skipped generated: {path}"
+
     normalized = normalize_yaml_text(original)
     changed = normalized != original
 
@@ -120,8 +129,7 @@ def main() -> int:
 
     targets = resolve_targets(args.targets)
     if not targets:
-        print("No contract YAML files found.")
-        return 0
+        parser.error("No YAML contract files were found.")
 
     invalid_targets = [path for path in targets if not is_supported_contract_path(path)]
     if invalid_targets:

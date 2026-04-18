@@ -15,7 +15,7 @@ Normal development happens only in the private repo.
 
 ## Structure Model
 
-The repo uses four distinct internal layers plus generated outputs:
+The repo uses four distinct internal layers:
 
 1. `docs/operating_system/`
 - human-readable repo rules and workflows
@@ -32,22 +32,63 @@ The repo uses four distinct internal layers plus generated outputs:
 
 3. `.agents/skills/`
 - repo-local Codex skill discovery surface
-- focused task playbooks
+- focused execution workflows
 
-4. adapter outputs
+4. `.codex/agents/`
+- optional repo-local Codex subagent configuration
+- narrow specialist executor roles only
+- subordinate to `AGENTS.md`, `docs/operating_system/`, and `.agents/skills/`
+
+5. adapter outputs
 - `AGENTS.md`
 - nested `AGENTS.md`
 - `.codex/rules/*.rules`
 - sync and verification scripts under `scripts/`
+
+The repo now uses `.codex/` as its active Codex config/generated root, while
+still splitting Codex ownership by role:
+
+- `AGENTS.md` for repo-wide Codex instructions
+- `.agents/skills/` for canonical Codex skills
+- `docs/operating_system/` for human governance
+- `.codex/` for repo-local Codex config and generated outputs
 
 The repo also splits configuration ownership by purpose:
 
 - `repo_config/`
   - repo/system configuration such as publication boundaries and adapter generation mappings
 - `configs/`
-  - runtime/workflow configuration such as starter runtime defaults and future smoke or environment profiles
-- `docs/features/*/*.yaml` and `docs/stages/*.yaml`
-  - human-authored lifecycle contracts, not generic config buckets
+  - runtime/workflow configuration such as training, monitoring, assets, and smoke profiles
+- `docs/features/*/feature.source.yaml` and `docs/stages/*.source.yaml`
+  - human-owned feature and stage lifecycle sources, not generic runtime config buckets
+- `docs/features/*/*.yaml`, `docs/features/*/lineage.generated.yaml`, and `docs/stages/*.yaml`
+  - generated lifecycle outputs assembled from the human-owned sources plus metadata
+
+The architecture-lineage system is now steady-state repo policy:
+
+- edit `docs/features/<feature_id>/feature.source.yaml` for human semantic changes
+- edit `docs/stages/<stage_id>.source.yaml` for human stage-boundary changes
+- treat generated feature contracts, generated stage contracts, `lineage.generated.yaml`, and generated history blocks as standard outputs
+- use `scripts/sync_architecture_docs.py` as the canonical sync/check workflow
+- use the canonical sync/check workflow to catch malformed metadata, missing required `@meta`, and disallowed manual reference bridges before commit/push
+- treat lineage completeness enforcement as a standing requirement, not a rollout-only concern
+- treat feature-history generation as part of the same sync/check workflow; completed
+  plans update the generated history block automatically
+- keep feature refs metadata-derived; `manual_refs` is not accepted in
+  `feature.source.yaml`
+
+When a task touches a feature folder, agents should read minimally rather than
+loading every file by default:
+
+- start with `feature.source.yaml`
+- open the generated `<feature_id>.yaml` only when the assembled current-state contract is needed
+- open `lineage.generated.yaml` for ownership, evidence, drift, or traceability work
+- open `history.md` only when narrative context or chronology is needed
+
+`history.md` manual edits are required only when a change needs explanation that
+generated plan metadata cannot provide on its own, such as operator meaning,
+rollout nuance, or cloud-proof interpretation. Do not hand-edit the generated
+history block.
 
 ## Ownership Rules
 
@@ -95,46 +136,63 @@ Does not own:
 
 Formal shape is governed by `docs/operating_system/skills-governance.md`.
 
-## Private / Public Boundary
+### `.agents/agents/`
 
-The following are private-only by default:
+Owns:
 
-- `docs/operating_system/`
-- `agent-core/`
-- `.codex/`
-- root and nested `AGENTS.md`
-- `.agents/`
-- `.cursor/`
-- `docs/superpowers/`
-- `logs/`
-- `sample/`
+- optional lightweight repo-local playbooks for task-specialized subagent roles
 
-The public repo must not depend on these files to understand or use the product.
+Does not own:
 
-## Current Phase
+- repo-wide governance
+- canonical instructions
+- reusable workflow skills
 
-Phase 2 keeps `.agents/skills/` as the canonical skill source.
+Rules:
 
-This avoids breaking current Codex skill discovery while the new `agent-core/` and adapter sync layer stabilizes.
+- this layer is optional, not required
+- if adopted, `.agents/agents/` is the only repo-local playbook surface
+- do not introduce both `agents/` and `.agents/agents/`
+- playbooks must stay smaller and lighter than skills
+- playbooks must remain subordinate to `AGENTS.md`, `docs/operating_system/`, and `.agents/skills/`
+- this repo does not need repo-local playbooks until a real repeated specialization gap is proven
 
-Longer term, `agent-core/skills/` may become canonical, with `.agents/skills/` generated or synchronized from it.
+### `.codex/agents/`
 
-## Adapter Workflow
+Owns:
 
-When changing:
+- optional repo-local Codex subagent configuration
+- narrow specialist executor definitions for repeated workflows
 
-- `agent-core/adapters/*`
-- `agent-core/policies/*`
-- generated `AGENTS.md`
-- generated `.codex/rules/*.rules`
+Does not own:
 
-run:
+- repo-wide governance
+- canonical workflow skills
+- agent memory
 
-```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
-python .\scripts\validate_repo_config.py
-```
+Rules:
+
+- this layer is optional, not required
+- first-pass subagents should stay read-only
+- subagents must remain narrower than skills and subordinate to `AGENTS.md`, `docs/operating_system/`, and `.agents/skills/`
+- `.codex/agents/` is the only repo-local Codex subagent surface
+
+### `.codex/rules/`
+
+Owns:
+
+- generated Codex rules outputs
+- adapter-rendered rule files consumed by Codex tooling
+
+Does not own:
+
+- canonical skill definitions
+- agent memory
+- repo governance
+
+`.codex/rules/` is a generated surface created by repo scripts under the
+active `.codex/` root. That root does not replace `.agents/skills/` as the
+canonical skill surface.
 
 ### `repo_config/`
 
@@ -155,8 +213,8 @@ Does not own:
 Owns:
 
 - runtime and workflow configuration
-- starter runtime defaults
-- future smoke or environment profiles
+- smoke profiles
+- training, monitoring, release, and asset settings used by repo workflows
 
 Does not own:
 
@@ -164,6 +222,54 @@ Does not own:
 - publication boundaries
 - generated outputs
 - feature or stage lifecycle contracts
+
+## Private / Public Boundary
+
+The following are private-only by default:
+
+- `docs/operating_system/`
+- `agent-core/`
+- `.codex/`
+- root and nested `AGENTS.md`
+- `.agents/`
+- `.cursor/`
+- `docs/superpowers/`
+- `logs/`
+- `sample/`
+
+Feature-local generated lineage is also private by default when it references
+`docs/superpowers/`, `docs/operating_system/`, agent metadata, or other internal
+development paths. Public publication can include generated feature contracts or
+aggregate discovery only when those files stand alone without private-only
+dependencies.
+
+The public repo must not depend on these files to understand or use the product.
+
+## Current Phase
+
+Phase 2 keeps `.agents/skills/` as the canonical skill source.
+
+This avoids breaking current Codex skill discovery while the new `agent-core/` and adapter sync layer stabilizes.
+
+Subagents, when used, complement the skill layer rather than replacing it.
+
+Longer term, `agent-core/skills/` may become canonical, with `.agents/skills/` generated or synchronized from it.
+
+## Adapter Workflow
+
+When changing:
+
+- `agent-core/adapters/*`
+- `agent-core/policies/*`
+- generated `AGENTS.md`
+- generated `.codex/rules/*.rules`
+
+run:
+
+```powershell
+.\scripts\sync_agent_adapters.ps1
+.\scripts\verify_agent_adapters.ps1
+```
 
 ## Hook Workflow
 
