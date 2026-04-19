@@ -245,6 +245,35 @@ dependencies.
 
 The public repo must not depend on these files to understand or use the product.
 
+## GitNexus Freshness Policy
+
+GitNexus is an optional private-only analysis layer for repo navigation,
+cross-file tracing, and impact analysis. It is useful, but it is never stronger
+than the current source code, tests, and active docs.
+
+Before higher-trust GitNexus use, check freshness with:
+
+```powershell
+.\scripts\get_gitnexus_freshness.ps1
+```
+
+Working rules:
+
+- if GitNexus is `fresh`, it may be used normally for exploration and as a
+  higher-trust aid for impact analysis
+- if GitNexus is `stale`, exploration may still use it as advisory lookup only
+- if GitNexus is `stale`, debugging may still use it as advisory only and any
+  conclusions should be labeled accordingly
+- if GitNexus is `stale`, higher-risk refactor or impact work should refresh
+  first when possible
+- if refresh fails, continue source-first with code, tests, and active docs
+  rather than blocking safe work
+- if GitNexus output conflicts with current source or tests, trust the source
+  and tests
+
+This repo treats stale GitNexus as an advisory tool state, not as a reason to
+stop normal source-first engineering work.
+
 ## Current Phase
 
 Phase 2 keeps `.agents/skills/` as the canonical skill source.
