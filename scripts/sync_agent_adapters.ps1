@@ -45,7 +45,7 @@ function Write-GeneratedFile {
         ""
     ) -join [Environment]::NewLine
 
-    Set-Content -LiteralPath $DestinationPath -Value ($header + $sourceContent)
+    Set-Content -LiteralPath $DestinationPath -Value ($header + $sourceContent) -NoNewline
 }
 
 function Get-AdapterMappings {
