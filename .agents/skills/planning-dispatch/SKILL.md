@@ -1,6 +1,6 @@
 ---
 name: planning-dispatch
-description: Apply at the start of any task requiring planning, design, or implementation — enforces the triage gate and routing decision tree. Determines the correct next skill and ensures feature source (`docs/features/*/feature.source.yaml`) and generated contracts are checked before any spec or plan is written.
+description: Use when a task needs planning, design, or implementation routing before specs, plans, or code changes begin.
 ---
 # Planning Dispatch
 
@@ -10,6 +10,7 @@ Apply this skill at the start of any task involving planning, design, or impleme
 
 It decides:
 
+- which planning layer owns the work
 - what to read first
 - whether the work is a managed feature change
 - which skill should handle the next step
@@ -18,20 +19,45 @@ It decides:
 
 > Plan before building.  
 > Classify before planning.  
-> Classify by reading the current feature contract first, and by naming affected stages when the work is stage-heavy.
+> Classify the layer first, then read the owning source.
+
+## Layer Gate
+
+Before feature/stage triage, classify the request into one of these layers:
+
+- `intent`
+  - project what-and-why
+  - source docs live under `docs/intent/`
+- `operating_system`
+  - repo method, routing, governance, and workflow rules
+  - source docs live under `docs/operating_system/`
+- `workstream`
+  - a major body of work derived from project intent
+  - execution artifacts live under `docs/superpowers/`
+- `change`
+  - one bounded execution slice such as a patch, refactor, migration, release,
+    runbook, or hotfix
+  - execution artifacts live under `docs/superpowers/`
+
+Intent and operating-system work should not be forced into fake feature
+contracts. Workstream and change work still use feature/stage/source-of-truth
+checks when those layers are affected.
 
 Read in this order:
 
-1. `code/`
-2. `docs/features/*/feature.source.yaml` and generated `docs/features/*/<feature_id>.yaml`
-3. `docs/stages/<stage_id>.source.yaml` and generated `docs/stages/<stage_id>.yaml` when stage-aware work is central to the task
-4. `docs/operating_system/stage-lifecycle.md` when architectural or pipeline stages are central to the work
-5. `docs/features/<feature_id>/*`
-5. `docs/generated/*`
-6. `docs/*.md`
-7. `README.md`
+1. the owning layer source:
+   - `docs/intent/*.md` for intent work
+   - `docs/operating_system/*.md` for operating-system work
+   - `docs/features/*/feature.source.yaml` and generated `docs/features/*/<feature_id>.yaml` for feature-owned work
+2. `docs/stages/<stage_id>.source.yaml` and generated `docs/stages/<stage_id>.yaml` when stage-aware work is central to the task
+3. `code/` when implementation reality or ownership evidence matters
+4. `docs/features/<feature_id>/*` when focused feature explanation is needed
+5. `docs/generated/*` for lookup only
+6. `docs/*.md` for cross-cutting explanation when needed
+7. `README.md` for navigation only
 
-When one feature folder is in scope, refine step 4 to the minimum truthful set:
+When one feature folder is in scope, refine the feature read to the minimum
+truthful set:
 
 - `feature.source.yaml` first
 - generated `<feature_id>.yaml` only when the assembled current contract is needed
@@ -51,21 +77,29 @@ This skill does **not** write specs or plans. It routes work.
 
 Before writing a spec or plan, produce triage. This is the gate.
 
-### Step 1 — Find the current feature source
+### Step 1 — Classify the owning layer and source
 
-- [ ] Check `docs/features/*/feature.source.yaml` for the owning feature source
-- [ ] Use generated `docs/features/*/<feature_id>.yaml` and `lineage.generated.yaml` for current-state and evidence lookup only
-- [ ] Identify affected stages when the work is pipeline-heavy, boundary-heavy, or architecture-heavy
+- [ ] Decide whether the work is `intent`, `operating_system`, `workstream`, or `change`
+- [ ] Read the owning layer source first
+- [ ] If the work touches managed feature meaning, check `docs/features/*/feature.source.yaml`
+- [ ] If the work is stage-heavy, identify affected stages and read `docs/stages/<stage_id>.source.yaml`
+- [ ] Use generated feature/stage contracts and lineage surfaces for current-state and evidence lookup only
 - [ ] Use `docs/generated/*` only for lookup if needed
 - [ ] Read `docs/*.md` only if explanation or rationale is needed
+
+### Step 2 — Determine feature classification when relevant
+
 - [ ] If related feature exists: this is usually `MODIFY` or `REPLACE`
 - [ ] If not: this is `ADD`
 
-### Step 2 — Produce Triage Block
+Cross-cutting intent or operating-system work may still use `Affected features: none`.
+
+### Step 3 — Produce Triage Block
 
 Required:
 
 ```text
+Layer: intent | operating_system | workstream | change
 Feature type: ADD | MODIFY | REPLACE
 Summary: <1 sentence>
 Reasoning: <why this classification>
@@ -118,6 +152,7 @@ Risk level: low | medium | high
 
 - a spec cannot be written without triage
 - a plan cannot be written without triage
+- layer classification must happen before spec/plan routing
 - if an affected feature exists, its `docs/features/<feature_id>/feature.source.yaml` and generated contract path must be identified before proceeding
 - stage-heavy work must name affected stages before proceeding
 - stage-heavy work must name both the stage source and generated stage contract paths before proceeding
@@ -130,7 +165,7 @@ Risk level: low | medium | high
 After triage, route to the correct skill:
 
 ```text
-Exploring an idea or comparing approaches
+Exploring an idea or comparing approaches within the chosen layer
 └── brainstorming
 
 Design is clear enough; implementation plan needed
@@ -142,6 +177,11 @@ Approved plan exists; execute with checkpoints
 Multiple independent workstreams
 └── dispatching-parallel-agents
 ```
+
+Routing note:
+
+- if the user explicitly asks for an implementation plan and the change is already bounded and clear enough to execute, route directly to `writing-plans` after triage
+- do not force a speculative spec hop just because the work is non-trivial; use `brainstorming` only when design is still meaningfully ambiguous
 
 ## Scenario Reference
 
@@ -172,6 +212,13 @@ Multiple independent workstreams
 5. Note whether the work is likely to produce a reusable memory update during closeout
 6. Dispatch as needed
 
+### Intent Change
+
+1. Start from `docs/intent/`, not `docs/operating_system/`
+2. Use `Affected features: none` when no managed feature contract owns the change
+3. Keep intent docs stable and source-like instead of writing execution notes
+4. If repo method also changes, name the operating-system doc targets separately rather than collapsing purpose and process into one doc
+
 
 ### Bounded Hygiene Or Drift Cleanup
 
@@ -193,9 +240,18 @@ Multiple independent workstreams
 2. Once direction is clear, produce triage
 3. Then route to spec/plan as needed
 
+### Explicit Plan Request
+
+1. Produce triage first
+2. If the requested change is already bounded and clear, route directly to `writing-plans`
+3. Use `brainstorming` first only when the design is still meaningfully unsettled
+4. Do not treat the owning feature source as the first artifact to create; it is the first source to read
+
 ## Anti-Patterns
 
+- skipping the layer gate and jumping straight to feature triage
 - planning before reading current feature source
+- treating `docs/operating_system/` as the default home for project-purpose docs
 - skipping stage classification when the work is obviously stage-heavy
 - skipping triage
 - writing a plan before the design is clear
@@ -205,7 +261,7 @@ Multiple independent workstreams
 
 ## Related Skills
 
-- **`doc-system-lifecycle`**: governs the 5-layer doc system, naming, frontmatter, and generated discovery
+- **`doc-system-lifecycle`**: governs the source-of-truth layers, metadata rules, and generated discovery
 - **`brainstorming`**: explores ideas and writes the spec
 - **`writing-plans`**: writes the implementation plan
 - **`executing-plans`**: executes an approved plan

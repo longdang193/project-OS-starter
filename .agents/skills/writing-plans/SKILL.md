@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: Use when you have a confirmed spec with triage block for a multi-step task, before touching code. Enforces the triage gate: do not proceed without a completed triage block from planning-dispatch. Consolidates project_plan_generation duties.
+description: Use when a confirmed design needs a multi-step implementation plan before code changes begin.
 ---
 
 # Writing Plans
@@ -20,23 +20,29 @@ Assume the engineer is capable but unfamiliar with the codebase and domain.
 
 ## Doc-System Alignment
 
-Use the project doc system:
+Use the current source-of-truth model:
 
 ```text
-code/                                → real truth
+code/                                 → real truth
+docs/intent/*.md                     → project purpose and outcome sources
+docs/operating_system/*.md           → repo method and governance sources
 docs/stages/*.source.yaml            → human-owned stage source when stage-aware docs are in scope
 docs/stages/*.yaml                   → generated stage contracts when stage-aware docs are in scope
 docs/features/*/feature.source.yaml  → human-owned feature source
 docs/features/*/<feature_id>.yaml    → generated current feature contract
 docs/features/*/lineage.generated.yaml → generated feature-local evidence
 docs/features/<feature_id>/          → feature-specific explanation + partial-generated history
-docs/*.md                            → cross-cutting explanation
+docs/*.md                            → cross-cutting product explanation
+docs/superpowers/specs/*.md          → design artifacts
+docs/superpowers/plans/*.md          → execution artifacts
 README.md                            → overview
 docs/generated/                      → generated discovery
 ```
 
 Rules:
 
+- intent work should point back to `docs/intent/*.md`
+- operating-system work should point back to `docs/operating_system/*.md`
 - The affected `docs/features/<feature_id>/feature.source.yaml` file is the
   human-owned anchor when a managed feature exists
 - The generated `docs/features/<feature_id>/<feature_id>.yaml` file is the
@@ -46,7 +52,8 @@ Rules:
 - Stage-heavy plans should also name `docs/stages/<stage_id>.source.yaml` and
   `docs/stages/<stage_id>.yaml`
 - Feature-specific history belongs under `docs/features/<feature_id>/`
-- Cross-cutting architecture belongs under `docs/*.md`
+- Cross-cutting product architecture belongs under `docs/*.md`
+- Cross-cutting repo-method docs belong under `docs/operating_system/*.md`
 - The plan must link back to the feature source, generated contract, and spec
   when they exist
 - Generated discovery is refreshed after source updates; do not edit it manually
@@ -64,9 +71,16 @@ Do not write the plan until these are true:
    before implementation starts
 4. the spec exists if the design is non-trivial
 
+Important:
+
+- an explicit user request for an implementation plan does not automatically require a new spec
+- if triage shows the change is already bounded and design-clear, proceed directly to the plan
+- require a spec first only when the design is still meaningfully ambiguous, cross-cutting in an unsettled way, or missing key decisions
+
 Minimum triage:
 
 ```text
+Layer: intent | operating_system | workstream | change
 Feature type: ADD | MODIFY | REPLACE
 Summary: <1 sentence>
 Reasoning: <why this classification>
@@ -120,6 +134,8 @@ If triage is missing, stop and invoke `planning-dispatch`.
 
 If the spec covers multiple independent subsystems, suggest splitting into separate plans. Each plan should produce a coherent, testable increment.
 
+If there is no spec because the user explicitly requested a clear bounded plan, state that the plan is proceeding from triage plus existing source-of-truth docs rather than inventing a placeholder spec.
+
 ---
 
 ## File Structure First
@@ -157,13 +173,27 @@ Avoid bundling multiple actions into one step.
 Every plan should start like this:
 
 ```md
+---
+layer: intent | operating_system | workstream | change
+artifact_type: plan
+status: proposed | active | completed | superseded
+parent_workstream: <id> | none
+targets:
+  - <path>
+related_features:
+  - <feature_id>
+related_stages:
+  - <stage_id>
+---
+
 # [Feature Name] Implementation Plan
 
 **Feature Source:** `docs/features/<feature_id>/feature.source.yaml` | `none`  
 **Feature Contract:** `docs/features/<feature_id>/<feature_id>.yaml` | `none`  
-**Spec:** `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
+**Spec:** `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md` | `none`
 **Type:** add | modify | replace  
-**Status:** planned | building  
+**Plan Layer:** intent | operating_system | workstream | change
+**Plan Status:** proposed | active | completed | superseded
 
 > **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
 
@@ -182,6 +212,15 @@ Every plan should start like this:
 ---
 ```
 
+Rules:
+
+- `layer`, `artifact_type`, and `status` are required frontmatter
+- `targets` is required when the plan is cross-cutting or otherwise ambiguous in scope
+- `targets` may be omitted only when the plan is narrow and obviously local
+- `related_features` and `related_stages` are optional navigation aids
+- keep plan metadata aligned with the triage block rather than inventing a second classification
+- when the plan is the requested primary artifact, the first created artifact should be the plan file under `docs/superpowers/plans/`, not an owning source doc
+
 Every plan must also include this section near the top:
 
 ```md
@@ -195,6 +234,7 @@ Every plan must also include this section near the top:
 - Feature history: `docs/features/<feature_id>/history.md` | none
 - Feature-specific docs: `docs/features/<feature_id>/<doc>.md` | none
 - Cross-cutting docs: `docs/<doc>.md` | none
+- Operating-system docs: `docs/operating_system/<doc>.md` | none
 - README: `README.md` | none
 - Generated discovery: `docs/generated/<file>` | none
 ```

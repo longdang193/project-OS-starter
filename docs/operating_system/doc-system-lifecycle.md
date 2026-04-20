@@ -14,10 +14,16 @@ Documentation should let a human or agent answer:
 
 Docs explain code. They do not replace it.
 
+Canonical truth should flow downward from upstream owning layers. Lower layers
+should derive or reference that truth rather than restating the same semantic
+fact manually.
+
 ## Source-Of-Truth Layers
 
 ```text
 code/                        -> real truth
+docs/intent/*.md            -> project purpose and outcome sources
+docs/operating_system/*.md   -> repo method and governance sources
 docs/stages/*.source.yaml    -> human-owned stage source when stage-aware docs are in scope
 docs/stages/*.yaml           -> generated stage contracts when stage-aware docs are in scope
 docs/features/*/feature.source.yaml -> human-authored feature metadata source when adopted
@@ -25,10 +31,30 @@ docs/features/*/*.yaml       -> structured current-state truth, generated for op
 docs/features/*/lineage.generated.yaml -> generated feature-local evidence and timeline facts
 docs/features/<feature_id>/  -> feature explanation and human history
 docs/*.md                    -> cross-cutting product docs
-docs/operating_system/*.md   -> repo rules and workflows
 README.md                    -> overview
 docs/generated/*             -> generated discovery indexes
+docs/superpowers/specs/*.md  -> design artifacts
+docs/superpowers/plans/*.md  -> execution artifacts
 ```
+
+## Governing Layers vs Execution Artifacts
+
+The repo distinguishes two stable governing layers from two execution-facing
+planning layers:
+
+- `docs/intent/`
+  - owns the project what-and-why
+  - governs by purpose
+- `docs/operating_system/`
+  - owns repo method, governance, and workflow rules
+  - governs by process
+- `docs/superpowers/specs/`
+  - holds design artifacts for workstreams or bounded changes
+- `docs/superpowers/plans/`
+  - holds execution artifacts for workstreams or bounded changes
+
+README remains a synthesized orientation layer. It should summarize the source
+layers rather than becoming a parallel source of truth.
 
 ## Placement Rules
 
@@ -57,6 +83,14 @@ Use runtime/workflow config for:
 - monitoring settings
 - asset manifests
 - smoke profiles
+
+When configs or AML components use `# @architecture` metadata:
+
+- `owner` is the primary owning feature
+- additive cross-feature linkage should use a non-owner field such as
+  `related_features`
+- do not repeat the owner inside a second feature list just to make generated
+  linkage work
 
 ### `docs/features/*/*.yaml`
 
@@ -112,6 +146,33 @@ Stage refs come from:
 Supporting helper awareness belongs in `docs/generated/architecture_dag.yaml`
 rather than primary stage refs.
 
+Ownership rule:
+
+- stage source owns stage role semantics such as `primary_features` and
+  `supporting_features`
+- feature source owns stage capability participation through
+  `stage_participation.stage_id` and `capability_ids`
+- generated stage contracts derive assembled refs and linkage views from those
+  sources
+
+### `docs/intent/*.md`
+
+Use the intent layer for:
+
+- the original project problem
+- stakeholders and audiences
+- success outcomes
+- major promises the project should preserve
+- constraints and non-goals
+
+Rules:
+
+- keep intent docs stable and source-like
+- do not turn intent docs into execution logs or changelogs
+- use intent docs as source material for future README synthesis rather than as
+  a second README
+- do not move repo-method rules into intent just because they are cross-cutting
+
 ### `docs/features/*/lineage.generated.yaml`
 
 Use feature-local generated lineage for:
@@ -129,6 +190,10 @@ Use feature-local generated lineage for:
 This is the canonical detailed generated evidence surface for an opted-in
 feature. Do not duplicate the same machine-readable evidence in `history.md` or
 global generated indexes.
+
+For Python files, capability-first metadata is preferred when feature linkage is
+already derivable from capability ownership. Do not require a second manual
+feature list when stable capability IDs already determine that linkage.
 
 For active capabilities, this file also reports lineage completeness:
 
@@ -194,6 +259,55 @@ Use operating-system docs for:
 They may describe config ownership rules, but they are not the config surfaces
 themselves.
 
+Keep operating-system docs method-focused. If the document is really about what
+the project is for, it belongs in `docs/intent/` instead.
+
+### `docs/superpowers/specs/*.md` And `docs/superpowers/plans/*.md`
+
+Use specs and plans for execution-facing artifacts:
+
+- specs describe design decisions
+- plans describe implementation work
+- both may belong to `intent`, `operating_system`, `workstream`, or `change`
+  layers through metadata
+
+Do not collapse the concepts:
+
+- a workstream is not the same thing as a spec
+- a change is not the same thing as a plan
+
+Routing rule:
+
+- if a bounded change is already design-clear and the user explicitly asks for
+  an implementation plan, a new plan may be created without forcing a new spec
+- in that case, the plan should record that it is proceeding from triage plus
+  existing source-of-truth docs rather than inventing a placeholder spec
+
+Do not create a separate `docs/changes/` folder unless metadata and routing
+prove insufficient in practice.
+
+Minimal metadata for new or touched specs/plans:
+
+```yaml
+layer: intent | operating_system | workstream | change
+artifact_type: spec | plan
+status: proposed | active | completed | superseded
+parent_workstream: <id> | none
+targets:
+  - <path>
+related_features:
+  - <feature_id>
+related_stages:
+  - <stage_id>
+```
+
+Rules:
+
+- `layer`, `artifact_type`, and `status` are required
+- `targets` is required when the artifact is cross-cutting or otherwise
+  ambiguous in scope
+- `targets` may be omitted only for narrow, obvious local artifacts
+
 ### `docs/generated/*`
 
 Use generated discovery for:
@@ -223,6 +337,7 @@ Current repo note:
 When behavior or structure changes:
 
 - update code
+- update `docs/intent/*.md` when project-purpose sources change
 - update the owning feature YAML when a feature contract changes
 - update `feature.source.yaml`, not the generated concrete feature-id YAML, when active
   feature meaning changes
@@ -258,10 +373,11 @@ Lineage exception policy:
 Use the deepest layer that owns the fact:
 
 - behavior -> code
+- project purpose -> `docs/intent/`
+- repo method -> `docs/operating_system/`
 - feature state -> feature YAML
 - feature explanation -> feature docs
 - dated feature validation evidence -> feature history or focused feature ops docs
 - generated plan-change timeline facts -> the generated block inside feature history
 - downloaded runtime artifacts -> evidence inputs, not source docs
-- repo workflow -> operating-system docs
 - navigation -> README or generated discovery when that layer exists

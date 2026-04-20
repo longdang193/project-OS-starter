@@ -4,6 +4,15 @@ This document defines how managed features are classified and tracked.
 
 ## Core Principle
 
+Feature lifecycle sits below the repo's intent and operating-system layers:
+
+- `docs/intent/` owns the project what-and-why
+- `docs/operating_system/` owns build method and governance
+- `docs/features/` owns managed feature meaning and lifecycle state
+
+Features remain the primary lifecycle units for product behavior, but they do
+not replace project intent or repo method.
+
 A real managed feature should have a current-state contract named after the
 concrete feature id, for example
 `docs/features/model-training-pipeline/model-training-pipeline.yaml`.

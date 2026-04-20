@@ -6,6 +6,7 @@ This document defines the minimum planning gate for non-trivial changes.
 
 Before writing a spec or plan, identify:
 
+- which planning layer owns the request
 - what kind of change this is
 - which feature or operating-system area owns it
 - whether stages are affected
@@ -27,11 +28,62 @@ Use the smallest truthful reading set for any affected feature folder:
 - `history.md` only for narrative context
 - do not load an entire feature folder by default
 
+## Four Planning Layers
+
+Use this repo-level layer model before deciding where a request belongs.
+
+- `intent`
+  - owns the project what and why
+  - governs by purpose
+  - stable source docs live under `docs/intent/`
+- `operating_system`
+  - owns how the repo builds, governs, and routes work
+  - governs by method
+  - stable source docs live under `docs/operating_system/`
+- `workstream`
+  - owns a major body of work derived from project intent
+  - usually spans one meaningful capability theme, lifecycle theme, or
+    cross-cutting improvement track
+  - execution artifacts live under `docs/superpowers/`
+- `change`
+  - owns one bounded execution slice such as a patch, migration, refactor,
+    remediation, release, runbook, or hotfix
+  - execution artifacts live under `docs/superpowers/`
+
+Intent and operating system are stable governing layers. Workstream and change
+are execution-facing planning layers.
+
+## First Routing Gate
+
+Before filling in the rest of triage, ask:
+
+1. is this changing project intent or project purpose?
+2. is this changing repo method or operating-system behavior?
+3. is this defining or reshaping a major workstream?
+4. is this only a bounded change within an existing context?
+
+Use the answer to choose the owning source layer first:
+
+- intent work starts from `docs/intent/`
+- operating-system work starts from `docs/operating_system/`
+- workstream and change work still use feature/stage/source-of-truth checks and
+  produce specs/plans under `docs/superpowers/`
+
+Keep these distinctions explicit:
+
+- a workstream is not the same thing as a spec
+- a change is not the same thing as a plan
+- specs describe design within a layer
+- plans describe implementation within a layer
+- canonical ownership should stay upstream; downstream layers should derive
+  linkage rather than re-entering the same semantic fact
+
 ## Triage Block
 
 Use this block before specs or implementation plans:
 
 ```text
+Layer: intent | operating_system | workstream | change
 Feature type: ADD | MODIFY | REPLACE
 Summary: <1 sentence>
 Reasoning: <why this classification>
@@ -76,8 +128,13 @@ contract path uses the concrete feature id as the filename, for example
 
 - unclear design -> write a spec first
 - clear design, non-trivial execution -> write a plan
+- explicit implementation-plan request for a bounded, design-clear change -> go
+  straight to the plan after triage
 - approved plan -> implement
 - cross-cutting repo workflow changes may use `Affected features: none`
+- layer classification happens before spec-vs-plan routing
+- do not force an unnecessary spec hop when the user explicitly asked for a
+  bounded implementation plan and the design is already clear enough to execute
 
 ## Operating-System Changes
 
@@ -99,6 +156,19 @@ Generated discovery note:
 - record `generated: none` and `Generated refresh required: no` for unrelated
   work instead of inventing placeholder files
 
+## Intent Changes
+
+When the change is about the project's what, why, audience, desired outcomes,
+constraints, or non-goals:
+
+- layer is usually `intent`
+- affected features may be `none`
+- the owning docs live under `docs/intent/`
+- do not force project-purpose changes into `docs/operating_system/` just
+  because they are cross-cutting
+- keep intent docs stable and source-like rather than turning them into dated
+  execution logs
+
 ## Metadata-Aware Planning
 
 When a change affects an opted-in feature, record the stable IDs that will move
@@ -112,6 +182,13 @@ with the change:
   DAG outputs
 - human history updates only when narrative context changes; do not add
   generated timeline blocks to `history.md`
+
+When metadata semantics are being cleaned up or extended:
+
+- prefer one human-owned source for ownership or role semantics
+- prefer derived refs and generated views for downstream traceability
+- avoid adding a second manual field that answers the same semantic question as
+  an upstream field
 
 Use `tools\docs\generate_architecture_metadata.py --validate-only` before
 implementation if metadata shape is uncertain, and `--check` before completion
@@ -131,6 +208,32 @@ default path.
 If a narrower metadata command is used for a bounded reason, explain that it is
 subordinate to the canonical architecture sync/check workflow rather than a
 separate default path.
+
+For specs and plans under `docs/superpowers/`, use a small layer-aware metadata
+set:
+
+```yaml
+layer: intent | operating_system | workstream | change
+artifact_type: spec | plan
+status: proposed | active | completed | superseded
+parent_workstream: <id> | none
+targets:
+  - <path>
+related_features:
+  - <feature_id>
+related_stages:
+  - <stage_id>
+```
+
+Rules:
+
+- `layer`, `artifact_type`, and `status` are required
+- `parent_workstream`, `related_features`, and `related_stages` are optional
+- `targets` is required when the artifact is cross-cutting or otherwise
+  ambiguous in scope
+- `targets` may be omitted only when the scope is already obvious and narrowly
+  local
+
 ## Hygiene And Drift Changes
 
 When the change is a bounded cleanup or drift-audit pass rather than a managed
@@ -140,3 +243,15 @@ product feature:
 - `Primary lens` may remain `cross-cutting`
 - still name the exact docs and rules that own the cleanup
 - do not force a fake feature contract just to satisfy the planning format
+
+## Explicit Plan Requests
+
+When the user explicitly asks for an implementation plan:
+
+- produce triage first
+- if the requested change is already bounded and design-clear, route directly
+  to the plan
+- use a spec first only when design is still meaningfully unsettled,
+  cross-cutting in an unresolved way, or missing key decisions
+- treat the owning source docs as the first sources to read, not the first
+  artifacts to create
