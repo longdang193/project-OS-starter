@@ -33,12 +33,15 @@ Do not edit generated outputs directly. Regenerate them from the source layers.
 
 ## Bootstrap A New Project
 
-1. Copy or template this repo into a new private project repository.
-2. Edit `agent-core/adapters/codex/*.template.md` to match the new project.
-3. Update `repo_config/agent-adapter-mappings.json` to generate any nested `AGENTS.md` files your project needs.
-4. Update `repo_config/publication-config.json` to describe the public export boundary for the new project.
-5. Add or edit `configs/*.yaml` for project runtime and workflow defaults.
-5. Run:
+Start with [docs/adoption_guide.md](docs/adoption_guide.md).
+
+First-hour flow:
+
+1. replace the starter identity in `README.md`
+2. fill `docs/intent/` before deep workflow docs
+3. decide whether the private/public publication workflow applies
+4. define initial feature/stage sources only when the project shape is clear
+5. update adapter templates and run adapter sync
 
 ```powershell
 .\scripts\sync_agent_adapters.ps1

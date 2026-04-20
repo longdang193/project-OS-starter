@@ -1,0 +1,157 @@
+# Starter Adoption Guide
+
+Use this guide after cloning or copying `project-OS-starter` into a new project.
+
+The goal is to turn the starter into your project without breaking the source-of-truth model:
+
+- `docs/intent/` owns what and why
+- `docs/operating_system/` owns how the repo builds and governs work
+- `docs/features/` and `docs/stages/` own system meaning when adopted
+- `docs/superpowers/specs/` and `docs/superpowers/plans/` own execution artifacts
+- generated files stay generated
+
+## First Hour Checklist
+
+1. Rename the project identity.
+2. Fill the intent layer before changing deep workflow docs.
+3. Decide whether the project needs a private/public publication split.
+4. Define the first feature and stage sources only when the project shape is clear enough.
+5. Update adapter templates and run adapter sync.
+6. Validate the starter before the first real project commit.
+
+## 1. Replace Starter Identity
+
+Update the public-facing project identity first:
+
+- `README.md`
+- `docs/intent/project-charter.md`
+- `docs/intent/stakeholders.md`
+- `docs/intent/success-outcomes.md`
+- `docs/intent/constraints-and-non-goals.md`
+- repository name, package name, CI display names, or product names when present
+
+Do not leave starter language in the README once the repo starts representing a real project.
+
+## 2. Fill The Intent Layer
+
+Start in `docs/intent/`.
+
+Fill these files before expanding feature or stage contracts:
+
+- `project-charter.md`
+  - what problem the project exists to solve
+  - why this repo shape is useful
+  - core promises the project must preserve
+- `stakeholders.md`
+  - who depends on the project
+  - what each audience needs from the repo
+- `success-outcomes.md`
+  - what good looks like
+  - what signals show the project is drifting
+- `constraints-and-non-goals.md`
+  - what the project will not try to do
+  - which boundaries should remain stable
+
+The README should summarize this layer. It should not become the deepest source of truth.
+
+## 3. Choose Private/Public Mode
+
+If the project needs a curated public mirror:
+
+- update `repo_config/publication-config.json`
+- review `docs/operating_system/publication-workflow.md`
+- keep private-only materials out of the public allowlist
+- run the dry-run publish workflow before pushing public changes
+
+If the project does not need a public mirror yet:
+
+- keep the publication config conservative
+- do not delete the workflow just because it is unused on day one
+- mark publication setup as deferred in the project notes if needed
+
+## 4. Define First Features And Stages
+
+Create feature and stage source files only when they describe real project structure.
+
+Use feature sources for capability meaning:
+
+```text
+docs/features/<feature_id>/feature.source.yaml
+```
+
+Use stage sources for workflow boundaries:
+
+```text
+docs/stages/<stage_id>.source.yaml
+```
+
+Rules:
+
+- edit source files, not generated contracts
+- keep generated refs derived from metadata
+- do not add `manual_refs`
+- avoid adding feature/stage metadata before the project shape is clear enough
+
+## 5. Customize Agent Instructions And Rules
+
+Update adapter sources, not generated outputs:
+
+- `agent-core/adapters/codex/root-AGENTS.template.md`
+- `agent-core/adapters/codex/docs-AGENTS.template.md`
+- `agent-core/adapters/codex/rules/*.rules`
+- `repo_config/agent-adapter-mappings.json`
+
+Keep this split:
+
+- skills hold reusable workflows and judgment
+- rules hold short non-negotiable invariants
+- operating-system docs hold human-readable governance
+
+After changing adapter sources or mappings, run:
+
+```powershell
+.\scripts\sync_agent_adapters.ps1
+.\scripts\verify_agent_adapters.ps1
+```
+
+## 6. Validate After Customization
+
+Before the first real project commit, run the checks that match the surfaces you changed.
+
+Minimum adapter check:
+
+```powershell
+.\scripts\sync_agent_adapters.ps1
+.\scripts\verify_agent_adapters.ps1
+```
+
+If publication config changed:
+
+```powershell
+.\scripts\publish_public_repo.ps1
+```
+
+If feature/stage metadata exists and your project has architecture sync tooling, run the project's architecture sync/check workflow before committing.
+
+## Common Mistakes
+
+Avoid these early mistakes:
+
+- editing generated `AGENTS.md` or `.codex/rules/*.rules` directly
+- making README the deepest explanation of project purpose
+- copying another project's intent docs without adapting them
+- adding rules for every preference instead of only hard invariants
+- filling feature/stage metadata before the project has real feature or workflow boundaries
+- turning specs and plans into the only place where project purpose is explained
+
+## First Commit Checklist
+
+Before the first project-specific commit, confirm:
+
+- `README.md` names the new project and points to the right setup path
+- `docs/intent/` reflects the new project, not the starter
+- `docs/operating_system/` still describes the repo method accurately
+- generated adapter outputs are synchronized
+- private/public publication config is either correct or intentionally deferred
+- feature and stage source files are either defined or intentionally not adopted yet
+- no generated file was hand-edited as a source of truth
