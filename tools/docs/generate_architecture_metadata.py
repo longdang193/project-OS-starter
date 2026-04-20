@@ -454,6 +454,17 @@ def validate_yaml_architecture_metadata(metadata: Mapping[str, object], owner: s
         raise ValueError(f"{owner}: @architecture.canonical must be a boolean")
 
 
+def validate_feature_capability_id(
+    *,
+    feature_id: str,
+    capability_id: str,
+    owner: str,
+) -> None:
+    expected_prefix = f"{feature_id}."
+    if not capability_id.startswith(expected_prefix):
+        raise ValueError(f"{owner}: capability_id must start with {expected_prefix}")
+
+
 def validate_feature_source(source: Mapping[str, object], owner: str) -> None:
     feature_id = require_string(source, "feature_id", owner)
     validate_id(feature_id, "feature_id", owner)
@@ -478,6 +489,11 @@ def validate_feature_source(source: Mapping[str, object], owner: str) -> None:
             require_string(item, "statement", owner)
             require_string(item, "state", owner)
             if item_key == "capabilities":
+                validate_feature_capability_id(
+                    feature_id=feature_id,
+                    capability_id=item_id,
+                    owner=owner,
+                )
                 declared_capability_ids.add(item_id)
     if "manual_refs" in source:
         raise ValueError(

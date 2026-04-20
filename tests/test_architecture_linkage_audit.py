@@ -72,7 +72,7 @@ invariants:
     statement: Sample invariant.
     state: active
 capabilities:
-  - capability_id: sample.helper-capability
+  - capability_id: sample-feature.helper-capability
     statement: Sample helper capability.
     state: active
 {manual_refs}""",
@@ -90,7 +90,7 @@ responsibility:
 features:
   - sample-feature
 capabilities:
-  - sample.helper-capability
+  - sample-feature.helper-capability
 inputs: []
 outputs: []
 tags:
@@ -112,7 +112,7 @@ domain: sample
 
 def test_sample_helper() -> None:
     """
-    @proves sample.helper-capability
+    @proves sample-feature.helper-capability
     """
 ''',
     )

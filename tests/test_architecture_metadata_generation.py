@@ -66,19 +66,19 @@ invariants:
     statement: Sample validation always runs first.
     state: active
 capabilities:
-  - capability_id: sample.submit-job
+  - capability_id: sample-feature.submit-job
     statement: Submit the sample job.
     state: active
     satisfies:
       - sample.must-validate
-  - capability_id: sample.audit-job
+  - capability_id: sample-feature.audit-job
     statement: Audit the sample job.
     state: inactive
 stage_participation:
   - stage_id: sample_stage
     role: primary
     capability_ids:
-      - sample.submit-job
+      - sample-feature.submit-job
 """,
     )
     write_text(
@@ -92,20 +92,20 @@ type: script
 features:
   - sample-feature
 capabilities:
-  - sample.submit-job
-  - sample.audit-job
+  - sample-feature.submit-job
+  - sample-feature.audit-job
 """
 
 
 def submit_job() -> None:
     """
-    @capability sample.submit-job
+    @capability sample-feature.submit-job
     """
 
 
 def audit_job() -> None:
     """
-    @capability sample.audit-job
+    @capability sample-feature.audit-job
     """
 ''',
     )
@@ -121,13 +121,13 @@ domain: sample
 
 def test_submit_job() -> None:
     """
-    @proves sample.submit-job
+    @proves sample-feature.submit-job
     """
 
 
 def test_audit_job() -> None:
     """
-    @proves sample.audit-job
+    @proves sample-feature.audit-job
     """
 ''',
     )
@@ -145,7 +145,7 @@ affects:
   features:
     - sample-feature
   capabilities:
-    - sample.submit-job
+    - sample-feature.submit-job
 dag:
   depends_on: []
   enables: []
@@ -182,7 +182,7 @@ affects:
   features:
     - sample-feature
   capabilities:
-    - sample.submit-job
+    - sample-feature.submit-job
 verification:
   - pytest tests/test_sample_script.py
 outcome:
@@ -210,7 +210,7 @@ explains:
   stages:
     - sample_stage
   capabilities:
-    - sample.submit-job
+    - sample-feature.submit-job
   configs:
     - configs/sample.yaml
   components:
@@ -229,7 +229,7 @@ explains:
 # stages:
 #   - sample_stage
 # capabilities:
-#   - sample.submit-job
+#   - sample-feature.submit-job
 # role: config
 # canonical: true
 sample: true
@@ -244,7 +244,7 @@ sample: true
 # stages:
 #   - sample_stage
 # capabilities:
-#   - sample.submit-job
+#   - sample-feature.submit-job
 # role: component
 # canonical: true
 $schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
@@ -292,7 +292,7 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
         assert feature_contract["last_updated_at"] == "2026-04-18T10:30:00+02:00"
         assert feature_contract["latest_change_id"] == "2026-04-18-sample-change"
         assert feature_contract["revision"] == 1
-        assert feature_contract["capabilities"][0]["capability_id"] == "sample.submit-job"
+        assert feature_contract["capabilities"][0]["capability_id"] == "sample-feature.submit-job"
         assert feature_contract["refs"]["code"] == ["sample_script.py"]
         assert feature_contract["refs"]["tests"] == ["tests/test_sample_script.py"]
         assert feature_contract["refs"]["specs"] == [
@@ -313,9 +313,9 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
         assert feature_lineage["feature_id"] == "sample-feature"
         assert feature_lineage["source"] == "docs/features/sample-feature/feature.source.yaml"
         assert feature_lineage["invariants"]["sample.must-validate"]["satisfied_by"] == [
-            "sample.submit-job"
+            "sample-feature.submit-job"
         ]
-        capability_lineage = feature_lineage["capabilities"]["sample.submit-job"]
+        capability_lineage = feature_lineage["capabilities"]["sample-feature.submit-job"]
         assert capability_lineage["satisfies"] == ["sample.must-validate"]
         assert capability_lineage["code"][0]["source"] == ["python_meta"]
         assert capability_lineage["code"][1]["symbols"] == ["submit_job"]
@@ -363,7 +363,7 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
                 "source_plan": "docs/superpowers/plans/2026-04-18-sample-plan.md",
                 "change_id": "2026-04-18-sample-change",
                 "summary": "Add sample capability metadata.",
-                "capabilities": ["sample.submit-job"],
+                "capabilities": ["sample-feature.submit-job"],
                 "verification": ["pytest tests/test_sample_script.py"],
                 "outcome": "Sample capability now has explicit lineage metadata.",
             }
@@ -380,7 +380,7 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
         )
         assert aggregate_feature["capability_count"] == 2
         assert {
-            "capability_id": "sample.submit-job",
+            "capability_id": "sample-feature.submit-job",
             "state": "active",
             "code_count": 2,
             "test_count": 1,
@@ -401,7 +401,7 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
         )
         assert {
             "from": "feature:sample-feature",
-            "to": "capability:sample.submit-job",
+            "to": "capability:sample-feature.submit-job",
             "type": "has_capability",
         } in dag["edges"]
 
@@ -412,7 +412,7 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
         )
         assert stage_contract["stage_id"] == "sample_stage"
         assert stage_contract["feature_refs"] == ["sample-feature"]
-        assert stage_contract["capability_refs"] == ["sample.submit-job"]
+        assert stage_contract["capability_refs"] == ["sample-feature.submit-job"]
         assert stage_contract["code_refs"] == ["sample_script.py"]
         assert stage_contract["test_refs"] == ["tests/test_sample_script.py"]
         assert stage_contract["doc_refs"] == ["docs/sample.md"]
@@ -426,7 +426,7 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
         assert "## 2026-04-18" in history
         assert "### Add sample capability metadata." in history
         assert "Source plan: `docs/superpowers/plans/2026-04-18-sample-plan.md`" in history
-        assert "- `sample.submit-job`" in history
+        assert "- `sample-feature.submit-job`" in history
         assert "- `pytest tests/test_sample_script.py`" in history
         assert "Outcome:\nSample capability now has explicit lineage metadata." in history
         assert "\n## Human Notes\n" in history
@@ -592,7 +592,10 @@ def test_validator_rejects_unknown_capability_references() -> None:
         )
         plan_text = plan_path.read_text(encoding="utf-8")
         plan_path.write_text(
-            plan_text.replace("sample.submit-job", "sample.unknown-capability"),
+            plan_text.replace(
+                "sample-feature.submit-job",
+                "sample-feature.unknown-capability",
+            ),
             encoding="utf-8",
         )
 
@@ -604,6 +607,29 @@ def test_validator_rejects_unknown_capability_references() -> None:
         rmtree(test_root, ignore_errors=True)
 
 
+def test_validator_rejects_unqualified_feature_capability_ids() -> None:
+    test_root = make_test_root()
+    try:
+        seed_minimal_repo(test_root)
+        for path in test_root.rglob("*"):
+            if not path.is_file() or path.suffix not in {".md", ".py", ".yaml"}:
+                continue
+            path.write_text(
+                path.read_text(encoding="utf-8").replace(
+                    "sample-feature.submit-job",
+                    "submit-job",
+                ),
+                encoding="utf-8",
+            )
+
+        result = run_generator(test_root, "--validate-only")
+
+        assert result.returncode == 1
+        assert "capability_id must start with sample-feature." in result.stdout
+    finally:
+        rmtree(test_root, ignore_errors=True)
+
+
 def test_validator_rejects_unknown_yaml_architecture_references() -> None:
     test_root = make_test_root()
     try:
@@ -611,8 +637,8 @@ def test_validator_rejects_unknown_yaml_architecture_references() -> None:
         config_path = test_root / "configs" / "sample.yaml"
         config_path.write_text(
             config_path.read_text(encoding="utf-8").replace(
-                "sample.submit-job",
-                "sample.unknown-capability",
+                "sample-feature.submit-job",
+                "sample-feature.unknown-capability",
             ),
             encoding="utf-8",
         )
@@ -682,8 +708,8 @@ def test_validator_rejects_unknown_capability_in_feature_stage_participation() -
         )
         feature_source_path.write_text(
             feature_source_path.read_text(encoding="utf-8").replace(
-                "      - sample.submit-job",
-                "      - sample.missing-capability",
+                "      - sample-feature.submit-job",
+                "      - sample-feature.missing-capability",
                 1,
             ),
             encoding="utf-8",
@@ -783,7 +809,7 @@ affects:
   features:
     - sample-feature
   capabilities:
-    - sample.submit-job
+    - sample-feature.submit-job
 verification:
   - pytest tests/test_sample_script.py
 outcome:
@@ -858,7 +884,7 @@ def test_validator_rejects_active_capability_without_code_or_test_evidence() -> 
 
         assert result.returncode == 1
         assert "lineage completeness validation failed" in result.stdout.lower()
-        assert "sample.submit-job has unresolved lineage gaps" in result.stdout.lower()
+        assert "sample-feature.submit-job has unresolved lineage gaps" in result.stdout.lower()
         assert "missing_code_evidence" in result.stdout.lower()
         assert "missing_test_evidence" in result.stdout.lower()
     finally:
@@ -884,7 +910,7 @@ lineage_exceptions:
         - missing_code_evidence
         - missing_test_evidence
       capability_ids:
-        - sample.submit-job
+        - sample-feature.submit-job
 """,
             encoding="utf-8",
         )
@@ -904,7 +930,7 @@ lineage_exceptions:
                 / "lineage.generated.yaml"
             ).read_text(encoding="utf-8")
         )
-        capability_lineage = feature_lineage["capabilities"]["sample.submit-job"]
+        capability_lineage = feature_lineage["capabilities"]["sample-feature.submit-job"]
         assert capability_lineage["evidence_gaps"] == [
             "missing_code_evidence",
             "missing_test_evidence",
@@ -934,7 +960,7 @@ def test_generator_uses_setup_script_meta_for_code_evidence() -> None:
 # features:
 #   - sample-feature
 # capabilities:
-#   - sample.submit-job
+#   - sample-feature.submit-job
 # lifecycle:
 #   status: active
 
@@ -949,7 +975,7 @@ echo "sample"
 # features:
 #   - sample-feature
 # capabilities:
-#   - sample.submit-job
+#   - sample-feature.submit-job
 # lifecycle:
 #   status: active
 
@@ -972,7 +998,7 @@ Write-Host "sample"
                 / "lineage.generated.yaml"
             ).read_text(encoding="utf-8")
         )
-        capability_lineage = feature_lineage["capabilities"]["sample.submit-job"]
+        capability_lineage = feature_lineage["capabilities"]["sample-feature.submit-job"]
         code_paths = [entry["path"] for entry in capability_lineage["code"]]
         evidence_sources = [tuple(entry["source"]) for entry in capability_lineage["code"]]
         assert "setup/setup.sh" in code_paths
@@ -999,7 +1025,7 @@ lineage_exceptions:
       allowed_gaps:
         - missing_code_evidence
       capability_ids:
-        - sample.unknown-capability
+        - sample-feature.unknown-capability
 """,
             encoding="utf-8",
         )
