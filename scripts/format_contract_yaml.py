@@ -129,7 +129,8 @@ def main() -> int:
 
     targets = resolve_targets(args.targets)
     if not targets:
-        parser.error("No YAML contract files were found.")
+        print("No YAML contract files found; nothing to format.")
+        return 0
 
     invalid_targets = [path for path in targets if not is_supported_contract_path(path)]
     if invalid_targets:
