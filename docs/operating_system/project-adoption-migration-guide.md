@@ -113,6 +113,8 @@ Use this runbook when the project wants managed metadata for product features, s
 
 Do not switch to Mode B just because one feature folder exists. Mode B means the project has adopted the managed metadata contract across docs, generated outputs, and source metadata.
 
+For a concrete one-feature migration, see [Mode B Example Migration](mode-b-example-migration.md).
+
 1. Set `repo_config/adoption-mode.yaml` to `managed_architecture_metadata`.
 2. Inventory existing product and architecture surfaces:
    - product docs
