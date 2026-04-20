@@ -1,0 +1,9 @@
+def test_build_revenue_summary_groups_by_account() -> None:
+    """
+    @proves billing-insights.billing-revenue-summary
+    """
+    ...
+
+
+# Test proof evidence belongs in tests.
+# Do not re-enter test proof refs manually in feature.source.yaml.

@@ -1,0 +1,23 @@
+# Markdown Frontmatter Template
+
+Use frontmatter only for docs that materially explain a feature, capability, stage, config, component, or operator workflow. Do not add it to every markdown file by default.
+
+Copy the fenced example below to the top of a real explanatory markdown file:
+
+```md
+---
+doc_id: billing-insights-operator-guide
+doc_type: guide
+explains:
+  features:
+    - billing-insights
+  capabilities:
+    - billing-revenue-summary
+  stages:
+    - analytics
+---
+
+# Billing Insights Operator Guide
+```
+
+Keep this template as a fenced example so validators do not treat it as real architecture metadata.

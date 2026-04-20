@@ -1,0 +1,15 @@
+# @architecture
+# owner: billing-insights
+# features:
+#   - billing-insights
+# stages:
+#   - analytics
+# capabilities:
+#   - billing-revenue-summary
+# role: config
+# canonical: true
+
+# Use this metadata in YAML configs, AML components, fixtures, or contracts
+# that materially participate in the architecture.
+# Avoid repeating the same ownership fact in multiple fields unless the
+# generator requires that field.

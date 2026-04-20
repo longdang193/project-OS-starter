@@ -115,6 +115,8 @@ Do not switch to Mode B just because one feature folder exists. Mode B means the
 
 For a concrete one-feature migration, see [Mode B Example Migration](mode-b-example-migration.md).
 
+For copy-safe source templates, see [Architecture Metadata Templates](../architecture_templates/README.md). Use them only for Mode B migration work, and do not copy generated contracts or generated lineage files as source.
+
 1. Set `repo_config/adoption-mode.yaml` to `managed_architecture_metadata`.
 2. Inventory existing product and architecture surfaces:
    - product docs

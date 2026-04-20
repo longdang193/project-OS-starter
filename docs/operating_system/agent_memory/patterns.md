@@ -10,6 +10,12 @@
 - If the work changes repo operating behavior rather than a product feature contract, keep docs under `docs/operating_system/` and use `Feature: none`.
 - Update only the smallest set of governance docs needed to explain the new operating behavior.
 
+## Keep code-like templates neutral unless validators explicitly ignore them
+
+- Architecture template snippets under docs can be mistaken for live source metadata when they use real code extensions such as `.py`.
+- Prefer neutral filenames such as `.py.template` for copyable examples, or add a narrow validator ignore rule with tests.
+- Do not weaken live metadata validation just to make examples pass.
+
 ## Spec to plan to execution
 
 - Write the spec first for new cross-cutting repo behavior.

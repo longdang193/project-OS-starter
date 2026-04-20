@@ -1,0 +1,21 @@
+"""
+@meta
+name: billing_reporting
+type: module
+domain: billing
+responsibility:
+  - Build billing reporting datasets.
+features:
+  - billing-insights
+stages:
+  - analytics
+capabilities:
+  - billing-revenue-summary
+lifecycle:
+  status: active
+"""
+
+# Copy this block to the top of a real Python source file.
+# Prefer capability-first linkage when feature ownership is already derivable
+# from stable capability IDs; avoid repeating feature ownership just to fill
+# every metadata surface.

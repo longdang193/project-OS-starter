@@ -27,6 +27,8 @@ In legacy compatibility mode, flat `docs/features/*.yaml` files may remain tempo
 Human-owned inputs live in `docs/features/<feature_id>/feature.source.yaml`.
 Generated outputs live beside them, including `<feature_id>.yaml`, `lineage.generated.yaml`, and partial generated sections in `history.md`.
 
+For a copy-safe Mode B feature source template, see [docs/architecture_templates/feature.source.yaml](../architecture_templates/feature.source.yaml). Use it only after selecting managed architecture metadata or while executing an explicit Mode B migration plan.
+
 If a starter repo has not defined any managed product/domain features yet, this folder may contain only this README.
 
 If an existing project still uses flat feature YAML files, treat them as legacy compatibility until a managed migration plan packs each feature into its folder, adds `feature.source.yaml`, refreshes generated outputs, and updates source metadata.

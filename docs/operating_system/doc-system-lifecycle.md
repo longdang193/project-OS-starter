@@ -33,6 +33,7 @@ docs/features/*/lineage.generated.yaml -> generated feature-local evidence and t
 docs/features/<feature_id>/  -> feature explanation and human history
 docs/*.md                    -> cross-cutting product docs
 README.md                    -> overview
+docs/architecture_templates/* -> operating-system template guidance for Mode B architecture metadata
 docs/generated/*             -> generated discovery indexes
 docs/superpowers/specs/*.md  -> design artifacts
 docs/superpowers/plans/*.md  -> execution artifacts
@@ -274,6 +275,19 @@ themselves.
 
 Keep operating-system docs method-focused. If the document is really about what
 the project is for, it belongs in `docs/intent/` instead.
+
+### `docs/architecture_templates/*`
+
+Use architecture templates as copy-safe guidance for Mode B managed metadata
+migrations. These templates are operating-system guidance, not product
+architecture truth and not a parallel schema.
+
+Templates should show human-authored inputs and source metadata markers only.
+They must not become hand-authored copies of generated feature contracts,
+generated lineage, generated stage contracts, or generated discovery.
+
+Apply the no-double-entry rule before copying a template: put each fact in the
+owning source layer and let generated surfaces derive from it.
 
 ### `docs/superpowers/specs/*.md` And `docs/superpowers/plans/*.md`
 
