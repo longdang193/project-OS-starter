@@ -183,3 +183,139 @@ lineage_exceptions: []
     assert "missing required root project doc" in result.stdout.lower()
     assert "docs/setup.md" in result.stdout
 
+
+def test_validator_rejects_bare_capability_ids_in_managed_metadata_template(
+    tmp_path: Path,
+) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "starter_method_only",
+        managed=False,
+        legacy=False,
+    )
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, "# placeholder\n")
+    write_text(
+        tmp_path / "docs" / "architecture_templates" / "feature.source.yaml",
+        """feature_id: billing-insights
+name: Billing Insights
+status: active
+type: workflow
+summary: Summarize billing activity for operator reporting.
+domains:
+  - billing
+depends_on: []
+invariants:
+  - invariant_id: billing-inputs-validated
+    name: Billing Inputs Validated
+    statement: Billing reports use validated billing records only.
+    state: active
+capabilities:
+  - capability_id: billing-insights.billing-revenue-summary
+    name: Billing Revenue Summary
+    summary: Summarize billed revenue by account and reporting period.
+    state: active
+stage_participation:
+  - stage_id: analytics
+    role: primary
+    capability_ids:
+      - billing-revenue-summary
+lineage_exceptions: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "template capability_ids must use feature-qualified ids" in result.stdout.lower()
+    assert "docs/architecture_templates/feature.source.yaml" in result.stdout
+
+
+def test_validator_rejects_bare_capability_ids_in_yaml_architecture_template(
+    tmp_path: Path,
+) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "starter_method_only",
+        managed=False,
+        legacy=False,
+    )
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, "# placeholder\n")
+    write_text(
+        tmp_path / "docs" / "architecture_templates" / "yaml-architecture.yaml",
+        """# @architecture
+# owner: billing-insights
+# features:
+#   - billing-insights
+# stages:
+#   - analytics
+# capabilities:
+#   - billing-revenue-summary
+# role: config
+# canonical: true
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "yaml architecture template capabilities must use feature-qualified ids" in result.stdout.lower()
+    assert "docs/architecture_templates/yaml-architecture.yaml" in result.stdout
+
+
+def test_validator_rejects_bare_capability_ids_in_markdown_frontmatter_template(
+    tmp_path: Path,
+) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "starter_method_only",
+        managed=False,
+        legacy=False,
+    )
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, "# placeholder\n")
+    write_text(
+        tmp_path / "docs" / "architecture_templates" / "markdown-frontmatter.md",
+        """# Markdown Frontmatter Template
+
+```md
+---
+doc_id: billing-insights-operator-guide
+doc_type: guide
+explains:
+  features:
+    - billing-insights
+  capabilities:
+    - billing-revenue-summary
+  stages:
+    - analytics
+---
+```
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "frontmatter template capabilities must use feature-qualified ids" in result.stdout.lower()
+    assert "docs/architecture_templates/markdown-frontmatter.md" in result.stdout
+

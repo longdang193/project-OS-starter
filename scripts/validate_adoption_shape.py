@@ -85,6 +85,9 @@ REQUIRED_ROOT_PROJECT_DOCS = (
     "docs/pipeline.md",
     "docs/architecture.md",
 )
+MANAGED_FEATURE_TEMPLATE_PATH = "docs/architecture_templates/feature.source.yaml"
+YAML_ARCHITECTURE_TEMPLATE_PATH = "docs/architecture_templates/yaml-architecture.yaml"
+MARKDOWN_FRONTMATTER_TEMPLATE_PATH = "docs/architecture_templates/markdown-frontmatter.md"
 
 
 @dataclass(frozen=True)
@@ -416,6 +419,190 @@ def validate_required_root_docs(root: Path, findings: list[Finding]) -> None:
         )
 
 
+def validate_managed_metadata_templates(root: Path, findings: list[Finding]) -> None:
+    template_path = root / Path(MANAGED_FEATURE_TEMPLATE_PATH)
+    if template_path.exists():
+        try:
+            payload = load_yaml(template_path)
+        except yaml.YAMLError as exc:
+            add_error(
+                findings,
+                MANAGED_FEATURE_TEMPLATE_PATH,
+                f"Could not parse managed metadata template YAML: {exc}",
+                "Fix the feature source template YAML syntax.",
+            )
+        else:
+            if not isinstance(payload, dict):
+                add_error(
+                    findings,
+                    MANAGED_FEATURE_TEMPLATE_PATH,
+                    "Managed metadata feature template must be a top-level mapping.",
+                    "Keep docs/architecture_templates/feature.source.yaml aligned with the managed feature schema.",
+                )
+            else:
+                feature_id = payload.get("feature_id")
+                if not isinstance(feature_id, str) or not feature_id:
+                    add_error(
+                        findings,
+                        MANAGED_FEATURE_TEMPLATE_PATH,
+                        "Managed metadata feature template is missing feature_id.",
+                        "Set feature_id in the template so downstream capability examples can stay feature-qualified.",
+                    )
+                else:
+                    stage_participation = payload.get("stage_participation", [])
+                    if not isinstance(stage_participation, list):
+                        add_error(
+                            findings,
+                            MANAGED_FEATURE_TEMPLATE_PATH,
+                            "Managed metadata feature template stage_participation must be a list.",
+                            "Use the same list shape as managed feature source files.",
+                        )
+                    else:
+                        expected_prefix = f"{feature_id}."
+                        for index, participation in enumerate(stage_participation):
+                            if not isinstance(participation, dict):
+                                continue
+                            capability_ids = participation.get("capability_ids", [])
+                            if capability_ids is None:
+                                continue
+                            if not isinstance(capability_ids, list):
+                                add_error(
+                                    findings,
+                                    MANAGED_FEATURE_TEMPLATE_PATH,
+                                    "Managed metadata feature template capability_ids must be a list.",
+                                    "Use a list of feature-qualified capability IDs in stage_participation.",
+                                )
+                                continue
+                            for capability_id in capability_ids:
+                                if not isinstance(capability_id, str):
+                                    continue
+                                if capability_id.startswith(expected_prefix):
+                                    continue
+                                add_error(
+                                    findings,
+                                    MANAGED_FEATURE_TEMPLATE_PATH,
+                                    (
+                                        "Template capability_ids must use feature-qualified IDs under "
+                                        f"stage_participation[{index}]."
+                                    ),
+                                    (
+                                        f"Use `{expected_prefix}<capability_slug>` in the template so managed metadata "
+                                        "examples preserve downstream capability qualification."
+                                    ),
+                                )
+
+    yaml_template_path = root / Path(YAML_ARCHITECTURE_TEMPLATE_PATH)
+    if yaml_template_path.exists():
+        try:
+            template_text = yaml_template_path.read_text(encoding="utf-8")
+        except OSError:
+            template_text = ""
+        architecture_block_lines: list[str] = []
+        metadata_started = False
+        for line in template_text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                if metadata_started:
+                    break
+                continue
+            comment_body = extract_template_comment_body(line)
+            if comment_body is None:
+                break
+            if comment_body == "@architecture":
+                metadata_started = True
+                continue
+            if metadata_started:
+                architecture_block_lines.append(comment_body)
+
+        if architecture_block_lines:
+            try:
+                yaml_template_payload = yaml.safe_load("\n".join(architecture_block_lines))
+            except yaml.YAMLError as exc:
+                add_error(
+                    findings,
+                    YAML_ARCHITECTURE_TEMPLATE_PATH,
+                    f"Could not parse YAML architecture template metadata: {exc}",
+                    "Fix the fenced # @architecture metadata example syntax.",
+                )
+            else:
+                if isinstance(yaml_template_payload, dict):
+                    owner = yaml_template_payload.get("owner")
+                    capabilities = yaml_template_payload.get("capabilities", [])
+                    if isinstance(owner, str) and owner and isinstance(capabilities, list):
+                        expected_prefix = f"{owner}."
+                        for capability_id in capabilities:
+                            if not isinstance(capability_id, str):
+                                continue
+                            if capability_id.startswith(expected_prefix):
+                                continue
+                            add_error(
+                                findings,
+                                YAML_ARCHITECTURE_TEMPLATE_PATH,
+                                "YAML architecture template capabilities must use feature-qualified IDs.",
+                                (
+                                    f"Use `{expected_prefix}<capability_slug>` in the template so YAML "
+                                    "# @architecture examples preserve downstream capability qualification."
+                                ),
+                            )
+
+    markdown_template_path = root / Path(MARKDOWN_FRONTMATTER_TEMPLATE_PATH)
+    if markdown_template_path.exists():
+        try:
+            markdown_text = markdown_template_path.read_text(encoding="utf-8")
+        except OSError:
+            markdown_text = ""
+        fenced_match = re.search(
+            r"```md\s*(---\n.*?\n---)\s*```",
+            markdown_text,
+            flags=re.DOTALL,
+        )
+        if fenced_match:
+            frontmatter_block = fenced_match.group(1)
+            try:
+                _, yaml_block, _ = frontmatter_block.split("---", 2)
+                frontmatter_payload = yaml.safe_load(yaml_block)
+            except (ValueError, yaml.YAMLError) as exc:
+                add_error(
+                    findings,
+                    MARKDOWN_FRONTMATTER_TEMPLATE_PATH,
+                    f"Could not parse markdown frontmatter template: {exc}",
+                    "Fix the fenced Markdown frontmatter example syntax.",
+                )
+            else:
+                if isinstance(frontmatter_payload, dict):
+                    explains = frontmatter_payload.get("explains", {})
+                    if isinstance(explains, dict):
+                        features = explains.get("features", [])
+                        capabilities = explains.get("capabilities", [])
+                        feature_id = features[0] if isinstance(features, list) and features else None
+                        if isinstance(feature_id, str) and feature_id and isinstance(capabilities, list):
+                            expected_prefix = f"{feature_id}."
+                            for capability_id in capabilities:
+                                if not isinstance(capability_id, str):
+                                    continue
+                                if capability_id.startswith(expected_prefix):
+                                    continue
+                                add_error(
+                                    findings,
+                                    MARKDOWN_FRONTMATTER_TEMPLATE_PATH,
+                                    "Frontmatter template capabilities must use feature-qualified IDs.",
+                                    (
+                                        f"Use `{expected_prefix}<capability_slug>` in the fenced frontmatter "
+                                        "example so doc metadata preserves downstream capability qualification."
+                                    ),
+                                )
+
+
+def extract_template_comment_body(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped.startswith("#"):
+        return None
+    comment_body = stripped[1:]
+    if comment_body.startswith(" "):
+        comment_body = comment_body[1:]
+    return comment_body
+
+
 def has_generated_header(path: Path) -> bool:
     try:
         head = path.read_text(encoding="utf-8", errors="ignore")[:300]
@@ -624,6 +811,7 @@ def run_validation(root: Path, adoption_mode_path: Path) -> list[Finding]:
     config = parse_adoption_config(adoption_mode_path, findings, root)
 
     validate_required_root_docs(root, findings)
+    validate_managed_metadata_templates(root, findings)
     validate_method_feature_ids(root, findings)
     validate_feature_dependencies(root, findings)
     validate_capability_ids(root, findings)
