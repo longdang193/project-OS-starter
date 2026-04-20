@@ -77,6 +77,26 @@ The architecture-lineage system is now steady-state repo policy:
 - keep feature refs metadata-derived; `manual_refs` is not accepted in
   `feature.source.yaml`
 
+The repo also expects a small standard root documentation surface for projects
+beneath `docs/`:
+
+- required:
+  - `docs/setup.md`
+  - `docs/configuration.md`
+  - `docs/usage.md`
+  - `docs/pipeline.md`
+  - `docs/architecture.md`
+- optional:
+  - `docs/dataset.md`
+  - `docs/api.md`
+  - `docs/observability.md`
+  - `docs/testing.md`
+
+These root docs are cross-cutting project docs, not replacements for
+`docs/intent/`, `docs/operating_system/`, feature-local docs, stage docs, or
+generated discovery. The normal validation and hook path should fail when the
+required set is missing.
+
 When a task touches a feature folder, agents should read minimally rather than
 loading every file by default:
 

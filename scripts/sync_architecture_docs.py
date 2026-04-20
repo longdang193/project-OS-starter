@@ -47,11 +47,13 @@ def build_steps(*, check_only: bool, python_executable: str) -> list[list[str]]:
     generator = str(root / "tools" / "docs" / "generate_architecture_metadata.py")
     awareness_audit = str(root / "scripts" / "audit_architecture_linkage.py")
     formatter = str(root / "scripts" / "format_contract_yaml.py")
+    adoption_validator = str(root / "scripts" / "validate_adoption_shape.py")
     steps: list[list[str]] = []
     if not check_only:
         steps.append([python_executable, generator])
     steps.extend(
         [
+            [python_executable, adoption_validator],
             [python_executable, generator, "--validate-only"],
             [python_executable, generator, "--check"],
             [python_executable, awareness_audit, "--strict-awareness", "--report-awareness"],
@@ -63,6 +65,7 @@ def build_steps(*, check_only: bool, python_executable: str) -> list[list[str]]:
                 "tests/test_architecture_metadata_generation.py",
                 "tests/test_architecture_linkage_audit.py",
                 "tests/test_format_contract_yaml.py",
+                "tests/test_validate_adoption_shape.py",
                 "tests/test_setup_hooks.py",
                 "-q",
             ],

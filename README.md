@@ -38,10 +38,16 @@ Start with [docs/adoption_guide.md](docs/adoption_guide.md).
 First-hour flow:
 
 1. replace the starter identity in `README.md`
-2. fill `docs/intent/` before deep workflow docs
-3. decide whether the private/public publication workflow applies
-4. define initial feature/stage sources only when the project shape is clear
-5. update adapter templates and run adapter sync
+2. create the standard root project docs under `docs/`:
+   - `setup.md`
+   - `configuration.md`
+   - `usage.md`
+   - `pipeline.md`
+   - `architecture.md`
+3. fill `docs/intent/` before deep workflow docs
+4. decide whether the private/public publication workflow applies
+5. define initial feature/stage sources only when the project shape is clear
+6. update adapter templates and run adapter sync
 
 ```powershell
 .\scripts\sync_agent_adapters.ps1
@@ -76,6 +82,11 @@ The default workflow assumes a Python-style test command. Update the baseline-te
 
 When bootstrapping a new project, review these first:
 
+- `docs/setup.md`
+- `docs/configuration.md`
+- `docs/usage.md`
+- `docs/pipeline.md`
+- `docs/architecture.md`
 - `agent-core/adapters/codex/*.template.md`
 - `repo_config/agent-adapter-mappings.json`
 - `repo_config/publication-config.json`

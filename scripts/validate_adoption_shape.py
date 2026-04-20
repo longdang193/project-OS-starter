@@ -78,6 +78,13 @@ FEATURE_METADATA_PATTERNS = (
     "capability_id:",
     "capability_ids:",
 )
+REQUIRED_ROOT_PROJECT_DOCS = (
+    "docs/setup.md",
+    "docs/configuration.md",
+    "docs/usage.md",
+    "docs/pipeline.md",
+    "docs/architecture.md",
+)
 
 
 @dataclass(frozen=True)
@@ -393,6 +400,22 @@ def validate_capability_ids(root: Path, findings: list[Finding]) -> None:
                 )
 
 
+def validate_required_root_docs(root: Path, findings: list[Finding]) -> None:
+    for relative_path in REQUIRED_ROOT_PROJECT_DOCS:
+        path = root / Path(relative_path)
+        if path.exists():
+            continue
+        add_error(
+            findings,
+            relative_path,
+            "Missing required root project doc.",
+            (
+                "Add the required project doc at this path so setup, configuration, "
+                "usage, pipeline, and architecture guidance remain present at the repo root."
+            ),
+        )
+
+
 def has_generated_header(path: Path) -> bool:
     try:
         head = path.read_text(encoding="utf-8", errors="ignore")[:300]
@@ -600,6 +623,7 @@ def run_validation(root: Path, adoption_mode_path: Path) -> list[Finding]:
     findings: list[Finding] = []
     config = parse_adoption_config(adoption_mode_path, findings, root)
 
+    validate_required_root_docs(root, findings)
     validate_method_feature_ids(root, findings)
     validate_feature_dependencies(root, findings)
     validate_capability_ids(root, findings)

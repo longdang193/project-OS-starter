@@ -26,6 +26,11 @@ The goal is to turn the starter into your project without breaking the source-of
 Update the public-facing project identity first:
 
 - `README.md`
+- `docs/setup.md`
+- `docs/configuration.md`
+- `docs/usage.md`
+- `docs/pipeline.md`
+- `docs/architecture.md`
 - `docs/intent/project-charter.md`
 - `docs/intent/stakeholders.md`
 - `docs/intent/success-outcomes.md`
@@ -33,6 +38,24 @@ Update the public-facing project identity first:
 - repository name, package name, CI display names, or product names when present
 
 Do not leave starter language in the README once the repo starts representing a real project.
+
+Treat the root `docs/` folder as the standard home for cross-cutting project
+docs beside `README.md`.
+
+Required root docs:
+
+- `docs/setup.md`
+- `docs/configuration.md`
+- `docs/usage.md`
+- `docs/pipeline.md`
+- `docs/architecture.md`
+
+Optional root docs:
+
+- `docs/dataset.md`
+- `docs/api.md`
+- `docs/observability.md`
+- `docs/testing.md`
 
 ## 2. Fill The Intent Layer
 
@@ -181,6 +204,7 @@ Avoid these early mistakes:
 Before the first project-specific commit, confirm:
 
 - `README.md` names the new project and points to the right setup path
+- the required root project docs exist under `docs/`
 - `docs/intent/` reflects the new project, not the starter
 - `docs/operating_system/` still describes the repo method accurately
 - generated adapter outputs are synchronized

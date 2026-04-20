@@ -256,6 +256,24 @@ Use cross-cutting docs for:
 - setup
 - shared user/operator guidance
 
+Default root project doc set under `docs/`:
+
+- required:
+  - `docs/setup.md`
+  - `docs/configuration.md`
+  - `docs/usage.md`
+  - `docs/pipeline.md`
+  - `docs/architecture.md`
+- optional:
+  - `docs/dataset.md`
+  - `docs/api.md`
+  - `docs/observability.md`
+  - `docs/testing.md`
+
+These files are the default cross-cutting project doc surface beneath the
+top-level `README.md`. Use them instead of pushing all setup, runtime
+configuration, usage, workflow, and architecture detail into the README.
+
 Human-authored docs that materially explain features, capabilities, stages,
 configs, components, or operator workflows may use lightweight frontmatter such
 as `doc_id`, `doc_type`, and `explains.features` / `explains.capabilities` /

@@ -149,3 +149,37 @@ capability_ids:
     assert result.returncode == 1
     assert "invalid capability id" in result.stdout.lower()
 
+
+def test_validator_rejects_missing_required_root_docs(tmp_path: Path) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "managed_architecture_metadata",
+        managed=True,
+        legacy=False,
+        generator="scripts/sync_architecture_docs.py",
+    )
+    write_text(
+        tmp_path / "docs" / "features" / "data-pipeline" / "feature.source.yaml",
+        """feature_id: data-pipeline
+name: Data Pipeline
+status: active
+type: workflow
+summary: Pipeline summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+stage_participation: []
+lineage_exceptions: []
+""",
+    )
+    write_text(tmp_path / "docs" / "features" / "data-pipeline" / "history.md", "# History\n")
+    write_text(tmp_path / "docs" / "features" / "data-pipeline" / "lineage.generated.yaml", "features: {}\n")
+    write_text(tmp_path / "docs" / "features" / "data-pipeline" / "data-pipeline.yaml", "feature_id: data-pipeline\n")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "missing required root project doc" in result.stdout.lower()
+    assert "docs/setup.md" in result.stdout
+
