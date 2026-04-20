@@ -26,6 +26,7 @@
 
 - Edit `docs/features/<feature_id>/feature.source.yaml` for feature meaning, not generated `<feature_id>.yaml` files.
 - Edit `docs/stages/<stage_id>.source.yaml` for stage meaning, not generated stage contracts.
+- Treat capabilities as downstream of features: managed capability IDs should be feature-qualified as `<feature_id>.<capability_slug>`.
 - Use Python `@meta` for file ownership, `@capability` only for canonical capability-owning functions, and `@proves` for test proof evidence.
 - Regenerate `lineage.generated.yaml`, generated feature contracts, and `docs/generated/*` after feature/source/spec/plan/code/test/doc metadata changes.
 - `history.md` is partially generated: keep human notes below the generated block and do not hand-edit the generated history markers.

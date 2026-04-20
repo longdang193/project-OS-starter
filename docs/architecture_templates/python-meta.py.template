@@ -10,12 +10,12 @@ features:
 stages:
   - analytics
 capabilities:
-  - billing-revenue-summary
+  - billing-insights.billing-revenue-summary
 lifecycle:
   status: active
 """
 
 # Copy this block to the top of a real Python source file.
 # Prefer capability-first linkage when feature ownership is already derivable
-# from stable capability IDs; avoid repeating feature ownership just to fill
-# every metadata surface.
+# from feature-qualified capability IDs; avoid repeating feature ownership just
+# to fill every metadata surface.

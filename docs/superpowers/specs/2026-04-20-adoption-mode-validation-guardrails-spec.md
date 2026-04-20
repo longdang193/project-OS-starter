@@ -31,7 +31,7 @@ Failure modes include:
 - using prose sentences as capability IDs
 - using feature `depends_on` to connect operating-system work to product features
 - hand-editing generated discovery instead of refreshing it from source
-- claiming managed architecture metadata is adopted before code/config/test metadata points to canonical feature and capability IDs
+- claiming managed architecture metadata is adopted before code/config/test metadata points to canonical feature IDs and feature-qualified capability IDs
 
 The repo needs a small machine-checkable adoption-mode contract and a validator that fails or warns on obvious shape drift.
 
@@ -128,7 +128,7 @@ Rules:
 - generated or normalized feature contract lives at `docs/features/<feature_id>/<feature_id>.yaml`
 - feature-local generated evidence lives at `docs/features/<feature_id>/lineage.generated.yaml` when lineage generation is adopted
 - generated discovery must be refreshed from source
-- source metadata should reference canonical feature and capability IDs
+- source metadata should reference canonical feature IDs and feature-qualified capability IDs
 - method-layer pseudo-features are forbidden
 
 ### `legacy_compatibility`

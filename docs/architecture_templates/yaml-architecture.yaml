@@ -5,7 +5,7 @@
 # stages:
 #   - analytics
 # capabilities:
-#   - billing-revenue-summary
+#   - billing-insights.billing-revenue-summary
 # role: config
 # canonical: true
 

@@ -107,9 +107,9 @@ The runbook should be the most detailed path and should instruct the agent to:
 5. Create one folder per real product feature under `docs/features/<feature_id>/`.
 6. Move human-owned feature meaning into `docs/features/<feature_id>/feature.source.yaml`.
 7. Ensure generated feature outputs use `docs/features/<feature_id>/<feature_id>.yaml` and `docs/features/<feature_id>/lineage.generated.yaml`.
-8. Normalize capability IDs to stable identifier form, such as lowercase kebab-case IDs, not prose sentences.
+8. Normalize capability IDs to feature-qualified stable identifier form, such as `<feature_id>.<capability_slug>`, not prose sentences or unscoped slugs.
 9. Update stage source files so `primary_features` and `supporting_features` describe stage ownership.
-10. Update code, config, tests, AML components, scripts, and docs that feed lineage to reference canonical feature and capability IDs.
+10. Update code, config, tests, AML components, scripts, and docs that feed lineage to reference canonical feature IDs and feature-qualified capability IDs.
 11. Refresh generated architecture surfaces from source using the project generator when one exists.
 12. Verify no authoritative flat `docs/features/*.yaml` files remain outside feature folders.
 13. Run `python scripts/validate_adoption_shape.py`.

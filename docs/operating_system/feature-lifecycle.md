@@ -84,6 +84,10 @@ Opted-in generated features should also assign stable IDs inside
 - `capability_id` for each capability
 - optional `satisfies` links from capabilities to invariants
 
+Capability IDs are downstream of features. Use feature-qualified IDs such as
+`<feature_id>.<capability_slug>` so downstream metadata can derive feature
+ownership from the capability ID instead of re-entering it.
+
 Do not add `manual_refs` to `feature.source.yaml`. Feature refs are generated
 from owning metadata on code, tests, docs, specs, plans, configs, and AML
 components. If a generated ref is missing, patch the metadata at the owning
@@ -118,8 +122,8 @@ Rules:
 
 - `stage_id` must reference a real stage source under `docs/stages/*.source.yaml`
 - `role` must match the role declared by the stage source
-- `capability_ids` should contain only the capability ids from this feature that
-  are truly stage-relevant
+- `capability_ids` should contain only the feature-qualified capability IDs
+  from this feature that are truly stage-relevant
 - use an empty `capability_ids: []` list only when the feature is stage-aware as
   context or downstream consumer but has no canonical capability node to expose
   in the stage contract

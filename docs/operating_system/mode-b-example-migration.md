@@ -52,11 +52,11 @@ Ownership:
 2. Classify `billing-insights` as a real product feature, not starter adoption or repo-method work.
 3. Create `docs/features/billing-insights/`.
 4. Move semantic content from `docs/features/billing-insights.yaml` into `docs/features/billing-insights/feature.source.yaml`.
-5. Normalize capabilities to stable IDs:
+5. Normalize capabilities to feature-qualified stable IDs:
 
 ```yaml
 capabilities:
-  - id: billing-revenue-summary
+  - capability_id: billing-insights.billing-revenue-summary
     name: Billing Revenue Summary
     summary: Summarize billed revenue by account and reporting period.
 ```
@@ -68,11 +68,11 @@ primary_features:
   - billing-insights
 ```
 
-7. Update code and tests that feed lineage to reference canonical feature and capability IDs:
+7. Update code and tests that feed lineage to reference canonical feature IDs and feature-qualified capability IDs:
 
 ```python
 # @feature billing-insights
-# @capability billing-revenue-summary
+# @capability billing-insights.billing-revenue-summary
 ```
 
 ```python

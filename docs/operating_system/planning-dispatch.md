@@ -175,9 +175,9 @@ When a change affects an opted-in feature, record the stable IDs that will move
 with the change:
 
 - feature ID in `affected.features`
-- capability IDs in specs/plans and code `@capability` markers
+- feature-qualified capability IDs in specs/plans and code `@capability` markers
 - invariant IDs in specs/plans when an invariant is changed or tested
-- test proof IDs with `@proves <capability_id>`
+- test proof IDs with `@proves <feature_id>.<capability_slug>`
 - generated refresh requirements for feature YAML, feature-local lineage, and
   DAG outputs
 - human history updates only when narrative context changes; do not add

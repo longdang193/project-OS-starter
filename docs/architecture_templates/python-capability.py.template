@@ -1,6 +1,6 @@
 def build_revenue_summary(records: list[BillingRecord]) -> RevenueSummary:
     """
-    @capability billing-revenue-summary
+    @capability billing-insights.billing-revenue-summary
     """
     ...
 

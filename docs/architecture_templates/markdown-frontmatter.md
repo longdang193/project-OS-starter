@@ -12,7 +12,7 @@ explains:
   features:
     - billing-insights
   capabilities:
-    - billing-revenue-summary
+    - billing-insights.billing-revenue-summary
   stages:
     - analytics
 ---

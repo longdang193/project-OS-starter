@@ -6,6 +6,7 @@ Use this checklist when migrating one real product feature into managed architec
 - [ ] Classify the candidate as a real product feature, not operating-system method work.
 - [ ] Create `docs/features/<feature_id>/`.
 - [ ] Copy `feature.source.yaml` and replace all example IDs and prose.
+- [ ] Use feature-qualified capability IDs: `<feature_id>.<capability_slug>`.
 - [ ] Copy `history.md` and replace the heading.
 - [ ] Create or update `docs/stages/<stage_id>.source.yaml`.
 - [ ] Add Python `@meta` ownership metadata where source files own feature behavior.

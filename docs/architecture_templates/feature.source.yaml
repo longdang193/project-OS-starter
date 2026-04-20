@@ -12,7 +12,7 @@ invariants:
     statement: Billing reports use validated billing records only.
     state: active
 capabilities:
-  - capability_id: billing-revenue-summary
+  - capability_id: billing-insights.billing-revenue-summary
     name: Billing Revenue Summary
     summary: Summarize billed revenue by account and reporting period.
     state: active
@@ -20,5 +20,5 @@ stage_participation:
   - stage_id: analytics
     role: primary
     capability_ids:
-      - billing-revenue-summary
+      - billing-insights.billing-revenue-summary
 lineage_exceptions: []

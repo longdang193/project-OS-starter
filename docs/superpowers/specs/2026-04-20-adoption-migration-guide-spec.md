@@ -25,7 +25,7 @@ A concrete failure mode appears when a project has:
 - flat authoritative feature contracts, such as `docs/features/data-pipeline.yaml`
 - no `docs/features/<feature_id>/feature.source.yaml`
 - generated discovery built from old flat contracts
-- code, config, workflow, SQL, or test files that do not reference canonical feature/capability IDs
+- code, config, workflow, SQL, or test files that do not reference canonical feature IDs and feature-qualified capability IDs
 - operating-system adoption work mixed into product architecture updates
 
 This is confusing because the repo looks partially aligned with the starter, but future agents do not know whether the project is in legacy compatibility mode or managed architecture metadata mode.
@@ -92,7 +92,7 @@ Legacy compatibility mode must not be silently mixed with generated feature-fold
 
 Managed architecture metadata is not only a docs-folder change.
 
-The agent must inspect and update relevant source surfaces so metadata points to canonical feature and capability IDs.
+The agent must inspect and update relevant source surfaces so metadata points to canonical feature IDs and feature-qualified capability IDs.
 
 Relevant surfaces may include:
 
@@ -135,7 +135,7 @@ Rules:
 - create `feature.source.yaml` for each product feature
 - generate or normalize `<feature_id>.yaml`
 - generate `lineage.generated.yaml` when lineage generation is adopted
-- update code/config/test/doc metadata to canonical feature and capability IDs
+- update code/config/test/doc metadata to canonical feature IDs and feature-qualified capability IDs
 - refresh generated discovery
 - verify no flat authoritative feature contracts remain
 - remove or relocate method-layer pseudo-features
@@ -222,7 +222,8 @@ The generated or normalized assembled contract is `<feature_id>.yaml`.
 
 ### 5. Normalize capability IDs
 
-Capability IDs must be stable identifiers, not prose capability descriptions.
+Capability IDs must be feature-qualified stable identifiers, not prose capability
+descriptions or unscoped slugs.
 
 Bad legacy shape:
 
@@ -235,7 +236,7 @@ Preferred managed shape:
 
 ```yaml
 capabilities:
-  - id: staging-ga4-events
+  - capability_id: data-pipeline.staging-ga4-events
     name: Staging GA4 Events
     summary: Flatten nested GA4 event fields into staging tables.
 ```
@@ -262,7 +263,8 @@ tests/*
 docs/*.md frontmatter
 ```
 
-Metadata should reference canonical feature IDs and capability IDs, not old prose labels or flat YAML paths.
+Metadata should reference canonical feature IDs and feature-qualified capability
+IDs, not old prose labels, unscoped capability slugs, or flat YAML paths.
 
 ### 7. Refresh generated discovery
 
@@ -278,9 +280,9 @@ Managed mode validation should confirm:
 - no `repo-operating-system` or method-layer pseudo-feature exists
 - every feature folder has required files
 - feature IDs are kebab-case
-- capability IDs are stable IDs
+- capability IDs are feature-qualified stable IDs
 - generated indexes exclude operating-system artifacts
-- code/config/test metadata references existing feature/capability IDs
+- code/config/test metadata references existing feature IDs and feature-qualified capability IDs
 - generated files were refreshed, not edited manually
 
 ## Proposed Documentation Changes

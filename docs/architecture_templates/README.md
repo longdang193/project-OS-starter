@@ -18,6 +18,20 @@ Examples:
 - Code ownership and proof evidence belong in `@meta`, `@capability`, and `@proves` markers.
 - Generated contracts, lineage, history blocks, and discovery indexes must derive from those sources.
 
+## Capability ID Rule
+
+Capabilities are downstream of features. In managed architecture metadata, write
+capability IDs as feature-qualified IDs:
+
+```text
+<feature_id>.<capability_slug>
+```
+
+For example, use `billing-insights.billing-revenue-summary`, not
+`billing-revenue-summary`. Reuse that exact feature-qualified capability ID in
+`stage_participation[].capability_ids`, `@capability`, `@proves`, YAML
+`# @architecture` metadata, and Markdown frontmatter.
+
 ## Copyable Human-Owned Inputs
 
 These templates represent human-authored inputs or source metadata markers:
@@ -32,7 +46,7 @@ These templates represent human-authored inputs or source metadata markers:
 - `markdown-frontmatter.md`
 - `mode-b-feature-migration-checklist.md`
 
-Replace example IDs such as `billing-insights`, `analytics`, and `billing-revenue-summary` with canonical project IDs before use.
+Replace example IDs such as `billing-insights`, `analytics`, and `billing-insights.billing-revenue-summary` with canonical project IDs before use.
 
 ## Generated Outputs
 

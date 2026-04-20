@@ -167,6 +167,8 @@ Ownership rule:
   `stage_participation.stage_id` and `capability_ids`
 - generated stage contracts derive assembled refs and linkage views from those
   sources
+- capability IDs are downstream of features and should use
+  `<feature_id>.<capability_slug>` in managed metadata
 
 ### `docs/intent/*.md`
 
@@ -206,7 +208,8 @@ global generated indexes.
 
 For Python files, capability-first metadata is preferred when feature linkage is
 already derivable from capability ownership. Do not require a second manual
-feature list when stable capability IDs already determine that linkage.
+feature list when feature-qualified capability IDs already determine that
+linkage.
 
 For active capabilities, this file also reports lineage completeness:
 

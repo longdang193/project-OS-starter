@@ -86,17 +86,18 @@ Do not create stages only to organize repo-method work. For example, adapter syn
 
 ## Capability ID Rules
 
-Capability IDs are stable identifiers, not prose.
+Capability IDs are feature-qualified stable identifiers, not prose.
 
-Use kebab-case IDs when a schema expects IDs.
+Use `<feature_id>.<capability_slug>` when a schema expects managed capability
+IDs. The capability slug should be kebab-case.
 
 Good:
 
 ```yaml
 capability_ids:
-  - data-ingestion
-  - semantic-layer-modeling
-  - pipeline-observability
+  - data-pipeline.data-ingestion
+  - semantic-layer.semantic-layer-modeling
+  - analytics-serving.pipeline-observability
 ```
 
 Bad:

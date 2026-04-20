@@ -150,6 +150,8 @@ Examples:
 - A feature capability's stage participation belongs in `feature.source.yaml > stage_participation`.
 - Code ownership and proof evidence belong in `@meta`, `@capability`, and `@proves` markers.
 - Generated contracts, lineage, history blocks, and discovery indexes must derive from those sources.
+- Capability IDs are downstream of features and must be feature-qualified as
+  `<feature_id>.<capability_slug>`.
 
 ### Template Files Are Human-Owned Inputs
 
@@ -238,7 +240,7 @@ invariants:
     statement: Billing reports use validated billing records only.
     state: active
 capabilities:
-  - capability_id: billing-revenue-summary
+  - capability_id: billing-insights.billing-revenue-summary
     name: Billing Revenue Summary
     summary: Summarize billed revenue by account and reporting period.
     state: active
@@ -246,7 +248,7 @@ stage_participation:
   - stage_id: analytics
     role: primary
     capability_ids:
-      - billing-revenue-summary
+      - billing-insights.billing-revenue-summary
 lineage_exceptions: []
 ```
 
@@ -310,7 +312,7 @@ features:
 stages:
   - analytics
 capabilities:
-  - billing-revenue-summary
+  - billing-insights.billing-revenue-summary
 lifecycle:
   status: active
 """
@@ -325,7 +327,7 @@ The capability marker template should show canonical implementation evidence for
 ```python
 def build_revenue_summary(records: list[BillingRecord]) -> RevenueSummary:
     """
-    @capability billing-revenue-summary
+    @capability billing-insights.billing-revenue-summary
     """
     ...
 ```
@@ -358,7 +360,7 @@ The YAML metadata template should show `# @architecture` metadata for configs, A
 # stages:
 #   - analytics
 # capabilities:
-#   - billing-revenue-summary
+#   - billing-insights.billing-revenue-summary
 # role: config
 # canonical: true
 ```
@@ -377,7 +379,7 @@ explains:
   features:
     - billing-insights
   capabilities:
-    - billing-revenue-summary
+    - billing-insights.billing-revenue-summary
   stages:
     - analytics
 ---
@@ -395,15 +397,16 @@ The checklist should provide an operational sequence:
 2. Classify the candidate as a real product feature.
 3. Create `docs/features/<feature_id>/`.
 4. Create `feature.source.yaml` from the template.
-5. Create `history.md` from the template.
-6. Create or update stage source.
-7. Add code `@meta` and canonical `@capability` markers.
-8. Add test `@proves` markers.
-9. Add YAML `# @architecture` metadata only where configs/components materially participate.
-10. Add markdown frontmatter only to docs that materially explain the feature/stage/capability.
-11. Run generator/sync.
-12. Run validation and tests.
-13. Commit only when generated outputs and source metadata agree.
+5. Use feature-qualified capability IDs: `<feature_id>.<capability_slug>`.
+6. Create `history.md` from the template.
+7. Create or update stage source.
+8. Add code `@meta` and canonical `@capability` markers.
+9. Add test `@proves` markers.
+10. Add YAML `# @architecture` metadata only where configs/components materially participate.
+11. Add markdown frontmatter only to docs that materially explain the feature/stage/capability.
+12. Run generator/sync.
+13. Run validation and tests.
+14. Commit only when generated outputs and source metadata agree.
 
 ## Guide Updates
 

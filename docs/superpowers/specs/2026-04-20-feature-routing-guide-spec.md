@@ -24,7 +24,7 @@ This creates several downstream problems:
 
 - The product feature graph becomes polluted with repo-governance concepts.
 - `depends_on` can incorrectly couple operating-system work to product features such as `deployment-cicd`.
-- Capability IDs may become prose sentences instead of stable machine identifiers.
+- Capability IDs may become prose sentences or unscoped slugs instead of feature-qualified stable machine identifiers.
 - Generated feature discovery starts treating method work as product behavior.
 - Future agents get a misleading precedent and repeat the same routing error.
 
@@ -85,17 +85,18 @@ Do not use feature dependencies to represent that repo governance, publication c
 
 Operating-system specs and plans should use `targets` to identify affected files or folders.
 
-### 4. Capability IDs are stable identifiers
+### 4. Capability IDs are feature-qualified stable identifiers
 
-Capability IDs must be stable machine-readable identifiers, preferably kebab-case.
+Capability IDs must be feature-qualified machine-readable identifiers. Use
+`<feature_id>.<capability_slug>` with a kebab-case capability slug.
 
 Good examples:
 
 ```yaml
 capability_ids:
-  - data-ingestion
-  - semantic-layer-modeling
-  - pipeline-observability
+  - data-pipeline.data-ingestion
+  - semantic-layer.semantic-layer-modeling
+  - analytics-serving.pipeline-observability
 ```
 
 Bad examples:

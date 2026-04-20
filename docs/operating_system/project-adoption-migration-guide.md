@@ -48,7 +48,7 @@ Rules:
 - create `feature.source.yaml` for each product feature
 - generate or normalize `<feature_id>.yaml`
 - generate `lineage.generated.yaml` when lineage generation is adopted
-- update code/config/test/doc metadata to canonical feature and capability IDs
+- update code/config/test/doc metadata to canonical feature IDs and feature-qualified capability IDs
 - refresh generated discovery
 - verify no flat authoritative feature contracts remain
 - remove or relocate method-layer pseudo-features
@@ -154,9 +154,9 @@ docs/features/<feature_id>/<feature_id>.yaml
 docs/features/<feature_id>/lineage.generated.yaml
 ```
 
-8. Normalize capability IDs to stable identifiers, such as lowercase kebab-case IDs. Do not use prose sentences as capability IDs.
+8. Normalize capability IDs to feature-qualified stable identifiers, such as `<feature_id>.<capability_slug>`. Do not use prose sentences or unscoped capability slugs as capability IDs.
 9. Update stage source files so `primary_features` and `supporting_features` describe stage ownership.
-10. Update source metadata that feeds lineage so it references canonical feature and capability IDs:
+10. Update source metadata that feeds lineage so it references canonical feature IDs and feature-qualified capability IDs:
     - code
     - config
     - tests
@@ -296,7 +296,7 @@ Generate or normalize the assembled contract into `<feature_id>.yaml`.
 
 ### 5. Normalize capability IDs
 
-Capability IDs must be stable identifiers, not prose capability descriptions.
+Capability IDs must be feature-qualified stable identifiers, not prose capability descriptions or unscoped slugs.
 
 Bad legacy shape:
 
@@ -309,7 +309,7 @@ Preferred managed shape:
 
 ```yaml
 capabilities:
-  - id: staging-ga4-events
+  - capability_id: data-pipeline.staging-ga4-events
     name: Staging GA4 Events
     summary: Flatten nested GA4 event fields into staging tables.
 ```
@@ -336,7 +336,7 @@ tests/*
 docs/*.md frontmatter
 ```
 
-Metadata should reference canonical feature IDs and capability IDs, not old prose labels or flat YAML paths.
+Metadata should reference canonical feature IDs and feature-qualified capability IDs, not old prose labels, unscoped capability slugs, or flat YAML paths.
 
 ### 7. Refresh generated discovery
 
@@ -352,9 +352,9 @@ Managed mode validation should confirm:
 - no `repo-operating-system` or method-layer pseudo-feature exists
 - every feature folder has required files
 - feature IDs are kebab-case
-- capability IDs are stable IDs
+- capability IDs are feature-qualified stable IDs
 - generated indexes exclude operating-system artifacts
-- code/config/test metadata references existing feature/capability IDs
+- code/config/test metadata references existing feature IDs and feature-qualified capability IDs
 - generated files were refreshed, not edited manually
 
 ## Half-Migration Anti-Pattern
@@ -400,6 +400,6 @@ Before committing a managed architecture metadata migration, confirm:
 - no method-layer pseudo-feature remains under `docs/features/`
 - every managed feature has the required folder shape
 - flat feature YAML is removed or explicitly documented as legacy compatibility
-- source metadata points to canonical feature/capability IDs
+- source metadata points to canonical feature IDs and feature-qualified capability IDs
 - generated discovery was refreshed from source
 - generated files were not edited manually
