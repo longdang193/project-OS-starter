@@ -16,9 +16,9 @@ Read [docs/operating_system/feature-routing-guide.md](../operating_system/featur
 
 ## Adoption Modes
 
-Before creating feature metadata in an existing project, choose an adoption mode in [docs/operating_system/project-adoption-migration-guide.md](../operating_system/project-adoption-migration-guide.md).
+Before creating feature metadata in an existing project, choose an adoption mode in [docs/operating_system/project-adoption-migration-guide.md](../operating_system/project-adoption-migration-guide.md) and record it in `repo_config/adoption-mode.yaml`.
 
-In managed architecture metadata mode, feature folders are required and flat `docs/features/*.yaml` files are not authoritative.
+In managed architecture metadata mode, feature folders are required and flat `docs/features/*.yaml` files are not authoritative. Run `python scripts/validate_adoption_shape.py` before committing feature-shape changes.
 
 In legacy compatibility mode, flat `docs/features/*.yaml` files may remain temporarily, but do not mix them with generated feature-folder contracts.
 

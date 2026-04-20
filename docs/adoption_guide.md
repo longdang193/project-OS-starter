@@ -73,13 +73,25 @@ If the project does not need a public mirror yet:
 
 ## 4. Choose Adoption Mode
 
-Before changing feature, stage, generated discovery, or code/config/test metadata surfaces, read [docs/operating_system/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md) and choose one adoption mode:
+Before changing feature, stage, generated discovery, or code/config/test metadata surfaces, read [docs/operating_system/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md), record the chosen mode in `repo_config/adoption-mode.yaml`, and choose one adoption mode:
 
 - starter method only: adopt intent docs, operating-system docs, agent instructions, publication workflow, and repo governance without feature/stage metadata
 - managed architecture metadata: migrate feature folders, source contracts, generated outputs, and source metadata together
 - legacy compatibility: keep flat feature YAML temporarily and record that managed architecture metadata is not adopted yet
 
+Follow the selected mode runbook before creating or migrating product feature metadata:
+
+- [Mode A Step-By-Step: Starter Method Only](operating_system/project-adoption-migration-guide.md#mode-a-step-by-step-starter-method-only)
+- [Mode B Step-By-Step: Managed Architecture Metadata](operating_system/project-adoption-migration-guide.md#mode-b-step-by-step-managed-architecture-metadata)
+- [Mode C Step-By-Step: Legacy Compatibility](operating_system/project-adoption-migration-guide.md#mode-c-step-by-step-legacy-compatibility)
+
 Do not partially migrate architecture metadata. Either keep legacy compatibility explicit, or migrate feature folders, generated outputs, and code/config/test/doc metadata together.
+
+Validate the selected mode before committing adoption changes:
+
+```powershell
+python scripts/validate_adoption_shape.py
+```
 
 ## 5. Define First Features And Stages
 
@@ -133,11 +145,12 @@ After changing adapter sources or mappings, run:
 
 ## 7. Validate After Customization
 
-Before the first real project commit, run the checks that match the surfaces you changed.
+Before the first real project commit, run the checks that match the surfaces you changed. Always include the adoption-shape validator once `repo_config/adoption-mode.yaml` exists.
 
-Minimum adapter check:
+Minimum adoption and adapter check:
 
 ```powershell
+python scripts/validate_adoption_shape.py
 .\scripts\sync_agent_adapters.ps1
 .\scripts\verify_agent_adapters.ps1
 ```

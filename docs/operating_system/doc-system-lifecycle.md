@@ -24,6 +24,7 @@ fact manually.
 code/                        -> real truth
 docs/intent/*.md            -> project purpose and outcome sources
 docs/operating_system/*.md   -> repo method and governance sources
+repo_config/adoption-mode.yaml -> adoption mode and architecture metadata state source
 docs/stages/*.source.yaml    -> human-owned stage source when stage-aware docs are in scope
 docs/stages/*.yaml           -> generated stage contracts when stage-aware docs are in scope
 docs/features/*/feature.source.yaml -> human-authored feature metadata source when adopted
@@ -71,6 +72,7 @@ Use code for:
 
 Use repo/system config for:
 
+- adoption mode and architecture metadata state in `repo_config/adoption-mode.yaml`
 - publication boundaries
 - adapter generation mappings
 - other repo-owned system configuration
@@ -96,7 +98,7 @@ When configs or AML components use `# @architecture` metadata:
 
 Use feature YAML for product/domain feature contracts only.
 
-For existing-project migrations, first choose an adoption mode in `docs/operating_system/project-adoption-migration-guide.md`.
+For existing-project migrations, first choose an adoption mode in `docs/operating_system/project-adoption-migration-guide.md` and record it in `repo_config/adoption-mode.yaml`. Validate the shape with `python scripts/validate_adoption_shape.py`.
 
 In managed architecture metadata mode, feature truth lives in `docs/features/<feature_id>/feature.source.yaml`; generated or normalized contracts live beside it inside the feature folder. Flat `docs/features/*.yaml` files are legacy compatibility only and must not be mixed with generated feature-folder contracts.
 

@@ -135,6 +135,25 @@ related_stages: []
 ```
 
 If operating-system work affects a product feature indirectly, describe the impact in the spec or plan body. Do not encode it as a product feature dependency.
+## Candidate Classification Metadata
+
+Specs and plans that create or change feature, stage, generated, or source metadata should include a routing block:
+
+```yaml
+candidate_type: product_feature | product_stage | operating_system | spec_only | plan_only | generated | obsolete
+adoption_mode: starter_method_only | managed_architecture_metadata | legacy_compatibility
+creates_feature_metadata: true | false
+creates_stage_metadata: true | false
+updates_code_metadata: true | false
+updates_generated_discovery: true | false
+```
+
+Rules:
+
+- if `candidate_type: operating_system`, use `targets` and usually `related_features: []`
+- if `creates_feature_metadata: true`, the selected adoption mode must allow feature metadata changes
+- if `updates_generated_discovery: true`, the plan must name the generator/check command
+- run `python scripts/validate_adoption_shape.py` before committing adoption-shape changes
 
 ## Bad vs Corrected Example
 
