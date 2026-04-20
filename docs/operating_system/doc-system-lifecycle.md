@@ -94,10 +94,20 @@ When configs or AML components use `# @architecture` metadata:
 
 ### `docs/features/*/*.yaml`
 
+Use feature YAML for product/domain feature contracts only.
+
+For existing-project migrations, first choose an adoption mode in `docs/operating_system/project-adoption-migration-guide.md`.
+
+In managed architecture metadata mode, feature truth lives in `docs/features/<feature_id>/feature.source.yaml`; generated or normalized contracts live beside it inside the feature folder. Flat `docs/features/*.yaml` files are legacy compatibility only and must not be mixed with generated feature-folder contracts.
+
 Use feature YAML for:
 
-- current feature contracts
+- current product/domain feature contracts
 - identity, status, dependencies, capabilities, refs
+
+Do not create product feature contracts for repo-method work. For example, do not create `docs/features/repo-operating-system.yaml` or a `repo-operating-system` feature folder to track starter adoption, adapter generation, intent-layer setup, publication policy, agent/rule governance, GitNexus setup, or documentation-system governance.
+
+Route those concerns to `docs/operating_system/`, `agent-core/`, `.agents/skills/`, `.codex/rules/`, `repo_config/`, scripts, or operating-system specs/plans. See `docs/operating_system/feature-routing-guide.md` before creating feature metadata.
 
 For active features, `feature.source.yaml` is the human-owned source and the
 concrete feature-id contract, for example `model-training-pipeline.yaml`, is
@@ -255,6 +265,7 @@ Use operating-system docs for:
 - planning rules
 - tooling policy
 - instruction layering
+- feature-vs-method routing guidance
 
 They may describe config ownership rules, but they are not the config surfaces
 themselves.
@@ -307,6 +318,8 @@ Rules:
 - `targets` is required when the artifact is cross-cutting or otherwise
   ambiguous in scope
 - `targets` may be omitted only for narrow, obvious local artifacts
+- operating-system specs/plans should use `targets` for affected files and folders instead of product feature `depends_on`
+- product feature dependency graphs must stay product/domain-focused
 
 ### `docs/generated/*`
 
@@ -375,7 +388,7 @@ Use the deepest layer that owns the fact:
 - behavior -> code
 - project purpose -> `docs/intent/`
 - repo method -> `docs/operating_system/`
-- feature state -> feature YAML
+- feature state -> `docs/features/<feature_id>/feature.source.yaml` in managed mode, or flat feature YAML only in explicit legacy compatibility mode
 - feature explanation -> feature docs
 - dated feature validation evidence -> feature history or focused feature ops docs
 - generated plan-change timeline facts -> the generated block inside feature history

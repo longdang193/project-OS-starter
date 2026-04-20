@@ -2,7 +2,31 @@
 
 This folder holds feature-level documentation for repos that adopt the managed architecture-doc workflow.
 
+## Feature Eligibility Gate
+
+Use `docs/features/` only for product/domain capabilities.
+
+A feature should describe product-specific behavior, a domain capability, an operator/user-facing capability, or runtime capability that belongs in the project architecture.
+
+Do not create features for repo-method work such as starter adoption, repo operating-system setup, intent-layer setup, adapter generation, agent skills/rules, publication policy, GitNexus/private tooling setup, validation tooling, or docs governance.
+
+If the work is about how the repo plans, validates, publishes, documents, or instructs agents, route it to `docs/operating_system/`, `agent-core/`, `.agents/skills/`, `.codex/rules/`, `repo_config/`, scripts, or operating-system specs/plans instead.
+
+Read [docs/operating_system/feature-routing-guide.md](../operating_system/feature-routing-guide.md) before creating feature metadata.
+
+## Adoption Modes
+
+Before creating feature metadata in an existing project, choose an adoption mode in [docs/operating_system/project-adoption-migration-guide.md](../operating_system/project-adoption-migration-guide.md).
+
+In managed architecture metadata mode, feature folders are required and flat `docs/features/*.yaml` files are not authoritative.
+
+In legacy compatibility mode, flat `docs/features/*.yaml` files may remain temporarily, but do not mix them with generated feature-folder contracts.
+
+## Managed Feature Shape
+
 Human-owned inputs live in `docs/features/<feature_id>/feature.source.yaml`.
 Generated outputs live beside them, including `<feature_id>.yaml`, `lineage.generated.yaml`, and partial generated sections in `history.md`.
 
-If a starter repo has not defined any managed features yet, this folder may contain only this README.
+If a starter repo has not defined any managed product/domain features yet, this folder may contain only this README.
+
+If an existing project still uses flat feature YAML files, treat them as legacy compatibility until a managed migration plan packs each feature into its folder, adds `feature.source.yaml`, refreshes generated outputs, and updates source metadata.

@@ -6,7 +6,7 @@ The goal is to turn the starter into your project without breaking the source-of
 
 - `docs/intent/` owns what and why
 - `docs/operating_system/` owns how the repo builds and governs work
-- `docs/features/` and `docs/stages/` own system meaning when adopted
+- `docs/features/` and `docs/stages/` own product/domain architecture meaning when adopted
 - `docs/superpowers/specs/` and `docs/superpowers/plans/` own execution artifacts
 - generated files stay generated
 
@@ -15,9 +15,11 @@ The goal is to turn the starter into your project without breaking the source-of
 1. Rename the project identity.
 2. Fill the intent layer before changing deep workflow docs.
 3. Decide whether the project needs a private/public publication split.
-4. Define the first feature and stage sources only when the project shape is clear enough.
-5. Update adapter templates and run adapter sync.
-6. Validate the starter before the first real project commit.
+4. Choose an adoption mode before changing feature, stage, generated, or source metadata surfaces.
+5. Read the migration and feature routing guides before creating feature or stage sources.
+6. Define the first feature and stage sources only when product/domain boundaries are clear enough.
+7. Update adapter templates and run adapter sync.
+8. Validate the starter before the first real project commit.
 
 ## 1. Replace Starter Identity
 
@@ -69,11 +71,25 @@ If the project does not need a public mirror yet:
 - do not delete the workflow just because it is unused on day one
 - mark publication setup as deferred in the project notes if needed
 
-## 4. Define First Features And Stages
+## 4. Choose Adoption Mode
 
-Create feature and stage source files only when they describe real project structure.
+Before changing feature, stage, generated discovery, or code/config/test metadata surfaces, read [docs/operating_system/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md) and choose one adoption mode:
 
-Use feature sources for capability meaning:
+- starter method only: adopt intent docs, operating-system docs, agent instructions, publication workflow, and repo governance without feature/stage metadata
+- managed architecture metadata: migrate feature folders, source contracts, generated outputs, and source metadata together
+- legacy compatibility: keep flat feature YAML temporarily and record that managed architecture metadata is not adopted yet
+
+Do not partially migrate architecture metadata. Either keep legacy compatibility explicit, or migrate feature folders, generated outputs, and code/config/test/doc metadata together.
+
+## 5. Define First Features And Stages
+
+Before creating feature or stage metadata, read [docs/operating_system/feature-routing-guide.md](operating_system/feature-routing-guide.md). If this is an existing project migration, also follow [docs/operating_system/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md).
+
+Create feature and stage source files only when they describe real product/domain structure.
+
+Do not create features for starter adoption, repo operating-system work, intent-layer setup, adapter generation, agent/rule work, publication policy, private analysis tooling, or docs governance. Those belong in the operating-system layer, adapter sources, repo config, scripts, skills, rules, or operating-system specs/plans.
+
+Use feature sources for product/domain capability meaning:
 
 ```text
 docs/features/<feature_id>/feature.source.yaml
@@ -90,9 +106,10 @@ Rules:
 - edit source files, not generated contracts
 - keep generated refs derived from metadata
 - do not add `manual_refs`
-- avoid adding feature/stage metadata before the project shape is clear enough
+- avoid adding feature/stage metadata before product/domain boundaries are clear enough
+- avoid mixing flat legacy feature YAML with managed feature folders
 
-## 5. Customize Agent Instructions And Rules
+## 6. Customize Agent Instructions And Rules
 
 Update adapter sources, not generated outputs:
 
@@ -114,7 +131,7 @@ After changing adapter sources or mappings, run:
 .\scripts\verify_agent_adapters.ps1
 ```
 
-## 6. Validate After Customization
+## 7. Validate After Customization
 
 Before the first real project commit, run the checks that match the surfaces you changed.
 
@@ -141,7 +158,9 @@ Avoid these early mistakes:
 - making README the deepest explanation of project purpose
 - copying another project's intent docs without adapting them
 - adding rules for every preference instead of only hard invariants
-- filling feature/stage metadata before the project has real feature or workflow boundaries
+- filling feature/stage metadata before the project has real product/domain feature or workflow boundaries
+- creating a `repo-operating-system` feature to track starter adoption or repo-method work
+- half-migrating features by keeping flat `docs/features/*.yaml` as authoritative while also creating managed feature folders
 - turning specs and plans into the only place where project purpose is explained
 
 ## First Commit Checklist
