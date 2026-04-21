@@ -8,6 +8,10 @@ public-safe when it can stand alone for an external reader who does not have
 access to the private repo's governance layers, planning artifacts, or starter
 customization flow.
 
+Public-safe does not mean "delete everything private-adjacent." The public
+mirror should preserve reproducible shape whenever that structure is safe to
+reveal.
+
 ## Core Principle
 
 Rewrite docs from this:
@@ -20,6 +24,106 @@ into this:
 
 If a reader would need access to private repo context to understand the doc,
 the doc is not public-safe yet.
+
+Short form:
+
+- redact payload, not evidence
+
+## Decide: Keep, Sanitize, Or Omit
+
+Use one of three treatments for each candidate file.
+
+### Keep As-Is
+
+Use when the file is already public-safe and can be published without
+redaction.
+
+Typical examples:
+
+- a rewritten `README.md`
+- product-facing setup or usage docs
+- public examples
+
+### Keep And Sanitize
+
+Use when the file's presence, schema, headings, or metadata keys help preserve
+reproducibility or navigation, but some values are private.
+
+Typical examples:
+
+- manifests or inventories that can keep their shape while removing sensitive entries
+- metadata-bearing docs whose private refs can be blanked
+- files that should still show the public artifact slots even when details are withheld
+
+Sanitize when:
+
+- the file contributes to the public mirror's credibility or traceability
+- the structure is safe to reveal
+- sensitive values can be removed without misrepresenting the project
+
+### Omit Entirely
+
+Use when the file itself is private-sensitive, or when even its existence would
+expose internal-only operating details.
+
+Typical examples:
+
+- agent memory
+- internal publication workflows
+- internal prompts
+- private runbooks whose existence is itself sensitive
+
+## Preserve Structural Shape
+
+When a file is part of the public mirror's observable structure, prefer
+preserving:
+
+- the file path
+- headings and sections
+- metadata keys
+- link roles
+- artifact slots that help readers understand what kinds of records exist
+
+Do not treat a private field inside a file as automatic evidence that the whole
+file should disappear from the public mirror.
+
+Good public-safe sanitization preserves:
+
+- parseability
+- truthful structure
+- enough visible context for a downstream reader to understand what was withheld
+
+Avoid:
+
+- broken schemas
+- empty headings with no explanation
+- broken links with no replacement or note
+- deleting a whole file when a thin, truthful public-safe version would work
+
+## Sensitivity Levels
+
+Use this decision boundary:
+
+- file-level sensitivity: omit the file entirely
+- section-level sensitivity: keep the file and replace the sensitive section with a short public-safe summary or redaction note
+- field-level sensitivity: keep the file and blank, redact, or neutralize only the sensitive values
+
+When in doubt, ask whether the file's visible structure helps a public reader
+understand or reproduce the project shape. If yes, prefer sanitization over
+omission when the structure is safe.
+
+## Sanitization Patterns
+
+Good sanitization patterns include:
+
+- `specs: []`
+- `plans: []`
+- `related_docs: []`
+- `private_notes: redacted in public mirror`
+- a short public-safe summary replacing an internal execution section
+
+Use placeholders that preserve syntax and communicate intent. A sanitized file
+should still be valid and understandable.
 
 ## What Usually Stays Private
 
@@ -41,16 +145,21 @@ Examples of private-source docs:
 - starter bootstrap checklists
 - internal publication workflow guidance
 
+Some files in those categories should still be omitted entirely. The presence
+of a private-only reference inside a different file does not automatically mean
+that second file must also be omitted; it may need sanitization instead.
+
 ## Public-Safe Rewrite Checklist
 
 Before treating a doc as public-safe, confirm:
 
-- starter/adoption/bootstrap framing is removed
-- private-only path references are removed or replaced
-- internal planning and governance references are removed
+- starter/adoption/bootstrap framing is removed or recast for public readers
+- private-only path references are removed, replaced, or sanitized
+- internal planning and governance references are removed, summarized, or redacted appropriately
 - the doc explains the public project directly
 - linked docs are also public-safe or intentionally omitted from the public mirror
 - the doc makes sense to an external contributor or user on its own
+- the doc keeps any structural elements that help reproducibility when those elements are safe to reveal
 
 ## Red Flags
 
@@ -94,6 +203,7 @@ Keep or strengthen:
 - public setup and usage entrypoints
 - contributor-facing quickstart
 - links to public-safe docs
+- stable public navigation structure when it helps readers understand the repo
 
 ### `docs/setup.md`
 
@@ -116,6 +226,7 @@ Keep or strengthen:
 - required toolchain versions
 - local environment setup steps
 - non-obvious prerequisites
+- public-safe notes about intentionally redacted private bootstrap details when needed
 
 ### `docs/configuration.md`
 
@@ -138,6 +249,7 @@ Keep or strengthen:
 - environment-variable docs
 - examples of safe local configuration
 - defaults and override behavior
+- config schema shape or key groupings when they help readers understand the system
 
 ### `docs/usage.md`
 
@@ -159,6 +271,7 @@ Keep or strengthen:
 - entrypoints
 - normal user or contributor flows
 - examples of expected usage
+- visible workflow structure even if some internal-only variants are redacted
 
 ### `docs/pipeline.md`
 
@@ -179,6 +292,7 @@ Keep or strengthen:
 - end-to-end sequence
 - operational or processing flow
 - public-safe diagrams or summaries
+- stage or artifact slots whose presence helps a public reader understand the workflow shape
 
 ### `docs/architecture.md`
 
@@ -200,19 +314,21 @@ Keep or strengthen:
 - data/control/information flow
 - integration points
 - reader-facing architecture rationale
+- public-safe structural views even when some internal planning references are removed
 
 ## Rewrite Pattern
 
 When rewriting a doc, use this sequence:
 
 1. Identify all private-only phrases, links, and dependencies.
-2. Remove or replace starter-specific framing.
-3. Re-express the doc for an external reader:
+2. Decide whether the file should be kept as-is, kept and sanitized, or omitted entirely.
+3. Remove, replace, or sanitize starter-specific framing and private payloads.
+4. Re-express the doc for an external reader:
    - user
    - contributor
    - operator
-4. Check that every linked doc is also intended for the public mirror.
-5. Re-read the doc as if the private repo did not exist.
+5. Check that every linked doc is also intended for the public mirror.
+6. Re-read the doc as if the private repo did not exist.
 
 If that last step fails, the doc still needs rewrite work.
 
@@ -224,6 +340,7 @@ Before publishing a rewritten doc, ask:
 - does this doc talk about the product, or mostly about how the starter repo is managed?
 - are any linked files private-only?
 - does the doc still assume private workflows, private planning docs, or private tooling layers?
+- did I remove too much structure for the public mirror to stay credible and reproducible?
 
 If the answer is "yes" to the last two questions, keep rewriting or keep the
 doc private.

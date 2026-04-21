@@ -64,6 +64,19 @@ For concrete rewrite guidance before publishing cross-cutting docs such as
 `docs/pipeline.md`, or `docs/architecture.md`, use
 [Public-Safe Doc Rewrite Guide](public-safe-doc-rewrite-guide.md).
 
+When reviewing a candidate file, choose one treatment explicitly:
+
+- keep as-is
+- keep and sanitize
+- omit entirely
+
+Prefer "keep and sanitize" when the file's visible structure helps the public
+mirror remain reproducible, navigable, or trustworthy and the sensitive parts
+can be safely removed.
+
+Do not over-trim files whose headings, schema, artifact slots, or metadata keys
+help a downstream reader understand what exists upstream.
+
 Lifecycle documentation now follows a stricter public-safe boundary:
 
 - publish generated current-state feature contracts when they help explain the
@@ -93,6 +106,9 @@ Before publication, confirm:
 - no feature history files leaked into the export unless intentionally curated
 - generated lifecycle or discovery docs are published only when they are
   explicitly public-safe
+- candidate files were explicitly classified as keep, sanitize, or omit
+- sanitized files remain structurally valid and understandable
+- structural visibility needed for reproducibility was not removed by reflex
 
 ## Related Verification
 
