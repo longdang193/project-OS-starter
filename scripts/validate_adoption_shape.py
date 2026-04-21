@@ -60,6 +60,7 @@ GENERATED_INDEX_NAMES = {
 METADATA_SCAN_SUFFIXES = {".py", ".yaml", ".yml", ".sql", ".md"}
 METADATA_SCAN_SKIP_DIRS = {
     ".git",
+    ".tmp-tests",
     ".venv",
     ".agents",
     "venv",
@@ -85,6 +86,23 @@ REQUIRED_ROOT_PROJECT_DOCS = (
     "docs/pipeline.md",
     "docs/architecture.md",
 )
+REQUIRED_DOC_KEYWORDS = {
+    "docs/setup.md": ("depend", "tool version", "install", "provision", "prerequisite", "bootstrap"),
+    "docs/configuration.md": (
+        "environment variable",
+        "config file",
+        "profile",
+        "default",
+        "override",
+        "ownership",
+        "repo_config",
+        "configs",
+    ),
+    "docs/usage.md": ("command", "entrypoint", "run flow", "workflow", "operator", "developer flow", "run loop"),
+    "docs/pipeline.md": ("stage", "workflow", "step", "handoff", "processing flow", "sequence"),
+    "docs/architecture.md": ("component", "boundar", "integration", "information flow", "control flow"),
+}
+PLACEHOLDER_PATTERNS = ("todo", "tbd", "placeholder", "fill this in later")
 REQUIRED_PROJECT_FOLDERS = (
     "docs/intent",
     "docs/operating_system",
@@ -426,6 +444,61 @@ def validate_required_root_docs(root: Path, findings: list[Finding]) -> None:
                 "usage, pipeline, and architecture guidance remain present at the repo root."
             ),
         )
+        continue
+
+    for relative_path in REQUIRED_ROOT_PROJECT_DOCS:
+        path = root / Path(relative_path)
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        if not re.search(r"(?m)^#\s+\S", text):
+            add_error(
+                findings,
+                relative_path,
+                "Required doc must include a top-level Markdown heading.",
+                "Start the doc with a `#` heading that names the document purpose.",
+            )
+            continue
+
+        body_lines = [
+            line.strip()
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if not body_lines:
+            add_error(
+                findings,
+                relative_path,
+                "Required doc must contain more than a heading.",
+                "Add substantive guidance below the H1 so the doc is not just a stub.",
+            )
+            continue
+
+        body_text = " ".join(body_lines).lower()
+        if sum(body_text.count(pattern) for pattern in PLACEHOLDER_PATTERNS) >= 2:
+            add_error(
+                findings,
+                relative_path,
+                "Required doc is still placeholder-only.",
+                "Replace placeholder text with real project guidance before treating the doc as complete.",
+            )
+            continue
+
+        keywords = REQUIRED_DOC_KEYWORDS.get(relative_path, ())
+        if keywords and not any(keyword in body_text for keyword in keywords):
+            add_error(
+                findings,
+                relative_path,
+                "Required doc is missing expected semantic coverage.",
+                (
+                    "Add file-specific guidance so the doc covers its intended subject "
+                    "instead of only generic prose."
+                ),
+            )
 
 
 def validate_required_project_folders(root: Path, findings: list[Finding]) -> None:

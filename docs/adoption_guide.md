@@ -60,6 +60,10 @@ Required root docs:
 - `docs/pipeline.md`
 - `docs/architecture.md`
 
+These required docs should not stay as starter stubs. Before the first real
+project commit, replace placeholder guidance with real project-specific setup,
+configuration, usage, pipeline, and architecture content.
+
 Optional root docs:
 
 - `docs/dataset.md`
@@ -141,6 +145,10 @@ Validate the selected mode before committing adoption changes:
 ```powershell
 python scripts/validate_adoption_shape.py
 ```
+
+That validator now checks required root docs for more than path presence. It
+expects a real heading, substantive guidance, and light subject coverage rather
+than placeholder-only text.
 
 ## 5. Define First Features And Stages
 

@@ -244,6 +244,115 @@ def test_validator_rejects_intent_folder_without_markdown_files(tmp_path: Path) 
     assert "docs/intent/" in result.stdout
 
 
+def seed_required_folder_surface(root: Path) -> None:
+    for relative_path in (
+        "docs/intent/README.md",
+        "docs/operating_system/repo-governance.md",
+        "docs/operating_system/doc-system-lifecycle.md",
+        "docs/superpowers/specs/README.md",
+        "docs/superpowers/plans/README.md",
+        "repo_config/adoption-mode.yaml",
+        "scripts/README.md",
+        "tests/README.md",
+    ):
+        if relative_path == "repo_config/adoption-mode.yaml":
+            write_adoption_mode(
+                root,
+                "starter_method_only",
+                managed=False,
+                legacy=False,
+            )
+        else:
+            write_text(root / relative_path, "# placeholder\n")
+
+
+def test_validator_rejects_heading_only_required_doc(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "docs" / "setup.md", "# Setup\n")
+    write_text(
+        tmp_path / "docs" / "configuration.md",
+        "# Configuration\nConfiguration covers environment variables and profiles.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "usage.md",
+        "# Usage\nUse the main command entrypoints in the normal run flow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        "# Pipeline\nThe workflow stages describe the end-to-end processing flow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "architecture.md",
+        "# Architecture\nMajor components and information flow define the system boundaries.\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "required doc must contain more than a heading" in result.stdout.lower()
+    assert "docs/setup.md" in result.stdout
+
+
+def test_validator_rejects_placeholder_only_required_doc(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "setup.md",
+        "# Setup\nTODO placeholder. Fill this in later.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "configuration.md",
+        "# Configuration\nConfiguration covers environment variables and profiles.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "usage.md",
+        "# Usage\nUse the main command entrypoints in the normal run flow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        "# Pipeline\nThe workflow stages describe the end-to-end processing flow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "architecture.md",
+        "# Architecture\nMajor components and information flow define the system boundaries.\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "required doc is still placeholder-only" in result.stdout.lower()
+    assert "docs/setup.md" in result.stdout
+
+
+def test_validator_rejects_required_doc_without_semantic_coverage(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "setup.md",
+        "# Setup\nDependencies and provisioning steps define the bootstrap order.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "configuration.md",
+        "# Configuration\nConfiguration covers environment variables and profiles.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "usage.md",
+        "# Usage\nThis document talks in general terms about collaboration habits and project background without explaining how to operate the system after setup.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        "# Pipeline\nThe workflow stages describe the end-to-end processing flow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "architecture.md",
+        "# Architecture\nMajor components and information flow define the system boundaries.\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "required doc is missing expected semantic coverage" in result.stdout.lower()
+    assert "docs/usage.md" in result.stdout
+
+
 def test_validator_rejects_bare_capability_ids_in_managed_metadata_template(
     tmp_path: Path,
 ) -> None:

@@ -97,6 +97,19 @@ These root docs are cross-cutting project docs, not replacements for
 generated discovery. The normal validation and hook path should fail when the
 required set is missing.
 
+Required root-doc validation is intentionally light but real. The normal
+validation path now checks:
+
+- required paths exist
+- each required doc has a top-level heading
+- each required doc has more than heading-only stub content
+- each required doc covers its intended subject at a lightweight semantic level
+- obvious placeholder-only text does not pass
+
+Required root docs do not need frontmatter by default. When they choose to use
+`doc_id` / `explains.*` metadata, they still follow the existing frontmatter
+validation rules.
+
 The repo also expects a lean required folder surface:
 
 - `docs/intent/`

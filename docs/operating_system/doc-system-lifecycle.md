@@ -338,6 +338,18 @@ These files are the default cross-cutting project doc surface beneath the
 top-level `README.md`. Use them instead of pushing all setup, runtime
 configuration, usage, workflow, and architecture detail into the README.
 
+These required root docs are validated for:
+
+- presence
+- a top-level Markdown heading
+- more than heading-only stub content
+- light file-specific semantic coverage
+- rejection of obvious placeholder-only text
+
+Frontmatter remains optional for required root docs unless a doc is also
+participating in architecture linkage through `doc_id` and `explains.*`
+metadata.
+
 Human-authored docs that materially explain features, capabilities, stages,
 configs, components, or operator workflows may use lightweight frontmatter such
 as `doc_id`, `doc_type`, and `explains.features` / `explains.capabilities` /
