@@ -38,7 +38,7 @@ Start with [docs/adoption_guide.md](docs/adoption_guide.md).
 First-hour flow:
 
 1. replace the starter identity in `README.md`
-2. replace the starter-safe baseline content in the standard root project docs under `docs/`:
+2. create the standard root project docs under `docs/`:
    - `setup.md`
    - `configuration.md`
    - `usage.md`
@@ -93,9 +93,6 @@ When bootstrapping a new project, review these first:
 - `.github/workflows/repo-hooks.yml`
 - `docs/operating_system/agent_memory/*`
 
-The required root docs should become real cross-cutting project sources, not
-just placeholder files that satisfy validation.
-
 ## Optional Nested AGENTS Templates
 
 The starter ships with optional example templates:
@@ -126,6 +123,5 @@ The starter now separates configuration by role:
 - `repo_config/` for repo/system configuration
 - `configs/` for runtime/workflow configuration
 - `docs/features/*/*.yaml` and `docs/stages/*.yaml` for human-authored lifecycle contracts
-
 
 
