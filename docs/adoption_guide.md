@@ -42,6 +42,16 @@ Do not leave starter language in the README once the repo starts representing a 
 Treat the root `docs/` folder as the standard home for cross-cutting project
 docs beside `README.md`.
 
+Required project folders:
+
+- `docs/intent/`
+- `docs/operating_system/`
+- `docs/superpowers/specs/`
+- `docs/superpowers/plans/`
+- `repo_config/`
+- `scripts/`
+- `tests/`
+
 Required root docs:
 
 - `docs/setup.md`
@@ -56,6 +66,17 @@ Optional root docs:
 - `docs/api.md`
 - `docs/observability.md`
 - `docs/testing.md`
+
+Conditional folders:
+
+- `docs/features/`
+- `docs/stages/`
+- `docs/generated/`
+- `configs/`
+- `aml/components/`
+
+Conditional folders should exist when the adopted mode or project shape needs
+them, not just because the starter mentions them.
 
 ## 2. Fill The Intent Layer
 
@@ -76,6 +97,11 @@ Fill these files before expanding feature or stage contracts:
 - `constraints-and-non-goals.md`
   - what the project will not try to do
   - which boundaries should remain stable
+
+At minimum, `docs/intent/` should contain Markdown docs that make project
+purpose explicit. `docs/intent/README.md` is the anchor overview, and the
+other intent files can split the layer by promise, audience, outcomes, or
+constraints.
 
 The README should summarize this layer. It should not become the deepest source of truth.
 
@@ -205,6 +231,7 @@ Before the first project-specific commit, confirm:
 
 - `README.md` names the new project and points to the right setup path
 - the required root project docs exist under `docs/`
+- the required project folders exist and are not just implied by the starter
 - `docs/intent/` reflects the new project, not the starter
 - `docs/operating_system/` still describes the repo method accurately
 - generated adapter outputs are synchronized

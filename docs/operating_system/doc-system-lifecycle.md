@@ -58,6 +58,59 @@ planning layers:
 README remains a synthesized orientation layer. It should summarize the source
 layers rather than becoming a parallel source of truth.
 
+## Required Folder Surface
+
+Projects should keep this lean required folder surface:
+
+```text
+docs/intent/
+docs/operating_system/
+docs/superpowers/specs/
+docs/superpowers/plans/
+repo_config/
+scripts/
+tests/
+```
+
+Folder presence alone is not enough. Each required folder should have a clear
+file expectation:
+
+- `docs/intent/`
+  - at least one Markdown file
+  - `README.md` is the recommended anchor file
+- `docs/operating_system/`
+  - governance docs such as `repo-governance.md` and `doc-system-lifecycle.md`
+- `docs/superpowers/specs/`
+  - design artifacts when a bounded change needs design capture
+  - the folder may exist before any real spec files are needed
+- `docs/superpowers/plans/`
+  - execution artifacts when work is planned or implemented
+  - the folder may exist before any real plan files are needed
+- `repo_config/`
+  - repo/system configuration
+  - `adoption-mode.yaml` is the required anchor file
+- `scripts/`
+  - repo workflow executables such as sync, validation, formatting, or setup helpers
+- `tests/`
+  - executable verification surfaces and regressions
+
+Conditional folders should stay conditional rather than globally required:
+
+```text
+docs/features/
+docs/stages/
+docs/generated/
+configs/
+aml/components/
+docs/architecture_templates/
+.agents/skills/
+.codex/
+setup/
+```
+
+Require those folders only when the project shape or adopted workflow actually
+uses them.
+
 ## Placement Rules
 
 ### Code
@@ -77,6 +130,10 @@ Use repo/system config for:
 - publication boundaries
 - adapter generation mappings
 - other repo-owned system configuration
+
+Required anchor:
+
+- `repo_config/adoption-mode.yaml`
 
 ### `configs/`
 
@@ -187,6 +244,13 @@ Rules:
 - use intent docs as source material for future README synthesis rather than as
   a second README
 - do not move repo-method rules into intent just because they are cross-cutting
+
+Minimum shape:
+
+- `docs/intent/` should contain at least one Markdown file
+- `docs/intent/README.md` is the recommended entrypoint for the layer
+- deeper files may split the layer by charter, stakeholders, outcomes, or
+  constraints
 
 ### `docs/features/*/lineage.generated.yaml`
 
@@ -357,6 +421,9 @@ Rules:
 - `targets` may be omitted only for narrow, obvious local artifacts
 - operating-system specs/plans should use `targets` for affected files and folders instead of product feature `depends_on`
 - product feature dependency graphs must stay product/domain-focused
+- the `docs/superpowers/specs/` and `docs/superpowers/plans/` folders should
+  exist as part of the repo structure even before a fresh project creates its
+  next real artifact
 
 ### `docs/generated/*`
 

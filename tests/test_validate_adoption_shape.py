@@ -184,6 +184,66 @@ lineage_exceptions: []
     assert "docs/setup.md" in result.stdout
 
 
+def test_validator_rejects_missing_required_project_folder(tmp_path: Path) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "starter_method_only",
+        managed=False,
+        legacy=False,
+    )
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+        "docs/intent/README.md",
+    ):
+        write_text(tmp_path / relative_path, "# placeholder\n")
+    (tmp_path / "docs" / "operating_system").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "superpowers" / "specs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "repo_config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
+    # Intentionally omit tests/ to exercise the required-folder rule.
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "missing required project folder" in result.stdout.lower()
+    assert "tests/" in result.stdout
+
+
+def test_validator_rejects_intent_folder_without_markdown_files(tmp_path: Path) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "starter_method_only",
+        managed=False,
+        legacy=False,
+    )
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, "# placeholder\n")
+    (tmp_path / "docs" / "intent").mkdir(parents=True, exist_ok=True)
+    write_text(tmp_path / "docs" / "intent" / "notes.txt", "placeholder\n")
+    (tmp_path / "docs" / "operating_system").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "superpowers" / "specs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "superpowers" / "plans").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "repo_config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "intent layer must contain at least one markdown file" in result.stdout.lower()
+    assert "docs/intent/" in result.stdout
+
+
 def test_validator_rejects_bare_capability_ids_in_managed_metadata_template(
     tmp_path: Path,
 ) -> None:

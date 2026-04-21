@@ -85,6 +85,15 @@ REQUIRED_ROOT_PROJECT_DOCS = (
     "docs/pipeline.md",
     "docs/architecture.md",
 )
+REQUIRED_PROJECT_FOLDERS = (
+    "docs/intent",
+    "docs/operating_system",
+    "docs/superpowers/specs",
+    "docs/superpowers/plans",
+    "repo_config",
+    "scripts",
+    "tests",
+)
 MANAGED_FEATURE_TEMPLATE_PATH = "docs/architecture_templates/feature.source.yaml"
 YAML_ARCHITECTURE_TEMPLATE_PATH = "docs/architecture_templates/yaml-architecture.yaml"
 MARKDOWN_FRONTMATTER_TEMPLATE_PATH = "docs/architecture_templates/markdown-frontmatter.md"
@@ -417,6 +426,35 @@ def validate_required_root_docs(root: Path, findings: list[Finding]) -> None:
                 "usage, pipeline, and architecture guidance remain present at the repo root."
             ),
         )
+
+
+def validate_required_project_folders(root: Path, findings: list[Finding]) -> None:
+    for relative_path in REQUIRED_PROJECT_FOLDERS:
+        path = root / Path(relative_path)
+        if path.exists() and path.is_dir():
+            continue
+        add_error(
+            findings,
+            f"{relative_path}/",
+            "Missing required project folder.",
+            (
+                "Create this folder so the repo keeps a stable source-of-truth surface for "
+                "intent, governance, planning artifacts, config, scripts, and tests."
+            ),
+        )
+
+    intent_root = root / "docs" / "intent"
+    if not intent_root.exists() or not intent_root.is_dir():
+        return
+    intent_markdown_files = sorted(intent_root.glob("*.md"))
+    if intent_markdown_files:
+        return
+    add_error(
+        findings,
+        "docs/intent/",
+        "Intent layer must contain at least one Markdown file.",
+        "Add an intent doc such as docs/intent/README.md so project purpose is not implicit only in README.md.",
+    )
 
 
 def validate_managed_metadata_templates(root: Path, findings: list[Finding]) -> None:
@@ -811,6 +849,7 @@ def run_validation(root: Path, adoption_mode_path: Path) -> list[Finding]:
     config = parse_adoption_config(adoption_mode_path, findings, root)
 
     validate_required_root_docs(root, findings)
+    validate_required_project_folders(root, findings)
     validate_managed_metadata_templates(root, findings)
     validate_method_feature_ids(root, findings)
     validate_feature_dependencies(root, findings)

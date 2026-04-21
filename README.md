@@ -44,10 +44,18 @@ First-hour flow:
    - `usage.md`
    - `pipeline.md`
    - `architecture.md`
-3. fill `docs/intent/` before deep workflow docs
-4. decide whether the private/public publication workflow applies
-5. define initial feature/stage sources only when the project shape is clear
-6. update adapter templates and run adapter sync
+3. keep the required project folders in place:
+   - `docs/intent/`
+   - `docs/operating_system/`
+   - `docs/superpowers/specs/`
+   - `docs/superpowers/plans/`
+   - `repo_config/`
+   - `scripts/`
+   - `tests/`
+4. fill `docs/intent/` before deep workflow docs
+5. decide whether the private/public publication workflow applies
+6. define initial feature/stage sources only when the project shape is clear
+7. update adapter templates and run adapter sync
 
 ```powershell
 .\scripts\sync_agent_adapters.ps1
@@ -87,6 +95,9 @@ When bootstrapping a new project, review these first:
 - `docs/usage.md`
 - `docs/pipeline.md`
 - `docs/architecture.md`
+- `docs/intent/README.md`
+- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/doc-system-lifecycle.md`
 - `agent-core/adapters/codex/*.template.md`
 - `repo_config/agent-adapter-mappings.json`
 - `repo_config/publication-config.json`

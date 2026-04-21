@@ -97,6 +97,50 @@ These root docs are cross-cutting project docs, not replacements for
 generated discovery. The normal validation and hook path should fail when the
 required set is missing.
 
+The repo also expects a lean required folder surface:
+
+- `docs/intent/`
+- `docs/operating_system/`
+- `docs/superpowers/specs/`
+- `docs/superpowers/plans/`
+- `repo_config/`
+- `scripts/`
+- `tests/`
+
+Minimum file expectations for those required folders:
+
+- `docs/intent/`
+  - at least one Markdown file
+  - `README.md` is the recommended anchor overview
+- `docs/operating_system/`
+  - governing repo-method docs such as `repo-governance.md` and `doc-system-lifecycle.md`
+- `docs/superpowers/specs/`
+  - bounded design artifacts when needed
+- `docs/superpowers/plans/`
+  - bounded execution artifacts when needed
+- `repo_config/`
+  - repo/system config, with `adoption-mode.yaml` as the required anchor file
+- `scripts/`
+  - repo workflow executables such as validation, sync, and setup helpers
+- `tests/`
+  - executable verification surfaces
+
+Conditional folders remain conditional:
+
+- `docs/features/`
+- `docs/stages/`
+- `docs/generated/`
+- `configs/`
+- `aml/components/`
+- `docs/architecture_templates/`
+- `.agents/skills/`
+- `.codex/`
+- `setup/`
+
+The normal validation and hook path should fail when the required folder
+surface is missing, while conditional folders should be required only when the
+project shape or adopted workflow actually uses them.
+
 When a task touches a feature folder, agents should read minimally rather than
 loading every file by default:
 
