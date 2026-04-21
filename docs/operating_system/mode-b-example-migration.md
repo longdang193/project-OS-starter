@@ -18,6 +18,21 @@ adoption_mode: managed_architecture_metadata
 managed_architecture_metadata: true
 legacy_feature_contracts: false
 architecture_generator: scripts/sync_architecture_docs.py
+starter_sync:
+  starter_baseline_ref: starter@2026-04-21
+  last_shared_surface_review_at: 2026-04-21
+  reviewed_surface_classes:
+    - repo_config
+    - operating_system_docs
+    - skills
+    - adapters
+    - generated_instruction_surfaces
+    - validation_and_sync_scripts
+  divergences:
+    - path: docs/operating_system/publication-workflow.md
+      class: operating_system_docs
+      status: customized
+      rationale: Keep project-specific publication notes while inheriting newer starter boundaries.
 ```
 
 The legacy feature currently lives as a flat YAML file:
@@ -55,9 +70,21 @@ Ownership:
 
 1. Confirm `repo_config/adoption-mode.yaml` is set to `managed_architecture_metadata`.
 2. Classify `billing-insights` as a real product feature, not starter adoption or repo-method work.
-3. Create `docs/features/billing-insights/`.
-4. Move semantic content from `docs/features/billing-insights.yaml` into `docs/features/billing-insights/feature.source.yaml`.
-5. Normalize capabilities to feature-qualified stable IDs:
+3. Diff shared repo-control files from the newer starter version and bring forward stronger repo-method changes before or alongside the feature migration. At minimum, review:
+
+```text
+repo_config/*
+docs/operating_system/*
+.agents/skills/*
+agent-core/adapters/**/*
+scripts/validate_*.py
+scripts/sync_*.py
+```
+
+4. Record the review in `repo_config/adoption-mode.yaml` with the starter baseline reviewed, the shared surface classes reviewed, and any intentional divergences.
+5. Create `docs/features/billing-insights/`.
+6. Move semantic content from `docs/features/billing-insights.yaml` into `docs/features/billing-insights/feature.source.yaml`.
+7. Normalize capabilities to feature-qualified stable IDs:
 
 ```yaml
 capabilities:
@@ -66,14 +93,14 @@ capabilities:
     summary: Summarize billed revenue by account and reporting period.
 ```
 
-6. Update `docs/stages/analytics.source.yaml` so stage ownership references the feature:
+8. Update `docs/stages/analytics.source.yaml` so stage ownership references the feature:
 
 ```yaml
 primary_features:
   - billing-insights
 ```
 
-7. Update code and tests that feed lineage to reference canonical feature IDs and feature-qualified capability IDs:
+9. Update code and tests that feed lineage to reference canonical feature IDs and feature-qualified capability IDs:
 
 ```python
 # @feature billing-insights
@@ -84,17 +111,24 @@ primary_features:
 # @proves billing-insights.billing-revenue-summary
 ```
 
-8. Run the project architecture generator or sync workflow so generated feature contracts, lineage, and discovery come from source.
-9. Remove the flat `docs/features/billing-insights.yaml` after the generated folder contract exists.
-10. Validate:
+10. Re-run adapter sync as well if the starter diff changed adapter sources, mappings, or generated instruction surfaces:
+
+```powershell
+.\scripts\sync_agent_adapters.ps1
+.\scripts\verify_agent_adapters.ps1
+```
+
+11. Run the project architecture generator or sync workflow so generated feature contracts, lineage, and discovery come from source.
+12. Remove the flat `docs/features/billing-insights.yaml` after the generated folder contract exists.
+13. Validate:
 
 ```powershell
 python scripts/validate_adoption_shape.py
 git diff --check
 ```
 
-11. Run the project test suite for the changed feature.
-12. Commit only after source metadata, generated outputs, validation, and tests agree.
+14. Run the project test suite for the changed feature.
+15. Commit only after source metadata, shared repo-control updates, the recorded starter sync review, generated outputs, validation, and tests agree.
 
 ## What Not To Do
 

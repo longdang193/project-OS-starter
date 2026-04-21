@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 import re
 from typing import Any
@@ -115,6 +116,15 @@ REQUIRED_PROJECT_FOLDERS = (
 MANAGED_FEATURE_TEMPLATE_PATH = "docs/architecture_templates/feature.source.yaml"
 YAML_ARCHITECTURE_TEMPLATE_PATH = "docs/architecture_templates/yaml-architecture.yaml"
 MARKDOWN_FRONTMATTER_TEMPLATE_PATH = "docs/architecture_templates/markdown-frontmatter.md"
+REQUIRED_STARTER_SYNC_SURFACE_CLASSES = {
+    "repo_config",
+    "operating_system_docs",
+    "skills",
+    "adapters",
+    "generated_instruction_surfaces",
+    "validation_and_sync_scripts",
+}
+ALLOWED_STARTER_SYNC_STATUSES = {"aligned", "customized", "deferred", "not_applicable"}
 
 
 @dataclass(frozen=True)
@@ -245,6 +255,7 @@ def parse_adoption_config(path: Path, findings: list[Finding], root: Path) -> Ad
 
     config = AdoptionConfig(mode, managed, legacy, generator, payload)
     validate_mode_consistency(config, relpath(path, root), findings)
+    validate_starter_sync_record(config, relpath(path, root), findings)
     return config
 
 
@@ -264,6 +275,140 @@ def validate_mode_consistency(config: AdoptionConfig, path: str, findings: list[
                 f"and legacy_feature_contracts={str(expected[1]).lower()}."
             ),
         )
+
+
+def is_iso_like_date(value: Any) -> bool:
+    if isinstance(value, (date, datetime)):
+        return True
+    if not isinstance(value, str):
+        return False
+    for parser in (date.fromisoformat, datetime.fromisoformat):
+        try:
+            parser(value)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def validate_starter_sync_record(config: AdoptionConfig, path: str, findings: list[Finding]) -> None:
+    if config.mode != "managed_architecture_metadata":
+        return
+
+    starter_sync = config.payload.get("starter_sync")
+    if not isinstance(starter_sync, dict):
+        add_error(
+            findings,
+            path,
+            "managed_architecture_metadata mode requires a starter_sync record.",
+            (
+                "Add starter_sync with starter_baseline_ref, last_shared_surface_review_at, "
+                "and reviewed_surface_classes to repo_config/adoption-mode.yaml."
+            ),
+        )
+        return
+
+    baseline = starter_sync.get("starter_baseline_ref")
+    if not isinstance(baseline, str) or not baseline.strip():
+        add_error(
+            findings,
+            path,
+            "starter_sync.starter_baseline_ref must be a non-empty string.",
+            "Record the reviewed starter commit, tag, or comparable baseline reference.",
+        )
+
+    reviewed_at = starter_sync.get("last_shared_surface_review_at")
+    if not is_iso_like_date(reviewed_at):
+        add_error(
+            findings,
+            path,
+            "starter_sync.last_shared_surface_review_at must be an ISO-8601 date or timestamp.",
+            "Use a value such as 2026-04-21 or 2026-04-21T10:30:00.",
+        )
+
+    reviewed_surface_classes = starter_sync.get("reviewed_surface_classes")
+    if not isinstance(reviewed_surface_classes, list) or not reviewed_surface_classes:
+        add_error(
+            findings,
+            path,
+            "starter_sync.reviewed_surface_classes must be a non-empty list.",
+            "List the starter-owned surface classes reviewed for this Mode B sync.",
+        )
+    else:
+        invalid_classes = [value for value in reviewed_surface_classes if not isinstance(value, str) or not value]
+        if invalid_classes:
+            add_error(
+                findings,
+                path,
+                "starter_sync.reviewed_surface_classes entries must be non-empty strings.",
+                "Use stable surface-class names such as repo_config or operating_system_docs.",
+            )
+        missing_classes = REQUIRED_STARTER_SYNC_SURFACE_CLASSES.difference(
+            value for value in reviewed_surface_classes if isinstance(value, str)
+        )
+        if missing_classes:
+            add_error(
+                findings,
+                path,
+                "starter_sync.reviewed_surface_classes is missing required Mode B surface classes.",
+                "Include: " + ", ".join(sorted(REQUIRED_STARTER_SYNC_SURFACE_CLASSES)) + ".",
+            )
+
+    divergences = starter_sync.get("divergences", [])
+    if divergences is None:
+        return
+    if not isinstance(divergences, list):
+        add_error(
+            findings,
+            path,
+            "starter_sync.divergences must be a list when present.",
+            "Use a list of divergence mappings or omit the field.",
+        )
+        return
+
+    for index, divergence in enumerate(divergences):
+        if not isinstance(divergence, dict):
+            add_error(
+                findings,
+                path,
+                f"starter_sync.divergences[{index}] must be a mapping.",
+                "Use path/class/status/rationale fields for each declared divergence.",
+            )
+            continue
+
+        divergence_path = divergence.get("path")
+        divergence_class = divergence.get("class")
+        status = divergence.get("status")
+        rationale = divergence.get("rationale")
+
+        if not isinstance(divergence_path, str) or not divergence_path.strip():
+            add_error(
+                findings,
+                path,
+                f"starter_sync.divergences[{index}].path must be a non-empty string.",
+                "Record the customized shared-surface path.",
+            )
+        if not isinstance(divergence_class, str) or divergence_class not in REQUIRED_STARTER_SYNC_SURFACE_CLASSES:
+            add_error(
+                findings,
+                path,
+                f"starter_sync.divergences[{index}].class must be one of the reviewed surface classes.",
+                "Use one of: " + ", ".join(sorted(REQUIRED_STARTER_SYNC_SURFACE_CLASSES)) + ".",
+            )
+        if not isinstance(status, str) or status not in ALLOWED_STARTER_SYNC_STATUSES:
+            add_error(
+                findings,
+                path,
+                f"starter_sync.divergences[{index}].status must be one of {sorted(ALLOWED_STARTER_SYNC_STATUSES)}.",
+                "Use aligned, customized, deferred, or not_applicable.",
+            )
+        if not isinstance(rationale, str) or not rationale.strip():
+            add_error(
+                findings,
+                path,
+                f"starter_sync.divergences[{index}].rationale must be a non-empty string.",
+                "Explain why the divergence is intentional.",
+            )
 
 
 def feature_roots(root: Path) -> list[Path]:

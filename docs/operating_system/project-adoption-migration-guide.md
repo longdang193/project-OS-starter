@@ -57,6 +57,8 @@ Rules:
 - refresh generated discovery
 - verify no flat authoritative feature contracts remain
 - remove or relocate method-layer pseudo-features
+- keep shared repo-control surfaces current by diffing them against newer starter versions when the project pulls starter updates
+- record starter shared-surface review in `repo_config/adoption-mode.yaml`
 - `scripts/validate_adoption_shape.py` should pass after generated discovery is refreshed
 
 ### Mode C: Legacy Compatibility
@@ -133,35 +135,49 @@ For copy-safe source templates, see [Architecture Metadata Templates](../archite
    - config metadata
    - test metadata
    - pipeline, component, workflow, and asset metadata
+   - shared repo-control surfaces such as `repo_config/`, `docs/operating_system/`, `.agents/skills/`, adapter templates, generated rules, and validation scripts
 3. Classify each candidate as one of:
    - product feature
    - product stage
    - product capability
    - cross-cutting product doc
    - operating-system method material
-4. Remove or re-home method-layer pseudo-features. Starter adoption, repo governance, adapter work, generated rule work, publication setup, and agent-memory guidance belong in `docs/operating_system/` or operating-system specs/plans, not `docs/features/`.
-5. Create one folder per real product feature:
+4. Diff shared repo-control surfaces against the newer starter version before or alongside the Mode B migration. Bring forward newer versions intentionally for files such as:
+   - `repo_config/*.json`
+   - `repo_config/*.yaml`
+   - `docs/operating_system/*.md`
+   - `.agents/skills/*`
+   - `agent-core/adapters/**/*`
+   - generated `AGENTS.md` and `.codex/rules/*` after adapter sync
+   - validation and sync scripts when the starter has stronger checks or generators
+5. Record the shared-surface sync review in `repo_config/adoption-mode.yaml` using a `starter_sync` block that captures:
+   - `starter_baseline_ref`
+   - `last_shared_surface_review_at`
+   - `reviewed_surface_classes`
+   - optional `divergences` with `path`, `class`, `status`, and `rationale`
+6. Remove or re-home method-layer pseudo-features. Starter adoption, repo governance, adapter work, generated rule work, publication setup, and agent-memory guidance belong in `docs/operating_system/` or operating-system specs/plans, not `docs/features/`.
+7. Create one folder per real product feature:
 
 ```text
 docs/features/<feature_id>/
 ```
 
-6. Move human-owned feature meaning into:
+8. Move human-owned feature meaning into:
 
 ```text
 docs/features/<feature_id>/feature.source.yaml
 ```
 
-7. Ensure generated feature outputs use:
+9. Ensure generated feature outputs use:
 
 ```text
 docs/features/<feature_id>/<feature_id>.yaml
 docs/features/<feature_id>/lineage.generated.yaml
 ```
 
-8. Normalize capability IDs to feature-qualified stable identifiers, such as `<feature_id>.<capability_slug>`. Do not use prose sentences or unscoped capability slugs as capability IDs.
-9. Update stage source files so `primary_features` and `supporting_features` describe stage ownership.
-10. Update source metadata that feeds lineage so it references canonical feature IDs and feature-qualified capability IDs:
+10. Normalize capability IDs to feature-qualified stable identifiers, such as `<feature_id>.<capability_slug>`. Do not use prose sentences or unscoped capability slugs as capability IDs.
+11. Update stage source files so `primary_features` and `supporting_features` describe stage ownership.
+12. Update source metadata that feeds lineage so it references canonical feature IDs and feature-qualified capability IDs:
     - code
     - config
     - tests
@@ -169,22 +185,29 @@ docs/features/<feature_id>/lineage.generated.yaml
     - scripts
     - docs
     - pipeline and workflow manifests
-11. Refresh generated architecture surfaces from source using the project generator when one exists. If no generator exists, do not hand-invent generated files; add the generator first or stay in legacy compatibility.
-12. Verify no authoritative flat `docs/features/*.yaml` files remain outside feature folders.
-13. Validate the selected mode:
+13. Re-run starter-controlled generators and sync steps after shared repo-control files change. At minimum, run adapter sync if adapter sources or mappings changed:
+
+```powershell
+.\scripts\sync_agent_adapters.ps1
+.\scripts\verify_agent_adapters.ps1
+```
+
+14. Refresh generated architecture surfaces from source using the project generator when one exists. If no generator exists, do not hand-invent generated files; add the generator first or stay in legacy compatibility.
+15. Verify no authoritative flat `docs/features/*.yaml` files remain outside feature folders.
+16. Validate the selected mode:
 
 ```powershell
 python scripts/validate_adoption_shape.py
 ```
 
-14. Run the relevant test suite for the surfaces changed.
-15. Run whitespace validation:
+17. Run the relevant test suite for the surfaces changed.
+18. Run whitespace validation:
 
 ```powershell
 git diff --check
 ```
 
-16. Commit only after managed metadata, generated files, source metadata, validation, and tests agree.
+19. Commit only after managed metadata, shared repo-control files, the `starter_sync` review record, generated files, source metadata, validation, and tests agree.
 
 ## Mode C Step-By-Step: Legacy Compatibility
 
@@ -247,6 +270,7 @@ docs/superpowers/plans/*
 code/config/test metadata markers
 workflow/config manifests
 cross-cutting docs
+shared repo-control files
 ```
 
 ### 2. Classify every candidate
@@ -343,6 +367,33 @@ docs/*.md frontmatter
 
 Metadata should reference canonical feature IDs and feature-qualified capability IDs, not old prose labels, unscoped capability slugs, or flat YAML paths.
 
+### 6b. Diff shared repo-control files forward from the starter
+
+Mode B projects still rely on starter-owned repo method surfaces. When the
+starter evolves, do not update only the product metadata and leave repo-control
+files stale.
+
+Diff and review shared files such as:
+
+```text
+repo_config/*
+docs/operating_system/*
+.agents/skills/*
+agent-core/adapters/**/*
+AGENTS.md
+.codex/rules/*
+scripts/validate_*.py
+scripts/sync_*.py
+```
+
+Bring over newer versions intentionally, then re-apply project-local
+customization where needed. The goal is to inherit stronger governance,
+validation, sync, and instruction behavior without re-entering starter truth by
+hand in multiple downstream places.
+
+Record that review in `repo_config/adoption-mode.yaml` so the project can say
+which starter baseline it reviewed and which divergences are intentional.
+
 ### 7. Refresh generated discovery
 
 After source migration, run the project's canonical architecture sync/check workflow.
@@ -406,5 +457,7 @@ Before committing a managed architecture metadata migration, confirm:
 - every managed feature has the required folder shape
 - flat feature YAML is removed or explicitly documented as legacy compatibility
 - source metadata points to canonical feature IDs and feature-qualified capability IDs
+- shared repo-control surfaces were diffed against the newer starter version when starter updates are being adopted
+- `repo_config/adoption-mode.yaml` records the shared-surface review baseline, review timing, and reviewed surface classes for Mode B
 - generated discovery was refreshed from source
 - generated files were not edited manually

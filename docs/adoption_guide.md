@@ -144,6 +144,29 @@ Follow the selected mode runbook before creating or migrating product feature me
 
 Do not partially migrate architecture metadata. Either keep legacy compatibility explicit, or migrate feature folders, generated outputs, and code/config/test/doc metadata together.
 
+If the project adopts Mode B and is also pulling forward newer starter
+governance, diff the shared repo-control surfaces too rather than migrating
+only product metadata. That review should include files such as:
+
+- `repo_config/*`
+- `docs/operating_system/*`
+- `.agents/skills/*`
+- `agent-core/adapters/**/*`
+- generated `AGENTS.md` and `.codex/rules/*` after sync
+- validation and sync scripts
+
+Bring over newer versions intentionally so the project inherits stronger
+starter governance, sync behavior, and checks instead of letting those shared
+files drift.
+
+For Mode B, record that review in `repo_config/adoption-mode.yaml` under a
+`starter_sync` block. At minimum, capture:
+
+- `starter_baseline_ref`
+- `last_shared_surface_review_at`
+- `reviewed_surface_classes`
+- optional `divergences` for intentional local customization
+
 Validate the selected mode before committing adoption changes:
 
 ```powershell

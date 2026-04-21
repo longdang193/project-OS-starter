@@ -48,6 +48,7 @@ def write_adoption_mode(
     managed: bool,
     legacy: bool,
     generator: str = "none",
+    starter_sync: str = "",
     extra: str = "",
 ) -> None:
     write_text(
@@ -56,8 +57,23 @@ def write_adoption_mode(
 managed_architecture_metadata: {str(managed).lower()}
 legacy_feature_contracts: {str(legacy).lower()}
 architecture_generator: {generator}
+{starter_sync}\
 {extra}""",
     )
+
+
+def managed_starter_sync_block(extra: str = "") -> str:
+    return """starter_sync:
+  starter_baseline_ref: starter@2026-04-21
+  last_shared_surface_review_at: "2026-04-21"
+  reviewed_surface_classes:
+    - repo_config
+    - operating_system_docs
+    - skills
+    - adapters
+    - generated_instruction_surfaces
+    - validation_and_sync_scripts
+""" + extra
 
 
 def test_validator_passes_for_current_starter_repo() -> None:
@@ -100,6 +116,7 @@ def test_validator_rejects_flat_feature_yaml_in_managed_mode(tmp_path: Path) -> 
         managed=True,
         legacy=False,
         generator="scripts/sync_architecture_docs.py",
+        starter_sync=managed_starter_sync_block(),
     )
     write_text(tmp_path / "docs" / "features" / "data-pipeline.yaml", "depends_on: []\n")
 
@@ -157,6 +174,7 @@ def test_validator_rejects_missing_required_root_docs(tmp_path: Path) -> None:
         managed=True,
         legacy=False,
         generator="scripts/sync_architecture_docs.py",
+        starter_sync=managed_starter_sync_block(),
     )
     write_text(
         tmp_path / "docs" / "features" / "data-pipeline" / "feature.source.yaml",
@@ -487,4 +505,104 @@ explains:
     assert result.returncode == 1
     assert "frontmatter template capabilities must use feature-qualified ids" in result.stdout.lower()
     assert "docs/architecture_templates/markdown-frontmatter.md" in result.stdout
+
+
+def test_validator_rejects_missing_starter_sync_record_in_managed_mode(tmp_path: Path) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "managed_architecture_metadata",
+        managed=True,
+        legacy=False,
+        generator="scripts/sync_architecture_docs.py",
+    )
+    write_text(
+        tmp_path / "docs" / "setup.md",
+        "# Setup\nDependencies and install prerequisites define the bootstrap path.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "configuration.md",
+        "# Configuration\nConfiguration covers environment variables, config files, defaults, and override ownership.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "usage.md",
+        "# Usage\nUse the documented commands and entrypoints in the normal developer workflow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        "# Pipeline\nThe workflow stages and handoff sequence describe the processing flow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "architecture.md",
+        "# Architecture\nMajor components, boundaries, and information flow define the system integration shape.\n",
+    )
+    (tmp_path / "docs" / "intent").mkdir(parents=True, exist_ok=True)
+    write_text(tmp_path / "docs" / "intent" / "README.md", "# Intent\nPurpose and outcomes.\n")
+    (tmp_path / "docs" / "operating_system").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "superpowers" / "specs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "superpowers" / "plans").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "repo_config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "requires a starter_sync record" in result.stdout.lower()
+
+
+def test_validator_rejects_incomplete_starter_sync_record_in_managed_mode(tmp_path: Path) -> None:
+    write_adoption_mode(
+        tmp_path,
+        "managed_architecture_metadata",
+        managed=True,
+        legacy=False,
+        generator="scripts/sync_architecture_docs.py",
+        starter_sync="""starter_sync:
+  starter_baseline_ref: ""
+  last_shared_surface_review_at: not-a-date
+  reviewed_surface_classes:
+    - repo_config
+  divergences:
+    - path: ""
+      class: not_a_real_class
+      status: custom
+      rationale: ""
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "setup.md",
+        "# Setup\nDependencies and install prerequisites define the bootstrap path.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "configuration.md",
+        "# Configuration\nConfiguration covers environment variables, config files, defaults, and override ownership.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "usage.md",
+        "# Usage\nUse the documented commands and entrypoints in the normal developer workflow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        "# Pipeline\nThe workflow stages and handoff sequence describe the processing flow.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "architecture.md",
+        "# Architecture\nMajor components, boundaries, and information flow define the system integration shape.\n",
+    )
+    (tmp_path / "docs" / "intent").mkdir(parents=True, exist_ok=True)
+    write_text(tmp_path / "docs" / "intent" / "README.md", "# Intent\nPurpose and outcomes.\n")
+    (tmp_path / "docs" / "operating_system").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "superpowers" / "specs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "superpowers" / "plans").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "repo_config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "starter_sync.starter_baseline_ref must be a non-empty string" in result.stdout
+    assert "starter_sync.last_shared_surface_review_at must be an iso-8601 date or timestamp" in result.stdout.lower()
+    assert "starter_sync.reviewed_surface_classes is missing required mode b surface classes" in result.stdout.lower()
+    assert "starter_sync.divergences[0].class must be one of the reviewed surface classes" in result.stdout.lower()
 
