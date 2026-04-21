@@ -31,6 +31,7 @@ Do not develop normally in the public repo.
 
 The publication workflow must exclude internal-only material such as:
 
+- `docs/adoption_guide.md`
 - `docs/operating_system/`
 - `docs/operating_system/agent_memory/`
 - `agent-core/`
@@ -41,6 +42,22 @@ The publication workflow must exclude internal-only material such as:
 - `docs/superpowers/`
 - `logs/`
 - `sample/`
+
+Starter adoption/bootstrap docs are private-only by default. They explain how
+to adapt the private starter repo, not how to use the public product-facing
+repo.
+
+That means:
+
+- do not publish `docs/adoption_guide.md`
+- do not publish starter migration runbooks or bootstrap checklists by default
+- do not publish "how to customize the private starter repo" guidance unless it
+  has been intentionally rewritten as public-facing documentation
+
+This boundary does **not** mean every cross-cutting doc under `docs/` is
+private. Public-facing setup, usage, architecture, or API docs may still be
+published when they are written for product users or contributors rather than
+private starter adopters.
 
 Lifecycle documentation now follows a stricter public-safe boundary:
 

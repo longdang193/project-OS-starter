@@ -8,6 +8,7 @@
     ".codex",
     ".cursor",
     "agent-core",
+    "docs/adoption_guide.md",
     "docs/operating_system",
     "docs/superpowers",
     "logs",

@@ -72,6 +72,7 @@ Examples:
 - `.agents/`
 - `.cursor/`
 - `docs/superpowers/`
+- starter adoption/bootstrap docs such as `docs/adoption_guide.md`
 - logs/debug artifacts
 - internal prompts/workflow docs
 - abandoned experiments
@@ -141,6 +142,7 @@ If any of those fail, stop and fix the export boundary before pushing public cha
 Treat these as warning signs:
 
 - the public repo mentions internal planning systems
+- the public repo teaches how to customize the private starter repo
 - public docs depend on archived internal specs/plans to be understandable
 - the public repo contains agent/rule folders
 - the public repo looks like a workbench instead of a product repo
@@ -171,6 +173,20 @@ Fix:
 
 - use an allowlist-oriented export policy
 
+### Publishing starter-adoption docs as product docs
+
+Problem:
+
+- private bootstrap guidance leaks into the public mirror
+- contributors confuse internal starter onboarding with public setup/usage docs
+
+Fix:
+
+- keep starter adoption/bootstrap docs private by default
+- rewrite setup/usage docs intentionally for the public product-facing repo
+- do not publish "how to customize the private starter repo" guidance unless it
+  has been deliberately recast as public-facing documentation
+
 ### Mixing runtime validation with publish validation
 
 Problem:
@@ -187,4 +203,3 @@ Fix:
   [references/publish-policy-template.md](references/publish-policy-template.md)
 - Public release checklist:
   [references/public-release-checklist.md](references/public-release-checklist.md)
-
