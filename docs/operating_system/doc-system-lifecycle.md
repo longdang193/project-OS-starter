@@ -431,3 +431,4 @@ Use the deepest layer that owns the fact:
 - generated plan-change timeline facts -> the generated block inside feature history
 - downloaded runtime artifacts -> evidence inputs, not source docs
 - navigation -> README or generated discovery when that layer exists
+

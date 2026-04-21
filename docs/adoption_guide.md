@@ -17,9 +17,10 @@ The goal is to turn the starter into your project without breaking the source-of
 3. Decide whether the project needs a private/public publication split.
 4. Choose an adoption mode before changing feature, stage, generated, or source metadata surfaces.
 5. Read the migration and feature routing guides before creating feature or stage sources.
-6. Define the first feature and stage sources only when product/domain boundaries are clear enough.
-7. Update adapter templates and run adapter sync.
-8. Validate the starter before the first real project commit.
+6. Replace the starter baseline content in the required root docs.
+7. Define the first feature and stage sources only when product/domain boundaries are clear enough.
+8. Update adapter templates and run adapter sync.
+9. Validate the starter before the first real project commit.
 
 ## 1. Replace Starter Identity
 
@@ -116,7 +117,30 @@ Validate the selected mode before committing adoption changes:
 python scripts/validate_adoption_shape.py
 ```
 
-## 5. Define First Features And Stages
+
+## 5. Complete The Required Root Docs
+
+Before deep feature or stage docs, replace the starter baseline content in:
+
+- `docs/setup.md`
+- `docs/configuration.md`
+- `docs/usage.md`
+- `docs/pipeline.md`
+- `docs/architecture.md`
+
+At minimum:
+
+- `setup.md` should explain prerequisites, install/bootstrap order, first run,
+  and troubleshooting
+- `configuration.md` should explain configuration ownership, env vars, files,
+  profiles, and overrides
+- `usage.md` should explain the main entrypoints, common flows, and normal run
+  loop
+- `pipeline.md` should explain the end-to-end workflow, major handoffs, and key
+  artifacts or transitions
+- `architecture.md` should explain major components, boundaries, integrations,
+  flow, and rationale
+## 6. Define First Features And Stages
 
 Before creating feature or stage metadata, read [docs/operating_system/feature-routing-guide.md](operating_system/feature-routing-guide.md). If this is an existing project migration, also follow [docs/operating_system/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md).
 
@@ -144,7 +168,7 @@ Rules:
 - avoid adding feature/stage metadata before product/domain boundaries are clear enough
 - avoid mixing flat legacy feature YAML with managed feature folders
 
-## 6. Customize Agent Instructions And Rules
+## 7. Customize Agent Instructions And Rules
 
 Update adapter sources, not generated outputs:
 
@@ -166,7 +190,7 @@ After changing adapter sources or mappings, run:
 .\scripts\verify_agent_adapters.ps1
 ```
 
-## 7. Validate After Customization
+## 8. Validate After Customization
 
 Before the first real project commit, run the checks that match the surfaces you changed. Always include the adoption-shape validator once `repo_config/adoption-mode.yaml` exists.
 
@@ -193,6 +217,7 @@ Avoid these early mistakes:
 - editing generated `AGENTS.md` or `.codex/rules/*.rules` directly
 - making README the deepest explanation of project purpose
 - copying another project's intent docs without adapting them
+- leaving the required root docs as untouched starter placeholders after real project adoption begins
 - adding rules for every preference instead of only hard invariants
 - filling feature/stage metadata before the project has real product/domain feature or workflow boundaries
 - creating a `repo-operating-system` feature to track starter adoption or repo-method work
@@ -205,9 +230,11 @@ Before the first project-specific commit, confirm:
 
 - `README.md` names the new project and points to the right setup path
 - the required root project docs exist under `docs/`
+- the required root docs contain project-specific baseline guidance rather than untouched starter prose
 - `docs/intent/` reflects the new project, not the starter
 - `docs/operating_system/` still describes the repo method accurately
 - generated adapter outputs are synchronized
 - private/public publication config is either correct or intentionally deferred
 - feature and stage source files are either defined or intentionally not adopted yet
 - no generated file was hand-edited as a source of truth
+
