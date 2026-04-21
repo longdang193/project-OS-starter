@@ -59,6 +59,11 @@ private. Public-facing setup, usage, architecture, or API docs may still be
 published when they are written for product users or contributors rather than
 private starter adopters.
 
+For concrete rewrite guidance before publishing cross-cutting docs such as
+`README.md`, `docs/setup.md`, `docs/configuration.md`, `docs/usage.md`,
+`docs/pipeline.md`, or `docs/architecture.md`, use
+[Public-Safe Doc Rewrite Guide](public-safe-doc-rewrite-guide.md).
+
 Lifecycle documentation now follows a stricter public-safe boundary:
 
 - publish generated current-state feature contracts when they help explain the
