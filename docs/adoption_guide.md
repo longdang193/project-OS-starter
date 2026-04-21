@@ -2,6 +2,10 @@
 
 Use this guide after cloning or copying `project-OS-starter` into a new project.
 
+This guide is private-source onboarding material. It explains how to adapt the
+private starter repo and should not be published to a curated public mirror
+unless it has been intentionally rewritten as product-facing documentation.
+
 The goal is to turn the starter into your project without breaking the source-of-truth model:
 
 - `docs/intent/` owns what and why

@@ -2,6 +2,11 @@
 
 Use this example when a project has one legacy product feature contract and wants to migrate it into managed architecture metadata.
 
+This example is private-source onboarding material. It explains how to migrate
+a private repo into the starter's managed metadata shape and should not be
+published to a curated public mirror unless it has been intentionally rewritten
+as product-facing documentation.
+
 This is an example only. Replace `billing-insights` with the real product feature ID and keep operating-system adoption work out of `docs/features/`.
 
 ## Starting Point

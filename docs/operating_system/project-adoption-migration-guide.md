@@ -2,6 +2,11 @@
 
 Use this guide when an existing project adopts `project-OS-starter`.
 
+This guide is private-source onboarding material. It explains how to migrate a
+private repo into the starter-compatible structure and should not be published
+to a curated public mirror unless it has been intentionally rewritten as
+product-facing documentation.
+
 This guide is different from the feature routing guide:
 
 - `feature-routing-guide.md` decides whether a candidate is a product feature, product stage, operating-system concern, spec, plan, generated output, or obsolete artifact.
