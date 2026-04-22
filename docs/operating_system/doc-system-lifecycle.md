@@ -194,9 +194,13 @@ minimal source file plus richer generated outputs. Fields such as `owner`,
 into `feature.source.yaml` unchanged unless the current schema explicitly owns
 them.
 
-Generated feature contracts may include freshness metadata such as
-`last_updated_at`, `latest_change_id`, and `revision` when completed-plan
-metadata exists. Those values are generated and should not be stored manually in
+When completed-plan metadata exists, generated feature contracts should include
+freshness metadata such as `last_updated_at`, `latest_change_id`, and
+`revision`. This is the current managed migration target used by richer
+contracts such as
+`customer-churn-prediction-azureml/docs/features/notebook-hpo/notebook-hpo.yaml`.
+
+Those values are generated and should not be stored manually in
 `feature.source.yaml`.
 
 These files are not replacements for runtime/workflow config under `configs/`.

@@ -263,13 +263,19 @@ Desired migration target:
 
 - the newer customer-style feature-folder shape where `feature.source.yaml`
   stays minimal and human-owned
-- the generated contract carries refs and freshness fields
+- the generated contract carries refs plus generated freshness metadata such as
+  `revision`, `latest_change_id`, and `last_updated_at` when completed-plan
+  metadata exists
 - `lineage.generated.yaml` stays evidence-oriented
 - `history.md` uses the partial-generated history pattern
 
 Do not treat older folder shapes as equally valid just because they already use
 the same filenames. A repo can have the right file names and still carry the
 wrong contract in those files.
+
+Likewise, do not treat older generated contracts that omit freshness metadata as
+equally valid steady-state outputs once the repo is using the current managed
+generator contract and completed-plan metadata is available.
 
 Flat files such as `docs/features/data-pipeline.yaml` are legacy compatibility only once managed architecture metadata is adopted.
 

@@ -112,15 +112,20 @@ Generated `refs.code` should stay canonical and readable. Supporting files may
 carry awareness metadata, but primary feature refs should point to entrypoints
 or canonical `@capability` nodes.
 
-Generated feature contracts may expose freshness metadata derived from completed
-plans:
+When completed-plan metadata exists, generated feature contracts should expose
+freshness metadata derived from that completed change history:
 
 - `last_updated_at`
 - `latest_change_id`
 - `revision`
 
+This is the current managed migration target, matching richer generated
+contracts such as
+`customer-churn-prediction-azureml/docs/features/notebook-hpo/notebook-hpo.yaml`.
+
 Do not keep a manual `version` field in `feature.source.yaml`; feature
-freshness belongs to generated metadata, not the human-owned semantic source.
+freshness belongs to generated metadata in `<feature_id>.yaml`, not the
+human-owned semantic source.
 
 When a feature participates in generated stage contracts, keep that linkage in
 `feature.source.yaml` under `stage_participation`:
