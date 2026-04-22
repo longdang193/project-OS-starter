@@ -5,7 +5,7 @@ type: script
 domain: docs
 responsibility:
   - Run the canonical architecture metadata sync and verification workflow.
-  - Provide one stable entrypoint for local hooks and contributors to refresh and check generated architecture docs.
+  - Provide one stable entrypoint for contributors to refresh generated architecture docs before repo-wide validation.
   - Enforce metadata-derived refs for generated feature and stage contracts.
 inputs:
   - docs/features/*/feature.source.yaml
@@ -33,6 +33,7 @@ lifecycle:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -40,6 +41,13 @@ import sys
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def pytest_basetemp(default_relative: str) -> str:
+    override = os.environ.get("REPO_VALIDATOR_PYTEST_BASETEMP")
+    if override:
+        return override
+    return default_relative
 
 
 def build_steps(*, check_only: bool, python_executable: str) -> list[list[str]]:
@@ -62,6 +70,8 @@ def build_steps(*, check_only: bool, python_executable: str) -> list[list[str]]:
                 python_executable,
                 "-m",
                 "pytest",
+                "--basetemp",
+                pytest_basetemp(".tmp-tests/architecture-pytest"),
                 "tests/test_architecture_metadata_generation.py",
                 "tests/test_architecture_linkage_audit.py",
                 "tests/test_format_contract_yaml.py",
@@ -103,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "Architecture sync checks passed."
         if args.check
-        else "Architecture sync and checks completed."
+        else "Architecture sync and checks completed. Run scripts/validate_repo_contracts.py for the repo-wide contract gate."
     )
     return 0
 

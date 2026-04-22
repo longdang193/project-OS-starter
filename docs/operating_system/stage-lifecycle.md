@@ -130,3 +130,14 @@ Use the canonical architecture sync/check path after stage source or architectur
 The check path must fail for stale generated stage contracts or generated-only fields in stage source files.
 It must also fail when stage sources and feature sources disagree about stage
 membership or feature role.
+
+For the broader repo gate, use:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_repo_contracts.py --fast
+.\.venv\Scripts\python.exe scripts/validate_repo_contracts.py
+```
+
+That validator keeps stage-contract checks in the same pass as adoption-shape
+validation, repo-config validation, metadata coverage enforcement, and
+partial-generated feature-history boundary rules.

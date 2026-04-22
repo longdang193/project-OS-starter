@@ -5,8 +5,8 @@ type: test
 scope: unit
 domain: docs
 covers:
-  - Local hook setup scripts include architecture metadata validation and freshness checks
-  - Local hook setup scripts include YAML contract formatting checks
+  - Local hook setup scripts install the canonical repo-contract validator entrypoint
+  - Architecture sync remains the narrower generated-doc refresh path
 tags:
   - fast
   - ci-safe
@@ -31,7 +31,7 @@ def test_hook_setup_scripts_install_architecture_metadata_checks() -> None:
     for script_path in HOOK_SCRIPT_PATHS:
         script_text = script_path.read_text(encoding="utf-8")
 
-        assert "sync_architecture_docs.py --check" in script_text
+        assert "validate_repo_contracts.py --fast" in script_text
         assert ".venv" in script_text
 
 

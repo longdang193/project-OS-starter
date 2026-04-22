@@ -561,6 +561,17 @@ Canonical architecture sync/check workflow:
 .\.venv\Scripts\python.exe scripts/sync_architecture_docs.py --check
 ```
 
+Canonical repo-contract validation workflow:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_repo_contracts.py --fast
+.\.venv\Scripts\python.exe scripts/validate_repo_contracts.py
+```
+
+Use `sync_architecture_docs.py` to refresh generated architecture surfaces after
+source changes. Use `validate_repo_contracts.py` as the broader gate before
+commit, push, or CI completion.
+
 Lineage exception policy:
 
 - keep exceptions source-owned in `feature.source.yaml`

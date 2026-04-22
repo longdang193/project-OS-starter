@@ -229,6 +229,19 @@ Canonical full sync/check workflow:
 .\.venv\Scripts\python.exe scripts/sync_architecture_docs.py --check
 ```
 
+Canonical repo-wide validation workflow:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_repo_contracts.py --fast
+.\.venv\Scripts\python.exe scripts/validate_repo_contracts.py
+```
+
+Use the sync command when feature/source/spec/plan/code/test/doc metadata has
+changed and generated feature outputs need refresh. Use the repo-contract
+validator when you need the broader gate across generated files, metadata
+coverage, mixed-boundary feature histories, adoption-shape rules, and repo-config
+surfaces.
+
 Lineage completeness rule for opted-in generated features:
 
 - active capabilities should resolve to `complete` whenever possible

@@ -70,6 +70,7 @@ The architecture-lineage system is now steady-state repo policy:
 - edit `docs/stages/<stage_id>.source.yaml` for human stage-boundary changes
 - treat generated feature contracts, generated stage contracts, `lineage.generated.yaml`, and generated history blocks as standard outputs
 - use `scripts/sync_architecture_docs.py` as the canonical sync/check workflow
+- use `scripts/validate_repo_contracts.py` as the canonical repo-wide contract validation workflow
 - use the canonical sync/check workflow to catch malformed metadata, missing required `@meta`, and disallowed manual reference bridges before commit/push
 - treat lineage completeness enforcement as a standing requirement, not a rollout-only concern
 - treat feature-history generation as part of the same sync/check workflow; completed
@@ -380,6 +381,15 @@ run:
 ## Hook Workflow
 
 The repo hook workflow is part of normal enforcement.
+
+Installed local hooks should call the repo-contract validator in fast mode:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_repo_contracts.py --fast
+```
+
+Use `scripts/sync_architecture_docs.py` separately when you need to regenerate
+feature, stage, or discovery outputs before rerunning the validator.
 
 CI is expected to run adapter verification, baseline checks, and publication-boundary validation on push and pull request events so drift and broken changes are caught before merge.
 
