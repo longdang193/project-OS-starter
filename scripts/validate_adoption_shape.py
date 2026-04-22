@@ -125,6 +125,15 @@ REQUIRED_STARTER_SYNC_SURFACE_CLASSES = {
     "validation_and_sync_scripts",
 }
 ALLOWED_STARTER_SYNC_STATUSES = {"aligned", "customized", "deferred", "not_applicable"}
+REQUIRED_LINEAGE_TOP_LEVEL_KEYS = {"feature_id", "source", "invariants", "capabilities", "timeline"}
+LEGACY_LINEAGE_TOP_LEVEL_KEYS = {
+    "generated_contract",
+    "naming_policy",
+    "capability_shape",
+    "capability_ids",
+    "refs",
+    "refs_by_type",
+}
 
 
 @dataclass(frozen=True)
@@ -878,6 +887,69 @@ def validate_generated_headers(root: Path, findings: list[Finding]) -> None:
             )
 
 
+def validate_lineage_generated_schema(root: Path, findings: list[Finding]) -> None:
+    for folder in feature_roots(root):
+        lineage_path = folder / "lineage.generated.yaml"
+        if not lineage_path.exists():
+            continue
+
+        relative_lineage_path = relpath(lineage_path, root)
+        if not has_generated_header(lineage_path):
+            add_error(
+                findings,
+                relative_lineage_path,
+                "lineage.generated.yaml must include the generated-file header.",
+                "Regenerate the lineage file with the canonical architecture metadata generator.",
+            )
+
+        try:
+            payload = load_yaml(lineage_path)
+        except yaml.YAMLError as exc:
+            add_error(
+                findings,
+                relative_lineage_path,
+                f"Could not parse lineage.generated.yaml: {exc}",
+                "Fix YAML syntax or regenerate the file with the canonical generator.",
+            )
+            continue
+
+        if not isinstance(payload, dict):
+            add_error(
+                findings,
+                relative_lineage_path,
+                "lineage.generated.yaml must be a top-level mapping.",
+                "Regenerate the file so the lineage artifact uses the canonical mapping shape.",
+            )
+            continue
+
+        missing_keys = REQUIRED_LINEAGE_TOP_LEVEL_KEYS.difference(payload)
+        if missing_keys:
+            add_error(
+                findings,
+                relative_lineage_path,
+                "lineage.generated.yaml is missing required top-level keys.",
+                "Include: " + ", ".join(sorted(REQUIRED_LINEAGE_TOP_LEVEL_KEYS)) + ".",
+            )
+
+        legacy_keys = LEGACY_LINEAGE_TOP_LEVEL_KEYS.intersection(payload)
+        if legacy_keys:
+            add_error(
+                findings,
+                relative_lineage_path,
+                "lineage.generated.yaml uses legacy summary-style top-level keys.",
+                "Remove legacy keys and regenerate the file with the canonical evidence-oriented lineage schema.",
+            )
+
+        capabilities = payload.get("capabilities")
+        if capabilities is not None and not isinstance(capabilities, dict):
+            add_error(
+                findings,
+                relative_lineage_path,
+                "lineage.generated.yaml capabilities must be a mapping keyed by capability ID.",
+                "Regenerate the file so feature-local lineage remains capability-keyed rather than list-shaped.",
+            )
+
+
 def contains_feature_metadata_markers(path: Path) -> bool:
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
@@ -1073,6 +1145,7 @@ def run_validation(root: Path, adoption_mode_path: Path) -> list[Finding]:
     validate_feature_dependencies(root, findings)
     validate_capability_ids(root, findings)
     validate_generated_headers(root, findings)
+    validate_lineage_generated_schema(root, findings)
     validate_specs_and_plans(root, findings)
 
     if config is None:

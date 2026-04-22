@@ -64,7 +64,7 @@ Ownership:
 - `feature.source.yaml` holds the human-owned feature meaning.
 - `billing-insights.yaml` is generated or normalized current-state output.
 - `lineage.generated.yaml` is generated evidence.
-- `history.md` holds feature-local notes outside generated blocks.
+- `history.md` holds feature-local notes outside generated blocks and should use the starter partial-generated history pattern.
 
 ## Example Sequence
 
@@ -89,9 +89,13 @@ scripts/sync_*.py
 ```yaml
 capabilities:
   - capability_id: billing-insights.billing-revenue-summary
-    name: Billing Revenue Summary
-    summary: Summarize billed revenue by account and reporting period.
+    statement: Summarize billed revenue by account and reporting period.
+    state: active
 ```
+
+Do not carry forward older source-level fields such as `owner`,
+`primary_stage`, `stages`, `refs`, or `keywords` unless they are first mapped
+into the current source/generated/history boundary.
 
 8. Update `docs/stages/analytics.source.yaml` so stage ownership references the feature:
 
@@ -129,6 +133,13 @@ git diff --check
 
 14. Run the project test suite for the changed feature.
 15. Commit only after source metadata, shared repo-control updates, the recorded starter sync review, generated outputs, validation, and tests agree.
+
+History target after migration:
+
+- keep `history.md`
+- use the starter partial-generated history structure
+- move any useful manual changelog notes into `## Human Notes`
+- do not keep version-number changelog sections as the primary history contract
 
 ## What Not To Do
 

@@ -174,6 +174,13 @@ concrete feature-id contract, for example `model-training-pipeline.yaml`, is
 generated from source metadata plus code/test/doc/spec/plan markers.
 `<feature_id>` is a placeholder in docs, not a literal filename to create.
 
+When migrating older managed feature folders, do not treat the source file as a
+dumping ground for any field that previously existed. The migration target is a
+minimal source file plus richer generated outputs. Fields such as `owner`,
+`primary_stage`, `stages`, `refs`, or `keywords` should not be copied forward
+into `feature.source.yaml` unchanged unless the current schema explicitly owns
+them.
+
 Generated feature contracts may include freshness metadata such as
 `last_updated_at`, `latest_change_id`, and `revision` when completed-plan
 metadata exists. Those values are generated and should not be stored manually in
@@ -270,6 +277,24 @@ This is the canonical detailed generated evidence surface for an opted-in
 feature. Do not duplicate the same machine-readable evidence in `history.md` or
 global generated indexes.
 
+Canonical shape:
+
+- generated header comment
+- `feature_id`
+- `source`
+- `invariants`
+- `capabilities`
+- `timeline`
+
+Within that file, `capabilities` must stay a mapping keyed by capability ID.
+Each capability entry is evidence-oriented and may include code, tests, docs,
+configs, components, specs, plans, and completeness fields.
+
+This file is not a summary contract, naming-policy dump, or generic refs
+inventory. Older summary-style top-level shapes such as `generated_contract`,
+`naming_policy`, `capability_shape`, `capability_ids`, `refs`, or
+`refs_by_type` are invalid for `lineage.generated.yaml` in managed mode.
+
 For Python files, capability-first metadata is preferred when feature linkage is
 already derivable from capability ownership. Do not require a second manual
 feature list when feature-qualified capability IDs already determine that
@@ -311,6 +336,13 @@ now treats it as a partial-generated surface:
   `<!-- GENERATED HISTORY END -->`
 - humans own the `## Human Notes` section below that block
 - manual notes should add context, not restate machine-readable lineage facts
+
+Migration rule:
+
+- when an older managed feature folder uses version-number changelog history as
+  its primary structure, move durable human notes into `## Human Notes`
+- adopt the partial-generated history pattern instead of keeping the older
+  changelog format as the target contract
 
 ### `docs/*.md`
 

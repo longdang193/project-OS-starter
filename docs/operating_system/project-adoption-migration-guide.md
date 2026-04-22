@@ -249,8 +249,27 @@ Ownership:
 
 - `feature.source.yaml` is the human-owned semantic source.
 - `<feature_id>.yaml` is the generated or normalized assembled current-state contract.
-- `lineage.generated.yaml` is generated evidence and must not be edited manually.
+- `lineage.generated.yaml` is canonical generated feature-local lineage evidence and must not be edited manually.
 - `history.md` contains feature-local context and human notes, plus generated blocks if the project adopts partial-generated history.
+
+`lineage.generated.yaml` must use the canonical evidence-oriented starter
+schema. It is not a generic refs summary or contract-adjacent inventory. If a
+repo-local sync script still emits top-level fields such as
+`generated_contract`, `naming_policy`, `capability_shape`, `capability_ids`,
+`refs`, or `refs_by_type`, that script must be updated before the repo can
+truthfully claim managed architecture metadata alignment.
+
+Desired migration target:
+
+- the newer customer-style feature-folder shape where `feature.source.yaml`
+  stays minimal and human-owned
+- the generated contract carries refs and freshness fields
+- `lineage.generated.yaml` stays evidence-oriented
+- `history.md` uses the partial-generated history pattern
+
+Do not treat older folder shapes as equally valid just because they already use
+the same filenames. A repo can have the right file names and still carry the
+wrong contract in those files.
 
 Flat files such as `docs/features/data-pipeline.yaml` are legacy compatibility only once managed architecture metadata is adopted.
 
@@ -323,6 +342,34 @@ Move human-authored semantic content into `feature.source.yaml`.
 
 Generate or normalize the assembled contract into `<feature_id>.yaml`.
 
+When migrating from an older managed folder shape, do not simply copy all old
+source fields into the new source file. The target source should keep only
+human-owned semantic fields such as:
+
+- `feature_id`
+- `name`
+- `status`
+- `type`
+- `summary`
+- `invariants`
+- `domains`
+- `depends_on`
+- `capabilities`
+- `stage_participation`
+- `lineage_exceptions` when needed
+
+Remove or relocate older contract-adjacent source fields such as:
+
+- `owner`
+- `primary_stage`
+- `stages`
+- `refs`
+- `keywords`
+
+If some of that information is still useful, derive it into generated outputs,
+move it into prose docs, or map it into the current canonical source fields
+instead of preserving the old field names.
+
 ### 5. Normalize capability IDs
 
 Capability IDs must be feature-qualified stable identifiers, not prose capability descriptions or unscoped slugs.
@@ -339,8 +386,8 @@ Preferred managed shape:
 ```yaml
 capabilities:
   - capability_id: data-pipeline.staging-ga4-events
-    name: Staging GA4 Events
-    summary: Flatten nested GA4 event fields into staging tables.
+    statement: Flatten nested GA4 event fields into staging tables.
+    state: active
 ```
 
 If a project schema initially supports only capability strings, label those strings as a legacy bridge and do not treat them as stable IDs.
@@ -400,6 +447,18 @@ After source migration, run the project's canonical architecture sync/check work
 
 If the project has no generator yet, do not hand-invent generated files. Either add the generator first or keep the project in legacy compatibility mode.
 
+For `history.md`, the migration target is the starter partial-generated history
+pattern:
+
+- `# History`
+- generated block between `<!-- GENERATED HISTORY START -->` and
+  `<!-- GENERATED HISTORY END -->`
+- `## Human Notes` for preserved manual commentary
+
+Do not keep a version-number changelog as the primary managed feature-history
+contract once the starter history model is adopted. Preserve useful historical
+notes by moving them under `## Human Notes`.
+
 ### 8. Validate the result
 
 Managed mode validation should confirm:
@@ -411,6 +470,7 @@ Managed mode validation should confirm:
 - capability IDs are feature-qualified stable IDs
 - generated indexes exclude operating-system artifacts
 - code/config/test metadata references existing feature IDs and feature-qualified capability IDs
+- `docs/features/<feature_id>/lineage.generated.yaml` uses the canonical evidence-oriented schema rather than a legacy summary-style shape
 - generated files were refreshed, not edited manually
 
 ## Half-Migration Anti-Pattern

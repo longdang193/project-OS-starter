@@ -309,9 +309,18 @@ def test_generator_builds_feature_contract_feature_local_lineage_and_aggregate_d
             test_root / "docs" / "features" / "sample-feature" / "lineage.generated.yaml"
         )
         assert feature_lineage_path.exists()
-        feature_lineage = yaml.safe_load(feature_lineage_path.read_text(encoding="utf-8"))
+        feature_lineage_text = feature_lineage_path.read_text(encoding="utf-8")
+        assert "# GENERATED FILE - do not edit directly." in feature_lineage_text
+        feature_lineage = yaml.safe_load(feature_lineage_text)
         assert feature_lineage["feature_id"] == "sample-feature"
         assert feature_lineage["source"] == "docs/features/sample-feature/feature.source.yaml"
+        assert set(feature_lineage) == {
+            "feature_id",
+            "source",
+            "invariants",
+            "capabilities",
+            "timeline",
+        }
         assert feature_lineage["invariants"]["sample.must-validate"]["satisfied_by"] == [
             "sample-feature.submit-job"
         ]

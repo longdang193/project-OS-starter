@@ -6,7 +6,7 @@ domain: docs
 responsibility:
   - Generate feature contracts and discovery indexes from feature source metadata.
   - Validate architecture metadata shape for feature, spec, plan, code, and test lineage.
-  - Generate feature-local lineage evidence and aggregate architecture indexes.
+  - Generate canonical feature-local lineage evidence and aggregate architecture indexes.
 inputs:
   - docs/features/*/feature.source.yaml
   - docs/superpowers/specs/*.md
@@ -29,6 +29,11 @@ tags:
 lifecycle:
   status: active
 """
+
+# Canonical generated lineage contract:
+# - docs/features/<feature_id>/lineage.generated.yaml is the feature-local evidence surface
+# - it is capability-keyed and evidence-oriented
+# - it is not a summary contract, naming-policy dump, or refs inventory
 
 from __future__ import annotations
 

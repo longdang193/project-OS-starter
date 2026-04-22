@@ -76,6 +76,38 @@ def managed_starter_sync_block(extra: str = "") -> str:
 """ + extra
 
 
+def seed_required_managed_mode_surface(root: Path, starter_sync: str | None = None) -> None:
+    seed_required_folder_surface(root)
+    write_adoption_mode(
+        root,
+        "managed_architecture_metadata",
+        managed=True,
+        legacy=False,
+        generator="scripts/sync_architecture_docs.py",
+        starter_sync=managed_starter_sync_block() if starter_sync is None else starter_sync,
+    )
+    write_text(
+        root / "docs" / "setup.md",
+        "# Setup\nDependencies and install prerequisites define the bootstrap path.\n",
+    )
+    write_text(
+        root / "docs" / "configuration.md",
+        "# Configuration\nConfiguration covers environment variables, config files, defaults, and override ownership.\n",
+    )
+    write_text(
+        root / "docs" / "usage.md",
+        "# Usage\nUse the documented commands and entrypoints in the normal developer workflow.\n",
+    )
+    write_text(
+        root / "docs" / "pipeline.md",
+        "# Pipeline\nThe workflow stages and handoff sequence describe the processing flow.\n",
+    )
+    write_text(
+        root / "docs" / "architecture.md",
+        "# Architecture\nMajor components, boundaries, and information flow define the system integration shape.\n",
+    )
+
+
 def test_validator_passes_for_current_starter_repo() -> None:
     result = run_validator(REPO_ROOT)
 
@@ -508,41 +540,7 @@ explains:
 
 
 def test_validator_rejects_missing_starter_sync_record_in_managed_mode(tmp_path: Path) -> None:
-    write_adoption_mode(
-        tmp_path,
-        "managed_architecture_metadata",
-        managed=True,
-        legacy=False,
-        generator="scripts/sync_architecture_docs.py",
-    )
-    write_text(
-        tmp_path / "docs" / "setup.md",
-        "# Setup\nDependencies and install prerequisites define the bootstrap path.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "configuration.md",
-        "# Configuration\nConfiguration covers environment variables, config files, defaults, and override ownership.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "usage.md",
-        "# Usage\nUse the documented commands and entrypoints in the normal developer workflow.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "pipeline.md",
-        "# Pipeline\nThe workflow stages and handoff sequence describe the processing flow.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "architecture.md",
-        "# Architecture\nMajor components, boundaries, and information flow define the system integration shape.\n",
-    )
-    (tmp_path / "docs" / "intent").mkdir(parents=True, exist_ok=True)
-    write_text(tmp_path / "docs" / "intent" / "README.md", "# Intent\nPurpose and outcomes.\n")
-    (tmp_path / "docs" / "operating_system").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "docs" / "superpowers" / "specs").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "docs" / "superpowers" / "plans").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "repo_config").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
+    seed_required_managed_mode_surface(tmp_path, starter_sync="")
 
     result = run_validator(tmp_path)
 
@@ -551,12 +549,8 @@ def test_validator_rejects_missing_starter_sync_record_in_managed_mode(tmp_path:
 
 
 def test_validator_rejects_incomplete_starter_sync_record_in_managed_mode(tmp_path: Path) -> None:
-    write_adoption_mode(
+    seed_required_managed_mode_surface(
         tmp_path,
-        "managed_architecture_metadata",
-        managed=True,
-        legacy=False,
-        generator="scripts/sync_architecture_docs.py",
         starter_sync="""starter_sync:
   starter_baseline_ref: ""
   last_shared_surface_review_at: not-a-date
@@ -569,34 +563,6 @@ def test_validator_rejects_incomplete_starter_sync_record_in_managed_mode(tmp_pa
       rationale: ""
 """,
     )
-    write_text(
-        tmp_path / "docs" / "setup.md",
-        "# Setup\nDependencies and install prerequisites define the bootstrap path.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "configuration.md",
-        "# Configuration\nConfiguration covers environment variables, config files, defaults, and override ownership.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "usage.md",
-        "# Usage\nUse the documented commands and entrypoints in the normal developer workflow.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "pipeline.md",
-        "# Pipeline\nThe workflow stages and handoff sequence describe the processing flow.\n",
-    )
-    write_text(
-        tmp_path / "docs" / "architecture.md",
-        "# Architecture\nMajor components, boundaries, and information flow define the system integration shape.\n",
-    )
-    (tmp_path / "docs" / "intent").mkdir(parents=True, exist_ok=True)
-    write_text(tmp_path / "docs" / "intent" / "README.md", "# Intent\nPurpose and outcomes.\n")
-    (tmp_path / "docs" / "operating_system").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "docs" / "superpowers" / "specs").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "docs" / "superpowers" / "plans").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "repo_config").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "scripts").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "tests").mkdir(parents=True, exist_ok=True)
 
     result = run_validator(tmp_path)
 
@@ -605,4 +571,89 @@ def test_validator_rejects_incomplete_starter_sync_record_in_managed_mode(tmp_pa
     assert "starter_sync.last_shared_surface_review_at must be an iso-8601 date or timestamp" in result.stdout.lower()
     assert "starter_sync.reviewed_surface_classes is missing required mode b surface classes" in result.stdout.lower()
     assert "starter_sync.divergences[0].class must be one of the reviewed surface classes" in result.stdout.lower()
+
+
+def test_validator_rejects_legacy_lineage_generated_shape_in_managed_mode(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
+        """feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+stage_participation: []
+lineage_exceptions: []
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        "feature_id: sample-feature\n",
+    )
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
+        """feature_id: sample-feature
+source: docs/features/sample-feature/feature.source.yaml
+generated_contract: docs/features/sample-feature/sample-feature.yaml
+naming_policy:
+  feature_id_format: kebab
+capability_shape: structured
+capability_ids:
+  - sample-feature.submit-job
+capabilities:
+  - capability_id: sample-feature.submit-job
+refs_by_type:
+  spec: []
+timeline: []
+invariants: {}
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "lineage.generated.yaml must include the generated-file header" in result.stdout.lower()
+    assert "uses legacy summary-style top-level keys" in result.stdout.lower()
+    assert "capabilities must be a mapping keyed by capability id" in result.stdout.lower()
+
+
+def test_validator_rejects_lineage_generated_missing_required_top_level_keys(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
+        """feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+stage_participation: []
+lineage_exceptions: []
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        "feature_id: sample-feature\n",
+    )
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
+        """# GENERATED FILE - do not edit directly.
+feature_id: sample-feature
+source: docs/features/sample-feature/feature.source.yaml
+capabilities: {}
+timeline: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "lineage.generated.yaml is missing required top-level keys" in result.stdout.lower()
 
