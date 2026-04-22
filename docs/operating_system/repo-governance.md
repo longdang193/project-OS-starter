@@ -382,7 +382,8 @@ run:
 
 The repo hook workflow is part of normal enforcement.
 
-Installed local hooks should call the repo-contract validator in fast mode:
+Installed local hooks should call the repo-contract validator in its hook-facing
+subset mode:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/validate_repo_contracts.py --fast
@@ -390,6 +391,9 @@ Installed local hooks should call the repo-contract validator in fast mode:
 
 Use `scripts/sync_architecture_docs.py` separately when you need to regenerate
 feature, stage, or discovery outputs before rerunning the validator.
+
+The `--fast` flag is not a no-op quick check. It still runs the architecture
+sync check path and skips only the extra validator-specific pytest pass.
 
 CI is expected to run adapter verification, baseline checks, and publication-boundary validation on push and pull request events so drift and broken changes are caught before merge.
 

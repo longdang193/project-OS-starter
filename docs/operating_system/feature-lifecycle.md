@@ -242,6 +242,10 @@ validator when you need the broader gate across generated files, metadata
 coverage, mixed-boundary feature histories, adoption-shape rules, and repo-config
 surfaces.
 
+In that command pair, `--fast` means the hook-facing subset. It still runs the
+architecture sync check path and skips only the extra validator-specific pytest
+pass.
+
 Lineage completeness rule for opted-in generated features:
 
 - active capabilities should resolve to `complete` whenever possible

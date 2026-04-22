@@ -572,6 +572,10 @@ Use `sync_architecture_docs.py` to refresh generated architecture surfaces after
 source changes. Use `validate_repo_contracts.py` as the broader gate before
 commit, push, or CI completion.
 
+Here `--fast` means the hook-facing subset, not a lightweight bypass. It still
+runs the architecture sync check path and skips only the extra
+validator-specific pytest pass.
+
 Lineage exception policy:
 
 - keep exceptions source-owned in `feature.source.yaml`

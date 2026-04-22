@@ -79,8 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--fast",
         action="store_true",
         help=(
-            "Run the hook-friendly validation subset. Skips the extra validator-"
-            "specific pytest pass, but still runs the architecture sync check path."
+            "Run the hook-facing validation subset. This still runs the "
+            "architecture sync check path and skips only the extra validator-"
+            "specific pytest pass."
         ),
     )
     return parser
@@ -322,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
             return status
 
     print(
-        "Repo contract validation passed (fast mode)."
+        "Repo contract validation passed (hook subset)."
         if args.fast
         else "Repo contract validation passed."
     )

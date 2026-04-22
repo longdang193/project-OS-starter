@@ -141,3 +141,6 @@ For the broader repo gate, use:
 That validator keeps stage-contract checks in the same pass as adoption-shape
 validation, repo-config validation, metadata coverage enforcement, and
 partial-generated feature-history boundary rules.
+
+Here `--fast` still includes the architecture sync check path. It skips only
+the extra validator-specific pytest pass.
