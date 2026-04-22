@@ -10,9 +10,9 @@ cat > "$hook_path" <<'HOOK'
 set -eu
 
 if [ -x "./.venv/Scripts/python.exe" ]; then
-  ./.venv/Scripts/python.exe scripts/sync_architecture_docs.py --check
+  ./.venv/Scripts/python.exe scripts/validate_repo_contracts.py --fast
 else
-  ./.venv/bin/python scripts/sync_architecture_docs.py --check
+  ./.venv/bin/python scripts/validate_repo_contracts.py --fast
 fi
 HOOK
 

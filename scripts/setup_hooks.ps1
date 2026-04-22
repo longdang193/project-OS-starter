@@ -17,7 +17,7 @@ $hook = @'
 #!/bin/sh
 set -eu
 
-./.venv/Scripts/python.exe scripts/sync_architecture_docs.py --check
+./.venv/Scripts/python.exe scripts/validate_repo_contracts.py --fast
 '@
 
 Set-Content -LiteralPath $hookPath -Value $hook -Encoding UTF8
