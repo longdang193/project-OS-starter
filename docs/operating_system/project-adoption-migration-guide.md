@@ -483,6 +483,33 @@ Do not keep a version-number changelog as the primary managed feature-history
 contract once the starter history model is adopted. Preserve useful historical
 notes by moving them under `## Human Notes`.
 
+For `docs/features/<feature_id>/lineage.generated.yaml > timeline`, the current
+starter-style managed target is the richer completed-change record shape used by
+`customer-churn-prediction-azureml/docs/features/model-training-pipeline/lineage.generated.yaml`.
+Regenerated timeline entries should expose fields such as:
+
+- `completed_at`
+- `source_plan`
+- `change_id`
+- `summary`
+- `capabilities`
+- `verification`
+- `outcome`
+
+Do not preserve the older timeline shape:
+
+```yaml
+timeline:
+  - kind: spec
+    path: docs/superpowers/specs/...
+  - kind: plan
+    path: docs/superpowers/plans/...
+```
+
+once the repo is migrating to the current managed target. That shape indicates a
+superseded generator contract and should be replaced by regenerated richer
+timeline entries.
+
 ### 8. Validate the result
 
 Managed mode validation should confirm:

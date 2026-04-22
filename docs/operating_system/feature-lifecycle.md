@@ -32,6 +32,21 @@ Detailed generated evidence for opted-in features lives beside the feature at
 `docs/features/<feature_id>/lineage.generated.yaml`. Feature history is now a
 hybrid surface: the generator owns a bounded timeline section fed from
 completed-plan metadata, while humans keep narrative notes below that block.
+That timeline is not just a flat list of spec and plan paths. The current
+managed target is a richer completed-change record list like the one used in
+`customer-churn-prediction-azureml/docs/features/model-training-pipeline/lineage.generated.yaml`,
+with entries such as:
+
+- `completed_at`
+- `source_plan`
+- `change_id`
+- `summary`
+- `capabilities`
+- `verification`
+- `outcome`
+
+Older timeline entries shaped only like `{kind, path}` are legacy migration
+debt, not the current starter-aligned target.
 
 Reading rule of thumb for agents and reviewers:
 

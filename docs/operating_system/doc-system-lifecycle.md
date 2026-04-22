@@ -303,6 +303,23 @@ Within that file, `capabilities` must stay a mapping keyed by capability ID.
 Each capability entry is evidence-oriented and may include code, tests, docs,
 configs, components, specs, plans, and completeness fields.
 
+`timeline` should stay a list of richer completed-change records derived from
+completed plan metadata. The current migration target matches
+`customer-churn-prediction-azureml/docs/features/model-training-pipeline/lineage.generated.yaml`,
+where entries include:
+
+- `completed_at`
+- `source_plan`
+- `change_id`
+- `summary`
+- `capabilities`
+- `verification`
+- `outcome`
+
+Do not treat the older `{kind, path}` timeline entry shape as an equally valid
+steady-state managed contract. That older shape is migration debt from a
+superseded generator contract.
+
 This file is not a summary contract, naming-policy dump, or generic refs
 inventory. Older summary-style top-level shapes such as `generated_contract`,
 `naming_policy`, `capability_shape`, `capability_ids`, `refs`, or
