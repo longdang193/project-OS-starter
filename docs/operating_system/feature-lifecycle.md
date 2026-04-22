@@ -169,6 +169,12 @@ Validation in `managed_architecture_metadata` mode enforces the required set:
 - `lineage.generated.yaml`
 - `history.md`
 
+It also treats the generated artifacts as schema-enforced managed contracts:
+
+- `<feature_id>.yaml` must keep the canonical generated feature-contract shape
+- `lineage.generated.yaml` must keep the canonical evidence-oriented schema
+- `history.md` must keep the generated history boundaries plus `## Human Notes`
+
 `history.md` is required for opted-in features and should follow this steady-state
 shape:
 
@@ -176,6 +182,15 @@ shape:
   `<!-- GENERATED HISTORY END -->`
 - one human-owned `## Human Notes` section below the generated block
 - no manual edits inside the generated markers
+
+Generated feature contracts should also keep the canonical contract structure:
+
+- top-level feature fields such as `feature_id`, `name`, `status`, `type`,
+  `summary`, `invariants`, `domains`, `depends_on`, `capabilities`, and `refs`
+- `refs` grouped by canonical families like `code`, `tests`, `specs`, `plans`,
+  `docs`, `configs`, and `components`
+- freshness metadata such as `revision`, `latest_change_id`, and
+  `last_updated_at` when completed lineage history exists for the feature
 
 ## Feature And Stage YAML Formatting
 

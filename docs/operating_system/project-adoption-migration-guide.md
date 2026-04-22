@@ -528,6 +528,10 @@ Managed mode validation should confirm:
 - generated indexes exclude operating-system artifacts
 - code/config/test metadata references existing feature IDs and feature-qualified capability IDs
 - `docs/features/<feature_id>/lineage.generated.yaml` uses the canonical evidence-oriented schema rather than a legacy summary-style shape
+- `docs/features/<feature_id>/<feature_id>.yaml` keeps the canonical generated feature-contract shape, including freshness metadata when completed lineage history exists
+- `docs/features/<feature_id>/history.md` keeps the generated-history boundary markers plus `## Human Notes`
+- `docs/stages/<stage_id>.yaml` uses the canonical flat generated stage contract shape rather than an older nested stage wrapper
+- `docs/generated/architecture_dag.yaml` and `docs/generated/capability_lineage.yaml` keep the canonical generated discovery schemas
 - generated files were refreshed, not edited manually
 
 ## Half-Migration Anti-Pattern

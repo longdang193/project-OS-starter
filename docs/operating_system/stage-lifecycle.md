@@ -50,6 +50,8 @@ docs/stages/<stage_id>.yaml
 ```
 
 Humans edit the source files. The generator owns the concrete stage YAML files.
+In managed repos, the adoption validator now treats generated stage contracts as
+schema-enforced artifacts rather than loose generated suggestions.
 
 Stage source files may contain:
 
@@ -78,6 +80,32 @@ Stage source files must not contain generated refs:
 - `component_refs`
 
 If a generated ref is missing, patch metadata at the owning source instead of hand-editing the generated stage file.
+
+Generated stage contracts should stay in the flat canonical shape produced by
+the generator, with top-level keys such as:
+
+- `stage_id`
+- `name`
+- `status`
+- `purpose`
+- `feature_refs`
+- `capability_refs`
+- `code_refs`
+- `test_refs`
+- `doc_refs`
+- `config_refs`
+- `component_refs`
+
+Older nested stage-contract shapes like:
+
+```yaml
+enrich:
+  name: Enrich
+  refs:
+    docs: []
+```
+
+are migration debt, not valid current managed output.
 
 ## Metadata Inputs
 

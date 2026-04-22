@@ -135,7 +135,29 @@ lineage_exceptions: []
 """,
         )
     if include_contract:
-        write_text(folder / f"{feature_id}.yaml", f"feature_id: {feature_id}\n")
+        write_text(
+            folder / f"{feature_id}.yaml",
+            f"""# GENERATED FILE - do not edit directly.
+# Source: docs/features/{feature_id}/feature.source.yaml
+feature_id: {feature_id}
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+refs:
+  code: []
+  tests: []
+  specs: []
+  plans: []
+  docs: []
+  configs: []
+  components: []
+""",
+        )
     if include_lineage:
         write_text(
             folder / "lineage.generated.yaml",
@@ -161,6 +183,44 @@ timeline: []
     return folder
 
 
+def seed_generated_stage_contract(root: Path, stage_id: str = "sample_stage") -> Path:
+    path = root / "docs" / "stages" / f"{stage_id}.yaml"
+    write_text(
+        path,
+        f"""# GENERATED FILE - do not edit directly.
+# Source: docs/stages/{stage_id}.source.yaml
+stage_id: {stage_id}
+name: Sample Stage
+status: active
+purpose: Run the sample stage.
+feature_refs: []
+capability_refs: []
+code_refs: []
+test_refs: []
+doc_refs: []
+config_refs: []
+component_refs: []
+""",
+    )
+    return path
+
+
+def seed_generated_discovery(root: Path) -> None:
+    write_text(
+        root / "docs" / "generated" / "capability_lineage.yaml",
+        """# GENERATED FILE - do not edit directly.
+features: {}
+""",
+    )
+    write_text(
+        root / "docs" / "generated" / "architecture_dag.yaml",
+        """# GENERATED FILE - do not edit directly.
+nodes: []
+edges: []
+""",
+    )
+
+
 def test_validator_passes_for_current_starter_repo() -> None:
     result = run_validator(REPO_ROOT)
 
@@ -171,6 +231,7 @@ def test_validator_passes_for_current_starter_repo() -> None:
 def test_validator_passes_for_minimal_managed_feature_folder(tmp_path: Path) -> None:
     seed_required_managed_mode_surface(tmp_path)
     seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
 
     result = run_validator(tmp_path)
 
@@ -258,6 +319,163 @@ def test_validator_rejects_missing_history_in_managed_mode(tmp_path: Path) -> No
 
     assert result.returncode == 1
     assert "managed feature folder is missing history.md" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_feature_contract_missing_required_keys(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_contract=False)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/features/sample-feature/feature.source.yaml
+feature_id: sample-feature
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated feature contract is missing required keys" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_feature_contract_legacy_capability_shape(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_contract=False)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/features/sample-feature/feature.source.yaml
+feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities:
+  - sample-feature.submit-job
+refs:
+  code: []
+  tests: []
+  specs: []
+  plans: []
+  docs: []
+  configs: []
+  components: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated feature contract capabilities[0] must be a mapping" in result.stdout.lower()
+
+
+def test_validator_accepts_generated_stage_contract_shape(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_stage_contract(tmp_path)
+    seed_generated_discovery(tmp_path)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+
+
+def test_validator_rejects_nested_legacy_stage_contract_shape(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "stages" / "sample_stage.yaml",
+        """# GENERATED FILE - do not edit directly.
+sample_stage:
+  name: Sample Stage
+  summary: Legacy nested contract.
+  refs:
+    docs: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated stage contract uses a legacy nested stage_id wrapper" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_stage_contract_invalid_workflow_position_type(
+    tmp_path: Path,
+) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "stages" / "sample_stage.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/stages/sample_stage.source.yaml
+stage_id: sample_stage
+name: Sample Stage
+status: active
+purpose: Run the sample stage.
+workflow_position:
+  - pre_training
+feature_refs: []
+capability_refs: []
+code_refs: []
+test_refs: []
+doc_refs: []
+config_refs: []
+component_refs: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "workflow_position must be a non-empty string when present" in result.stdout.lower()
+
+
+def test_validator_rejects_history_without_generated_boundaries(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "history.md",
+        "# Sample Feature History\n\nOnly freeform notes.\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "history.md is missing the generated history start marker" in result.stdout.lower()
+    assert "history.md is missing the generated history end marker" in result.stdout.lower()
+    assert "history.md is missing the human notes heading" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_discovery_missing_required_keys(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    write_text(
+        tmp_path / "docs" / "generated" / "capability_lineage.yaml",
+        """# GENERATED FILE - do not edit directly.
+summary: {}
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "generated" / "architecture_dag.yaml",
+        """# GENERATED FILE - do not edit directly.
+nodes: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "capability_lineage.yaml is missing required top-level keys" in result.stdout.lower()
+    assert "architecture_dag.yaml is missing required top-level keys" in result.stdout.lower()
 
 
 def test_validator_rejects_managed_contract_beside_flat_contract_in_legacy_mode(
@@ -727,6 +945,32 @@ timeline: []
 def test_validator_accepts_rich_lineage_generated_shape(tmp_path: Path) -> None:
     seed_required_managed_mode_surface(tmp_path)
     seed_managed_feature_folder(tmp_path, include_lineage=False)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/features/sample-feature/feature.source.yaml
+feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+refs:
+  code: []
+  tests: []
+  specs: []
+  plans: []
+  docs: []
+  configs: []
+  components: []
+revision: 1
+latest_change_id: 2026-04-22-sample-change
+last_updated_at: "2026-04-22T10:30:00+02:00"
+""",
+    )
     write_text(tmp_path / "docs" / "sample.md", "# Sample Doc\nMeaningful doc body.\n")
     write_text(
         tmp_path / "docs" / "superpowers" / "plans" / "2026-04-22-sample-plan.md",
