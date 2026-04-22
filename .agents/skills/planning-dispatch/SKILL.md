@@ -84,7 +84,8 @@ Before writing a spec or plan, produce triage. This is the gate.
 - [ ] If the work touches managed feature meaning, check `docs/features/*/feature.source.yaml`
 - [ ] If the work is stage-heavy, identify affected stages and read `docs/stages/<stage_id>.source.yaml`
 - [ ] Use generated feature/stage contracts and lineage surfaces for current-state and evidence lookup only
-- [ ] Use `docs/generated/*` only for lookup if needed
+- [ ] When managed-mode migration or drift is central, treat generated feature/stage/discovery files as validator-enforced contract surfaces even though they are not the upstream source of truth
+- [ ] Use `docs/generated/*` only for lookup if needed, unless the task is explicitly about generated-discovery schema drift or migration targets
 - [ ] Read `docs/*.md` only if explanation or rationale is needed
 
 ### Step 2 — Determine feature classification when relevant
@@ -158,6 +159,7 @@ Risk level: low | medium | high
 - stage-heavy work must name both the stage source and generated stage contract paths before proceeding
 - triage should name the exact doc targets, not just whether docs are needed
 - generated files are never the source of truth; use them only to find the source
+- when a task is about migration-target drift, triage should still name the affected generated contract and discovery surfaces because they are validator-enforced managed outputs
 - `scripts/sync_architecture_docs.py` is the canonical architecture sync/check workflow; narrower metadata commands are bounded helpers rather than parallel default paths
 
 ## Routing Decision Tree
