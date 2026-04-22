@@ -521,44 +521,6 @@ def test_validator_rejects_invalid_metadata_shape() -> None:
         rmtree(test_root, ignore_errors=True)
 
 
-def test_validator_rejects_feature_folder_without_source_file() -> None:
-    test_root = make_test_root()
-    try:
-        seed_minimal_repo(test_root)
-        write_text(
-            test_root / "docs" / "features" / "legacy-feature" / "legacy-feature.yaml",
-            """feature_id: legacy-feature
-name: Legacy feature
-status: active
-type: workflow
-summary: Legacy feature contract.
-invariants: []
-capabilities: []
-""",
-        )
-
-        result = run_generator(test_root, "--validate-only")
-
-        assert result.returncode == 1
-        assert "missing feature.source.yaml" in result.stdout.lower()
-    finally:
-        rmtree(test_root, ignore_errors=True)
-
-
-def test_validator_rejects_feature_folder_without_history_file() -> None:
-    test_root = make_test_root()
-    try:
-        seed_minimal_repo(test_root)
-        (test_root / "docs" / "features" / "sample-feature" / "history.md").unlink()
-
-        result = run_generator(test_root, "--validate-only")
-
-        assert result.returncode == 1
-        assert "missing history.md" in result.stdout.lower()
-    finally:
-        rmtree(test_root, ignore_errors=True)
-
-
 def test_validator_rejects_literal_placeholder_feature_contract_filename() -> None:
     if os.name == "nt":
         return

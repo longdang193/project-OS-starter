@@ -134,6 +134,36 @@ LEGACY_LINEAGE_TOP_LEVEL_KEYS = {
     "refs",
     "refs_by_type",
 }
+LINEAGE_REQUIRED_CAPABILITY_KEYS = {
+    "state",
+    "statement",
+    "satisfies",
+    "code",
+    "tests",
+    "docs",
+    "docs_evidence",
+    "configs",
+    "config_evidence",
+    "components",
+    "component_evidence",
+    "specs",
+    "plans",
+    "evidence_gaps",
+    "allowed_evidence_gaps",
+    "lineage_exception_reason",
+    "unresolved_evidence_gaps",
+    "completeness_status",
+}
+LINEAGE_RICH_TIMELINE_KEYS = {
+    "completed_at",
+    "source_plan",
+    "change_id",
+    "summary",
+    "capabilities",
+    "verification",
+    "outcome",
+}
+LINEAGE_COMPLETENESS_STATUSES = {"complete", "excepted", "incomplete"}
 
 
 @dataclass(frozen=True)
@@ -876,6 +906,356 @@ def has_generated_header(path: Path) -> bool:
     return "GENERATED FILE" in head or "Generated file" in head
 
 
+def _validate_string_list(
+    findings: list[Finding],
+    *,
+    root: Path,
+    lineage_path: str,
+    capability_id: str,
+    field_name: str,
+    value: object,
+    check_paths: bool = False,
+) -> None:
+    if not isinstance(value, list):
+        add_error(
+            findings,
+            lineage_path,
+            f"{field_name} must be a list for lineage capability `{capability_id}`.",
+            f"Regenerate the lineage file so `{field_name}` is emitted as a list.",
+        )
+        return
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] must be a non-empty string for lineage capability `{capability_id}`.",
+                f"Regenerate the lineage file so `{field_name}` contains stable string values only.",
+            )
+            continue
+        if check_paths and not (root / item).exists():
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] points to a missing path for lineage capability `{capability_id}`: {item}",
+                "Refresh generated lineage so all referenced paths exist in the repo.",
+            )
+
+
+def _validate_evidence_nodes(
+    findings: list[Finding],
+    *,
+    root: Path,
+    lineage_path: str,
+    capability_id: str,
+    field_name: str,
+    value: object,
+) -> None:
+    if not isinstance(value, list):
+        add_error(
+            findings,
+            lineage_path,
+            f"{field_name} must be a list for lineage capability `{capability_id}`.",
+            f"Regenerate the lineage file so `{field_name}` is emitted as an evidence-node list.",
+        )
+        return
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] must be a mapping for lineage capability `{capability_id}`.",
+                f"Regenerate the lineage file so `{field_name}` entries use the canonical evidence-node shape.",
+            )
+            continue
+        path_value = item.get("path")
+        confidence = item.get("confidence")
+        source = item.get("source")
+        if not isinstance(path_value, str) or not path_value.strip():
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] must include a non-empty `path` for lineage capability `{capability_id}`.",
+                "Regenerate the lineage file so every evidence node records its source path.",
+            )
+        elif not (root / path_value).exists():
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] references a missing path for lineage capability `{capability_id}`: {path_value}",
+                "Refresh generated lineage so all evidence node paths exist in the repo.",
+            )
+        if not isinstance(confidence, str) or not confidence.strip():
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] must include a non-empty `confidence` string for lineage capability `{capability_id}`.",
+                "Regenerate the lineage file so every evidence node records confidence.",
+            )
+        if not isinstance(source, list) or not source or not all(
+            isinstance(entry, str) and entry.strip() for entry in source
+        ):
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] must include a non-empty string `source` list for lineage capability `{capability_id}`.",
+                "Regenerate the lineage file so every evidence node records metadata sources.",
+            )
+        symbols = item.get("symbols")
+        if symbols is not None and (
+            not isinstance(symbols, list)
+            or not all(isinstance(symbol, str) and symbol.strip() for symbol in symbols)
+        ):
+            add_error(
+                findings,
+                lineage_path,
+                f"{field_name}[{index}] has invalid `symbols` for lineage capability `{capability_id}`.",
+                "Emit `symbols` only as a list of non-empty strings when symbol-level evidence exists.",
+            )
+
+
+def _validate_lineage_capability_entry(
+    findings: list[Finding],
+    *,
+    root: Path,
+    lineage_path: str,
+    capability_id: str,
+    value: object,
+) -> None:
+    if not isinstance(value, dict):
+        add_error(
+            findings,
+            lineage_path,
+            f"lineage capability `{capability_id}` must be a mapping.",
+            "Regenerate the lineage file so each capability entry uses the canonical mapping shape.",
+        )
+        return
+
+    missing_keys = LINEAGE_REQUIRED_CAPABILITY_KEYS.difference(value)
+    if missing_keys:
+        add_error(
+            findings,
+            lineage_path,
+            f"lineage capability `{capability_id}` is missing required keys.",
+            "Include: " + ", ".join(sorted(LINEAGE_REQUIRED_CAPABILITY_KEYS)) + ".",
+        )
+
+    state = value.get("state")
+    if not isinstance(state, str) or not state.strip():
+        add_error(
+            findings,
+            lineage_path,
+            f"lineage capability `{capability_id}` must include a non-empty `state`.",
+            "Regenerate the lineage file so each capability records its current lifecycle state.",
+        )
+    statement = value.get("statement")
+    if not isinstance(statement, str) or not statement.strip():
+        add_error(
+            findings,
+            lineage_path,
+            f"lineage capability `{capability_id}` must include a non-empty `statement`.",
+            "Regenerate the lineage file so each capability records its canonical statement.",
+        )
+
+    _validate_string_list(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="satisfies",
+        value=value.get("satisfies", []),
+    )
+    _validate_evidence_nodes(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="code",
+        value=value.get("code", []),
+    )
+    _validate_evidence_nodes(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="tests",
+        value=value.get("tests", []),
+    )
+    _validate_string_list(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="docs",
+        value=value.get("docs", []),
+        check_paths=True,
+    )
+    _validate_evidence_nodes(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="docs_evidence",
+        value=value.get("docs_evidence", []),
+    )
+    _validate_string_list(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="configs",
+        value=value.get("configs", []),
+        check_paths=True,
+    )
+    _validate_evidence_nodes(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="config_evidence",
+        value=value.get("config_evidence", []),
+    )
+    _validate_string_list(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="components",
+        value=value.get("components", []),
+        check_paths=True,
+    )
+    _validate_evidence_nodes(
+        findings,
+        root=root,
+        lineage_path=lineage_path,
+        capability_id=capability_id,
+        field_name="component_evidence",
+        value=value.get("component_evidence", []),
+    )
+    for field_name in (
+        "specs",
+        "plans",
+        "evidence_gaps",
+        "allowed_evidence_gaps",
+        "unresolved_evidence_gaps",
+    ):
+        _validate_string_list(
+            findings,
+            root=root,
+            lineage_path=lineage_path,
+            capability_id=capability_id,
+            field_name=field_name,
+            value=value.get(field_name, []),
+            check_paths=field_name in {"specs", "plans"},
+        )
+
+    lineage_exception_reason = value.get("lineage_exception_reason")
+    if lineage_exception_reason is not None and (
+        not isinstance(lineage_exception_reason, str) or not lineage_exception_reason.strip()
+    ):
+        add_error(
+            findings,
+            lineage_path,
+            f"lineage capability `{capability_id}` has invalid `lineage_exception_reason`.",
+            "Use null or a non-empty string reason for excepted lineage gaps.",
+        )
+
+    completeness_status = value.get("completeness_status")
+    if completeness_status not in LINEAGE_COMPLETENESS_STATUSES:
+        add_error(
+            findings,
+            lineage_path,
+            f"lineage capability `{capability_id}` has invalid `completeness_status`.",
+            "Use one of: " + ", ".join(sorted(LINEAGE_COMPLETENESS_STATUSES)) + ".",
+        )
+
+
+def _validate_lineage_timeline(
+    findings: list[Finding],
+    *,
+    root: Path,
+    lineage_path: str,
+    value: object,
+) -> None:
+    if not isinstance(value, list):
+        add_error(
+            findings,
+            lineage_path,
+            "lineage.generated.yaml timeline must be a list.",
+            "Regenerate the file so the timeline stays a list of completed-change records.",
+        )
+        return
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            add_error(
+                findings,
+                lineage_path,
+                f"timeline[{index}] must be a mapping.",
+                "Use the canonical rich completed-change record shape for timeline entries.",
+            )
+            continue
+        missing_keys = LINEAGE_RICH_TIMELINE_KEYS.difference(item)
+        if missing_keys:
+            add_error(
+                findings,
+                lineage_path,
+                f"timeline[{index}] is missing required keys.",
+                "Include: " + ", ".join(sorted(LINEAGE_RICH_TIMELINE_KEYS)) + ".",
+            )
+        completed_at = item.get("completed_at")
+        if not isinstance(completed_at, str) or not completed_at.strip():
+            add_error(
+                findings,
+                lineage_path,
+                f"timeline[{index}] must include a non-empty `completed_at` string.",
+                "Emit completed timeline entries from completed plans with stable timestamps.",
+            )
+        source_plan = item.get("source_plan")
+        if not isinstance(source_plan, str) or not source_plan.strip():
+            add_error(
+                findings,
+                lineage_path,
+                f"timeline[{index}] must include a non-empty `source_plan` string.",
+                "Emit the originating completed plan path for each timeline entry.",
+            )
+        elif not (root / source_plan).exists():
+            add_error(
+                findings,
+                lineage_path,
+                f"timeline[{index}] references a missing source_plan: {source_plan}",
+                "Refresh generated lineage so timeline entries point at existing plan files.",
+            )
+        for field_name in ("change_id", "summary", "outcome"):
+            field_value = item.get(field_name)
+            if not isinstance(field_value, str) or not field_value.strip():
+                add_error(
+                    findings,
+                    lineage_path,
+                    f"timeline[{index}] must include a non-empty `{field_name}` string.",
+                    "Emit canonical completed-plan metadata for each timeline entry.",
+                )
+        capabilities = item.get("capabilities")
+        if not isinstance(capabilities, list) or not all(
+            isinstance(entry, str) and entry.strip() for entry in capabilities
+        ):
+            add_error(
+                findings,
+                lineage_path,
+                f"timeline[{index}] must include a string `capabilities` list.",
+                "Emit capability-qualified IDs for every completed change record.",
+            )
+        verification = item.get("verification")
+        if not isinstance(verification, list) or not all(
+            isinstance(entry, str) and entry.strip() for entry in verification
+        ):
+            add_error(
+                findings,
+                lineage_path,
+                f"timeline[{index}] must include a string `verification` list.",
+                "Emit verification commands as a list of non-empty strings.",
+            )
+
+
 def validate_generated_headers(root: Path, findings: list[Finding]) -> None:
     for path in feature_source_files(root):
         if has_generated_header(path):
@@ -948,6 +1328,22 @@ def validate_lineage_generated_schema(root: Path, findings: list[Finding]) -> No
                 "lineage.generated.yaml capabilities must be a mapping keyed by capability ID.",
                 "Regenerate the file so feature-local lineage remains capability-keyed rather than list-shaped.",
             )
+        elif isinstance(capabilities, dict):
+            for capability_id, capability_payload in sorted(capabilities.items()):
+                _validate_lineage_capability_entry(
+                    findings,
+                    root=root,
+                    lineage_path=relative_lineage_path,
+                    capability_id=capability_id,
+                    value=capability_payload,
+                )
+
+        _validate_lineage_timeline(
+            findings,
+            root=root,
+            lineage_path=relative_lineage_path,
+            value=payload.get("timeline"),
+        )
 
 
 def contains_feature_metadata_markers(path: Path) -> bool:

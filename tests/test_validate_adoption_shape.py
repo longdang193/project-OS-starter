@@ -723,3 +723,135 @@ timeline: []
     assert result.returncode == 1
     assert "lineage.generated.yaml is missing required top-level keys" in result.stdout.lower()
 
+
+def test_validator_accepts_rich_lineage_generated_shape(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_lineage=False)
+    write_text(tmp_path / "docs" / "sample.md", "# Sample Doc\nMeaningful doc body.\n")
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-22-sample-plan.md",
+        "# Sample Plan\nCompleted plan body.\n",
+    )
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
+        """# GENERATED FILE - do not edit directly.
+feature_id: sample-feature
+source: docs/features/sample-feature/feature.source.yaml
+invariants: {}
+capabilities:
+  sample-feature.submit-job:
+    state: active
+    statement: Submit the sample job.
+    satisfies: []
+    code:
+      - path: docs/sample.md
+        confidence: high
+        source:
+          - python_meta
+    tests:
+      - path: docs/sample.md
+        confidence: high
+        source:
+          - python_proves
+        symbols:
+          - test_submit_job
+    docs:
+      - docs/sample.md
+    docs_evidence:
+      - path: docs/sample.md
+        confidence: high
+        source:
+          - docs_frontmatter
+    configs: []
+    config_evidence: []
+    components: []
+    component_evidence: []
+    specs: []
+    plans:
+      - docs/superpowers/plans/2026-04-22-sample-plan.md
+    evidence_gaps: []
+    allowed_evidence_gaps: []
+    lineage_exception_reason: null
+    unresolved_evidence_gaps: []
+    completeness_status: complete
+timeline:
+  - completed_at: "2026-04-22T10:30:00+02:00"
+    source_plan: docs/superpowers/plans/2026-04-22-sample-plan.md
+    change_id: 2026-04-22-sample-change
+    summary: Add sample capability metadata.
+    capabilities:
+      - sample-feature.submit-job
+    verification:
+      - pytest tests/test_sample.py
+    outcome: Sample capability now has explicit lineage metadata.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+
+
+def test_validator_rejects_string_list_code_and_tests_in_lineage_generated(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_lineage=False)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
+        """# GENERATED FILE - do not edit directly.
+feature_id: sample-feature
+source: docs/features/sample-feature/feature.source.yaml
+invariants: {}
+capabilities:
+  sample-feature.submit-job:
+    state: active
+    statement: Submit the sample job.
+    satisfies: []
+    code:
+      - docs/setup.md
+    tests:
+      - docs/setup.md
+    docs: []
+    docs_evidence: []
+    configs: []
+    config_evidence: []
+    components: []
+    component_evidence: []
+    specs: []
+    plans: []
+    evidence_gaps: []
+    allowed_evidence_gaps: []
+    lineage_exception_reason: null
+    unresolved_evidence_gaps: []
+    completeness_status: complete
+timeline: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "code[0] must be a mapping" in result.stdout.lower()
+    assert "tests[0] must be a mapping" in result.stdout.lower()
+
+
+def test_validator_rejects_legacy_kind_path_timeline_entries(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_lineage=False)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
+        """# GENERATED FILE - do not edit directly.
+feature_id: sample-feature
+source: docs/features/sample-feature/feature.source.yaml
+invariants: {}
+capabilities: {}
+timeline:
+  - kind: plan
+    path: docs/superpowers/plans/2026-04-22-sample-plan.md
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "timeline[0] is missing required keys" in result.stdout.lower()
+
