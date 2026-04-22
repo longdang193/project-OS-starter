@@ -108,11 +108,73 @@ def seed_required_managed_mode_surface(root: Path, starter_sync: str | None = No
     )
 
 
+def seed_managed_feature_folder(
+    root: Path,
+    feature_id: str = "sample-feature",
+    *,
+    include_source: bool = True,
+    include_contract: bool = True,
+    include_lineage: bool = True,
+    include_history: bool = True,
+) -> Path:
+    folder = root / "docs" / "features" / feature_id
+    if include_source:
+        write_text(
+            folder / "feature.source.yaml",
+            f"""feature_id: {feature_id}
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+stage_participation: []
+lineage_exceptions: []
+""",
+        )
+    if include_contract:
+        write_text(folder / f"{feature_id}.yaml", f"feature_id: {feature_id}\n")
+    if include_lineage:
+        write_text(
+            folder / "lineage.generated.yaml",
+            f"""# GENERATED FILE - do not edit directly.
+feature_id: {feature_id}
+source: docs/features/{feature_id}/feature.source.yaml
+invariants: {{}}
+capabilities: {{}}
+timeline: []
+""",
+        )
+    if include_history:
+        write_text(
+            folder / "history.md",
+            """# History
+
+<!-- GENERATED HISTORY START -->
+<!-- GENERATED HISTORY END -->
+
+## Human Notes
+""",
+        )
+    return folder
+
+
 def test_validator_passes_for_current_starter_repo() -> None:
     result = run_validator(REPO_ROOT)
 
     assert result.returncode == 0
     assert "adoption shape validation passed" in result.stdout.lower()
+
+
+def test_validator_passes_for_minimal_managed_feature_folder(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
 
 
 def test_validator_rejects_mode_boolean_mismatch(tmp_path: Path) -> None:
@@ -156,6 +218,46 @@ def test_validator_rejects_flat_feature_yaml_in_managed_mode(tmp_path: Path) -> 
 
     assert result.returncode == 1
     assert "flat authoritative feature yaml" in result.stdout.lower()
+
+
+def test_validator_rejects_missing_feature_source_in_managed_mode(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_source=False)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed feature folder is missing feature.source.yaml" in result.stdout.lower()
+
+
+def test_validator_rejects_missing_generated_feature_contract_in_managed_mode(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_contract=False)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed feature folder is missing sample-feature.yaml" in result.stdout.lower()
+
+
+def test_validator_rejects_missing_lineage_generated_in_managed_mode(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_lineage=False)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed feature folder is missing lineage.generated.yaml" in result.stdout.lower()
+
+
+def test_validator_rejects_missing_history_in_managed_mode(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_history=False)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed feature folder is missing history.md" in result.stdout.lower()
 
 
 def test_validator_rejects_managed_contract_beside_flat_contract_in_legacy_mode(
@@ -575,25 +677,7 @@ def test_validator_rejects_incomplete_starter_sync_record_in_managed_mode(tmp_pa
 
 def test_validator_rejects_legacy_lineage_generated_shape_in_managed_mode(tmp_path: Path) -> None:
     seed_required_managed_mode_surface(tmp_path)
-    write_text(
-        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
-        """feature_id: sample-feature
-name: Sample Feature
-status: active
-type: workflow
-summary: Sample summary.
-invariants: []
-domains: []
-depends_on: []
-capabilities: []
-stage_participation: []
-lineage_exceptions: []
-""",
-    )
-    write_text(
-        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
-        "feature_id: sample-feature\n",
-    )
+    seed_managed_feature_folder(tmp_path, include_lineage=False)
     write_text(
         tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
         """feature_id: sample-feature
@@ -623,25 +707,7 @@ invariants: {}
 
 def test_validator_rejects_lineage_generated_missing_required_top_level_keys(tmp_path: Path) -> None:
     seed_required_managed_mode_surface(tmp_path)
-    write_text(
-        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
-        """feature_id: sample-feature
-name: Sample Feature
-status: active
-type: workflow
-summary: Sample summary.
-invariants: []
-domains: []
-depends_on: []
-capabilities: []
-stage_participation: []
-lineage_exceptions: []
-""",
-    )
-    write_text(
-        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
-        "feature_id: sample-feature\n",
-    )
+    seed_managed_feature_folder(tmp_path, include_lineage=False)
     write_text(
         tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
         """# GENERATED FILE - do not edit directly.

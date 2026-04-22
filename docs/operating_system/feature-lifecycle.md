@@ -128,7 +128,7 @@ Rules:
   context or downstream consumer but has no canonical capability node to expose
   in the stage contract
 
-The recommended opted-in feature folder shape is:
+The required opted-in feature folder shape is:
 
 ```text
 docs/features/<feature_id>/
@@ -141,6 +141,13 @@ docs/features/<feature_id>/
 
 `README.md` is optional and should explain current behavior only when prose adds
 value; it should not repeat generated contracts or lineage.
+
+Validation in `managed_architecture_metadata` mode enforces the required set:
+
+- `feature.source.yaml`
+- `<feature_id>.yaml`
+- `lineage.generated.yaml`
+- `history.md`
 
 `history.md` is required for opted-in features and should follow this steady-state
 shape:

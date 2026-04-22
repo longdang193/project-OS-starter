@@ -174,6 +174,19 @@ concrete feature-id contract, for example `model-training-pipeline.yaml`, is
 generated from source metadata plus code/test/doc/spec/plan markers.
 `<feature_id>` is a placeholder in docs, not a literal filename to create.
 
+The minimum validator-enforced managed feature folder contract is:
+
+```text
+docs/features/<feature_id>/
+  feature.source.yaml
+  <feature_id>.yaml
+  lineage.generated.yaml
+  history.md
+```
+
+`README.md` remains optional for feature-specific prose when extra explanation
+adds value.
+
 When migrating older managed feature folders, do not treat the source file as a
 dumping ground for any field that previously existed. The migration target is a
 minimal source file plus richer generated outputs. Fields such as `owner`,

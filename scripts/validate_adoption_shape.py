@@ -1035,12 +1035,36 @@ def validate_managed_mode(config: AdoptionConfig, root: Path, findings: list[Fin
         )
     for folder in feature_roots(root):
         source = folder / "feature.source.yaml"
+        contract = folder / f"{folder.name}.yaml"
+        lineage = folder / "lineage.generated.yaml"
+        history = folder / "history.md"
         if not source.exists():
             add_error(
                 findings,
                 relpath(folder, root),
                 "Managed feature folder is missing feature.source.yaml.",
                 "Create the human-owned feature.source.yaml source file.",
+            )
+        if config.architecture_generator != "none" and not contract.exists():
+            add_error(
+                findings,
+                relpath(folder, root),
+                f"Managed feature folder is missing {folder.name}.yaml.",
+                "Run the architecture generator to regenerate the concrete managed feature contract.",
+            )
+        if config.architecture_generator != "none" and not lineage.exists():
+            add_error(
+                findings,
+                relpath(folder, root),
+                "Managed feature folder is missing lineage.generated.yaml.",
+                "Run the architecture generator to regenerate the feature-local lineage artifact.",
+            )
+        if not history.exists():
+            add_error(
+                findings,
+                relpath(folder, root),
+                "Managed feature folder is missing history.md.",
+                "Add history.md using the managed history pattern with generated markers plus human notes.",
             )
     if generated_architecture_files(root) and not feature_roots(root):
         add_error(
@@ -1056,15 +1080,6 @@ def validate_managed_mode(config: AdoptionConfig, root: Path, findings: list[Fin
             "managed_architecture_metadata mode requires an architecture_generator.",
             "Set architecture_generator to the sync/check script path.",
         )
-    for folder in feature_roots(root):
-        lineage = folder / "lineage.generated.yaml"
-        if config.architecture_generator != "none" and not lineage.exists():
-            add_warning(
-                findings,
-                relpath(folder, root),
-                "Managed feature folder is missing lineage.generated.yaml.",
-                "Run the architecture generator if lineage is adopted, or document why lineage is deferred.",
-            )
     if not metadata_marker_files(root):
         add_warning(
             findings,
