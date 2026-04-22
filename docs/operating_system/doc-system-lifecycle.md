@@ -497,6 +497,13 @@ Current repo note:
 - `docs/generated/architecture_dag.yaml` and
   `docs/generated/capability_lineage.yaml` are adopted generated discovery
   indexes for architecture metadata
+- the canonical current managed migration target matches
+  `customer-churn-prediction-azureml/docs/generated/`, which uses only:
+  - `architecture_dag.yaml`
+  - `capability_lineage.yaml`
+- older generated-discovery families such as `features_index.yaml`,
+  `feature_overview.md`, `stages_index.yaml`, or similar summary-index sets are
+  superseded migration debt once the current managed target is adopted
 - detailed capability evidence lives beside each opted-in feature in
   `docs/features/<feature_id>/lineage.generated.yaml`
 - do not invent unrelated generated discovery files just to satisfy the abstract

@@ -54,6 +54,8 @@ docs/features/billing-insights/
   billing-insights.yaml
   lineage.generated.yaml
   history.md
+docs/generated/architecture_dag.yaml
+docs/generated/capability_lineage.yaml
 docs/stages/analytics.source.yaml
 src/billing/reporting.py
 tests/test_billing_reporting.py
@@ -65,6 +67,7 @@ Ownership:
 - `billing-insights.yaml` is generated or normalized current-state output.
 - `lineage.generated.yaml` is generated evidence.
 - `history.md` holds feature-local notes outside generated blocks and should use the starter partial-generated history pattern.
+- `docs/generated/architecture_dag.yaml` and `docs/generated/capability_lineage.yaml` are the canonical aggregate generated-discovery outputs for the current managed target.
 
 ## Example Sequence
 
@@ -123,16 +126,19 @@ primary_features:
 ```
 
 11. Run the project architecture generator or sync workflow so generated feature contracts, lineage, and discovery come from source.
-12. Remove the flat `docs/features/billing-insights.yaml` after the generated folder contract exists.
-13. Validate:
+12. Retire older generated-discovery files such as `features_index.yaml`,
+    `feature_overview.md`, `stages_index.yaml`, or similar summary-index sets if
+    the repo is moving onto the current starter-style managed target.
+13. Remove the flat `docs/features/billing-insights.yaml` after the generated folder contract exists.
+14. Validate:
 
 ```powershell
 python scripts/validate_adoption_shape.py
 git diff --check
 ```
 
-14. Run the project test suite for the changed feature.
-15. Commit only after source metadata, shared repo-control updates, the recorded starter sync review, generated outputs, validation, and tests agree.
+15. Run the project test suite for the changed feature.
+16. Commit only after source metadata, shared repo-control updates, the recorded starter sync review, generated outputs, validation, and tests agree.
 
 History target after migration:
 

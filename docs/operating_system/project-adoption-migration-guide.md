@@ -447,6 +447,30 @@ After source migration, run the project's canonical architecture sync/check work
 
 If the project has no generator yet, do not hand-invent generated files. Either add the generator first or keep the project in legacy compatibility mode.
 
+For the current starter-style managed target, `docs/generated/` should converge
+to the same shape used by
+`customer-churn-prediction-azureml/docs/generated/`:
+
+```text
+docs/generated/
+  architecture_dag.yaml
+  capability_lineage.yaml
+```
+
+Treat older generated-discovery families such as:
+
+- `feature_capabilities_index.yaml`
+- `feature_dependency_graph.yaml`
+- `feature_overview.md`
+- `features_by_status.yaml`
+- `features_index.yaml`
+- `stage_overview.md`
+- `stages_index.yaml`
+
+as superseded migration debt once the current managed target is adopted. Do not
+keep the older summary-index family beside the newer discovery pair as if both
+were canonical steady-state outputs.
+
 For `history.md`, the migration target is the starter partial-generated history
 pattern:
 
@@ -497,6 +521,8 @@ docs/features/data-pipeline/feature.source.yaml
 docs/features/data-pipeline/data-pipeline.yaml
 docs/features/data-pipeline/lineage.generated.yaml
 docs/features/data-pipeline/history.md
+docs/generated/architecture_dag.yaml
+docs/generated/capability_lineage.yaml
 ```
 
 Correct legacy compatibility shape:
