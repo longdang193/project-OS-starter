@@ -20,6 +20,10 @@ loading every file by default:
 - `lineage.generated.yaml` only for ownership, evidence, drift, or traceability work
 - `history.md` only for narrative context
 
+For managed-mode migration or drift work, still name the generated contract and
+discovery surfaces in triage when they are part of the validator-enforced
+target, even though they are not the upstream source of truth.
+
 Use the smallest truthful reading set for any affected feature folder:
 
 - `feature.source.yaml` first
@@ -151,6 +155,8 @@ Generated discovery note:
 - use `docs/generated/architecture_dag.yaml` and
   `docs/generated/capability_lineage.yaml` when a change affects generated
   architecture metadata indexes
+- in managed mode, treat those generated discovery files as validator-enforced
+  outputs rather than optional side summaries
 - use `docs/features/<feature_id>/lineage.generated.yaml` as the detailed
   generated evidence surface for opted-in feature changes
 - record `generated: none` and `Generated refresh required: no` for unrelated
@@ -180,6 +186,9 @@ with the change:
 - test proof IDs with `@proves <feature_id>.<capability_slug>`
 - generated refresh requirements for feature YAML, feature-local lineage, and
   DAG outputs
+- validator-enforced managed surfaces such as generated feature contracts,
+  generated stage contracts, generated history boundaries, and current
+  generated discovery indexes when migration-target drift is in scope
 - human history updates only when narrative context changes; do not add
   generated timeline blocks to `history.md`
 

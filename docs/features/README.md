@@ -20,12 +20,19 @@ Before creating feature metadata in an existing project, choose an adoption mode
 
 In managed architecture metadata mode, feature folders are required and flat `docs/features/*.yaml` files are not authoritative. Run `python scripts/validate_adoption_shape.py` before committing feature-shape changes.
 
+In that mode, the generated `<feature_id>.yaml` contract, the generated-history
+boundary shape in `history.md`, and the current generated discovery indexes are
+part of the validator-enforced managed target.
+
 In legacy compatibility mode, flat `docs/features/*.yaml` files may remain temporarily, but do not mix them with generated feature-folder contracts.
 
 ## Managed Feature Shape
 
 Human-owned inputs live in `docs/features/<feature_id>/feature.source.yaml`.
 Generated outputs live beside them, including `<feature_id>.yaml`, `lineage.generated.yaml`, and partial generated sections in `history.md`.
+
+Those generated outputs should come from the sync workflow, not hand edits, and
+their schema should match the current starter-managed contract shape.
 
 For a copy-safe Mode B feature source template, see [docs/architecture_templates/feature.source.yaml](../architecture_templates/feature.source.yaml). Use it only after selecting managed architecture metadata or while executing an explicit Mode B migration plan.
 

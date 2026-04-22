@@ -15,6 +15,7 @@ Use this checklist when migrating one real product feature into managed architec
 - [ ] Add YAML `# @architecture` metadata only where configs or components materially participate.
 - [ ] Add markdown frontmatter only to docs that materially explain the feature, stage, or capability.
 - [ ] Run `python scripts/sync_architecture_docs.py`.
+- [ ] Confirm the generated feature contract, any generated stage contracts, `history.md` boundaries, and current generated discovery files match the current managed target rather than older starter-era shapes.
 - [ ] Run `python scripts/validate_adoption_shape.py`.
 - [ ] Run `python scripts/sync_architecture_docs.py --check`.
 - [ ] Run the relevant project test suite.

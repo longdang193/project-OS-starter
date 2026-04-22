@@ -420,6 +420,15 @@ docs/*.md frontmatter
 
 Metadata should reference canonical feature IDs and feature-qualified capability IDs, not old prose labels, unscoped capability slugs, or flat YAML paths.
 
+For managed root docs, migrate `docs/setup.md`, `docs/configuration.md`,
+`docs/usage.md`, `docs/pipeline.md`, and `docs/architecture.md` to the same
+frontmatter-linked shape used by the starter target. They remain cross-cutting
+docs, but in managed mode they are no longer free-form prose-only files.
+Keep canonical `doc_id` values that match the filename stem, add a non-empty
+`doc_type`, and use `explains.*` lists to link the doc back to managed
+features, stages, configs, or components. `docs/pipeline.md` must include
+`explains.stages`.
+
 ### 6b. Diff shared repo-control files forward from the starter
 
 Mode B projects still rely on starter-owned repo method surfaces. When the

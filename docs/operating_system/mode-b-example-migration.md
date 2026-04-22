@@ -68,6 +68,8 @@ Ownership:
 - `lineage.generated.yaml` is generated evidence.
 - `history.md` holds feature-local notes outside generated blocks and should use the starter partial-generated history pattern.
 - `docs/generated/architecture_dag.yaml` and `docs/generated/capability_lineage.yaml` are the canonical aggregate generated-discovery outputs for the current managed target.
+- in managed mode, those generated surfaces are not just present-by-name; they
+  should match the validator-enforced starter target shape
 
 ## Example Sequence
 

@@ -76,6 +76,86 @@ def managed_starter_sync_block(extra: str = "") -> str:
 """ + extra
 
 
+def required_root_doc_text(relative_path: str) -> str:
+    docs = {
+        "docs/setup.md": """---
+doc_id: setup
+doc_type: setup-guide
+explains:
+  features:
+    - workspace-bootstrap
+  stages:
+    - data_validate
+    - data_prep
+---
+
+# Setup
+
+Dependencies and install prerequisites define the bootstrap path.
+""",
+        "docs/configuration.md": """---
+doc_id: configuration
+doc_type: operator-guide
+explains:
+  features:
+    - sample-feature
+  configs:
+    - configs/runtime.yaml
+---
+
+# Configuration
+
+Configuration covers environment variables, config files, defaults, and override ownership.
+""",
+        "docs/usage.md": """---
+doc_id: usage
+doc_type: operator-guide
+explains:
+  features:
+    - sample-feature
+  stages:
+    - data_prep
+    - serving
+---
+
+# Usage
+
+Use the documented commands and entrypoints in the normal developer workflow.
+""",
+        "docs/pipeline.md": """---
+doc_id: pipeline
+doc_type: operator-guide
+explains:
+  features:
+    - sample-feature
+  stages:
+    - data_prep
+    - serving
+---
+
+# Pipeline
+
+The workflow stages and handoff sequence describe the processing flow.
+""",
+        "docs/architecture.md": """---
+doc_id: architecture
+doc_type: architecture-guide
+explains:
+  features:
+    - sample-feature
+  stages:
+    - data_prep
+    - serving
+---
+
+# Architecture
+
+Major components, boundaries, and information flow define the system integration shape.
+""",
+    }
+    return docs[relative_path]
+
+
 def seed_required_managed_mode_surface(root: Path, starter_sync: str | None = None) -> None:
     seed_required_folder_surface(root)
     write_adoption_mode(
@@ -86,26 +166,14 @@ def seed_required_managed_mode_surface(root: Path, starter_sync: str | None = No
         generator="scripts/sync_architecture_docs.py",
         starter_sync=managed_starter_sync_block() if starter_sync is None else starter_sync,
     )
-    write_text(
-        root / "docs" / "setup.md",
-        "# Setup\nDependencies and install prerequisites define the bootstrap path.\n",
-    )
-    write_text(
-        root / "docs" / "configuration.md",
-        "# Configuration\nConfiguration covers environment variables, config files, defaults, and override ownership.\n",
-    )
-    write_text(
-        root / "docs" / "usage.md",
-        "# Usage\nUse the documented commands and entrypoints in the normal developer workflow.\n",
-    )
-    write_text(
-        root / "docs" / "pipeline.md",
-        "# Pipeline\nThe workflow stages and handoff sequence describe the processing flow.\n",
-    )
-    write_text(
-        root / "docs" / "architecture.md",
-        "# Architecture\nMajor components, boundaries, and information flow define the system integration shape.\n",
-    )
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(root / relative_path, required_root_doc_text(relative_path))
 
 
 def seed_managed_feature_folder(
@@ -552,6 +620,49 @@ lineage_exceptions: []
     assert result.returncode == 1
     assert "missing required root project doc" in result.stdout.lower()
     assert "docs/setup.md" in result.stdout
+
+
+def test_validator_rejects_missing_required_root_doc_frontmatter_in_managed_mode(
+    tmp_path: Path,
+) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        "# Pipeline\nThe workflow stages and handoff sequence describe the processing flow.\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed required root doc must include frontmatter metadata" in result.stdout.lower()
+    assert "docs/pipeline.md" in result.stdout
+
+
+def test_validator_rejects_pipeline_frontmatter_without_stage_links_in_managed_mode(
+    tmp_path: Path,
+) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        """---
+doc_id: pipeline
+doc_type: operator-guide
+explains:
+  features:
+    - sample-feature
+---
+
+# Pipeline
+
+The workflow stages and handoff sequence describe the processing flow.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "pipeline doc must explain one or more stages" in result.stdout.lower()
+    assert "docs/pipeline.md" in result.stdout
 
 
 def test_validator_rejects_missing_required_project_folder(tmp_path: Path) -> None:

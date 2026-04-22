@@ -68,7 +68,9 @@ The architecture-lineage system is now steady-state repo policy:
 
 - edit `docs/features/<feature_id>/feature.source.yaml` for human semantic changes
 - edit `docs/stages/<stage_id>.source.yaml` for human stage-boundary changes
-- treat generated feature contracts, generated stage contracts, `lineage.generated.yaml`, and generated history blocks as standard outputs
+- treat generated feature contracts, generated stage contracts,
+  `lineage.generated.yaml`, generated history blocks, and current managed
+  generated discovery indexes as standard generated outputs
 - use `scripts/sync_architecture_docs.py` as the canonical sync/check workflow
 - use `scripts/validate_repo_contracts.py` as the canonical repo-wide contract validation workflow
 - use the canonical sync/check workflow to catch malformed metadata, missing required `@meta`, and disallowed manual reference bridges before commit/push
@@ -77,6 +79,9 @@ The architecture-lineage system is now steady-state repo policy:
   plans update the generated history block automatically
 - keep feature refs metadata-derived; `manual_refs` is not accepted in
   `feature.source.yaml`
+- treat the managed-mode contract shapes validated by
+  `scripts/validate_adoption_shape.py` as migration targets rather than loose
+  generated suggestions
 
 The repo also expects a small standard root documentation surface for projects
 beneath `docs/`:
@@ -107,9 +112,15 @@ validation path now checks:
 - each required doc covers its intended subject at a lightweight semantic level
 - obvious placeholder-only text does not pass
 
-Required root docs do not need frontmatter by default. When they choose to use
-`doc_id` / `explains.*` metadata, they still follow the existing frontmatter
-validation rules.
+In `managed_architecture_metadata` mode, those required root docs also become
+validator-enforced metadata-linked docs. They must carry frontmatter with a
+canonical `doc_id`, a non-empty `doc_type`, and an `explains` mapping that
+links the doc back to the relevant managed feature, stage, config, or component
+surface. `docs/pipeline.md` in particular must keep `explains.stages`.
+
+Outside managed mode, required root docs still do not need frontmatter by
+default. Frontmatter remains optional for other Markdown docs unless they are
+meant to participate in architecture linkage.
 
 The repo also expects a lean required folder surface:
 

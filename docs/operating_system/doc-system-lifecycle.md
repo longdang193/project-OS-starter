@@ -416,9 +416,18 @@ These required root docs are validated for:
 - light file-specific semantic coverage
 - rejection of obvious placeholder-only text
 
-Frontmatter remains optional for required root docs unless a doc is also
-participating in architecture linkage through `doc_id` and `explains.*`
-metadata.
+In `managed_architecture_metadata` mode, these same required root docs are also
+validator-enforced architecture-linked docs. They must include frontmatter with
+the canonical root-doc `doc_id`, a non-empty `doc_type`, and an `explains`
+mapping. The expected steady-state migration target is:
+
+- `docs/setup.md` -> `doc_id: setup`
+- `docs/configuration.md` -> `doc_id: configuration`
+- `docs/usage.md` -> `doc_id: usage`
+- `docs/pipeline.md` -> `doc_id: pipeline` plus non-empty `explains.stages`
+- `docs/architecture.md` -> `doc_id: architecture`
+
+Outside managed mode, frontmatter remains optional for required root docs.
 
 Human-authored docs that materially explain features, capabilities, stages,
 configs, components, or operator workflows may use lightweight frontmatter such

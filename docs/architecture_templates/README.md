@@ -52,6 +52,10 @@ Replace example IDs such as `billing-insights`, `analytics`, and `billing-insigh
 
 Do not copy templates for generated outputs. Create or update the owning source, then run the architecture sync workflow.
 
+In managed mode, the main generated outputs below are also validator-enforced
+migration targets. The filenames alone are not enough; the generated shape must
+match the current starter contract.
+
 Generated outputs include:
 
 - `docs/features/<feature_id>/<feature_id>.yaml`

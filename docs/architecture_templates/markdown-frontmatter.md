@@ -2,6 +2,11 @@
 
 Use frontmatter only for docs that materially explain a feature, capability, stage, config, component, or operator workflow. Do not add it to every markdown file by default.
 
+In `managed_architecture_metadata` mode, the required root docs
+`docs/setup.md`, `docs/configuration.md`, `docs/usage.md`, `docs/pipeline.md`,
+and `docs/architecture.md` are part of that metadata-linked doc surface and
+should follow this pattern with canonical `doc_id` values.
+
 Copy the fenced example below to the top of a real explanatory markdown file:
 
 ```md
