@@ -218,7 +218,8 @@ Formatting rule:
 - do not manually edit generated feature YAML files with the `GENERATED FILE`
   header
 - do not use `manual_refs`; generated refs come from metadata on the owning
-  code, tests, docs, specs, and plans
+  code, tests, docs, specs, plans, configs, and components, and that
+  prohibition is part of shared internal policy
 - quote strings only when YAML requires it or exact literal preservation depends on it
 - avoid unnecessary quotes on ordinary prose entries
 - preserve field order unless the schema owner intentionally changes it

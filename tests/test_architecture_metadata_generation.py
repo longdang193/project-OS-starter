@@ -791,6 +791,7 @@ manual_refs:
 
         assert result.returncode == 1
         assert "manual_refs is no longer supported" in result.stdout
+        assert "configs, or components instead" in result.stdout
     finally:
         rmtree(test_root, ignore_errors=True)
 

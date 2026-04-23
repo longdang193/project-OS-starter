@@ -81,7 +81,8 @@ The architecture-lineage system is now steady-state repo policy:
 - treat feature-history generation as part of the same sync/check workflow; completed
   plans update the generated history block automatically
 - keep feature refs metadata-derived; `manual_refs` is not accepted in
-  `feature.source.yaml`
+  `feature.source.yaml`, and that prohibition is part of shared internal policy
+  rather than a generator-only convention
 - treat the managed-mode contract shapes validated by
   `scripts/validate_adoption_shape.py` as migration targets rather than loose
   generated suggestions

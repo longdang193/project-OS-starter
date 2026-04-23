@@ -29,6 +29,11 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 import yaml
+from validator_policy import (
+    FORBIDDEN_MANUAL_REFS_FIELD,
+    feature_source_has_forbidden_manual_refs,
+    format_manual_refs_forbidden_message,
+)
 
 
 if TYPE_CHECKING:
@@ -55,7 +60,7 @@ def find_manual_ref_sources(root: Path) -> list[str]:
     features_root = root / "docs" / "features"
     for source_path in sorted(features_root.glob("*/feature.source.yaml")):
         parsed = yaml.safe_load(source_path.read_text(encoding="utf-8"))
-        if not isinstance(parsed, dict) or "manual_refs" not in parsed:
+        if not feature_source_has_forbidden_manual_refs(parsed):
             continue
         findings.append(str(source_path.relative_to(root).as_posix()))
     return sorted(findings)
@@ -65,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Audit architecture linkage policy that requires metadata-derived refs "
-            "instead of feature-source manual_refs."
+            f"instead of feature-source {FORBIDDEN_MANUAL_REFS_FIELD}."
         )
     )
     parser.add_argument(
@@ -77,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--strict-awareness",
         action="store_true",
-        help="Exit non-zero when disallowed manual_refs are found.",
+        help=f"Exit non-zero when disallowed {FORBIDDEN_MANUAL_REFS_FIELD} are found.",
     )
     parser.add_argument(
         "--report-awareness",
@@ -92,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     root = args.repo_root.resolve()
     manual_ref_sources = find_manual_ref_sources(root)
     if manual_ref_sources:
-        print("Architecture linkage policy failed: manual_refs is not supported.")
+        print(f"Architecture linkage policy failed: {format_manual_refs_forbidden_message()}")
         for source_path in manual_ref_sources:
             print(f"- {source_path}")
         return 1
@@ -102,7 +107,10 @@ def main(argv: list[str] | None = None) -> int:
     generator.load_code_metadata(root)
 
     if args.report_awareness:
-        print("Architecture linkage awareness audit passed: no feature-source manual_refs found.")
+        print(
+            "Architecture linkage awareness audit passed: "
+            f"no feature-source {FORBIDDEN_MANUAL_REFS_FIELD} found."
+        )
     return 0
 
 

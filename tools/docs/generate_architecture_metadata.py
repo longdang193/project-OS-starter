@@ -50,6 +50,17 @@ from typing import Iterable, Mapping
 import yaml
 
 
+SCRIPTS_ROOT = Path(__file__).resolve().parents[2] / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from validator_policy import (  # noqa: E402
+    FORBIDDEN_MANUAL_REFS_FIELD,
+    feature_source_has_forbidden_manual_refs,
+    format_manual_refs_forbidden_message,
+)
+
+
 GENERATED_HEADER = "# GENERATED FILE - do not edit directly.\n"
 GENERATED_HISTORY_START = "<!-- GENERATED HISTORY START -->"
 GENERATED_HISTORY_END = "<!-- GENERATED HISTORY END -->"
@@ -537,11 +548,8 @@ def validate_feature_source(source: Mapping[str, object], owner: str) -> None:
                     owner=owner,
                 )
                 declared_capability_ids.add(item_id)
-    if "manual_refs" in source:
-        raise ValueError(
-            f"{owner}: manual_refs is no longer supported; add ownership metadata "
-            "to code, tests, docs, specs, or plans instead"
-        )
+    if feature_source_has_forbidden_manual_refs(source):
+        raise ValueError(format_manual_refs_forbidden_message(owner=owner))
     validate_stage_participation(
         source=source,
         owner=owner,

@@ -125,7 +125,8 @@ def test_linkage_audit_fails_when_manual_refs_reappear() -> None:
         result = run_audit(test_root, "--strict-awareness")
 
         assert result.returncode == 1
-        assert "manual_refs is not supported" in result.stdout
+        assert "manual_refs is no longer supported" in result.stdout
+        assert "configs, or components instead" in result.stdout
         assert "docs/features/sample-feature/feature.source.yaml" in result.stdout
     finally:
         rmtree(test_root, ignore_errors=True)
