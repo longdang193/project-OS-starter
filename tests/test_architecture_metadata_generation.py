@@ -158,13 +158,9 @@ dag:
     )
     write_text(
         root / "docs" / "superpowers" / "specs" / "legacy-invalid-frontmatter.md",
-        """---
-feature_name: legacy sample
-invariants:
-  - `legacy` text that older docs did not quote
----
+        """# Legacy Non-Metadata Spec
 
-# Legacy Invalid Frontmatter
+This legacy note has no frontmatter and should not participate in metadata generation.
 """,
     )
     write_text(
@@ -644,6 +640,34 @@ explains:
 
         assert result.returncode == 1
         assert "duplicate doc_id sample-doc" in result.stdout
+    finally:
+        rmtree(test_root, ignore_errors=True)
+
+
+def test_validator_rejects_misplaced_markdown_frontmatter() -> None:
+    test_root = make_test_root()
+    try:
+        seed_minimal_repo(test_root)
+        write_text(
+            test_root / "docs" / "misplaced-frontmatter.md",
+            """
+---
+doc_id: misplaced-frontmatter
+doc_type: guide
+explains:
+  features:
+    - sample-feature
+---
+
+# Misplaced Frontmatter
+""",
+        )
+
+        result = run_generator(test_root, "--validate-only")
+
+        assert result.returncode == 1
+        assert "frontmatter must start at the first byte" in result.stdout.lower()
+        assert "docs/misplaced-frontmatter.md" in result.stdout
     finally:
         rmtree(test_root, ignore_errors=True)
 

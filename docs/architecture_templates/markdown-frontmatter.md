@@ -7,6 +7,11 @@ In `managed_architecture_metadata` mode, the required root docs
 and `docs/architecture.md` are part of that metadata-linked doc surface and
 should follow this pattern with canonical `doc_id` values.
 
+The optional root docs `docs/dataset.md`, `docs/api.md`,
+`docs/observability.md`, and `docs/testing.md` stay optional. When present in
+managed mode, they also follow this pattern with canonical `doc_id` values.
+Place the opening `---` at the first byte of the file so tooling can parse it.
+
 Copy the fenced example below to the top of a real explanatory markdown file:
 
 ```md

@@ -665,6 +665,86 @@ The workflow stages and handoff sequence describe the processing flow.
     assert "docs/pipeline.md" in result.stdout
 
 
+def test_validator_rejects_malformed_optional_root_doc_frontmatter_in_managed_mode(
+    tmp_path: Path,
+) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "dataset.md",
+        """---
+doc_id: dataset
+doc_type: dataset-guide
+explains: not-a-mapping
+---
+
+# Dataset
+
+Dataset sources, schemas, and provenance guidance.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed optional root doc must declare explains metadata" in result.stdout.lower()
+    assert "docs/dataset.md" in result.stdout
+
+
+def test_validator_rejects_optional_root_doc_without_required_links_in_managed_mode(
+    tmp_path: Path,
+) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "api.md",
+        """---
+doc_id: api
+doc_type: api-guide
+explains:
+  configs:
+    - configs/runtime.yaml
+---
+
+# API
+
+API surfaces, service contracts, and endpoint guidance.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "api doc must explain one or more features, capabilities, or components" in result.stdout.lower()
+    assert "docs/api.md" in result.stdout
+
+
+def test_validator_rejects_misplaced_optional_root_doc_frontmatter_in_managed_mode(
+    tmp_path: Path,
+) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    write_text(
+        tmp_path / "docs" / "testing.md",
+        """
+---
+doc_id: testing
+doc_type: testing-guide
+explains:
+  features:
+    - sample-feature
+---
+
+# Testing
+
+Testing strategy, test layers, and release-gating verification guidance.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "frontmatter must start at the first byte" in result.stdout.lower()
+    assert "docs/testing.md" in result.stdout
+
+
 def test_validator_rejects_missing_required_project_folder(tmp_path: Path) -> None:
     write_adoption_mode(
         tmp_path,

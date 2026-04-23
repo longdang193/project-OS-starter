@@ -429,6 +429,12 @@ Keep canonical `doc_id` values that match the filename stem, add a non-empty
 features, stages, configs, or components. `docs/pipeline.md` must include
 `explains.stages`.
 
+Optional root docs remain optional. If the project has `docs/dataset.md`,
+`docs/api.md`, `docs/observability.md`, or `docs/testing.md`, migrate those to
+the same frontmatter-linked managed shape instead of leaving them as unlinked
+prose. Frontmatter must start at the first byte of the Markdown file, except
+for a UTF-8 BOM.
+
 ### 6b. Diff shared repo-control files forward from the starter
 
 Mode B projects still rely on starter-owned repo method surfaces. When the

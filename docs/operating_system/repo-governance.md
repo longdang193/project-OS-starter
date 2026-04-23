@@ -118,6 +118,11 @@ canonical `doc_id`, a non-empty `doc_type`, and an `explains` mapping that
 links the doc back to the relevant managed feature, stage, config, or component
 surface. `docs/pipeline.md` in particular must keep `explains.stages`.
 
+Optional root docs remain optional when absent. When a managed repo creates
+`docs/dataset.md`, `docs/api.md`, `docs/observability.md`, or `docs/testing.md`,
+that file also becomes a validator-enforced metadata-linked doc with canonical
+`doc_id`, non-empty `doc_type`, and doc-appropriate `explains.*` links.
+
 Outside managed mode, required root docs still do not need frontmatter by
 default. Frontmatter remains optional for other Markdown docs unless they are
 meant to participate in architecture linkage.

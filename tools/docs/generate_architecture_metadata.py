@@ -217,17 +217,21 @@ def load_yaml_mapping(path: Path) -> dict[str, object]:
 
 def parse_frontmatter(path: Path, root: Path) -> MetadataDocument | None:
     text = path.read_text(encoding="utf-8")
+    if text.startswith("\ufeff"):
+        text = text.removeprefix("\ufeff")
     if not text.startswith("---"):
+        if text.lstrip().startswith("---"):
+            raise ValueError(f"{relative_path(path, root)}: frontmatter must start at the first byte")
         return None
     parts = text.split("---", 2)
     if len(parts) < 3:
-        return None
+        raise ValueError(f"{relative_path(path, root)}: frontmatter block is not properly closed")
     try:
         parsed = yaml.safe_load(parts[1])
-    except yaml.YAMLError:
-        return None
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{relative_path(path, root)}: could not parse frontmatter: {exc}") from exc
     if not isinstance(parsed, dict):
-        return None
+        raise ValueError(f"{relative_path(path, root)}: frontmatter must be a top-level mapping")
     return MetadataDocument(path=path, relative_path=relative_path(path, root), frontmatter=parsed)
 
 

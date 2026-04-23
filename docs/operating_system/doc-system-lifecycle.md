@@ -429,6 +429,18 @@ mapping. The expected steady-state migration target is:
 
 Outside managed mode, frontmatter remains optional for required root docs.
 
+Optional root docs stay optional when absent. In managed mode, if any optional
+root doc exists, it must use the same metadata-linked pattern:
+
+- `docs/dataset.md` -> `doc_id: dataset`
+- `docs/api.md` -> `doc_id: api`
+- `docs/observability.md` -> `doc_id: observability`
+- `docs/testing.md` -> `doc_id: testing`
+
+These optional docs must include non-empty `doc_type` and doc-appropriate
+`explains.*` lists. Metadata frontmatter must start at the first byte of the
+Markdown file, except for a UTF-8 BOM, so tooling can see it reliably.
+
 Human-authored docs that materially explain features, capabilities, stages,
 configs, components, or operator workflows may use lightweight frontmatter such
 as `doc_id`, `doc_type`, and `explains.features` / `explains.capabilities` /
