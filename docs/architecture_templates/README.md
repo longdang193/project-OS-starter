@@ -4,6 +4,8 @@ Use these templates only when a project has selected `managed_architecture_metad
 
 Do not use these templates for Mode A starter-method-only adoption. Do not use them for Mode C legacy compatibility unless the current task is migrating the project into Mode B.
 
+For Mode A starter-method-only adoption, start from `docs/project_templates/mode-a/` instead. That pack contains required docs, intent docs, repo config, runtime config, and folder anchors without managed architecture metadata.
+
 ## No Double-Entry Rule
 
 Canonical truth should flow downward from upstream owning layers. Downstream layers should derive views from it rather than re-entering it.

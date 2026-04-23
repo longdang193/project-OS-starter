@@ -101,6 +101,36 @@ FEATURE_CONTRACT_CAPABILITY_REQUIRED_KEYS = {
     "statement",
     "state",
 }
+MODE_A_TEMPLATE_SPEC_PATH = "docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md"
+MODE_A_TEMPLATE_ROOT = "docs/project_templates/mode-a"
+MODE_A_TEMPLATE_REQUIRED_FILES = (
+    "README.md",
+    "docs/setup.md",
+    "docs/configuration.md",
+    "docs/usage.md",
+    "docs/pipeline.md",
+    "docs/architecture.md",
+    "docs/intent/README.md",
+    "docs/intent/project-charter.md",
+    "docs/intent/constraints-and-non-goals.md",
+    "docs/intent/stakeholders.md",
+    "docs/intent/success-outcomes.md",
+    "repo_config/adoption-mode.yaml",
+    "repo_config/publication-config.json",
+    "repo_config/agent-adapter-mappings.json",
+    "configs/starter-runtime.yaml",
+    "scripts/README.md",
+    "tests/README.md",
+)
+MODE_A_TEMPLATE_MANAGED_MARKERS = (
+    "@capability",
+    "@proves",
+    "feature.source.yaml",
+    "stage.source.yaml",
+    "explains.features",
+    "capability_id:",
+    "capability_ids:",
+)
 STAGE_CONTRACT_REQUIRED_KEYS = {
     "stage_id",
     "name",
@@ -1179,6 +1209,80 @@ def validate_managed_metadata_templates(root: Path, findings: list[Finding]) -> 
                                         "example so doc metadata preserves downstream capability qualification."
                                     ),
                                 )
+
+
+def validate_mode_a_template_pack(root: Path, findings: list[Finding]) -> None:
+    if not (root / MODE_A_TEMPLATE_SPEC_PATH).exists():
+        return
+
+    template_root = root / MODE_A_TEMPLATE_ROOT
+    for relative_template_path in MODE_A_TEMPLATE_REQUIRED_FILES:
+        path = template_root / relative_template_path
+        if path.exists() and path.is_file():
+            continue
+        add_error(
+            findings,
+            f"{MODE_A_TEMPLATE_ROOT}/{relative_template_path}",
+            "Mode A project template pack is missing a required file.",
+            "Create the path-mirrored template file so starter-method-only projects do not invent it.",
+        )
+
+    adoption_template_path = template_root / "repo_config" / "adoption-mode.yaml"
+    if adoption_template_path.exists():
+        try:
+            payload = load_yaml(adoption_template_path)
+        except yaml.YAMLError as exc:
+            add_error(
+                findings,
+                f"{MODE_A_TEMPLATE_ROOT}/repo_config/adoption-mode.yaml",
+                f"Could not parse Mode A adoption-mode template YAML: {exc}",
+                "Fix YAML syntax so projects can copy the starter_method_only adoption-mode source.",
+            )
+        else:
+            expected_values = {
+                "adoption_mode": "starter_method_only",
+                "managed_architecture_metadata": False,
+                "legacy_feature_contracts": False,
+                "architecture_generator": "none",
+            }
+            if not isinstance(payload, dict):
+                add_error(
+                    findings,
+                    f"{MODE_A_TEMPLATE_ROOT}/repo_config/adoption-mode.yaml",
+                    "Mode A adoption-mode template must be a top-level mapping.",
+                    "Use the same mapping shape as repo_config/adoption-mode.yaml.",
+                )
+            else:
+                for key, expected_value in expected_values.items():
+                    if payload.get(key) == expected_value:
+                        continue
+                    add_error(
+                        findings,
+                        f"{MODE_A_TEMPLATE_ROOT}/repo_config/adoption-mode.yaml",
+                        f"Mode A adoption-mode template must set {key}: {expected_value}.",
+                        "Keep Mode A templates starter-method-only and free of managed architecture metadata.",
+                    )
+
+    for relative_template_path in MODE_A_TEMPLATE_REQUIRED_FILES:
+        path = template_root / relative_template_path
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for marker in MODE_A_TEMPLATE_MANAGED_MARKERS:
+            if marker not in text:
+                continue
+            add_error(
+                findings,
+                f"{MODE_A_TEMPLATE_ROOT}/{relative_template_path}",
+                "Mode A project template contains managed architecture metadata.",
+                (
+                    f"Remove `{marker}` from the Mode A template pack. "
+                    "Use docs/architecture_templates/ only for Mode B managed metadata."
+                ),
+            )
 
 
 def extract_template_comment_body(line: str) -> str | None:
@@ -2321,6 +2425,7 @@ def run_validation(root: Path, adoption_mode_path: Path) -> list[Finding]:
     validate_required_root_docs(root, findings)
     validate_required_project_folders(root, findings)
     validate_managed_metadata_templates(root, findings)
+    validate_mode_a_template_pack(root, findings)
     validate_method_feature_ids(root, findings)
     validate_feature_dependencies(root, findings)
     validate_capability_ids(root, findings)

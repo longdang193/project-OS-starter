@@ -33,6 +33,7 @@ docs/features/*/lineage.generated.yaml -> generated feature-local evidence and t
 docs/features/<feature_id>/  -> feature explanation and human history
 docs/*.md                    -> cross-cutting product docs
 README.md                    -> overview
+docs/project_templates/mode-a/* -> copyable Mode A starter-method templates
 docs/architecture_templates/* -> operating-system template guidance for Mode B architecture metadata
 docs/generated/*             -> generated discovery indexes
 docs/superpowers/specs/*.md  -> design artifacts
@@ -102,6 +103,7 @@ docs/stages/
 docs/generated/
 configs/
 aml/components/
+docs/project_templates/
 docs/architecture_templates/
 .agents/skills/
 .codex/
@@ -477,6 +479,17 @@ generated lineage, generated stage contracts, or generated discovery.
 
 Apply the no-double-entry rule before copying a template: put each fact in the
 owning source layer and let generated surfaces derive from it.
+
+### `docs/project_templates/mode-a/*`
+
+Use the Mode A project template pack when a project adopts starter-method-only
+governance without managed architecture metadata. The pack mirrors destination
+paths for required docs, intent docs, repo metadata/config, runtime config, and
+required folder anchors.
+
+Mode A templates are public-safe starting points for project docs and config.
+They must stay separate from Mode B architecture templates and must not carry
+managed feature, stage, capability, lineage, or generated discovery metadata.
 
 ### `docs/superpowers/specs/*.md` And `docs/superpowers/plans/*.md`
 

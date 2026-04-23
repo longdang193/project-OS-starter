@@ -940,6 +940,119 @@ def seed_required_folder_surface(root: Path) -> None:
             write_text(root / relative_path, "# placeholder\n")
 
 
+MODE_A_TEMPLATE_FILES = (
+    "README.md",
+    "docs/setup.md",
+    "docs/configuration.md",
+    "docs/usage.md",
+    "docs/pipeline.md",
+    "docs/architecture.md",
+    "docs/intent/README.md",
+    "docs/intent/project-charter.md",
+    "docs/intent/constraints-and-non-goals.md",
+    "docs/intent/stakeholders.md",
+    "docs/intent/success-outcomes.md",
+    "repo_config/adoption-mode.yaml",
+    "repo_config/publication-config.json",
+    "repo_config/agent-adapter-mappings.json",
+    "configs/starter-runtime.yaml",
+    "scripts/README.md",
+    "tests/README.md",
+)
+
+
+def seed_mode_a_template_pack(root: Path) -> None:
+    write_text(
+        root / "docs" / "superpowers" / "specs" / "2026-04-23-mode-a-project-template-pack-spec.md",
+        "# Mode A Project Template Pack Spec\n",
+    )
+    template_root = root / "docs" / "project_templates" / "mode-a"
+    for relative_path in MODE_A_TEMPLATE_FILES:
+        if relative_path == "repo_config/adoption-mode.yaml":
+            write_text(
+                template_root / relative_path,
+                """adoption_mode: starter_method_only
+managed_architecture_metadata: false
+legacy_feature_contracts: false
+architecture_generator: none
+notes: >
+  Starter-method-only project template.
+""",
+            )
+        elif relative_path == "repo_config/publication-config.json":
+            write_text(template_root / relative_path, '{"publicPaths":["README.md"]}\n')
+        elif relative_path == "repo_config/agent-adapter-mappings.json":
+            write_text(template_root / relative_path, "[]\n")
+        elif relative_path == "configs/starter-runtime.yaml":
+            write_text(template_root / relative_path, "runtime:\n  environment: dev\n")
+        else:
+            write_text(template_root / relative_path, "# Template\n\nFill this project-specific template.\n")
+
+
+def test_validator_rejects_missing_mode_a_template_pack_file(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_mode_a_template_pack(tmp_path)
+    (tmp_path / "docs" / "project_templates" / "mode-a" / "docs" / "usage.md").unlink()
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "mode a project template pack is missing a required file" in result.stdout.lower()
+    assert "docs/project_templates/mode-a/docs/usage.md" in result.stdout
+
+
+def test_validator_rejects_wrong_mode_a_template_adoption_mode(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_mode_a_template_pack(tmp_path)
+    write_text(
+        tmp_path / "docs" / "project_templates" / "mode-a" / "repo_config" / "adoption-mode.yaml",
+        """adoption_mode: managed_architecture_metadata
+managed_architecture_metadata: true
+legacy_feature_contracts: false
+architecture_generator: scripts/sync_architecture_docs.py
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "mode a adoption-mode template must set adoption_mode: starter_method_only" in result.stdout.lower()
+    assert "mode a adoption-mode template must set managed_architecture_metadata: false" in result.stdout.lower()
+    assert "mode a adoption-mode template must set architecture_generator: none" in result.stdout.lower()
+
+
+def test_validator_rejects_managed_markers_in_mode_a_template_pack(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_mode_a_template_pack(tmp_path)
+    write_text(
+        tmp_path / "docs" / "project_templates" / "mode-a" / "docs" / "pipeline.md",
+        "# Pipeline\n\nDo not put @capability metadata here.\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "mode a project template contains managed architecture metadata" in result.stdout.lower()
+    assert "docs/project_templates/mode-a/docs/pipeline.md" in result.stdout
+
+
+def test_validator_accepts_complete_mode_a_template_pack(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, required_root_doc_text(relative_path))
+    seed_mode_a_template_pack(tmp_path)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+
+
 def test_validator_rejects_heading_only_required_doc(tmp_path: Path) -> None:
     seed_required_folder_surface(tmp_path)
     write_text(tmp_path / "docs" / "setup.md", "# Setup\n")

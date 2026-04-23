@@ -1,0 +1,36 @@
+{
+  "publicPaths": [
+    "README.md",
+    "docs/setup.md",
+    "docs/configuration.md",
+    "docs/usage.md",
+    "docs/pipeline.md",
+    "docs/architecture.md"
+  ],
+  "forbiddenPaths": [
+    "AGENTS.md",
+    ".agents",
+    ".codex",
+    ".cursor",
+    "agent-core",
+    "docs/adoption_guide.md",
+    "docs/operating_system",
+    "docs/superpowers",
+    "logs",
+    "sample",
+    ".worktrees"
+  ],
+  "requiredPaths": [
+    "README.md",
+    "docs/setup.md",
+    "docs/configuration.md",
+    "docs/usage.md",
+    "docs/pipeline.md",
+    "docs/architecture.md"
+  ],
+  "allowedGeneratedPaths": [],
+  "scrubPrivateReferencePaths": [
+    "README.md",
+    "docs"
+  ]
+}

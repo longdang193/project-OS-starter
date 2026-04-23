@@ -1,0 +1,32 @@
+[
+  {
+    "source": "agent-core/adapters/codex/root-AGENTS.template.md",
+    "destination": "AGENTS.md",
+    "prefix": "#"
+  },
+  {
+    "source": "agent-core/adapters/codex/docs-AGENTS.template.md",
+    "destination": "docs/AGENTS.md",
+    "prefix": "#"
+  },
+  {
+    "source": "agent-core/adapters/codex/rules/command-execution.rules",
+    "destination": ".codex/rules/command-execution.rules",
+    "prefix": "#"
+  },
+  {
+    "source": "agent-core/adapters/codex/rules/publication-boundary.rules",
+    "destination": ".codex/rules/publication-boundary.rules",
+    "prefix": "#"
+  },
+  {
+    "source": "agent-core/adapters/codex/rules/python-contracts.rules",
+    "destination": ".codex/rules/python-contracts.rules",
+    "prefix": "#"
+  },
+  {
+    "source": "agent-core/adapters/codex/rules/doc-contracts.rules",
+    "destination": ".codex/rules/doc-contracts.rules",
+    "prefix": "#"
+  }
+]

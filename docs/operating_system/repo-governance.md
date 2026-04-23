@@ -339,6 +339,12 @@ dependencies.
 
 The public repo must not depend on these files to understand or use the product.
 
+Mode A templates under `docs/project_templates/mode-a/` are public-safe starting
+points for new project docs and config. A downstream project may copy and fill
+them, but the starter's private operating-system docs, specs, plans, adapters,
+agent memory, and generated instruction surfaces still require an explicit
+curated publication decision before entering a public mirror.
+
 ## GitNexus Freshness Policy
 
 GitNexus is an optional private-only analysis layer for repo navigation,

@@ -151,6 +151,7 @@ docs/project_templates/mode-a/
     pipeline.md
     architecture.md
     intent/
+      README.md
       project-charter.md
       constraints-and-non-goals.md
       stakeholders.md
@@ -225,10 +226,15 @@ commands, data paths, and environment variables.
 They should not include managed architecture frontmatter by default. Mode A
 root docs are prose docs unless the project later migrates to Mode B.
 
+Optional project docs such as `docs/dataset.md`, `docs/api.md`,
+`docs/observability.md`, and `docs/testing.md` may be added later from the
+same style, but they should not be required by the initial Mode A pack.
+
 ## Required Intent Templates
 
 The Mode A pack should include:
 
+- `docs/intent/README.md`
 - `docs/intent/project-charter.md`
 - `docs/intent/constraints-and-non-goals.md`
 - `docs/intent/stakeholders.md`
@@ -236,6 +242,10 @@ The Mode A pack should include:
 
 Intent templates should be stable source-like docs. They should not become
 execution logs, changelogs, or feature registries.
+
+`docs/intent/README.md` should explain the purpose of the intent layer and
+point to the deeper intent docs. It is an orientation anchor, not a replacement
+for project-specific intent content.
 
 ## Required Folder Anchor Templates
 
