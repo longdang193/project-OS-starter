@@ -15,6 +15,7 @@ tags:
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -48,6 +49,35 @@ def make_test_root() -> Path:
     root = REPO_ROOT / ".tmp-tests" / f"architecture-metadata-{uuid.uuid4().hex}"
     root.mkdir(parents=True, exist_ok=False)
     return root
+
+
+def test_dump_yaml_normalizes_long_mapping_keys() -> None:
+    long_capability_id = (
+        "pipeline-performance.shortlist-reuses-the-latest-stored-embedding-row-for-a-job-url-"
+        "only-when-both-the-structured-signature-and-embedding-contract-fingerprint-still-match"
+    )
+
+    spec = importlib.util.spec_from_file_location("generate_architecture_metadata", GENERATOR)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    dumped = module.dump_yaml(
+        {
+            "capabilities": {
+                long_capability_id: {
+                    "state": "active",
+                    "statement": "Long keys should stay readable in generated contracts.",
+                }
+            }
+        }
+    )
+
+    assert "\n  ? " not in dumped
+    assert f'  "{long_capability_id}":' in dumped
+    assert yaml.safe_load(dumped)["capabilities"][long_capability_id]["state"] == "active"
 
 
 def seed_minimal_repo(root: Path) -> None:
