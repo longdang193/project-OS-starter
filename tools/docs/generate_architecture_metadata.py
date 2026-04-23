@@ -138,6 +138,38 @@ class IndentedSafeDumper(yaml.SafeDumper):
         return super().increase_indent(flow, False)
 
 
+def quote_yaml_key(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def normalize_explicit_string_keys(yaml_text: str) -> str:
+    lines = yaml_text.splitlines()
+    normalized: list[str] = []
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.lstrip(" ")
+        indent = line[: len(line) - len(stripped)]
+
+        if stripped.startswith("? ") and index + 1 < len(lines):
+            next_line = lines[index + 1]
+            next_stripped = next_line.lstrip(" ")
+            next_indent = next_line[: len(next_line) - len(next_stripped)]
+            if next_indent == indent and next_stripped.startswith(": "):
+                normalized.append(f"{indent}{quote_yaml_key(stripped[2:])}:")
+                normalized.append(f"{indent}  {next_stripped[2:]}")
+                index += 2
+                continue
+
+        normalized.append(line)
+        index += 1
+
+    trailing_newline = "\n" if yaml_text.endswith("\n") else ""
+    return "\n".join(normalized) + trailing_newline
+
+
 @dataclass(frozen=True)
 class MetadataDocument:
     path: Path
@@ -198,7 +230,7 @@ def relative_path(path: Path, root: Path) -> str:
 
 
 def dump_yaml(payload: object) -> str:
-    return yaml.dump(
+    dumped = yaml.dump(
         payload,
         Dumper=IndentedSafeDumper,
         sort_keys=False,
@@ -206,6 +238,7 @@ def dump_yaml(payload: object) -> str:
         allow_unicode=False,
         width=MAX_LINE_WIDTH,
     )
+    return normalize_explicit_string_keys(dumped)
 
 
 def load_yaml_mapping(path: Path) -> dict[str, object]:
