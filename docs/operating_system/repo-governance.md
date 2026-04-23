@@ -74,6 +74,8 @@ The architecture-lineage system is now steady-state repo policy:
 - use `scripts/sync_architecture_docs.py` as the canonical sync/check workflow
 - use `scripts/validate_repo_contracts.py` as the canonical repo-wide contract validation workflow
 - use the canonical sync/check workflow to catch malformed metadata, missing required `@meta`, and disallowed manual reference bridges before commit/push
+- keep shared validator contract policy in `scripts/validator_policy.py`; it is
+  internal starter validation policy, not downstream runtime config
 - treat lineage completeness enforcement as a standing requirement, not a rollout-only concern
 - treat feature-history generation as part of the same sync/check workflow; completed
   plans update the generated history block automatically
