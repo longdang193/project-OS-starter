@@ -40,11 +40,13 @@ import subprocess
 import sys
 
 import yaml
-
-
-GENERATED_HISTORY_START = "<!-- GENERATED HISTORY START -->"
-GENERATED_HISTORY_END = "<!-- GENERATED HISTORY END -->"
-HUMAN_HISTORY_HEADING = "## Human Notes"
+from validator_policy import (
+    ARCHITECTURE_METADATA_MARKER_LINE,
+    GENERATED_HISTORY_END_MARKER,
+    GENERATED_HISTORY_START_MARKER,
+    HUMAN_NOTES_HEADING,
+    SETUP_META_MARKER,
+)
 
 
 @dataclass(frozen=True)
@@ -151,9 +153,9 @@ def validate_history_boundaries(root: Path) -> list[ValidationIssue]:
             continue
 
         text = history_path.read_text(encoding="utf-8")
-        start_count = text.count(GENERATED_HISTORY_START)
-        end_count = text.count(GENERATED_HISTORY_END)
-        human_count = text.count(HUMAN_HISTORY_HEADING)
+        start_count = text.count(GENERATED_HISTORY_START_MARKER)
+        end_count = text.count(GENERATED_HISTORY_END_MARKER)
+        human_count = text.count(HUMAN_NOTES_HEADING)
 
         if start_count != 1:
             issues.append(
@@ -180,8 +182,8 @@ def validate_history_boundaries(root: Path) -> list[ValidationIssue]:
         if start_count != 1 or end_count != 1:
             continue
 
-        start_index = text.index(GENERATED_HISTORY_START)
-        end_index = text.index(GENERATED_HISTORY_END)
+        start_index = text.index(GENERATED_HISTORY_START_MARKER)
+        end_index = text.index(GENERATED_HISTORY_END_MARKER)
         if start_index > end_index:
             issues.append(
                 ValidationIssue(
@@ -192,8 +194,8 @@ def validate_history_boundaries(root: Path) -> list[ValidationIssue]:
             )
             continue
 
-        after_end = text[end_index + len(GENERATED_HISTORY_END) :].lstrip("\n")
-        if not after_end.startswith(HUMAN_HISTORY_HEADING):
+        after_end = text[end_index + len(GENERATED_HISTORY_END_MARKER) :].lstrip("\n")
+        if not after_end.startswith(HUMAN_NOTES_HEADING):
             issues.append(
                 ValidationIssue(
                     category="partial_generated_boundary_error",
@@ -220,7 +222,7 @@ def _starts_with_architecture_block(text: str) -> bool:
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped == "# @architecture":
+        if stripped == ARCHITECTURE_METADATA_MARKER_LINE:
             return True
         if stripped.startswith("#"):
             continue
@@ -238,7 +240,7 @@ def _has_setup_meta(text: str, suffix: str) -> bool:
             continue
         if not stripped.startswith("#"):
             return False
-        return stripped[1:].lstrip() == "@meta"
+        return stripped[1:].lstrip() == SETUP_META_MARKER
     return False
 
 

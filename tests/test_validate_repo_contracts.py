@@ -27,19 +27,25 @@ from shutil import rmtree
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VALIDATOR_PATH = REPO_ROOT / "scripts" / "validate_repo_contracts.py"
+POLICY_PATH = REPO_ROOT / "scripts" / "validator_policy.py"
+SCRIPTS_ROOT = str(REPO_ROOT / "scripts")
+
+if SCRIPTS_ROOT not in sys.path:
+    sys.path.insert(0, SCRIPTS_ROOT)
 
 
-def load_validator_module():
-    spec = importlib.util.spec_from_file_location("validate_repo_contracts", VALIDATOR_PATH)
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Unable to load validate_repo_contracts.py")
+        raise RuntimeError(f"Unable to load {path.name}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-VALIDATOR = load_validator_module()
+VALIDATOR = load_module("validate_repo_contracts", VALIDATOR_PATH)
+POLICY = load_module("validator_policy_for_tests", POLICY_PATH)
 
 
 def run_validator(*args: str) -> subprocess.CompletedProcess[str]:
@@ -79,7 +85,12 @@ def test_validate_history_boundaries_reports_missing_human_notes() -> None:
         )
         write_text(
             test_root / "docs" / "features" / "demo-feature" / "history.md",
-            "# Demo History\n\n<!-- GENERATED HISTORY START -->\n\nNothing yet.\n\n<!-- GENERATED HISTORY END -->\n",
+            (
+                "# Demo History\n\n"
+                f"{POLICY.GENERATED_HISTORY_START_MARKER}\n\n"
+                "Nothing yet.\n\n"
+                f"{POLICY.GENERATED_HISTORY_END_MARKER}\n"
+            ),
         )
 
         issues = VALIDATOR.validate_history_boundaries(test_root)
@@ -96,15 +107,26 @@ def test_required_metadata_coverage_allows_leading_comment_before_architecture_b
     try:
         write_text(
             test_root / "configs" / "demo.yaml",
-            "# Helpful comment.\n# @architecture\n# owner: demo-feature\n# stages:\n#   - fixed_train\n# role: config\nvalue: 1\n",
+            (
+                "# Helpful comment.\n"
+                f"{POLICY.ARCHITECTURE_METADATA_MARKER_LINE}\n"
+                "# owner: demo-feature\n# stages:\n#   - fixed_train\n# role: config\nvalue: 1\n"
+            ),
         )
         write_text(
             test_root / "aml" / "components" / "demo.yaml",
-            "# @architecture\n# owner: demo-feature\n# stages:\n#   - fixed_train\n# role: component\ncomponent: true\n",
+            (
+                f"{POLICY.ARCHITECTURE_METADATA_MARKER_LINE}\n"
+                "# owner: demo-feature\n# stages:\n#   - fixed_train\n# role: component\ncomponent: true\n"
+            ),
         )
         write_text(
             test_root / "setup" / "demo.sh",
-            "#!/usr/bin/env sh\n# @meta\n# type: script\n# name: demo_setup\n\necho ok\n",
+            (
+                "#!/usr/bin/env sh\n"
+                f"# {POLICY.SETUP_META_MARKER}\n"
+                "# type: script\n# name: demo_setup\n\necho ok\n"
+            ),
         )
 
         issues = VALIDATOR.validate_required_metadata_coverage(test_root)
@@ -127,3 +149,11 @@ def test_main_propagates_subprocess_failure(monkeypatch) -> None:
     status = VALIDATOR.main(["--repo-root", str(REPO_ROOT), "--fast"])
 
     assert status == 1
+
+
+def test_shared_repo_contract_markers_match_expected_contract() -> None:
+    assert POLICY.GENERATED_HISTORY_START_MARKER == "<!-- GENERATED HISTORY START -->"
+    assert POLICY.GENERATED_HISTORY_END_MARKER == "<!-- GENERATED HISTORY END -->"
+    assert POLICY.HUMAN_NOTES_HEADING == "## Human Notes"
+    assert POLICY.ARCHITECTURE_METADATA_MARKER_LINE == "# @architecture"
+    assert POLICY.SETUP_META_MARKER == "@meta"

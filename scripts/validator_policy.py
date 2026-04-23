@@ -283,6 +283,13 @@ LINEAGE_RICH_TIMELINE_KEYS = {
 }
 LINEAGE_COMPLETENESS_STATUSES = {"complete", "excepted", "incomplete"}
 
+# Shared repo-contract marker policy.
+GENERATED_HISTORY_START_MARKER = "<!-- GENERATED HISTORY START -->"
+GENERATED_HISTORY_END_MARKER = "<!-- GENERATED HISTORY END -->"
+HUMAN_NOTES_HEADING = "## Human Notes"
+ARCHITECTURE_METADATA_MARKER_LINE = "# @architecture"
+SETUP_META_MARKER = "@meta"
+
 # Template and metadata-scan policy.
 MODE_A_TEMPLATE_SPEC_PATH = "docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md"
 MODE_A_TEMPLATE_ROOT = "docs/project_templates/mode-a"

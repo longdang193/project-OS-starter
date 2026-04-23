@@ -160,9 +160,9 @@ Use feature YAML for product/domain feature contracts only.
 
 For existing-project migrations, first choose an adoption mode in `docs/operating_system/project-adoption-migration-guide.md` and record it in `repo_config/adoption-mode.yaml`. Validate the shape with `python scripts/validate_adoption_shape.py`.
 
-Validator-owned contract policy for this adoption check now lives in
-`scripts/validator_policy.py`. Treat that module as internal starter validation
-policy, not as project runtime configuration.
+Validator-owned contract policy for this adoption check and shared repo-contract
+marker strings now lives in `scripts/validator_policy.py`. Treat that module as
+internal starter validation policy, not as project runtime configuration.
 
 In managed architecture metadata mode, feature truth lives in `docs/features/<feature_id>/feature.source.yaml`; generated or normalized contracts live beside it inside the feature folder. Flat `docs/features/*.yaml` files are legacy compatibility only and must not be mixed with generated feature-folder contracts.
 
