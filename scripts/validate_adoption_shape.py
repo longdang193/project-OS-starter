@@ -1695,44 +1695,32 @@ def validate_generated_feature_contract_schema(root: Path, findings: list[Findin
                         value=satisfies,
                     )
 
-        if any(key in payload for key in FEATURE_CONTRACT_FRESHNESS_KEYS):
-            revision = payload.get("revision")
-            if revision is not None and not isinstance(revision, int):
+        missing_freshness = FEATURE_CONTRACT_FRESHNESS_KEYS.difference(payload)
+        if missing_freshness:
+            add_error(
+                findings,
+                relative_contract_path,
+                "Generated feature contract is missing required freshness metadata.",
+                "Include: " + ", ".join(sorted(FEATURE_CONTRACT_FRESHNESS_KEYS)) + ".",
+            )
+
+        revision = payload.get("revision")
+        if revision is not None and not isinstance(revision, int):
+            add_error(
+                findings,
+                relative_contract_path,
+                "Generated feature contract revision must be an integer.",
+                "Regenerate the contract so revision is emitted as an integer freshness field.",
+            )
+        for field_name in ("latest_change_id", "last_updated_at"):
+            value = payload.get(field_name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
                 add_error(
                     findings,
                     relative_contract_path,
-                    "Generated feature contract revision must be an integer.",
-                    "Regenerate the contract so revision is emitted as an integer freshness field.",
+                    f"Generated feature contract {field_name} must be a non-empty string.",
+                    "Regenerate the contract so freshness metadata uses canonical string values.",
                 )
-            for field_name in ("latest_change_id", "last_updated_at"):
-                value = payload.get(field_name)
-                if value is not None and (not isinstance(value, str) or not value.strip()):
-                    add_error(
-                        findings,
-                        relative_contract_path,
-                        f"Generated feature contract {field_name} must be a non-empty string.",
-                        "Regenerate the contract so freshness metadata uses canonical string values.",
-                    )
-
-        lineage_path = contract_path.parent / "lineage.generated.yaml"
-        if lineage_path.exists():
-            try:
-                lineage_payload = load_yaml(lineage_path)
-            except yaml.YAMLError:
-                lineage_payload = None
-            if isinstance(lineage_payload, dict):
-                timeline = lineage_payload.get("timeline")
-                if isinstance(timeline, list) and timeline:
-                    missing_freshness = [
-                        key for key in FEATURE_CONTRACT_FRESHNESS_KEYS if key not in payload
-                    ]
-                    if missing_freshness:
-                        add_error(
-                            findings,
-                            relative_contract_path,
-                            "Generated feature contract is missing freshness metadata despite completed lineage history.",
-                            "Include: " + ", ".join(sorted(FEATURE_CONTRACT_FRESHNESS_KEYS)) + ".",
-                        )
 
 
 def validate_generated_stage_contract_schema(root: Path, findings: list[Finding]) -> None:

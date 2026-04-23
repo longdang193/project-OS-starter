@@ -209,13 +209,10 @@ tests, including:
 - `summary`
 - `invariants`
 - `capabilities`
-- `refs`
-
-and, when completed-plan metadata exists:
-
 - `revision`
 - `latest_change_id`
 - `last_updated_at`
+- `refs`
 
 ### Current gap
 
@@ -230,15 +227,14 @@ not that it is actually the canonical generated feature contract shape.
 - require a top-level mapping
 - require the core generated contract keys
 - require `refs` to be a mapping of string-list ref families
-- require freshness metadata fields when they are present to use the expected
-  types
-- document the intended migration rule:
-  - if completed-plan metadata exists, managed repos should emit
-    `revision`, `latest_change_id`, and `last_updated_at`
+- require freshness metadata fields to be present:
+  - `revision`
+  - `latest_change_id`
+  - `last_updated_at`
+- require freshness metadata fields to use the expected types
 
-This spec does not require adoption-shape validation to infer completed-plan
-metadata itself immediately, but it should at least validate the canonical
-shape when the fields are present and prepare for stronger enforcement later.
+This spec does not require adoption-shape validation to infer the semantic
+correctness of the revision number, latest change ID, or timestamp.
 
 ## Gap 3: Managed Feature History Structure
 

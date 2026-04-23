@@ -264,8 +264,7 @@ Desired migration target:
 - the newer customer-style feature-folder shape where `feature.source.yaml`
   stays minimal and human-owned
 - the generated contract carries refs plus generated freshness metadata such as
-  `revision`, `latest_change_id`, and `last_updated_at` when completed-plan
-  metadata exists
+  `revision`, `latest_change_id`, and `last_updated_at`
 - `lineage.generated.yaml` stays evidence-oriented
 - `history.md` uses the partial-generated history pattern
 
@@ -275,7 +274,8 @@ wrong contract in those files.
 
 Likewise, do not treat older generated contracts that omit freshness metadata as
 equally valid steady-state outputs once the repo is using the current managed
-generator contract and completed-plan metadata is available.
+generator contract. An empty `timeline: []` does not exempt a generated feature
+contract from the freshness schema.
 
 Flat files such as `docs/features/data-pipeline.yaml` are legacy compatibility only once managed architecture metadata is adopted.
 
@@ -543,7 +543,7 @@ Managed mode validation should confirm:
 - generated indexes exclude operating-system artifacts
 - code/config/test metadata references existing feature IDs and feature-qualified capability IDs
 - `docs/features/<feature_id>/lineage.generated.yaml` uses the canonical evidence-oriented schema rather than a legacy summary-style shape
-- `docs/features/<feature_id>/<feature_id>.yaml` keeps the canonical generated feature-contract shape, including freshness metadata when completed lineage history exists
+- `docs/features/<feature_id>/<feature_id>.yaml` keeps the canonical generated feature-contract shape, including `revision`, `latest_change_id`, and `last_updated_at`
 - `docs/features/<feature_id>/history.md` keeps the generated-history boundary markers plus `## Human Notes`
 - `docs/stages/<stage_id>.yaml` uses the canonical flat generated stage contract shape rather than an older nested stage wrapper
 - `docs/generated/architecture_dag.yaml` and `docs/generated/capability_lineage.yaml` keep the canonical generated discovery schemas

@@ -224,6 +224,9 @@ refs:
   docs: []
   configs: []
   components: []
+revision: 1
+latest_change_id: 2026-04-22-sample-change
+last_updated_at: "2026-04-22T10:30:00+02:00"
 """,
         )
     if include_lineage:
@@ -440,6 +443,116 @@ refs:
 
     assert result.returncode == 1
     assert "generated feature contract capabilities[0] must be a mapping" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_feature_contract_missing_freshness_with_empty_timeline(
+    tmp_path: Path,
+) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_contract=False)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/features/sample-feature/feature.source.yaml
+feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+refs:
+  code: []
+  tests: []
+  specs: []
+  plans: []
+  docs: []
+  configs: []
+  components: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated feature contract is missing required freshness metadata" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_feature_contract_partial_freshness_metadata(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_contract=False)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/features/sample-feature/feature.source.yaml
+feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+refs:
+  code: []
+  tests: []
+  specs: []
+  plans: []
+  docs: []
+  configs: []
+  components: []
+revision: 1
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated feature contract is missing required freshness metadata" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_feature_contract_invalid_freshness_metadata(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path, include_contract=False)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/features/sample-feature/feature.source.yaml
+feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+refs:
+  code: []
+  tests: []
+  specs: []
+  plans: []
+  docs: []
+  configs: []
+  components: []
+revision: one
+latest_change_id: ""
+last_updated_at: ""
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated feature contract revision must be an integer" in result.stdout.lower()
+    assert "generated feature contract latest_change_id must be a non-empty string" in result.stdout.lower()
+    assert "generated feature contract last_updated_at must be a non-empty string" in result.stdout.lower()
 
 
 def test_validator_accepts_generated_stage_contract_shape(tmp_path: Path) -> None:
