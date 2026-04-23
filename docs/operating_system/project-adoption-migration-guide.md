@@ -181,7 +181,9 @@ docs/features/<feature_id>/lineage.generated.yaml
     - keep concise fields such as `summary`, `statement`, `doc_id`, and `doc_type` as single-line trimmed strings
     - remove leading/trailing whitespace and blank-line padding from concise fields
     - remove duplicate or empty items from unordered metadata lists
+    - reorder non-semantic membership lists into canonical lexical order
     - keep repo-relative metadata paths canonical with forward slashes and no surrounding whitespace
+    - do not sort chronology or workflow-sequence fields whose order carries meaning
 12. Update stage source files so `primary_features` and `supporting_features` describe stage ownership.
 13. Update source metadata that feeds lineage so it references canonical feature IDs and feature-qualified capability IDs:
     - code

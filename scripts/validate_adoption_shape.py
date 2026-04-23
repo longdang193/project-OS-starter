@@ -625,6 +625,9 @@ def _validate_canonical_string_list(
     require_exists: bool = False,
     item_fix: str,
     duplicate_fix: str,
+    enforce_sorted: bool = False,
+    order_fix: str | None = None,
+    sort_key: Any = None,
 ) -> None:
     label = f"{subject}.{field_name}" if subject.endswith("]") else f"{subject} {field_name}"
     if not isinstance(value, list):
@@ -637,6 +640,8 @@ def _validate_canonical_string_list(
         return
 
     seen: set[str] = set()
+    valid_items: list[str] = []
+    has_invalid_items = False
     for index, item in enumerate(value):
         if check_paths:
             _validate_canonical_repo_relative_path(
@@ -650,6 +655,7 @@ def _validate_canonical_string_list(
                 fix=item_fix,
             )
             if not isinstance(item, str) or item != item.strip() or "\\" in item or "\r" in item or "\n" in item:
+                has_invalid_items = True
                 continue
         else:
             if not _is_non_empty_string(item) or not isinstance(item, str) or item != item.strip() or "\r" in item or "\n" in item:
@@ -659,6 +665,7 @@ def _validate_canonical_string_list(
                     f"{label}[{index}] must be a non-empty canonical string item.",
                     item_fix,
                 )
+                has_invalid_items = True
                 continue
 
         assert isinstance(item, str)
@@ -669,8 +676,24 @@ def _validate_canonical_string_list(
                 f"{label} contains duplicate value `{item}`.",
                 duplicate_fix,
             )
+            has_invalid_items = True
             continue
         seen.add(item)
+        valid_items.append(item)
+
+    if not enforce_sorted or has_invalid_items:
+        return
+
+    key_fn = sort_key or (lambda candidate: candidate)
+    expected_items = sorted(valid_items, key=key_fn)
+    if valid_items != expected_items:
+        expected_preview = ", ".join(expected_items)
+        add_error(
+            findings,
+            path,
+            f"{label} must use canonical lexical order.",
+            order_fix or f"Reorder items as [{expected_preview}].",
+        )
 
 
 def validate_starter_sync_record(config: AdoptionConfig, path: str, findings: list[Finding]) -> None:
@@ -967,6 +990,8 @@ def validate_managed_feature_source_schema(root: Path, findings: list[Finding]) 
                 value=payload.get(field_name, []),
                 item_fix="Use a YAML list of unique canonical string values with no empty items.",
                 duplicate_fix="Keep unordered metadata lists deduplicated so source metadata stays canonical.",
+                enforce_sorted=True,
+                order_fix="Keep unordered metadata lists in canonical lexical order so human-authored source stays stable across repos.",
             )
 
         stage_participation = payload.get("stage_participation", [])
@@ -1005,6 +1030,8 @@ def validate_managed_feature_source_schema(root: Path, findings: list[Finding]) 
                     value=item.get("capability_ids", []),
                     item_fix="Use a list of unique feature-qualified capability IDs with no empty items.",
                     duplicate_fix="Keep stage participation capability_ids deduplicated.",
+                    enforce_sorted=True,
+                    order_fix="Keep stage participation capability_ids in canonical lexical order.",
                 )
 
 
@@ -1052,6 +1079,8 @@ def validate_managed_stage_source_schema(root: Path, findings: list[Finding]) ->
                     value=payload.get(field_name, []),
                     item_fix="Use a YAML list of unique canonical string values with no empty items.",
                     duplicate_fix="Keep unordered stage metadata lists deduplicated.",
+                    enforce_sorted=field_name in {"primary_features", "supporting_features", "inputs", "outputs"},
+                    order_fix="Keep unordered stage source lists in canonical lexical order so stage boundaries stay stable across repos.",
                 )
 
 
@@ -1268,6 +1297,8 @@ def validate_managed_root_doc_metadata(
                 require_exists=False,
                 item_fix="Use YAML lists of stable canonical IDs or repo-relative paths with no empty items.",
                 duplicate_fix="Keep explains lists deduplicated so managed root-doc metadata stays canonical.",
+                enforce_sorted=True,
+                order_fix="Keep explains lists in canonical lexical order so managed root-doc metadata stays stable across repos.",
             )
             if not isinstance(values, list) or any(
                 not isinstance(value, str)
@@ -1378,6 +1409,8 @@ def validate_managed_metadata_templates(root: Path, findings: list[Finding]) -> 
                             value=payload.get(field_name, []),
                             item_fix="Use YAML lists of unique canonical string values in the template.",
                             duplicate_fix="Keep template unordered lists deduplicated.",
+                            enforce_sorted=True,
+                            order_fix="Keep template unordered lists in canonical lexical order.",
                         )
                 feature_id = payload.get("feature_id")
                 if not isinstance(feature_id, str) or not feature_id:
@@ -1430,6 +1463,8 @@ def validate_managed_metadata_templates(root: Path, findings: list[Finding]) -> 
                                 value=capability_ids,
                                 item_fix="Use a list of unique feature-qualified capability IDs in the template.",
                                 duplicate_fix="Keep template capability_ids lists deduplicated.",
+                                enforce_sorted=True,
+                                order_fix="Keep template capability_ids in canonical lexical order.",
                             )
                             for capability_id in capability_ids:
                                 if not isinstance(capability_id, str):
@@ -1489,6 +1524,8 @@ def validate_managed_metadata_templates(root: Path, findings: list[Finding]) -> 
                             value=stage_payload.get(field_name, []),
                             item_fix="Use YAML lists of unique canonical string values in the stage template.",
                             duplicate_fix="Keep template unordered lists deduplicated.",
+                            enforce_sorted=field_name in {"primary_features", "supporting_features", "inputs", "outputs"},
+                            order_fix="Keep stage template unordered lists in canonical lexical order.",
                         )
 
     yaml_template_path = root / Path(YAML_ARCHITECTURE_TEMPLATE_PATH)
@@ -1596,6 +1633,8 @@ def validate_managed_metadata_templates(root: Path, findings: list[Finding]) -> 
                                 require_exists=False,
                                 item_fix="Use canonical string lists in the fenced frontmatter example.",
                                 duplicate_fix="Keep fenced frontmatter explains lists deduplicated.",
+                                enforce_sorted=True,
+                                order_fix="Keep fenced frontmatter explains lists in canonical lexical order.",
                             )
                         features = explains.get("features", [])
                         capabilities = explains.get("capabilities", [])

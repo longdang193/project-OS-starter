@@ -34,7 +34,10 @@ Canonical style notes for real managed docs:
 
 - keep `doc_id` and `doc_type` as single-line concise strings
 - keep `explains.*` lists free of duplicates and empty items
+- keep non-semantic `explains.*` lists in canonical lexical order
 - use forward-slash repo-relative paths when a path-based `explains.*` list is
   present
+- do not sort chronology or workflow-sequence fields whose order carries
+  meaning
 
 Keep this template as a fenced example so validators do not treat it as real architecture metadata.

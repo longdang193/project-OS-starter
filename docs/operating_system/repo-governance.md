@@ -84,6 +84,8 @@ The architecture-lineage system is now steady-state repo policy:
   generated suggestions
 - treat canonical style on required managed metadata surfaces as validator-owned
   contract behavior rather than optional polish
+- treat canonical ordering the same way for unordered managed metadata lists,
+  while leaving chronology and workflow-sequence fields unsorted
 
 The repo also expects a small standard root documentation surface for projects
 beneath `docs/`:
@@ -135,6 +137,8 @@ the contract as well:
 - concise frontmatter fields such as `doc_id` and `doc_type` must stay
   single-line and trimmed
 - unordered `explains.*` lists must not contain duplicate or empty items
+- unordered `explains.*` lists must use canonical lexical order when they are
+  set-like membership fields
 - path-like metadata values must use canonical repo-relative paths
 
 The repo also expects a lean required folder surface:

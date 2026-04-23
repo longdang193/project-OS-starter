@@ -225,8 +225,12 @@ Formatting rule:
   `summary`, `statement`, `doc_id`, and `doc_type` as single-line canonical
   strings without leading/trailing whitespace or blank-line padding
 - keep unordered metadata lists free of duplicate and empty items
+- keep unordered metadata lists in canonical lexical order when the field is
+  set-like rather than sequence-like
 - keep repo-relative metadata paths canonical with forward slashes and no
   surrounding whitespace
+- do not sort chronology or workflow-sequence fields such as generated
+  timelines when order carries meaning
 
 ### `docs/stages/*.source.yaml` And Generated Stage Contracts
 
@@ -443,6 +447,8 @@ For managed required root docs, canonical style is also enforced:
 
 - `doc_id` and `doc_type` must stay canonical concise strings
 - `explains.*` lists must not contain duplicates or empty items
+- `explains.*` lists should use canonical lexical order when they are
+  non-semantic membership lists
 - path-like `explains.*` entries must use canonical repo-relative paths
 
 Optional root docs stay optional when absent. In managed mode, if any optional
@@ -496,7 +502,9 @@ owning source layer and let generated surfaces derive from it.
 Templates should also model canonical style plainly. They should show
 single-line concise metadata fields, deduplicated unordered lists, and
 forward-slash repo-relative paths where path references are part of the
-example.
+example. When a template shows a non-semantic membership list, keep that list
+in canonical lexical order. Do not imply that chronology or workflow sequences
+should be sorted.
 
 ### `docs/project_templates/mode-a/*`
 

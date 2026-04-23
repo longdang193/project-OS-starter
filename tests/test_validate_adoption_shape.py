@@ -85,8 +85,8 @@ explains:
   features:
     - workspace-bootstrap
   stages:
-    - data_validate
     - data_prep
+    - data_validate
 ---
 
 # Setup
@@ -1285,6 +1285,207 @@ timeline:
     assert result.returncode == 1
     assert "lineage.generated.yaml source must be a canonical repo-relative path" in result.stdout.lower()
     assert "timeline[0].source_plan must be a canonical repo-relative path" in result.stdout.lower()
+
+
+def test_validator_rejects_unsorted_feature_source_unordered_lists(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_managed_feature_folder(tmp_path, feature_id="alpha-upstream")
+    seed_managed_feature_folder(tmp_path, feature_id="zeta-upstream")
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
+        """feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains:
+  - serving
+  - analytics
+depends_on:
+  - zeta-upstream
+  - alpha-upstream
+capabilities: []
+stage_participation:
+  - stage_id: analytics
+    role: primary
+    capability_ids:
+      - sample-feature.zeta-capability
+      - sample-feature.alpha-capability
+lineage_exceptions:
+  - refs-gap
+  - docs-gap
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "feature.source.yaml domains must use canonical lexical order" in result.stdout.lower()
+    assert "feature.source.yaml depends_on must use canonical lexical order" in result.stdout.lower()
+    assert "feature.source.yaml stage_participation[0].capability_ids must use canonical lexical order" in result.stdout.lower()
+    assert "feature.source.yaml lineage_exceptions must use canonical lexical order" in result.stdout.lower()
+
+
+def test_validator_rejects_unsorted_stage_source_lists(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "stages" / "sample_stage.source.yaml",
+        """stage_id: sample_stage
+name: Sample Stage
+status: active
+purpose: Run the sample stage.
+primary_features:
+  - zeta-feature
+  - alpha-feature
+supporting_features:
+  - support-z
+  - support-a
+inputs:
+  - zeta records
+  - alpha records
+outputs:
+  - zeta outputs
+  - alpha outputs
+notes:
+  - Keep note order human-owned.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "stage.source.yaml primary_features must use canonical lexical order" in result.stdout.lower()
+    assert "stage.source.yaml supporting_features must use canonical lexical order" in result.stdout.lower()
+    assert "stage.source.yaml inputs must use canonical lexical order" in result.stdout.lower()
+    assert "stage.source.yaml outputs must use canonical lexical order" in result.stdout.lower()
+
+
+def test_validator_rejects_unsorted_managed_root_doc_explains_lists(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "architecture.md",
+        """---
+doc_id: architecture
+doc_type: architecture-guide
+explains:
+  features:
+    - sample-zeta
+    - sample-alpha
+  stages:
+    - serving
+    - data_prep
+  components:
+    - src/zeta_component.py
+    - src/alpha_component.py
+---
+
+# Architecture
+
+Major components, boundaries, and information flow define the system integration shape.
+""",
+    )
+    write_text(tmp_path / "src" / "alpha_component.py", "print('alpha')\n")
+    write_text(tmp_path / "src" / "zeta_component.py", "print('zeta')\n")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed required root doc explains.features must use canonical lexical order" in result.stdout.lower()
+    assert "managed required root doc explains.stages must use canonical lexical order" in result.stdout.lower()
+    assert "managed required root doc explains.components must use canonical lexical order" in result.stdout.lower()
+
+
+def test_validator_accepts_sorted_phase_2a_managed_lists(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_managed_feature_folder(tmp_path, feature_id="alpha-upstream")
+    seed_managed_feature_folder(tmp_path, feature_id="zeta-upstream")
+    seed_stage_source(tmp_path, "sample_stage")
+    seed_generated_stage_contract(tmp_path, "sample_stage")
+    seed_generated_discovery(tmp_path)
+    write_text(tmp_path / "src" / "alpha_component.py", "print('alpha')\n")
+    write_text(tmp_path / "src" / "zeta_component.py", "print('zeta')\n")
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
+        """feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains:
+  - analytics
+  - serving
+depends_on:
+  - alpha-upstream
+  - zeta-upstream
+capabilities: []
+stage_participation:
+  - stage_id: analytics
+    role: primary
+    capability_ids:
+      - sample-feature.alpha-capability
+      - sample-feature.zeta-capability
+lineage_exceptions:
+  - docs-gap
+  - refs-gap
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "stages" / "sample_stage.source.yaml",
+        """stage_id: sample_stage
+name: Sample Stage
+status: active
+purpose: Run the sample stage.
+primary_features:
+  - alpha-feature
+  - zeta-feature
+supporting_features:
+  - support-a
+  - support-z
+inputs:
+  - alpha records
+  - zeta records
+outputs:
+  - alpha outputs
+  - zeta outputs
+notes:
+  - Keep note order human-owned.
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "architecture.md",
+        """---
+doc_id: architecture
+doc_type: architecture-guide
+explains:
+  components:
+    - src/alpha_component.py
+    - src/zeta_component.py
+  features:
+    - sample-alpha
+    - sample-zeta
+  stages:
+    - data_prep
+    - serving
+---
+
+# Architecture
+
+Major components, boundaries, and information flow define the system integration shape.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
 
 
 def test_validator_accepts_complete_mode_a_template_pack(tmp_path: Path) -> None:
