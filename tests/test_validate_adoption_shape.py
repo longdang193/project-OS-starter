@@ -276,6 +276,28 @@ component_refs: []
     return path
 
 
+def seed_stage_source(root: Path, stage_id: str = "sample_stage") -> Path:
+    path = root / "docs" / "stages" / f"{stage_id}.source.yaml"
+    write_text(
+        path,
+        f"""stage_id: {stage_id}
+name: Sample Stage
+status: active
+purpose: Run the sample stage.
+primary_features:
+  - sample-feature
+supporting_features: []
+inputs:
+  - validated records
+outputs:
+  - reporting-ready outputs
+notes:
+  - Stage ownership is declared here.
+""",
+    )
+    return path
+
+
 def seed_generated_discovery(root: Path) -> None:
     write_text(
         root / "docs" / "generated" / "capability_lineage.yaml",
@@ -551,8 +573,8 @@ last_updated_at: ""
 
     assert result.returncode == 1
     assert "generated feature contract revision must be an integer" in result.stdout.lower()
-    assert "generated feature contract latest_change_id must be a non-empty string" in result.stdout.lower()
-    assert "generated feature contract last_updated_at must be a non-empty string" in result.stdout.lower()
+    assert "generated feature contract latest_change_id must be a non-empty canonical concise string" in result.stdout.lower()
+    assert "generated feature contract last_updated_at must be a non-empty canonical concise string" in result.stdout.lower()
 
 
 def test_validator_accepts_generated_stage_contract_shape(tmp_path: Path) -> None:
@@ -616,7 +638,7 @@ component_refs: []
     result = run_validator(tmp_path)
 
     assert result.returncode == 1
-    assert "workflow_position must be a non-empty string when present" in result.stdout.lower()
+    assert "generated stage contract workflow_position must be a non-empty canonical concise string" in result.stdout.lower()
 
 
 def test_validator_rejects_history_without_generated_boundaries(tmp_path: Path) -> None:
@@ -1034,6 +1056,235 @@ def test_validator_rejects_managed_markers_in_mode_a_template_pack(tmp_path: Pat
     assert result.returncode == 1
     assert "mode a project template contains managed architecture metadata" in result.stdout.lower()
     assert "docs/project_templates/mode-a/docs/pipeline.md" in result.stdout
+
+
+def test_validator_rejects_feature_source_summary_with_blank_line_padding(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
+        """feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: >
+  Sample summary.
+
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+stage_participation: []
+lineage_exceptions: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "feature.source.yaml summary must be a canonical concise string" in result.stdout.lower()
+
+
+def test_validator_rejects_feature_source_duplicate_list_items(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "feature.source.yaml",
+        """feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: Sample summary.
+invariants: []
+domains:
+  - billing
+  - billing
+depends_on:
+  - upstream-source
+  - upstream-source
+capabilities: []
+stage_participation:
+  - stage_id: analytics
+    role: primary
+    capability_ids:
+      - sample-feature.submit-job
+      - sample-feature.submit-job
+      - ""
+lineage_exceptions: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "feature.source.yaml domains contains duplicate value" in result.stdout.lower()
+    assert "feature.source.yaml depends_on contains duplicate value" in result.stdout.lower()
+    assert "feature.source.yaml stage_participation[0].capability_ids contains duplicate value" in result.stdout.lower()
+    assert "feature.source.yaml stage_participation[0].capability_ids[2] must be a non-empty canonical string item" in result.stdout.lower()
+
+
+def test_validator_rejects_generated_feature_contract_noncanonical_summary(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/features/sample-feature/feature.source.yaml
+feature_id: sample-feature
+name: Sample Feature
+status: active
+type: workflow
+summary: >
+  Sample summary.
+
+invariants: []
+domains: []
+depends_on: []
+capabilities: []
+refs:
+  code: []
+  tests: []
+  specs: []
+  plans: []
+  docs: []
+  configs: []
+  components: []
+revision: 1
+latest_change_id: 2026-04-22-sample-change
+last_updated_at: "2026-04-22T10:30:00+02:00"
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated feature contract summary must be a canonical concise string" in result.stdout.lower()
+
+
+def test_validator_rejects_stage_source_and_contract_canonical_style_drift(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "stages" / "sample_stage.source.yaml",
+        """stage_id: sample_stage
+name: Sample Stage
+status: active
+purpose: >
+  Run the sample stage.
+
+primary_features:
+  - sample-feature
+  - sample-feature
+supporting_features:
+  - ""
+inputs:
+  - validated records
+outputs:
+  - reporting-ready outputs
+notes:
+  - Stage ownership is declared here.
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "stages" / "sample_stage.yaml",
+        """# GENERATED FILE - do not edit directly.
+# Source: docs/stages/sample_stage.source.yaml
+stage_id: sample_stage
+name: Sample Stage
+status: active
+purpose: >
+  Run the sample stage.
+
+feature_refs:
+  - sample-feature
+  - sample-feature
+capability_refs: []
+code_refs: []
+test_refs: []
+doc_refs: []
+config_refs: []
+component_refs: []
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "stage.source.yaml purpose must be a canonical concise string" in result.stdout.lower()
+    assert "stage.source.yaml primary_features contains duplicate value" in result.stdout.lower()
+    assert "generated stage contract purpose must be a canonical concise string" in result.stdout.lower()
+    assert "generated stage contract feature_refs contains duplicate value" in result.stdout.lower()
+
+
+def test_validator_rejects_managed_root_doc_noncanonical_frontmatter(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_stage_source(tmp_path, "data_prep")
+    seed_generated_stage_contract(tmp_path, "data_prep")
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "pipeline.md",
+        """---
+doc_id: pipeline
+doc_type: "operator-guide "
+explains:
+  stages:
+    - data_prep
+    - data_prep
+    - ""
+---
+
+# Pipeline
+
+The workflow stages and handoff sequence describe the processing flow.
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "managed required root doc doc_type must be a canonical concise string" in result.stdout.lower()
+    assert "managed required root doc explains.stages contains duplicate value" in result.stdout.lower()
+    assert "managed required root doc explains.stages[2] must be a non-empty canonical string item" in result.stdout.lower()
+
+
+def test_validator_rejects_noncanonical_repo_relative_paths(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    write_text(
+        tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",
+        """# GENERATED FILE - do not edit directly.
+feature_id: sample-feature
+source: docs\\features\\sample-feature\\feature.source.yaml
+invariants: {}
+capabilities: {}
+timeline:
+  - completed_at: "2026-04-22T10:30:00+02:00"
+    source_plan: " docs/superpowers/plans/2026-04-22-sample-plan.md "
+    change_id: 2026-04-22-sample-change
+    summary: Add sample capability metadata.
+    capabilities:
+      - sample-feature.submit-job
+    verification:
+      - python -m pytest
+    outcome: Passed
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-22-sample-plan.md",
+        "# Sample Plan\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "lineage.generated.yaml source must be a canonical repo-relative path" in result.stdout.lower()
+    assert "timeline[0].source_plan must be a canonical repo-relative path" in result.stdout.lower()
 
 
 def test_validator_accepts_complete_mode_a_template_pack(tmp_path: Path) -> None:

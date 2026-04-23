@@ -82,6 +82,8 @@ The architecture-lineage system is now steady-state repo policy:
 - treat the managed-mode contract shapes validated by
   `scripts/validate_adoption_shape.py` as migration targets rather than loose
   generated suggestions
+- treat canonical style on required managed metadata surfaces as validator-owned
+  contract behavior rather than optional polish
 
 The repo also expects a small standard root documentation surface for projects
 beneath `docs/`:
@@ -126,6 +128,14 @@ that file also becomes a validator-enforced metadata-linked doc with canonical
 Outside managed mode, required root docs still do not need frontmatter by
 default. Frontmatter remains optional for other Markdown docs unless they are
 meant to participate in architecture linkage.
+
+For managed required and optional root docs, canonical metadata style is part of
+the contract as well:
+
+- concise frontmatter fields such as `doc_id` and `doc_type` must stay
+  single-line and trimmed
+- unordered `explains.*` lists must not contain duplicate or empty items
+- path-like metadata values must use canonical repo-relative paths
 
 The repo also expects a lean required folder surface:
 

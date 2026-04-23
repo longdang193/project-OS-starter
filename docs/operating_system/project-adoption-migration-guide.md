@@ -177,8 +177,13 @@ docs/features/<feature_id>/lineage.generated.yaml
 ```
 
 10. Normalize capability IDs to feature-qualified stable identifiers, such as `<feature_id>.<capability_slug>`. Do not use prose sentences or unscoped capability slugs as capability IDs.
-11. Update stage source files so `primary_features` and `supporting_features` describe stage ownership.
-12. Update source metadata that feeds lineage so it references canonical feature IDs and feature-qualified capability IDs:
+11. Normalize managed metadata into canonical style before validation:
+    - keep concise fields such as `summary`, `statement`, `doc_id`, and `doc_type` as single-line trimmed strings
+    - remove leading/trailing whitespace and blank-line padding from concise fields
+    - remove duplicate or empty items from unordered metadata lists
+    - keep repo-relative metadata paths canonical with forward slashes and no surrounding whitespace
+12. Update stage source files so `primary_features` and `supporting_features` describe stage ownership.
+13. Update source metadata that feeds lineage so it references canonical feature IDs and feature-qualified capability IDs:
     - code
     - config
     - tests
@@ -186,29 +191,29 @@ docs/features/<feature_id>/lineage.generated.yaml
     - scripts
     - docs
     - pipeline and workflow manifests
-13. Re-run starter-controlled generators and sync steps after shared repo-control files change. At minimum, run adapter sync if adapter sources or mappings changed:
+14. Re-run starter-controlled generators and sync steps after shared repo-control files change. At minimum, run adapter sync if adapter sources or mappings changed:
 
 ```powershell
 .\scripts\sync_agent_adapters.ps1
 .\scripts\verify_agent_adapters.ps1
 ```
 
-14. Refresh generated architecture surfaces from source using the project generator when one exists. If no generator exists, do not hand-invent generated files; add the generator first or stay in legacy compatibility.
-15. Verify no authoritative flat `docs/features/*.yaml` files remain outside feature folders.
-16. Validate the selected mode:
+15. Refresh generated architecture surfaces from source using the project generator when one exists. If no generator exists, do not hand-invent generated files; add the generator first or stay in legacy compatibility.
+16. Verify no authoritative flat `docs/features/*.yaml` files remain outside feature folders.
+17. Validate the selected mode:
 
 ```powershell
 python scripts/validate_adoption_shape.py
 ```
 
-17. Run the relevant test suite for the surfaces changed.
-18. Run whitespace validation:
+18. Run the relevant test suite for the surfaces changed.
+19. Run whitespace validation:
 
 ```powershell
 git diff --check
 ```
 
-19. Commit only after managed metadata, shared repo-control files, the `starter_sync` review record, generated files, source metadata, validation, and tests agree.
+20. Commit only after managed metadata, shared repo-control files, the `starter_sync` review record, generated files, source metadata, validation, and tests agree.
 
 ## Mode C Step-By-Step: Legacy Compatibility
 

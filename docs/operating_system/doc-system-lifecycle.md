@@ -220,6 +220,13 @@ Formatting rule:
 - preserve field order unless the schema owner intentionally changes it
 - use `.\scripts\format_contract_yaml.py` as the canonical normalization/check path for human-authored feature/stage YAML
 - use `tools\docs\generate_architecture_metadata.py` as the canonical refresh/check path for opted-in generated feature contracts and discovery indexes
+- treat canonical style as part of the contract, not optional cleanup
+- keep concise metadata fields such as `feature_id`, `name`, `status`, `type`,
+  `summary`, `statement`, `doc_id`, and `doc_type` as single-line canonical
+  strings without leading/trailing whitespace or blank-line padding
+- keep unordered metadata lists free of duplicate and empty items
+- keep repo-relative metadata paths canonical with forward slashes and no
+  surrounding whitespace
 
 ### `docs/stages/*.source.yaml` And Generated Stage Contracts
 
@@ -432,6 +439,12 @@ mapping. The expected steady-state migration target is:
 
 Outside managed mode, frontmatter remains optional for required root docs.
 
+For managed required root docs, canonical style is also enforced:
+
+- `doc_id` and `doc_type` must stay canonical concise strings
+- `explains.*` lists must not contain duplicates or empty items
+- path-like `explains.*` entries must use canonical repo-relative paths
+
 Optional root docs stay optional when absent. In managed mode, if any optional
 root doc exists, it must use the same metadata-linked pattern:
 
@@ -479,6 +492,11 @@ generated lineage, generated stage contracts, or generated discovery.
 
 Apply the no-double-entry rule before copying a template: put each fact in the
 owning source layer and let generated surfaces derive from it.
+
+Templates should also model canonical style plainly. They should show
+single-line concise metadata fields, deduplicated unordered lists, and
+forward-slash repo-relative paths where path references are part of the
+example.
 
 ### `docs/project_templates/mode-a/*`
 

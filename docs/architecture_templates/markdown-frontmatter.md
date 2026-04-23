@@ -30,4 +30,11 @@ explains:
 # Billing Insights Operator Guide
 ```
 
+Canonical style notes for real managed docs:
+
+- keep `doc_id` and `doc_type` as single-line concise strings
+- keep `explains.*` lists free of duplicates and empty items
+- use forward-slash repo-relative paths when a path-based `explains.*` list is
+  present
+
 Keep this template as a fenced example so validators do not treat it as real architecture metadata.
