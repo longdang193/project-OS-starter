@@ -77,6 +77,15 @@ Do not force operating-system work into fake product workstreams.
 6. Use `docs/intent/workstreams/` as the canonical registry for valid named
    workstream IDs.
 
+When a human or agent still needs help moving from this roadmap into the right
+thread, use the roadmap-aware prompts under
+`docs/operating_system/prompt_templates/`, especially:
+
+- `roadmap-to-workstream-prompt.md`
+- `workstream-to-spec-prompt.md`
+- `workstream-alignment-review-prompt.md`
+- `roadmap-gap-prompt.md`
+
 If the work is repo-method work, it may still correctly use
 `parent_workstream: none`.
 

@@ -2,6 +2,9 @@
 
 Use this when the problem is known and you want a design spec.
 
+If the roadmap thread or workstream is still unclear, use
+`roadmap-to-workstream-prompt.md` or `workstream-to-spec-prompt.md` first.
+
 ```text
 Draft a spec for this change.
 

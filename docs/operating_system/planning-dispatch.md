@@ -65,6 +65,12 @@ silent filler.
 
 For a copyable user-facing entrypoint into this lifecycle, see
 `docs/operating_system/prompt_templates/`.
+That prompt pack now includes upstream prompts for:
+
+- translating roadmap threads into the right workstream or `operating_system`
+  branch
+- checking whether a proposed change really fits the named workstream
+- identifying possible roadmap gaps before writing downstream specs or plans
 
 ## Four Planning Layers
 
@@ -110,6 +116,9 @@ Use the answer to choose the owning source layer first:
 If the work starts from intent, use
 `docs/intent/master-workstream-roadmap.md` to decide whether the next branch is
 a product workstream or the `operating_system` branch.
+If the user needs help making that choice, route them to the roadmap-aware
+prompt ladder under `docs/operating_system/prompt_templates/` before pushing
+straight into spec or plan prompts.
 
 Record the outcome downstream:
 

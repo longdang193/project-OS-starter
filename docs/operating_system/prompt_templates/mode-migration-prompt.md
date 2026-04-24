@@ -3,6 +3,9 @@
 Use this when you want to assess or plan migration from
 `starter_method_only` to `managed_architecture_metadata`.
 
+If you are not sure whether this migration belongs to a product workstream or
+to `operating_system`, use `roadmap-to-workstream-prompt.md` first.
+
 ```text
 Assess or plan the migration from starter_method_only to managed_architecture_metadata.
 

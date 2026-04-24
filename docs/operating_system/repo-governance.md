@@ -49,6 +49,10 @@ For copyable user-facing prompts that help invoke the lifecycle cleanly, use
 `docs/operating_system/prompt_templates/`. That folder is the practical
 invocation layer for humans; the surrounding operating-system docs remain the
 governing method layer.
+It now covers both:
+
+- upstream roadmap/workstream routing prompts
+- downstream spec/plan/execution prompts
 
 The repo now uses `.codex/` as its active Codex config/generated root, while
 still splitting Codex ownership by role:

@@ -7,6 +7,11 @@ as the high-level overview.
 Use this folder when you need the concrete valid workstream IDs that specs and
 plans may reference through `parent_workstream`.
 
+When you are still deciding which workstream to use, or whether the work should
+stay in `operating_system`, use the roadmap-aware prompts under
+`docs/operating_system/prompt_templates/` before drafting downstream specs or
+plans.
+
 Rules:
 
 - one Markdown file per named workstream

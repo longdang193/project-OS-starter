@@ -3,6 +3,10 @@
 Use this when an implementation plan already exists and you want the agent to
 carry it out.
 
+If you are still deciding which roadmap thread the work belongs to, use
+`roadmap-to-workstream-prompt.md` or `workstream-alignment-review-prompt.md`
+before this prompt.
+
 ```text
 Execute this implementation plan in this session.
 

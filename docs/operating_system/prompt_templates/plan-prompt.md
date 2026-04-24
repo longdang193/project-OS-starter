@@ -3,6 +3,9 @@
 Use this when the design is already approved and you want an implementation
 plan.
 
+If the workstream is still unclear, use `roadmap-to-workstream-prompt.md`
+before this prompt.
+
 ```text
 Turn this approved design into an implementation plan.
 
