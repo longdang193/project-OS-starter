@@ -151,6 +151,23 @@ def test_main_propagates_subprocess_failure(monkeypatch) -> None:
     assert status == 1
 
 
+def test_build_subprocess_steps_runs_adoption_shape_before_repo_config() -> None:
+    steps = VALIDATOR.build_subprocess_steps(
+        root=REPO_ROOT,
+        python_executable="python",
+        fast=True,
+    )
+
+    rendered = [" ".join(step) for step in steps]
+
+    assert any("sync_architecture_docs.py --check" in step for step in rendered)
+    assert any("validate_adoption_shape.py" in step for step in rendered)
+    assert any("validate_repo_config.py" in step for step in rendered)
+    assert next(
+        index for index, step in enumerate(rendered) if "validate_adoption_shape.py" in step
+    ) < next(index for index, step in enumerate(rendered) if "validate_repo_config.py" in step)
+
+
 def test_shared_repo_contract_markers_match_expected_contract() -> None:
     assert POLICY.GENERATED_HISTORY_START_MARKER == "<!-- GENERATED HISTORY START -->"
     assert POLICY.GENERATED_HISTORY_END_MARKER == "<!-- GENERATED HISTORY END -->"

@@ -111,8 +111,9 @@ These root docs are cross-cutting project docs, not replacements for
 generated discovery. The normal validation and hook path should fail when the
 required set is missing.
 
-Required root-doc validation is intentionally light but real. The normal
-validation path now checks:
+Required root-doc validation is intentionally light but real. That contract is
+owned by `scripts/validate_adoption_shape.py`, and the normal repo-contract
+gate runs that validator directly. The normal validation path now checks:
 
 - required paths exist
 - each required doc has a top-level heading
@@ -121,10 +122,11 @@ validation path now checks:
 - obvious placeholder-only text does not pass
 
 In `managed_architecture_metadata` mode, those required root docs also become
-validator-enforced metadata-linked docs. They must carry frontmatter with a
-canonical `doc_id`, a non-empty `doc_type`, and an `explains` mapping that
-links the doc back to the relevant managed feature, stage, config, or component
-surface. `docs/pipeline.md` in particular must keep `explains.stages`.
+validator-enforced metadata-linked docs through the same adoption-shape
+validator. They must carry frontmatter with a canonical `doc_id`, a non-empty
+`doc_type`, and an `explains` mapping that links the doc back to the relevant
+managed feature, stage, config, or component surface. `docs/pipeline.md` in
+particular must keep `explains.stages`.
 
 Optional root docs remain optional when absent. When a managed repo creates
 `docs/dataset.md`, `docs/api.md`, `docs/observability.md`, or `docs/testing.md`,

@@ -13,8 +13,8 @@ inputs:
   - docs/stages/*.source.yaml
   - docs/superpowers/specs/*.md
   - docs/superpowers/plans/*.md
-  - repo_config/*.json
   - repo_config/adoption-mode.yaml
+  - repo_config/*.json
   - configs/*.yaml
   - aml/components/*.yaml
   - setup/*.ps1
@@ -115,12 +115,21 @@ def run_step(command: list[str], *, cwd: Path) -> int:
 
 def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) -> list[list[str]]:
     sync_script = str(root / "scripts" / "sync_architecture_docs.py")
+    adoption_shape_script = str(root / "scripts" / "validate_adoption_shape.py")
     repo_config_script = str(root / "scripts" / "validate_repo_config.py")
     steps: list[list[str]] = [
         [python_executable, sync_script, "--check"],
+        [python_executable, adoption_shape_script],
         [python_executable, repo_config_script],
     ]
     if not fast:
+        pytest_targets = [
+            "tests/test_validate_repo_config.py",
+            "tests/test_validate_repo_contracts.py",
+        ]
+        adoption_test = root / "tests" / "test_validate_adoption_shape.py"
+        if adoption_test.exists():
+            pytest_targets.insert(1, "tests/test_validate_adoption_shape.py")
         steps.append(
             [
                 python_executable,
@@ -128,9 +137,7 @@ def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) ->
                 "pytest",
                 "--basetemp",
                 pytest_basetemp(".tmp-tests/repo-contract-pytest"),
-                "tests/test_validate_repo_config.py",
-                "tests/test_validate_adoption_shape.py",
-                "tests/test_validate_repo_contracts.py",
+                *pytest_targets,
                 "-q",
             ]
         )

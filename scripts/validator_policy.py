@@ -7,7 +7,7 @@ responsibility:
   - Centralize validator-owned adoption-shape policy constants and field registries.
   - Keep schema, template, and canonical-style rule data separate from validator flow logic.
 inputs:
-  - Internal starter validation policy maintained in code.
+  - Internal validator policy maintained in code.
 outputs:
   - Shared constants imported by validator scripts.
 tags:
@@ -310,6 +310,7 @@ def format_manual_refs_forbidden_message(*, owner: str | None = None) -> str:
     if owner is None:
         return message
     return f"{owner}: {message}"
+
 
 # Template and metadata-scan policy.
 MODE_A_TEMPLATE_SPEC_PATH = "docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md"

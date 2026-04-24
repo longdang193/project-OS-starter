@@ -18,6 +18,12 @@ Canonical truth should flow downward from upstream owning layers. Lower layers
 should derive or reference that truth rather than restating the same semantic
 fact manually.
 
+That same rule applies to validators: repo-config validation should not
+re-enter adoption-shape root-doc rules manually. Required root-doc presence and
+managed root-doc metadata are adoption-shape contract surfaces, and the
+canonical repo-contract gate should invoke the adoption-shape validator rather
+than duplicating that policy downstream.
+
 ## Source-Of-Truth Layers
 
 ```text
