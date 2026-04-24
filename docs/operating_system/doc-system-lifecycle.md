@@ -83,6 +83,11 @@ The intended progression is:
 So these lightweight anchors are an early discoverability step, not the final
 documentation maturity target for a stable product repo.
 
+When the repo keeps growing after those anchors are present, the validator may
+emit a second-tier warning that the project appears to have outgrown
+lightweight anchors and should plan migration to
+`managed_architecture_metadata`.
+
 ## Required Folder Surface
 
 Projects should keep this lean required folder surface:

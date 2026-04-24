@@ -1000,6 +1000,46 @@ def seed_api_runtime_surface(root: Path) -> None:
     )
 
 
+def seed_mature_runtime_surface(root: Path) -> None:
+    for relative_path in (
+        "src/fitcv_langgraph/contracts/parser.py",
+        "src/fitcv_langgraph/contracts/schema.py",
+        "src/fitcv_langgraph/graphs/build.py",
+        "src/fitcv_langgraph/graphs/runner.py",
+        "src/fitcv_langgraph/providers/openai_client.py",
+        "src/fitcv_langgraph/providers/embeddings.py",
+        "src/fitcv_langgraph/validation/cv_rules.py",
+        "src/fitcv_langgraph/validation/fit_checks.py",
+        "src/fitcv_langgraph/runtime.py",
+        "src/fitcv_langgraph/api_server.py",
+    ):
+        write_text(
+            root / relative_path,
+            "def placeholder() -> None:\n    return None\n",
+        )
+    for relative_path in (
+        "tests/test_contract_parser.py",
+        "tests/test_graph_runner.py",
+        "tests/test_openai_client.py",
+        "tests/test_embeddings.py",
+        "tests/test_cv_rules.py",
+        "tests/test_fit_checks.py",
+    ):
+        write_text(
+            root / relative_path,
+            "def test_placeholder() -> None:\n    assert True\n",
+        )
+    for relative_path in (
+        "scripts/build_runtime.py",
+        "scripts/run_pipeline.py",
+        "scripts/export_results.py",
+    ):
+        write_text(
+            root / relative_path,
+            "def main() -> None:\n    return None\n",
+        )
+
+
 MODE_A_TEMPLATE_FILES = (
     "README.md",
     "docs/setup.md",
@@ -1757,6 +1797,7 @@ def test_starter_method_only_clears_feature_index_warning_once_readme_exists(tmp
 
     assert result.returncode == 0
     assert "warn: docs/features/README.md" not in result.stdout.lower()
+    assert "outgrown lightweight anchors" not in result.stdout.lower()
 
 
 def test_starter_method_only_warns_when_api_surface_lacks_api_doc(tmp_path: Path) -> None:
@@ -1801,6 +1842,33 @@ def test_starter_method_only_clears_api_doc_warning_once_doc_exists(tmp_path: Pa
 
     assert result.returncode == 0
     assert "warn: docs/api.md" not in result.stdout.lower()
+
+
+def test_starter_method_only_warns_when_repo_appears_to_have_outgrown_lightweight_anchors(
+    tmp_path: Path,
+) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(
+            tmp_path / relative_path,
+            required_root_doc_text(relative_path).split("---\n", 2)[-1],
+        )
+    seed_mature_runtime_surface(tmp_path)
+    write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
+    write_text(tmp_path / "docs" / "api.md", "# API\nDocument the external interface.\n")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+    assert "outgrown lightweight anchors" in result.stdout.lower()
+    assert "managed_architecture_metadata" in result.stdout
 
 
 def test_validator_rejects_bare_capability_ids_in_yaml_architecture_template(

@@ -66,6 +66,9 @@ from validator_policy import (
     MODE_A_DISCOVERY_MIN_TEST_CODE_FILES,
     MODE_A_DISCOVERY_RUNTIME_DIRS,
     MODE_A_DISCOVERY_TEST_DIRS,
+    MODE_A_OUTGROWN_MIN_RUNTIME_BREADTH_DIRS,
+    MODE_A_OUTGROWN_MIN_RUNTIME_CODE_FILES,
+    MODE_A_OUTGROWN_MIN_TEST_CODE_FILES,
     METADATA_SCAN_SKIP_DIRS,
     METADATA_SCAN_SUFFIXES,
     MODE_A_TEMPLATE_MANAGED_MARKERS,
@@ -633,12 +636,43 @@ def _list_code_files(root: Path, relative_dirs: tuple[str, ...]) -> list[Path]:
     return sorted(code_files)
 
 
+def _count_runtime_breadth_dirs(root: Path) -> int:
+    breadth_dirs: set[str] = set()
+    for relative_dir in MODE_A_DISCOVERY_RUNTIME_DIRS:
+        base = root / relative_dir
+        if not base.exists():
+            continue
+        for path in _list_code_files(root, (relative_dir,)):
+            parts = path.relative_to(base).parts
+            if not parts:
+                continue
+            if len(parts) >= 3:
+                breadth_dirs.add("/".join(parts[:2]).lower())
+                continue
+            if len(parts) >= 2:
+                breadth_dirs.add(parts[0].lower())
+    return len(breadth_dirs)
+
+
 def starter_method_only_has_nontrivial_runtime_surface(root: Path) -> bool:
     runtime_files = _list_code_files(root, MODE_A_DISCOVERY_RUNTIME_DIRS)
     test_files = _list_code_files(root, MODE_A_DISCOVERY_TEST_DIRS)
     return len(runtime_files) >= MODE_A_DISCOVERY_MIN_RUNTIME_CODE_FILES and len(
         test_files
     ) >= MODE_A_DISCOVERY_MIN_TEST_CODE_FILES
+
+
+def starter_method_only_has_outgrown_lightweight_anchors(root: Path) -> bool:
+    if not (root / "docs" / "features" / "README.md").exists():
+        return False
+    runtime_files = _list_code_files(root, MODE_A_DISCOVERY_RUNTIME_DIRS)
+    test_files = _list_code_files(root, MODE_A_DISCOVERY_TEST_DIRS)
+    runtime_breadth = _count_runtime_breadth_dirs(root)
+    return (
+        len(runtime_files) >= MODE_A_OUTGROWN_MIN_RUNTIME_CODE_FILES
+        and len(test_files) >= MODE_A_OUTGROWN_MIN_TEST_CODE_FILES
+        and runtime_breadth >= MODE_A_OUTGROWN_MIN_RUNTIME_BREADTH_DIRS
+    )
 
 
 def starter_method_only_has_api_surface(root: Path) -> bool:
@@ -2565,6 +2599,16 @@ def validate_starter_method_only(root: Path, findings: list[Finding]) -> None:
                 "Add docs/api.md as an early anchor for the external interface. For a mature API-rich repo, "
                 "treat this as a migration signal toward `managed_architecture_metadata`, not the final "
                 "steady-state answer."
+            ),
+        )
+    if starter_method_only_has_outgrown_lightweight_anchors(root):
+        add_warning(
+            findings,
+            "repo_config/adoption-mode.yaml",
+            "Mode A repo appears to have outgrown lightweight anchors.",
+            (
+                "Plan migration to `managed_architecture_metadata` so durable product features and "
+                "stages can move into managed source and generated contract surfaces."
             ),
         )
 

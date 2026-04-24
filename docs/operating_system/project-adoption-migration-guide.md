@@ -88,6 +88,7 @@ Use this runbook when the project wants the starter's repo operating-system meth
    - those warnings are documentation/discovery debt, not a demand to create managed feature metadata immediately
    - treat the ladder as: `starter_method_only -> lightweight anchors -> managed_architecture_metadata`
    - lightweight anchors are the first discoverability step, not the mature end-state for a durable product repo
+   - after those anchors exist, a second warning tier may say the repo appears to have outgrown lightweight anchors and should start planning migration to `managed_architecture_metadata`
 4. Fill or update the intent layer for the project:
    - `docs/intent/project-charter.md`
    - `docs/intent/constraints-and-non-goals.md`

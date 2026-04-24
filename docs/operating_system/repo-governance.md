@@ -213,6 +213,15 @@ The intended maturity ladder is:
 So `docs/features/README.md` and `docs/api.md` are waypoints, not the mature
 destination for repos with durable product surface.
 
+For some repos, the starter may emit a second warning tier after those anchors
+already exist:
+
+- the repo appears to have outgrown lightweight anchors
+- migration planning toward `managed_architecture_metadata` should begin
+
+That second-tier warning is still advisory in this phase. It exists to make the
+starter more lifecycle-aware, not to declare the repo invalid overnight.
+
 Planning classification should stay explicit:
 
 - `docs/intent/` owns project purpose and the top-down roadmap from purpose

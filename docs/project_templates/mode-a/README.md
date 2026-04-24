@@ -33,6 +33,10 @@ Treat the maturity ladder as:
 So these docs are early anchors, not the mature end-state for a repo with
 durable product features or interfaces.
 
+If the repo keeps growing after those anchors exist, the validator may also
+warn that the project appears to have outgrown lightweight anchors and should
+start planning migration to `managed_architecture_metadata`.
+
 Fill the placeholders in this file and the mirrored files under `docs/`, `repo_config/`, `configs/`, `scripts/`, and `tests/`. Keep reproducibility details such as dependency versions, setup commands, config names, and run commands in the public-safe docs instead of deleting them.
 
 ## Quick Start
