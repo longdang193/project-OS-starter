@@ -168,6 +168,12 @@ REQUIRED_DOC_KEYWORDS = {
     "docs/architecture.md": ("component", "boundar", "integration", "information flow", "control flow"),
 }
 PLACEHOLDER_PATTERNS = ("todo", "tbd", "placeholder", "fill this in later")
+MODE_A_DISCOVERY_CODE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx"}
+MODE_A_DISCOVERY_RUNTIME_DIRS = ("src", "app")
+MODE_A_DISCOVERY_TEST_DIRS = ("tests",)
+MODE_A_DISCOVERY_MIN_RUNTIME_CODE_FILES = 2
+MODE_A_DISCOVERY_MIN_TEST_CODE_FILES = 1
+MODE_A_DISCOVERY_API_PATH_HINTS = ("api", "server", "router", "route", "endpoint", "http")
 
 # Generated schema and feature/stage contract policy.
 GENERATED_INDEX_NAMES = {

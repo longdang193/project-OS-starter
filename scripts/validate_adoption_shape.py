@@ -60,6 +60,12 @@ from validator_policy import (
     MARKDOWN_FRONTMATTER_TEMPLATE_PATH,
     METHOD_FEATURE_IDS,
     METHOD_FEATURE_PREFIXES,
+    MODE_A_DISCOVERY_API_PATH_HINTS,
+    MODE_A_DISCOVERY_CODE_SUFFIXES,
+    MODE_A_DISCOVERY_MIN_RUNTIME_CODE_FILES,
+    MODE_A_DISCOVERY_MIN_TEST_CODE_FILES,
+    MODE_A_DISCOVERY_RUNTIME_DIRS,
+    MODE_A_DISCOVERY_TEST_DIRS,
     METADATA_SCAN_SKIP_DIRS,
     METADATA_SCAN_SUFFIXES,
     MODE_A_TEMPLATE_MANAGED_MARKERS,
@@ -609,6 +615,40 @@ def is_empty_generated_scaffold(path: Path) -> bool:
         return True
     if path.name == "capability_lineage.yaml" and payload == {"features": {}}:
         return True
+    return False
+
+
+def _list_code_files(root: Path, relative_dirs: tuple[str, ...]) -> list[Path]:
+    code_files: list[Path] = []
+    for relative_dir in relative_dirs:
+        base = root / relative_dir
+        if not base.exists():
+            continue
+        for path in base.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in MODE_A_DISCOVERY_CODE_SUFFIXES:
+                continue
+            code_files.append(path)
+    return sorted(code_files)
+
+
+def starter_method_only_has_nontrivial_runtime_surface(root: Path) -> bool:
+    runtime_files = _list_code_files(root, MODE_A_DISCOVERY_RUNTIME_DIRS)
+    test_files = _list_code_files(root, MODE_A_DISCOVERY_TEST_DIRS)
+    return len(runtime_files) >= MODE_A_DISCOVERY_MIN_RUNTIME_CODE_FILES and len(
+        test_files
+    ) >= MODE_A_DISCOVERY_MIN_TEST_CODE_FILES
+
+
+def starter_method_only_has_api_surface(root: Path) -> bool:
+    if not starter_method_only_has_nontrivial_runtime_surface(root):
+        return False
+    for path in _list_code_files(root, MODE_A_DISCOVERY_RUNTIME_DIRS):
+        normalized_parts = tuple(part.lower() for part in path.relative_to(root).parts)
+        for part in normalized_parts:
+            if any(hint in part for hint in MODE_A_DISCOVERY_API_PATH_HINTS):
+                return True
     return False
 
 
@@ -2504,6 +2544,28 @@ def validate_starter_method_only(root: Path, findings: list[Finding]) -> None:
                     "Non-README entry exists under docs/stages in starter_method_only mode.",
                     "Confirm this is intentional prose, or switch adoption mode before adding stage metadata.",
                 )
+    if starter_method_only_has_nontrivial_runtime_surface(root) and not (
+        root / "docs" / "features" / "README.md"
+    ).exists():
+        add_warning(
+            findings,
+            "docs/features/README.md",
+            "Mode A repo appears to have meaningful product/runtime surface but is missing the lightweight feature index.",
+            (
+                "Add docs/features/README.md as a prose-only feature index, or switch adoption mode later "
+                "if the repo is ready for managed feature metadata."
+            ),
+        )
+    if starter_method_only_has_api_surface(root) and not (root / "docs" / "api.md").exists():
+        add_warning(
+            findings,
+            "docs/api.md",
+            "Mode A repo appears API-heavy but is missing the lightweight API guide.",
+            (
+                "Add docs/api.md to explain the external interface in prose. This is a Mode A discovery "
+                "warning, not a managed-metadata requirement."
+            ),
+        )
 
 
 def validate_managed_mode(config: AdoptionConfig, root: Path, findings: list[Finding]) -> None:

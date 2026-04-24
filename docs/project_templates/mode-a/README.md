@@ -17,6 +17,14 @@ not require managed feature folders, generated architecture discovery, or the
 full architecture sync/generator toolchain unless the project later opts into
 managed mode.
 
+As the repo grows, the validator may still warn if obvious prose anchors are
+missing. The most common early warnings are:
+
+- add `docs/features/README.md` once the repo has meaningful product/runtime surface
+- add `docs/api.md` once the repo clearly exposes an external interface
+
+Those are Mode A discovery warnings, not managed-metadata requirements.
+
 Fill the placeholders in this file and the mirrored files under `docs/`, `repo_config/`, `configs/`, `scripts/`, and `tests/`. Keep reproducibility details such as dependency versions, setup commands, config names, and run commands in the public-safe docs instead of deleting them.
 
 ## Quick Start

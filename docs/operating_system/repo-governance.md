@@ -200,6 +200,12 @@ requirements. Mode A may keep `docs/features/`, `docs/stages/`, and
 `docs/generated/` absent or prose-only until the repo explicitly adopts managed
 architecture metadata.
 
+Mode A is still allowed to warn when a repo has clearly grown beyond the tiny
+starter shape. In particular, the validator may warn about missing lightweight
+prose anchors such as `docs/features/README.md` or `docs/api.md` when the file
+tree shows meaningful product/runtime or API surface. Those warnings are
+discovery debt, not managed-metadata violations.
+
 Planning classification should stay explicit:
 
 - `docs/intent/` owns project purpose and the top-down roadmap from purpose

@@ -84,6 +84,8 @@ Use this runbook when the project wants the starter's repo operating-system meth
    - the canonical validation path should validate starter-method repo shape and adoption boundaries
    - it should not require the managed architecture sync/generator toolchain by default
    - missing managed-only scripts are not a Mode A bootstrap failure unless the repo has opted into managed architecture metadata
+   - as the repo grows, the validator may warn about missing lightweight prose anchors such as `docs/features/README.md` or `docs/api.md`
+   - those warnings are documentation/discovery debt, not a demand to create managed feature metadata
 4. Fill or update the intent layer for the project:
    - `docs/intent/project-charter.md`
    - `docs/intent/constraints-and-non-goals.md`

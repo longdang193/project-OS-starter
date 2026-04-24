@@ -70,6 +70,12 @@ planning layers:
 README remains a synthesized orientation layer. It should summarize the source
 layers rather than becoming a parallel source of truth.
 
+For `starter_method_only`, the validator may also emit warning-level discovery
+findings when a repo has obvious runtime surface but lacks lightweight prose
+anchors such as `docs/features/README.md` or `docs/api.md`. That warning layer
+exists to help scratch-built repos notice missing doc homes before they adopt
+managed metadata. `docs/pipeline.md` remains a separately required root doc.
+
 ## Required Folder Surface
 
 Projects should keep this lean required folder surface:

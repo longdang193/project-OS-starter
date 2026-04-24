@@ -977,6 +977,29 @@ def seed_required_folder_surface(root: Path) -> None:
             write_text(root / relative_path, "# placeholder\n")
 
 
+def seed_nontrivial_runtime_surface(root: Path) -> None:
+    write_text(
+        root / "src" / "app.py",
+        "def run_app() -> None:\n    return None\n",
+    )
+    write_text(
+        root / "src" / "services" / "matching.py",
+        "def build_matches() -> list[str]:\n    return []\n",
+    )
+    write_text(
+        root / "tests" / "test_runtime_flow.py",
+        "def test_runtime_flow_placeholder() -> None:\n    assert True\n",
+    )
+
+
+def seed_api_runtime_surface(root: Path) -> None:
+    seed_nontrivial_runtime_surface(root)
+    write_text(
+        root / "src" / "api" / "server.py",
+        "def build_api_server() -> None:\n    return None\n",
+    )
+
+
 MODE_A_TEMPLATE_FILES = (
     "README.md",
     "docs/setup.md",
@@ -1693,6 +1716,88 @@ def test_starter_method_only_allows_prose_only_feature_readme(tmp_path: Path) ->
     result = run_validator(tmp_path)
 
     assert result.returncode == 0
+
+
+def test_starter_method_only_warns_when_nontrivial_repo_lacks_feature_index(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_nontrivial_runtime_surface(tmp_path)
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+    assert "warn: docs/features/readme.md" in result.stdout.lower()
+    assert "missing the lightweight feature index" in result.stdout.lower()
+
+
+def test_starter_method_only_clears_feature_index_warning_once_readme_exists(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_nontrivial_runtime_surface(tmp_path)
+    write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+    assert "warn: docs/features/README.md" not in result.stdout.lower()
+
+
+def test_starter_method_only_warns_when_api_surface_lacks_api_doc(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_api_runtime_surface(tmp_path)
+    write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+    assert "warn: docs/api.md" in result.stdout.lower()
+    assert "api-heavy" in result.stdout.lower()
+
+
+def test_starter_method_only_clears_api_doc_warning_once_doc_exists(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_api_runtime_surface(tmp_path)
+    write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
+    write_text(tmp_path / "docs" / "api.md", "# API\nDocument the external interface.\n")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+    assert "warn: docs/api.md" not in result.stdout.lower()
 
 
 def test_validator_rejects_bare_capability_ids_in_yaml_architecture_template(
