@@ -114,6 +114,7 @@ a product workstream or the `operating_system` branch.
 Record the outcome downstream:
 
 - product-direction specs and plans should name the roadmap thread they follow
+- when naming a real workstream, use a valid ID from `docs/intent/workstreams/`
 - operating-system specs and plans should say why `parent_workstream: none` is
   intentional
 

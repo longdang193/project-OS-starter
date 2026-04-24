@@ -8,7 +8,7 @@ Execute this implementation plan in this session.
 
 Plan:
 - path:
-- roadmap thread this work follows (or `none` if operating_system work):
+- roadmap thread this work follows (use a valid ID from `docs/intent/workstreams/`, or `none` if operating_system work):
 
 Please:
 1. review the plan critically before starting

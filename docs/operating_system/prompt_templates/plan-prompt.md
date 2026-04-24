@@ -8,7 +8,7 @@ Turn this approved design into an implementation plan.
 
 Spec:
 - path:
-- roadmap thread this plan follows (or `none`):
+- roadmap thread this plan follows (use a valid ID from `docs/intent/workstreams/`, or `none`):
 - if `none`, why this is operating_system work:
 
 Please:

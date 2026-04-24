@@ -654,6 +654,27 @@ def _count_runtime_breadth_dirs(root: Path) -> int:
     return len(breadth_dirs)
 
 
+def registered_workstream_ids(root: Path) -> set[str]:
+    registry_root = root / "docs" / "intent" / "workstreams"
+    if not registry_root.exists():
+        return set()
+    workstream_ids: set[str] = set()
+    for path in sorted(registry_root.glob("*.md")):
+        if path.name == "README.md":
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        payload, error, _ = extract_markdown_frontmatter(text)
+        if error is not None or payload is None:
+            continue
+        workstream_id = payload.get("workstream_id")
+        if isinstance(workstream_id, str) and workstream_id.strip() == workstream_id:
+            workstream_ids.add(workstream_id)
+    return workstream_ids
+
+
 def starter_method_only_has_nontrivial_runtime_surface(root: Path) -> bool:
     runtime_files = _list_code_files(root, MODE_A_DISCOVERY_RUNTIME_DIRS)
     test_files = _list_code_files(root, MODE_A_DISCOVERY_TEST_DIRS)
@@ -2716,6 +2737,7 @@ def validate_legacy_mode(config: AdoptionConfig, root: Path, findings: list[Find
 
 
 def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
+    workstream_ids = registered_workstream_ids(root)
     for folder_name in ("specs", "plans"):
         folder = root / "docs" / "superpowers" / folder_name
         if not folder.exists():
@@ -2784,6 +2806,14 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                     relative_path,
                     f"{layer.replace('_', '-').capitalize()} superpowers artifacts must use parent_workstream: none.",
                     "Use `parent_workstream: none` for intent or operating_system artifacts unless a stricter workstream registry is introduced later.",
+                )
+                continue
+            if parent_workstream not in workstream_ids:
+                add_error(
+                    findings,
+                    relative_path,
+                    f"{artifact_label} parent_workstream must resolve to a registered workstream ID.",
+                    "Add a matching workstream doc under docs/intent/workstreams/ or use `parent_workstream: none` when the artifact truly belongs to intent/operating_system.",
                 )
 
             if "candidate_type: operating_system" in text and "targets:" not in text:

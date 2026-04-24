@@ -12,7 +12,7 @@ Repo context:
 - known missing surfaces:
 - known validator warnings:
 - migration constraints:
-- roadmap thread this migration supports (or `none` if operating_system-only):
+- roadmap thread this migration supports (use a valid ID from `docs/intent/workstreams/`, or `none` if operating_system-only):
 - if `none`, why:
 
 Please:

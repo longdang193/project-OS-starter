@@ -240,6 +240,8 @@ Downstream artifacts should also make that alignment explicit:
 
 - if the work follows a roadmap thread, name it rather than assuming readers
   will infer it later
+- use a real workstream ID from `docs/intent/workstreams/` when
+  `parent_workstream` is not `none`
 - if the work belongs to the operating-system branch, use
   `parent_workstream: none` intentionally and explain why
 - specs and plans under `docs/superpowers/` now validator-check

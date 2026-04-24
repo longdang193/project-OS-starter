@@ -11,7 +11,7 @@ Change idea:
 - affected area:
 - constraints:
 - what should stay true:
-- roadmap thread this follows (or `none` if this is operating_system work):
+- roadmap thread this follows (use a valid ID from `docs/intent/workstreams/`, or `none` if this is operating_system work):
 - if `none`, why:
 
 Please:

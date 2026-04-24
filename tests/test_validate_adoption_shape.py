@@ -989,6 +989,22 @@ def seed_required_starter_docs(root: Path) -> None:
         write_text(root / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
 
 
+def seed_workstream_registry_entry(root: Path, workstream_id: str = "platform-delivery") -> None:
+    write_text(
+        root / "docs" / "intent" / "workstreams" / f"{workstream_id}.md",
+        f"""---
+workstream_id: {workstream_id}
+status: active
+parent_intent: master-workstream-roadmap
+---
+
+# {workstream_id}
+
+This workstream exists to coordinate durable delivery work.
+""",
+    )
+
+
 def seed_nontrivial_runtime_surface(root: Path) -> None:
     write_text(
         root / "src" / "app.py",
@@ -1906,6 +1922,7 @@ related_stages: []
 def test_validator_accepts_superpowers_change_plan_with_named_parent_workstream(tmp_path: Path) -> None:
     seed_required_folder_surface(tmp_path)
     seed_required_starter_docs(tmp_path)
+    seed_workstream_registry_entry(tmp_path)
     write_text(
         tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
         """---
@@ -1926,6 +1943,34 @@ related_stages: []
     result = run_validator(tmp_path)
 
     assert result.returncode == 0
+
+
+def test_validator_rejects_superpowers_change_plan_with_unknown_parent_workstream(
+    tmp_path: Path,
+) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
+        """---
+layer: change
+artifact_type: plan
+status: proposed
+parent_workstream: platform-delivery
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Plan
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "must resolve to a registered workstream id" in result.stdout.lower()
 
 
 def test_validator_rejects_bare_capability_ids_in_yaml_architecture_template(
@@ -2097,6 +2142,7 @@ timeline: []
 def test_validator_accepts_rich_lineage_generated_shape(tmp_path: Path) -> None:
     seed_required_managed_mode_surface(tmp_path)
     seed_managed_feature_folder(tmp_path, include_lineage=False)
+    seed_workstream_registry_entry(tmp_path, "sample-delivery")
     write_text(
         tmp_path / "docs" / "features" / "sample-feature" / "sample-feature.yaml",
         """# GENERATED FILE - do not edit directly.

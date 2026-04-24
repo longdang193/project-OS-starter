@@ -74,6 +74,8 @@ Do not force operating-system work into fake product workstreams.
    - the `operating_system` branch
 4. Create bounded specs and implementation plans downstream.
 5. Use `parent_workstream` when a spec or plan belongs to a real workstream.
+6. Use `docs/intent/workstreams/` as the canonical registry for valid named
+   workstream IDs.
 
 If the work is repo-method work, it may still correctly use
 `parent_workstream: none`.
@@ -100,8 +102,8 @@ docs/intent/
     workstream-<id>.md
 ```
 
-Create workstream docs only when the roadmap needs more detail. Do not create
-them by default.
+The `workstreams/` folder is now the canonical registry for named workstreams.
+Keep the roadmap high-level; keep concrete valid IDs in the registry docs.
 
 ## Anti-Patterns
 

@@ -27,3 +27,5 @@ These are guidance files, not required repo artifacts.
 When the work is product-direction work, name the roadmap thread it follows.
 When it is true operating-system work, say why it should remain
 `parent_workstream: none`.
+
+When naming a real workstream, use a valid ID from `docs/intent/workstreams/`.
