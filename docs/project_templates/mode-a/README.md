@@ -23,7 +23,15 @@ missing. The most common early warnings are:
 - add `docs/features/README.md` once the repo has meaningful product/runtime surface
 - add `docs/api.md` once the repo clearly exposes an external interface
 
-Those are Mode A discovery warnings, not managed-metadata requirements.
+Those are Mode A discovery warnings, not managed-metadata requirements by
+themselves.
+
+Treat the maturity ladder as:
+
+`starter_method_only -> lightweight anchors -> managed_architecture_metadata`
+
+So these docs are early anchors, not the mature end-state for a repo with
+durable product features or interfaces.
 
 Fill the placeholders in this file and the mirrored files under `docs/`, `repo_config/`, `configs/`, `scripts/`, and `tests/`. Keep reproducibility details such as dependency versions, setup commands, config names, and run commands in the public-safe docs instead of deleting them.
 

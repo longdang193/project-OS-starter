@@ -76,6 +76,13 @@ anchors such as `docs/features/README.md` or `docs/api.md`. That warning layer
 exists to help scratch-built repos notice missing doc homes before they adopt
 managed metadata. `docs/pipeline.md` remains a separately required root doc.
 
+The intended progression is:
+
+`starter_method_only -> lightweight anchors -> managed_architecture_metadata`
+
+So these lightweight anchors are an early discoverability step, not the final
+documentation maturity target for a stable product repo.
+
 ## Required Folder Surface
 
 Projects should keep this lean required folder surface:

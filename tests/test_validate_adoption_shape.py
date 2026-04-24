@@ -1736,6 +1736,7 @@ def test_starter_method_only_warns_when_nontrivial_repo_lacks_feature_index(tmp_
     assert result.returncode == 0
     assert "warn: docs/features/readme.md" in result.stdout.lower()
     assert "missing the lightweight feature index" in result.stdout.lower()
+    assert "managed_architecture_metadata" in result.stdout
 
 
 def test_starter_method_only_clears_feature_index_warning_once_readme_exists(tmp_path: Path) -> None:
@@ -1777,6 +1778,8 @@ def test_starter_method_only_warns_when_api_surface_lacks_api_doc(tmp_path: Path
     assert result.returncode == 0
     assert "warn: docs/api.md" in result.stdout.lower()
     assert "api-heavy" in result.stdout.lower()
+    assert "early anchor" in result.stdout.lower()
+    assert "managed_architecture_metadata" in result.stdout
 
 
 def test_starter_method_only_clears_api_doc_warning_once_doc_exists(tmp_path: Path) -> None:

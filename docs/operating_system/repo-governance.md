@@ -206,6 +206,13 @@ prose anchors such as `docs/features/README.md` or `docs/api.md` when the file
 tree shows meaningful product/runtime or API surface. Those warnings are
 discovery debt, not managed-metadata violations.
 
+The intended maturity ladder is:
+
+`starter_method_only -> lightweight anchors -> managed_architecture_metadata`
+
+So `docs/features/README.md` and `docs/api.md` are waypoints, not the mature
+destination for repos with durable product surface.
+
 Planning classification should stay explicit:
 
 - `docs/intent/` owns project purpose and the top-down roadmap from purpose

@@ -2552,8 +2552,8 @@ def validate_starter_method_only(root: Path, findings: list[Finding]) -> None:
             "docs/features/README.md",
             "Mode A repo appears to have meaningful product/runtime surface but is missing the lightweight feature index.",
             (
-                "Add docs/features/README.md as a prose-only feature index, or switch adoption mode later "
-                "if the repo is ready for managed feature metadata."
+                "Add docs/features/README.md now as the lightweight feature index. Treat this as an early "
+                "migration signal toward `managed_architecture_metadata` once the repo has durable feature surface."
             ),
         )
     if starter_method_only_has_api_surface(root) and not (root / "docs" / "api.md").exists():
@@ -2562,8 +2562,9 @@ def validate_starter_method_only(root: Path, findings: list[Finding]) -> None:
             "docs/api.md",
             "Mode A repo appears API-heavy but is missing the lightweight API guide.",
             (
-                "Add docs/api.md to explain the external interface in prose. This is a Mode A discovery "
-                "warning, not a managed-metadata requirement."
+                "Add docs/api.md as an early anchor for the external interface. For a mature API-rich repo, "
+                "treat this as a migration signal toward `managed_architecture_metadata`, not the final "
+                "steady-state answer."
             ),
         )
 

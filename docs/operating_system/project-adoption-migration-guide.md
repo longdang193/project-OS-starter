@@ -85,7 +85,9 @@ Use this runbook when the project wants the starter's repo operating-system meth
    - it should not require the managed architecture sync/generator toolchain by default
    - missing managed-only scripts are not a Mode A bootstrap failure unless the repo has opted into managed architecture metadata
    - as the repo grows, the validator may warn about missing lightweight prose anchors such as `docs/features/README.md` or `docs/api.md`
-   - those warnings are documentation/discovery debt, not a demand to create managed feature metadata
+   - those warnings are documentation/discovery debt, not a demand to create managed feature metadata immediately
+   - treat the ladder as: `starter_method_only -> lightweight anchors -> managed_architecture_metadata`
+   - lightweight anchors are the first discoverability step, not the mature end-state for a durable product repo
 4. Fill or update the intent layer for the project:
    - `docs/intent/project-charter.md`
    - `docs/intent/constraints-and-non-goals.md`
