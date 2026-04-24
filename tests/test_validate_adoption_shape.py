@@ -977,6 +977,18 @@ def seed_required_folder_surface(root: Path) -> None:
             write_text(root / relative_path, "# placeholder\n")
 
 
+def seed_required_starter_docs(root: Path) -> None:
+    write_text(root / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(root / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+
+
 def seed_nontrivial_runtime_surface(root: Path) -> None:
     write_text(
         root / "src" / "app.py",
@@ -1064,7 +1076,19 @@ MODE_A_TEMPLATE_FILES = (
 def seed_mode_a_template_pack(root: Path) -> None:
     write_text(
         root / "docs" / "superpowers" / "specs" / "2026-04-23-mode-a-project-template-pack-spec.md",
-        "# Mode A Project Template Pack Spec\n",
+        """---
+layer: operating_system
+artifact_type: spec
+status: completed
+parent_workstream: none
+targets:
+  - docs/project_templates/mode-a/
+related_features: []
+related_stages: []
+---
+
+# Mode A Project Template Pack Spec
+""",
     )
     template_root = root / "docs" / "project_templates" / "mode-a"
     for relative_path in MODE_A_TEMPLATE_FILES:
@@ -1760,15 +1784,7 @@ def test_starter_method_only_allows_prose_only_feature_readme(tmp_path: Path) ->
 
 def test_starter_method_only_warns_when_nontrivial_repo_lacks_feature_index(tmp_path: Path) -> None:
     seed_required_folder_surface(tmp_path)
-    write_text(tmp_path / "README.md", "# Starter Repo\n")
-    for relative_path in (
-        "docs/setup.md",
-        "docs/configuration.md",
-        "docs/usage.md",
-        "docs/pipeline.md",
-        "docs/architecture.md",
-    ):
-        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_required_starter_docs(tmp_path)
     seed_nontrivial_runtime_surface(tmp_path)
 
     result = run_validator(tmp_path)
@@ -1781,15 +1797,7 @@ def test_starter_method_only_warns_when_nontrivial_repo_lacks_feature_index(tmp_
 
 def test_starter_method_only_clears_feature_index_warning_once_readme_exists(tmp_path: Path) -> None:
     seed_required_folder_surface(tmp_path)
-    write_text(tmp_path / "README.md", "# Starter Repo\n")
-    for relative_path in (
-        "docs/setup.md",
-        "docs/configuration.md",
-        "docs/usage.md",
-        "docs/pipeline.md",
-        "docs/architecture.md",
-    ):
-        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_required_starter_docs(tmp_path)
     seed_nontrivial_runtime_surface(tmp_path)
     write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
 
@@ -1802,15 +1810,7 @@ def test_starter_method_only_clears_feature_index_warning_once_readme_exists(tmp
 
 def test_starter_method_only_warns_when_api_surface_lacks_api_doc(tmp_path: Path) -> None:
     seed_required_folder_surface(tmp_path)
-    write_text(tmp_path / "README.md", "# Starter Repo\n")
-    for relative_path in (
-        "docs/setup.md",
-        "docs/configuration.md",
-        "docs/usage.md",
-        "docs/pipeline.md",
-        "docs/architecture.md",
-    ):
-        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_required_starter_docs(tmp_path)
     seed_api_runtime_surface(tmp_path)
     write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
 
@@ -1825,15 +1825,7 @@ def test_starter_method_only_warns_when_api_surface_lacks_api_doc(tmp_path: Path
 
 def test_starter_method_only_clears_api_doc_warning_once_doc_exists(tmp_path: Path) -> None:
     seed_required_folder_surface(tmp_path)
-    write_text(tmp_path / "README.md", "# Starter Repo\n")
-    for relative_path in (
-        "docs/setup.md",
-        "docs/configuration.md",
-        "docs/usage.md",
-        "docs/pipeline.md",
-        "docs/architecture.md",
-    ):
-        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    seed_required_starter_docs(tmp_path)
     seed_api_runtime_surface(tmp_path)
     write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
     write_text(tmp_path / "docs" / "api.md", "# API\nDocument the external interface.\n")
@@ -1848,18 +1840,7 @@ def test_starter_method_only_warns_when_repo_appears_to_have_outgrown_lightweigh
     tmp_path: Path,
 ) -> None:
     seed_required_folder_surface(tmp_path)
-    write_text(tmp_path / "README.md", "# Starter Repo\n")
-    for relative_path in (
-        "docs/setup.md",
-        "docs/configuration.md",
-        "docs/usage.md",
-        "docs/pipeline.md",
-        "docs/architecture.md",
-    ):
-        write_text(
-            tmp_path / relative_path,
-            required_root_doc_text(relative_path).split("---\n", 2)[-1],
-        )
+    seed_required_starter_docs(tmp_path)
     seed_mature_runtime_surface(tmp_path)
     write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Index\n")
     write_text(tmp_path / "docs" / "api.md", "# API\nDocument the external interface.\n")
@@ -1869,6 +1850,82 @@ def test_starter_method_only_warns_when_repo_appears_to_have_outgrown_lightweigh
     assert result.returncode == 0
     assert "outgrown lightweight anchors" in result.stdout.lower()
     assert "managed_architecture_metadata" in result.stdout
+
+
+def test_validator_rejects_superpowers_spec_missing_parent_workstream(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "specs" / "2026-04-25-sample-spec.md",
+        """---
+layer: operating_system
+artifact_type: spec
+status: proposed
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Spec
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "superpowers spec parent_workstream must be a non-empty canonical concise string" in result.stdout.lower()
+
+
+def test_validator_rejects_operating_system_plan_with_named_parent_workstream(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
+        """---
+layer: operating_system
+artifact_type: plan
+status: proposed
+parent_workstream: platform-delivery
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Plan
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "operating-system superpowers artifacts must use parent_workstream: none" in result.stdout.lower()
+
+
+def test_validator_accepts_superpowers_change_plan_with_named_parent_workstream(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
+        """---
+layer: change
+artifact_type: plan
+status: proposed
+parent_workstream: platform-delivery
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Plan
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
 
 
 def test_validator_rejects_bare_capability_ids_in_yaml_architecture_template(
@@ -2069,7 +2126,21 @@ last_updated_at: "2026-04-22T10:30:00+02:00"
     write_text(tmp_path / "docs" / "sample.md", "# Sample Doc\nMeaningful doc body.\n")
     write_text(
         tmp_path / "docs" / "superpowers" / "plans" / "2026-04-22-sample-plan.md",
-        "# Sample Plan\nCompleted plan body.\n",
+        """---
+layer: change
+artifact_type: plan
+status: completed
+parent_workstream: sample-delivery
+targets:
+  - docs/sample.md
+related_features: []
+related_stages: []
+---
+
+# Sample Plan
+
+Completed plan body.
+""",
     )
     write_text(
         tmp_path / "docs" / "features" / "sample-feature" / "lineage.generated.yaml",

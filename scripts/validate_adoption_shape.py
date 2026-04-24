@@ -2721,21 +2721,82 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
         if not folder.exists():
             continue
         for path in sorted(folder.glob("*.md")):
+            if path.name == "README.md":
+                continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
+            relative_path = relpath(path, root)
+            payload, error, _ = extract_markdown_frontmatter(text)
+            artifact_label = f"Superpowers {folder_name.removesuffix('s')}"
+            if error is not None:
+                add_error(
+                    findings,
+                    relative_path,
+                    f"{artifact_label} frontmatter is invalid: {error}",
+                    "Fix the frontmatter block so superpowers artifact metadata is parseable.",
+                )
+                continue
+            if payload is None:
+                add_error(
+                    findings,
+                    relative_path,
+                    f"{artifact_label} must include frontmatter metadata.",
+                    "Add frontmatter with layer, artifact_type, status, parent_workstream, targets, and related_* fields.",
+                )
+                continue
+
+            artifact_type = payload.get("artifact_type")
+            if artifact_type != folder_name.removesuffix("s"):
+                add_error(
+                    findings,
+                    relative_path,
+                    f"{artifact_label} has the wrong artifact_type.",
+                    f"Set `artifact_type: {folder_name.removesuffix('s')}` so the metadata matches the folder.",
+                )
+
+            layer = payload.get("layer")
+            if layer is not None:
+                _validate_canonical_concise_string(
+                    findings,
+                    path=relative_path,
+                    subject=artifact_label,
+                    field_name="layer",
+                    value=layer,
+                    fix="Use a single-line canonical layer such as intent, operating_system, workstream, or change.",
+                )
+
+            parent_workstream = payload.get("parent_workstream")
+            _validate_canonical_concise_string(
+                findings,
+                path=relative_path,
+                subject=artifact_label,
+                field_name="parent_workstream",
+                value=parent_workstream,
+                fix="Use a single-line canonical workstream ID or `none`.",
+            )
+            if parent_workstream == "none":
+                continue
+            if layer in {"intent", "operating_system"}:
+                add_error(
+                    findings,
+                    relative_path,
+                    f"{layer.replace('_', '-').capitalize()} superpowers artifacts must use parent_workstream: none.",
+                    "Use `parent_workstream: none` for intent or operating_system artifacts unless a stricter workstream registry is introduced later.",
+                )
+
             if "candidate_type: operating_system" in text and "targets:" not in text:
                 add_error(
                     findings,
-                    relpath(path, root),
+                    relative_path,
                     "Operating-system spec/plan candidate is missing targets.",
                     "Add targets for affected operating-system files/folders.",
                 )
             if "candidate_type: operating_system" in text and "related_features: []" not in text:
                 add_warning(
                     findings,
-                    relpath(path, root),
+                    relative_path,
                     "Operating-system spec/plan does not explicitly clear related_features.",
                     "Use related_features: [] unless product-feature impact is intentionally documented.",
                 )

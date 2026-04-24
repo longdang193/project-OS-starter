@@ -242,6 +242,9 @@ Downstream artifacts should also make that alignment explicit:
   will infer it later
 - if the work belongs to the operating-system branch, use
   `parent_workstream: none` intentionally and explain why
+- specs and plans under `docs/superpowers/` now validator-check
+  `parent_workstream` presence/canonical shape, and intent/operating-system
+  artifacts must use `parent_workstream: none`
 
 When a task touches a feature folder, agents should read minimally rather than
 loading every file by default:
