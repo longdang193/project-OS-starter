@@ -76,6 +76,10 @@ Rules:
 
 ## Mode A Step-By-Step: Starter Method Only
 
+Prompt shortcut: use
+`docs/operating_system/prompt_templates/mode-migration-prompt.md` when you want
+an agent to assess or plan a mode migration instead of improvising the ask.
+
 Use this runbook when the project wants the starter's repo operating-system method without adopting product feature, stage, capability, generated architecture, or lineage metadata.
 
 1. Start by copying `docs/project_templates/mode-a/` into the project root, then fill the placeholders instead of inventing file shapes by hand. The pack includes required root docs, `docs/intent/` anchors, `repo_config/`, `configs/`, `scripts/README.md`, and `tests/README.md`.

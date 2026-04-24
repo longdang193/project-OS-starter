@@ -45,6 +45,11 @@ The repo uses four distinct internal layers:
 - `.codex/rules/*.rules`
 - sync and verification scripts under `scripts/`
 
+For copyable user-facing prompts that help invoke the lifecycle cleanly, use
+`docs/operating_system/prompt_templates/`. That folder is the practical
+invocation layer for humans; the surrounding operating-system docs remain the
+governing method layer.
+
 The repo now uses `.codex/` as its active Codex config/generated root, while
 still splitting Codex ownership by role:
 
@@ -230,6 +235,13 @@ Planning classification should stay explicit:
 - `workstream` remains a product-direction execution-facing layer
 - `operating_system` remains a first-class planning branch rather than a fake
   workstream
+
+Downstream artifacts should also make that alignment explicit:
+
+- if the work follows a roadmap thread, name it rather than assuming readers
+  will infer it later
+- if the work belongs to the operating-system branch, use
+  `parent_workstream: none` intentionally and explain why
 
 When a task touches a feature folder, agents should read minimally rather than
 loading every file by default:

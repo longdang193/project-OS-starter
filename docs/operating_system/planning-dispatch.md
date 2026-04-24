@@ -58,6 +58,14 @@ Use this repo-level planning lifecycle:
 `operating_system` remains a first-class branch in this model. It is not a
 product workstream.
 
+When the work is product-direction work, name the roadmap thread it follows.
+When the work is true operating-system work, make it explicit why
+`parent_workstream: none` is the right choice instead of leaving that field as
+silent filler.
+
+For a copyable user-facing entrypoint into this lifecycle, see
+`docs/operating_system/prompt_templates/`.
+
 ## Four Planning Layers
 
 Use this repo-level layer model before deciding where a request belongs.
@@ -102,6 +110,12 @@ Use the answer to choose the owning source layer first:
 If the work starts from intent, use
 `docs/intent/master-workstream-roadmap.md` to decide whether the next branch is
 a product workstream or the `operating_system` branch.
+
+Record the outcome downstream:
+
+- product-direction specs and plans should name the roadmap thread they follow
+- operating-system specs and plans should say why `parent_workstream: none` is
+  intentional
 
 Keep these distinctions explicit:
 

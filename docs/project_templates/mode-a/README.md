@@ -39,6 +39,11 @@ start planning migration to `managed_architecture_metadata`.
 
 Fill the placeholders in this file and the mirrored files under `docs/`, `repo_config/`, `configs/`, `scripts/`, and `tests/`. Keep reproducibility details such as dependency versions, setup commands, config names, and run commands in the public-safe docs instead of deleting them.
 
+When you want help from an agent without inventing the wording from scratch,
+start from the prompt pack in
+`docs/operating_system/prompt_templates/`, especially
+`mode-migration-prompt.md` and `validate-or-drift-prompt.md`.
+
 ## Quick Start
 
 1. Install prerequisites from `docs/setup.md`.
