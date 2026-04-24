@@ -42,6 +42,8 @@ docs/generated/                      → generated discovery
 Rules:
 
 - intent work should point back to `docs/intent/*.md`
+- when intent work is being translated into major delivery threads, the plan
+  should also point back to `docs/intent/master-workstream-roadmap.md`
 - operating-system work should point back to `docs/operating_system/*.md`
 - The affected `docs/features/<feature_id>/feature.source.yaml` file is the
   human-owned anchor when a managed feature exists
@@ -70,6 +72,10 @@ Do not write the plan until these are true:
    managed feature is changing, or the plan explicitly says it must be created
    before implementation starts
 4. the spec exists if the design is non-trivial
+
+When the plan is downstream of intent, the triage and plan should make clear
+whether the bounded change belongs under a product workstream or under the
+parallel `operating_system` branch.
 
 Important:
 

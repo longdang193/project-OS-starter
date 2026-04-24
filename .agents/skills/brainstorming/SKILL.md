@@ -49,6 +49,9 @@ README.md                            -> overview
 Rules:
 
 - `docs/intent/` governs project what-and-why
+- `docs/intent/master-workstream-roadmap.md` is the top-down bridge from
+  intent into durable product workstreams while preserving `operating_system`
+  as a parallel branch for repo-method work
 - `docs/operating_system/` governs repo method and workflow rules
 - specs live under `docs/superpowers/specs/`
 - plans live under `docs/superpowers/plans/`
@@ -78,6 +81,8 @@ Rules:
      - docs/intent/*.md for intent work
      - docs/operating_system/*.md for operating-system work
      - docs/features/*/feature.source.yaml for feature-owned work
+   - when starting from intent, check whether the next branch is a product
+     workstream or `operating_system`
    - read code and generated contracts only as needed
    - when stage-aware work is central, read docs/stages/<stage_id>.source.yaml and the generated stage contract
    - when one feature folder is in scope, prefer the smallest truthful reading set
@@ -101,6 +106,8 @@ Rules:
    - classify the work as intent | operating_system | workstream | change
    - identify feature_id when one exists
    - identify affected stages when relevant
+   - if starting from intent, decide whether the next branch is workstream or
+     operating_system before writing downstream artifacts
    - decide the primary lens: stage | feature | mixed | cross-cutting
    - classify: add | modify | replace
    - name doc targets:

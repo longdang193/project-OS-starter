@@ -47,6 +47,9 @@ Read in this order:
 
 1. the owning layer source:
    - `docs/intent/*.md` for intent work
+   - `docs/intent/master-workstream-roadmap.md` when intent work is being
+     translated into durable product work or the parallel `operating_system`
+     branch
    - `docs/operating_system/*.md` for operating-system work
    - `docs/features/*/feature.source.yaml` and generated `docs/features/*/<feature_id>.yaml` for feature-owned work
 2. `docs/stages/<stage_id>.source.yaml` and generated `docs/stages/<stage_id>.yaml` when stage-aware work is central to the task
@@ -81,6 +84,8 @@ Before writing a spec or plan, produce triage. This is the gate.
 
 - [ ] Decide whether the work is `intent`, `operating_system`, `workstream`, or `change`
 - [ ] Read the owning layer source first
+- [ ] If the work starts from intent, decide whether the next branch is a
+  product workstream or the parallel `operating_system` branch
 - [ ] If the work touches managed feature meaning, check `docs/features/*/feature.source.yaml`
 - [ ] If the work is stage-heavy, identify affected stages and read `docs/stages/<stage_id>.source.yaml`
 - [ ] Use generated feature/stage contracts and lineage surfaces for current-state and evidence lookup only
@@ -217,9 +222,11 @@ Routing note:
 ### Intent Change
 
 1. Start from `docs/intent/`, not `docs/operating_system/`
-2. Use `Affected features: none` when no managed feature contract owns the change
-3. Keep intent docs stable and source-like instead of writing execution notes
-4. If repo method also changes, name the operating-system doc targets separately rather than collapsing purpose and process into one doc
+2. Use `docs/intent/master-workstream-roadmap.md` when the next question is
+   how intent translates into durable work
+3. Use `Affected features: none` when no managed feature contract owns the change
+4. Keep intent docs stable and source-like instead of writing execution notes
+5. If repo method also changes, name the operating-system doc targets separately rather than collapsing purpose and process into one doc
 
 
 ### Bounded Hygiene Or Drift Cleanup

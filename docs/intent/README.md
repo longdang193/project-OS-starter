@@ -32,11 +32,16 @@ the intent layer, with deeper intent docs beside it as needed.
   - what good looks like if the project succeeds
 - [constraints-and-non-goals.md](./constraints-and-non-goals.md)
   - limits, boundaries, and deliberate exclusions
+- [master-workstream-roadmap.md](./master-workstream-roadmap.md)
+  - top-down bridge from intent into durable workstreams and the parallel
+    operating-system branch
 
 ## Rules
 
 - keep these docs stable and source-like
 - do not turn them into execution logs or release notes
 - treat them as source material for later README synthesis
+- use `master-workstream-roadmap.md` to translate intent into durable planning
+  threads without replacing the upstream intent docs
 - if a document is really about how the repo should build, govern, or route
   work, it belongs in `docs/operating_system/` instead

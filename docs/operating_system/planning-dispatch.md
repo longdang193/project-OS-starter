@@ -2,10 +2,16 @@
 
 This document defines the minimum planning gate for non-trivial changes.
 
+Use it after starting from the owning source layer so the planning flow stays:
+
+`intent -> workstream or operating_system -> change -> spec/plan`
+
 ## Purpose
 
 Before writing a spec or plan, identify:
 
+- which upstream source should be read first
+- whether the work belongs to a product workstream or the operating-system branch
 - which planning layer owns the request
 - what kind of change this is
 - which feature or operating-system area owns it
@@ -31,6 +37,26 @@ Use the smallest truthful reading set for any affected feature folder:
 - `lineage.generated.yaml` only for ownership/evidence/drift work
 - `history.md` only for narrative context
 - do not load an entire feature folder by default
+
+## Lifecycle Summary
+
+Use this repo-level planning lifecycle:
+
+1. start from the owning source:
+   - `docs/intent/` for project what-and-why
+   - `docs/operating_system/` for repo method and governance
+   - feature or stage source only when the work is feature- or stage-owned
+2. if starting from intent, check `docs/intent/master-workstream-roadmap.md`
+3. decide whether the next branch is:
+   - a product workstream
+   - the `operating_system` branch
+4. classify the bounded slice as a `change`
+5. produce triage
+6. route to a spec or implementation plan
+7. execute only after the bounded artifact is approved or explicitly requested
+
+`operating_system` remains a first-class branch in this model. It is not a
+product workstream.
 
 ## Four Planning Layers
 
@@ -72,6 +98,10 @@ Use the answer to choose the owning source layer first:
 - operating-system work starts from `docs/operating_system/`
 - workstream and change work still use feature/stage/source-of-truth checks and
   produce specs/plans under `docs/superpowers/`
+
+If the work starts from intent, use
+`docs/intent/master-workstream-roadmap.md` to decide whether the next branch is
+a product workstream or the `operating_system` branch.
 
 Keep these distinctions explicit:
 
@@ -170,10 +200,32 @@ constraints, or non-goals:
 - layer is usually `intent`
 - affected features may be `none`
 - the owning docs live under `docs/intent/`
+- use `docs/intent/master-workstream-roadmap.md` when the next question is how
+  to translate intent into durable work
 - do not force project-purpose changes into `docs/operating_system/` just
   because they are cross-cutting
 - keep intent docs stable and source-like rather than turning them into dated
   execution logs
+
+## Workstream vs Operating-System Routing
+
+After starting from intent, ask:
+
+1. is this a durable product-direction thread derived from project outcomes?
+2. or is this about how the repo plans, validates, publishes, documents, or
+   instructs agents?
+
+Route to a **workstream** when the work is a durable product-delivery thread.
+
+Route to **operating_system** when the work is repo-method work such as:
+
+- planning and routing behavior
+- validation and sync workflow
+- publication boundaries
+- instruction surfaces and skills
+- repo governance and documentation method
+
+Do not force operating-system work into fake product workstreams.
 
 ## Metadata-Aware Planning
 

@@ -160,6 +160,9 @@ Minimum file expectations for those required folders:
 - `docs/intent/`
   - at least one Markdown file
   - `README.md` is the recommended anchor overview
+  - `master-workstream-roadmap.md` is the recommended top-down planning bridge
+    from intent into durable workstreams and the parallel operating-system
+    branch
 - `docs/operating_system/`
   - governing repo-method docs such as `repo-governance.md` and `doc-system-lifecycle.md`
 - `docs/superpowers/specs/`
@@ -188,6 +191,15 @@ Conditional folders remain conditional:
 The normal validation and hook path should fail when the required folder
 surface is missing, while conditional folders should be required only when the
 project shape or adopted workflow actually uses them.
+
+Planning classification should stay explicit:
+
+- `docs/intent/` owns project purpose and the top-down roadmap from purpose
+  into durable work
+- `docs/operating_system/` owns repo method and governance
+- `workstream` remains a product-direction execution-facing layer
+- `operating_system` remains a first-class planning branch rather than a fake
+  workstream
 
 When a task touches a feature folder, agents should read minimally rather than
 loading every file by default:
