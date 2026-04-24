@@ -41,6 +41,7 @@ import sys
 
 import yaml
 from validator_policy import (
+    ALLOWED_MODES,
     ARCHITECTURE_METADATA_MARKER_LINE,
     GENERATED_HISTORY_END_MARKER,
     GENERATED_HISTORY_START_MARKER,
@@ -106,6 +107,19 @@ def managed_architecture_metadata_enabled(root: Path) -> bool:
     return bool(payload.get("managed_architecture_metadata", False))
 
 
+def read_adoption_mode(root: Path) -> str | None:
+    adoption_mode_path = root / "repo_config" / "adoption-mode.yaml"
+    if not adoption_mode_path.exists():
+        return None
+    payload = yaml.safe_load(adoption_mode_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return None
+    mode = payload.get("adoption_mode")
+    if mode not in ALLOWED_MODES:
+        return None
+    return mode
+
+
 def run_step(command: list[str], *, cwd: Path) -> int:
     rendered = " ".join(command)
     print(f"> {rendered}")
@@ -114,14 +128,13 @@ def run_step(command: list[str], *, cwd: Path) -> int:
 
 
 def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) -> list[list[str]]:
-    sync_script = str(root / "scripts" / "sync_architecture_docs.py")
     adoption_shape_script = str(root / "scripts" / "validate_adoption_shape.py")
     repo_config_script = str(root / "scripts" / "validate_repo_config.py")
-    steps: list[list[str]] = [
-        [python_executable, sync_script, "--check"],
-        [python_executable, adoption_shape_script],
-        [python_executable, repo_config_script],
-    ]
+    steps: list[list[str]] = [[python_executable, adoption_shape_script]]
+    if read_adoption_mode(root) != "starter_method_only":
+        sync_script = str(root / "scripts" / "sync_architecture_docs.py")
+        steps.append([python_executable, sync_script, "--check"])
+    steps.append([python_executable, repo_config_script])
     if not fast:
         pytest_targets = [
             "tests/test_validate_repo_config.py",

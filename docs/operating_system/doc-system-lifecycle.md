@@ -24,6 +24,11 @@ managed root-doc metadata are adoption-shape contract surfaces, and the
 canonical repo-contract gate should invoke the adoption-shape validator rather
 than duplicating that policy downstream.
 
+The same ownership rule applies to adoption modes: `starter_method_only`
+should not be routed through managed architecture sync/generator checks unless
+the repo has actually adopted managed architecture metadata. Lighter upstream
+mode promises should not be silently re-expanded by downstream validator flow.
+
 ## Source-Of-Truth Layers
 
 ```text

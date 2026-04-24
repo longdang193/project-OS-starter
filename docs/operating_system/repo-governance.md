@@ -194,6 +194,12 @@ The normal validation and hook path should fail when the required folder
 surface is missing, while conditional folders should be required only when the
 project shape or adopted workflow actually uses them.
 
+For `starter_method_only` specifically, that means the canonical validator path
+should not quietly escalate the repo into managed architecture sync/generator
+requirements. Mode A may keep `docs/features/`, `docs/stages/`, and
+`docs/generated/` absent or prose-only until the repo explicitly adopts managed
+architecture metadata.
+
 Planning classification should stay explicit:
 
 - `docs/intent/` owns project purpose and the top-down roadmap from purpose

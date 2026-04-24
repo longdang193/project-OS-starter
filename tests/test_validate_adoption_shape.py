@@ -1660,6 +1660,41 @@ lineage_exceptions: []
     assert "docs/architecture_templates/feature.source.yaml" in result.stdout
 
 
+def test_starter_method_only_allows_missing_feature_folders(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+
+
+def test_starter_method_only_allows_prose_only_feature_readme(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    write_text(tmp_path / "README.md", "# Starter Repo\n")
+    for relative_path in (
+        "docs/setup.md",
+        "docs/configuration.md",
+        "docs/usage.md",
+        "docs/pipeline.md",
+        "docs/architecture.md",
+    ):
+        write_text(tmp_path / relative_path, required_root_doc_text(relative_path).split("---\n", 2)[-1])
+    write_text(tmp_path / "docs" / "features" / "README.md", "# Feature Notes\n")
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0
+
+
 def test_validator_rejects_bare_capability_ids_in_yaml_architecture_template(
     tmp_path: Path,
 ) -> None:

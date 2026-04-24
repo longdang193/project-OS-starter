@@ -80,38 +80,42 @@ Use this runbook when the project wants the starter's repo operating-system meth
 
 1. Start by copying `docs/project_templates/mode-a/` into the project root, then fill the placeholders instead of inventing file shapes by hand. The pack includes required root docs, `docs/intent/` anchors, `repo_config/`, `configs/`, `scripts/README.md`, and `tests/README.md`.
 2. Keep the copied `repo_config/adoption-mode.yaml` set to `starter_method_only`.
-3. Fill or update the intent layer for the project:
+3. Treat Mode A as lighter than managed metadata:
+   - the canonical validation path should validate starter-method repo shape and adoption boundaries
+   - it should not require the managed architecture sync/generator toolchain by default
+   - missing managed-only scripts are not a Mode A bootstrap failure unless the repo has opted into managed architecture metadata
+4. Fill or update the intent layer for the project:
    - `docs/intent/project-charter.md`
    - `docs/intent/constraints-and-non-goals.md`
    - `docs/intent/stakeholders.md`
    - `docs/intent/success-outcomes.md`
-4. Adopt the operating-system layer needed by the project:
+5. Adopt the operating-system layer needed by the project:
    - repo governance docs under `docs/operating_system/`
    - agent instruction templates and generated instruction surfaces
    - generated rule surfaces
    - adapter sync and verification workflow
    - publication guidance
    - agent-memory guidance
-5. Keep product architecture metadata absent:
+6. Keep product architecture metadata absent:
    - do not create product feature folders
    - do not create stage contracts
    - do not create generated architecture indexes
    - do not add feature or capability metadata to code, config, or tests
-6. Represent starter adoption, adapter work, rule updates, publication setup, and other method-layer changes as operating-system specs or plans with explicit `targets`.
-7. If adapter sources, agent instructions, or generated rule surfaces changed, run:
+7. Represent starter adoption, adapter work, rule updates, publication setup, and other method-layer changes as operating-system specs or plans with explicit `targets`.
+8. If adapter sources, agent instructions, or generated rule surfaces changed, run:
 
 ```powershell
 .\scripts\sync_agent_adapters.ps1
 .\scripts\verify_agent_adapters.ps1
 ```
 
-8. Validate the selected mode:
+9. Validate the selected mode:
 
 ```powershell
 python scripts/validate_adoption_shape.py
 ```
 
-9. Commit only after the repo has no accidental product architecture metadata.
+10. Commit only after the repo has no accidental product architecture metadata.
 
 Stop and create a Mode B migration plan instead of adding one-off feature files if the project needs product feature lineage, stage ownership, or generated feature contracts.
 

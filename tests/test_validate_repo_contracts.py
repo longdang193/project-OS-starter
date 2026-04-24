@@ -69,6 +69,20 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def write_adoption_mode(root: Path, mode: str) -> None:
+    managed = "true" if mode == "managed_architecture_metadata" else "false"
+    legacy = "true" if mode == "legacy_compatibility" else "false"
+    generator = "scripts/sync_architecture_docs.py" if mode == "managed_architecture_metadata" else "none"
+    write_text(
+        root / "repo_config" / "adoption-mode.yaml",
+        f"""adoption_mode: {mode}
+managed_architecture_metadata: {managed}
+legacy_feature_contracts: {legacy}
+architecture_generator: {generator}
+""",
+    )
+
+
 def test_validator_fast_mode_passes_for_current_repo() -> None:
     result = run_validator("--fast")
 
@@ -160,12 +174,43 @@ def test_build_subprocess_steps_runs_adoption_shape_before_repo_config() -> None
 
     rendered = [" ".join(step) for step in steps]
 
-    assert any("sync_architecture_docs.py --check" in step for step in rendered)
     assert any("validate_adoption_shape.py" in step for step in rendered)
     assert any("validate_repo_config.py" in step for step in rendered)
     assert next(
         index for index, step in enumerate(rendered) if "validate_adoption_shape.py" in step
     ) < next(index for index, step in enumerate(rendered) if "validate_repo_config.py" in step)
+
+
+def test_build_subprocess_steps_skips_sync_for_starter_method_only(tmp_path: Path) -> None:
+    write_adoption_mode(tmp_path, "starter_method_only")
+
+    steps = VALIDATOR.build_subprocess_steps(
+        root=tmp_path,
+        python_executable="python",
+        fast=True,
+    )
+
+    rendered = [" ".join(step) for step in steps]
+
+    assert any("validate_adoption_shape.py" in step for step in rendered)
+    assert any("validate_repo_config.py" in step for step in rendered)
+    assert not any("sync_architecture_docs.py --check" in step for step in rendered)
+
+
+def test_build_subprocess_steps_keeps_sync_for_managed_mode(tmp_path: Path) -> None:
+    write_adoption_mode(tmp_path, "managed_architecture_metadata")
+
+    steps = VALIDATOR.build_subprocess_steps(
+        root=tmp_path,
+        python_executable="python",
+        fast=True,
+    )
+
+    rendered = [" ".join(step) for step in steps]
+
+    assert any("validate_adoption_shape.py" in step for step in rendered)
+    assert any("sync_architecture_docs.py --check" in step for step in rendered)
+    assert any("validate_repo_config.py" in step for step in rendered)
 
 
 def test_shared_repo_contract_markers_match_expected_contract() -> None:

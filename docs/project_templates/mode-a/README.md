@@ -12,6 +12,11 @@ Short public-safe summary of what this project does, who it serves, and what res
 
 This project starts from the Mode A starter pack. It adopts repo governance, intent docs, adapter mapping, publication boundaries, runtime config, and required project docs without adopting managed architecture metadata.
 
+Mode A is intentionally lighter than managed architecture metadata. It should
+not require managed feature folders, generated architecture discovery, or the
+full architecture sync/generator toolchain unless the project later opts into
+managed mode.
+
 Fill the placeholders in this file and the mirrored files under `docs/`, `repo_config/`, `configs/`, `scripts/`, and `tests/`. Keep reproducibility details such as dependency versions, setup commands, config names, and run commands in the public-safe docs instead of deleting them.
 
 ## Quick Start
