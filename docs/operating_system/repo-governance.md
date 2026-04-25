@@ -53,6 +53,7 @@ It now covers both:
 
 - upstream roadmap/workstream routing prompts
 - downstream spec/plan/execution prompts
+- managed-mode update/fix prompts for already-managed repos
 
 The repo now uses `.codex/` as its active Codex config/generated root, while
 still splitting Codex ownership by role:

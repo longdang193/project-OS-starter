@@ -29,6 +29,9 @@ loading every file by default:
 For managed-mode migration or drift work, still name the generated contract and
 discovery surfaces in triage when they are part of the validator-enforced
 target, even though they are not the upstream source of truth.
+For already-managed update/fix work, the prompt pack also includes a dedicated
+managed-update prompt so users do not have to improvise through migration or
+drift wording first.
 
 Use the smallest truthful reading set for any affected feature folder:
 
@@ -71,6 +74,7 @@ That prompt pack now includes upstream prompts for:
   branch
 - checking whether a proposed change really fits the named workstream
 - identifying possible roadmap gaps before writing downstream specs or plans
+- handling already-managed metadata update/fix work separately from migration
 
 ## Four Planning Layers
 

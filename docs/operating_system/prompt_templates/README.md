@@ -12,9 +12,10 @@ Lifecycle order:
 5. `plan-prompt.md`
 6. `execute-prompt.md`
 7. `validate-or-drift-prompt.md`
-8. `mode-migration-prompt.md`
-9. `workstream-alignment-review-prompt.md`
-10. `roadmap-gap-prompt.md`
+8. `managed-metadata-update-prompt.md`
+9. `mode-migration-prompt.md`
+10. `workstream-alignment-review-prompt.md`
+11. `roadmap-gap-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -27,6 +28,9 @@ Use the smallest prompt that matches the step you actually want.
 - use a plan prompt when the spec is approved and you want execution steps
 - use an execution prompt when a plan already exists
 - use a validation/drift prompt when you want to find gaps or missing surfaces
+- use a managed-metadata update prompt when the repo is already in
+  `managed_architecture_metadata` and you want to update or repair managed
+  metadata surfaces in place
 - use a mode-migration prompt when you want to assess or plan
   `starter_method_only -> managed_architecture_metadata`
 - use a workstream-alignment review prompt when you want to sanity-check

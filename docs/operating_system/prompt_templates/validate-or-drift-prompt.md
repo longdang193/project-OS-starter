@@ -2,6 +2,10 @@
 
 Use this when you want to know what is missing, drifting, or outgrown.
 
+Use this to discover problems first. If the repo is already managed and you
+already know you want to update or repair managed surfaces, use
+`managed-metadata-update-prompt.md`.
+
 ```text
 Check this repo for validation gaps, drift, or maturity signals.
 
@@ -22,4 +26,3 @@ Please:
 
 Expected output:
 - findings, severity, and next moves
-

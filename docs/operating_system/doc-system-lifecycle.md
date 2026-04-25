@@ -88,6 +88,12 @@ emit a second-tier warning that the project appears to have outgrown
 lightweight anchors and should plan migration to
 `managed_architecture_metadata`.
 
+Once a repo is already in `managed_architecture_metadata`, treat "update or fix
+the managed surfaces" as a separate workflow from migration. Use the dedicated
+managed-update prompt in `docs/operating_system/prompt_templates/` when the job
+is to edit human-owned managed sources, refresh generated outputs, and rerun
+the canonical checks in place.
+
 ## Required Folder Surface
 
 Projects should keep this lean required folder surface:
