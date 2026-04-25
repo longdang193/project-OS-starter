@@ -3,6 +3,9 @@
 Use this when you think the master roadmap may be missing an important durable
 thread.
 
+If the roadmap already exists and you want to compare it against execution so
+far, use `roadmap-vs-execution-divergence-prompt.md` instead.
+
 ```text
 Assess whether the master roadmap is missing a real workstream or just needs refinement.
 

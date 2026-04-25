@@ -16,6 +16,7 @@ Lifecycle order:
 9. `mode-migration-prompt.md`
 10. `workstream-alignment-review-prompt.md`
 11. `roadmap-gap-prompt.md`
+12. `roadmap-vs-execution-divergence-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -37,6 +38,8 @@ Use the smallest prompt that matches the step you actually want.
   whether a proposed change actually belongs to the named workstream
 - use a roadmap-gap prompt when you think the master roadmap may be missing a
   durable thread
+- use a roadmap-vs-execution divergence prompt when you want to compare
+  upstream roadmap/workstream intent against specs, plans, and execution so far
 
 These are guidance files, not required repo artifacts.
 

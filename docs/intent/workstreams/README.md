@@ -11,6 +11,8 @@ When you are still deciding which workstream to use, or whether the work should
 stay in `operating_system`, use the roadmap-aware prompts under
 `docs/operating_system/prompt_templates/` before drafting downstream specs or
 plans.
+When the question is whether execution so far still matches a registered
+workstream, use `roadmap-vs-execution-divergence-prompt.md`.
 
 Rules:
 

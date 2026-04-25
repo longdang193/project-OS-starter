@@ -85,6 +85,7 @@ thread, use the roadmap-aware prompts under
 - `workstream-to-spec-prompt.md`
 - `workstream-alignment-review-prompt.md`
 - `roadmap-gap-prompt.md`
+- `roadmap-vs-execution-divergence-prompt.md`
 
 If the work is repo-method work, it may still correctly use
 `parent_workstream: none`.

@@ -5,6 +5,8 @@ Use this when you want to know what is missing, drifting, or outgrown.
 Use this to discover problems first. If the repo is already managed and you
 already know you want to update or repair managed surfaces, use
 `managed-metadata-update-prompt.md`.
+If the main question is whether execution has drifted from the roadmap or a
+registered workstream, use `roadmap-vs-execution-divergence-prompt.md`.
 
 ```text
 Check this repo for validation gaps, drift, or maturity signals.

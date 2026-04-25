@@ -3,6 +3,10 @@
 Use this when you want to check whether a proposed change really belongs to the
 named workstream.
 
+If the work has already happened and you want to compare the workstream intent
+against specs, plans, and execution so far, use
+`roadmap-vs-execution-divergence-prompt.md` instead.
+
 ```text
 Review whether this proposed change belongs to the named workstream.
 
