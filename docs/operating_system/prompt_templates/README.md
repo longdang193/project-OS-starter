@@ -17,6 +17,7 @@ Lifecycle order:
 10. `workstream-alignment-review-prompt.md`
 11. `roadmap-gap-prompt.md`
 12. `roadmap-vs-execution-divergence-prompt.md`
+13. `provider-history-sync-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -40,6 +41,9 @@ Use the smallest prompt that matches the step you actually want.
   durable thread
 - use a roadmap-vs-execution divergence prompt when you want to compare
   upstream roadmap/workstream intent against specs, plans, and execution so far
+- use a provider-history sync prompt when Codex chats disappear after switching
+  model providers and history metadata needs to be synced with
+  `codex-provider-sync`
 
 These are guidance files, not required repo artifacts.
 
