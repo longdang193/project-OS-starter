@@ -457,6 +457,10 @@ Working rules:
 This repo treats stale GitNexus as an advisory tool state, not as a reason to
 stop normal source-first engineering work.
 
+When a human wants help refreshing or repairing GitNexus itself, use the prompt
+pack entry at
+`docs/operating_system/prompt_templates/gitnexus-refresh-prompt.md`.
+
 ## Current Phase
 
 Phase 2 keeps `.agents/skills/` as the canonical skill source.

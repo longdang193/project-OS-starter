@@ -18,6 +18,7 @@ Lifecycle order:
 11. `roadmap-gap-prompt.md`
 12. `roadmap-vs-execution-divergence-prompt.md`
 13. `provider-history-sync-prompt.md`
+14. `gitnexus-refresh-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -44,6 +45,8 @@ Use the smallest prompt that matches the step you actually want.
 - use a provider-history sync prompt when Codex chats disappear after switching
   model providers and history metadata needs to be synced with
   `codex-provider-sync`
+- use a GitNexus refresh prompt when GitNexus is stale, failing, or clearly out
+  of sync with the current repo
 
 These are guidance files, not required repo artifacts.
 
