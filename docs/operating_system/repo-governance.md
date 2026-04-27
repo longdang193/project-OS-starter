@@ -253,6 +253,10 @@ Use that model to keep responsibilities separate:
 - bounded change threads = the safe parallel execution unit
 - specs/plans = bounded design and execution artifacts
 
+When humans want help deciding which bounded change threads can safely run in
+parallel, use the prompt-pack entry at
+`docs/operating_system/prompt_templates/parallel-bounded-change-planning-prompt.md`.
+
 The master roadmap may include a lightweight completion checklist for strategic
 coverage review, but it should not become a progress tracker for downstream
 execution.

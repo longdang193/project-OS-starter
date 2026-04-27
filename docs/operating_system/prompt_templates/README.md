@@ -19,6 +19,7 @@ Lifecycle order:
 12. `roadmap-vs-execution-divergence-prompt.md`
 13. `provider-history-sync-prompt.md`
 14. `gitnexus-refresh-prompt.md`
+15. `parallel-bounded-change-planning-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -47,6 +48,8 @@ Use the smallest prompt that matches the step you actually want.
   `codex-provider-sync`
 - use a GitNexus refresh prompt when GitNexus is stale, failing, or clearly out
   of sync with the current repo
+- use a parallel bounded-change planning prompt when you already have bounded
+  change candidates and want to know what can run in parallel safely
 
 These are guidance files, not required repo artifacts.
 

@@ -1,7 +1,7 @@
 ---
 layer: operating_system
 artifact_type: spec
-status: proposed
+status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/

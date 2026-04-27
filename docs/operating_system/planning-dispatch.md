@@ -81,6 +81,7 @@ That prompt pack now includes upstream prompts for:
 - identifying possible roadmap gaps before writing downstream specs or plans
 - handling already-managed metadata update/fix work separately from migration
 - reviewing divergence between roadmap/workstream intent and execution so far
+- planning safe parallel lanes across bounded change threads
 
 ## Four Planning Layers
 

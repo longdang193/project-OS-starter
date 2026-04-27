@@ -195,6 +195,10 @@ Use this simple rule:
 
 `Parallelize bounded change threads, not vague workstream intent.`
 
+When you want help deciding which bounded change threads can run in parallel
+safely, use
+[parallel-bounded-change-planning-prompt.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/operating_system/prompt_templates/parallel-bounded-change-planning-prompt.md).
+
 ## Three Distinct Review Types
 
 Keep these reviews separate:
