@@ -253,6 +253,10 @@ Use that model to keep responsibilities separate:
 - bounded change threads = the safe parallel execution unit
 - specs/plans = bounded design and execution artifacts
 
+The master roadmap may include a lightweight completion checklist for strategic
+coverage review, but it should not become a progress tracker for downstream
+execution.
+
 Downstream artifacts should also make that alignment explicit:
 
 - if the work follows a roadmap thread, name it rather than assuming readers

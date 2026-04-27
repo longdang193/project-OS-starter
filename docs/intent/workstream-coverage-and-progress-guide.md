@@ -53,6 +53,11 @@ Answers:
 
 Do not turn the roadmap into a progress board.
 
+Use the roadmap-level completion checklist in
+[master-workstream-roadmap.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/master-workstream-roadmap.md)
+to review strategic completeness without dragging execution details back into
+the roadmap.
+
 ### 2. Workstream progress tracking
 
 Lives in:

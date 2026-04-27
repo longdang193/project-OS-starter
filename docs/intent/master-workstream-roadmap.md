@@ -115,6 +115,16 @@ Keep this document focused on coverage:
 Do not track detailed progress here; that belongs in the registered workstream
 docs and downstream specs/plans.
 
+## Roadmap-Level Completion Checklist
+
+- [ ] The end goal is broken into major delivery threads.
+- [ ] Each major delivery thread maps to a registered workstream or to
+      `operating_system` intentionally.
+- [ ] No major jobs to be done are still obviously unowned.
+- [ ] No registered workstream is clearly duplicate or too vague.
+- [ ] Cross-workstream dependencies are understood well enough to plan safely.
+- [ ] The current set is complete enough to reach the intended end state.
+
 Optional future structure:
 
 ```text

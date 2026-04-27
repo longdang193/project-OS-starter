@@ -129,6 +129,9 @@ a product workstream or the `operating_system` branch.
 If the user needs help making that choice, route them to the roadmap-aware
 prompt ladder under `docs/operating_system/prompt_templates/` before pushing
 straight into spec or plan prompts.
+Use the roadmap-level completion checklist there when the main question is
+whether the current roadmap/workstream set is complete enough rather than what
+the next bounded change should be.
 
 Record the outcome downstream:
 
