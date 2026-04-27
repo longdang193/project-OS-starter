@@ -21,6 +21,8 @@ Rules:
 - keep the file small and source-like
 - use `parent_workstream: none` for intent or operating-system artifacts rather
   than inventing a product workstream
+- track workstream progress here rather than pushing detailed status back into
+  the master roadmap
 
 Suggested file shape:
 
@@ -31,3 +33,20 @@ status: active | proposed | paused | completed
 parent_intent: master-workstream-roadmap
 ---
 ```
+
+Suggested body shape:
+
+- purpose
+- belongs here
+- does not belong here
+- jobs to be done
+- success signals
+- open bounded change threads
+- completed bounded change threads
+- linked specs
+- linked plans
+- open gaps
+- last alignment review
+
+For the full governance model, see
+[workstream-coverage-and-progress-guide.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstream-coverage-and-progress-guide.md).

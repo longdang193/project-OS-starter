@@ -36,8 +36,8 @@ intent
 
 Then:
 
-- a `change` is one bounded slice inside either a workstream or the
-  `operating_system` branch
+- a `bounded change thread` is one discrete execution-capable slice inside
+  either a workstream or the `operating_system` branch
 - specs describe bounded design
 - implementation plans describe bounded execution
 
@@ -76,6 +76,10 @@ Do not force operating-system work into fake product workstreams.
 5. Use `parent_workstream` when a spec or plan belongs to a real workstream.
 6. Use `docs/intent/workstreams/` as the canonical registry for valid named
    workstream IDs.
+7. Use
+   [workstream-coverage-and-progress-guide.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstream-coverage-and-progress-guide.md)
+   for the precise ladder, coverage review, progress tracking, and safe
+   parallel execution rules.
 
 When a human or agent still needs help moving from this roadmap into the right
 thread, use the roadmap-aware prompts under
@@ -102,6 +106,14 @@ Recommended contents:
 - boundaries for what does not belong in each workstream
 - explicit notes about operating-system work that stays outside product
   workstreams
+
+Keep this document focused on coverage:
+
+- what major threads are needed
+- whether the registered workstreams cover them
+
+Do not track detailed progress here; that belongs in the registered workstream
+docs and downstream specs/plans.
 
 Optional future structure:
 

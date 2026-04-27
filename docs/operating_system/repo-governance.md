@@ -242,6 +242,17 @@ Planning classification should stay explicit:
 - `operating_system` remains a first-class planning branch rather than a fake
   workstream
 
+The precise execution ladder is:
+
+`intent -> master workstream roadmap -> registered workstreams -> bounded change threads -> specs -> implementation plans -> execution`
+
+Use that model to keep responsibilities separate:
+
+- roadmap = coverage of the major threads needed to reach the end goal
+- registered workstreams = durable thread ownership plus progress roll-up
+- bounded change threads = the safe parallel execution unit
+- specs/plans = bounded design and execution artifacts
+
 Downstream artifacts should also make that alignment explicit:
 
 - if the work follows a roadmap thread, name it rather than assuming readers
@@ -253,6 +264,8 @@ Downstream artifacts should also make that alignment explicit:
 - specs and plans under `docs/superpowers/` now validator-check
   `parent_workstream` presence/canonical shape, and intent/operating-system
   artifacts must use `parent_workstream: none`
+- parallel work should be organized around bounded change threads with clear
+  ownership rather than around vague broad workstreams
 
 When a task touches a feature folder, agents should read minimally rather than
 loading every file by default:

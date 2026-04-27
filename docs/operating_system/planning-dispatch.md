@@ -6,6 +6,10 @@ Use it after starting from the owning source layer so the planning flow stays:
 
 `intent -> workstream or operating_system -> change -> spec/plan`
 
+More precisely, execution should pass through:
+
+`intent -> master workstream roadmap -> registered workstreams -> bounded change threads -> specs/plans`
+
 ## Purpose
 
 Before writing a spec or plan, identify:
@@ -53,10 +57,11 @@ Use this repo-level planning lifecycle:
 3. decide whether the next branch is:
    - a product workstream
    - the `operating_system` branch
-4. classify the bounded slice as a `change`
-5. produce triage
-6. route to a spec or implementation plan
-7. execute only after the bounded artifact is approved or explicitly requested
+4. define the bounded change thread that should advance next
+5. classify that bounded slice as a `change`
+6. produce triage
+7. route to a spec or implementation plan
+8. execute only after the bounded artifact is approved or explicitly requested
 
 `operating_system` remains a first-class branch in this model. It is not a
 product workstream.
@@ -135,11 +140,15 @@ Record the outcome downstream:
 Keep these distinctions explicit:
 
 - a workstream is not the same thing as a spec
+- a workstream is not the same thing as a bounded change thread
 - a change is not the same thing as a plan
 - specs describe design within a layer
 - plans describe implementation within a layer
 - canonical ownership should stay upstream; downstream layers should derive
   linkage rather than re-entering the same semantic fact
+
+For the full coverage/progress model, see
+`docs/intent/workstream-coverage-and-progress-guide.md`.
 
 ## Triage Block
 
