@@ -1,0 +1,24 @@
+roadmap:
+  path: docs/intent/master-workstream-roadmap.md
+  workstream_count: 1
+  completed_workstream_count: 0
+workstreams:
+- workstream_id: starter-adoption-experience
+  status: active
+  path: docs/intent/workstreams/starter-adoption-experience.md
+  thread_count: 2
+  completed_thread_count: 0
+  derived_completion: not_started
+  threads:
+  - thread_id: starter-adoption-experience.prompt-template-metadata-and-validation
+    status: proposed
+    path: docs/intent/workstreams/threads/starter-adoption-experience/01-prompt-template-metadata-and-validation.md
+    specs: []
+    plans: []
+    derived_completion: not_started
+  - thread_id: starter-adoption-experience.adoption-prompt-discoverability-without-duplication
+    status: proposed
+    path: docs/intent/workstreams/threads/starter-adoption-experience/02-adoption-prompt-discoverability-without-duplication.md
+    specs: []
+    plans: []
+    derived_completion: not_started

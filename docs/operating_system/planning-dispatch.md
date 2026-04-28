@@ -141,8 +141,9 @@ the next bounded change should be.
 
 Record the outcome downstream:
 
-- product-direction specs and plans should name the roadmap thread they follow
+- product-direction specs and plans should name the bounded change thread they follow
 - when naming a real workstream, use a valid ID from `docs/intent/workstreams/`
+- when naming a real product thread, use a valid thread id from `docs/intent/workstreams/threads/`
 - operating-system specs and plans should say why `parent_workstream: none` is
   intentional
 

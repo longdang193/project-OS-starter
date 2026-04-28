@@ -27,6 +27,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VALIDATOR = REPO_ROOT / "scripts" / "validate_adoption_shape.py"
 POLICY = REPO_ROOT / "scripts" / "validator_policy.py"
+PLANNING_LINEAGE_GENERATOR = REPO_ROOT / "scripts" / "generate_planning_lineage.py"
 
 
 def load_module(name: str, path: Path):
@@ -50,6 +51,16 @@ def write_text(path: Path, text: str) -> None:
 def run_validator(repo_root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(VALIDATOR), "--repo-root", str(repo_root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def run_planning_lineage_generator(repo_root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(PLANNING_LINEAGE_GENERATOR), "--repo-root", str(repo_root)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -995,7 +1006,6 @@ def seed_workstream_registry_entry(root: Path, workstream_id: str = "platform-de
         f"""---
 workstream_id: {workstream_id}
 status: active
-parent_intent: master-workstream-roadmap
 ---
 
 # {workstream_id}
@@ -1003,6 +1013,34 @@ parent_intent: master-workstream-roadmap
 This workstream exists to coordinate durable delivery work.
 """,
     )
+
+
+def seed_thread_registry_entry(
+    root: Path,
+    *,
+    workstream_id: str = "platform-delivery",
+    thread_slug: str = "sample-thread",
+    status: str = "proposed",
+) -> str:
+    seed_workstream_registry_entry(root, workstream_id)
+    thread_id = f"{workstream_id}.{thread_slug}"
+    write_text(
+        root
+        / "docs"
+        / "intent"
+        / "workstreams"
+        / "threads"
+        / workstream_id
+        / f"01-{thread_slug}.md",
+        f"""---
+thread_id: {thread_id}
+status: {status}
+---
+
+# {thread_slug}
+""",
+    )
+    return thread_id
 
 
 def seed_nontrivial_runtime_surface(root: Path) -> None:
@@ -1919,17 +1957,64 @@ related_stages: []
     assert "operating-system superpowers artifacts must use parent_workstream: none" in result.stdout.lower()
 
 
-def test_validator_accepts_superpowers_change_plan_with_named_parent_workstream(tmp_path: Path) -> None:
+def test_validator_rejects_thread_with_redundant_parent_workstream(tmp_path: Path) -> None:
     seed_required_folder_surface(tmp_path)
     seed_required_starter_docs(tmp_path)
     seed_workstream_registry_entry(tmp_path)
     write_text(
-        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
+        tmp_path
+        / "docs"
+        / "intent"
+        / "workstreams"
+        / "threads"
+        / "platform-delivery"
+        / "01-sample-thread.md",
         """---
+thread_id: platform-delivery.sample-thread
+parent_workstream: platform-delivery
+status: proposed
+---
+
+# sample-thread
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "must not restate parent_workstream" in result.stdout.lower()
+
+
+def test_validator_accepts_superpowers_change_plan_with_parent_thread_and_parent_spec(
+    tmp_path: Path,
+) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    thread_id = seed_thread_registry_entry(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "specs" / "2026-04-25-sample-spec.md",
+        f"""---
+layer: change
+artifact_type: spec
+status: proposed
+parent_thread: {thread_id}
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Spec
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
+        f"""---
 layer: change
 artifact_type: plan
 status: proposed
-parent_workstream: platform-delivery
+parent_thread: {thread_id}
+parent_spec: docs/superpowers/specs/2026-04-25-sample-spec.md
 targets:
   - docs/operating_system/repo-governance.md
 related_features: []
@@ -1939,24 +2024,43 @@ related_stages: []
 # Sample Plan
 """,
     )
+    generator = run_planning_lineage_generator(tmp_path)
+    assert generator.returncode == 0, generator.stderr
 
     result = run_validator(tmp_path)
 
     assert result.returncode == 0
 
 
-def test_validator_rejects_superpowers_change_plan_with_unknown_parent_workstream(
+def test_validator_rejects_superpowers_change_plan_with_unknown_parent_thread(
     tmp_path: Path,
 ) -> None:
     seed_required_folder_surface(tmp_path)
     seed_required_starter_docs(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "specs" / "2026-04-25-sample-spec.md",
+        """---
+layer: change
+artifact_type: spec
+status: proposed
+parent_thread: platform-delivery.sample-thread
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Spec
+""",
+    )
     write_text(
         tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
         """---
 layer: change
 artifact_type: plan
 status: proposed
-parent_workstream: platform-delivery
+parent_thread: platform-delivery.sample-thread
+parent_spec: docs/superpowers/specs/2026-04-25-sample-spec.md
 targets:
   - docs/operating_system/repo-governance.md
 related_features: []
@@ -1970,7 +2074,69 @@ related_stages: []
     result = run_validator(tmp_path)
 
     assert result.returncode == 1
-    assert "must resolve to a registered workstream id" in result.stdout.lower()
+    assert "parent_thread must resolve to a registered bounded change thread" in result.stdout.lower()
+
+
+def test_validator_rejects_change_plan_when_parent_spec_thread_does_not_match(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    thread_id = seed_thread_registry_entry(tmp_path, thread_slug="sample-thread")
+    other_thread_id = seed_thread_registry_entry(tmp_path, thread_slug="other-thread")
+    write_text(
+        tmp_path / "docs" / "superpowers" / "specs" / "2026-04-25-sample-spec.md",
+        f"""---
+layer: change
+artifact_type: spec
+status: proposed
+parent_thread: {thread_id}
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Spec
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-04-25-sample-plan.md",
+        f"""---
+layer: change
+artifact_type: plan
+status: proposed
+parent_thread: {other_thread_id}
+parent_spec: docs/superpowers/specs/2026-04-25-sample-spec.md
+targets:
+  - docs/operating_system/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Plan
+""",
+    )
+    generator = run_planning_lineage_generator(tmp_path)
+    assert generator.returncode == 0, generator.stderr
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "must match the parent_spec thread lineage" in result.stdout.lower()
+
+
+def test_validator_rejects_stale_generated_planning_lineage(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    seed_thread_registry_entry(tmp_path)
+    write_text(
+        tmp_path / "docs" / "generated" / "planning_lineage.yaml",
+        "roadmap:\n  path: docs/intent/master-workstream-roadmap.md\n  workstream_count: 999\n",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "generated planning lineage is stale" in result.stdout.lower()
 
 
 def test_validator_rejects_bare_capability_ids_in_yaml_architecture_template(
@@ -2170,13 +2336,38 @@ last_updated_at: "2026-04-22T10:30:00+02:00"
 """,
     )
     write_text(tmp_path / "docs" / "sample.md", "# Sample Doc\nMeaningful doc body.\n")
+    thread_id = seed_thread_registry_entry(
+        tmp_path,
+        workstream_id="sample-delivery",
+        thread_slug="sample-capability-lineage",
+        status="completed",
+    )
+    write_text(
+        tmp_path / "docs" / "superpowers" / "specs" / "2026-04-22-sample-spec.md",
+        f"""---
+layer: change
+artifact_type: spec
+status: completed
+parent_thread: {thread_id}
+targets:
+  - docs/sample.md
+related_features: []
+related_stages: []
+---
+
+# Sample Spec
+
+Completed spec body.
+""",
+    )
     write_text(
         tmp_path / "docs" / "superpowers" / "plans" / "2026-04-22-sample-plan.md",
-        """---
+        f"""---
 layer: change
 artifact_type: plan
 status: completed
-parent_workstream: sample-delivery
+parent_thread: {thread_id}
+parent_spec: docs/superpowers/specs/2026-04-22-sample-spec.md
 targets:
   - docs/sample.md
 related_features: []
@@ -2242,6 +2433,8 @@ timeline:
     outcome: Sample capability now has explicit lineage metadata.
 """,
     )
+    generator = run_planning_lineage_generator(tmp_path)
+    assert generator.returncode == 0, generator.stderr
 
     result = run_validator(tmp_path)
 

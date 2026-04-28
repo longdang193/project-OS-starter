@@ -11,12 +11,12 @@ Turn this approved design into an implementation plan.
 
 Spec:
 - path:
-- roadmap thread this plan follows (use a valid ID from `docs/intent/workstreams/`, or `none`):
+- bounded change thread this plan follows (use a valid thread id from `docs/intent/workstreams/threads/`, or `none`):
 - if `none`, why this is operating_system work:
 
 Please:
 1. review the spec and classify the bounded change
-2. make roadmap alignment explicit in the plan metadata or explain why `parent_workstream: none` is correct
+2. make thread/spec lineage explicit in the plan metadata or explain why `parent_workstream: none` is correct
 3. write a concrete implementation plan in docs/superpowers/plans/
 4. name files to create or modify
 5. include verification steps

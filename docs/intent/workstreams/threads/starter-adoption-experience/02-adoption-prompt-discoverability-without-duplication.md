@@ -1,6 +1,5 @@
 ---
 thread_id: starter-adoption-experience.adoption-prompt-discoverability-without-duplication
-parent_workstream: starter-adoption-experience
 status: proposed
 ---
 

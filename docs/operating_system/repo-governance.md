@@ -254,6 +254,15 @@ Use that model to keep responsibilities separate:
 - bounded change thread files = the safe parallel execution unit
 - specs/plans = bounded design and execution artifacts
 
+Lineage should stay minimal:
+
+- workstreams carry their own identity and status
+- thread files carry their own identity and status, with workstream parent
+  derived from path
+- change-layer specs should point to `parent_thread`
+- change-layer plans should point to `parent_thread` and `parent_spec`
+- downstream artifacts should not restate full ancestry when it can be derived
+
 When humans want help deciding which bounded change threads can safely run in
 parallel, use the prompt-pack entry at
 `docs/operating_system/prompt_templates/parallel-bounded-change-planning-prompt.md`.

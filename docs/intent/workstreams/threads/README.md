@@ -33,7 +33,6 @@ Suggested thread frontmatter:
 ```yaml
 ---
 thread_id: <workstream-id>.<thread-slug>
-parent_workstream: <workstream-id>
 status: proposed | active | blocked | completed
 ---
 ```
@@ -55,6 +54,10 @@ Thread files should answer:
 - what it depends on
 - what it touches
 - what downstream artifacts it produced
+
+The parent workstream is derived from the folder path:
+
+- `docs/intent/workstreams/threads/<workstream-id>/`
 
 In this first pass, the thread registry is product-workstream-focused. A
 parallel `operating_system` thread branch may be added later if the repo needs

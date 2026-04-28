@@ -1,6 +1,5 @@
 ---
 thread_id: starter-adoption-experience.prompt-template-metadata-and-validation
-parent_workstream: starter-adoption-experience
 status: proposed
 ---
 

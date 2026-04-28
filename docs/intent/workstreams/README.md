@@ -5,7 +5,7 @@ This folder is the canonical registry for named product workstreams.
 Use [master-workstream-roadmap.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/master-workstream-roadmap.md)
 as the high-level overview.
 Use this folder when you need the concrete valid workstream IDs that specs and
-plans may reference through `parent_workstream`.
+threads may derive from canonically.
 
 When you are still deciding which workstream to use, or whether the work should
 stay in `operating_system`, use the roadmap-aware prompts under
@@ -36,7 +36,6 @@ Suggested file shape:
 ---
 workstream_id: <id>
 status: active | proposed | paused | completed
-parent_intent: master-workstream-roadmap
 ---
 ```
 

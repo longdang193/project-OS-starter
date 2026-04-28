@@ -31,9 +31,21 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 import re
+import sys
 from typing import Any
 
 import yaml
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from planning_lineage_support import (
+    discover_superpowers_artifacts,
+    discover_threads,
+    discover_workstreams,
+    render_planning_lineage_yaml,
+)
 
 from validator_policy import (
     ALLOWED_MODES,
@@ -655,24 +667,127 @@ def _count_runtime_breadth_dirs(root: Path) -> int:
 
 
 def registered_workstream_ids(root: Path) -> set[str]:
-    registry_root = root / "docs" / "intent" / "workstreams"
-    if not registry_root.exists():
-        return set()
-    workstream_ids: set[str] = set()
-    for path in sorted(registry_root.glob("*.md")):
+    return set(discover_workstreams(root))
+
+
+def registered_thread_ids(root: Path) -> set[str]:
+    return set(discover_threads(root))
+
+
+def validate_thread_registry(root: Path, findings: list[Finding]) -> None:
+    workstream_ids = registered_workstream_ids(root)
+    threads_root = root / "docs" / "intent" / "workstreams" / "threads"
+    if not threads_root.exists():
+        return
+
+    for path in sorted(threads_root.glob("*/*.md")):
         if path.name == "README.md":
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
+        relative_path = relpath(path, root)
         payload, error, _ = extract_markdown_frontmatter(text)
-        if error is not None or payload is None:
+        if error is not None:
+            add_error(
+                findings,
+                relative_path,
+                f"Bounded change thread frontmatter is invalid: {error}",
+                "Fix the frontmatter block so the thread metadata is parseable.",
+            )
             continue
-        workstream_id = payload.get("workstream_id")
-        if isinstance(workstream_id, str) and workstream_id.strip() == workstream_id:
-            workstream_ids.add(workstream_id)
-    return workstream_ids
+        if payload is None:
+            add_error(
+                findings,
+                relative_path,
+                "Bounded change thread must include frontmatter metadata.",
+                "Add frontmatter with thread_id and status fields.",
+            )
+            continue
+
+        thread_id = payload.get("thread_id")
+        status = payload.get("status")
+        _validate_canonical_concise_string(
+            findings,
+            path=relative_path,
+            subject="Bounded change thread",
+            field_name="thread_id",
+            value=thread_id,
+            fix="Use a canonical thread id such as <workstream-id>.<thread-slug>.",
+        )
+        _validate_canonical_concise_string(
+            findings,
+            path=relative_path,
+            subject="Bounded change thread",
+            field_name="status",
+            value=status,
+            fix="Use a canonical status such as proposed, active, blocked, or completed.",
+        )
+        if "parent_workstream" in payload:
+            add_error(
+                findings,
+                relative_path,
+                "Bounded change thread must not restate parent_workstream in frontmatter.",
+                "Derive the parent workstream from docs/intent/workstreams/threads/<workstream-id>/ instead of repeating it manually.",
+            )
+
+        workstream_id = path.parent.name
+        if workstream_id not in workstream_ids:
+            add_error(
+                findings,
+                relative_path,
+                "Bounded change thread folder must live under a registered workstream ID.",
+                "Create or fix the matching workstream doc under docs/intent/workstreams/ before adding thread files.",
+            )
+        if isinstance(thread_id, str) and not thread_id.startswith(f"{workstream_id}."):
+            add_error(
+                findings,
+                relative_path,
+                "Bounded change thread thread_id must begin with its folder workstream id.",
+                f"Rename the thread id to begin with `{workstream_id}.` or move the file under the correct workstream folder.",
+            )
+
+
+def validate_generated_planning_lineage(root: Path, findings: list[Finding]) -> None:
+    thread_ids = registered_thread_ids(root)
+    specs = discover_superpowers_artifacts(root, "specs")
+    plans = discover_superpowers_artifacts(root, "plans")
+    in_use = bool(thread_ids) or any(
+        record.parent_thread is not None for record in specs + plans
+    )
+    generated_path = root / "docs" / "generated" / "planning_lineage.yaml"
+    if not in_use and not generated_path.exists():
+        return
+
+    expected_text = render_planning_lineage_yaml(root)
+    if not generated_path.exists():
+        add_error(
+            findings,
+            relpath(generated_path, root),
+            "Generated planning lineage is missing while the planning-thread surface is in use.",
+            "Run `python scripts/generate_planning_lineage.py` to create docs/generated/planning_lineage.yaml.",
+        )
+        return
+
+    try:
+        actual_text = generated_path.read_text(encoding="utf-8")
+    except OSError:
+        add_error(
+            findings,
+            relpath(generated_path, root),
+            "Generated planning lineage could not be read.",
+            "Re-generate docs/generated/planning_lineage.yaml and ensure the file is readable.",
+        )
+        return
+
+    if actual_text != expected_text:
+        add_error(
+            findings,
+            relpath(generated_path, root),
+            "Generated planning lineage is stale or does not match the derived planning graph.",
+            "Run `python scripts/generate_planning_lineage.py` to refresh docs/generated/planning_lineage.yaml.",
+        )
 
 
 def starter_method_only_has_nontrivial_runtime_surface(root: Path) -> bool:
@@ -2737,7 +2852,10 @@ def validate_legacy_mode(config: AdoptionConfig, root: Path, findings: list[Find
 
 
 def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
-    workstream_ids = registered_workstream_ids(root)
+    thread_records = discover_threads(root)
+    spec_records = {
+        record.path: record for record in discover_superpowers_artifacts(root, "specs")
+    }
     for folder_name in ("specs", "plans"):
         folder = root / "docs" / "superpowers" / folder_name
         if not folder.exists():
@@ -2765,7 +2883,7 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                     findings,
                     relative_path,
                     f"{artifact_label} must include frontmatter metadata.",
-                    "Add frontmatter with layer, artifact_type, status, parent_workstream, targets, and related_* fields.",
+                    "Add frontmatter with layer, artifact_type, status, lineage parent fields, targets, and related_* fields.",
                 )
                 continue
 
@@ -2789,18 +2907,18 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                     fix="Use a single-line canonical layer such as intent, operating_system, workstream, or change.",
                 )
 
-            parent_workstream = payload.get("parent_workstream")
-            _validate_canonical_concise_string(
-                findings,
-                path=relative_path,
-                subject=artifact_label,
-                field_name="parent_workstream",
-                value=parent_workstream,
-                fix="Use a single-line canonical workstream ID or `none`.",
-            )
-            if parent_workstream == "none":
-                continue
             if layer in {"intent", "operating_system"}:
+                parent_workstream = payload.get("parent_workstream")
+                _validate_canonical_concise_string(
+                    findings,
+                    path=relative_path,
+                    subject=artifact_label,
+                    field_name="parent_workstream",
+                    value=parent_workstream,
+                    fix="Use a single-line canonical workstream ID or `none`.",
+                )
+                if parent_workstream == "none":
+                    continue
                 add_error(
                     findings,
                     relative_path,
@@ -2808,13 +2926,62 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                     "Use `parent_workstream: none` for intent or operating_system artifacts unless a stricter workstream registry is introduced later.",
                 )
                 continue
-            if parent_workstream not in workstream_ids:
+
+            parent_thread = payload.get("parent_thread")
+            _validate_canonical_concise_string(
+                findings,
+                path=relative_path,
+                subject=artifact_label,
+                field_name="parent_thread",
+                value=parent_thread,
+                fix="Use a single-line canonical thread ID from docs/intent/workstreams/threads/.",
+            )
+            if not isinstance(parent_thread, str):
+                continue
+            if parent_thread not in thread_records:
                 add_error(
                     findings,
                     relative_path,
-                    f"{artifact_label} parent_workstream must resolve to a registered workstream ID.",
-                    "Add a matching workstream doc under docs/intent/workstreams/ or use `parent_workstream: none` when the artifact truly belongs to intent/operating_system.",
+                    f"{artifact_label} parent_thread must resolve to a registered bounded change thread.",
+                    "Add a matching thread file under docs/intent/workstreams/threads/<workstream-id>/ or fix the parent_thread value.",
                 )
+
+            if "parent_workstream" in payload:
+                add_error(
+                    findings,
+                    relative_path,
+                    f"{artifact_label} must not restate parent_workstream once parent_thread is present.",
+                    "Remove parent_workstream and let the validator derive it from the referenced thread.",
+                )
+
+            if folder_name == "plans":
+                parent_spec = payload.get("parent_spec")
+                _validate_canonical_repo_relative_path(
+                    findings,
+                    root=root,
+                    path=relative_path,
+                    subject=artifact_label,
+                    field_name="parent_spec",
+                    value=parent_spec,
+                    require_exists=True,
+                    fix="Use a canonical repo-relative path to the parent spec in docs/superpowers/specs/.",
+                )
+                if isinstance(parent_spec, str):
+                    spec_record = spec_records.get(parent_spec)
+                    if spec_record is None:
+                        add_error(
+                            findings,
+                            relative_path,
+                            f"{artifact_label} parent_spec must resolve to a real superpowers spec.",
+                            "Set parent_spec to a real docs/superpowers/specs/*.md path.",
+                        )
+                    elif spec_record.parent_thread != parent_thread:
+                        add_error(
+                            findings,
+                            relative_path,
+                            f"{artifact_label} parent_thread must match the parent_spec thread lineage.",
+                            "Point the plan at a spec with the same parent_thread or fix the plan metadata.",
+                        )
 
             if "candidate_type: operating_system" in text and "targets:" not in text:
                 add_error(
@@ -2849,7 +3016,9 @@ def run_validation(root: Path, adoption_mode_path: Path) -> list[Finding]:
     validate_managed_feature_history_structure(root, findings)
     validate_generated_discovery_schema(root, findings)
     validate_lineage_generated_schema(root, findings)
+    validate_thread_registry(root, findings)
     validate_specs_and_plans(root, findings)
+    validate_generated_planning_lineage(root, findings)
 
     if config is None:
         return findings

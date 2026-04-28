@@ -1,7 +1,6 @@
 ---
 workstream_id: starter-adoption-experience
 status: active
-parent_intent: master-workstream-roadmap
 ---
 
 # Starter Adoption Experience
