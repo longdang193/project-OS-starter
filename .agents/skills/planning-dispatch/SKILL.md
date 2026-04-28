@@ -72,9 +72,9 @@ truthful set:
 
 This skill does **not** write specs or plans. It routes work.
 
-- **`brainstorming`** explores options, presents design, writes the spec, then hands off
+- **`brainstorming`** explores options, presents design, writes the spec or spec set, then hands off
 - **`planning-dispatch`** produces the triage block and routes to the next skill
-- **`writing-plans`** writes the implementation plan from a confirmed design/spec
+- **`writing-plans`** writes the implementation plan from a confirmed spec or approved execution-map context
 
 ## Pre-Planning Triage Gate
 
@@ -178,6 +178,9 @@ Exploring an idea or comparing approaches within the chosen layer
 Design is clear enough; implementation plan needed
 └── writing-plans
 
+Approved spec set needs ordering, dependency, or parallel-lane orchestration
+└── use the execution-map prompts under docs/operating_system/prompt_templates/
+
 Approved plan exists; execute with checkpoints
 └── executing-plans
 
@@ -189,6 +192,7 @@ Routing note:
 
 - if the user explicitly asks for an implementation plan and the change is already bounded and clear enough to execute, route directly to `writing-plans` after triage
 - do not force a speculative spec hop just because the work is non-trivial; use `brainstorming` only when design is still meaningfully ambiguous
+- if one approved thread or workstream now has multiple approved specs, route through an execution map before splitting bounded plans
 
 ## Scenario Reference
 
@@ -199,6 +203,8 @@ Routing note:
 3. Produce triage
 4. Create or plan creation of the new `feature.source.yaml`
 5. Dispatch: brainstorming → writing-plans → execution
+   or brainstorming → execution map → writing-plans → execution when the
+   design becomes a multi-spec set
 6. Refresh `docs/generated/*` after source changes
 
 ### Existing Feature Change
@@ -274,5 +280,7 @@ Routing note:
 - **`brainstorming`**: explores ideas and writes the spec
 - **`writing-plans`**: writes the implementation plan
 - **`executing-plans`**: executes an approved plan
+- **prompt templates**: use the thread-set and spec-set execution-map prompts
+  when orchestration is the missing step rather than design
 - **`subagent-driven-development`**: recommended execution path when task-by-task delegation is helpful
 

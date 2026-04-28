@@ -41,6 +41,7 @@ docs/features/*/lineage.generated.yaml -> generated feature-local evidence
 docs/features/<feature_id>/          -> feature-specific explanation + partial-generated history
 docs/*.md                            -> cross-cutting product explanation
 docs/superpowers/specs/*.md          -> design artifacts
+docs/superpowers/execution_maps/*.md -> orchestration artifacts for approved spec sets
 docs/superpowers/plans/*.md          -> execution artifacts
 docs/generated/                      -> discovery (auto)
 README.md                            -> overview
@@ -54,6 +55,7 @@ Rules:
   as a parallel branch for repo-method work
 - `docs/operating_system/` governs repo method and workflow rules
 - specs live under `docs/superpowers/specs/`
+- execution maps live under `docs/superpowers/execution_maps/`
 - plans live under `docs/superpowers/plans/`
 - `feature.source.yaml` must exist before spec when a managed feature is changing; cross-cutting operating-system work may use `feature_source: none`
 - the spec must link back to the affected `docs/features/<feature_id>/feature.source.yaml` and generated `docs/features/<feature_id>/<feature_id>.yaml` when they exist
@@ -129,20 +131,26 @@ Rules:
 
 6. Invoke planning-dispatch
    - produce triage block
-   - confirm routing -> writing-plans
+   - confirm whether the next bounded artifact is a spec, an execution map, or a direct plan
 
-7. Write spec
+7. Write spec or spec set
    - save to docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md
    - follow metadata rules
+   - for new change-layer specs, link them to the chosen thread via `parent_thread`
    - link the spec to the affected source docs and generated contracts
 
-8. Spec review loop
+8. Write an execution map when the approved work now spans a spec set
+   - save to docs/superpowers/execution_maps/YYYY-MM-DD-HH-MM-<topic>-execution-map.md
+   - use it only for orchestration across approved specs
+   - do not turn it into a giant implementation plan
+
+9. Spec review loop
    - review -> fix -> repeat (max 3)
 
-9. User approval
+10. User approval
 
-10. Handoff
-   - invoke writing-plans
+11. Handoff
+   - invoke writing-plans from one approved spec or from an approved execution map, whichever now owns the next bounded plan breakdown
 ```
 
 ---
@@ -165,6 +173,8 @@ User approval on direction
 planning-dispatch (triage)
   ↓
 Write spec
+  ↓
+Optional execution map for multi-spec orchestration
   ↓
 Review loop
   ↓
@@ -208,7 +218,7 @@ Each unit must answer:
 layer: intent | operating_system | workstream | change
 artifact_type: spec
 status: proposed | active | completed | superseded
-parent_workstream: <id> | none
+parent_thread: <thread-id> | none
 targets:
   - <path>
 related_features:
@@ -221,9 +231,14 @@ related_stages:
 Rules:
 
 - `layer`, `artifact_type`, and `status` are required
+- for new change-layer specs, `parent_thread` is the preferred lineage field
 - `targets` is required when the artifact is cross-cutting or otherwise ambiguous in scope
 - `targets` may be omitted only when the artifact is narrow and obviously local
 - `related_features` and `related_stages` are optional navigation aids, not a second ownership system
+
+When humans need the assembled thread/spec/plan view, point them to
+`docs/generated/planning_lineage.yaml` instead of adding derived links back
+into thread files.
 
 ---
 

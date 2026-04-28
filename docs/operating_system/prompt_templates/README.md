@@ -11,18 +11,20 @@ Lifecycle order:
 4. `bounded-change-thread-build-prompt.md`
 5. `roadmap-to-workstream-prompt.md`
 6. `workstream-to-spec-prompt.md`
-7. `spec-prompt.md`
-8. `plan-prompt.md`
-9. `execute-prompt.md`
-10. `validate-or-drift-prompt.md`
-11. `managed-metadata-update-prompt.md`
-12. `mode-migration-prompt.md`
-13. `workstream-alignment-review-prompt.md`
-14. `roadmap-gap-prompt.md`
-15. `roadmap-vs-execution-divergence-prompt.md`
-16. `provider-history-sync-prompt.md`
-17. `gitnexus-refresh-prompt.md`
-18. `parallel-bounded-change-planning-prompt.md`
+7. `thread-set-to-spec-set-prompt.md`
+8. `spec-set-execution-map-prompt.md`
+9. `spec-prompt.md`
+10. `plan-prompt.md`
+11. `execute-prompt.md`
+12. `validate-or-drift-prompt.md`
+13. `managed-metadata-update-prompt.md`
+14. `mode-migration-prompt.md`
+15. `workstream-alignment-review-prompt.md`
+16. `roadmap-gap-prompt.md`
+17. `roadmap-vs-execution-divergence-prompt.md`
+18. `provider-history-sync-prompt.md`
+19. `gitnexus-refresh-prompt.md`
+20. `parallel-bounded-change-planning-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -42,6 +44,10 @@ Routing prompts:
   roadmap thread into the right delivery branch
 - use a workstream-to-spec prompt when a thread is already chosen and you want
   the next bounded design slice
+- use a thread-set-to-spec-set prompt when you already have a thread set and
+  want the complete spec inventory before orchestration
+- use a spec-set-execution-map prompt when the approved spec set exists and you
+  need a distinct execution-map artifact for ordering, waves, and parallelism
 
 Execution prompts:
 
@@ -75,7 +81,7 @@ These are guidance files, not required repo artifacts.
 
 The practical ladder is:
 
-`intent -> master roadmap -> registered workstream set -> bounded change thread files -> spec -> plan -> execution`
+`intent -> master roadmap -> registered workstream set -> bounded change thread files -> spec set -> execution map -> plan -> execution`
 
 with `operating_system` remaining a parallel branch when the work is really
 about repo method rather than product delivery.

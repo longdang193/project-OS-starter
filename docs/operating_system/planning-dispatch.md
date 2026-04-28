@@ -8,7 +8,7 @@ Use it after starting from the owning source layer so the planning flow stays:
 
 More precisely, execution should pass through:
 
-`intent -> master workstream roadmap -> registered workstreams -> bounded change thread files -> specs/plans`
+`intent -> master workstream roadmap -> registered workstreams -> bounded change thread files -> spec set -> execution map -> plans`
 
 ## Purpose
 
@@ -62,7 +62,7 @@ Use this repo-level planning lifecycle:
    `docs/intent/workstreams/threads/<workstream-id>/`
 6. classify that bounded slice as a `change`
 7. produce triage
-8. route to a spec or implementation plan
+8. route to a spec, execution map, or implementation plan
 9. execute only after the bounded artifact is approved or explicitly requested
 
 `operating_system` remains a first-class branch in this model. It is not a
@@ -80,6 +80,8 @@ That prompt pack now includes upstream prompts for:
 - building the master roadmap from intent
 - building the complete registered workstream set from the roadmap
 - building bounded change threads under a workstream
+- turning a thread set into a complete spec set
+- turning a spec set into an execution map
 - translating roadmap threads into the right workstream or `operating_system`
   branch
 - checking whether a proposed change really fits the named workstream
@@ -154,8 +156,10 @@ Keep these distinctions explicit:
 
 - a workstream is not the same thing as a spec
 - a workstream is not the same thing as a bounded change thread
+- a spec set is not the same thing as an execution map
 - a change is not the same thing as a plan
 - specs describe design within a layer
+- execution maps describe orchestration across a set of approved specs
 - plans describe implementation within a layer
 - canonical ownership should stay upstream; downstream layers should derive
   linkage rather than re-entering the same semantic fact

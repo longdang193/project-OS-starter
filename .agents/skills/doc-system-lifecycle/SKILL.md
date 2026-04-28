@@ -40,6 +40,7 @@ docs/features/*/lineage.generated.yaml -> generated feature-local evidence
 docs/features/<feature_id>/          -> feature-specific explanation + partial-generated history
 docs/*.md                            -> cross-cutting product explanation
 docs/superpowers/specs/*.md          -> design artifacts
+docs/superpowers/execution_maps/*.md -> orchestration artifacts for approved spec sets
 docs/superpowers/plans/*.md          -> execution artifacts
 README.md                            -> overview
 docs/generated/*                     -> generated discovery
@@ -57,7 +58,7 @@ docs/generated/*                     -> generated discovery
 | Feature Local Evidence | `docs/features/*/lineage.generated.yaml` | Generated ownership and lineage facts | Generated only |
 | Feature Explanation/History | `docs/features/<feature_id>/*` | Design, flow, ops notes, history | Feature-specific only |
 | Cross-Cutting Product Docs | `docs/*.md` | Architecture, pipelines, shared product explanation | Cross-feature only |
-| Execution Artifacts | `docs/superpowers/specs/*.md`, `docs/superpowers/plans/*.md` | Design and execution artifacts | Metadata-guided, not governing layers |
+| Execution Artifacts | `docs/superpowers/specs/*.md`, `docs/superpowers/execution_maps/*.md`, `docs/superpowers/plans/*.md` | Design, orchestration, and execution artifacts | Metadata-guided, not governing layers |
 | Overview | `README.md` | Purpose and navigation | Entry point only |
 | Generated Discovery | `docs/generated/*` | Fast lookup | Generated only; current managed discovery surfaces are validator-enforced |
 
@@ -188,6 +189,7 @@ Use this default placement:
 | Cross-cutting product architecture / pipeline / shared ops | `docs/*.md` |
 | Project overview / navigation | `README.md` |
 | Design artifacts | `docs/superpowers/specs/*.md` |
+| Execution orchestration artifacts | `docs/superpowers/execution_maps/*.md` |
 | Execution artifacts | `docs/superpowers/plans/*.md` |
 | Generated lookup surfaces | `docs/generated/*` |
 
@@ -218,6 +220,7 @@ Use `docs/generated/*` for:
 - aggregate indexes
 - summaries
 - lookup surfaces
+- assembled planning lineage across workstreams, threads, specs, and plans
 
 Rules:
 
@@ -225,6 +228,8 @@ Rules:
 - never edit manually
 - not a source of truth
 - always point back to the source
+- use `docs/generated/planning_lineage.yaml` when humans need the assembled
+  thread/spec/plan lineage view
 - for the current managed target, treat `docs/generated/architecture_dag.yaml` and `docs/generated/capability_lineage.yaml` as validator-enforced generated contracts, not optional byproducts
 
 ## Metadata for Specs and Plans
@@ -236,7 +241,8 @@ For new or touched specs/plans under `docs/superpowers/`, use:
 layer: intent | operating_system | workstream | change
 artifact_type: spec | plan
 status: proposed | active | completed | superseded
-parent_workstream: <id> | none
+parent_thread: <thread-id> | none
+parent_spec: docs/superpowers/specs/<file>.md | none
 targets:
   - <path>
 related_features:
@@ -249,7 +255,9 @@ related_stages:
 Rules:
 
 - `layer`, `artifact_type`, and `status` are required
-- `parent_workstream`, `related_features`, and `related_stages` are optional
+- for new change-layer specs, prefer `parent_thread`
+- for new change-layer plans, prefer `parent_thread` plus `parent_spec`
+- `related_features` and `related_stages` are optional
 - `targets` is required when the artifact is cross-cutting or otherwise ambiguous in scope
 - `targets` may be omitted only when the scope is already obvious and narrowly local
 
