@@ -146,6 +146,9 @@ Record the outcome downstream:
 - when naming a real product thread, use a valid thread id from `docs/intent/workstreams/threads/`
 - operating-system specs and plans should say why `parent_workstream: none` is
   intentional
+- when humans need the assembled thread/spec/plan view, use
+  `docs/generated/planning_lineage.yaml` rather than adding derived links back
+  into thread files
 
 Keep these distinctions explicit:
 

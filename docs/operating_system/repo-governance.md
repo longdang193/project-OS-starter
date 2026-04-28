@@ -262,6 +262,8 @@ Lineage should stay minimal:
 - change-layer specs should point to `parent_thread`
 - change-layer plans should point to `parent_thread` and `parent_spec`
 - downstream artifacts should not restate full ancestry when it can be derived
+- thread files should not store `linked_spec` or `linked_plan`; use
+  `docs/generated/planning_lineage.yaml` for the assembled linkage view instead
 
 When humans want help deciding which bounded change threads can safely run in
 parallel, use the prompt-pack entry at
