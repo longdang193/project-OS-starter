@@ -59,8 +59,11 @@ Rules:
 - Cross-cutting repo-method docs belong under `docs/operating_system/*.md`
 - The plan must link back to the feature source, generated contract, and spec
   when they exist
-- When a multi-spec set needs ordering or parallelization first, consult the
-  approved execution map rather than collapsing orchestration into the plan
+- When a multi-spec set needs detailed-spec authoring order first, consult the
+  spec-authoring map
+- When approved detailed specs need implementation ordering or parallelization,
+  consult the implementation execution map rather than collapsing
+  orchestration into the plan
 - Use `docs/generated/planning_lineage.yaml` for derived thread/spec/plan
   inspection instead of re-entering those links manually in thread files
 - Generated discovery is refreshed after source updates; do not edit it manually
@@ -77,8 +80,8 @@ Do not write the plan until these are true:
    managed feature is changing, or the plan explicitly says it must be created
    before implementation starts
 4. the spec exists if the design is non-trivial
-5. when the work is now a multi-spec set, the execution map exists or the plan
-   explicitly explains why one is unnecessary
+5. when the work is now a multi-spec set, the implementation execution map
+   exists or the plan explicitly explains why one is unnecessary
 
 When the plan is downstream of intent, the triage and plan should make clear
 whether the bounded change belongs under a product workstream or under the
@@ -149,8 +152,9 @@ If the spec covers multiple independent subsystems, suggest splitting into separ
 
 If there is no spec because the user explicitly requested a clear bounded plan, state that the plan is proceeding from triage plus existing source-of-truth docs rather than inventing a placeholder spec.
 
-If the approved work now spans multiple specs, use the execution map to choose
-ordering, parallel lanes, and bounded plan split before writing plans.
+If the approved work now spans multiple specs, use the implementation execution
+map to choose ordering, parallel lanes, and bounded plan split before writing
+plans.
 
 ---
 
@@ -209,7 +213,7 @@ related_stages:
 **Feature Source:** `docs/features/<feature_id>/feature.source.yaml` | `none`  
 **Feature Contract:** `docs/features/<feature_id>/<feature_id>.yaml` | `none`  
 **Spec:** `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md` | `none`
-**Execution Map:** `docs/superpowers/execution_maps/YYYY-MM-DD-HH-MM-<topic>-execution-map.md` | `none`
+**Implementation Execution Map:** `docs/superpowers/execution_maps/YYYY-MM-DD-HH-MM-<topic>-execution-map.md` | `none`
 **Type:** add | modify | replace  
 **Plan Layer:** intent | operating_system | workstream | change
 **Plan Status:** proposed | active | completed | superseded

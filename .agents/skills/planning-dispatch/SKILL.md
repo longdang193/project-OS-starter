@@ -72,9 +72,9 @@ truthful set:
 
 This skill does **not** write specs or plans. It routes work.
 
-- **`brainstorming`** explores options, presents design, writes the spec or spec set, then hands off
+- **`brainstorming`** explores options, presents design, writes the complete spec set or detailed spec artifacts, then hands off
 - **`planning-dispatch`** produces the triage block and routes to the next skill
-- **`writing-plans`** writes the implementation plan from a confirmed spec or approved execution-map context
+- **`writing-plans`** writes the implementation plan from a confirmed detailed spec or approved implementation-execution-map context
 
 ## Pre-Planning Triage Gate
 
@@ -179,7 +179,7 @@ Design is clear enough; implementation plan needed
 └── writing-plans
 
 Approved spec set needs ordering, dependency, or parallel-lane orchestration
-└── use the execution-map prompts under docs/operating_system/prompt_templates/
+└── use the spec-authoring-map or implementation-execution-map prompts under docs/operating_system/prompt_templates/
 
 Approved plan exists; execute with checkpoints
 └── executing-plans
@@ -192,7 +192,8 @@ Routing note:
 
 - if the user explicitly asks for an implementation plan and the change is already bounded and clear enough to execute, route directly to `writing-plans` after triage
 - do not force a speculative spec hop just because the work is non-trivial; use `brainstorming` only when design is still meaningfully ambiguous
-- if one approved thread or workstream now has multiple approved specs, route through an execution map before splitting bounded plans
+- if the complete spec set exists but detailed-spec authoring order is still unclear, route through a spec-authoring map
+- if approved detailed specs exist and implementation sequencing is still unclear, route through an implementation execution map before splitting bounded plans
 
 ## Scenario Reference
 
@@ -203,8 +204,7 @@ Routing note:
 3. Produce triage
 4. Create or plan creation of the new `feature.source.yaml`
 5. Dispatch: brainstorming → writing-plans → execution
-   or brainstorming → execution map → writing-plans → execution when the
-   design becomes a multi-spec set
+   or brainstorming → spec-authoring map → detailed specs → implementation execution map → writing-plans → execution when the work becomes a multi-spec set
 6. Refresh `docs/generated/*` after source changes
 
 ### Existing Feature Change

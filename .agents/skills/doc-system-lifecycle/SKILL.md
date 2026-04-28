@@ -189,7 +189,7 @@ Use this default placement:
 | Cross-cutting product architecture / pipeline / shared ops | `docs/*.md` |
 | Project overview / navigation | `README.md` |
 | Design artifacts | `docs/superpowers/specs/*.md` |
-| Execution orchestration artifacts | `docs/superpowers/execution_maps/*.md` |
+| Spec-authoring and implementation-execution orchestration artifacts | `docs/superpowers/execution_maps/*.md` |
 | Execution artifacts | `docs/superpowers/plans/*.md` |
 | Generated lookup surfaces | `docs/generated/*` |
 

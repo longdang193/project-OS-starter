@@ -245,15 +245,17 @@ Planning classification should stay explicit:
 
 The precise execution ladder is:
 
-`intent -> master workstream roadmap -> registered workstreams -> bounded change thread files -> spec set -> execution map -> implementation plans -> execution`
+`intent -> master workstream roadmap -> registered workstreams -> bounded change thread files -> complete spec set -> spec-authoring map -> detailed specs -> implementation execution map -> implementation plans -> execution`
 
 Use that model to keep responsibilities separate:
 
 - roadmap = coverage of the major threads needed to reach the end goal
 - registered workstreams = durable thread ownership plus progress roll-up
 - bounded change thread files = the safe parallel execution unit
-- specs = bounded design artifacts
-- execution maps = orchestration artifacts across a spec set
+- complete spec set = the inventory of required specs before detailed design writing
+- spec-authoring maps = orchestration artifacts for detailed-spec authoring
+- detailed specs = bounded design artifacts
+- implementation execution maps = orchestration artifacts across approved detailed specs
 - plans = bounded execution artifacts
 
 Lineage should stay minimal:

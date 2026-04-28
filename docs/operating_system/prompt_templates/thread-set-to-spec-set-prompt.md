@@ -1,7 +1,8 @@
 # Thread Set To Spec Set Prompt
 
 Use this when you already have a set of bounded change thread files and want to
-determine the complete spec set needed before execution planning.
+determine the complete spec set needed before detailed-spec authoring and
+implementation orchestration.
 
 ```text
 Turn this thread set into the complete spec set.
@@ -24,4 +25,5 @@ Please:
 Expected output:
 - complete spec inventory for the thread set
 - uncovered or redundant spec findings
-- next artifact recommendation, usually an execution map
+- split/merge decisions across the thread set
+- next artifact recommendation, usually a spec-authoring map

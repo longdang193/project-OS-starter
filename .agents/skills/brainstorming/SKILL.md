@@ -131,26 +131,37 @@ Rules:
 
 6. Invoke planning-dispatch
    - produce triage block
-   - confirm whether the next bounded artifact is a spec, an execution map, or a direct plan
+   - confirm whether the next bounded artifact is a complete spec set, a
+     spec-authoring map, a detailed spec, an implementation execution map, or
+     a direct plan
 
-7. Write spec or spec set
+7. Write spec set or detailed spec
    - save to docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md
    - follow metadata rules
    - for new change-layer specs, link them to the chosen thread via `parent_thread`
    - link the spec to the affected source docs and generated contracts
 
-8. Write an execution map when the approved work now spans a spec set
+8. Write a spec-authoring map when the complete spec set is known but the
+   detailed-spec authoring order is not
    - save to docs/superpowers/execution_maps/YYYY-MM-DD-HH-MM-<topic>-execution-map.md
-   - use it only for orchestration across approved specs
+   - use it only for orchestration across detailed-spec authoring work
+   - do not turn it into a design spec
+
+9. Write an implementation execution map when approved detailed specs now need
+   implementation sequencing
+   - save to docs/superpowers/execution_maps/YYYY-MM-DD-HH-MM-<topic>-execution-map.md
+   - use it only for implementation orchestration across approved detailed specs
    - do not turn it into a giant implementation plan
 
-9. Spec review loop
+10. Spec review loop
    - review -> fix -> repeat (max 3)
 
-10. User approval
+11. User approval
 
-11. Handoff
-   - invoke writing-plans from one approved spec or from an approved execution map, whichever now owns the next bounded plan breakdown
+12. Handoff
+   - invoke writing-plans from one approved detailed spec or from an approved
+     implementation execution map, whichever now owns the next bounded plan
+     breakdown
 ```
 
 ---
@@ -172,9 +183,13 @@ User approval on direction
   ↓
 planning-dispatch (triage)
   ↓
-Write spec
+Write complete spec set
   ↓
-Optional execution map for multi-spec orchestration
+Optional spec-authoring map
+  ↓
+Write detailed specs
+  ↓
+Optional implementation execution map
   ↓
 Review loop
   ↓
