@@ -6,31 +6,51 @@ a consistent way.
 Lifecycle order:
 
 1. `intent-prompt.md`
-2. `roadmap-to-workstream-prompt.md`
-3. `workstream-to-spec-prompt.md`
-4. `spec-prompt.md`
-5. `plan-prompt.md`
-6. `execute-prompt.md`
-7. `validate-or-drift-prompt.md`
-8. `managed-metadata-update-prompt.md`
-9. `mode-migration-prompt.md`
-10. `workstream-alignment-review-prompt.md`
-11. `roadmap-gap-prompt.md`
-12. `roadmap-vs-execution-divergence-prompt.md`
-13. `provider-history-sync-prompt.md`
-14. `gitnexus-refresh-prompt.md`
-15. `parallel-bounded-change-planning-prompt.md`
+2. `master-workstream-roadmap-build-prompt.md`
+3. `registered-workstream-set-build-prompt.md`
+4. `bounded-change-thread-build-prompt.md`
+5. `roadmap-to-workstream-prompt.md`
+6. `workstream-to-spec-prompt.md`
+7. `spec-prompt.md`
+8. `plan-prompt.md`
+9. `execute-prompt.md`
+10. `validate-or-drift-prompt.md`
+11. `managed-metadata-update-prompt.md`
+12. `mode-migration-prompt.md`
+13. `workstream-alignment-review-prompt.md`
+14. `roadmap-gap-prompt.md`
+15. `roadmap-vs-execution-divergence-prompt.md`
+16. `provider-history-sync-prompt.md`
+17. `gitnexus-refresh-prompt.md`
+18. `parallel-bounded-change-planning-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
+
+Construction prompts:
+
+- use a master-workstream-roadmap build prompt when intent exists and you need
+  the major delivery threads
+- use a registered-workstream-set build prompt when the roadmap exists and you
+  need the concrete workstream set
+- use a bounded-change-thread build prompt when a workstream exists and you
+  need execution-capable slices or thread-file-ready outputs
+
+Routing prompts:
 
 - use an intent prompt when the project purpose or direction is still fuzzy
 - use a roadmap-to-workstream prompt when you are translating intent or a
   roadmap thread into the right delivery branch
-- use a workstream-to-spec prompt when the workstream is known and you want the
-  next bounded design slice
+- use a workstream-to-spec prompt when a thread is already chosen and you want
+  the next bounded design slice
+
+Execution prompts:
+
 - use a spec prompt when the design needs to be written down
 - use a plan prompt when the spec is approved and you want execution steps
 - use an execution prompt when a plan already exists
+
+Review and upkeep prompts:
+
 - use a validation/drift prompt when you want to find gaps or missing surfaces
 - use a managed-metadata update prompt when the repo is already in
   `managed_architecture_metadata` and you want to update or repair managed
@@ -55,7 +75,7 @@ These are guidance files, not required repo artifacts.
 
 The practical ladder is:
 
-`intent -> roadmap/workstream choice -> spec -> plan -> execution`
+`intent -> master roadmap -> registered workstream set -> bounded change thread files -> spec -> plan -> execution`
 
 with `operating_system` remaining a parallel branch when the work is really
 about repo method rather than product delivery.

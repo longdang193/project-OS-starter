@@ -19,10 +19,16 @@ Rules:
 - one Markdown file per named workstream
 - filename should match `workstream_id`
 - keep the file small and source-like
+- keep bounded change thread details in `threads/<workstream-id>/` rather than
+  stretching the workstream doc into a mini backlog
 - use `parent_workstream: none` for intent or operating-system artifacts rather
   than inventing a product workstream
 - track workstream progress here rather than pushing detailed status back into
   the master roadmap
+
+Use the adjacent thread registry at
+[threads/README.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstreams/threads/README.md)
+when you need explicit execution-capable slices beneath a workstream.
 
 Suggested file shape:
 
@@ -41,8 +47,8 @@ Suggested body shape:
 - does not belong here
 - jobs to be done
 - success signals
-- open bounded change threads
-- completed bounded change threads
+- thread folder / active thread links
+- completed thread summary
 - linked specs
 - linked plans
 - open gaps

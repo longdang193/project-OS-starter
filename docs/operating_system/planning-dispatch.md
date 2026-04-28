@@ -8,7 +8,7 @@ Use it after starting from the owning source layer so the planning flow stays:
 
 More precisely, execution should pass through:
 
-`intent -> master workstream roadmap -> registered workstreams -> bounded change threads -> specs/plans`
+`intent -> master workstream roadmap -> registered workstreams -> bounded change thread files -> specs/plans`
 
 ## Purpose
 
@@ -57,11 +57,13 @@ Use this repo-level planning lifecycle:
 3. decide whether the next branch is:
    - a product workstream
    - the `operating_system` branch
-4. define the bounded change thread that should advance next
-5. classify that bounded slice as a `change`
-6. produce triage
-7. route to a spec or implementation plan
-8. execute only after the bounded artifact is approved or explicitly requested
+4. define or select the bounded change thread that should advance next
+5. when helpful, make that slice explicit under
+   `docs/intent/workstreams/threads/<workstream-id>/`
+6. classify that bounded slice as a `change`
+7. produce triage
+8. route to a spec or implementation plan
+9. execute only after the bounded artifact is approved or explicitly requested
 
 `operating_system` remains a first-class branch in this model. It is not a
 product workstream.
@@ -75,6 +77,9 @@ For a copyable user-facing entrypoint into this lifecycle, see
 `docs/operating_system/prompt_templates/`.
 That prompt pack now includes upstream prompts for:
 
+- building the master roadmap from intent
+- building the complete registered workstream set from the roadmap
+- building bounded change threads under a workstream
 - translating roadmap threads into the right workstream or `operating_system`
   branch
 - checking whether a proposed change really fits the named workstream

@@ -21,6 +21,10 @@ through `project-OS-starter`.
 - prompt and guidance surfaces reduce guesswork during adoption and migration
 - divergence between starter intent and downstream execution is easier to detect
 
+## Thread Folder
+
+- `docs/intent/workstreams/threads/starter-adoption-experience/`
+
 Belongs here:
 
 - adoption-mode guidance
@@ -34,15 +38,17 @@ Does not belong here:
 
 ## Open Bounded Change Threads
 
-- define prompt-template metadata and validation shape
-- keep adoption/migration/update prompts discoverable without duplicating the
-  same guidance in too many places
+- [Prompt Template Metadata And Validation](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstreams/threads/starter-adoption-experience/01-prompt-template-metadata-and-validation.md)
+- [Adoption Prompt Discoverability Without Duplication](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstreams/threads/starter-adoption-experience/02-adoption-prompt-discoverability-without-duplication.md)
 
 ## Completed Bounded Change Threads
 
 - establish the master roadmap and workstream registry
 - add roadmap-aware prompt routing
 - add roadmap-vs-execution divergence review prompts
+
+Historical completed threads are still summarized here until the repo chooses
+to backfill older work into explicit thread files.
 
 ## Linked Specs
 

@@ -52,6 +52,7 @@ governing method layer.
 It now covers both:
 
 - upstream roadmap/workstream routing prompts
+- upstream construction prompts for building the planning structure itself
 - downstream spec/plan/execution prompts
 - managed-mode update/fix prompts for already-managed repos
 - planning-alignment review prompts for roadmap/workstream vs execution drift
@@ -244,13 +245,13 @@ Planning classification should stay explicit:
 
 The precise execution ladder is:
 
-`intent -> master workstream roadmap -> registered workstreams -> bounded change threads -> specs -> implementation plans -> execution`
+`intent -> master workstream roadmap -> registered workstreams -> bounded change thread files -> specs -> implementation plans -> execution`
 
 Use that model to keep responsibilities separate:
 
 - roadmap = coverage of the major threads needed to reach the end goal
 - registered workstreams = durable thread ownership plus progress roll-up
-- bounded change threads = the safe parallel execution unit
+- bounded change thread files = the safe parallel execution unit
 - specs/plans = bounded design and execution artifacts
 
 When humans want help deciding which bounded change threads can safely run in

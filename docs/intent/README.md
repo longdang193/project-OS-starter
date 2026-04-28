@@ -38,6 +38,9 @@ the intent layer, with deeper intent docs beside it as needed.
 - [workstream-coverage-and-progress-guide.md](./workstream-coverage-and-progress-guide.md)
   - precise ladder from roadmap to execution, plus coverage/progress/divergence
     tracking rules
+- [workstreams/threads/README.md](./workstreams/threads/README.md)
+  - explicit bounded change thread file surface between registered
+    workstreams and downstream specs/plans
 
 ## Rules
 
@@ -47,7 +50,7 @@ the intent layer, with deeper intent docs beside it as needed.
 - use `master-workstream-roadmap.md` to translate intent into durable planning
   threads without replacing the upstream intent docs
 - use `workstream-coverage-and-progress-guide.md` when you need the precise
-  execution ladder from roadmap coverage into bounded change threads, specs,
-  plans, and safe parallel work
+  execution ladder from roadmap coverage into bounded change thread files,
+  specs, plans, and safe parallel work
 - if a document is really about how the repo should build, govern, or route
   work, it belongs in `docs/operating_system/` instead

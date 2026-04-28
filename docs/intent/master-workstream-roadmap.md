@@ -38,6 +38,8 @@ Then:
 
 - a `bounded change thread` is one discrete execution-capable slice inside
   either a workstream or the `operating_system` branch
+- product workstreams may express those slices explicitly through
+  `docs/intent/workstreams/threads/<workstream-id>/`
 - specs describe bounded design
 - implementation plans describe bounded execution
 
@@ -76,7 +78,9 @@ Do not force operating-system work into fake product workstreams.
 5. Use `parent_workstream` when a spec or plan belongs to a real workstream.
 6. Use `docs/intent/workstreams/` as the canonical registry for valid named
    workstream IDs.
-7. Use
+7. Use `docs/intent/workstreams/threads/` when the next bounded slice should
+   become an explicit thread file before spec or plan creation.
+8. Use
    [workstream-coverage-and-progress-guide.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstream-coverage-and-progress-guide.md)
    for the precise ladder, coverage review, progress tracking, and safe
    parallel execution rules.
@@ -132,10 +136,14 @@ docs/intent/
   master-workstream-roadmap.md
   workstreams/
     workstream-<id>.md
+    threads/
+      <workstream-id>/
+        01-<thread-slug>.md
 ```
 
 The `workstreams/` folder is now the canonical registry for named workstreams.
-Keep the roadmap high-level; keep concrete valid IDs in the registry docs.
+Keep the roadmap high-level; keep concrete valid IDs in the registry docs and
+execution-capable slices in the thread subtree.
 
 ## Anti-Patterns
 

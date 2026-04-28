@@ -12,7 +12,7 @@ Use this model consistently:
 intent
 -> master workstream roadmap
 -> complete set of registered workstreams
--> bounded change threads
+-> bounded change thread files
 -> specs
 -> implementation plans
 -> execution
@@ -29,7 +29,8 @@ Definitions:
     cover the roadmap
 - `bounded change threads`
   - the discrete execution-capable slices beneath a workstream or the
-    `operating_system` branch
+    `operating_system` branch, expressed on the product side through
+    `docs/intent/workstreams/threads/`
 - `specs`
   - bounded design artifacts for one change thread
 - `implementation plans`
@@ -71,9 +72,20 @@ Answers:
 - what remains?
 - what bounded change threads should advance next?
 
-### 3. Execution tracking
+### 3. Thread progress tracking
 
-Lives in:
+Thread-level tracking lives in:
+
+- [docs/intent/workstreams/threads/](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstreams/threads)
+
+It answers:
+
+- what exact bounded slices exist under this workstream?
+- which ones are proposed, active, blocked, or completed?
+- which ones produced specs or plans?
+
+### 4. Execution artifact tracking
+Execution artifact tracking lives in:
 
 - [docs/superpowers/specs/](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/superpowers/specs)
 - [docs/superpowers/plans/](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/superpowers/plans)
@@ -84,7 +96,7 @@ Answers:
 - what slices have plans?
 - what has been executed?
 
-### 4. Divergence review
+### 5. Divergence review
 
 Uses:
 
@@ -129,8 +141,9 @@ Each workstream doc should stay small, but it should be able to answer:
 - what jobs to be done or outcomes it serves
 - what success looks like
 - what does not belong here
-- what bounded change threads are open
-- what bounded change threads are already completed
+- where the thread folder lives
+- what active thread files matter right now
+- what bounded change threads are already completed at a roll-up level
 - what specs/plans are linked
 - what gaps remain
 
@@ -140,8 +153,9 @@ Recommended progress concepts for workstream docs:
 - `jobs to be done`
 - `success signals`
 - `depends on`
-- `open bounded change threads`
-- `completed bounded change threads`
+- `thread folder`
+- `active thread links`
+- `completed thread summary`
 - `linked specs`
 - `linked plans`
 - `open gaps`
@@ -164,6 +178,10 @@ Each bounded change thread may produce:
 - a spec
 - an implementation plan
 - direct execution when already bounded and clear
+
+For product workstreams, prefer expressing active threads as lightweight files
+under `docs/intent/workstreams/threads/<workstream-id>/` instead of burying the
+same slices inside long workstream-doc bullet lists.
 
 Use bounded change threads when:
 
@@ -223,6 +241,8 @@ Use these prompts when helpful:
 - route roadmap into the right workstream:
   - [roadmap-to-workstream-prompt.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/operating_system/prompt_templates/roadmap-to-workstream-prompt.md)
 - route a workstream into the next bounded design slice:
+  - [bounded-change-thread-build-prompt.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/operating_system/prompt_templates/bounded-change-thread-build-prompt.md)
+- route a chosen bounded thread into the next spec:
   - [workstream-to-spec-prompt.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/operating_system/prompt_templates/workstream-to-spec-prompt.md)
 - review roadmap/workstream vs execution:
   - [roadmap-vs-execution-divergence-prompt.md](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/operating_system/prompt_templates/roadmap-vs-execution-divergence-prompt.md)
