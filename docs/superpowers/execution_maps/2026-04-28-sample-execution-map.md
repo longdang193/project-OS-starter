@@ -3,6 +3,7 @@ layer: change
 artifact_type: execution_map
 status: proposed
 parent_workstream: starter-adoption-experience
+map_type: implementation_execution
 threads:
   - starter-adoption-experience.prompt-template-metadata-and-validation
   - starter-adoption-experience.adoption-prompt-discoverability-without-duplication
@@ -11,7 +12,7 @@ specs:
   - docs/superpowers/specs/2026-04-28-derived-thread-linkage-via-planning-lineage-spec.md
 ---
 
-# Sample Execution Map
+# Sample Implementation Execution Map
 
 ## Scope
 
@@ -56,4 +57,5 @@ specs:
 ## Orchestration Notes
 
 - keep execution maps orchestration-only
+- this sample specifically represents the implementation-execution phase
 - move detailed implementation steps into bounded plans

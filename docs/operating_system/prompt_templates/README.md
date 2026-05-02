@@ -26,6 +26,8 @@ Lifecycle order:
 19. `provider-history-sync-prompt.md`
 20. `gitnexus-refresh-prompt.md`
 21. `parallel-bounded-change-planning-prompt.md`
+22. `required-root-doc-update-prompt.md`
+23. `thread-checkpoint-result-pack-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -80,6 +82,11 @@ Review and upkeep prompts:
   of sync with the current repo
 - use a parallel bounded-change planning prompt when you already have bounded
   change candidates and want to know what can run in parallel safely
+- use a required-root-doc update prompt when the validator-enforced root docs
+  under `docs/` have drifted from current repo shape and need a cross-cutting
+  refresh
+- use a thread-checkpoint result-pack prompt when a bounded change thread needs
+  a visible execution-pass checkpoint artifact
 
 These are guidance files, not required repo artifacts.
 

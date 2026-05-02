@@ -470,6 +470,11 @@ These required root docs are validated for:
 - light file-specific semantic coverage
 - rejection of obvious placeholder-only text
 
+When these docs drift from current repo reality, use the prompt-pack entry at
+`docs/operating_system/prompt_templates/required-root-doc-update-prompt.md`.
+That prompt is for cross-cutting summary maintenance, not for inventing a new
+source-of-truth layer under `docs/`.
+
 In `managed_architecture_metadata` mode, these same required root docs are also
 validator-enforced architecture-linked docs. They must include frontmatter with
 the canonical root-doc `doc_id`, a non-empty `doc_type`, and an `explains`
@@ -482,6 +487,11 @@ mapping. The expected steady-state migration target is:
 - `docs/architecture.md` -> `doc_id: architecture`
 
 Outside managed mode, frontmatter remains optional for required root docs.
+
+The dedicated required-root-doc update prompt should preserve that boundary:
+
+- outside managed mode, required root docs still do not need frontmatter by default
+- inside managed mode, required root docs should be updated with their metadata-linked contract role in mind
 
 For managed required root docs, canonical style is also enforced:
 
@@ -565,6 +575,9 @@ Use specs and plans for execution-facing artifacts:
 - plans describe implementation work
 - both may belong to `intent`, `operating_system`, `workstream`, or `change`
   layers through metadata
+- bounded change threads are the checkpoint unit, and execution passes should
+  publish thread checkpoint result packs under
+  `docs/intent/workstreams/checkpoints/`
 
 Do not collapse the concepts:
 
