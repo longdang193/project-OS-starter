@@ -45,8 +45,25 @@ def make_test_root() -> Path:
     return root
 
 
-def seed_minimum_workstream(root: Path, *, workstream_status: str, thread_status: str) -> None:
-    write_text(root / "docs" / "intent" / "master-workstream-roadmap.md", "# Roadmap\n")
+def seed_minimum_workstream(
+    root: Path,
+    *,
+    roadmap_status: str | None = None,
+    workstream_status: str,
+    thread_status: str,
+) -> None:
+    if roadmap_status is None:
+        write_text(root / "docs" / "intent" / "master-workstream-roadmap.md", "# Roadmap\n")
+    else:
+        write_text(
+            root / "docs" / "intent" / "master-workstream-roadmap.md",
+            f"""---
+status: {roadmap_status}
+---
+
+# Roadmap
+""",
+        )
     write_text(
         root / "docs" / "intent" / "workstreams" / "sample-workstream.md",
         f"""---
@@ -99,5 +116,21 @@ def test_warning_only_without_strict_passes_but_strict_fails() -> None:
         result_strict = run_validator(root, "--strict")
         assert result_normal.returncode == 0
         assert result_strict.returncode == 1
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_completed_roadmap_with_non_terminal_workstream_fails() -> None:
+    root = make_test_root()
+    try:
+        seed_minimum_workstream(
+            root,
+            roadmap_status="completed",
+            workstream_status="active",
+            thread_status="proposed",
+        )
+        result = run_validator(root)
+        assert result.returncode == 1
+        assert "completed master roadmap cannot contain non-terminal workstream status" in result.stdout
     finally:
         rmtree(root, ignore_errors=True)

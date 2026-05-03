@@ -30,6 +30,8 @@ Lifecycle order:
 23. `thread-checkpoint-result-pack-prompt.md`
 24. `workstream-completion-and-intent-check-prompt.md`
 25. `starter-baseline-sync-prompt.md`
+26. `parent-complete-only-when-children-terminal-prompt.md`
+27. `lifecycle-readiness-and-proceed-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -93,6 +95,10 @@ Review and upkeep prompts:
   may have drifted and you need a completion verdict plus next decision
 - use a starter-baseline sync prompt when updating another repo/worktree from
   the latest `project-OS-starter` baseline
+- use a parent-complete-only-when-children-terminal prompt when validating
+  closeability invariants before setting parent status to `completed`
+- use a lifecycle-readiness-and-proceed prompt when you need incomplete-state
+  diagnosis plus a concrete next execution path
 
 These are guidance files, not required repo artifacts.
 
