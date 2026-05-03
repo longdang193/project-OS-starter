@@ -32,6 +32,9 @@ Lifecycle order:
 25. `starter-baseline-sync-prompt.md`
 26. `parent-complete-only-when-children-terminal-prompt.md`
 27. `lifecycle-readiness-and-proceed-prompt.md`
+28. `roadmap-closeout-readiness-prompt.md`
+29. `workstream-closeout-readiness-prompt.md`
+30. `thread-closeout-readiness-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -95,16 +98,28 @@ Review and upkeep prompts:
   may have drifted and you need a completion verdict plus next decision
 - use a starter-baseline sync prompt when updating another repo/worktree from
   the latest `project-OS-starter` baseline
-- use a parent-complete-only-when-children-terminal prompt when validating
-  closeability invariants before setting parent status to `completed`
+- use a parent-complete-only-when-children-terminal prompt only for ad hoc
+  checks outside the normal scoped closeout prompts
 - use a lifecycle-readiness-and-proceed prompt when you need incomplete-state
   diagnosis plus a concrete next execution path
+- use a roadmap-closeout readiness prompt when deciding whether roadmap closure
+  is allowed now
+- use a workstream-closeout readiness prompt when deciding whether workstream
+  closure is allowed now
+- use a thread-closeout readiness prompt when deciding whether thread closure
+  should be `completed`, `dropped`, or deferred
 
 These are guidance files, not required repo artifacts.
 
 The practical ladder is:
 
 `intent -> master roadmap -> registered workstream set -> bounded change thread files -> complete spec set -> spec-authoring map -> detailed specs -> implementation execution map -> implementation plans -> execution passes with thread checkpoint result packs`
+
+Closeout sequence (use in this order):
+
+1. `thread-closeout-readiness-prompt.md`
+2. `workstream-closeout-readiness-prompt.md`
+3. `roadmap-closeout-readiness-prompt.md`
 
 with `operating_system` remaining a parallel branch when the work is really
 about repo method rather than product delivery.
