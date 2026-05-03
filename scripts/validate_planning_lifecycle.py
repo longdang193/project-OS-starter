@@ -452,6 +452,39 @@ def validate_lifecycle_coverage(
                         ),
                     )
                 )
+            for thread in ws_threads:
+                if thread.status != "completed":
+                    continue
+                thread_slug = thread.path.stem
+                if "-" in thread_slug:
+                    maybe_number, remainder = thread_slug.split("-", 1)
+                    if maybe_number.isdigit() and remainder:
+                        thread_slug = remainder
+                checkpoint_dir = (
+                    root
+                    / "docs"
+                    / "intent"
+                    / "workstreams"
+                    / "checkpoints"
+                    / workstream_id
+                    / thread_slug
+                )
+                has_checkpoint = checkpoint_dir.exists() and any(
+                    child.is_file() and child.suffix.lower() == ".md" and child.name != "README.md"
+                    for child in checkpoint_dir.iterdir()
+                )
+                if not has_checkpoint:
+                    findings.append(
+                        Finding(
+                            level="ERROR",
+                            category="planning_lifecycle_error",
+                            path=relative_path(thread.path, root),
+                            message=(
+                                "completed thread under completed workstream is missing checkpoint evidence at "
+                                f"`docs/intent/workstreams/checkpoints/{workstream_id}/{thread_slug}/`."
+                            ),
+                        )
+                    )
     return findings
 
 

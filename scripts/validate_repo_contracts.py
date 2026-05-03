@@ -144,6 +144,7 @@ def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) ->
     if not fast:
         pytest_targets = [
             "tests/test_validate_repo_config.py",
+            "tests/test_validate_planning_lifecycle.py",
             "tests/test_validate_repo_contracts.py",
         ]
         adoption_test = root / "tests" / "test_validate_adoption_shape.py"

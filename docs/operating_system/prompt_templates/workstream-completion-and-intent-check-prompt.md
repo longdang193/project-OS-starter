@@ -28,6 +28,10 @@ Please:
 6. decide completion verdict: `complete` | `partial` | `not_complete`
 7. recommend next decision: `close` | `continue` | `re-scope`
 8. list the minimum concrete follow-up actions
+9. before recommending `close`, confirm these checks are expected to pass:
+   - `python scripts/validate_planning_lifecycle.py --strict`
+   - `python scripts/validate_checkpoint_packs.py`
+   - `python scripts/validate_repo_contracts.py --fast`
 ```
 
 Expected output:
