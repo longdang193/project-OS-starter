@@ -29,6 +29,7 @@ Lifecycle order:
 22. `required-root-doc-update-prompt.md`
 23. `thread-checkpoint-result-pack-prompt.md`
 24. `workstream-completion-and-intent-check-prompt.md`
+25. `starter-baseline-sync-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -90,6 +91,8 @@ Review and upkeep prompts:
   a visible execution-pass checkpoint artifact
 - use a workstream-completion and intent-check prompt when long-running work
   may have drifted and you need a completion verdict plus next decision
+- use a starter-baseline sync prompt when updating another repo/worktree from
+  the latest `project-OS-starter` baseline
 
 These are guidance files, not required repo artifacts.
 
