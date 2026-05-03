@@ -15,6 +15,7 @@ This skill routes and triages only. It does not author specs or plans.
 ## Canonical References
 
 - `docs/operating_system/templates/task-start-routing-guide.md`
+- `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/repo-governance.md`
 - `scripts/validate_planning_lifecycle.py`
 
@@ -52,3 +53,5 @@ Plan needed: yes | no
 - No spec or plan before triage.
 - Prefer links to canonical templates/guides over duplicating policy text.
 - Do not invent lifecycle rules in this file.
+- If routing from partial implementation progress, require next-action selection from
+  existing roadmap/workstream/thread/spec/map/plan artifacts only.

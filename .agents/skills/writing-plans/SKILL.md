@@ -13,6 +13,7 @@ Create executable implementation plans from approved design context.
 
 - `docs/operating_system/templates/implementation-plan-template.md`
 - `docs/operating_system/templates/task-start-routing-guide.md`
+- `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/repo-governance.md`
 
 If this file conflicts with canonical templates/governance, follow canonical docs.
@@ -50,3 +51,5 @@ Use the canonical implementation plan template and fill exact paths, tests, and 
 - No implementation code in this skill.
 - Do not duplicate lifecycle/routing policy text here.
 - Keep guidance concise; canonical template carries required structure.
+- Plan tasks so later execution can pick next actions via the next-action gate prompt.
+- Do not author plan steps that require inventing unrelated execution actions.
