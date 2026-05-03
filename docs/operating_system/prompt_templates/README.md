@@ -28,6 +28,7 @@ Lifecycle order:
 21. `parallel-bounded-change-planning-prompt.md`
 22. `required-root-doc-update-prompt.md`
 23. `thread-checkpoint-result-pack-prompt.md`
+24. `workstream-completion-and-intent-check-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -87,12 +88,14 @@ Review and upkeep prompts:
   refresh
 - use a thread-checkpoint result-pack prompt when a bounded change thread needs
   a visible execution-pass checkpoint artifact
+- use a workstream-completion and intent-check prompt when long-running work
+  may have drifted and you need a completion verdict plus next decision
 
 These are guidance files, not required repo artifacts.
 
 The practical ladder is:
 
-`intent -> master roadmap -> registered workstream set -> bounded change thread files -> complete spec set -> spec-authoring map -> detailed specs -> implementation execution map -> implementation plan -> execution`
+`intent -> master roadmap -> registered workstream set -> bounded change thread files -> complete spec set -> spec-authoring map -> detailed specs -> implementation execution map -> implementation plans -> execution passes with thread checkpoint result packs`
 
 with `operating_system` remaining a parallel branch when the work is really
 about repo method rather than product delivery.
