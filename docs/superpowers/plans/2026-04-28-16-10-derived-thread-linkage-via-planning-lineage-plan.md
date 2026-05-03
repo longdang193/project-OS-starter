@@ -1,8 +1,9 @@
 ---
-layer: operating_system
+layer: change
 artifact_type: plan
 status: completed
-parent_workstream: none
+parent_thread: starter-adoption-experience.adoption-prompt-discoverability-without-duplication
+parent_spec: docs/superpowers/specs/2026-04-28-derived-thread-linkage-via-planning-lineage-spec.md
 targets:
   - docs/intent/workstreams/
   - docs/intent/workstreams/threads/

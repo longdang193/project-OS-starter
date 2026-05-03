@@ -1,8 +1,8 @@
 ---
-layer: operating_system
+layer: change
 artifact_type: spec
 status: completed
-parent_workstream: none
+parent_thread: starter-adoption-experience.adoption-prompt-discoverability-without-duplication
 targets:
   - docs/intent/workstreams/
   - docs/intent/workstreams/threads/

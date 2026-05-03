@@ -130,10 +130,12 @@ def run_step(command: list[str], *, cwd: Path) -> int:
 def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) -> list[list[str]]:
     adoption_shape_script = str(root / "scripts" / "validate_adoption_shape.py")
     checkpoint_pack_script = str(root / "scripts" / "validate_checkpoint_packs.py")
+    planning_lifecycle_script = str(root / "scripts" / "validate_planning_lifecycle.py")
     repo_config_script = str(root / "scripts" / "validate_repo_config.py")
     steps: list[list[str]] = [
         [python_executable, adoption_shape_script],
         [python_executable, checkpoint_pack_script],
+        [python_executable, planning_lifecycle_script],
     ]
     if read_adoption_mode(root) != "starter_method_only":
         sync_script = str(root / "scripts" / "sync_architecture_docs.py")

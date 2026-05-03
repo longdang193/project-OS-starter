@@ -1,8 +1,9 @@
 ---
-layer: operating_system
+layer: change
 artifact_type: plan
 status: completed
-parent_workstream: none
+parent_thread: starter-adoption-experience.prompt-template-metadata-and-validation
+parent_spec: docs/superpowers/specs/2026-04-28-planning-lineage-minimal-metadata-and-validator-spec.md
 targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/

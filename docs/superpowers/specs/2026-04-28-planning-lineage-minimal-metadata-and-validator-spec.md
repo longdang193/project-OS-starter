@@ -1,8 +1,8 @@
 ---
-layer: operating_system
+layer: change
 artifact_type: spec
 status: completed
-parent_workstream: none
+parent_thread: starter-adoption-experience.prompt-template-metadata-and-validation
 targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
