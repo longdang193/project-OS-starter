@@ -1,5 +1,26 @@
 # Spec Set To Implementation Execution Map Prompt
 
+## Use When
+
+approved detailed specs exist and implementation sequencing/waves are needed
+
+## Prerequisites
+
+### Required
+
+- approved detailed specs identified
+
+### Optional
+
+- resource/parallel constraints
+
+## Next Prompts
+
+- plan-prompt.md
+
+## Not For
+
+thread creation or roadmap closeout
 Use this when the approved detailed specs already exist and you want a distinct
 implementation execution map that decides ordering, waves, and parallel lanes.
 

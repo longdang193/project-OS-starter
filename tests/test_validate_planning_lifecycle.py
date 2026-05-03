@@ -134,3 +134,35 @@ def test_completed_roadmap_with_non_terminal_workstream_fails() -> None:
         assert "completed master roadmap cannot contain non-terminal workstream status" in result.stdout
     finally:
         rmtree(root, ignore_errors=True)
+
+
+def test_completed_roadmap_requires_completed_workstream_coverage() -> None:
+    root = make_test_root()
+    try:
+        seed_minimum_workstream(
+            root,
+            roadmap_status="completed",
+            workstream_status="completed",
+            thread_status="dropped",
+        )
+        result = run_validator(root)
+        assert result.returncode == 1
+        assert "missing `complete_spec_set` execution map" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_completed_workstream_requires_goal_and_key_deliverables() -> None:
+    root = make_test_root()
+    try:
+        seed_minimum_workstream(
+            root,
+            roadmap_status="active",
+            workstream_status="completed",
+            thread_status="dropped",
+        )
+        result = run_validator(root)
+        assert result.returncode == 1
+        assert "completed workstream must have non-empty `Key Deliverables`" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)

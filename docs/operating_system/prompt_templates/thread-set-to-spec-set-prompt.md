@@ -1,5 +1,27 @@
 # Thread Set To Spec Set Prompt
 
+## Use When
+
+thread set is known and complete spec inventory must be assembled
+
+## Prerequisites
+
+### Required
+
+- thread set in scope identified
+
+### Optional
+
+- existing specs
+
+## Next Prompts
+
+- spec-set-to-spec-authoring-map-prompt.md
+- spec-prompt.md
+
+## Not For
+
+implementation-only sequencing
 Use this when you already have a set of bounded change thread files and want to
 determine the complete spec set needed before detailed-spec authoring and
 implementation orchestration.

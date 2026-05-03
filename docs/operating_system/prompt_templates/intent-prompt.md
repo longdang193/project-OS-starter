@@ -1,5 +1,27 @@
 # Intent Prompt
 
+## Use When
+
+project purpose or direction is still unclear and intent must be clarified before planning artifacts
+
+## Prerequisites
+
+### Required
+
+- current problem context available
+
+### Optional
+
+- existing intent docs
+
+## Next Prompts
+
+- master-workstream-roadmap-build-prompt.md
+- roadmap-to-workstream-prompt.md
+
+## Not For
+
+detailed spec, plan, or closeout decisions
 Use this when you want the agent to help define project purpose before specs or
 plans exist.
 

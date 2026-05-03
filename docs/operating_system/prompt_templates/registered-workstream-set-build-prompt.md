@@ -1,5 +1,27 @@
 # Registered Workstream Set Build Prompt
 
+## Use When
+
+roadmap exists and concrete workstream registration is needed
+
+## Prerequisites
+
+### Required
+
+- master roadmap path identified
+
+### Optional
+
+- existing workstream docs
+
+## Next Prompts
+
+- bounded-change-thread-build-prompt.md
+- roadmap-to-workstream-prompt.md
+
+## Not For
+
+spec authoring or implementation execution
 Use this when the master roadmap exists and you want to derive the concrete,
 complete set of registered workstreams from it.
 

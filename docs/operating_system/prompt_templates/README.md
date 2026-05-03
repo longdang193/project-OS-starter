@@ -104,11 +104,14 @@ Review and upkeep prompts:
 - use a lifecycle-readiness-and-proceed prompt when you need incomplete-state
   diagnosis plus a concrete next execution path
 - use a roadmap-closeout readiness prompt when deciding whether roadmap closure
-  is allowed now
+  is allowed now; include phase-structure checks (`Phase 1/2/3` with
+  phase-local Goal/Key Deliverables)
 - use a workstream-closeout readiness prompt when deciding whether workstream
-  closure is allowed now
+  closure is allowed now and select one immediate next action from existing
+  planning artifacts
 - use a thread-closeout readiness prompt when deciding whether thread closure
-  should be `completed`, `dropped`, or deferred
+  should be `completed`, `dropped`, or deferred, then select one immediate next
+  action from existing planning artifacts
 - use an implementation-next-action gate prompt after a partial plan execution
   to choose the next allowed action from existing planning artifacts
 

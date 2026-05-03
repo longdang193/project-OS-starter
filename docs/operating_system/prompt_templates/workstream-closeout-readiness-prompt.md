@@ -1,5 +1,27 @@
 # Workstream Closeout Readiness Prompt
 
+## Use When
+
+workstream closure readiness is being decided
+
+## Prerequisites
+
+### Required
+
+- thread statuses and evidence context available
+- per-thread readiness reviewed via [thread-closeout-readiness-prompt.md](./thread-closeout-readiness-prompt.md) for in-scope threads
+
+### Optional
+
+- thread closeout review output
+
+## Next Prompts
+
+- [roadmap-closeout-readiness-prompt.md](./roadmap-closeout-readiness-prompt.md)
+
+## Not For
+
+thread creation or spec authoring
 Use this when deciding whether a workstream can be marked `completed`.
 
 ```text
@@ -16,13 +38,22 @@ Please:
    - workstream `completed` is allowed only when all child threads are terminal (`completed | dropped`).
 2. Validate evidence readiness:
    - completed threads must have checkpoint result-pack evidence.
-3. List non-terminal or evidence-missing threads (if any).
-4. Classify each blocker:
+3. Verify completion semantics:
+   - current Goal and Key Deliverables are still accurate for this workstream state.
+   - evaluate each Key Deliverable as satisfied | unsatisfied with evidence.
+4. List non-terminal or evidence-missing threads (if any).
+5. Classify each blocker:
    - execution gap | evidence gap | status-hygiene gap | scope-decision gap
-5. Recommend immediate next actions (top 3).
-6. Return final recommendation:
+6. Recommend immediate next actions (top 3).
+7. For the immediate next step, select one action only from existing artifacts:
+   - roadmap/workstream/thread scope
+   - approved specs
+   - execution-map ordering/dependencies
+   - current implementation plan tasks
+   - open blockers and downstream impact
+8. Return final recommendation:
    - close now | continue execution | re-scope
 ```
 
 Expected output:
-- workstream closeout verdict and concrete next actions
+- workstream closeout verdict, concrete next actions, and one selected next action constrained by existing planning artifacts

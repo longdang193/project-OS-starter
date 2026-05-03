@@ -1,5 +1,27 @@
 # Spec Set To Spec-Authoring Map Prompt
 
+## Use When
+
+complete spec set exists and detailed-spec authoring order must be orchestrated
+
+## Prerequisites
+
+### Required
+
+- spec set inventory exists
+
+### Optional
+
+- parallel lane constraints
+
+## Next Prompts
+
+- spec-prompt.md
+- spec-set-execution-map-prompt.md
+
+## Not For
+
+plan execution or closeout
 Use this when the complete spec set is known but the detailed specs have not
 all been written yet.
 
