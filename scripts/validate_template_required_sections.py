@@ -207,6 +207,28 @@ def _extract_h2_sections(body: str) -> dict[str, str]:
     return sections
 
 
+def _extract_h3_sections(body: str) -> dict[str, str]:
+    matches = list(re.finditer(r"^###\s+(.+?)\s*$", body, re.MULTILINE))
+    sections: dict[str, str] = {}
+    for idx, match in enumerate(matches):
+        section_name = match.group(1).strip()
+        content_start = match.end()
+        content_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(body)
+        sections[section_name] = body[content_start:content_end].strip()
+    return sections
+
+
+def _extract_h4_sections(body: str) -> dict[str, str]:
+    matches = list(re.finditer(r"^####\s+(.+?)\s*$", body, re.MULTILINE))
+    sections: dict[str, str] = {}
+    for idx, match in enumerate(matches):
+        section_name = match.group(1).strip()
+        content_start = match.end()
+        content_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(body)
+        sections[section_name] = body[content_start:content_end].strip()
+    return sections
+
+
 def _is_section_empty(content: str) -> bool:
     if not content.strip():
         return True
@@ -318,6 +340,41 @@ def validate_documents(
                         ),
                     )
                 )
+
+        if rule.template_id == "master-workstream-roadmap":
+            phase_structure = sections.get("Phase Structure", "")
+            phase_sections = _extract_h3_sections(phase_structure)
+            for phase_name in ("Phase 1", "Phase 2", "Phase 3"):
+                phase_block = phase_sections.get(phase_name)
+                if phase_block is None:
+                    findings.append(
+                        Finding(
+                            category="template_phase_structure_missing",
+                            path=rel,
+                            message=f"missing required phase block `{phase_name}`.",
+                        )
+                    )
+                    continue
+                phase_subsections = _extract_h4_sections(phase_block)
+                for sub in ("Goal", "Key Deliverables"):
+                    sub_content = phase_subsections.get(sub)
+                    if sub_content is None:
+                        findings.append(
+                            Finding(
+                                category="template_phase_structure_missing",
+                                path=rel,
+                                message=f"`{phase_name}` is missing required subsection `{sub}`.",
+                            )
+                        )
+                        continue
+                    if _is_section_empty(sub_content):
+                        findings.append(
+                            Finding(
+                                category="template_phase_structure_empty",
+                                path=rel,
+                                message=f"`{phase_name}` subsection `{sub}` is empty.",
+                            )
+                        )
     return findings
 
 

@@ -28,12 +28,19 @@ Suggested structure in the same file:
 - `## Phase 1`
 - `## Phase 2`
 - `## Phase 3`
+- within each phase, keep a self-contained block:
+  - `### Goal`
+  - `### Key Deliverables`
+
+Do not mix deliverables across phases. Each deliverable must belong to exactly
+one phase block.
 
 ## What Belongs In The Master Roadmap
 
 Include:
 
 - phase-level goals
+- phase-level key deliverables
 - high-level workstream intent per phase
 - cross-phase dependencies at summary level
 
@@ -58,7 +65,9 @@ detail growth.
 
 When adding Phase 2/3 roadmap items:
 
-- each item should include Goal and Key Deliverables at roadmap level
+- each phase should include its own Goal and Key Deliverables
+- do not reuse Phase 1 Goal/Key Deliverables as shared placeholders for later
+  phases
 - each item should map to a registered workstream, not directly to tasks
 - avoid adding execution details directly to roadmap phase sections
 

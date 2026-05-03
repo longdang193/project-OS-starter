@@ -41,6 +41,7 @@ This is not a cosmetic formatting pass.
 1. Read the updated roadmap first.
 2. Extract the roadmap’s current model:
    - phases and ordering rules
+   - per-phase Goal and per-phase Key Deliverables boundaries
    - workstream registry expectations
    - lifecycle/completion logic
    - traceability requirements
@@ -76,8 +77,10 @@ Change **content**, not just formatting, when any of the following is true:
 2. Workstream/thread/spec/plan lineage references are missing, stale, or contradictory.
 3. Dependencies or child items no longer match the updated roadmap ordering.
 4. `Goal` or `Key Deliverables` exist but no longer represent current expected outcomes.
-5. Completion criteria allow closure that violates parent-child terminal-state rules.
-6. Status/state metadata conflicts with current lifecycle validator rules.
+5. Phase-level Goal/Key Deliverables are mixed across phases or copied without
+   phase-specific meaning.
+6. Completion criteria allow closure that violates parent-child terminal-state rules.
+7. Status/state metadata conflicts with current lifecycle validator rules.
 
 Keep existing content only when it remains:
 
@@ -100,12 +103,14 @@ For every updated file, verify:
 1. Correct template selected and `template_id` set (when required).
 2. Required sections present with exact section names.
 3. Required sections are non-empty, including `Goal` and `Key Deliverables`.
-4. Frontmatter/artifact type matches template and file role.
-5. Upstream traceability links are correct (roadmap/workstream/thread/spec).
-6. Downstream references (children/dependencies) are current and coherent.
-7. Completion rules align with terminal-child requirements.
-8. No contradictory statuses across linked artifacts.
-9. Validator pass status captured:
+4. For roadmap docs, each phase has its own non-empty Goal and Key Deliverables.
+5. No phase reuses another phase's deliverable list unless explicitly justified.
+6. Frontmatter/artifact type matches template and file role.
+7. Upstream traceability links are correct (roadmap/workstream/thread/spec).
+8. Downstream references (children/dependencies) are current and coherent.
+9. Completion rules align with terminal-child requirements.
+10. No contradictory statuses across linked artifacts.
+11. Validator pass status captured:
    - `python scripts/validate_template_required_sections.py`
    - `python scripts/validate_planning_lifecycle.py --strict` (or justify non-strict run)
 
@@ -146,4 +151,3 @@ Return a reconciliation report in this structure:
   - impact:
   - mitigation:
 ```
-

@@ -24,12 +24,38 @@ required_sections:
 
 ## Phase Structure
 
-- Phase 1:
-  - <focus>
-- Phase 2:
-  - <focus>
-- Phase 3:
-  - <focus>
+### Phase 1
+
+#### Goal
+
+<phase-1 outcome>
+
+#### Key Deliverables
+
+- <phase-1 deliverable 1>
+- <phase-1 deliverable 2>
+
+### Phase 2
+
+#### Goal
+
+<phase-2 outcome>
+
+#### Key Deliverables
+
+- <phase-2 deliverable 1>
+- <phase-2 deliverable 2>
+
+### Phase 3
+
+#### Goal
+
+<phase-3 outcome>
+
+#### Key Deliverables
+
+- <phase-3 deliverable 1>
+- <phase-3 deliverable 2>
 
 ## Workstream Index
 

@@ -168,3 +168,69 @@ Ship safely.
         assert any(issue.category == "template_document_type_mismatch" for issue in issues)
     finally:
         rmtree(root, ignore_errors=True)
+
+
+def test_master_roadmap_requires_per_phase_goal_and_deliverables() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "operating_system" / "templates" / "master-workstream-roadmap-template.md",
+            """---
+template_id: master-workstream-roadmap
+document_type: master_workstream_roadmap
+target_globs:
+  - docs/intent/master-workstream-roadmap.md
+required_sections:
+  - Goal
+  - Key Deliverables
+  - Phase Structure
+  - Workstream Index
+  - Completion Criteria
+required_frontmatter: {}
+---
+
+# Master Workstream Roadmap Template
+""",
+        )
+        write_text(
+            root / "docs" / "intent" / "master-workstream-roadmap.md",
+            """---
+template_id: master-workstream-roadmap
+---
+
+# Master Workstream Roadmap
+
+## Goal
+Roadmap goal.
+
+## Key Deliverables
+- one
+
+## Phase Structure
+### Phase 1
+#### Goal
+Phase one goal.
+#### Key Deliverables
+- one
+### Phase 2
+#### Goal
+Phase two goal.
+### Phase 3
+#### Goal
+Phase three goal.
+#### Key Deliverables
+- three
+
+## Workstream Index
+- ws
+
+## Completion Criteria
+All done.
+""",
+        )
+        rules, findings = VALIDATOR.discover_template_rules(root)
+        assert findings == []
+        issues = VALIDATOR.validate_documents(root, rules, require_template_selection=False)
+        assert any(issue.category == "template_phase_structure_missing" for issue in issues)
+    finally:
+        rmtree(root, ignore_errors=True)
