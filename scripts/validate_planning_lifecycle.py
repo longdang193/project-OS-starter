@@ -36,6 +36,7 @@ import yaml
 
 ACTIVE_STATUSES = {"active", "completed"}
 ALLOWED_MAP_TYPES = {"complete_spec_set", "spec_authoring", "implementation_execution"}
+TERMINAL_THREAD_STATUSES = {"completed", "dropped"}
 
 
 @dataclass(frozen=True)
@@ -435,6 +436,22 @@ def validate_lifecycle_coverage(
                     message="no implementation plans linked to this workstream's bounded threads.",
                 )
             )
+        if workstream.status == "completed":
+            non_terminal_threads = [
+                thread for thread in ws_threads if thread.status not in TERMINAL_THREAD_STATUSES
+            ]
+            for thread in non_terminal_threads:
+                findings.append(
+                    Finding(
+                        level="ERROR",
+                        category="planning_lifecycle_error",
+                        path=relative_path(thread.path, root),
+                        message=(
+                            "completed workstream cannot contain non-terminal thread status "
+                            f"`{thread.status}`; use `completed` or `dropped`."
+                        ),
+                    )
+                )
     return findings
 
 
