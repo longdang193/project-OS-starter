@@ -15,6 +15,13 @@ Load the plan, review it critically, execute task by task, update source-of-trut
 
 ---
 
+## Mandatory Read
+
+Before execution starts, read:
+
+- the specific implementation plan file being executed
+- `docs/operating_system/repo-governance.md`
+
 ## Source-of-Truth Rule
 
 During execution, keep these layers in sync:

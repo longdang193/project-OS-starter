@@ -35,6 +35,7 @@ Lifecycle order:
 28. `roadmap-closeout-readiness-prompt.md`
 29. `workstream-closeout-readiness-prompt.md`
 30. `thread-closeout-readiness-prompt.md`
+31. `implementation-next-action-gate-prompt.md`
 
 Use the smallest prompt that matches the step you actually want.
 
@@ -108,6 +109,8 @@ Review and upkeep prompts:
   closure is allowed now
 - use a thread-closeout readiness prompt when deciding whether thread closure
   should be `completed`, `dropped`, or deferred
+- use an implementation-next-action gate prompt after a partial plan execution
+  to choose the next allowed action from existing planning artifacts
 
 These are guidance files, not required repo artifacts.
 
