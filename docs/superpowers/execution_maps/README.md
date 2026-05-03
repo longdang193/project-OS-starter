@@ -65,6 +65,19 @@ Suggested sections:
 - recommended next detailed-spec sequence or recommended plan breakdown
 - orchestration notes
 
+Per-workstream lifecycle coverage rule:
+
+- each `active` or `completed` workstream should maintain all three map types:
+  - `complete_spec_set`
+  - `spec_authoring`
+  - `implementation_execution`
+- each active/completed workstream should have at least one thread-linked spec and
+  at least one thread-linked plan
+- when a workstream is early-stage and detailed artifacts are not fully authored,
+  add bootstrap linkage artifacts rather than leaving lineage empty:
+  - one bounded bootstrap spec linked to a real thread
+  - one bounded bootstrap plan linked to that bootstrap spec/thread
+
 If you want the structural lineage view, use
 `docs/generated/planning_lineage.yaml`.
 If you want the human orchestration decision about ordering and parallelism,
