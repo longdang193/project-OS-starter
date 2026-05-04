@@ -1,3 +1,18 @@
+﻿---
+prompt_id: thread-closeout-readiness-prompt
+type: prompt
+stage: closeout
+owner_layer: change
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Thread Closeout Readiness Prompt
 
 ## Use When
@@ -17,7 +32,7 @@ thread closure as completed/dropped is being decided
 
 ## Next Prompts
 
-- [workstream-closeout-readiness-prompt.md](./workstream-closeout-readiness-prompt.md)
+- `workstream-closeout-readiness-prompt.md`
 
 ## Not For
 
@@ -37,6 +52,10 @@ Assess thread closeout readiness.
 
 Related skills:
 - verification-before-completion (use before any thread close/pass/fix claim)
+
+Related workflows:
+- spec-to-plan-to-execution-workflow.md (upstream execution trace source)
+- live-run-closeout-workflow.md (when closure evidence comes from live-run lanes)
 
 Context:
 - thread id/path:
@@ -68,3 +87,4 @@ Please:
 
 Expected output:
 - thread closeout verdict, concrete next actions, and one selected next action constrained by existing planning artifacts
+

@@ -1,3 +1,18 @@
+﻿---
+prompt_id: roadmap-closeout-readiness-prompt
+type: prompt
+stage: closeout
+owner_layer: intent
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Roadmap Closeout Readiness Prompt
 
 ## Use When
@@ -36,6 +51,10 @@ Assess roadmap closeout readiness.
 
 Related skills:
 - verification-before-completion (use before any roadmap close/pass/fix claim)
+
+Related workflows:
+- roadmap-to-closeout-workflow.md (primary roadmap closure lifecycle)
+- drift-detection-and-reconciliation-workflow.md (if closure invariants or evidence are inconsistent)
 
 Context:
 - roadmap path:
@@ -76,3 +95,4 @@ Please:
 
 Expected output:
 - roadmap closeout verdict, concrete next actions, and one selected next action constrained by existing planning artifacts
+

@@ -1,3 +1,18 @@
+﻿---
+prompt_id: spec-prompt
+type: prompt
+stage: planning
+owner_layer: change
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Detailed Spec Prompt
 
 ## Use When
@@ -52,3 +67,4 @@ Please:
 
 Expected output:
 - a spec in `docs/superpowers/specs/`
+

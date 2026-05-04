@@ -1,3 +1,18 @@
+﻿---
+prompt_id: workstream-completion-and-intent-check-prompt
+type: prompt
+stage: planning
+owner_layer: intent
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Workstream Completion And Intent Check Prompt
 
 Use this when a long-running workstream may have drifted and you want a clear
@@ -41,3 +56,4 @@ Expected output:
 - completion verdict against intent
 - explicit done/missing/drifted breakdown
 - next decision and concrete follow-up actions
+

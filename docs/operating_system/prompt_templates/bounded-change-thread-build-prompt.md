@@ -1,3 +1,18 @@
+﻿---
+prompt_id: bounded-change-thread-build-prompt
+type: prompt
+stage: planning
+owner_layer: change
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Bounded Change Thread Build Prompt
 
 ## Use When
@@ -51,3 +66,4 @@ Expected output:
 - dependency and shared-surface notes
 - per-thread status and short goal statements
 - next recommended artifact, usually a spec for one bounded change thread
+

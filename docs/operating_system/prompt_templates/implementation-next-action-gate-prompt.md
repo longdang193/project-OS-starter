@@ -1,3 +1,18 @@
+﻿---
+prompt_id: implementation-next-action-gate-prompt
+type: prompt
+stage: execution
+owner_layer: change
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Implementation Next-Action Gate Prompt
 
 ## Use When
@@ -33,6 +48,10 @@ Related skills:
 - planning-dispatch (use when blocked and rerouting is needed before execution continues)
 - executing-plans (use when the selected next action is execution-ready)
 
+Related workflows:
+- spec-to-plan-to-execution-workflow.md (primary sequencing context)
+- drift-detection-and-reconciliation-workflow.md (use when drift blocks next eligible action)
+
 Context:
 - roadmap/workstream/thread in scope:
 - implementation plan path:
@@ -61,3 +80,4 @@ Please:
 
 Expected output:
 - one constrained next action grounded in existing planning artifacts
+

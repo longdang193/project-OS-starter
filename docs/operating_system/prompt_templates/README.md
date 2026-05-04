@@ -2,6 +2,19 @@
 
 Use these prompts as linked ladders, not as one long linear list.
 
+For multi-step procedures with decision gates, use workflow docs under:
+
+- [../workflows/roadmap-to-closeout-workflow.md](../workflows/roadmap-to-closeout-workflow.md)
+- [../workflows/drift-detection-and-reconciliation-workflow.md](../workflows/drift-detection-and-reconciliation-workflow.md)
+- [../workflows/spec-to-plan-to-execution-workflow.md](../workflows/spec-to-plan-to-execution-workflow.md)
+- [../workflows/live-run-system-workflow.md](../workflows/live-run-system-workflow.md)
+- [../workflows/live-run-scenario-planning-workflow.md](../workflows/live-run-scenario-planning-workflow.md)
+- [../workflows/live-run-preflight-check-workflow.md](../workflows/live-run-preflight-check-workflow.md)
+- [../workflows/live-run-execution-workflow.md](../workflows/live-run-execution-workflow.md)
+- [../workflows/live-run-debugging-workflow.md](../workflows/live-run-debugging-workflow.md)
+- [../workflows/live-run-verification-workflow.md](../workflows/live-run-verification-workflow.md)
+- [../workflows/live-run-closeout-workflow.md](../workflows/live-run-closeout-workflow.md)
+
 ## Core Planning Ladder
 
 1. [intent-prompt.md](./intent-prompt.md)
@@ -48,6 +61,11 @@ Use in this order:
 - [roadmap-gap-prompt.md](./roadmap-gap-prompt.md)
 - [parallel-bounded-change-planning-prompt.md](./parallel-bounded-change-planning-prompt.md)
 
+## Live Run Helpers
+
+- [live-run-system-dispatch-prompt.md](./live-run-system-dispatch-prompt.md)
+- [live-run-closeout-decision-prompt.md](./live-run-closeout-decision-prompt.md)
+
 ## Maintenance Helpers
 
 - [thread-checkpoint-result-pack-prompt.md](./thread-checkpoint-result-pack-prompt.md)
@@ -64,3 +82,4 @@ Use in this order:
 - Prefer prompt prerequisites and next-prompt links over ad hoc prompt jumping.
 - `Related Skills` sections are intentionally added only to high-impact prompts.
 - `operating_system` remains a parallel branch when work is repo-method, not product-direction.
+- Use `prompt_templates/` for single prompts; use `workflows/` for sequenced procedures.

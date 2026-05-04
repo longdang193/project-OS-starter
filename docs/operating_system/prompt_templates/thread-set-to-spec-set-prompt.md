@@ -1,3 +1,18 @@
+﻿---
+prompt_id: thread-set-to-spec-set-prompt
+type: prompt
+stage: planning
+owner_layer: change
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Thread Set To Spec Set Prompt
 
 ## Use When
@@ -49,3 +64,4 @@ Expected output:
 - uncovered or redundant spec findings
 - split/merge decisions across the thread set
 - next artifact recommendation, usually a spec-authoring map
+

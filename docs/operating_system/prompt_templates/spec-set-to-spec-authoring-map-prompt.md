@@ -1,3 +1,18 @@
+﻿---
+prompt_id: spec-set-to-spec-authoring-map-prompt
+type: prompt
+stage: planning
+owner_layer: change
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Spec Set To Spec-Authoring Map Prompt
 
 ## Use When
@@ -50,3 +65,4 @@ Expected output:
 - dependency and sequencing guidance for detailed-spec authoring
 - safe parallel authoring lanes
 - recommended next detailed-spec sequence
+

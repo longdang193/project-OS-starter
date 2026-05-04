@@ -1,3 +1,18 @@
+﻿---
+prompt_id: execute-prompt
+type: prompt
+stage: execution
+owner_layer: change
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Execute Prompt
 
 ## Use When
@@ -42,6 +57,10 @@ Related skills:
 - executing-plans (use when executing an approved plan task-by-task)
 - verification-before-completion (use before completion/pass/fix claims)
 
+Related workflows:
+- spec-to-plan-to-execution-workflow.md (primary execution lifecycle)
+- drift-detection-and-reconciliation-workflow.md (fallback when execution diverges from plan/spec)
+
 Plan:
 - path:
 - roadmap thread this work follows (use a valid ID from `docs/intent/workstreams/`, or `none` if operating_system work):
@@ -62,3 +81,4 @@ Please:
 
 Expected output:
 - implemented changes plus verification results
+

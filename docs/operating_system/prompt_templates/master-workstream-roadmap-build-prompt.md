@@ -1,3 +1,18 @@
+﻿---
+prompt_id: master-workstream-roadmap-build-prompt
+type: prompt
+stage: planning
+owner_layer: intent
+entry_points:
+  - use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+  - implementation-next-action-gate-prompt.md
+skills:
+  - planning-dispatch
+status: active
+---
 # Master Workstream Roadmap Build Prompt
 
 ## Use When
@@ -47,3 +62,4 @@ Expected output:
 - a proposed or updated master workstream roadmap
 - identified major delivery threads
 - next recommended artifact, usually the registered workstream set
+
