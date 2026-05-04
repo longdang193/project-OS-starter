@@ -27,7 +27,8 @@ If this skill text conflicts with the references above, follow the references.
 
 Before producing triage, read:
 
-- `docs/operating_system/templates/task-start-routing-guide.md`
+- canonical references above, especially:
+  - `docs/operating_system/templates/task-start-routing-guide.md`
 
 ## Required Output
 

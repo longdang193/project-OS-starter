@@ -29,7 +29,8 @@ If this file conflicts with canonical templates/governance, follow canonical doc
 
 Before any brainstorming output, read:
 
-- `docs/operating_system/templates/task-start-routing-guide.md`
+- canonical references above, especially:
+  - `docs/operating_system/templates/task-start-routing-guide.md`
 
 ## Minimal Workflow
 

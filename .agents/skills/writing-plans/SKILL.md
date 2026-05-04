@@ -22,8 +22,9 @@ If this file conflicts with canonical templates/governance, follow canonical doc
 
 Before drafting a plan, read:
 
-- `docs/operating_system/templates/task-start-routing-guide.md`
-- `docs/operating_system/templates/implementation-plan-template.md`
+- canonical references above, especially:
+  - `docs/operating_system/templates/task-start-routing-guide.md`
+  - `docs/operating_system/templates/implementation-plan-template.md`
 
 ## Preconditions
 

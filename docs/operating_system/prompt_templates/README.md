@@ -31,7 +31,8 @@ For multi-step procedures with decision gates, use workflow docs under:
 
 1. [execute-prompt.md](./execute-prompt.md)
 2. [implementation-next-action-gate-prompt.md](./implementation-next-action-gate-prompt.md)
-3. Repeat [implementation-next-action-gate-prompt.md](./implementation-next-action-gate-prompt.md) until closure-ready or blocked.
+3. If selected action is a patch, run [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md).
+4. Repeat [implementation-next-action-gate-prompt.md](./implementation-next-action-gate-prompt.md) until closure-ready or blocked.
 
 ## Closeout Ladder
 
@@ -75,6 +76,7 @@ Use in this order:
 - [mode-migration-prompt.md](./mode-migration-prompt.md)
 - [provider-history-sync-prompt.md](./provider-history-sync-prompt.md)
 - [gitnexus-refresh-prompt.md](./gitnexus-refresh-prompt.md)
+- [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md)
 
 ## Notes
 
