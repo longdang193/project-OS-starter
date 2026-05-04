@@ -22,11 +22,21 @@ thread closure as completed/dropped is being decided
 ## Not For
 
 initial planning or spec drafting
+
+## Verification Before Completion Trigger
+
+Required when proposing thread closure (`completed` or `dropped`) or claiming fix/pass status:
+
+- run `verification-before-completion` checks before final close recommendation
+
 Use this when deciding whether a bounded change thread can be marked
 `completed` or `dropped`.
 
 ```text
 Assess thread closeout readiness.
+
+Related skills:
+- verification-before-completion (use before any thread close/pass/fix claim)
 
 Context:
 - thread id/path:

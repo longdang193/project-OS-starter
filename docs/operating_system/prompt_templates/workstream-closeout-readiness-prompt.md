@@ -22,10 +22,20 @@ workstream closure readiness is being decided
 ## Not For
 
 thread creation or spec authoring
+
+## Verification Before Completion Trigger
+
+Required when proposing workstream closure or claiming completion/pass status:
+
+- run `verification-before-completion` checks before final close recommendation
+
 Use this when deciding whether a workstream can be marked `completed`.
 
 ```text
 Assess workstream closeout readiness.
+
+Related skills:
+- verification-before-completion (use before any workstream close/pass/fix claim)
 
 Context:
 - workstream id/path:

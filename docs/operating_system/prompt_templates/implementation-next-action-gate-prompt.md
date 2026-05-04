@@ -22,11 +22,16 @@ partial execution completed and the next constrained action must be selected
 ## Not For
 
 initial intent/roadmap construction
+
 Use this after an agent completes part of an implementation plan and needs the
 next allowed action.
 
 ```text
 Determine the next execution action from existing planning artifacts only.
+
+Related skills:
+- planning-dispatch (use when blocked and rerouting is needed before execution continues)
+- executing-plans (use when the selected next action is execution-ready)
 
 Context:
 - roadmap/workstream/thread in scope:

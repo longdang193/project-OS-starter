@@ -22,10 +22,20 @@ roadmap closure readiness is being decided
 ## Not For
 
 spec/plan authoring or implementation task selection
+
+## Verification Before Completion Trigger
+
+Required when proposing roadmap closure or claiming completion/pass status:
+
+- run `verification-before-completion` checks before final close recommendation
+
 Use this when deciding whether a roadmap can be marked `completed`.
 
 ```text
 Assess roadmap closeout readiness.
+
+Related skills:
+- verification-before-completion (use before any roadmap close/pass/fix claim)
 
 Context:
 - roadmap path:

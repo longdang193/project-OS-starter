@@ -25,12 +25,22 @@ planning from scratch
 Use this when an implementation plan already exists and you want the agent to
 carry it out.
 
+## Verification Before Completion Trigger
+
+Required when claiming completion of a plan/task set or pass/fix status:
+
+- run `verification-before-completion` checks before final completion claim
+
 If you are still deciding which roadmap thread the work belongs to, use
 `roadmap-to-workstream-prompt.md` or `workstream-alignment-review-prompt.md`
 before this prompt.
 
 ```text
 Execute this implementation plan in this session.
+
+Related skills:
+- executing-plans (use when executing an approved plan task-by-task)
+- verification-before-completion (use before completion/pass/fix claims)
 
 Plan:
 - path:
