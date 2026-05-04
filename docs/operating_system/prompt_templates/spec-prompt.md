@@ -61,10 +61,20 @@ Please:
 1. classify the work as intent, operating_system, workstream, or change
 2. identify the owning docs and targets
 3. state how this follows the chosen thread via `parent_thread`; if truly operating_system scoped, state why `parent_thread: none` is intentional
-4. draft the detailed spec in docs/superpowers/specs/
-5. call out whether the next artifact should be another detailed spec or an implementation execution map
+4. draft the detailed spec in docs/superpowers/specs/ using the canonical detailed specification template
+5. include required frontmatter for the spec, including at minimum:
+   - `artifact_type: spec`
+6. include required sections with exact names:
+   - `## Goal`
+   - `## Key Deliverables`
+   - `## Design Decisions`
+   - `## Invariants`
+   - `## Validation Plan`
+   - `## Completion Criteria`
+7. ensure completion semantics in `## Completion Criteria` stay aligned with lifecycle rules
+8. call out whether the next artifact should be another detailed spec or an implementation execution map
 ```
 
 Expected output:
-- a spec in `docs/superpowers/specs/`
+- a template-aligned spec in `docs/superpowers/specs/` with required frontmatter and required sections
 
