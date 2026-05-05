@@ -7,6 +7,7 @@ For multi-step procedures with decision gates, use workflow docs under:
 - [../workflows/roadmap-to-closeout-workflow.md](../workflows/roadmap-to-closeout-workflow.md)
 - [../workflows/drift-detection-and-reconciliation-workflow.md](../workflows/drift-detection-and-reconciliation-workflow.md)
 - [../workflows/spec-to-plan-to-execution-workflow.md](../workflows/spec-to-plan-to-execution-workflow.md)
+- [../workflows/multi-worktree-execution-workflow.md](../workflows/multi-worktree-execution-workflow.md)
 - [../workflows/live-run-system-workflow.md](../workflows/live-run-system-workflow.md)
 - [../workflows/live-run-scenario-planning-workflow.md](../workflows/live-run-scenario-planning-workflow.md)
 - [../workflows/live-run-preflight-check-workflow.md](../workflows/live-run-preflight-check-workflow.md)
@@ -34,6 +35,35 @@ For multi-step procedures with decision gates, use workflow docs under:
 3. If selected action is a patch, run [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md).
 4. Repeat [implementation-next-action-gate-prompt.md](./implementation-next-action-gate-prompt.md) until closure-ready or blocked.
 
+## Multi-Worktree Prompt Ladder
+
+Use in this order:
+
+1. [multi-worktree-dispatch-prompt.md](./multi-worktree-dispatch-prompt.md)
+2. [implementation-next-action-gate-prompt.md](./implementation-next-action-gate-prompt.md)
+3. [execute-prompt.md](./execute-prompt.md)
+4. [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md) (when selected action is a patch)
+5. [multi-worktree-merge-and-reconcile-prompt.md](./multi-worktree-merge-and-reconcile-prompt.md)
+6. [thread-closeout-readiness-prompt.md](./thread-closeout-readiness-prompt.md)
+7. [workstream-closeout-readiness-prompt.md](./workstream-closeout-readiness-prompt.md)
+8. [roadmap-closeout-readiness-prompt.md](./roadmap-closeout-readiness-prompt.md) (if roadmap closure is in scope)
+
+```mermaid
+flowchart TD
+  A["multi-worktree-dispatch-prompt.md"] --> B["implementation-next-action-gate-prompt.md"]
+  B --> C["execute-prompt.md"]
+  C --> D{"Selected action is patch?"}
+  D -- "yes" --> E["patch-and-pattern-detection-prompt.md"]
+  D -- "no" --> F["multi-worktree-merge-and-reconcile-prompt.md"]
+  E --> B
+  F --> G["thread-closeout-readiness-prompt.md"]
+  G --> H["workstream-closeout-readiness-prompt.md"]
+  H --> I{"Roadmap closeout in scope?"}
+  I -- "yes" --> J["roadmap-closeout-readiness-prompt.md"]
+  I -- "no" --> K["close now"]
+  J --> K
+```
+
 ## Closeout Ladder
 
 Use in this order:
@@ -41,6 +71,7 @@ Use in this order:
 1. [thread-closeout-readiness-prompt.md](./thread-closeout-readiness-prompt.md)
 2. [workstream-closeout-readiness-prompt.md](./workstream-closeout-readiness-prompt.md)
 3. [roadmap-closeout-readiness-prompt.md](./roadmap-closeout-readiness-prompt.md)
+4. [multi-worktree-merge-and-reconcile-prompt.md](./multi-worktree-merge-and-reconcile-prompt.md) (for multi-lane PR/merge + reconciliation)
 
 ## Reconciliation Ladder (After Roadmap Format Change)
 
@@ -61,6 +92,8 @@ Use in this order:
 - [workstream-alignment-review-prompt.md](./workstream-alignment-review-prompt.md)
 - [roadmap-gap-prompt.md](./roadmap-gap-prompt.md)
 - [parallel-bounded-change-planning-prompt.md](./parallel-bounded-change-planning-prompt.md)
+- [multi-worktree-dispatch-prompt.md](./multi-worktree-dispatch-prompt.md)
+- [multi-worktree-merge-and-reconcile-prompt.md](./multi-worktree-merge-and-reconcile-prompt.md)
 
 ## Live Run Helpers
 
