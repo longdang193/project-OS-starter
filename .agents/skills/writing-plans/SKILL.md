@@ -26,6 +26,18 @@ Before drafting a plan, read:
   - `docs/operating_system/templates/task-start-routing-guide.md`
   - `docs/operating_system/templates/implementation-plan-template.md`
 
+## GitNexus Usage
+
+Use GitNexus when plan quality depends on cross-file dependency awareness.
+
+- Prefer GitNexus for broad impact mapping and shared-module dependency checks.
+- For narrowly scoped plans, GitNexus is optional.
+- Before high-trust use, check freshness:
+  - `.\scripts\get_gitnexus_freshness.ps1`
+- If stale, use GitNexus only as advisory and keep the plan source-first.
+- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
+- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+
 ## Preconditions
 
 - triage exists (`planning-dispatch`)

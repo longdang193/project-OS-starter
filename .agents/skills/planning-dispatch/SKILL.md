@@ -30,6 +30,18 @@ Before producing triage, read:
 - canonical references above, especially:
   - `docs/operating_system/templates/task-start-routing-guide.md`
 
+## GitNexus Usage
+
+Use GitNexus when routing requires cross-file impact clarity.
+
+- Prefer GitNexus for cross-cutting routing and impact checks.
+- For small/local routing decisions, GitNexus is optional.
+- Before high-trust use, check freshness:
+  - `.\scripts\get_gitnexus_freshness.ps1`
+- If stale, treat GitNexus as advisory and route source-first.
+- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
+- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+
 ## Required Output
 
 Produce a compact triage block:

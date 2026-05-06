@@ -37,6 +37,7 @@ partial execution completed and the next constrained action must be selected
 ## Not For
 
 initial intent/roadmap construction
+execution routing when planning readiness is not yet established
 
 Use this after an agent completes part of an implementation plan and needs the
 next allowed action.
@@ -67,6 +68,7 @@ Do not invent unrelated next steps. Choose the next action only from:
 - implementation execution map ordering/dependencies
 - current implementation plan tasks
 - open blockers and downstream impact
+- do not run this gate unless planning readiness already returned `ready_for_execution_gates`
 
 Please:
 1. verify what was completed against current item Key Deliverables

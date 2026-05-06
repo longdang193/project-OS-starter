@@ -32,6 +32,19 @@ Before any brainstorming output, read:
 - canonical references above, especially:
   - `docs/operating_system/templates/task-start-routing-guide.md`
 
+## GitNexus Usage
+
+Use GitNexus selectively for cross-file architecture lookup when it reduces
+guessing.
+
+- Prefer GitNexus for cross-cutting brainstorming and dependency tracing.
+- For small/local design changes, GitNexus is optional.
+- Before high-trust GitNexus conclusions, check freshness via:
+  - `.\scripts\get_gitnexus_freshness.ps1`
+- If GitNexus is stale, use it only as advisory and keep source docs as truth.
+- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
+- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+
 ## Minimal Workflow
 
 1. Use `planning-dispatch` triage (or verify it already exists).

@@ -25,6 +25,19 @@ Before execution starts, read:
 - `docs/operating_system/workflows/spec-to-plan-to-execution-workflow.md`
 - `docs/operating_system/workflows/drift-detection-and-reconciliation-workflow.md`
 
+## GitNexus Usage
+
+Use GitNexus selectively during execution when cross-file coordination is
+non-trivial.
+
+- Prefer GitNexus for shared-module impact checks and cross-lane dependency tracing.
+- For small/local execution tasks, GitNexus is optional.
+- Before high-trust use, check freshness:
+  - `.\scripts\get_gitnexus_freshness.ps1`
+- If stale, keep GitNexus advisory and execute source-first.
+- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
+- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+
 ## Source-of-Truth Rule
 
 During execution, keep these layers in sync:

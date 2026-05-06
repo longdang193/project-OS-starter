@@ -24,6 +24,7 @@ an implementation plan exists and execution should run task-by-task
 ### Required
 
 - plan path exists
+- planning readiness has already established execution eligibility (`ready_for_execution_gates`)
 
 ### Optional
 
