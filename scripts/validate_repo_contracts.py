@@ -35,10 +35,13 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from functools import lru_cache
+import importlib.util
+import inspect
 import os
 from pathlib import Path
 import subprocess
 import sys
+from types import ModuleType
 
 import yaml
 from validator_policy import (
@@ -123,9 +126,75 @@ def read_adoption_mode(root: Path) -> str | None:
         return None
     return mode
 
+IN_PROCESS_SCRIPT_NAMES = {
+    "validate_adoption_shape.py",
+    "validate_checkpoint_packs.py",
+    "validate_planning_lifecycle.py",
+    "validate_template_required_sections.py",
+    "validate_prompt_ladder.py",
+    "validate_prompt_metadata_schema.py",
+    "validate_agent_metadata_schema.py",
+    "validate_provider_settings_schema.py",
+    "validate_generated_header_format.py",
+    "validate_agent_runtime_drift.py",
+    "sync_architecture_docs.py",
+    "validate_repo_config.py",
+}
+
+@lru_cache(maxsize=64)
+def _load_script_module(script_path: Path) -> ModuleType:
+    module_name = f"_repo_contract_step_{script_path.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load script module: {script_path.as_posix()}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+def _run_script_main_in_process(script_path: Path, args: list[str], cwd: Path) -> int:
+    module = _load_script_module(script_path)
+    if not hasattr(module, "main"):
+        raise RuntimeError(f"Script has no main(): {script_path.as_posix()}")
+    main_callable = getattr(module, "main")
+    original_cwd = Path.cwd()
+    original_argv = sys.argv[:]
+    try:
+        os.chdir(cwd)
+        sys.argv = [script_path.as_posix(), *args]
+        parameter_count = len(inspect.signature(main_callable).parameters)
+        if parameter_count == 0:
+            result = main_callable()
+        else:
+            result = main_callable(args)
+        return int(result) if isinstance(result, int) else 0
+    finally:
+        sys.argv = original_argv
+        os.chdir(original_cwd)
+
+def _can_run_in_process(command: list[str], repo_root_path: Path) -> bool:
+    if len(command) < 2:
+        return False
+    python_exe = Path(command[0]).name.lower()
+    if python_exe not in {"python", "python.exe", Path(sys.executable).name.lower()}:
+        return False
+    if command[1] == "-m":
+        return False
+    script_path = Path(command[1]).resolve()
+    scripts_root = (repo_root_path / "scripts").resolve()
+    try:
+        script_path.relative_to(scripts_root)
+    except ValueError:
+        return False
+    return script_path.name in IN_PROCESS_SCRIPT_NAMES
+
 def run_step(command: list[str], *, cwd: Path) -> int:
     rendered = " ".join(command)
     print(f"> {rendered}")
+    if _can_run_in_process(command, cwd):
+        script_path = Path(command[1]).resolve()
+        script_args = command[2:]
+        return _run_script_main_in_process(script_path, script_args, cwd)
     completed = subprocess.run(command, cwd=cwd, check=False)
     return completed.returncode
 

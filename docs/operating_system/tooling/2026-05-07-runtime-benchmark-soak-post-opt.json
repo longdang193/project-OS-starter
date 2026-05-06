@@ -1,0 +1,86 @@
+[
+  {
+    "command": "C:\\Users\\HOANG PHI LONG DANG\\AppData\\Local\\Programs\\Python\\Python313\\python.exe scripts/validate_repo_contracts.py --fast",
+    "runs": 10,
+    "return_codes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "mean_seconds": 1.6687,
+    "median_seconds": 1.6262,
+    "p95_seconds": 1.8211,
+    "min_seconds": 1.6154,
+    "max_seconds": 1.8904
+  },
+  {
+    "command": "C:\\Users\\HOANG PHI LONG DANG\\AppData\\Local\\Programs\\Python\\Python313\\python.exe scripts/sync_agent_adapters.py --check",
+    "runs": 10,
+    "return_codes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "mean_seconds": 0.3727,
+    "median_seconds": 0.367,
+    "p95_seconds": 0.3991,
+    "min_seconds": 0.3584,
+    "max_seconds": 0.4113
+  },
+  {
+    "command": "C:\\Users\\HOANG PHI LONG DANG\\AppData\\Local\\Programs\\Python\\Python313\\python.exe scripts/validate_adoption_shape.py",
+    "runs": 10,
+    "return_codes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "mean_seconds": 0.5269,
+    "median_seconds": 0.5263,
+    "p95_seconds": 0.5395,
+    "min_seconds": 0.5192,
+    "max_seconds": 0.5419
+  },
+  {
+    "command": "C:\\Users\\HOANG PHI LONG DANG\\AppData\\Local\\Programs\\Python\\Python313\\python.exe scripts/validate_agent_runtime_drift.py --skip-deploy-check",
+    "runs": 10,
+    "return_codes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "mean_seconds": 0.4602,
+    "median_seconds": 0.4582,
+    "p95_seconds": 0.4785,
+    "min_seconds": 0.44,
+    "max_seconds": 0.482
+  }
+]

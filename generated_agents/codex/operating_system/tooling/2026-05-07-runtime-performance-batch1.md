@@ -73,3 +73,19 @@ To update: edit canonical source, then run sync.
   batch2=0.4425s, batch3=0.4502s (+1.74%), batch4=0.4421s (-0.09% vs batch2)
 - `C:\Users\HOANG PHI LONG DANG\AppData\Local\Programs\Python\Python313\python.exe scripts/validate_repo_contracts.py --fast`
   batch2=3.0421s, batch3=2.8131s (-7.53%), batch4=2.7732s (-8.84% vs batch2)
+
+## Soak Stability (10 runs) and CI Baseline
+
+- `C:\Users\HOANG PHI LONG DANG\AppData\Local\Programs\Python\Python313\python.exe scripts/sync_agent_adapters.py --check`
+  pre median=0.3660s, post median=0.3670s, delta=+0.27%
+- `C:\Users\HOANG PHI LONG DANG\AppData\Local\Programs\Python\Python313\python.exe scripts/validate_adoption_shape.py`
+  pre median=0.5292s, post median=0.5263s, delta=-0.55%
+- `C:\Users\HOANG PHI LONG DANG\AppData\Local\Programs\Python\Python313\python.exe scripts/validate_agent_runtime_drift.py --skip-deploy-check`
+  pre median=0.4441s, post median=0.4582s, delta=+3.17%
+- `C:\Users\HOANG PHI LONG DANG\AppData\Local\Programs\Python\Python313\python.exe scripts/validate_repo_contracts.py --fast`
+  pre median=2.7778s, post median=1.6262s, delta=-41.46%
+
+Recommended CI warning threshold:
+- `validate_repo_contracts.py --fast` median baseline: 1.6262s
+- observed p95 in soak: 1.8211s
+- warning threshold: > 1.951s median over 10 runs (20% above baseline)
