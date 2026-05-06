@@ -1,3 +1,22 @@
+---
+layer: operating_system
+artifact_type: plan
+status: proposed
+parent_workstream: none
+parent_thread: none
+parent_spec: docs/superpowers/specs/2026-05-04-prompt-ladder-non-standalone-spec.md
+targets:
+  - docs/operating_system/workflows/live-run-system-workflow.md
+  - docs/operating_system/workflows/live-run-scenario-planning-workflow.md
+  - docs/operating_system/workflows/live-run-preflight-check-workflow.md
+  - docs/operating_system/workflows/live-run-execution-workflow.md
+  - docs/operating_system/workflows/live-run-debugging-workflow.md
+  - docs/operating_system/workflows/live-run-verification-workflow.md
+  - docs/operating_system/workflows/live-run-closeout-workflow.md
+related_features: []
+related_stages: []
+---
+
 # Live Run Execution System Modularization Plan
 
 ## Goal

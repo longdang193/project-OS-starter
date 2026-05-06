@@ -1,6 +1,22 @@
 ---
 name: planning-dispatch
-description: Use when a task needs planning, design, or implementation routing before specs, plans, or code changes begin.
+description: Use when a task needs planning, design, or implementation routing before
+  specs, plans, or code changes begin.
+allowed-tools: []
+hooks:
+  pre:
+  - python scripts/hooks/run_validator.py --fast
+  post:
+  - python scripts/hooks/run_validator.py --fast
+required_reads:
+- docs/operating_system/templates/task-start-routing-guide.md
+- docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- planning
+- routing
+- planning-dispatch
 ---
 # Planning Dispatch
 

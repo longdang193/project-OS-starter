@@ -25,6 +25,9 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 import re
+from typing import Any
+
+import yaml
 
 
 REQUIRED_SECTIONS = (
@@ -110,6 +113,45 @@ def _extract_next_prompt_targets(section_text: str) -> list[str]:
     return targets
 
 
+def _extract_frontmatter(path: Path) -> dict[str, Any] | None:
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    if not text.startswith("---"):
+        return None
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None
+    payload = yaml.safe_load(parts[1]) if parts[1].strip() else {}
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _metadata_contract_present(meta: dict[str, Any] | None) -> bool:
+    if not isinstance(meta, dict):
+        return False
+    return (
+        isinstance(meta.get("entry_points"), list)
+        and isinstance(meta.get("prerequisites"), list)
+        and isinstance(meta.get("next_steps"), list)
+    )
+
+
+def _extract_next_targets_from_metadata(meta: dict[str, Any]) -> list[str]:
+    targets: list[str] = []
+    values = meta.get("next_steps")
+    if not isinstance(values, list):
+        return targets
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        item = value.strip().strip("`")
+        if not item:
+            continue
+        if item.endswith(".md"):
+            targets.append(Path(item).name)
+    return targets
+
+
 def _find_cycles(
     graph: dict[str, list[str]],
     *,
@@ -163,49 +205,64 @@ def validate_prompt_ladder(root: Path) -> list[Finding]:
         rel = str(path.relative_to(root)).replace("\\", "/")
         text = path.read_text(encoding="utf-8", errors="ignore")
 
-        missing_sections = [section for section in REQUIRED_SECTIONS if _extract_section(text, section) is None]
-        for section in missing_sections:
-            findings.append(
-                Finding(
-                    category="prompt_ladder_missing_section",
-                    path=rel,
-                    message=f"missing required section `## {section}`.",
-                )
-            )
+        meta = _extract_frontmatter(path)
+        uses_metadata_contract = _metadata_contract_present(meta)
 
-        prereq_text = _extract_section(text, "Prerequisites")
-        if prereq_text is not None:
-            for subsection in REQUIRED_PREREQ_SUBSECTIONS:
-                if _extract_prereq_subsection(prereq_text, subsection) is None:
-                    findings.append(
-                        Finding(
-                            category="prompt_ladder_missing_section",
-                            path=rel,
-                            message=f"`## Prerequisites` is missing `### {subsection}`.",
-                        )
-                    )
-
-        next_text = _extract_section(text, "Next Prompts")
         targets: list[str] = []
-        if next_text is not None:
-            targets = _extract_next_prompt_targets(next_text)
+        if uses_metadata_contract and isinstance(meta, dict):
+            targets = _extract_next_targets_from_metadata(meta)
             if not targets and name not in TERMINAL_PROMPTS:
                 findings.append(
                     Finding(
                         category="prompt_ladder_dead_end",
                         path=rel,
-                        message="non-terminal prompt has no next-prompt targets.",
+                        message="non-terminal prompt has no next-prompt targets (metadata `next_steps`).",
                     )
                 )
-            for target in targets:
-                if target not in existing:
+        else:
+            missing_sections = [section for section in REQUIRED_SECTIONS if _extract_section(text, section) is None]
+            for section in missing_sections:
+                findings.append(
+                    Finding(
+                        category="prompt_ladder_missing_section",
+                        path=rel,
+                        message=f"missing required section `## {section}`.",
+                    )
+                )
+
+            prereq_text = _extract_section(text, "Prerequisites")
+            if prereq_text is not None:
+                for subsection in REQUIRED_PREREQ_SUBSECTIONS:
+                    if _extract_prereq_subsection(prereq_text, subsection) is None:
+                        findings.append(
+                            Finding(
+                                category="prompt_ladder_missing_section",
+                                path=rel,
+                                message=f"`## Prerequisites` is missing `### {subsection}`.",
+                            )
+                        )
+
+            next_text = _extract_section(text, "Next Prompts")
+            if next_text is not None:
+                targets = _extract_next_prompt_targets(next_text)
+                if not targets and name not in TERMINAL_PROMPTS:
                     findings.append(
                         Finding(
-                            category="prompt_ladder_broken_link",
+                            category="prompt_ladder_dead_end",
                             path=rel,
-                            message=f"next prompt target `{target}` does not exist.",
+                            message="non-terminal prompt has no next-prompt targets.",
                         )
                     )
+
+        for target in targets:
+            if target not in existing:
+                findings.append(
+                    Finding(
+                        category="prompt_ladder_broken_link",
+                        path=rel,
+                        message=f"next prompt target `{target}` does not exist.",
+                    )
+                )
         graph[name] = targets
 
     cycles = _find_cycles(graph, allowed_self_loop=ALLOWED_SELF_LOOP)
@@ -236,4 +293,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

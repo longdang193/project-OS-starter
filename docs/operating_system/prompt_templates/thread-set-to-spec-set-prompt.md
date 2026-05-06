@@ -1,38 +1,26 @@
-﻿---
-prompt_id: thread-set-to-spec-set-prompt
+---
+name: thread-set-to-spec-set-prompt
+description: Convert a thread set into a complete specification set with traceability.
 type: prompt
 stage: planning
-owner_layer: change
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- thread set is known and complete spec inventory must be assembled
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
-next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
----
-# Thread Set To Spec Set Prompt
-
-## Use When
-
-thread set is known and complete spec inventory must be assembled
-
-## Prerequisites
-
-### Required
-
 - thread set in scope identified
-
-### Optional
-
-- existing specs
-
-## Next Prompts
-
+next_steps:
 - spec-set-to-spec-authoring-map-prompt.md
 - spec-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+- docs/operating_system/workflows/roadmap-to-closeout-workflow.md
+tags:
+- prompt
+- planning
+---
+
+# Thread Set To Spec Set Prompt
 
 ## Not For
 
@@ -64,4 +52,3 @@ Expected output:
 - uncovered or redundant spec findings
 - split/merge decisions across the thread set
 - next artifact recommendation, usually a spec-authoring map
-

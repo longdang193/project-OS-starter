@@ -151,7 +151,7 @@ only product metadata. That review should include files such as:
 - `repo_config/*`
 - `docs/operating_system/*`
 - `.agents/skills/*`
-- `agent-core/adapters/**/*`
+- `docs/operating_system/templates/agents/*`
 - generated `AGENTS.md` and `.codex/rules/*` after sync
 - validation and sync scripts
 
@@ -207,11 +207,11 @@ Rules:
 
 ## 6. Customize Agent Instructions And Rules
 
-Update adapter sources, not generated outputs:
+Update canonical sources and mappings, not generated outputs:
 
-- `agent-core/adapters/codex/root-AGENTS.template.md`
-- `agent-core/adapters/codex/docs-AGENTS.template.md`
-- `agent-core/adapters/codex/rules/*.rules`
+- `docs/operating_system/templates/agents/root-AGENTS.template.md`
+- `docs/operating_system/templates/agents/docs-AGENTS.template.md`
+- `docs/operating_system/rules/*.md`
 - `repo_config/agent-adapter-mappings.json`
 
 Keep this split:

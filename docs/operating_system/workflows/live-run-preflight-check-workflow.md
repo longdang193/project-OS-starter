@@ -1,26 +1,15 @@
 ---
-workflow_id: live-run-preflight-check
-type: workflow
-stage: execution
-owner_layer: change
-entry_points:
-  - scenario set exists and run readiness must be verified
-  - execution/debugging requires environment or evidence-path readiness checks
-prerequisites:
-  - selected scenario and target run path are identified
-  - access to environment and observability surfaces is available
-next_steps:
-  - live-run-execution-workflow.md
-  - live-run-scenario-planning-workflow.md
-skills:
-  - planning-dispatch
-  - executing-plans
-status: active
-outputs:
-  - preflight readiness report
-  - missing prerequisites and unblock actions
-validators:
-  - readiness checks include artifacts, observability, trace IDs, environment
+name: live-run-preflight-check-workflow
+description: Run the live run preflight check workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- planning-dispatch
+- executing-plans
+tags:
+- workflow
+- execution
+- change
 ---
 
 # Live Run Preflight Check Workflow
@@ -54,4 +43,3 @@ results are trustworthy.
 
 - Preflight pass with ready evidence paths, or
 - Preflight fail with explicit minimal prerequisites to unblock.
-

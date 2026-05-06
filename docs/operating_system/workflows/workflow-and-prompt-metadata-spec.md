@@ -1,17 +1,14 @@
 ---
-workflow_id: workflow-and-prompt-metadata-spec
-type: workflow
-stage: maintenance
-owner_layer: operating_system
-entry_points:
-  - creating or updating prompt/workflow governance documents
-prerequisites:
-  - target prompt/workflow files are identified
-next_steps:
-  - validate-or-drift-prompt.md
-skills:
-  - doc-system-lifecycle
-status: active
+name: workflow-and-prompt-metadata-spec
+description: Run the workflow and prompt metadata specification procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- doc-system-lifecycle
+tags:
+- workflow
+- maintenance
+- operating_system
 ---
 
 # Workflow And Prompt Metadata Specification
@@ -68,4 +65,3 @@ The body should focus on execution logic:
 4. Execute body logic using listed `skills`.
 5. Transition using `next_steps`.
 6. Run listed `validators` when present.
-

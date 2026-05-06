@@ -1,18 +1,23 @@
-﻿---
-prompt_id: parent-complete-only-when-children-terminal-prompt
-type: prompt
-stage: planning
-owner_layer: operating_system
-entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
-prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
-next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
 ---
+name: parent-complete-only-when-children-terminal-prompt
+description: Validate parent completion only when all child items are terminal.
+type: prompt
+stage: maintenance
+entry_points:
+- use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- maintenance
+---
+
 # Parent Complete Only When Children Terminal Prompt
 
 Deprecated: prefer scoped closeout prompts instead:
@@ -48,4 +53,3 @@ Expected output:
 - invariant pass/fail result
 - exact remediation actions
 - `can_close` decision
-

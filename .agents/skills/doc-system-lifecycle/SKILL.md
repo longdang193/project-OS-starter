@@ -1,8 +1,17 @@
 ---
 name: doc-system-lifecycle
-description: Use when designing, updating, or auditing project docs that may affect source-of-truth placement, metadata, sync rules, or generated discovery.
+description: Use when designing, updating, or auditing project docs that may affect
+  source-of-truth placement, metadata, sync rules, or generated discovery.
+allowed-tools: []
+hooks:
+  pre: []
+  post: []
+required_reads:
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- doc-system-lifecycle
 ---
-
 # Doc System Lifecycle
 
 ## When to Apply

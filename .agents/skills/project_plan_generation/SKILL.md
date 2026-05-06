@@ -1,8 +1,17 @@
 ---
 name: project_plan_generation
-description: "Use when the user explicitly asks for a Markdown plan document and the compatibility planning layer is needed."
+description: Use when the user explicitly asks for a Markdown plan document and the
+  compatibility planning layer is needed.
+allowed-tools: []
+hooks:
+  pre: []
+  post: []
+required_reads:
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- project-plan-generation
 ---
-
 # Project Plan Generation Skill
 
 ## Status

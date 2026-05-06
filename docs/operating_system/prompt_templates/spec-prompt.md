@@ -1,38 +1,26 @@
-﻿---
-prompt_id: spec-prompt
+---
+name: spec-prompt
+description: Author or update a detailed specification aligned to bounded change scope.
 type: prompt
 stage: planning
-owner_layer: change
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- a specific detailed spec must be drafted from an approved bounded work item context
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
-next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
----
-# Detailed Spec Prompt
-
-## Use When
-
-a specific detailed spec must be drafted from an approved bounded work item context
-
-## Prerequisites
-
-### Required
-
 - bounded thread context known or explicit operating_system justification
-
-### Optional
-
-- spec authoring map
-
-## Next Prompts
-
+next_steps:
 - spec-set-execution-map-prompt.md
 - plan-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+- docs/operating_system/workflows/spec-to-plan-to-execution-workflow.md
+tags:
+- prompt
+- planning
+---
+
+# Detailed Spec Prompt
 
 ## Not For
 
@@ -77,4 +65,3 @@ Please:
 
 Expected output:
 - a template-aligned spec in `docs/superpowers/specs/` with required frontmatter and required sections
-

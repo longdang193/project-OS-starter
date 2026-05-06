@@ -1,18 +1,16 @@
-﻿---
-workflow_id: roadmap-to-closeout-workflow
-type: workflow
-stage: closeout
-owner_layer: intent
-entry_points:
-  - use this workflow when its title scope matches the current execution need
-prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
-next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
 ---
+name: roadmap-to-closeout-workflow
+description: Run the roadmap to closeout workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- planning-dispatch
+tags:
+- workflow
+- closeout
+- intent
+---
+
 # Roadmap To Closeout Workflow
 
 ## Purpose
@@ -52,15 +50,8 @@ Run a deterministic closure path from active roadmap/workstream/thread state to 
 - [roadmap-closeout-readiness-prompt.md](../prompt_templates/roadmap-closeout-readiness-prompt.md)
 - [implementation-next-action-gate-prompt.md](../prompt_templates/implementation-next-action-gate-prompt.md)
 
-## Related Skills
-
-- `executing-plans`: execute bounded actions between closeout gates
-- `verification-before-completion`: required before closure/pass claims
-- `planning-dispatch`: reroute when blockers require upstream artifact changes
-
 ## Failure/Recovery Path
 
 - if closeout gate fails, classify blocker (`execution|evidence|status-hygiene|scope-decision`)
 - select one bounded next action via next-action gate prompt
 - re-run the failed gate only after blocker completion
-

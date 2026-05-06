@@ -1,31 +1,15 @@
 ---
-workflow_id: live-run-system
-type: workflow
-stage: execution
-owner_layer: change
-entry_points:
-  - live run execution is requested end-to-end
-  - a partial live-run state already exists and needs routing
-prerequisites:
-  - in-scope roadmap/workstream/thread and spec context is identified
-  - target runtime path or failure context is available
-next_steps:
-  - live-run-scenario-planning-workflow.md
-  - live-run-preflight-check-workflow.md
-  - live-run-execution-workflow.md
-  - live-run-debugging-workflow.md
-  - multi-worktree-execution-workflow.md
-  - live-run-verification-workflow.md
-  - live-run-closeout-workflow.md
-skills:
-  - planning-dispatch
-  - executing-plans
-status: active
-outputs:
-  - selected next workflow decision with reason
-  - lifecycle state snapshot
-validators:
-  - route decision references current artifacts and signals
+name: live-run-system-workflow
+description: Run the live run system workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- planning-dispatch
+- executing-plans
+tags:
+- workflow
+- execution
+- change
 ---
 
 # Live Run System Workflow

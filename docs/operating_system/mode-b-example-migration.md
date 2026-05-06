@@ -81,7 +81,7 @@ Ownership:
 repo_config/*
 docs/operating_system/*
 .agents/skills/*
-agent-core/adapters/**/*
+docs/operating_system/templates/agents/*
 scripts/validate_*.py
 scripts/sync_*.py
 ```

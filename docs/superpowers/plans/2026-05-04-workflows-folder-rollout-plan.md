@@ -1,10 +1,17 @@
 ---
-template_id: implementation-plan
-artifact_type: plan
 layer: operating_system
+artifact_type: plan
 status: proposed
+parent_workstream: none
 parent_thread: none
 parent_spec: none
+targets:
+  - docs/operating_system/workflows/
+  - docs/operating_system/workflows/roadmap-to-closeout-workflow.md
+  - docs/operating_system/workflows/drift-detection-and-reconciliation-workflow.md
+  - docs/operating_system/workflows/spec-to-plan-to-execution-workflow.md
+related_features: []
+related_stages: []
 ---
 
 # Workflows Folder Rollout Plan
@@ -66,4 +73,3 @@ Plan is complete when:
 1. all Key Deliverables are satisfied
 2. all downstream/child items are terminal
 3. every child item is `completed` or `dropped`
-

@@ -1,8 +1,23 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+description: Use when encountering any bug, test failure, or unexpected behavior,
+  before proposing fixes
+allowed-tools: []
+hooks:
+  pre:
+  - python scripts/hooks/run_validator.py --fast
+  post:
+  - python scripts/hooks/run_validator.py --fast
+required_reads:
+- docs/operating_system/agent_memory/failure-ledger.md
+- docs/operating_system/workflows/test-failure-triage-workflow.md
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- debugging
+- root-cause
+- systematic-debugging
 ---
-
 # Systematic Debugging
 
 ## Overview

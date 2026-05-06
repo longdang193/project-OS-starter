@@ -1,18 +1,24 @@
-﻿---
-prompt_id: workstream-completion-and-intent-check-prompt
-type: prompt
-stage: planning
-owner_layer: intent
-entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
-prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
-next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
 ---
+name: workstream-completion-and-intent-check-prompt
+description: Check workstream completion against intent-level outcomes and deliverables.
+type: prompt
+stage: drift
+entry_points:
+- use this prompt when its title scope matches the current planning/execution need
+prerequisites:
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
+next_steps:
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+- docs/operating_system/workflows/roadmap-to-closeout-workflow.md
+tags:
+- prompt
+- planning
+---
+
 # Workstream Completion And Intent Check Prompt
 
 Use this when a long-running workstream may have drifted and you want a clear
@@ -56,4 +62,3 @@ Expected output:
 - completion verdict against intent
 - explicit done/missing/drifted breakdown
 - next decision and concrete follow-up actions
-

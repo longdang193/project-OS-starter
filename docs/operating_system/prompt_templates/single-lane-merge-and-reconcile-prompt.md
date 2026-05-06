@@ -1,46 +1,30 @@
 ---
-prompt_id: single-lane-merge-and-reconcile-prompt
+name: single-lane-merge-and-reconcile-prompt
+description: Merge a single lane and reconcile status, evidence, and follow-up records.
 type: prompt
-stage: closeout
-owner_layer: change
+stage: execution
 entry_points:
-  - one lane is implementation-complete and needs PR/merge orchestration
-  - a single lane merge needs lifecycle/evidence reconciliation before closure
+- one lane is implementation-complete and needs PR/merge orchestration
+- a single lane merge needs lifecycle/evidence reconciliation before closure
 prerequisites:
-  - lane verification evidence is available
-  - lane branch/worktree context is identified
+- lane verification evidence is available
+- lane branch/worktree context is identified
 next_steps:
-  - implementation-next-action-gate-prompt.md
-  - thread-closeout-readiness-prompt.md
-  - workstream-closeout-readiness-prompt.md
-skills:
-  - verification-before-completion
-  - finishing-a-development-branch
-  - planning-dispatch
-status: active
----
-# Single-Lane Merge And Reconcile Prompt
-
-## Use When
-
-you need to merge one lane safely and reconcile lifecycle evidence afterward
-
-## Prerequisites
-
-### Required
-
-- single lane record (id, owner, branch/worktree path, status)
-- lane verification evidence
-
-### Optional
-
-- open PR link and review outcomes
-
-## Next Prompts
-
 - implementation-next-action-gate-prompt.md
 - thread-closeout-readiness-prompt.md
 - workstream-closeout-readiness-prompt.md
+related_skills:
+- verification-before-completion
+- finishing-a-development-branch
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- closeout
+---
+
+# Single-Lane Merge And Reconcile Prompt
 
 ## Not For
 
@@ -76,4 +60,3 @@ Please:
 
 Expected output:
 - single-lane merge/reconcile report with one selected next action (or `close now`)
-

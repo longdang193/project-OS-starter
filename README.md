@@ -7,7 +7,7 @@ A private starter repository for carrying forward the repo operating system with
 - `docs/operating_system/`: human-readable repo governance and workflows
 - `docs/operating_system/agent_memory/`: compact reusable agent memory for repo work
 - `.agents/skills/`: canonical Codex skill discovery surface
-- `agent-core/adapters/codex/`: source templates for generated adapter outputs
+- `docs/operating_system/templates/agents/`: source templates for generated instruction outputs
 - `repo_config/`: starter-level configuration for adapter generation and public publication
 - `configs/`: starter-level runtime and workflow configuration
 - `scripts/`: sync, verify, and curated public-mirror workflows
@@ -18,7 +18,7 @@ Canonical source layers live in:
 
 - `docs/operating_system/`
 - `.agents/skills/`
-- `agent-core/adapters/codex/`
+- `docs/operating_system/templates/agents/`
 - `repo_config/`
 - `configs/`
 - `scripts/`
@@ -98,7 +98,7 @@ When bootstrapping a new project, review these first:
 - `docs/intent/README.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/operating_system/doc-system-lifecycle.md`
-- `agent-core/adapters/codex/*.template.md`
+- `docs/operating_system/templates/agents/*.template.md`
 - `repo_config/agent-adapter-mappings.json`
 - `repo_config/publication-config.json`
 - `.github/workflows/repo-hooks.yml`
@@ -108,8 +108,8 @@ When bootstrapping a new project, review these first:
 
 The starter ships with optional example templates:
 
-- `agent-core/adapters/codex/example-runtime-AGENTS.template.md`
-- `agent-core/adapters/codex/example-admin-AGENTS.template.md`
+- `docs/operating_system/templates/agents/example-runtime-AGENTS.template.md`
+- `docs/operating_system/templates/agents/example-admin-AGENTS.template.md`
 
 These are examples only. They are not wired into generation until you add them to `repo_config/agent-adapter-mappings.json`.
 

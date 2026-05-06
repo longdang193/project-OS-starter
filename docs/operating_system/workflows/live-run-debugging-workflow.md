@@ -1,28 +1,16 @@
 ---
-workflow_id: live-run-debugging
-type: workflow
-stage: execution
-owner_layer: change
-entry_points:
-  - failure observed in live run or equivalent runtime path
-prerequisites:
-  - failing run id, failing stage, or reproducible failing runtime path available
-  - access to run artifacts/logs/observability surfaces needed for evidence capture
-next_steps:
-  - live-run-execution-workflow.md
-  - live-run-verification-workflow.md
-skills:
-  - systematic-debugging
-  - executing-plans
-  - verification-before-completion
-status: active
-outputs:
-  - failure-boundary record
-  - bounded-fix record
-  - targeted-rerun evidence
-validators:
-  - targeted live rerun
-  - failure to fix traceability linkage is explicit
+name: live-run-debugging-workflow
+description: Run the live run debugging workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- systematic-debugging
+- executing-plans
+- verification-before-completion
+tags:
+- workflow
+- execution
+- change
 ---
 
 # Live Run Debugging Workflow

@@ -1,8 +1,17 @@
 ---
 name: subagent-driven-development
-description: Use when executing implementation plans with independent tasks in the current session
+description: Use when executing implementation plans with independent tasks in the
+  current session
+allowed-tools: []
+hooks:
+  pre: []
+  post: []
+required_reads:
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- subagent-driven-development
 ---
-
 # Subagent-Driven Development
 
 Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review.

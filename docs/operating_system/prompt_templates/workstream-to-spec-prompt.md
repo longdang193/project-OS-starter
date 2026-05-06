@@ -1,18 +1,24 @@
-﻿---
-prompt_id: workstream-to-spec-prompt
+---
+name: workstream-to-spec-prompt
+description: Map workstream scope into detailed specification authoring tasks.
 type: prompt
 stage: planning
-owner_layer: workstream
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- use this prompt when its title scope matches the current planning/execution need
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+- docs/operating_system/workflows/roadmap-to-closeout-workflow.md
+tags:
+- prompt
+- planning
 ---
+
 # Workstream To Spec Prompt
 
 Use this when you already know both the workstream and the bounded change
@@ -45,4 +51,3 @@ Please:
 
 Expected output:
 - a spec in `docs/superpowers/specs/` tied to the chosen thread file
-

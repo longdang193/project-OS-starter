@@ -133,13 +133,23 @@ def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) ->
     planning_lifecycle_script = str(root / "scripts" / "validate_planning_lifecycle.py")
     template_sections_script = str(root / "scripts" / "validate_template_required_sections.py")
     prompt_ladder_script = str(root / "scripts" / "validate_prompt_ladder.py")
+    prompt_metadata_schema_script = str(root / "scripts" / "validate_prompt_metadata_schema.py")
     repo_config_script = str(root / "scripts" / "validate_repo_config.py")
+    agent_metadata_schema_script = str(root / "scripts" / "validate_agent_metadata_schema.py")
+    provider_settings_schema_script = str(root / "scripts" / "validate_provider_settings_schema.py")
+    generated_header_script = str(root / "scripts" / "validate_generated_header_format.py")
+    agent_runtime_drift_script = str(root / "scripts" / "validate_agent_runtime_drift.py")
     steps: list[list[str]] = [
         [python_executable, adoption_shape_script],
         [python_executable, checkpoint_pack_script],
         [python_executable, planning_lifecycle_script],
         [python_executable, template_sections_script],
         [python_executable, prompt_ladder_script],
+        [python_executable, prompt_metadata_schema_script],
+        [python_executable, agent_metadata_schema_script],
+        [python_executable, provider_settings_schema_script],
+        [python_executable, generated_header_script],
+        [python_executable, agent_runtime_drift_script, "--skip-deploy-check"],
     ]
     if read_adoption_mode(root) != "starter_method_only":
         sync_script = str(root / "scripts" / "sync_architecture_docs.py")

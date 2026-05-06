@@ -1,0 +1,46 @@
+schema_version: 1
+provider: codex
+runtime:
+  entrypoint: AGENTS.md
+  root: ~/.codex
+hooks:
+  enabled: true
+  output: hooks_json
+  events:
+    task_start:
+      enabled: false
+      provider_event: UserPromptSubmit
+      blocking: false
+      timeout_seconds: 30
+      commands: []
+    task_end:
+      enabled: true
+      provider_event: Stop
+      blocking: true
+      timeout_seconds: 60
+      commands:
+        - python scripts/hooks/run_validator.py --fast
+    error:
+      enabled: false
+      provider_event: PermissionRequest
+      blocking: false
+      timeout_seconds: 30
+      commands: []
+    pre_tool:
+      enabled: false
+      provider_event: PreToolUse
+      blocking: false
+      timeout_seconds: 30
+      commands: []
+    post_tool:
+      enabled: false
+      provider_event: PostToolUse
+      blocking: false
+      timeout_seconds: 30
+      commands: []
+deploy:
+  folders:
+    - rules
+    - workflows
+    - skills
+    - operating_system

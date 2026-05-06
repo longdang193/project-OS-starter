@@ -1,10 +1,18 @@
 ---
-template_id: implementation-plan
-artifact_type: plan
 layer: operating_system
+artifact_type: plan
 status: proposed
+parent_workstream: none
 parent_thread: none
 parent_spec: none
+targets:
+  - docs/operating_system/prompt_templates/execute-prompt.md
+  - docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md
+  - docs/operating_system/prompt_templates/thread-closeout-readiness-prompt.md
+  - docs/operating_system/prompt_templates/workstream-closeout-readiness-prompt.md
+  - docs/operating_system/prompt_templates/roadmap-closeout-readiness-prompt.md
+related_features: []
+related_stages: []
 ---
 
 # Related Skills High-Impact Prompts Plan
@@ -52,4 +60,3 @@ Plan is complete when:
 1. all Key Deliverables are satisfied
 2. all downstream/child items are terminal
 3. every child item is `completed` or `dropped`
-

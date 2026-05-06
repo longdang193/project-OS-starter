@@ -1,6 +1,16 @@
 ---
 name: python-refactoring-expert
-description: Use proactively when instructed to restructure an existing codebase, detect code smells, or apply patterns.
+description: Use proactively when instructed to restructure an existing codebase,
+  detect code smells, or apply patterns.
+allowed-tools: []
+hooks:
+  pre: []
+  post: []
+required_reads:
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- python-refactoring-expert
 ---
 # Python Refactoring Expert
 

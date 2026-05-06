@@ -1,18 +1,16 @@
-﻿---
-workflow_id: drift-detection-and-reconciliation-workflow
-type: workflow
-stage: drift
-owner_layer: operating_system
-entry_points:
-  - use this workflow when its title scope matches the current execution need
-prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
-next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
 ---
+name: drift-detection-and-reconciliation-workflow
+description: Run the drift detection and reconciliation workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- planning-dispatch
+tags:
+- workflow
+- drift
+- operating_system
+---
+
 # Drift Detection And Reconciliation Workflow
 
 ## Purpose
@@ -50,15 +48,8 @@ Detect drift against roadmap/workstream intent and reconcile downstream artifact
 - [downstream-reconciliation-after-roadmap-format-change.md](../prompt_templates/downstream-reconciliation-after-roadmap-format-change.md)
 - [implementation-next-action-gate-prompt.md](../prompt_templates/implementation-next-action-gate-prompt.md)
 
-## Related Skills
-
-- `planning-dispatch`: route corrective work to the right layer
-- `executing-plans`: execute bounded reconciliation fixes
-- `verification-before-completion`: required before closure/pass claims
-
 ## Failure/Recovery Path
 
 - if reconciliation is ambiguous, record unresolved gaps with options and impact
 - pick minimum prerequisite action via next-action gate prompt
 - defer closure recommendations until blockers are resolved
-

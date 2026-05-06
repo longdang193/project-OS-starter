@@ -1,6 +1,16 @@
 ---
 name: python-file-metadata
-description: Add structured metadata to files with behavioral weight (scripts, workflows, tests, utilities).
+description: Add structured metadata to files with behavioral weight (scripts, workflows,
+  tests, utilities).
+allowed-tools: []
+hooks:
+  pre: []
+  post: []
+required_reads:
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- python-file-metadata
 ---
 # Python File Metadata
 

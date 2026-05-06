@@ -1,26 +1,15 @@
 ---
-workflow_id: live-run-verification
-type: workflow
-stage: closeout
-owner_layer: change
-entry_points:
-  - live run or rerun completed with success signal
-  - debugging pass claims issue resolution
-prerequisites:
-  - run artifacts and telemetry references are available
-  - expected outputs and acceptance criteria are identified
-next_steps:
-  - live-run-closeout-workflow.md
-  - live-run-debugging-workflow.md
-skills:
-  - verification-before-completion
-  - test-driven-development
-status: active
-outputs:
-  - verification result report
-  - regression risk notes
-validators:
-  - expected outputs and evidence checks are explicit
+name: live-run-verification-workflow
+description: Run the live run verification workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- verification-before-completion
+- test-driven-development
+tags:
+- workflow
+- closeout
+- change
 ---
 
 # Live Run Verification Workflow
@@ -52,4 +41,3 @@ for regressions before closeout.
 
 - Verification pass with explicit evidence and regression assessment, or
 - Verification fail with debug re-entry reason.
-

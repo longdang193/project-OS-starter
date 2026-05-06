@@ -1,25 +1,15 @@
 ---
-workflow_id: live-run-scenario-planning
-type: workflow
-stage: planning
-owner_layer: change
-entry_points:
-  - live-run scenarios are missing or outdated for a target path
-  - closeout/debugging feedback requires scenario updates
-prerequisites:
-  - target workstream/thread/spec scope is identified
-  - expected behavior and success signals are available from specs/plans
-next_steps:
-  - live-run-preflight-check-workflow.md
-  - live-run-execution-workflow.md
-skills:
-  - brainstorming
-  - planning-dispatch
-status: active
-outputs:
-  - scenario set with triggers and traceability mappings
-validators:
-  - each scenario maps to scope and expected evidence
+name: live-run-scenario-planning-workflow
+description: Run the live run scenario planning workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- brainstorming
+- planning-dispatch
+tags:
+- workflow
+- planning
+- change
 ---
 
 # Live Run Scenario Planning Workflow
@@ -55,4 +45,3 @@ workstream/thread/spec scope.
 - Triggers are defined.
 - Traceability links are present.
 - Expected evidence outputs are defined for preflight.
-

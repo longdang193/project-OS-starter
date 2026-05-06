@@ -1,3 +1,18 @@
+---
+layer: operating_system
+artifact_type: spec
+status: proposed
+parent_workstream: none
+parent_thread: none
+parent_spec: none
+targets:
+  - docs/operating_system/prompt_templates/
+  - docs/operating_system/prompt_templates/README.md
+  - scripts/validate_prompt_ladder.py
+related_features: []
+related_stages: []
+---
+
 # Prompt Ladder Spec (Non-Standalone Prompt System)
 
 ## 1) Goal

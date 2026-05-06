@@ -1,38 +1,24 @@
-﻿---
-prompt_id: workstream-closeout-readiness-prompt
+---
+name: workstream-closeout-readiness-prompt
+description: Guide execution for workstream closeout readiness prompt.
 type: prompt
 stage: closeout
-owner_layer: workstream
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- use this prompt when its title scope matches the current planning/execution need
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- closeout
 ---
+
 # Workstream Closeout Readiness Prompt
-
-## Use When
-
-workstream closure readiness is being decided
-
-## Prerequisites
-
-### Required
-
-- thread statuses and evidence context available
-- per-thread readiness reviewed via [thread-closeout-readiness-prompt.md](./thread-closeout-readiness-prompt.md) for in-scope threads
-
-### Optional
-
-- thread closeout review output
-
-## Next Prompts
-
-- `roadmap-closeout-readiness-prompt.md`
 
 ## Not For
 
@@ -48,19 +34,6 @@ Use this when deciding whether a workstream can be marked `completed`.
 
 ```text
 Assess workstream closeout readiness.
-
-Related skills:
-- verification-before-completion (use before any workstream close/pass/fix claim)
-
-Related workflows:
-- roadmap-to-closeout-workflow.md (primary closure escalation path)
-- drift-detection-and-reconciliation-workflow.md (if lifecycle/status evidence is inconsistent)
-
-Context:
-- workstream id/path:
-- bounded thread files:
-- current workstream/thread statuses:
-- related specs/plans/execution maps/checkpoint result packs:
 
 Please:
 1. Validate workstream closure invariant:
@@ -86,4 +59,3 @@ Please:
 
 Expected output:
 - workstream closeout verdict, concrete next actions, and one selected next action constrained by existing planning artifacts
-

@@ -71,7 +71,7 @@ def test_validator_fails_when_publication_config_is_missing_required_keys() -> N
             adapter_mappings,
             [
                 {
-                    "source": "agent-core/adapters/codex/root-AGENTS.template.md",
+                    "source": "docs/operating_system/templates/agents/root-AGENTS.template.md",
                     "destination": "AGENTS.md",
                     "prefix": "#",
                 }
@@ -79,7 +79,7 @@ def test_validator_fails_when_publication_config_is_missing_required_keys() -> N
         )
         write_text(runtime_config, "training:\n  experiment_name: train-prod\n")
         write_text(
-            test_root / "agent-core" / "adapters" / "codex" / "root-AGENTS.template.md",
+            test_root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md",
             "# template\n",
         )
 
@@ -119,7 +119,7 @@ def test_validator_fails_when_adapter_mapping_source_is_missing() -> None:
             adapter_mappings,
             [
                 {
-                    "source": "agent-core/adapters/codex/missing.template.md",
+                    "source": "docs/operating_system/templates/agents/missing.template.md",
                     "destination": "AGENTS.md",
                     "prefix": "#",
                 }
@@ -164,7 +164,7 @@ def test_validator_fails_when_runtime_config_is_not_a_mapping() -> None:
             adapter_mappings,
             [
                 {
-                    "source": "agent-core/adapters/codex/root-AGENTS.template.md",
+                    "source": "docs/operating_system/templates/agents/root-AGENTS.template.md",
                     "destination": "AGENTS.md",
                     "prefix": "#",
                 }
@@ -173,7 +173,7 @@ def test_validator_fails_when_runtime_config_is_not_a_mapping() -> None:
         write_text(runtime_config, "- just\n- a\n- list\n")
         write_text(test_root / "README.md", "# readme\n")
         write_text(
-            test_root / "agent-core" / "adapters" / "codex" / "root-AGENTS.template.md",
+            test_root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md",
             "# template\n",
         )
 

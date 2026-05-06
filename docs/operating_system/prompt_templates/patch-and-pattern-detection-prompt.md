@@ -1,45 +1,29 @@
 ---
-prompt_id: patch-and-pattern-detection-prompt
+name: patch-and-pattern-detection-prompt
+description: Guide execution for patch and pattern detection prompt.
 type: prompt
 stage: execution
-owner_layer: change
 entry_points:
-  - next eligible action is a bounded patch and recurrence risk should be checked
-  - a local fix is required and similar issues may exist across related artifacts
+- next eligible action is a bounded patch and recurrence risk should be checked
+- a local fix is required and similar issues may exist across related artifacts
 prerequisites:
-  - in-scope roadmap/workstream/thread/spec/plan context is identified
-  - concrete failure mode and target patch scope are identified
+- in-scope roadmap/workstream/thread/spec/plan context is identified
+- concrete failure mode and target patch scope are identified
 next_steps:
-  - implementation-next-action-gate-prompt.md
-  - thread-closeout-readiness-prompt.md
-skills:
-  - systematic-debugging
-  - executing-plans
-  - verification-before-completion
-status: active
+- implementation-next-action-gate-prompt.md
+- thread-closeout-readiness-prompt.md
+related_skills:
+- systematic-debugging
+- executing-plans
+- verification-before-completion
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- execution
 ---
+
 # Patch + Pattern Detection Prompt
-
-## Use When
-
-a specific patch is required and you also need a controlled search for similar issues
-
-## Prerequisites
-
-### Required
-
-- failure mode and root-cause hypothesis are explicit
-- bounded patch scope is defined
-
-### Optional
-
-- prior validator outputs
-- previous related incidents
-
-## Next Prompts
-
-- `implementation-next-action-gate-prompt.md`
-- `thread-closeout-readiness-prompt.md`
 
 ## Not For
 
@@ -47,24 +31,6 @@ open-ended refactoring or broad redesign without a concrete failure boundary
 
 ```text
 Implement this patch and run pattern detection with bounded scope control.
-
-Related skills:
-- systematic-debugging (evidence-first root cause and boundary validation)
-- executing-plans (bounded implementation and artifact sync)
-- verification-before-completion (evidence before closure claims)
-
-Related workflows:
-- spec-to-plan-to-execution-workflow.md (primary execution sequence)
-- drift-detection-and-reconciliation-workflow.md (fallback when pattern findings indicate broader drift)
-- live-run-debugging-workflow.md (when failure source is a live-run lane)
-
-Context:
-- roadmap/workstream/thread in scope:
-- implementation plan path:
-- related detailed spec(s):
-- implementation execution map path:
-- target issue/failure mode:
-- initial patch boundary:
 
 Please:
 1. Understand the patch in context:

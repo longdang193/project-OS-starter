@@ -1,18 +1,23 @@
-﻿---
-prompt_id: provider-history-sync-prompt
+---
+name: provider-history-sync-prompt
+description: Sync provider history records to current source-of-truth lifecycle evidence.
 type: prompt
 stage: maintenance
-owner_layer: operating_system
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- use this prompt when its title scope matches the current planning/execution need
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- maintenance
 ---
+
 # Provider History Sync Prompt
 
 Use this when switching Codex model providers causes previous chats to
@@ -55,4 +60,3 @@ Expected output:
 - SQLite provider counts before and after sync
 - encrypted-content warning, if present
 - restart instruction for Codex Desktop when needed
-

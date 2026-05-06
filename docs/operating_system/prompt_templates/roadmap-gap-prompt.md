@@ -1,18 +1,24 @@
-﻿---
-prompt_id: roadmap-gap-prompt
+---
+name: roadmap-gap-prompt
+description: Identify roadmap coverage gaps and propose bounded corrective additions.
 type: prompt
 stage: planning
-owner_layer: intent
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- use this prompt when its title scope matches the current planning/execution need
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+- docs/operating_system/workflows/roadmap-to-closeout-workflow.md
+tags:
+- prompt
+- drift
 ---
+
 # Roadmap Gap Prompt
 
 Use this when you think the master roadmap may be missing an important durable
@@ -40,4 +46,3 @@ Please:
 
 Expected output:
 - gap assessment plus the recommended next artifact
-

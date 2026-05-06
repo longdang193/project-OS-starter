@@ -1,10 +1,16 @@
 ---
-template_id: implementation-plan
-artifact_type: plan
 layer: operating_system
+artifact_type: plan
 status: proposed
+parent_workstream: none
 parent_thread: none
 parent_spec: docs/superpowers/specs/2026-05-04-prompt-ladder-non-standalone-spec.md
+targets:
+  - docs/operating_system/prompt_templates/
+  - scripts/validate_prompt_ladder.py
+  - tests/test_validate_prompt_ladder.py
+related_features: []
+related_stages: []
 ---
 
 # Prompt Ladder Non-Standalone Implementation Plan
@@ -54,4 +60,3 @@ Plan is complete when:
 1. all Key Deliverables are satisfied
 2. all downstream/child items are terminal
 3. every child item is `completed` or `dropped`
-

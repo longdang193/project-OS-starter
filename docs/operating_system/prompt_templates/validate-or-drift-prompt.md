@@ -1,18 +1,24 @@
-﻿---
-prompt_id: validate-or-drift-prompt
+---
+name: validate-or-drift-prompt
+description: Choose validation or drift-reconciliation path based on current artifact
+  state.
 type: prompt
 stage: drift
-owner_layer: operating_system
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- use this prompt when its title scope matches the current planning/execution need
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- drift
 ---
+
 # Validate Or Drift Prompt
 
 Use this when you want to know what is missing, drifting, or outgrown.
@@ -43,4 +49,3 @@ Please:
 
 Expected output:
 - findings, severity, and next moves
-

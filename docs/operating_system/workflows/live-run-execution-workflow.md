@@ -1,25 +1,14 @@
 ---
-workflow_id: live-run-execution
-type: workflow
-stage: execution
-owner_layer: change
-entry_points:
-  - preflight passed and live run should execute
-  - targeted rerun is required after bounded fix
-prerequisites:
-  - preflight readiness report is pass or targeted rerun is justified
-  - selected scenario and run scope are fixed
-next_steps:
-  - live-run-verification-workflow.md
-  - live-run-debugging-workflow.md
-skills:
-  - executing-plans
-status: active
-outputs:
-  - run result status
-  - execution artifacts and telemetry references
-validators:
-  - outputs and telemetry pointers are recorded for each run
+name: live-run-execution-workflow
+description: Run the live run execution workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- executing-plans
+tags:
+- workflow
+- execution
+- change
 ---
 
 # Live Run Execution Workflow
@@ -53,4 +42,3 @@ Execute selected live-run scope and produce complete, traceable run evidence.
 
 - Success/failure signal is explicit.
 - Evidence package is complete enough for verification or debugging.
-

@@ -536,7 +536,7 @@ Longer term, `agent-core/skills/` may become canonical, with `.agents/skills/` g
 
 When changing:
 
-- `agent-core/adapters/*`
+- `docs/operating_system/templates/agents/*`
 - `agent-core/policies/*`
 - generated `AGENTS.md`
 - generated `.codex/rules/*.rules`

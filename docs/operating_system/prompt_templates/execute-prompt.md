@@ -1,39 +1,24 @@
-﻿---
-prompt_id: execute-prompt
+---
+name: execute-prompt
+description: Guide execution for execute prompt.
 type: prompt
 stage: execution
-owner_layer: change
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- use this prompt when its title scope matches the current planning/execution need
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
----
-# Execute Prompt
-
-## Use When
-
-an implementation plan exists and execution should run task-by-task
-
-## Prerequisites
-
-### Required
-
-- plan path exists
-- planning readiness has already established execution eligibility (`ready_for_execution_gates`)
-
-### Optional
-
-- latest readiness assessment
-
-## Next Prompts
-
 - implementation-next-action-gate-prompt.md
-- thread-closeout-readiness-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- execution
+---
+
+# Execute Prompt
 
 ## Not For
 
@@ -54,18 +39,6 @@ before this prompt.
 ```text
 Execute this implementation plan in this session.
 
-Related skills:
-- executing-plans (use when executing an approved plan task-by-task)
-- verification-before-completion (use before completion/pass/fix claims)
-
-Related workflows:
-- spec-to-plan-to-execution-workflow.md (primary execution lifecycle)
-- drift-detection-and-reconciliation-workflow.md (fallback when execution diverges from plan/spec)
-
-Plan:
-- path:
-- roadmap thread this work follows (use a valid ID from `docs/intent/workstreams/`, or `none` if operating_system work):
-
 Please:
 1. review the plan critically before starting
 2. confirm the execution still matches the roadmap thread or the operating-system justification
@@ -82,4 +55,3 @@ Please:
 
 Expected output:
 - implemented changes plus verification results
-

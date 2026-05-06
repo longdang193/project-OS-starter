@@ -1,3 +1,19 @@
+---
+layer: operating_system
+artifact_type: plan
+status: proposed
+parent_workstream: none
+parent_thread: none
+parent_spec: none
+targets:
+  - docs/operating_system/workflows/workflow-and-prompt-metadata-spec.md
+  - docs/operating_system/workflows/live-run-debugging-workflow.md
+  - docs/operating_system/workflows/test-failure-triage-workflow.md
+  - scripts/validate_prompt_metadata_schema.py
+related_features: []
+related_stages: []
+---
+
 # Prompt And Workflow Metadata Governance Alignment Plan
 
 ## Goal

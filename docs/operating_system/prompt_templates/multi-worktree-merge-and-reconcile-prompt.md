@@ -1,46 +1,30 @@
 ---
-prompt_id: multi-worktree-merge-and-reconcile-prompt
+name: multi-worktree-merge-and-reconcile-prompt
+description: Guide execution for multi worktree merge and reconcile prompt.
 type: prompt
 stage: closeout
-owner_layer: change
 entry_points:
-  - multiple worktree lanes are implementation-complete and ready for PR/merge orchestration
-  - merged lanes require status/evidence reconciliation before closure
+- multiple worktree lanes are implementation-complete and ready for PR/merge orchestration
+- merged lanes require status/evidence reconciliation before closure
 prerequisites:
-  - per-lane verification evidence is available
-  - lane dependencies and merge order constraints are identified
+- per-lane verification evidence is available
+- lane dependencies and merge order constraints are identified
 next_steps:
-  - implementation-next-action-gate-prompt.md
-  - thread-closeout-readiness-prompt.md
-  - workstream-closeout-readiness-prompt.md
-skills:
-  - verification-before-completion
-  - finishing-a-development-branch
-  - planning-dispatch
-status: active
----
-# Multi-Worktree Merge And Reconcile Prompt
-
-## Use When
-
-you need to merge multiple worktree lanes safely and reconcile lifecycle evidence afterward
-
-## Prerequisites
-
-### Required
-
-- lane registry with status and verification evidence
-- lane dependency order (or explicit independence confirmation)
-
-### Optional
-
-- open PR links and review outcomes
-
-## Next Prompts
-
 - implementation-next-action-gate-prompt.md
 - thread-closeout-readiness-prompt.md
 - workstream-closeout-readiness-prompt.md
+related_skills:
+- verification-before-completion
+- finishing-a-development-branch
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- closeout
+---
+
+# Multi-Worktree Merge And Reconcile Prompt
 
 ## Not For
 
@@ -48,22 +32,6 @@ starting implementation before per-lane verification is complete
 
 ```text
 Orchestrate PR/merge sequencing for multi-worktree lanes and reconcile closure evidence.
-
-Related skills:
-- verification-before-completion (required before merge/close claims)
-- finishing-a-development-branch (lane-level branch completion decisions)
-- planning-dispatch (rerouting when merge blockers appear)
-
-Related workflows:
-- multi-worktree-execution-workflow.md (primary multi-lane lifecycle)
-- spec-to-plan-to-execution-workflow.md (fallback when lane split should collapse)
-
-Context:
-- roadmap/workstream/thread in scope:
-- lane registry (id, owner, branch/worktree path, status):
-- per-lane verification evidence:
-- dependency order:
-- open blockers/conflicts:
 
 Please:
 1. verify each lane is merge-eligible:
@@ -89,4 +57,3 @@ Please:
 
 Expected output:
 - merge/reconcile decision report with one selected next action (or `close now`)
-

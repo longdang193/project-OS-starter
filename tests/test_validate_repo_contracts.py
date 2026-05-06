@@ -177,6 +177,7 @@ def test_build_subprocess_steps_runs_adoption_shape_before_repo_config() -> None
     assert any("validate_adoption_shape.py" in step for step in rendered)
     assert any("validate_template_required_sections.py" in step for step in rendered)
     assert any("validate_prompt_ladder.py" in step for step in rendered)
+    assert any("validate_prompt_metadata_schema.py" in step for step in rendered)
     assert any("validate_repo_config.py" in step for step in rendered)
     assert next(
         index for index, step in enumerate(rendered) if "validate_adoption_shape.py" in step

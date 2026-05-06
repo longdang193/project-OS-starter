@@ -1,0 +1,15 @@
+schema_version: 1
+canonical_root: docs/operating_system
+generated_root: generated_agents
+providers:
+  codex:
+    generated_root: generated_agents/codex
+  claude:
+    generated_root: generated_agents/claude
+  antigravity:
+    generated_root: generated_agents/antigravity
+sources:
+  rules: docs/operating_system/rules
+  workflows: docs/operating_system/workflows
+  skills: .agents/skills
+  prompts: docs/operating_system/prompt_templates

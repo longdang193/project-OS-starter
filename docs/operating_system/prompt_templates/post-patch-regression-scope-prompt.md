@@ -1,42 +1,29 @@
 ---
-prompt_id: post-patch-regression-scope-prompt
+name: post-patch-regression-scope-prompt
+description: Determine regression-check scope after a patch using risk and dependency
+  impact.
 type: prompt
 stage: execution
-owner_layer: change
 entry_points:
-  - a patch was applied and regression validation scope must be decided
-  - uncertainty exists between targeted tests and broader/full regression
+- a patch was applied and regression validation scope must be decided
+- uncertainty exists between targeted tests and broader/full regression
 prerequisites:
-  - patch diff and affected components are known
-  - at least one targeted verification command is available
+- patch diff and affected components are known
+- at least one targeted verification command is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-  - thread-closeout-readiness-prompt.md
-skills:
-  - verification-before-completion
-  - systematic-debugging
-status: active
----
-# Post-Patch Regression Scope Prompt
-
-## Use When
-
-you need to choose the correct regression verification scope after a patch
-
-## Prerequisites
-
-### Required
-
-- patch impact surface is identified
-
-### Optional
-
-- historical flaky or high-risk areas
-
-## Next Prompts
-
 - implementation-next-action-gate-prompt.md
 - thread-closeout-readiness-prompt.md
+related_skills:
+- verification-before-completion
+- systematic-debugging
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- execution
+---
+
+# Post-Patch Regression Scope Prompt
 
 ## Not For
 
@@ -65,4 +52,3 @@ Please:
 
 Expected output:
 - regression-scope decision, exact verification commands, and one selected next action
-

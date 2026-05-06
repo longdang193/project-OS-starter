@@ -1,0 +1,31 @@
+schema_version: 1
+provider: antigravity
+runtime:
+  entrypoint: GEMINI.md
+  root: ~/.gemini
+  antigravity_root: ~/.gemini/antigravity
+hooks:
+  enabled: false
+  fallback: rules_workflows
+  events:
+    task_start:
+      enabled: false
+      fallback_rule: ""
+    task_end:
+      enabled: true
+      fallback_rule: Run `python scripts/hooks/run_validator.py --fast` before completion claims.
+    error:
+      enabled: false
+      fallback_rule: ""
+    pre_tool:
+      enabled: false
+      fallback_rule: ""
+    post_tool:
+      enabled: false
+      fallback_rule: ""
+deploy:
+  folders:
+    - rules
+    - workflows
+    - skills
+    - operating_system

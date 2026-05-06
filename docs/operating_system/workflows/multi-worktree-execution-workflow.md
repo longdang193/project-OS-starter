@@ -1,30 +1,17 @@
 ---
-workflow_id: multi-worktree-execution
-type: workflow
-stage: execution
-owner_layer: change
-entry_points:
-  - multiple independent bugfix or feature lanes should run in parallel
-  - a single lane is blocked and decomposition into isolated worktrees is required
-prerequisites:
-  - in-scope roadmap/workstream/thread and plan/spec context is identified
-  - lane boundaries and ownership can be defined without uncontrolled overlap
-next_steps:
-  - multi-worktree-dispatch-prompt.md
-  - implementation-next-action-gate-prompt.md
-  - thread-closeout-readiness-prompt.md
-skills:
-  - using-git-worktrees
-  - dispatching-parallel-agents
-  - executing-plans
-  - verification-before-completion
-status: active
-outputs:
-  - lane registry with owner, worktree path, and current status
-  - per-lane verification evidence and closeout readiness state
-validators:
-  - each lane has bounded scope and explicit next action
-  - each lane has verification evidence before completion claims
+name: multi-worktree-execution-workflow
+description: Run the multi-worktree execution workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- using-git-worktrees
+- dispatching-parallel-agents
+- executing-plans
+- verification-before-completion
+tags:
+- workflow
+- execution
+- change
 ---
 
 # Multi-Worktree Execution Workflow
@@ -74,4 +61,3 @@ bounded scope, and explicit merge/closeout controls.
 - All active lanes are terminal (merged or explicitly deferred).
 - Evidence and status updates are reconciled.
 - Next action is explicitly selected if any lane remains open.
-

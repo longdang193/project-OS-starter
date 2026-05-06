@@ -1,31 +1,31 @@
 [
   {
-    "source": "agent-core/adapters/codex/root-AGENTS.template.md",
+    "source": "docs/operating_system/templates/agents/root-AGENTS.template.md",
     "destination": "AGENTS.md",
     "prefix": "#"
   },
   {
-    "source": "agent-core/adapters/codex/docs-AGENTS.template.md",
+    "source": "docs/operating_system/templates/agents/docs-AGENTS.template.md",
     "destination": "docs/AGENTS.md",
     "prefix": "#"
   },
   {
-    "source": "agent-core/adapters/codex/rules/command-execution.rules",
+    "source": "docs/operating_system/rules/command-execution-rule.md",
     "destination": ".codex/rules/command-execution.rules",
     "prefix": "#"
   },
   {
-    "source": "agent-core/adapters/codex/rules/publication-boundary.rules",
+    "source": "docs/operating_system/rules/publication-boundary-rule.md",
     "destination": ".codex/rules/publication-boundary.rules",
     "prefix": "#"
   },
   {
-    "source": "agent-core/adapters/codex/rules/python-contracts.rules",
+    "source": "docs/operating_system/rules/python-contracts-rule.md",
     "destination": ".codex/rules/python-contracts.rules",
     "prefix": "#"
   },
   {
-    "source": "agent-core/adapters/codex/rules/doc-contracts.rules",
+    "source": "docs/operating_system/rules/doc-contracts-rule.md",
     "destination": ".codex/rules/doc-contracts.rules",
     "prefix": "#"
   }

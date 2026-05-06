@@ -1,8 +1,22 @@
 ---
 name: executing-plans
-description: Use when you have a written implementation plan to execute in a separate session with review checkpoints
+description: Use when you have a written implementation plan to execute in a separate
+  session with review checkpoints
+allowed-tools: []
+hooks:
+  pre:
+  - python scripts/hooks/run_validator.py --fast
+  post:
+  - python scripts/hooks/run_validator.py --fast
+required_reads:
+- docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- execution
+- delivery
+- executing-plans
 ---
-
 # Executing Plans
 
 ## Overview

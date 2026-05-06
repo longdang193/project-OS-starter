@@ -1,18 +1,23 @@
-﻿---
-prompt_id: starter-baseline-sync-prompt
+---
+name: starter-baseline-sync-prompt
+description: Sync a project to the latest starter baseline with controlled drift handling.
 type: prompt
 stage: maintenance
-owner_layer: operating_system
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- use this prompt when its title scope matches the current planning/execution need
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
+- relevant in-scope roadmap/workstream/thread/spec/plan context is available
 next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
+- implementation-next-action-gate-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- maintenance
 ---
+
 # Starter Baseline Sync Prompt
 
 Use this when you want to sync another repo/worktree to the latest local
@@ -49,4 +54,3 @@ Do:
 
 Expected output:
 - synced target repo with a concise migration report
-

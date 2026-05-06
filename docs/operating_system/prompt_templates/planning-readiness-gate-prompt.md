@@ -1,45 +1,31 @@
 ---
-prompt_id: planning-readiness-gate-prompt
+name: planning-readiness-gate-prompt
+description: Decide whether planning is sufficient to proceed to execution gating.
 type: prompt
-stage: planning
-owner_layer: change
+stage: execution
 entry_points:
-  - work is being considered and planning/spec readiness must be decided first
-  - execution appears likely but feature/scope/design readiness is uncertain
+- work is being considered and planning/spec readiness must be decided first
+- execution appears likely but feature/scope/design readiness is uncertain
 prerequisites:
-  - initial scope/problem statement exists
-  - in-scope roadmap/workstream/thread context is available or explicitly unknown
+- initial scope/problem statement exists
+- in-scope roadmap/workstream/thread context is available or explicitly unknown
 next_steps:
-  - spec-prompt.md
-  - plan-prompt.md
-  - execution-readiness-gate-prompt.md
-skills:
-  - planning-dispatch
-  - brainstorming
-  - writing-plans
-status: active
----
-# Planning Readiness Gate Prompt
-
-## Use When
-
-you need to decide whether spec/plan work is required before any execution routing
-
-## Prerequisites
-
-### Required
-
-- scope and desired outcome are described
-
-### Optional
-
-- preliminary constraints and affected components
-
-## Next Prompts
-
 - spec-prompt.md
 - plan-prompt.md
 - execution-readiness-gate-prompt.md
+related_skills:
+- planning-dispatch
+- brainstorming
+- writing-plans
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+- docs/operating_system/workflows/spec-to-plan-to-execution-workflow.md
+tags:
+- prompt
+- planning
+---
+
+# Planning Readiness Gate Prompt
 
 ## Not For
 
@@ -74,4 +60,3 @@ Please:
 
 Expected output:
 - planning readiness verdict (`need_spec | need_plan | ready_for_execution_gates`) and one selected next action
-

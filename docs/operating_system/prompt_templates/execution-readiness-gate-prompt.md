@@ -1,42 +1,30 @@
 ---
-prompt_id: execution-readiness-gate-prompt
+name: execution-readiness-gate-prompt
+description: Decide whether execution can start based on planning completeness and
+  dependencies.
 type: prompt
 stage: execution
-owner_layer: change
 entry_points:
-  - execution is being considered and readiness must be validated first
-  - next-action routing appears to jump to execution without sufficient artifacts
+- execution is being considered and readiness must be validated first
+- next-action routing appears to jump to execution without sufficient artifacts
 prerequisites:
-  - in-scope roadmap/workstream/thread/spec/plan context is identified or explicitly missing
-  - current blockers and dependency status are known
+- in-scope roadmap/workstream/thread/spec/plan context is identified or explicitly
+  missing
+- current blockers and dependency status are known
 next_steps:
-  - implementation-next-action-gate-prompt.md
-  - multi-worktree-dispatch-prompt.md
-skills:
-  - planning-dispatch
-  - executing-plans
-status: active
----
-# Execution Readiness Gate Prompt
-
-## Use When
-
-you need to verify execution readiness before choosing the next execution action
-
-## Prerequisites
-
-### Required
-
-- current scope context is available
-
-### Optional
-
-- latest validation outputs
-
-## Next Prompts
-
 - implementation-next-action-gate-prompt.md
 - multi-worktree-dispatch-prompt.md
+related_skills:
+- planning-dispatch
+- executing-plans
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- execution
+---
+
+# Execution Readiness Gate Prompt
 
 ## Not For
 
@@ -71,4 +59,3 @@ Please:
 
 Expected output:
 - readiness verdict (`ready_for_next_action` or `not_ready`) and one selected next step
-

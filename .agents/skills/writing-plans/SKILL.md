@@ -1,8 +1,23 @@
 ---
 name: writing-plans
-description: Use when a confirmed design needs a multi-step implementation plan before code changes begin.
+description: Use when a confirmed design needs a multi-step implementation plan before
+  code changes begin.
+allowed-tools: []
+hooks:
+  pre:
+  - python scripts/hooks/run_validator.py --fast
+  post:
+  - python scripts/hooks/run_validator.py --fast
+required_reads:
+- docs/operating_system/templates/implementation-plan-template.md
+- docs/operating_system/templates/task-start-routing-guide.md
+- docs/operating_system/repo-governance.md
+tags:
+- skill
+- planning
+- implementation-plan
+- writing-plans
 ---
-
 # Writing Plans
 
 ## Role

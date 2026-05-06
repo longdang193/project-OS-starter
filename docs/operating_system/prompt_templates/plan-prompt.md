@@ -1,37 +1,27 @@
-﻿---
-prompt_id: plan-prompt
+---
+name: plan-prompt
+description: Turn approved spec or patch context into an execution-ready implementation
+  plan.
 type: prompt
 stage: planning
-owner_layer: change
 entry_points:
-  - use this prompt when its title scope matches the current planning/execution need
+- approved work item context exists and an execution-ready implementation/patch plan
+  is needed
 prerequisites:
-  - relevant in-scope roadmap/workstream/thread/spec/plan context is available
-next_steps:
-  - implementation-next-action-gate-prompt.md
-skills:
-  - planning-dispatch
-status: active
----
-# Plan Prompt
-
-## Use When
-
-approved work item context exists and an execution-ready implementation/patch plan is needed
-
-## Prerequisites
-
-### Required
-
 - approved spec or execution-map context
-
-### Optional
-
-- execution map wave/lane
-
-## Next Prompts
-
+next_steps:
 - execute-prompt.md
+related_skills:
+- planning-dispatch
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+- docs/operating_system/workflows/spec-to-plan-to-execution-workflow.md
+tags:
+- prompt
+- planning
+---
+
+# Plan Prompt
 
 ## Not For
 
@@ -65,4 +55,3 @@ Please:
 
 Expected output:
 - a plan in `docs/superpowers/plans/`
-

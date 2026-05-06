@@ -1,26 +1,15 @@
 ---
-workflow_id: live-run-closeout
-type: workflow
-stage: closeout
-owner_layer: change
-entry_points:
-  - verification passed and closure decision is needed
-  - closeout draft exists with open evidence or learning-capture gaps
-prerequisites:
-  - verification report is available
-  - traceability from failure to fix to validation is complete
-next_steps:
-  - thread-closeout-readiness-prompt.md
-  - live-run-scenario-planning-workflow.md
-skills:
-  - verification-before-completion
-  - planning-dispatch
-status: active
-outputs:
-  - closeout record with root cause, fix, and evidence
-  - learning backfeed actions for tests/specs/scenarios
-validators:
-  - closeout claim includes evidence and follow-up actions
+name: live-run-closeout-workflow
+description: Run the live run closeout workflow procedure.
+required_reads:
+- docs/operating_system/repo-governance.md
+related_skills:
+- verification-before-completion
+- planning-dispatch
+tags:
+- workflow
+- closeout
+- change
 ---
 
 # Live Run Closeout Workflow
@@ -57,4 +46,3 @@ tests, specs, and future scenarios.
 
 - Closeout bundle is complete and actionable for lifecycle closure, or
 - Blockers are explicitly recorded with next correction path.
-

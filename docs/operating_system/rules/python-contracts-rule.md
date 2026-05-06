@@ -1,0 +1,34 @@
+---
+name: python-contracts
+description: Enforce Python contract/style/type expectations for generated and edited Python files.
+alwaysApply: false
+required_reads:
+  - .agents/skills/python-code-standards/SKILL.md
+  - docs/operating_system/repo-governance.md
+tags:
+  - rule
+  - python
+  - contracts
+---
+
+# Python Contracts Rule
+
+For Python changes, follow the Python standards workflow and keep contract,
+typing, and verification expectations consistent.
+
+## Required
+
+- Python files with behavioral weight (entry points, orchestration/workflow files, test modules, migrations/cleanup scripts, and shared utilities) must declare a top-of-file `@meta` block.
+- Python metadata must be capability-first when stable capability IDs exist upstream.
+
+## Forbidden
+
+- Add a redundant Python `@meta` features list when capability linkage already determines stable feature ownership.
+- Use function-level `@capability` on helpers, wrappers, tests, adapters, or incidental callers.
+- Swallow errors with bare `except` blocks or unlogged exception handling.
+- Use broad `type: ignore` comments without an error code and short reason.
+
+## Guidance
+
+- Prefer precise Python types and narrow structures over `Any` when editing or adding Python code.
+- Use `@proves` in test-function docstrings for capability proof; reserve file-level capabilities for implementation ownership or materially lineage-relevant test modules.

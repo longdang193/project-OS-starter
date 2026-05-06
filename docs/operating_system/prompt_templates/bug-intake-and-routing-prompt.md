@@ -1,44 +1,29 @@
 ---
-prompt_id: bug-intake-and-routing-prompt
+name: bug-intake-and-routing-prompt
+description: Classify a new bug and choose the correct debugging or patch route.
 type: prompt
-stage: drift
-owner_layer: change
+stage: execution
 entry_points:
-  - a new bug report/failure is received and routing is not yet decided
-  - debugging started but bug class/severity is still ambiguous
+- a new bug report/failure is received and routing is not yet decided
+- debugging started but bug class/severity is still ambiguous
 prerequisites:
-  - initial bug evidence exists (error, failing test, artifact, or report)
-  - in-scope roadmap/workstream/thread context is available or explicitly unknown
+- initial bug evidence exists (error, failing test, artifact, or report)
+- in-scope roadmap/workstream/thread context is available or explicitly unknown
 next_steps:
-  - implementation-next-action-gate-prompt.md
-  - patch-and-pattern-detection-prompt.md
-  - live-run-system-dispatch-prompt.md
-skills:
-  - planning-dispatch
-  - systematic-debugging
-status: active
----
-# Bug Intake And Routing Prompt
-
-## Use When
-
-you need to classify a bug and choose the correct debugging/patch entry path
-
-## Prerequisites
-
-### Required
-
-- initial failure evidence is available
-
-### Optional
-
-- related run id, trace id, or failing test command
-
-## Next Prompts
-
 - implementation-next-action-gate-prompt.md
 - patch-and-pattern-detection-prompt.md
 - live-run-system-dispatch-prompt.md
+related_skills:
+- planning-dispatch
+- systematic-debugging
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- drift
+---
+
+# Bug Intake And Routing Prompt
 
 ## Not For
 
@@ -67,4 +52,3 @@ Please:
 
 Expected output:
 - bug class/severity, selected route, and one selected next action
-
