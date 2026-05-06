@@ -178,6 +178,7 @@ Live-run + multi-worktree integration:
 - [managed-metadata-update-prompt.md](./managed-metadata-update-prompt.md)
 - [mode-migration-prompt.md](./mode-migration-prompt.md)
 - [provider-history-sync-prompt.md](./provider-history-sync-prompt.md)
+- [runtime-deploy-and-verify-prompt.md](./runtime-deploy-and-verify-prompt.md)
 - [gitnexus-refresh-prompt.md](./gitnexus-refresh-prompt.md)
 - [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md)
 - [planning-readiness-gate-prompt.md](./planning-readiness-gate-prompt.md)

@@ -1,0 +1,58 @@
+---
+name: runtime-deploy-and-verify-prompt
+description: Deploy generated runtime artifacts to local provider homes and verify drift/contract health.
+type: prompt
+stage: maintenance
+entry_points:
+- runtime config/rules/skills/workflows were updated in canonical sources
+- generated artifacts were synced and now must be deployed to local homes
+prerequisites:
+- python scripts/sync_agent_adapters.py completed successfully
+next_steps:
+- validate-or-drift-prompt.md
+related_skills:
+- executing-plans
+- verification-before-completion
+- doc-system-lifecycle
+required_reads:
+- docs/operating_system/repo-governance.md
+- docs/operating_system/rules-workflows-procedure.md
+tags:
+- prompt
+- maintenance
+- runtime
+- deploy
+---
+
+# Runtime Deploy And Verify Prompt
+
+Use this as the provider-neutral deploy prompt for `.codex`, `.claude`, and
+`.gemini`.
+
+```text
+Deploy generated runtime artifacts and verify runtime health.
+
+Please:
+1. run sync first:
+   - python scripts/sync_agent_adapters.py
+2. run deploy preview:
+   - python scripts/deploy_agent_runtime.py --target all --dry-run
+3. deploy with backups:
+   - python scripts/deploy_agent_runtime.py --target all --backup
+4. if deployment is blocked by non-generated runtime files, rerun with force:
+   - python scripts/deploy_agent_runtime.py --target all --backup --force
+5. run post-deploy drift check:
+   - python scripts/deploy_agent_runtime.py --target all --check
+6. run post-deploy repo contract check:
+   - python scripts/validate_repo_contracts.py --fast
+7. report:
+   - deployed targets and changed file counts
+   - any forced-overwrite paths
+   - drift/check status
+   - unresolved issues and minimal follow-up action
+```
+
+Expected output:
+- deploy summary for codex/claude/antigravity homes
+- post-deploy check results
+- repo-contract validation result
