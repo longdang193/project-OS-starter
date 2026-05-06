@@ -11,7 +11,8 @@ To update: edit canonical source, then run sync.
 ## Goal
 
 Define a practical canonical metadata contract for skills, rules, and workflows
-that can be generated and deployed into Codex, Claude, and Gemini runtimes.
+that can be generated and deployed into Codex, Claude, and Antigravity runtimes
+(`~/.codex`, `~/.claude`, `~/.gemini`).
 
 ## Skill Frontmatter
 
@@ -90,4 +91,3 @@ tags: []
 3. `required_reads` should use repo-relative canonical paths.
 4. This schema is canonical in repo; adapters map it to platform-specific
    runtime surfaces.
-

@@ -25,7 +25,7 @@ Use this file for repo-wide behavior only. More specific directory instructions 
 - Update the agent-memory layer when a significant reusable lesson emerges.
 - Update tests and docs when behavior or contracts change.
 - Do not expose private operating-system or agent-core material through the public mirror.
-- If you change `docs/operating_system/templates/agents/*`, generated `AGENTS.md`, or `.codex/rules/*.rules`, run the sync and verify scripts before considering the change complete.
+- If you change `docs/operating_system/templates/agents/*`, generated `AGENTS.md`, or generated provider runtime rules, run the sync and verify scripts before considering the change complete.
 
 ## GitNexus
 

@@ -77,7 +77,7 @@ Do not create stages only to organize repo-method work. For example, adapter syn
 | Product workflow stage | `docs/stages/<stage_id>.source.yaml` | feature dependency workaround |
 | Repo governance | `docs/operating_system/*.md` | `docs/features/repo-operating-system.yaml` |
 | Agent workflow | `.agents/skills/` | product feature metadata |
-| Hard agent invariant | adapter rule source and generated `.codex/rules/` | feature capability |
+| Hard agent invariant | adapter rule source and generated provider runtime rules | feature capability |
 | Adapter generation | `agent-core/adapters/`, `repo_config/`, scripts | product feature |
 | Publication boundary | `repo_config/publication-config.json` and operating-system docs | product feature |
 | One-time design | `docs/superpowers/specs/*.md` | permanent feature |

@@ -170,7 +170,7 @@ For copy-safe source templates, see [Architecture Metadata Templates](../archite
    - `docs/operating_system/*.md`
    - `.agents/skills/*`
    - `docs/operating_system/templates/agents/*`
-   - generated `AGENTS.md` and `.codex/rules/*` after adapter sync
+   - generated `AGENTS.md` and provider runtime rules after adapter sync
    - validation and sync scripts when the starter has stronger checks or generators
 5. Record the shared-surface sync review in `repo_config/adoption-mode.yaml` using a `starter_sync` block that captures:
    - `starter_baseline_ref`
@@ -478,7 +478,7 @@ docs/operating_system/*
 .agents/skills/*
 docs/operating_system/templates/agents/*
 AGENTS.md
-.codex/rules/*
+ generated provider runtime rules
 scripts/validate_*.py
 scripts/sync_*.py
 ```

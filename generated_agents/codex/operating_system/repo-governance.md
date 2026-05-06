@@ -50,7 +50,7 @@ The repo uses four distinct internal layers:
 5. adapter outputs
 - `AGENTS.md`
 - nested `AGENTS.md`
-- `.codex/rules/*.rules`
+- generated provider runtime rule outputs
 - sync and verification scripts under `scripts/`
 
 For copyable user-facing prompts that help invoke the lifecycle cleanly, use
@@ -547,7 +547,7 @@ When changing:
 - `docs/operating_system/templates/agents/*`
 - `agent-core/policies/*`
 - generated `AGENTS.md`
-- generated `.codex/rules/*.rules`
+- generated provider runtime rules
 
 run:
 

@@ -5,7 +5,7 @@ Deploy generated agent runtime artifacts to user home runtime targets.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 import shutil
 
@@ -123,7 +123,7 @@ def run() -> int:
             continue
         backup_root: Path | None = None
         if args.backup:
-            stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             backup_root = target_root / ".backups" / stamp
         for src, dst in pairs:
             dst.parent.mkdir(parents=True, exist_ok=True)

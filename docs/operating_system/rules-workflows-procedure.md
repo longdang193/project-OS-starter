@@ -25,7 +25,7 @@ Outputs:
 ## Deploy
 
 ```bash
-python scripts/deploy_agent_rules.py --target all
+python scripts/deploy_agent_runtime.py --target all
 ```
 
 Targets:
