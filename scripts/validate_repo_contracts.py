@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from functools import lru_cache
 import os
 from pathlib import Path
 import subprocess
@@ -97,28 +98,30 @@ def pytest_basetemp(default_relative: str) -> str:
     return default_relative
 
 
-def managed_architecture_metadata_enabled(root: Path) -> bool:
-    adoption_mode_path = root / "repo_config" / "adoption-mode.yaml"
-    if not adoption_mode_path.exists():
-        return True
-    payload = yaml.safe_load(adoption_mode_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        return True
-    return bool(payload.get("managed_architecture_metadata", False))
-
-
-def read_adoption_mode(root: Path) -> str | None:
+@lru_cache(maxsize=8)
+def load_adoption_mode_payload(root: Path) -> dict | None:
     adoption_mode_path = root / "repo_config" / "adoption-mode.yaml"
     if not adoption_mode_path.exists():
         return None
     payload = yaml.safe_load(adoption_mode_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
+        return None
+    return payload
+
+def managed_architecture_metadata_enabled(root: Path) -> bool:
+    payload = load_adoption_mode_payload(root)
+    if payload is None:
+        return True
+    return bool(payload.get("managed_architecture_metadata", False))
+
+def read_adoption_mode(root: Path) -> str | None:
+    payload = load_adoption_mode_payload(root)
+    if payload is None:
         return None
     mode = payload.get("adoption_mode")
     if mode not in ALLOWED_MODES:
         return None
     return mode
-
 
 def run_step(command: list[str], *, cwd: Path) -> int:
     rendered = " ".join(command)
@@ -127,7 +130,13 @@ def run_step(command: list[str], *, cwd: Path) -> int:
     return completed.returncode
 
 
-def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) -> list[list[str]]:
+def build_subprocess_steps(
+    *,
+    root: Path,
+    python_executable: str,
+    fast: bool,
+    adoption_mode: str | None = None,
+) -> list[list[str]]:
     adoption_shape_script = str(root / "scripts" / "validate_adoption_shape.py")
     checkpoint_pack_script = str(root / "scripts" / "validate_checkpoint_packs.py")
     planning_lifecycle_script = str(root / "scripts" / "validate_planning_lifecycle.py")
@@ -151,7 +160,9 @@ def build_subprocess_steps(*, root: Path, python_executable: str, fast: bool) ->
         [python_executable, generated_header_script],
         [python_executable, agent_runtime_drift_script, "--skip-deploy-check"],
     ]
-    if read_adoption_mode(root) != "starter_method_only":
+    if adoption_mode is None:
+        adoption_mode = read_adoption_mode(root)
+    if adoption_mode != "starter_method_only":
         sync_script = str(root / "scripts" / "sync_architecture_docs.py")
         steps.append([python_executable, sync_script, "--check"])
     steps.append([python_executable, repo_config_script])

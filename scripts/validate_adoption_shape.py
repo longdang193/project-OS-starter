@@ -27,8 +27,10 @@ lifecycle:
 from __future__ import annotations
 
 import argparse
+import os
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import lru_cache
 from pathlib import Path
 import re
 import sys
@@ -99,6 +101,10 @@ from validator_policy import (
     YAML_ARCHITECTURE_TEMPLATE_PATH,
 )
 
+FEATURE_METADATA_REGEX = re.compile(
+    "|".join(re.escape(pattern) for pattern in FEATURE_METADATA_PATTERNS)
+)
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -143,6 +149,14 @@ def relpath(path: Path, root: Path) -> str:
 
 
 def load_yaml(path: Path) -> Any:
+    return _load_yaml_cached(path.resolve())
+
+@lru_cache(maxsize=4096)
+def _read_text_cached(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+@lru_cache(maxsize=2048)
+def _load_yaml_cached(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle)
 
@@ -2651,22 +2665,25 @@ def validate_lineage_generated_schema(root: Path, findings: list[Finding]) -> No
 
 def contains_feature_metadata_markers(path: Path) -> bool:
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = _read_text_cached(path.resolve())
     except OSError:
         return False
-    return any(pattern in text for pattern in FEATURE_METADATA_PATTERNS)
+    return FEATURE_METADATA_REGEX.search(text) is not None
 
 
 def metadata_marker_files(root: Path) -> list[Path]:
     matches: list[Path] = []
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in METADATA_SCAN_SUFFIXES:
-            continue
-        relative_parts = path.relative_to(root).parts
-        if relative_parts and relative_parts[0] in METADATA_SCAN_SKIP_DIRS:
-            continue
-        if contains_feature_metadata_markers(path):
-            matches.append(path)
+    skip_dirs = set(METADATA_SCAN_SKIP_DIRS)
+    suffixes = {suffix.lower() for suffix in METADATA_SCAN_SUFFIXES}
+    for current_root, dirs, files in os.walk(root, topdown=True):
+        dirs[:] = [name for name in dirs if name not in skip_dirs]
+        current = Path(current_root)
+        for name in files:
+            path = current / name
+            if path.suffix.lower() not in suffixes:
+                continue
+            if contains_feature_metadata_markers(path):
+                matches.append(path)
     return sorted(matches)
 
 

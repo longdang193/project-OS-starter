@@ -240,6 +240,25 @@ def _normalized(text: str) -> str:
     return text.replace("\r\n", "\n").rstrip("\n")
 
 
+def _write_text_if_changed(path: Path, rendered: str) -> None:
+    if path.exists():
+        current = path.read_text(encoding="utf-8")
+        if _normalized(current) == _normalized(rendered):
+            return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(rendered, encoding="utf-8")
+
+def _iter_matching_files(root: Path, pattern: str) -> list[Path]:
+    return [path for path in root.glob(pattern) if path.is_file()]
+
+def _remove_stale_files(dst_root: Path, expected: set[Path]) -> None:
+    if not dst_root.exists():
+        return
+    generated = {path.relative_to(dst_root) for path in dst_root.rglob("*") if path.is_file()}
+    for stale in generated - expected:
+        (dst_root / stale).unlink(missing_ok=True)
+
+
 def _sync_file(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
     src = root / mapping.source
     dst = root / mapping.destination
@@ -281,8 +300,7 @@ def _sync_file(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
         if _normalized(actual) != _normalized(rendered):
             return [f"Drift detected: {dst.as_posix()}"]
         return []
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(rendered, encoding="utf-8")
+    _write_text_if_changed(dst, rendered)
     return []
 
 
@@ -293,9 +311,10 @@ def _sync_tree(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
         return [f"Missing source directory: {src_root.as_posix()}"]
     pattern = mapping.include_glob or "**/*"
     issues: list[str] = []
-    files = [p for p in src_root.glob(pattern) if p.is_file()]
-    for src in files:
+    expected_paths: set[Path] = set()
+    for src in _iter_matching_files(src_root, pattern):
         rel = src.relative_to(src_root)
+        expected_paths.add(rel)
         dst = dst_root / rel
         rendered = _render_with_header(
             src.read_text(encoding="utf-8"),
@@ -310,13 +329,9 @@ def _sync_tree(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
             if _normalized(actual) != _normalized(rendered):
                 issues.append(f"Drift detected: {dst.as_posix()}")
             continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(rendered, encoding="utf-8")
-    if not check and dst_root.exists():
-        generated = {p.relative_to(dst_root) for p in dst_root.rglob("*") if p.is_file()}
-        expected = {p.relative_to(src_root) for p in files}
-        for stale in generated - expected:
-            (dst_root / stale).unlink(missing_ok=True)
+        _write_text_if_changed(dst, rendered)
+    if not check:
+        _remove_stale_files(dst_root, expected_paths)
     return issues
 
 
@@ -327,9 +342,8 @@ def _sync_codex_rules_tree(root: Path, mapping: Mapping, *, check: bool) -> list
         return [f"Missing source directory: {src_root.as_posix()}"]
     pattern = mapping.include_glob or "*.md"
     issues: list[str] = []
-    files = [p for p in src_root.glob(pattern) if p.is_file()]
     expected_paths: set[Path] = set()
-    for src in files:
+    for src in _iter_matching_files(src_root, pattern):
         dst = dst_root / _codex_rules_filename(src)
         expected_paths.add(dst.relative_to(dst_root))
         body = _strip_markdown_frontmatter(src.read_text(encoding="utf-8"))
@@ -346,12 +360,9 @@ def _sync_codex_rules_tree(root: Path, mapping: Mapping, *, check: bool) -> list
             if _normalized(actual) != _normalized(rendered):
                 issues.append(f"Drift detected: {dst.as_posix()}")
             continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(rendered, encoding="utf-8")
-    if not check and dst_root.exists():
-        generated = {p.relative_to(dst_root) for p in dst_root.rglob("*") if p.is_file()}
-        for stale in generated - expected_paths:
-            (dst_root / stale).unlink(missing_ok=True)
+        _write_text_if_changed(dst, rendered)
+    if not check:
+        _remove_stale_files(dst_root, expected_paths)
     return issues
 
 
