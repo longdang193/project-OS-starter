@@ -7,7 +7,7 @@ targets:
   - README.md
   - docs/
   - docs/adoption_guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
@@ -39,7 +39,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/adoption_guide.md`
 - `scripts/validate_adoption_shape.py`
@@ -67,7 +67,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/setup.md`
   - `docs/configuration.md`
@@ -232,7 +232,7 @@ Minimum expected file rule:
 
 Baseline files should be documented explicitly:
 
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/repo-governance.md`
 
 The validator does not need to require every operating-system file immediately,
@@ -410,7 +410,7 @@ Add the required folder surface to bootstrap or first-commit guidance.
 Clarify which folders are always required and which are conditional on adopted
 architecture-doc shape.
 
-### `docs/operating_system/doc-system-lifecycle.md`
+### `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Document the required folder surface and add explicit descriptions for the
 minimum files or expected file types inside required folders.

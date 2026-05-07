@@ -6,11 +6,11 @@ parent_workstream: none
 targets:
   - docs/intent/README.md
   - docs/intent/master-workstream-roadmap.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
-  - .agents/skills/brainstorming/SKILL.md
-  - .agents/skills/planning-dispatch/SKILL.md
-  - .agents/skills/writing-plans/SKILL.md
+  - .agents/skills/skill-brainstorming/SKILL.md
+  - .agents/skills/skill-planning-dispatch/SKILL.md
+  - .agents/skills/skill-writing-plans/SKILL.md
 related_features: []
 related_stages: []
 ---
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add an intent-owned master workstream roadmap and update planning guidance so `operating_system` remains a parallel first-class branch rather than being collapsed into product workstreams.
 
@@ -53,7 +53,7 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/superpowers/specs/2026-04-24-intent-roadmap-and-operating-system-classification-spec.md`
 - README: none
@@ -64,11 +64,11 @@ related_stages: []
 ```text
 docs/intent/README.md
 docs/intent/master-workstream-roadmap.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
-.agents/skills/brainstorming/SKILL.md
-.agents/skills/planning-dispatch/SKILL.md
-.agents/skills/writing-plans/SKILL.md
+.agents/skills/skill-brainstorming/SKILL.md
+.agents/skills/skill-planning-dispatch/SKILL.md
+.agents/skills/skill-writing-plans/SKILL.md
 docs/superpowers/specs/2026-04-24-intent-roadmap-and-operating-system-classification-spec.md
 ```
 
@@ -102,10 +102,10 @@ Do not:
 ## Task 2: Update Operating-System Planning Guidance
 
 **Files:**
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 
-- [x] Step 1: Update `planning-dispatch.md` so the routing story becomes `intent -> workstream or operating_system -> change -> spec/plan`.
+- [x] Step 1: Update `skill-planning-dispatch.md` so the routing story becomes `intent -> workstream or operating_system -> change -> spec/plan`.
 - [x] Step 2: Make the next routing question explicit: “product workstream or operating_system?”
 - [x] Step 3: Update `repo-governance.md` to point to the intent-owned roadmap and explain the operating-system branch clearly.
 - [x] Step 4: Keep the docs concise and workflow-oriented rather than turning them into a process manual.
@@ -113,9 +113,9 @@ Do not:
 ## Task 3: Light Skill Alignment
 
 **Files:**
-- Modify: `.agents/skills/brainstorming/SKILL.md`
-- Modify: `.agents/skills/planning-dispatch/SKILL.md`
-- Modify: `.agents/skills/writing-plans/SKILL.md`
+- Modify: `.agents/skills/skill-brainstorming/SKILL.md`
+- Modify: `.agents/skills/skill-planning-dispatch/SKILL.md`
+- Modify: `.agents/skills/skill-writing-plans/SKILL.md`
 
 - [x] Step 1: Add or adjust brief wording so the skills do not contradict the new roadmap model.
 - [x] Step 2: Keep the skills detailed and executable; do not duplicate the full operating-system prose there.

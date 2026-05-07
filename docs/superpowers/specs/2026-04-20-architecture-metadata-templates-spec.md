@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/architecture_templates/
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/features/README.md
   - docs/stages/README.md
 related_features: []
@@ -31,7 +31,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/project-adoption-migration-guide.md`
 - `docs/operating_system/feature-routing-guide.md`
 - `tools/docs/generate_architecture_metadata.py`
@@ -69,7 +69,7 @@ Affected docs:
   - `docs/architecture_templates/markdown-frontmatter.md`
   - `docs/architecture_templates/mode-b-feature-migration-checklist.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/features/README.md`
   - `docs/stages/README.md`
 - readme: none
@@ -195,7 +195,7 @@ Update:
 
 ```text
 docs/operating_system/project-adoption-migration-guide.md
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/features/README.md
 docs/stages/README.md
 ```
@@ -210,7 +210,7 @@ The README should:
 
 - state that templates are for Mode B only
 - link to `docs/operating_system/project-adoption-migration-guide.md`
-- link to `docs/operating_system/doc-system-lifecycle.md`
+- link to `docs/operating_system/skill-doc-system-lifecycle.md`
 - include the no-double-entry rule
 - explain which files are copyable human-owned inputs
 - list generated files that must be produced by tooling, not copied

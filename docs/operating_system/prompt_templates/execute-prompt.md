@@ -10,7 +10,7 @@ prerequisites:
 next_steps:
 - implementation-next-action-gate-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:
@@ -30,7 +30,7 @@ carry it out.
 
 Required when claiming completion of a plan/task set or pass/fix status:
 
-- run `verification-before-completion` checks before final completion claim
+- run `skill-verification-before-completion` checks before final completion claim
 
 If you are still deciding which roadmap thread the work belongs to, use
 `roadmap-to-workstream-prompt.md` or `workstream-alignment-review-prompt.md`

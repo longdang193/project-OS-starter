@@ -10,7 +10,7 @@ targets:
   - docs/pipeline.md
   - docs/architecture.md
   - docs/adoption_guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -27,7 +27,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add lightweight validation for the five required root project docs so they are checked for basic structure, semantic coverage, and placeholder-only content instead of path presence alone.
 
@@ -69,7 +69,7 @@ related_stages: []
 
 **Files:**
 - Modify: `docs/adoption_guide.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/repo-governance.md`
 
 - [x] Step 1: Document that required root docs are validated for more than path presence.

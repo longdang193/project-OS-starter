@@ -9,7 +9,7 @@ targets:
   - tests/test_validate_repo_contracts.py
   - tests/test_validate_repo_config.py
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md
 related_features: []
 related_stages: []
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Remove duplicated root-doc validation from `validate_repo_config.py`, restore `validate_adoption_shape.py` as the single owner of that contract, and make `validate_repo_contracts.py` call the owning validator directly.
 
@@ -54,7 +54,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md`
 - README: none
 - Generated discovery: none
@@ -67,7 +67,7 @@ scripts/validate_repo_config.py
 tests/test_validate_repo_contracts.py
 tests/test_validate_repo_config.py
 docs/operating_system/repo-governance.md
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md
 ```
 
@@ -111,7 +111,7 @@ Do not:
 
 **Files:**
 - Modify: `docs/operating_system/repo-governance.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [x] Step 1: State that required root-doc validation is adoption-shape policy.
 - [x] Step 2: State that the canonical repo-contract gate runs the adoption-shape validator directly.

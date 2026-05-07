@@ -4,17 +4,17 @@ Use these prompts as linked ladders, not as one long linear list.
 
 For multi-step procedures with decision gates, use workflow docs under:
 
-- [../workflows/roadmap-to-closeout-workflow.md](../workflows/roadmap-to-closeout-workflow.md)
-- [../workflows/drift-detection-and-reconciliation-workflow.md](../workflows/drift-detection-and-reconciliation-workflow.md)
-- [../workflows/spec-to-plan-to-execution-workflow.md](../workflows/spec-to-plan-to-execution-workflow.md)
-- [../workflows/multi-worktree-execution-workflow.md](../workflows/multi-worktree-execution-workflow.md)
-- [../workflows/live-run-system-workflow.md](../workflows/live-run-system-workflow.md)
-- [../workflows/live-run-scenario-planning-workflow.md](../workflows/live-run-scenario-planning-workflow.md)
-- [../workflows/live-run-preflight-check-workflow.md](../workflows/live-run-preflight-check-workflow.md)
-- [../workflows/live-run-execution-workflow.md](../workflows/live-run-execution-workflow.md)
-- [../workflows/live-run-debugging-workflow.md](../workflows/live-run-debugging-workflow.md)
-- [../workflows/live-run-verification-workflow.md](../workflows/live-run-verification-workflow.md)
-- [../workflows/live-run-closeout-workflow.md](../workflows/live-run-closeout-workflow.md)
+- [../workflows/workflow-roadmap-to-closeout.md](../workflows/workflow-roadmap-to-closeout.md)
+- [../workflows/workflow-drift-detection-and-reconciliation.md](../workflows/workflow-drift-detection-and-reconciliation.md)
+- [../workflows/workflow-spec-to-plan-to-execution.md](../workflows/workflow-spec-to-plan-to-execution.md)
+- [../workflows/workflow-multi-worktree-execution.md](../workflows/workflow-multi-worktree-execution.md)
+- [../workflows/workflow-live-run-system.md](../workflows/workflow-live-run-system.md)
+- [../workflows/workflow-live-run-scenario-planning.md](../workflows/workflow-live-run-scenario-planning.md)
+- [../workflows/workflow-live-run-preflight-check.md](../workflows/workflow-live-run-preflight-check.md)
+- [../workflows/workflow-live-run-execution.md](../workflows/workflow-live-run-execution.md)
+- [../workflows/workflow-live-run-debugging.md](../workflows/workflow-live-run-debugging.md)
+- [../workflows/workflow-live-run-verification.md](../workflows/workflow-live-run-verification.md)
+- [../workflows/workflow-live-run-closeout.md](../workflows/workflow-live-run-closeout.md)
 
 ## Core Planning Ladder
 
@@ -166,8 +166,8 @@ Use in this order:
 - [live-run-closeout-decision-prompt.md](./live-run-closeout-decision-prompt.md)
 
 Live-run + multi-worktree integration:
-- use [../workflows/live-run-system-workflow.md](../workflows/live-run-system-workflow.md) as the orchestrator
-- when independent failure/fix lanes are detected, route to [../workflows/multi-worktree-execution-workflow.md](../workflows/multi-worktree-execution-workflow.md)
+- use [../workflows/workflow-live-run-system.md](../workflows/workflow-live-run-system.md) as the orchestrator
+- when independent failure/fix lanes are detected, route to [../workflows/workflow-multi-worktree-execution.md](../workflows/workflow-multi-worktree-execution.md)
 - return to live-run verification/closeout after merge and evidence reconciliation
 
 ## Maintenance Helpers

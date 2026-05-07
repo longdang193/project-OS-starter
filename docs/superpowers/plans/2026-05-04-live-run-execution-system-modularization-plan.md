@@ -6,13 +6,13 @@ parent_workstream: none
 parent_thread: none
 parent_spec: docs/superpowers/specs/2026-05-04-prompt-ladder-non-standalone-spec.md
 targets:
-  - docs/operating_system/workflows/live-run-system-workflow.md
-  - docs/operating_system/workflows/live-run-scenario-planning-workflow.md
-  - docs/operating_system/workflows/live-run-preflight-check-workflow.md
-  - docs/operating_system/workflows/live-run-execution-workflow.md
-  - docs/operating_system/workflows/live-run-debugging-workflow.md
-  - docs/operating_system/workflows/live-run-verification-workflow.md
-  - docs/operating_system/workflows/live-run-closeout-workflow.md
+  - docs/operating_system/workflows/workflow-live-run-system.md
+  - docs/operating_system/workflows/workflow-live-run-scenario-planning.md
+  - docs/operating_system/workflows/workflow-live-run-preflight-check.md
+  - docs/operating_system/workflows/workflow-live-run-execution.md
+  - docs/operating_system/workflows/workflow-live-run-debugging.md
+  - docs/operating_system/workflows/workflow-live-run-verification.md
+  - docs/operating_system/workflows/workflow-live-run-closeout.md
 related_features: []
 related_stages: []
 ---
@@ -30,14 +30,14 @@ single-responsibility sub-workflows.
 In scope:
 
 1. Introduce master orchestrator:
-   - `docs/operating_system/workflows/live-run-system-workflow.md`
+   - `docs/operating_system/workflows/workflow-live-run-system.md`
 2. Add modular sub-workflows:
-   - `live-run-scenario-planning-workflow.md`
-   - `live-run-preflight-check-workflow.md`
-   - `live-run-execution-workflow.md`
-   - `live-run-debugging-workflow.md` (refactor existing)
-   - `live-run-verification-workflow.md`
-   - `live-run-closeout-workflow.md`
+   - `workflow-live-run-scenario-planning.md`
+   - `workflow-live-run-preflight-check.md`
+   - `workflow-live-run-execution.md`
+   - `workflow-live-run-debugging.md` (refactor existing)
+   - `workflow-live-run-verification.md`
+   - `workflow-live-run-closeout.md`
 3. Align all above with metadata contract and chaining rules.
 
 Out of scope:
@@ -61,13 +61,13 @@ Out of scope:
 
 Primary chain:
 
-1. `live-run-system-workflow.md`
-2. `live-run-scenario-planning-workflow.md`
-3. `live-run-preflight-check-workflow.md`
-4. `live-run-execution-workflow.md`
-5. `live-run-debugging-workflow.md` (failure branch) or
-6. `live-run-verification-workflow.md` (success branch)
-7. `live-run-closeout-workflow.md`
+1. `workflow-live-run-system.md`
+2. `workflow-live-run-scenario-planning.md`
+3. `workflow-live-run-preflight-check.md`
+4. `workflow-live-run-execution.md`
+5. `workflow-live-run-debugging.md` (failure branch) or
+6. `workflow-live-run-verification.md` (success branch)
+7. `workflow-live-run-closeout.md`
 
 Loop edges:
 
@@ -97,7 +97,7 @@ Rules:
 
 ## Per-Workflow Responsibilities
 
-### 1) live-run-system-workflow.md (Orchestrator)
+### 1) workflow-live-run-system.md (Orchestrator)
 
 - Defines lifecycle states and routing gates only.
 - Accepts partial entry states (e.g., pre-existing failure).
@@ -108,13 +108,13 @@ Rules:
   - run succeeded -> verification -> closeout
 - Must not copy step-level execution from sub-workflows.
 
-### 2) live-run-scenario-planning-workflow.md
+### 2) workflow-live-run-scenario-planning.md
 
 - Define scenario catalog and run triggers.
 - Map each scenario to workstream/thread/spec targets.
 - Define expected evidence outputs per scenario.
 
-### 3) live-run-preflight-check-workflow.md
+### 3) workflow-live-run-preflight-check.md
 
 - Validate prerequisites:
   - required artifacts present
@@ -123,26 +123,26 @@ Rules:
   - environment/config correctness
 - Block execution when evidence capture is not viable.
 
-### 4) live-run-execution-workflow.md
+### 4) workflow-live-run-execution.md
 
 - Execute selected pipeline path/stages.
 - Capture run outputs, intermediate artifacts, telemetry pointers.
 - Emit success/failure signal for orchestrator routing.
 
-### 5) live-run-debugging-workflow.md (Refactor existing)
+### 5) workflow-live-run-debugging.md (Refactor existing)
 
 - Keep evidence-first boundary analysis.
 - Enforce bounded minimal fix policy.
 - Rerun only affected scope first, then escalate as needed.
 - Preserve failure -> fix -> validation traceability chain.
 
-### 6) live-run-verification-workflow.md
+### 6) workflow-live-run-verification.md
 
 - Validate issue resolution and expected outputs.
 - Check regression risk using targeted + expanded verification gates.
 - Determine whether closeout is eligible or debugging loop is required.
 
-### 7) live-run-closeout-workflow.md
+### 7) workflow-live-run-closeout.md
 
 - Record root cause, fix summary, validation evidence, residual risks.
 - Feed learnings back to:
@@ -156,7 +156,7 @@ Rules:
 1. Create orchestrator workflow file with routing-only body.
 2. Create five new sub-workflow files (planning, preflight, execution,
    verification, closeout).
-3. Refactor current `live-run-debugging-workflow.md` to fit modular role and
+3. Refactor current `workflow-live-run-debugging.md` to fit modular role and
    update its links.
 4. Normalize metadata + next-step linkage across all live-run workflows.
 5. Add/update references from workflow README/index files if present.

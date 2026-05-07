@@ -1,6 +1,7 @@
 ---
 name: runtime-deploy-and-verify-prompt
-description: Deploy generated runtime artifacts to local provider homes and verify drift/contract health.
+description: Deploy generated runtime artifacts to local provider homes and verify
+  drift/contract health.
 type: prompt
 stage: maintenance
 entry_points:
@@ -11,9 +12,9 @@ prerequisites:
 next_steps:
 - validate-or-drift-prompt.md
 related_skills:
-- executing-plans
-- verification-before-completion
-- doc-system-lifecycle
+- skill-executing-plans
+- skill-verification-before-completion
+- skill-doc-system-lifecycle
 required_reads:
 - docs/operating_system/repo-governance.md
 - docs/operating_system/rules-workflows-procedure.md

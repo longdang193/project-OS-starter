@@ -13,7 +13,7 @@ next_steps:
 - implementation-next-action-gate-prompt.md
 - patch-and-pattern-detection-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:

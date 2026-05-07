@@ -7,7 +7,7 @@ targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/architecture_templates/markdown-frontmatter.md
 related_features: []
@@ -23,7 +23,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** active
 
-> **For agentic workers:** Use `executing-plans` when carrying out the implementation in-session.
+> **For agentic workers:** Use `skill-executing-plans` when carrying out the implementation in-session.
 
 **Goal:** Make managed repos treat the required root docs as metadata-linked docs with validator-enforced frontmatter instead of optional unlinked prose.
 
@@ -57,7 +57,7 @@ related_stages: []
   - `docs/architecture.md`
 - Operating-system docs:
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
   - `docs/architecture_templates/markdown-frontmatter.md`
 - README: none
@@ -70,7 +70,7 @@ related_stages: []
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
 - `docs/operating_system/repo-governance.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/project-adoption-migration-guide.md`
 - `docs/architecture_templates/markdown-frontmatter.md`
 
@@ -114,7 +114,7 @@ related_stages: []
 
 ### Task 3: Align docs and migration guidance
 
-1. Update `repo-governance.md` and `doc-system-lifecycle.md` to say required root docs are metadata-linked in managed mode.
+1. Update `repo-governance.md` and `skill-doc-system-lifecycle.md` to say required root docs are metadata-linked in managed mode.
 2. Update `project-adoption-migration-guide.md` to call this out as part of managed migration.
 3. Update the Markdown frontmatter template doc so agents understand that required managed root docs use this pattern.
 

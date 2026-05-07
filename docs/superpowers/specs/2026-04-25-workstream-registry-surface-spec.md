@@ -7,7 +7,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - scripts/validate_adoption_shape.py
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/prompt_templates/
   - tests/test_validate_adoption_shape.py
@@ -35,7 +35,7 @@ Dependencies:
 
 - `docs/intent/master-workstream-roadmap.md`
 - `scripts/validate_adoption_shape.py`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 - `tests/test_validate_adoption_shape.py`
@@ -61,7 +61,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/operating_system/prompt_templates/`
 - readme: none
@@ -155,7 +155,7 @@ heuristic.
 
 Update:
 
-- `planning-dispatch.md`
+- `skill-planning-dispatch.md`
 - `repo-governance.md`
 - prompt templates
 

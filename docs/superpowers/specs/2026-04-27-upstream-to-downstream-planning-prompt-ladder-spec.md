@@ -8,7 +8,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - docs/intent/workstream-coverage-and-progress-guide.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
 related_features: []
 related_stages: []
@@ -37,7 +37,7 @@ Dependencies:
 - `docs/intent/master-workstream-roadmap.md`
 - `docs/intent/workstreams/`
 - `docs/intent/workstream-coverage-and-progress-guide.md`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
 
 Affected stages:
@@ -62,7 +62,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
 - readme: none
 - generated: none

@@ -9,7 +9,7 @@ targets:
   - scripts/validate_adoption_shape.py
   - scripts/validator_policy.py
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/
   - tests/test_validate_repo_contracts.py
@@ -27,7 +27,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Make `starter_method_only` validation and bootstrap behavior genuinely lighter and self-consistent, without dragging in the managed architecture toolchain by default.
 
@@ -76,7 +76,7 @@ Affected docs:
     - none
   cross_cutting_docs:
     - `docs/operating_system/repo-governance.md`
-    - `docs/operating_system/doc-system-lifecycle.md`
+    - `docs/operating_system/skill-doc-system-lifecycle.md`
     - `docs/operating_system/project-adoption-migration-guide.md`
   readme: none
   generated:
@@ -101,7 +101,7 @@ Plan needed: yes
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
   - `docs/superpowers/specs/2026-04-24-mode-a-validator-and-bootstrap-gap-spec.md`
 - README: none
@@ -117,7 +117,7 @@ scripts/validator_policy.py
 tests/test_validate_repo_contracts.py
 tests/test_validate_adoption_shape.py
 docs/operating_system/repo-governance.md
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/operating_system/project-adoption-migration-guide.md
 docs/project_templates/mode-a/
 docs/superpowers/specs/2026-04-24-mode-a-validator-and-bootstrap-gap-spec.md
@@ -183,7 +183,7 @@ Suggested verification command:
 - Modify: `docs/project_templates/mode-a/`
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
 - Modify: `docs/operating_system/repo-governance.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [x] Step 1: Update the migration guide to say plainly that Mode A is lighter and does not imply the full managed sync/generator toolchain.
 - [x] Step 2: Update repo governance and doc-system lifecycle docs to reflect the same rule.

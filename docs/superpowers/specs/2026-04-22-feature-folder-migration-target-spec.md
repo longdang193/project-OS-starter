@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/operating_system/mode-b-example-migration.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/architecture_templates/
   - scripts/validate_adoption_shape.py
 related_features: []
@@ -32,7 +32,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - current starter architecture generator and validators
 
 Affected stages:
@@ -54,7 +54,7 @@ Affected docs:
 - cross_cutting_docs:
   - `docs/operating_system/project-adoption-migration-guide.md`
   - `docs/operating_system/mode-b-example-migration.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Generated refresh required: yes
 Capability IDs: none

@@ -10,7 +10,7 @@ targets:
   - docs/pipeline.md
   - docs/architecture.md
   - docs/adoption_guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
@@ -39,7 +39,7 @@ Dependencies:
 
 - `docs/superpowers/specs/2026-04-21-project-doc-surface-spec.md`
 - `docs/superpowers/specs/2026-04-21-required-project-folder-surface-spec.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/repo-governance.md`
 - `scripts/validate_adoption_shape.py`
 - `tools/docs/generate_architecture_metadata.py`
@@ -70,7 +70,7 @@ Affected docs:
   - `docs/pipeline.md`
   - `docs/architecture.md`
   - `docs/adoption_guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
 - readme: none
 - generated: none
@@ -302,7 +302,7 @@ Examples of good failure messages:
 
 Update the governance docs so the validation model is visible:
 
-### `docs/operating_system/doc-system-lifecycle.md`
+### `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Clarify that required root docs are validated for:
 

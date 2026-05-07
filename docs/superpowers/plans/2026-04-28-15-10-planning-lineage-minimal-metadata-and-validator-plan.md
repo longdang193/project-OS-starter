@@ -11,7 +11,7 @@ targets:
   - docs/superpowers/specs/
   - docs/superpowers/plans/
   - docs/generated/planning_lineage.yaml
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/prompt_templates/spec-prompt.md
   - docs/operating_system/prompt_templates/plan-prompt.md
@@ -32,7 +32,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Move the planning lineage model to nearest-parent metadata, add validator-backed lineage control, and generate a derived planning-lineage roll-up without re-entering upstream truth manually.
 

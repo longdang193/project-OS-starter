@@ -55,8 +55,27 @@ def _require_string(meta: dict[str, Any], key: str, findings: list[Finding], rel
         findings.append(Finding("agent_metadata_schema_error", rel, f"`{key}` must be a non-empty string."))
 
 
+def _require_resolved_skill_refs(
+    meta: dict[str, Any],
+    key: str,
+    findings: list[Finding],
+    rel: str,
+    known_skills: set[str],
+) -> None:
+    value = meta.get(key)
+    if not isinstance(value, list):
+        return
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            findings.append(Finding("agent_metadata_schema_error", rel, f"`{key}` entries must be non-empty strings."))
+            continue
+        if item not in known_skills:
+            findings.append(Finding("agent_metadata_schema_error", rel, f"`{key}` references unknown skill `{item}`."))
+
+
 def validate(root: Path) -> list[Finding]:
     findings: list[Finding] = []
+    known_skills = {path.parent.name for path in sorted((root / ".agents" / "skills").glob("*/SKILL.md"))}
 
     # Skills
     for path in sorted((root / ".agents" / "skills").glob("*/SKILL.md")):
@@ -67,6 +86,9 @@ def validate(root: Path) -> list[Finding]:
             continue
         for key in ("name", "description"):
             _require_string(meta, key, findings, rel)
+        name = meta.get("name")
+        if isinstance(name, str) and name != path.parent.name:
+            findings.append(Finding("agent_metadata_schema_error", rel, f"`name` must match skill folder name `{path.parent.name}`."))
         _require_list(meta, "allowed-tools", findings, rel)
         hooks = meta.get("hooks")
         if not isinstance(hooks, dict):
@@ -77,7 +99,9 @@ def validate(root: Path) -> list[Finding]:
             if not isinstance(hooks.get("post"), list):
                 findings.append(Finding("agent_metadata_schema_error", rel, "`hooks.post` must be a list."))
         _require_list(meta, "required_reads", findings, rel)
+        _require_list(meta, "required_outputs", findings, rel)
         _require_list(meta, "tags", findings, rel)
+        _require_resolved_skill_refs(meta, "related_skills", findings, rel, known_skills)
 
     # Rules
     rules_root = root / "docs" / "operating_system" / "rules"
@@ -104,8 +128,14 @@ def validate(root: Path) -> list[Finding]:
             continue
         for key in ("name", "description"):
             _require_string(meta, key, findings, rel)
+        name = meta.get("name")
+        if isinstance(name, str) and name != path.stem:
+            findings.append(Finding("agent_metadata_schema_error", rel, f"`name` must match workflow filename stem `{path.stem}`."))
+        _require_list(meta, "allowed-tools", findings, rel)
         _require_list(meta, "required_reads", findings, rel)
+        _require_list(meta, "required_outputs", findings, rel)
         _require_list(meta, "related_skills", findings, rel)
+        _require_resolved_skill_refs(meta, "related_skills", findings, rel, known_skills)
         _require_list(meta, "tags", findings, rel)
 
     return findings

@@ -10,7 +10,7 @@ targets:
   - docs/superpowers/specs/
   - docs/superpowers/plans/
   - docs/generated/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -67,7 +67,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/intent/master-workstream-roadmap.md`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
 - readme: none
 - generated:

@@ -15,9 +15,9 @@ next_steps:
 - implementation-next-action-gate-prompt.md
 - validate-or-drift-prompt.md
 related_skills:
-- doc-system-lifecycle
-- planning-dispatch
-- verification-before-completion
+- skill-doc-system-lifecycle
+- skill-planning-dispatch
+- skill-verification-before-completion
 required_reads:
 - docs/operating_system/repo-governance.md
 - docs/operating_system/project-adoption-migration-guide.md

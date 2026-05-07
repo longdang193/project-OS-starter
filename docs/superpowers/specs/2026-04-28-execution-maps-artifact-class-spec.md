@@ -8,7 +8,7 @@ targets:
   - docs/superpowers/specs/
   - docs/superpowers/plans/
   - docs/generated/planning_lineage.yaml
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/prompt_templates/
 related_features: []
@@ -37,7 +37,7 @@ Dependencies:
 - `docs/superpowers/specs/`
 - `docs/superpowers/plans/`
 - `docs/generated/planning_lineage.yaml`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 
@@ -61,7 +61,7 @@ Affected docs:
 - stage_contract: none
 - feature_docs: none
 - cross_cutting_docs:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
 - readme: none
 - generated:

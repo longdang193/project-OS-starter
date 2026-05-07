@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/project_templates/mode-a/
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - docs/architecture_templates/README.md
   - scripts/validate_adoption_shape.py
@@ -34,7 +34,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/architecture_templates/README.md`
 - `scripts/validate_adoption_shape.py`
@@ -70,7 +70,7 @@ Affected docs:
   - `docs/intent/stakeholders.md`
   - `docs/intent/success-outcomes.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/architecture_templates/README.md`
 - readme: `README.md`

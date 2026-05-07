@@ -15,8 +15,8 @@ next_steps:
 - implementation-next-action-gate-prompt.md
 - multi-worktree-dispatch-prompt.md
 related_skills:
-- planning-dispatch
-- executing-plans
+- skill-planning-dispatch
+- skill-executing-plans
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:

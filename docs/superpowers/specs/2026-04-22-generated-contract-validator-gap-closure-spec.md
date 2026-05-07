@@ -4,7 +4,7 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/feature-lifecycle.md
   - docs/operating_system/stage-lifecycle.md
   - docs/operating_system/project-adoption-migration-guide.md
@@ -37,7 +37,7 @@ Dependencies:
 
 - `scripts/validate_adoption_shape.py`
 - `tools/docs/generate_architecture_metadata.py`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/feature-lifecycle.md`
 - `docs/operating_system/stage-lifecycle.md`
 - `docs/operating_system/project-adoption-migration-guide.md`
@@ -62,7 +62,7 @@ Affected docs:
 - feature_lineage: none beyond already-enforced lineage schema
 - feature_history: all managed feature `history.md`
 - cross_cutting_docs:
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/feature-lifecycle.md`
   - `docs/operating_system/stage-lifecycle.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
@@ -308,7 +308,7 @@ just "some generated files" but specific validator-enforced contracts.
 
 The most important docs to align are:
 
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/feature-lifecycle.md`
 - `docs/operating_system/stage-lifecycle.md`
 - `docs/operating_system/project-adoption-migration-guide.md`

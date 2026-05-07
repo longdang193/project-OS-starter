@@ -10,10 +10,10 @@ prerequisites:
 next_steps:
 - plan-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
-- docs/operating_system/workflows/spec-to-plan-to-execution-workflow.md
+- docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md
 tags:
 - prompt
 - execution

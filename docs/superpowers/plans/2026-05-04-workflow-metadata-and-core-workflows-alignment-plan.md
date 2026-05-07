@@ -6,9 +6,9 @@ parent_workstream: none
 parent_thread: none
 parent_spec: none
 targets:
-  - docs/operating_system/workflows/workflow-and-prompt-metadata-spec.md
-  - docs/operating_system/workflows/live-run-debugging-workflow.md
-  - docs/operating_system/workflows/test-failure-triage-workflow.md
+  - docs/operating_system/workflows/workflow-prompt-metadata-spec.md
+  - docs/operating_system/workflows/workflow-live-run-debugging.md
+  - docs/operating_system/workflows/workflow-test-failure-triage.md
   - scripts/validate_prompt_metadata_schema.py
 related_features: []
 related_stages: []
@@ -38,8 +38,8 @@ In scope:
 2. Enforce rule: metadata fields must not be duplicated in body prose/sections.
 3. Ensure two core workflows are fully defined in standard format (as required
    workflow coverage examples):
-   - `live-run-debugging-workflow.md`
-   - `test-failure-triage-workflow.md`
+   - `workflow-live-run-debugging.md`
+   - `workflow-test-failure-triage.md`
 4. Add clear agent-usage guidance for metadata-based workflow selection/execution.
 
 Out of scope:
@@ -48,9 +48,9 @@ Out of scope:
 
 ## Current State Summary
 
-- `docs/operating_system/workflows/workflow-and-prompt-metadata-spec.md` exists.
-- `docs/operating_system/workflows/live-run-debugging-workflow.md` exists.
-- `docs/operating_system/workflows/test-failure-triage-workflow.md` exists.
+- `docs/operating_system/workflows/workflow-prompt-metadata-spec.md` exists.
+- `docs/operating_system/workflows/workflow-live-run-debugging.md` exists.
+- `docs/operating_system/workflows/workflow-test-failure-triage.md` exists.
 - Existing metadata currently uses `id`; requested contract prefers
   `workflow_id` / `prompt_id`.
 
@@ -59,8 +59,8 @@ Out of scope:
 1. Updated metadata specification with exact field names, allowed enums, and
    no-duplication rules.
 2. Updated required workflow examples:
-   - `docs/operating_system/workflows/live-run-debugging-workflow.md`
-   - `docs/operating_system/workflows/test-failure-triage-workflow.md`
+   - `docs/operating_system/workflows/workflow-live-run-debugging.md`
+   - `docs/operating_system/workflows/workflow-test-failure-triage.md`
 3. Cleanup guidance for removing duplicated metadata content from bodies.
 4. Agent usage guidance (selection + execution) based on metadata.
 5. Validator/test updates if required by schema name changes.

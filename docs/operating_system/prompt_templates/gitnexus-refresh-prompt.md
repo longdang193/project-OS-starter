@@ -15,7 +15,7 @@ next_steps:
 related_skills:
 - gitnexus-guide
 - gitnexus-impact-analysis
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - AGENTS.md
 - docs/operating_system/repo-governance.md

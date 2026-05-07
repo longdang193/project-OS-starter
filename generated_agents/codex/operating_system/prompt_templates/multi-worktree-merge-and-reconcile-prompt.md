@@ -14,9 +14,9 @@ next_steps:
 - thread-closeout-readiness-prompt.md
 - workstream-closeout-readiness-prompt.md
 related_skills:
-- verification-before-completion
-- finishing-a-development-branch
-- planning-dispatch
+- skill-verification-before-completion
+- skill-finishing-a-development-branch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:

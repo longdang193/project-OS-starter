@@ -2,13 +2,13 @@
 template_id: implementation-execution-map
 document_type: implementation_execution_map
 target_globs:
-  - docs/superpowers/execution_maps/*.md
+- docs/superpowers/execution_maps/*.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Execution Waves
-  - Dependencies And Risks
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Execution Waves
+- Dependencies And Risks
+- Completion Criteria
 required_frontmatter:
   artifact_type: execution_map
   map_type: implementation_execution

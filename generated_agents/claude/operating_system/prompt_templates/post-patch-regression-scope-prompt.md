@@ -14,8 +14,8 @@ next_steps:
 - implementation-next-action-gate-prompt.md
 - thread-closeout-readiness-prompt.md
 related_skills:
-- verification-before-completion
-- systematic-debugging
+- skill-verification-before-completion
+- skill-systematic-debugging
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:

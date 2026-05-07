@@ -970,7 +970,7 @@ def seed_required_folder_surface(root: Path) -> None:
     for relative_path in (
         "docs/intent/README.md",
         "docs/operating_system/repo-governance.md",
-        "docs/operating_system/doc-system-lifecycle.md",
+        "docs/operating_system/skill-doc-system-lifecycle.md",
         "docs/superpowers/specs/README.md",
         "docs/superpowers/plans/README.md",
         "repo_config/adoption-mode.yaml",

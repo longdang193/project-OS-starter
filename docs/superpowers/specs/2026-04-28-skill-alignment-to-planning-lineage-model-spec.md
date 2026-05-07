@@ -4,11 +4,11 @@ artifact_type: spec
 status: completed
 parent_workstream: none
 targets:
-  - .agents/skills/brainstorming/SKILL.md
-  - .agents/skills/planning-dispatch/SKILL.md
-  - .agents/skills/writing-plans/SKILL.md
-  - .agents/skills/doc-system-lifecycle/SKILL.md
-  - docs/operating_system/planning-dispatch.md
+  - .agents/skills/skill-brainstorming/SKILL.md
+  - .agents/skills/skill-planning-dispatch/SKILL.md
+  - .agents/skills/skill-writing-plans/SKILL.md
+  - .agents/skills/skill-doc-system-lifecycle/SKILL.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/intent/workstream-coverage-and-progress-guide.md
   - docs/generated/planning_lineage.yaml
@@ -34,11 +34,11 @@ Invariants:
 
 Dependencies:
 
-- `.agents/skills/brainstorming/SKILL.md`
-- `.agents/skills/planning-dispatch/SKILL.md`
-- `.agents/skills/writing-plans/SKILL.md`
-- `.agents/skills/doc-system-lifecycle/SKILL.md`
-- `docs/operating_system/planning-dispatch.md`
+- `.agents/skills/skill-brainstorming/SKILL.md`
+- `.agents/skills/skill-planning-dispatch/SKILL.md`
+- `.agents/skills/skill-writing-plans/SKILL.md`
+- `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/intent/workstream-coverage-and-progress-guide.md`
 - `docs/generated/planning_lineage.yaml`
@@ -63,7 +63,7 @@ Affected docs:
 - stage_contract: none
 - feature_docs: none
 - cross_cutting_docs:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/intent/workstream-coverage-and-progress-guide.md`
 - readme: none
@@ -113,7 +113,7 @@ skills can be updated cleanly.
 
 ## Highest-Priority Skills
 
-### 1. `brainstorming`
+### 1. `skill-brainstorming`
 
 Why review it:
 
@@ -128,7 +128,7 @@ What should align:
   are involved
 - `parent_thread` / `parent_spec` expectations in downstream artifact thinking
 
-### 2. `planning-dispatch`
+### 2. `skill-planning-dispatch`
 
 Why review it:
 
@@ -141,7 +141,7 @@ What should align:
 - distinction between one-spec work and multi-spec orchestration work
 - current metadata expectations for change-layer artifacts
 
-### 3. `writing-plans`
+### 3. `skill-writing-plans`
 
 Why review it:
 
@@ -156,7 +156,7 @@ What should align:
 - when a plan can be written directly from one approved spec
 - when execution-map context should be consulted before plan breakdown
 
-### 4. `doc-system-lifecycle`
+### 4. `skill-doc-system-lifecycle`
 
 Why review it:
 
@@ -194,7 +194,7 @@ Use these principles across the reviewed skills:
 
 ## Suggested Skill-Level Changes
 
-### `brainstorming`
+### `skill-brainstorming`
 
 Update:
 
@@ -202,7 +202,7 @@ Update:
 - planning ladder examples
 - downstream artifact handoff language
 
-### `planning-dispatch`
+### `skill-planning-dispatch`
 
 Update:
 
@@ -211,7 +211,7 @@ Update:
 - artifact routing rules
 - examples that currently stop too early or flatten orchestration
 
-### `writing-plans`
+### `skill-writing-plans`
 
 Update:
 
@@ -219,7 +219,7 @@ Update:
 - examples of plan provenance from spec or execution map context
 - explicit mention of `parent_thread` / `parent_spec` for change-layer plans
 
-### `doc-system-lifecycle`
+### `skill-doc-system-lifecycle`
 
 Update:
 

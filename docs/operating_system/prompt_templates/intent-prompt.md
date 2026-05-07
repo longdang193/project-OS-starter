@@ -12,7 +12,7 @@ next_steps:
 - master-workstream-roadmap-build-prompt.md
 - roadmap-to-workstream-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:

@@ -7,7 +7,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - scripts/validate_adoption_shape.py
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/prompt_templates/
   - tests/test_validate_adoption_shape.py
@@ -25,7 +25,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a real workstream registry under `docs/intent/workstreams/` and upgrade `parent_workstream` validation so named values resolve to a real registry entry.
 
@@ -74,7 +74,7 @@ Affected docs:
   cross_cutting_docs:
     - none
   operating_system_docs:
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
     - `docs/operating_system/prompt_templates/`
   readme: none
@@ -99,7 +99,7 @@ docs/intent/workstreams/<workstream-id>.md
 
 ```text
 docs/intent/master-workstream-roadmap.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
 docs/operating_system/prompt_templates/README.md
 docs/operating_system/prompt_templates/spec-prompt.md
@@ -135,7 +135,7 @@ docs/superpowers/specs/2026-04-25-workstream-registry-surface-spec.md
 
 **Files:**
 - Modify: `scripts/validate_adoption_shape.py`
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 - Modify: `docs/operating_system/prompt_templates/README.md`
 - Modify: `docs/operating_system/prompt_templates/spec-prompt.md`

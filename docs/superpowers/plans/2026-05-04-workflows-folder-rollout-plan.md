@@ -7,9 +7,9 @@ parent_thread: none
 parent_spec: none
 targets:
   - docs/operating_system/workflows/
-  - docs/operating_system/workflows/roadmap-to-closeout-workflow.md
-  - docs/operating_system/workflows/drift-detection-and-reconciliation-workflow.md
-  - docs/operating_system/workflows/spec-to-plan-to-execution-workflow.md
+  - docs/operating_system/workflows/workflow-roadmap-to-closeout.md
+  - docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md
+  - docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md
 related_features: []
 related_stages: []
 ---
@@ -25,9 +25,9 @@ multi-step, gate-based procedures that orchestrate prompt ladders end-to-end.
 
 - new folder: `docs/operating_system/workflows/`
 - initial workflow docs:
-  - `roadmap-to-closeout-workflow.md`
-  - `drift-detection-and-reconciliation-workflow.md`
-  - `spec-to-plan-to-execution-workflow.md`
+  - `workflow-roadmap-to-closeout.md`
+  - `workflow-drift-detection-and-reconciliation.md`
+  - `workflow-spec-to-plan-to-execution.md`
 - cross-links from prompt README to workflow docs
 - clear boundary rule between `prompt_templates/` and `workflows/`
 
@@ -36,7 +36,7 @@ multi-step, gate-based procedures that orchestrate prompt ladders end-to-end.
 - task 1:
   - create `docs/operating_system/workflows/`
 - task 2:
-  - author `roadmap-to-closeout-workflow.md`
+  - author `workflow-roadmap-to-closeout.md`
   - include:
     - purpose
     - entry criteria
@@ -47,10 +47,10 @@ multi-step, gate-based procedures that orchestrate prompt ladders end-to-end.
     - related skills
     - failure/recovery path
 - task 3:
-  - author `drift-detection-and-reconciliation-workflow.md`
+  - author `workflow-drift-detection-and-reconciliation.md`
   - include same section contract as task 2
 - task 4:
-  - author `spec-to-plan-to-execution-workflow.md`
+  - author `workflow-spec-to-plan-to-execution.md`
   - include same section contract as task 2
 - task 5:
   - update `docs/operating_system/prompt_templates/README.md`:

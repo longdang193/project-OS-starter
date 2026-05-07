@@ -2,13 +2,13 @@
 template_id: registered-workstream-list
 document_type: registered_workstream_list
 target_globs:
-  - docs/superpowers/workstreams/registered-workstream-list.md
+- docs/superpowers/workstreams/registered-workstream-list.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Registered Workstreams
-  - Traceability
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Registered Workstreams
+- Traceability
+- Completion Criteria
 ---
 
 <!--

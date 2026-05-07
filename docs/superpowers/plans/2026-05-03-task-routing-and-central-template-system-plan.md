@@ -8,7 +8,7 @@ targets:
   - docs/operating_system/templates/
   - docs/operating_system/prompt_templates/
   - .agents/skills/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
 related_features: []
 related_stages: []
 ---
@@ -22,7 +22,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** proposed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 ## Goal
 
@@ -52,7 +52,7 @@ without ambiguity.
 - [ ] Create canonical routing guide template under:
   - `docs/operating_system/templates/routing/task-start-routing-guide.md`
 - [ ] Link routing guide from:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - relevant prompt templates where task-start choice is made
 
 ## Task 3: Update Skills To Use Canonical Templates

@@ -4,10 +4,10 @@ artifact_type: plan
 status: completed
 parent_workstream: none
 targets:
-  - .agents/skills/brainstorming/SKILL.md
-  - .agents/skills/planning-dispatch/SKILL.md
-  - .agents/skills/writing-plans/SKILL.md
-  - .agents/skills/doc-system-lifecycle/SKILL.md
+  - .agents/skills/skill-brainstorming/SKILL.md
+  - .agents/skills/skill-planning-dispatch/SKILL.md
+  - .agents/skills/skill-writing-plans/SKILL.md
+  - .agents/skills/skill-doc-system-lifecycle/SKILL.md
   - docs/superpowers/specs/2026-04-28-skill-alignment-to-planning-lineage-model-spec.md
 related_features: []
 related_stages: []
@@ -22,11 +22,11 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Align the four planning-related skills to the repo's current planning-lineage model so they stop teaching the older workstream-to-spec shortcut and old downstream metadata assumptions.
 
-**Architecture:** Patch only the skill surfaces that actively route planning work: brainstorming, planning-dispatch, writing-plans, and doc-system-lifecycle. Update their ladders, metadata examples, and source-of-truth tables so they recognize thread files, execution maps, `parent_thread`, `parent_spec`, and `docs/generated/planning_lineage.yaml` without expanding into unrelated skill rewrites.
+**Architecture:** Patch only the skill surfaces that actively route planning work: skill-brainstorming, skill-planning-dispatch, skill-writing-plans, and skill-doc-system-lifecycle. Update their ladders, metadata examples, and source-of-truth tables so they recognize thread files, execution maps, `parent_thread`, `parent_spec`, and `docs/generated/planning_lineage.yaml` without expanding into unrelated skill rewrites.
 
 **Key Invariants:**
 - skills should match the current docs and prompt ladder
@@ -43,10 +43,10 @@ related_stages: []
 
 ## Task 2: Align The Planning Skills
 
-- [x] Step 1: Update `.agents/skills/brainstorming/SKILL.md` so its ladder includes thread files, spec sets, and execution maps where appropriate.
-- [x] Step 2: Update `.agents/skills/planning-dispatch/SKILL.md` so routing guidance reflects the current lineage model.
-- [x] Step 3: Update `.agents/skills/writing-plans/SKILL.md` so plan provenance and metadata mention `parent_thread`, `parent_spec`, and execution-map context.
-- [x] Step 4: Update `.agents/skills/doc-system-lifecycle/SKILL.md` so source-of-truth placement includes execution maps and derived planning-lineage inspection.
+- [x] Step 1: Update `.agents/skills/skill-brainstorming/SKILL.md` so its ladder includes thread files, spec sets, and execution maps where appropriate.
+- [x] Step 2: Update `.agents/skills/skill-planning-dispatch/SKILL.md` so routing guidance reflects the current lineage model.
+- [x] Step 3: Update `.agents/skills/skill-writing-plans/SKILL.md` so plan provenance and metadata mention `parent_thread`, `parent_spec`, and execution-map context.
+- [x] Step 4: Update `.agents/skills/skill-doc-system-lifecycle/SKILL.md` so source-of-truth placement includes execution maps and derived planning-lineage inspection.
 
 ## Task 3: Close The Loop
 

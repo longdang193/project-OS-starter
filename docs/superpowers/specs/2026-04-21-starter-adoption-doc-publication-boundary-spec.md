@@ -4,7 +4,7 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - .agents/skills/private-public-repo-governance/SKILL.md
+  - .agents/skills/skill-private-public-repo-governance/SKILL.md
   - docs/operating_system/publication-workflow.md
   - repo_config/publication-config.json
 related_features: []
@@ -29,7 +29,7 @@ Invariants:
 
 Dependencies:
 
-- `.agents/skills/private-public-repo-governance/SKILL.md`
+- `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - `docs/operating_system/publication-workflow.md`
 - `repo_config/publication-config.json`
 - `docs/operating_system/repo-governance.md`
@@ -140,7 +140,7 @@ A doc should remain private if it:
 
 ## Skill Update
 
-Update `.agents/skills/private-public-repo-governance/SKILL.md` so it
+Update `.agents/skills/skill-private-public-repo-governance/SKILL.md` so it
 explicitly includes starter adoption/bootstrap docs in the `always_private`
 examples.
 

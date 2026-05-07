@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/feature-lifecycle.md
   - docs/operating_system/stage-lifecycle.md
   - docs/operating_system/project-adoption-migration-guide.md
@@ -23,7 +23,7 @@ related_stages: []
 **Plan Layer:** operating_system
 **Plan Status:** active
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Extend adoption-shape validation so it enforces the remaining generated contract schemas that the starter generator and docs already treat as canonical.
 
@@ -51,7 +51,7 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/feature-lifecycle.md`
   - `docs/operating_system/stage-lifecycle.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
@@ -64,7 +64,7 @@ related_stages: []
 
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/feature-lifecycle.md`
 - `docs/operating_system/stage-lifecycle.md`
 - `docs/operating_system/project-adoption-migration-guide.md`
@@ -134,7 +134,7 @@ related_stages: []
 1. Update:
    - `docs/operating_system/stage-lifecycle.md`
    - `docs/operating_system/feature-lifecycle.md`
-   - `docs/operating_system/doc-system-lifecycle.md`
+   - `docs/operating_system/skill-doc-system-lifecycle.md`
    - `docs/operating_system/project-adoption-migration-guide.md`
 2. Clarify which generated artifact schemas are now adoption-validator enforced.
 3. Keep wording consistent with the canonical source-of-truth model and migration-target language.

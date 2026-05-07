@@ -9,7 +9,7 @@ targets:
   - docs/adoption_guide.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/operating_system/feature-routing-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/features/README.md
 related_features: []
 related_stages: []
@@ -267,7 +267,7 @@ Add mode-specific validator expectations.
 
 Add the candidate classification metadata block and explain how it prevents operating-system work from becoming product feature dependencies.
 
-### `docs/operating_system/doc-system-lifecycle.md`
+### `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Add `repo_config/adoption-mode.yaml` to the source-of-truth model.
 

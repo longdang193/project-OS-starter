@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/project_templates/mode-a/
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - docs/architecture_templates/README.md
   - scripts/validate_adoption_shape.py
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a copyable Mode A starter-method template pack that includes required docs, intent docs, repo metadata/config, runtime config, and required folder anchors.
 
@@ -56,7 +56,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/architecture_templates/README.md`
   - `docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md`
@@ -138,7 +138,7 @@ $env:UV_CACHE_DIR=$env:TEMP; uv run python -m pytest tests/test_validate_adoptio
 **Files:**
 
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/repo-governance.md`
 - Modify: `docs/architecture_templates/README.md`
 

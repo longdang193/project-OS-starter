@@ -5,7 +5,7 @@ status: active
 parent_workstream: none
 targets:
   - docs/operating_system/feature-lifecycle.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/project-adoption-migration-guide.md
 related_features: []
 related_stages: []
@@ -34,7 +34,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/feature-lifecycle.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
 - README: none
 - Generated discovery: none
@@ -43,7 +43,7 @@ related_stages: []
 
 **Files:**
 - Modify: `docs/operating_system/feature-lifecycle.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [ ] Step 1: Replace soft “may include” language with explicit target wording for generated freshness fields.
 - [ ] Step 2: Say plainly that `revision`, `latest_change_id`, and `last_updated_at` belong in generated contracts, not `feature.source.yaml`.
@@ -61,7 +61,7 @@ related_stages: []
 
 **Files:**
 - Docs: `docs/operating_system/feature-lifecycle.md`
-- Docs: `docs/operating_system/doc-system-lifecycle.md`
+- Docs: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Docs: `docs/operating_system/project-adoption-migration-guide.md`
 
 - [ ] Step 1: Review the touched sections for consistent wording.

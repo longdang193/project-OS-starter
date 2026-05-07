@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/intent/master-workstream-roadmap.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/prompt_templates/
   - docs/superpowers/specs/
@@ -24,11 +24,11 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Make “follow the master roadmap” explicit in planning docs and prompt templates so downstream artifacts clearly align to a roadmap thread or explicitly justify `parent_workstream: none`.
 
-**Architecture:** Update the core planning guidance in `planning-dispatch.md` and `repo-governance.md`, then tighten the relevant prompt templates so they ask for roadmap-thread alignment or an operating-system justification. Keep this as a guidance-only pass; do not add validator enforcement.
+**Architecture:** Update the core planning guidance in `skill-planning-dispatch.md` and `repo-governance.md`, then tighten the relevant prompt templates so they ask for roadmap-thread alignment or an operating-system justification. Keep this as a guidance-only pass; do not add validator enforcement.
 
 **Key Invariants:**
 - `docs/intent/master-workstream-roadmap.md` remains the top-down bridge from intent into durable workstreams.
@@ -54,7 +54,7 @@ Invariants:
   - guidance should remain practical, not bureaucratic
 Dependencies:
   - `docs/intent/master-workstream-roadmap.md`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/operating_system/prompt_templates/`
 Affected stages:
@@ -74,7 +74,7 @@ Affected docs:
   cross_cutting_docs:
     - none
   operating_system_docs:
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
     - `docs/operating_system/prompt_templates/`
   readme: none
@@ -91,7 +91,7 @@ Plan needed: yes
 ## Files To Modify
 
 ```text
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
 docs/operating_system/prompt_templates/spec-prompt.md
 docs/operating_system/prompt_templates/plan-prompt.md
@@ -104,7 +104,7 @@ docs/superpowers/specs/2026-04-25-master-roadmap-alignment-guidance-spec.md
 ## Task 1: Tighten Planning Guidance
 
 **Files:**
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 
 - [x] Step 1: Add explicit guidance that product-direction work should name the roadmap thread it follows.

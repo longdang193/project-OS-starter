@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/public-safe-doc-rewrite-guide.md
   - docs/operating_system/publication-workflow.md
-  - .agents/skills/private-public-repo-governance/SKILL.md
+  - .agents/skills/skill-private-public-repo-governance/SKILL.md
 related_features: []
 related_stages: []
 ---
@@ -20,7 +20,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Revise publication guidance so the public mirror preserves reproducible structure and sanitizes private payloads instead of trimming too many files away.
 
@@ -61,7 +61,7 @@ related_stages: []
 
 **Files:**
 - Modify: `docs/operating_system/publication-workflow.md`
-- Modify: `.agents/skills/private-public-repo-governance/SKILL.md`
+- Modify: `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 
 - [x] Step 1: Update the workflow doc so publication review asks whether a file should be kept, sanitized, or omitted.
 - [x] Step 2: Warn against over-trimming files whose visible structure supports reproducibility.

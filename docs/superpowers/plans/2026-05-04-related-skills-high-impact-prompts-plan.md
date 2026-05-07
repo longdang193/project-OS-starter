@@ -39,9 +39,9 @@ is explicit where it matters most.
     - `roadmap-closeout-readiness-prompt.md`
 - task 2:
   - map relevant skills per prompt:
-    - `executing-plans`
-    - `verification-before-completion`
-    - `planning-dispatch` (where rerouting applies)
+    - `skill-executing-plans`
+    - `skill-verification-before-completion`
+    - `skill-planning-dispatch` (where rerouting applies)
 - task 3:
   - update `prompt_templates/README.md` to document selective use of
     `Related Skills` in high-impact prompts

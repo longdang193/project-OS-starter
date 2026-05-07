@@ -11,7 +11,7 @@ targets:
   - docs/pipeline.md
   - docs/architecture.md
   - docs/adoption_guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
@@ -33,7 +33,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Define the required root documentation set under `docs/`, add starter placeholders for the required docs, and enforce the required set through the repo validation and hook path.
 
@@ -67,10 +67,10 @@ related_stages: []
   - `docs/pipeline.md`
   - `docs/architecture.md`
   - `docs/adoption_guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
 - Operating-system docs:
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
 - README: `README.md`
 - Generated discovery: none
@@ -95,7 +95,7 @@ related_stages: []
 
 **Files:**
 - Modify: `docs/adoption_guide.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/repo-governance.md`
 - Docs: exact entries above
 

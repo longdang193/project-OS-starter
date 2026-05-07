@@ -13,8 +13,8 @@ next_steps:
 - thread-closeout-readiness-prompt.md
 - implementation-next-action-gate-prompt.md
 related_skills:
-- verification-before-completion
-- planning-dispatch
+- skill-verification-before-completion
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:

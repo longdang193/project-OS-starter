@@ -7,7 +7,7 @@ targets:
   - scripts/validate_adoption_shape.py
   - scripts/validator_policy.py
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/README.md
   - tests/test_validate_adoption_shape.py
@@ -25,7 +25,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a second warning tier that detects when a `starter_method_only` repo has likely outgrown lightweight anchors and should plan migration to `managed_architecture_metadata`.
 
@@ -75,7 +75,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/repo-governance.md`
-    - `docs/operating_system/doc-system-lifecycle.md`
+    - `docs/operating_system/skill-doc-system-lifecycle.md`
     - `docs/operating_system/project-adoption-migration-guide.md`
   readme: none
   generated:
@@ -95,7 +95,7 @@ scripts/validate_adoption_shape.py
 scripts/validator_policy.py
 tests/test_validate_adoption_shape.py
 docs/operating_system/repo-governance.md
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/operating_system/project-adoption-migration-guide.md
 docs/project_templates/mode-a/README.md
 docs/superpowers/specs/2026-04-24-mode-a-outgrown-threshold-spec.md
@@ -131,7 +131,7 @@ Suggested verification command:
 
 **Files:**
 - Modify: `docs/operating_system/repo-governance.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
 - Modify: `docs/project_templates/mode-a/README.md`
 - Modify: `docs/superpowers/specs/2026-04-24-mode-a-outgrown-threshold-spec.md`

@@ -3,12 +3,12 @@ name: publication-boundary
 description: Enforce private/public publication boundaries and controlled export workflow.
 alwaysApply: true
 required_reads:
-  - docs/operating_system/publication-workflow.md
-  - docs/operating_system/repo-governance.md
+- docs/operating_system/publication-workflow.md
+- docs/operating_system/repo-governance.md
 tags:
-  - rule
-  - publication
-  - boundary
+- rule
+- publication
+- boundary
 ---
 
 <!--

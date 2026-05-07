@@ -4,7 +4,7 @@ artifact_type: plan
 status: completed
 parent_workstream: none
 targets:
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/project-adoption-migration-guide.md
   - tools/docs/generate_architecture_metadata.py
   - scripts/validate_adoption_shape.py
@@ -23,7 +23,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Make the `lineage.generated.yaml` schema explicit and validator-enforced so managed repos cannot carry legacy summary-style lineage artifacts while claiming starter alignment.
 
@@ -52,7 +52,7 @@ related_stages: []
 ## Task 2: Update Docs
 
 **Files:**
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
 
 - [x] Step 1: Describe `lineage.generated.yaml` as the canonical generated feature-local lineage evidence artifact.

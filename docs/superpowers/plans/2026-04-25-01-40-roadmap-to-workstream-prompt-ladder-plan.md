@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
@@ -23,7 +23,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Extend the prompt-template pack so users can move from the master roadmap into the right workstream before drafting specs, plans, and execution requests.
 
@@ -54,7 +54,7 @@ Invariants:
   - operating-system work must remain a valid branch instead of being forced into product workstreams
 Dependencies:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/intent/workstreams/`
@@ -76,7 +76,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
   readme: none
   generated:
@@ -106,7 +106,7 @@ docs/operating_system/prompt_templates/spec-prompt.md
 docs/operating_system/prompt_templates/plan-prompt.md
 docs/operating_system/prompt_templates/execute-prompt.md
 docs/operating_system/prompt_templates/mode-migration-prompt.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
 docs/superpowers/specs/2026-04-25-roadmap-to-workstream-prompt-ladder-spec.md
 ```
@@ -140,10 +140,10 @@ docs/superpowers/specs/2026-04-25-roadmap-to-workstream-prompt-ladder-spec.md
 ## Task 3: Update Planning And Governance Docs
 
 **Files:**
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 
-- [x] Step 1: Point planning-dispatch to the new roadmap/workstream prompt ladder.
+- [x] Step 1: Point skill-planning-dispatch to the new roadmap/workstream prompt ladder.
 - [x] Step 2: Update repo-governance so the prompt pack is described as covering roadmap-to-workstream invocation as well as downstream execution prompts.
 
 ## Task 4: Close The Artifact Loop And Verify

@@ -7,7 +7,7 @@ targets:
   - README.md
   - docs/
   - docs/adoption_guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
@@ -38,7 +38,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/adoption_guide.md`
 - `docs/operating_system/repo-governance.md`
 - `scripts/validate_adoption_shape.py`
@@ -75,7 +75,7 @@ Affected docs:
   - `docs/observability.md`
   - `docs/testing.md`
   - `docs/adoption_guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
 - readme: `README.md`
 - generated: none
@@ -346,7 +346,7 @@ projects know to create:
 Clarify that dataset, API, observability, and testing docs are optional but
 recommended when those concerns exist.
 
-### `docs/operating_system/doc-system-lifecycle.md`
+### `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Add the standard root-level project doc set to the source-of-truth and
 placement guidance for cross-cutting docs under `docs/*.md`.
@@ -376,7 +376,7 @@ The implementation is complete when:
   - `docs/observability.md`
   - `docs/testing.md`
 - `README.md`, `docs/adoption_guide.md`,
-  `docs/operating_system/doc-system-lifecycle.md`, and
+  `docs/operating_system/skill-doc-system-lifecycle.md`, and
   `docs/operating_system/repo-governance.md` all describe the new contract
 - the validator fails when a required root doc is missing
 - local hook setup and CI run the required-doc check through the normal

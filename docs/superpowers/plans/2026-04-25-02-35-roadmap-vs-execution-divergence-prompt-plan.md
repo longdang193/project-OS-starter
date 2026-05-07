@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
@@ -23,7 +23,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a dedicated prompt template for checking divergence between upstream roadmap/workstream intent and downstream specs, plans, and execution completed so far.
 
@@ -53,7 +53,7 @@ Invariants:
   - the prompt should support roadmap-wide and workstream-local review
 Dependencies:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/intent/workstreams/`
@@ -75,7 +75,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
   readme: none
   generated:
@@ -101,7 +101,7 @@ docs/operating_system/prompt_templates/README.md
 docs/operating_system/prompt_templates/validate-or-drift-prompt.md
 docs/operating_system/prompt_templates/roadmap-gap-prompt.md
 docs/operating_system/prompt_templates/workstream-alignment-review-prompt.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
 docs/intent/master-workstream-roadmap.md
 docs/intent/workstreams/README.md
@@ -133,7 +133,7 @@ docs/superpowers/plans/2026-04-25-02-35-roadmap-vs-execution-divergence-prompt-p
 ## Task 3: Update Roadmap And Governance Docs
 
 **Files:**
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 - Modify: `docs/intent/master-workstream-roadmap.md`
 - Modify: `docs/intent/workstreams/README.md`

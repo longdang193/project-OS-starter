@@ -123,7 +123,7 @@ file expectation:
   - at least one Markdown file
   - `README.md` is the recommended anchor file
 - `docs/operating_system/`
-  - governance docs such as `repo-governance.md` and `doc-system-lifecycle.md`
+  - governance docs such as `repo-governance.md` and `skill-skill-doc-system-lifecycle.md`
 - `docs/superpowers/specs/`
   - design artifacts when a bounded change needs design capture
   - the folder may exist before any real spec files are needed

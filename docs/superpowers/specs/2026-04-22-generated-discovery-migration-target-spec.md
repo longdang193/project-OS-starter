@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/mode-b-example-migration.md
   - scripts/validate_adoption_shape.py
 related_features: []
@@ -31,7 +31,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - current starter generator and validators
 
 Affected stages:
@@ -52,7 +52,7 @@ Affected docs:
 - feature_history: none
 - cross_cutting_docs:
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/mode-b-example-migration.md`
 - generated:
   - `docs/generated/*`
@@ -177,7 +177,7 @@ Update the starter guidance so it explicitly says:
 The most important docs to clarify are:
 
 - `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/mode-b-example-migration.md`
 
 ## Validator Direction

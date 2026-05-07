@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/public-safe-doc-rewrite-guide.md
   - docs/operating_system/publication-workflow.md
-  - .agents/skills/private-public-repo-governance/SKILL.md
+  - .agents/skills/skill-private-public-repo-governance/SKILL.md
   - repo_config/publication-config.json
 related_features: []
 related_stages: []
@@ -32,7 +32,7 @@ Dependencies:
 
 - `docs/operating_system/public-safe-doc-rewrite-guide.md`
 - `docs/operating_system/publication-workflow.md`
-- `.agents/skills/private-public-repo-governance/SKILL.md`
+- `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - `repo_config/publication-config.json`
 
 Affected stages:
@@ -57,7 +57,7 @@ Affected docs:
 - cross_cutting_docs:
   - `docs/operating_system/public-safe-doc-rewrite-guide.md`
   - `docs/operating_system/publication-workflow.md`
-  - `.agents/skills/private-public-repo-governance/SKILL.md`
+  - `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - readme: none
 - generated: none
 
@@ -243,7 +243,7 @@ This is the key decision boundary for whether to omit or sanitize.
 
 ## Governance Skill Changes
 
-Update `.agents/skills/private-public-repo-governance/SKILL.md` so the skill
+Update `.agents/skills/skill-private-public-repo-governance/SKILL.md` so the skill
 teaches the same three-mode classification.
 
 It should stop implying that "private in part" means "omit in full."

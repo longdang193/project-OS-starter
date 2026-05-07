@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/README.md
 related_features: []
@@ -32,7 +32,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/repo-governance.md`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/project-adoption-migration-guide.md`
 - `docs/project_templates/mode-a/README.md`
 
@@ -58,7 +58,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
 - readme: none
 - generated: none
@@ -199,7 +199,7 @@ practical user-facing entrypoint for invoking the process.
 
 Especially:
 
-- `planning-dispatch.md`
+- `skill-planning-dispatch.md`
 - `repo-governance.md`
 - Mode A template guidance
 

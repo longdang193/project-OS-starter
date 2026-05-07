@@ -7,7 +7,7 @@ targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/feature-lifecycle.md
   - docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md
   - docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md
@@ -36,7 +36,7 @@ Dependencies:
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
 - `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/feature-lifecycle.md`
 
 Affected stages:
@@ -57,7 +57,7 @@ Affected docs:
 - feature_history: none
 - cross_cutting_docs:
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/feature-lifecycle.md`
   - `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
   - `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
@@ -227,7 +227,7 @@ Docs should say:
 Docs to align:
 
 - `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/feature-lifecycle.md`
 - `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
 - `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`

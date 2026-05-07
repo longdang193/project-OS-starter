@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/architecture_templates/feature.source.yaml
@@ -37,7 +37,7 @@ Dependencies:
 - `docs/superpowers/specs/2026-04-23-canonical-style-validation-spec.md`
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/operating_system/project-adoption-migration-guide.md`
 
@@ -71,7 +71,7 @@ Affected docs:
   - `docs/usage.md`
   - `docs/pipeline.md`
   - `docs/architecture.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
   - `docs/architecture_templates/feature.source.yaml`

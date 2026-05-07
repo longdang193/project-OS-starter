@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/README.md
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/prompt_templates/required-root-doc-update-prompt.md
   - docs/superpowers/specs/2026-04-28-required-root-doc-update-prompt-spec.md
 related_features: []
@@ -22,7 +22,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a dedicated prompt for updating the validator-enforced required root docs and wire it into the prompt-pack and governing docs.
 
@@ -50,7 +50,7 @@ related_stages: []
 
 - [x] Step 1: Update `docs/operating_system/prompt_templates/README.md`.
 - [x] Step 2: Update `docs/operating_system/repo-governance.md`.
-- [x] Step 3: Update `docs/operating_system/doc-system-lifecycle.md`.
+- [x] Step 3: Update `docs/operating_system/skill-doc-system-lifecycle.md`.
 
 ## Task 4: Close The Loop
 

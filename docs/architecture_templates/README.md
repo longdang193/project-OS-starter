@@ -69,7 +69,7 @@ Generated outputs include:
 ## References
 
 - [Project Adoption Migration Guide](../operating_system/project-adoption-migration-guide.md)
-- [Doc System Lifecycle](../operating_system/doc-system-lifecycle.md)
+- [Doc System Lifecycle](../operating_system/skill-doc-system-lifecycle.md)
 - [Feature Routing Guide](../operating_system/feature-routing-guide.md)
 
 ## Validation

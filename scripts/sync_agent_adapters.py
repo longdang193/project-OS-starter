@@ -12,6 +12,7 @@ import argparse
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
 import sys
 
 import yaml
@@ -27,6 +28,8 @@ class Mapping:
 
 
 GENERATED_BY = "scripts/sync_agent_adapters.py"
+MANIFEST_BEGIN = "<!-- BEGIN GENERATED: RUNTIME_MANIFEST -->"
+MANIFEST_END = "<!-- END GENERATED: RUNTIME_MANIFEST -->"
 
 
 def _render_json_from_yaml(text: str) -> str:
@@ -136,6 +139,161 @@ def _codex_rules_filename(path: Path) -> str:
     if name.endswith(".md"):
         return f"{name[:-3]}.rules"
     return f"{name}.rules"
+
+
+def _strip_extension(name: str) -> str:
+    return name[:-3] if name.endswith(".md") else name
+
+
+def _title_from_name(name: str) -> str:
+    return _strip_extension(name).replace("-", " ").replace("_", " ").strip().title()
+
+
+def _extract_title_and_summary(path: Path, *, body: str | None = None) -> tuple[str, str]:
+    raw = body if body is not None else path.read_text(encoding="utf-8")
+    text = _strip_generated_block(raw.replace("\r\n", "\n"))
+    title = ""
+    summary = ""
+    if text.startswith("---\n"):
+        parts = text.split("---\n", 2)
+        if len(parts) >= 3:
+            payload = yaml.safe_load(parts[1]) or {}
+            if isinstance(payload, dict):
+                title = str(payload.get("name") or "").strip()
+                desc = payload.get("description")
+                if isinstance(desc, str):
+                    summary = " ".join(desc.split())
+            text = parts[2].lstrip("\n")
+    if not title:
+        for line in text.splitlines():
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+    if not summary:
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith(">"):
+                continue
+            summary = stripped
+            break
+    if not title:
+        title = _title_from_name(path.name)
+    if not summary:
+        summary = title
+    return title, summary.rstrip(".") + "."
+
+
+def _workflow_skill_text(src: Path) -> str:
+    raw = src.read_text(encoding="utf-8")
+    normalized = raw.replace("\r\n", "\n")
+    meta: dict[str, object] = {}
+    body = _strip_markdown_frontmatter(raw).strip()
+    if normalized.startswith("---\n"):
+        parts = normalized.split("---\n", 2)
+        if len(parts) >= 3:
+            payload = yaml.safe_load(parts[1]) or {}
+            if isinstance(payload, dict):
+                meta = dict(payload)
+            body = parts[2].lstrip("\n").strip()
+    title, summary = _extract_title_and_summary(src, body=body)
+    skill_name = _strip_extension(src.name)
+    meta["name"] = str(meta.get("name") or skill_name)
+    meta["description"] = str(meta.get("description") or summary)
+    allowed = meta.get("allowed-tools")
+    if not isinstance(allowed, list):
+        meta["allowed-tools"] = []
+    required_reads = meta.get("required_reads")
+    if not isinstance(required_reads, list):
+        meta["required_reads"] = []
+    required_outputs = meta.get("required_outputs")
+    if not isinstance(required_outputs, list):
+        meta["required_outputs"] = []
+    related_skills = meta.get("related_skills")
+    if related_skills is not None and not isinstance(related_skills, list):
+        meta["related_skills"] = []
+    tags = meta.get("tags")
+    if not isinstance(tags, list):
+        tags = []
+    if "workflow-skill" not in tags:
+        tags.append("workflow-skill")
+    meta["tags"] = tags
+    frontmatter = yaml.safe_dump(meta, sort_keys=False, allow_unicode=False).strip()
+    heading = f"# {title}\n\n"
+    note = (
+        "## Runtime Role\n\n"
+        "This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.\n\n"
+        f"Canonical source: `docs/operating_system/workflows/{src.name}`\n\n"
+    )
+    return f"---\n{frontmatter}\n---\n\n{heading}{note}{body}\n"
+
+
+def _render_manifest(root: Path, platform: str) -> str:
+    rules_root = root / "docs" / "operating_system" / "rules"
+    workflows_root = root / "docs" / "operating_system" / "workflows"
+    skills_root = root / ".agents" / "skills"
+    lines = [
+        MANIFEST_BEGIN,
+        "## Runtime Extension Manifest (Generated)",
+        "",
+        "> [!IMPORTANT]",
+        "> This section is generated. Do not edit manually.",
+        "> Source of truth: `docs/operating_system/rules/*.md`, `docs/operating_system/workflows/*.md`, `.agents/skills/*/SKILL.md`.",
+        "> Regenerate via: `scripts/sync_agent_adapters.py`.",
+        "",
+        "### Rules Manifest",
+    ]
+    for path in sorted(rules_root.glob("*.md")):
+        title, summary = _extract_title_and_summary(path)
+        lines.append(f"- `{path.name}` — {summary}")
+        lines.append(f"  - Source: `docs/operating_system/rules/{path.name}`")
+    lines.extend(["", "### Workflow-Skills Manifest"])
+    for path in sorted(workflows_root.glob("*.md")):
+        title, summary = _extract_title_and_summary(path)
+        skill_name = _strip_extension(path.name)
+        lines.append(f"- `{skill_name}` — {summary}")
+        lines.append(f"  - Source: `docs/operating_system/workflows/{path.name}`")
+        lines.append(f"  - Generated skill: `skills/{skill_name}/SKILL.md`")
+    lines.extend(["", "### Native Skills Manifest"])
+    for path in sorted(skills_root.glob("*/SKILL.md")):
+        title, summary = _extract_title_and_summary(path)
+        skill_name = path.parent.name
+        lines.append(f"- `{skill_name}` — {summary}")
+        lines.append(f"  - Source: `.agents/skills/{skill_name}/SKILL.md`")
+    lines.extend(["", "### Resolution Notes"])
+    if platform == "codex":
+        lines.extend([
+            "- `AGENTS.md` is the authoritative Codex root instruction surface.",
+            "- Rules are summarized here; workflow runtime invocation flows through skill surfaces.",
+        ])
+    elif platform == "claude":
+        lines.extend([
+            "- `CLAUDE.md` complements provider-native rules and skills surfaces.",
+            "- Workflows are deployed as skills for consistent invocation.",
+        ])
+    else:
+        lines.extend([
+            "- `GEMINI.md` is the primary guaranteed root instruction surface.",
+            "- Skills under `antigravity/skills/*/SKILL.md` are the runtime-critical execution surface.",
+        ])
+    lines.extend([
+        "",
+        "<!-- MANIFEST_METADATA",
+        "version: 1",
+        f"generated_by: {GENERATED_BY}",
+        "-->",
+        MANIFEST_END,
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def _inject_manifest(text: str, *, manifest: str) -> str:
+    normalized = text.replace("\r\n", "\n").rstrip("\n")
+    pattern = re.compile(r"\n?" + re.escape(MANIFEST_BEGIN) + r".*?" + re.escape(MANIFEST_END), re.S)
+    if pattern.search(normalized):
+        replaced = pattern.sub("\n" + manifest.rstrip("\n"), normalized, count=1)
+        return replaced.strip() + "\n"
+    return normalized + "\n\n" + manifest.rstrip("\n") + "\n"
 
 
 def repo_root() -> Path:
@@ -259,7 +417,7 @@ def _remove_stale_files(dst_root: Path, expected: set[Path]) -> None:
         (dst_root / stale).unlink(missing_ok=True)
 
 
-def _sync_file(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
+def _sync_file(root: Path, mapping: Mapping, *, platform: str, check: bool) -> list[str]:
     src = root / mapping.source
     dst = root / mapping.destination
     if not src.exists():
@@ -287,6 +445,11 @@ def _sync_file(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
             source_rel=source_rel,
         )
         rendered = json.dumps(payload, indent=2) + "\n"
+    elif mapping.mode == "render_root_doc_with_manifest":
+        rendered = _inject_manifest(
+            _render_with_header(src_text, source_rel=source_rel, prefix=mapping.comment_prefix),
+            manifest=_render_manifest(root, platform),
+        )
     else:
         rendered = _render_with_header(
             src_text,
@@ -366,6 +529,33 @@ def _sync_codex_rules_tree(root: Path, mapping: Mapping, *, check: bool) -> list
     return issues
 
 
+def _sync_workflow_skills_tree(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
+    src_root = root / mapping.source
+    dst_root = root / mapping.destination
+    if not src_root.exists():
+        return [f"Missing source directory: {src_root.as_posix()}"]
+    pattern = mapping.include_glob or "*.md"
+    issues: list[str] = []
+    for src in _iter_matching_files(src_root, pattern):
+        skill_name = _strip_extension(src.name)
+        dst = dst_root / skill_name / "SKILL.md"
+        rendered = _render_with_header(
+            _workflow_skill_text(src),
+            source_rel=src.relative_to(root).as_posix(),
+            prefix=mapping.comment_prefix,
+        )
+        if check:
+            if not dst.exists():
+                issues.append(f"Missing generated file: {dst.as_posix()}")
+                continue
+            actual = dst.read_text(encoding="utf-8")
+            if _normalized(actual) != _normalized(rendered):
+                issues.append(f"Drift detected: {dst.as_posix()}")
+            continue
+        _write_text_if_changed(dst, rendered)
+    return issues
+
+
 def run() -> int:
     args = parse_args()
     root = repo_root()
@@ -382,8 +572,10 @@ def run() -> int:
                 issues.extend(_sync_tree(root, mapping, check=args.check))
             elif mapping.mode == "render_codex_rules_tree":
                 issues.extend(_sync_codex_rules_tree(root, mapping, check=args.check))
+            elif mapping.mode == "render_workflow_skills_tree":
+                issues.extend(_sync_workflow_skills_tree(root, mapping, check=args.check))
             else:
-                issues.extend(_sync_file(root, mapping, check=args.check))
+                issues.extend(_sync_file(root, mapping, platform=platform, check=args.check))
         print(f"Processed adapter: {platform}")
     if issues:
         print("Agent adapter sync check failed:")

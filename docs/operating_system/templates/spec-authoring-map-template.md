@@ -2,13 +2,13 @@
 template_id: spec-authoring-map
 document_type: spec_authoring_map
 target_globs:
-  - docs/superpowers/execution_maps/*.md
+- docs/superpowers/execution_maps/*.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Authoring Waves
-  - Parallel Lanes
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Authoring Waves
+- Parallel Lanes
+- Completion Criteria
 required_frontmatter:
   artifact_type: execution_map
   map_type: spec_authoring
