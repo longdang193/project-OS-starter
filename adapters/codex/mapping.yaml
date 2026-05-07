@@ -26,6 +26,11 @@ mappings:
     mode: copy_tree
     include_glob: "**/*.md"
     comment_prefix: "#"
+  - source: docs/operating_system/workflows
+    destination: generated_agents/codex/skills
+    mode: render_workflow_skills_tree
+    include_glob: "*.md"
+    comment_prefix: "#"
   - source: .agents/skills
     destination: generated_agents/codex/skills
     mode: copy_tree

@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -417,6 +418,24 @@ def _remove_stale_files(dst_root: Path, expected: set[Path]) -> None:
         (dst_root / stale).unlink(missing_ok=True)
 
 
+def _expected_tree_paths(src_root: Path, pattern: str) -> set[Path]:
+    return {path.relative_to(src_root) for path in _iter_matching_files(src_root, pattern)}
+
+
+def _expected_codex_rules_paths(src_root: Path, pattern: str, dst_root: Path) -> set[Path]:
+    return {
+        (dst_root / _codex_rules_filename(path)).relative_to(dst_root)
+        for path in _iter_matching_files(src_root, pattern)
+    }
+
+
+def _expected_workflow_skill_paths(src_root: Path, pattern: str) -> set[Path]:
+    return {
+        Path(_strip_extension(path.name)) / "SKILL.md"
+        for path in _iter_matching_files(src_root, pattern)
+    }
+
+
 def _sync_file(root: Path, mapping: Mapping, *, platform: str, check: bool) -> list[str]:
     src = root / mapping.source
     dst = root / mapping.destination
@@ -467,17 +486,22 @@ def _sync_file(root: Path, mapping: Mapping, *, platform: str, check: bool) -> l
     return []
 
 
-def _sync_tree(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
+def _sync_tree(
+    root: Path,
+    mapping: Mapping,
+    *,
+    check: bool,
+    preserve_paths: set[Path] | None = None,
+) -> list[str]:
     src_root = root / mapping.source
     dst_root = root / mapping.destination
     if not src_root.exists():
         return [f"Missing source directory: {src_root.as_posix()}"]
     pattern = mapping.include_glob or "**/*"
     issues: list[str] = []
-    expected_paths: set[Path] = set()
+    expected_paths = _expected_tree_paths(src_root, pattern)
     for src in _iter_matching_files(src_root, pattern):
         rel = src.relative_to(src_root)
-        expected_paths.add(rel)
         dst = dst_root / rel
         rendered = _render_with_header(
             src.read_text(encoding="utf-8"),
@@ -494,21 +518,26 @@ def _sync_tree(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
             continue
         _write_text_if_changed(dst, rendered)
     if not check:
-        _remove_stale_files(dst_root, expected_paths)
+        _remove_stale_files(dst_root, preserve_paths or expected_paths)
     return issues
 
 
-def _sync_codex_rules_tree(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
+def _sync_codex_rules_tree(
+    root: Path,
+    mapping: Mapping,
+    *,
+    check: bool,
+    preserve_paths: set[Path] | None = None,
+) -> list[str]:
     src_root = root / mapping.source
     dst_root = root / mapping.destination
     if not src_root.exists():
         return [f"Missing source directory: {src_root.as_posix()}"]
     pattern = mapping.include_glob or "*.md"
     issues: list[str] = []
-    expected_paths: set[Path] = set()
+    expected_paths = _expected_codex_rules_paths(src_root, pattern, dst_root)
     for src in _iter_matching_files(src_root, pattern):
         dst = dst_root / _codex_rules_filename(src)
-        expected_paths.add(dst.relative_to(dst_root))
         body = _strip_markdown_frontmatter(src.read_text(encoding="utf-8"))
         rendered = _render_with_header(
             body,
@@ -525,17 +554,24 @@ def _sync_codex_rules_tree(root: Path, mapping: Mapping, *, check: bool) -> list
             continue
         _write_text_if_changed(dst, rendered)
     if not check:
-        _remove_stale_files(dst_root, expected_paths)
+        _remove_stale_files(dst_root, preserve_paths or expected_paths)
     return issues
 
 
-def _sync_workflow_skills_tree(root: Path, mapping: Mapping, *, check: bool) -> list[str]:
+def _sync_workflow_skills_tree(
+    root: Path,
+    mapping: Mapping,
+    *,
+    check: bool,
+    preserve_paths: set[Path] | None = None,
+) -> list[str]:
     src_root = root / mapping.source
     dst_root = root / mapping.destination
     if not src_root.exists():
         return [f"Missing source directory: {src_root.as_posix()}"]
     pattern = mapping.include_glob or "*.md"
     issues: list[str] = []
+    expected_paths = _expected_workflow_skill_paths(src_root, pattern)
     for src in _iter_matching_files(src_root, pattern):
         skill_name = _strip_extension(src.name)
         dst = dst_root / skill_name / "SKILL.md"
@@ -553,6 +589,8 @@ def _sync_workflow_skills_tree(root: Path, mapping: Mapping, *, check: bool) -> 
                 issues.append(f"Drift detected: {dst.as_posix()}")
             continue
         _write_text_if_changed(dst, rendered)
+    if not check:
+        _remove_stale_files(dst_root, preserve_paths or expected_paths)
     return issues
 
 
@@ -565,15 +603,64 @@ def run() -> int:
         print("No adapter mappings found.")
         return 1
     issues: list[str] = []
+    destination_preserve_paths: dict[Path, set[Path]] = defaultdict(set)
+    loaded_mappings: list[tuple[str, list[Mapping]]] = []
     for mapping_file in mapping_files:
-        platform, mappings = _load_mapping(mapping_file)
+        loaded_mappings.append(_load_mapping(mapping_file))
+    for _, mappings in loaded_mappings:
         for mapping in mappings:
+            dst_root = root / mapping.destination
             if mapping.mode == "copy_tree":
-                issues.extend(_sync_tree(root, mapping, check=args.check))
+                src_root = root / mapping.source
+                if src_root.exists():
+                    pattern = mapping.include_glob or "**/*"
+                    destination_preserve_paths[dst_root].update(
+                        _expected_tree_paths(src_root, pattern)
+                    )
             elif mapping.mode == "render_codex_rules_tree":
-                issues.extend(_sync_codex_rules_tree(root, mapping, check=args.check))
+                src_root = root / mapping.source
+                if src_root.exists():
+                    pattern = mapping.include_glob or "*.md"
+                    destination_preserve_paths[dst_root].update(
+                        _expected_codex_rules_paths(src_root, pattern, dst_root)
+                    )
             elif mapping.mode == "render_workflow_skills_tree":
-                issues.extend(_sync_workflow_skills_tree(root, mapping, check=args.check))
+                src_root = root / mapping.source
+                if src_root.exists():
+                    pattern = mapping.include_glob or "*.md"
+                    destination_preserve_paths[dst_root].update(
+                        _expected_workflow_skill_paths(src_root, pattern)
+                    )
+    for platform, mappings in loaded_mappings:
+        for mapping in mappings:
+            preserve_paths = destination_preserve_paths.get(root / mapping.destination)
+            if mapping.mode == "copy_tree":
+                issues.extend(
+                    _sync_tree(
+                        root,
+                        mapping,
+                        check=args.check,
+                        preserve_paths=preserve_paths,
+                    )
+                )
+            elif mapping.mode == "render_codex_rules_tree":
+                issues.extend(
+                    _sync_codex_rules_tree(
+                        root,
+                        mapping,
+                        check=args.check,
+                        preserve_paths=preserve_paths,
+                    )
+                )
+            elif mapping.mode == "render_workflow_skills_tree":
+                issues.extend(
+                    _sync_workflow_skills_tree(
+                        root,
+                        mapping,
+                        check=args.check,
+                        preserve_paths=preserve_paths,
+                    )
+                )
             else:
                 issues.extend(_sync_file(root, mapping, platform=platform, check=args.check))
         print(f"Processed adapter: {platform}")
