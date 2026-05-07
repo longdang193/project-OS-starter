@@ -17,16 +17,6 @@ mappings:
     mode: copy_tree
     include_glob: "*.md"
     comment_prefix: "#"
-  - source: docs/operating_system/workflows
-    destination: generated_agents/antigravity/workflows
-    mode: copy_tree
-    include_glob: "*.md"
-    comment_prefix: "#"
-  - source: docs/operating_system/workflows
-    destination: .agents/workflows
-    mode: copy_tree
-    include_glob: "*.md"
-    comment_prefix: "#"
   - source: docs/operating_system/prompt_templates
     destination: generated_agents/antigravity/prompt_templates
     mode: copy_tree
