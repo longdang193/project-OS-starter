@@ -26,14 +26,6 @@ To update: edit canonical source, then run sync.
 
 # Live Run Closeout Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-live-run-closeout.md`
-
-# Live Run Closeout Workflow
-
 ## Goal
 
 Finalize live-run resolution with durable evidence and route learnings into

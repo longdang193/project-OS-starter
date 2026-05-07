@@ -26,14 +26,6 @@ To update: edit canonical source, then run sync.
 
 # Live Run Scenario Planning Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-live-run-scenario-planning.md`
-
-# Live Run Scenario Planning Workflow
-
 ## Goal
 
 Define reusable live-run scenarios and triggers that are traceable to current

@@ -13,9 +13,11 @@ agent/runtime operating guidance.
 
 ## Start Here
 
+<LINK>
 - [governance/repo-governance.md](./governance/repo-governance.md)
 - [planning/planning-dispatch.md](./planning/planning-dispatch.md)
 - [lifecycle/doc-system-lifecycle.md](./lifecycle/doc-system-lifecycle.md)
+</LINK>
 
 ## Sections
 

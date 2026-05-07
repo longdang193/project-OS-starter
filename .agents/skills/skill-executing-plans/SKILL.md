@@ -50,8 +50,7 @@ non-trivial.
 
 - Prefer GitNexus for shared-module impact checks and cross-lane dependency tracing.
 - For small/local execution tasks, GitNexus is optional.
-- Before high-trust use, check freshness:
-  - `.\scripts\get_gitnexus_freshness.ps1`
+- Before high-trust use, check freshness: <LINK>`.\scripts\get_gitnexus_freshness.ps1`</LINK>
 - If stale, keep GitNexus advisory and execute source-first.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
 - If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.

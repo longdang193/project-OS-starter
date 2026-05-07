@@ -26,14 +26,6 @@ To update: edit canonical source, then run sync.
 
 # Spec To Plan To Execution Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
-
-# Spec To Plan To Execution Workflow
-
 ## Purpose
 
 Move from approved bounded work item context to controlled execution and closeout readiness.
@@ -45,12 +37,14 @@ Move from approved bounded work item context to controlled execution and closeou
 
 ## Steps (Ordered)
 
+<LINK>
 1. Draft detailed spec with [spec-prompt.md](../prompt_templates/spec-prompt.md)
 2. If multi-spec sequencing is needed, create map via [spec-set-execution-map-prompt.md](../prompt_templates/spec-set-execution-map-prompt.md)
 3. Build execution-ready plan with [plan-prompt.md](../prompt_templates/plan-prompt.md)
 4. Execute with [execute-prompt.md](../prompt_templates/execute-prompt.md)
 5. Select each next bounded action using [implementation-next-action-gate-prompt.md](../prompt_templates/implementation-next-action-gate-prompt.md)
 6. If completion is claimed, transition into closeout ladder
+</LINK>
 
 ## Decision Gates
 
@@ -65,11 +59,13 @@ Move from approved bounded work item context to controlled execution and closeou
 
 ## Related Prompts
 
+<LINK>
 - [spec-prompt.md](../prompt_templates/spec-prompt.md)
 - [spec-set-execution-map-prompt.md](../prompt_templates/spec-set-execution-map-prompt.md)
 - [plan-prompt.md](../prompt_templates/plan-prompt.md)
 - [execute-prompt.md](../prompt_templates/execute-prompt.md)
 - [implementation-next-action-gate-prompt.md](../prompt_templates/implementation-next-action-gate-prompt.md)
+</LINK>
 
 ## Failure/Recovery Path
 

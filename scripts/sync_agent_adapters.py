@@ -198,6 +198,9 @@ def _workflow_skill_text(src: Path) -> str:
             body = parts[2].lstrip("\n").strip()
     title, summary = _extract_title_and_summary(src, body=body)
     skill_name = _strip_extension(src.name)
+    title_heading = f"# {title}"
+    if body.startswith(title_heading):
+        body = body[len(title_heading) :].lstrip("\n")
     meta["name"] = str(meta.get("name") or skill_name)
     meta["description"] = str(meta.get("description") or summary)
     allowed = meta.get("allowed-tools")
@@ -220,12 +223,7 @@ def _workflow_skill_text(src: Path) -> str:
     meta["tags"] = tags
     frontmatter = yaml.safe_dump(meta, sort_keys=False, allow_unicode=False).strip()
     heading = f"# {title}\n\n"
-    note = (
-        "## Runtime Role\n\n"
-        "This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.\n\n"
-        f"Canonical source: `docs/operating_system/workflows/{src.name}`\n\n"
-    )
-    return f"---\n{frontmatter}\n---\n\n{heading}{note}{body}\n"
+    return f"---\n{frontmatter}\n---\n\n{heading}{body}\n"
 
 
 def _render_manifest(root: Path, platform: str) -> str:

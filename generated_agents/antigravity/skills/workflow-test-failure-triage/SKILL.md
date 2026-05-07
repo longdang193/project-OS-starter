@@ -27,14 +27,6 @@ To update: edit canonical source, then run sync.
 
 # Test Failure Triage Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-test-failure-triage.md`
-
-# Test Failure Triage Workflow
-
 ## Purpose
 
 Resolve failing tests systematically with minimal, spec-aligned fixes and no
@@ -81,7 +73,6 @@ unnecessary scope growth.
 - if targeted rerun fails, reassess boundary/classification before adding new code
 - if failure is flaky, treat stabilization as first-class task with evidence
 - if environment/config issue, fix runtime/config root cause before code patching
-- choose one next bounded action via `implementation-next-action-gate-prompt.md`
 
 ## Exit Criteria
 

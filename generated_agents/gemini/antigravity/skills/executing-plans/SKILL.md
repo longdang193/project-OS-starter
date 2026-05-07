@@ -16,7 +16,8 @@ tags:
 - executing-plans
 ---
 
-# GENERATED FILE - do not edit directly.
+# GENERATED FILE - do not edit directly
+
 # Source: `.agents/skills/executing-plans/SKILL.md`
 
 # Executing Plans
@@ -105,7 +106,7 @@ For each task:
 3. Select the next action using `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`.
 4. Do not invent unrelated next steps; choose only from approved roadmap/workstream/thread/spec/map/plan artifacts.
 5. Run required verifications
-4. Update affected source layers as part of the task:
+6. Update affected source layers as part of the task:
 
 - code
 - `docs/intent/*.md` when project-purpose sources change
@@ -257,4 +258,3 @@ Return to review when:
 - `superpowers:using-git-worktrees` — set up isolated workspace before starting
 - `superpowers:writing-plans` — creates the plan
 - `superpowers:finishing-a-development-branch` — completes the work after execution
-

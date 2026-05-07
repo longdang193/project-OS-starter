@@ -28,14 +28,6 @@ To update: edit canonical source, then run sync.
 
 # Multi-Worktree Execution Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-multi-worktree-execution.md`
-
-# Multi-Worktree Execution Workflow
-
 ## Goal
 
 Execute multiple independent development lanes safely using isolated worktrees,

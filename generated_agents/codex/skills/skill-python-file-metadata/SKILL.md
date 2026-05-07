@@ -118,12 +118,4 @@ This metadata participates in the repo's steady-state architecture workflow:
 - `feature.source.yaml` is the human-owned semantic source for opted-in features
 - generated feature contracts and `lineage.generated.yaml` are standard outputs
 - lineage completeness is enforced rather than treated as advisory
-- temporary exception blocks in feature source are exceptional debt, not normal steady-state ownership
-
-After changing source metadata that affects architecture lineage, prefer the
-canonical repo workflow:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/sync_architecture_docs.py
-.\.venv\Scripts\python.exe scripts/sync_architecture_docs.py --check
-```
+- temporary exception blocks in feature source are exceptional debt, not normal steady-state ownership.

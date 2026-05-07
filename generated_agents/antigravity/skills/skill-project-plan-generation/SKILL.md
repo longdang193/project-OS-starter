@@ -145,5 +145,4 @@ Rules:
 
 ## Additional Documentation
 
-For complete documentation, full plan structure templates, detailed examples (valid/invalid), step-by-step implementation guidelines, and extended notes, refer to:
-`./docs/project-plan-guide.md`
+For complete documentation, full plan structure templates, detailed examples (valid/invalid), step-by-step implementation guidelines, and extended notes, refer to: <LINK>`./docs/project-plan-guide.md`</LINK>

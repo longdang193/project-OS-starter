@@ -25,14 +25,6 @@ To update: edit canonical source, then run sync.
 
 # Live Run Execution Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-live-run-execution.md`
-
-# Live Run Execution Workflow
-
 ## Goal
 
 Execute selected live-run scope and produce complete, traceable run evidence.

@@ -41,7 +41,7 @@ Load the plan, review it critically, execute task by task, update source-of-trut
 
 ## Mandatory Read
 
-<EXTREMELY-IMPORTANT>
+<MUST-READ>
 Before execution starts, read:
 
 - the specific implementation plan file being executed
@@ -49,7 +49,7 @@ Before execution starts, read:
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
 - `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
-</EXTREMELY-IMPORTANT>
+</MUST-READ>
 
 ## GitNexus Usage
 
@@ -58,8 +58,7 @@ non-trivial.
 
 - Prefer GitNexus for shared-module impact checks and cross-lane dependency tracing.
 - For small/local execution tasks, GitNexus is optional.
-- Before high-trust use, check freshness:
-  - `.\scripts\get_gitnexus_freshness.ps1`
+- Before high-trust use, check freshness: <LINK>`.\scripts\get_gitnexus_freshness.ps1`</LINK>
 - If stale, keep GitNexus advisory and execute source-first.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
 - If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.

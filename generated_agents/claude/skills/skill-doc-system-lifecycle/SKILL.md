@@ -36,10 +36,12 @@ Apply when:
 
 ## Mandatory Read
 
+<MUST-READ>
 Before doc-system decisions, read:
 
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/templates/task-start-routing-guide.md` when routing/planning artifacts are in scope
+</MUST-READ>
 
 ## Core Principle
 

@@ -26,14 +26,6 @@ To update: edit canonical source, then run sync.
 
 # Workflow And Prompt Metadata Specification
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-prompt-metadata-spec.md`
-
-# Workflow And Prompt Metadata Specification
-
 ## Goal
 
 Define one minimal metadata contract for `workflows/` and `prompt_templates/`

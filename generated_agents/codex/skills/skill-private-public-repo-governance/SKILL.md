@@ -260,7 +260,9 @@ Fix:
 
 ## References
 
+<LINK>
 - Publish policy template:
   [references/publish-policy-template.md](references/publish-policy-template.md)
 - Public release checklist:
   [references/public-release-checklist.md](references/public-release-checklist.md)
+</LINK>

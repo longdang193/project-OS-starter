@@ -72,7 +72,6 @@ unnecessary scope growth.
 - if targeted rerun fails, reassess boundary/classification before adding new code
 - if failure is flaky, treat stabilization as first-class task with evidence
 - if environment/config issue, fix runtime/config root cause before code patching
-- choose one next bounded action via `implementation-next-action-gate-prompt.md`
 
 ## Exit Criteria
 

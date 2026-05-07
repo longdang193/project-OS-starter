@@ -26,14 +26,6 @@ To update: edit canonical source, then run sync.
 
 # Live Run Verification Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-live-run-verification.md`
-
-# Live Run Verification Workflow
-
 ## Goal
 
 Confirm issue resolution and expected behavior using evidence, while screening

@@ -26,14 +26,6 @@ To update: edit canonical source, then run sync.
 
 # Live Run Preflight Check Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-live-run-preflight-check.md`
-
-# Live Run Preflight Check Workflow
-
 ## Goal
 
 Validate live-run prerequisites before execution so evidence can be captured and

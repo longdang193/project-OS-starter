@@ -26,14 +26,6 @@ To update: edit canonical source, then run sync.
 
 # Live Run System Workflow
 
-## Runtime Role
-
-This skill is generated from a canonical workflow document and should be invoked as a workflow-skill runtime surface.
-
-Canonical source: `docs/operating_system/workflows/workflow-live-run-system.md`
-
-# Live Run System Workflow
-
 ## Goal
 
 Orchestrate the full live-run lifecycle by routing to the correct modular

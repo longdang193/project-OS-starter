@@ -270,7 +270,10 @@ def _rewrite_text_runtime_paths(
             prefix, raw = line.split("`", 1)
             candidate, _ = raw.rsplit("`", 1)
             if _looks_like_repo_relative_path(candidate):
-                line = f"{prefix}`{_repo_absolute_string(repo_root, candidate)}`"
+                line = (
+                    f"{prefix}`"
+                    f"{_absolute_text_path(candidate, repo_root=repo_root, target_root=target_root, current_runtime_dir=current_runtime_dir)}`"
+                )
         lines.append(line)
     return "\n".join(lines)
 
