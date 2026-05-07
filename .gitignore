@@ -11,3 +11,5 @@ Thumbs.db
 *.log
 .worktrees/
 .tmp-tests/
+
+.worktrees/
