@@ -56,7 +56,7 @@ def seed_template(root: Path) -> None:
         root / "docs" / "operating_system" / "templates" / "implementation-plan-template.md",
         """---
 template_id: implementation-plan
-document_type: implementation_plan
+document_type: plan
 target_globs:
   - docs/superpowers/plans/*.md
 required_sections:
@@ -177,7 +177,7 @@ def test_master_roadmap_requires_per_phase_goal_and_deliverables() -> None:
             root / "docs" / "operating_system" / "templates" / "master-workstream-roadmap-template.md",
             """---
 template_id: master-workstream-roadmap
-document_type: master_workstream_roadmap
+document_type: roadmap
 target_globs:
   - docs/intent/master-workstream-roadmap.md
 required_sections:
@@ -186,7 +186,8 @@ required_sections:
   - Phase Structure
   - Workstream Index
   - Completion Criteria
-required_frontmatter: {}
+required_frontmatter:
+  artifact_type: roadmap
 ---
 
 # Master Workstream Roadmap Template
@@ -196,6 +197,7 @@ required_frontmatter: {}
             root / "docs" / "intent" / "master-workstream-roadmap.md",
             """---
 template_id: master-workstream-roadmap
+artifact_type: roadmap
 ---
 
 # Master Workstream Roadmap

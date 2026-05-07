@@ -35,8 +35,9 @@ from typing import Any
 
 import yaml
 
+from planning_artifact_schema import get_allowed_values, get_required_values
+
 ACTIVE_STATUSES = {"active", "completed"}
-ALLOWED_MAP_TYPES = {"complete_spec_set", "spec_authoring", "implementation_execution"}
 TERMINAL_THREAD_STATUSES = {"completed", "dropped"}
 TERMINAL_WORKSTREAM_STATUSES = {"completed", "dropped"}
 
@@ -259,18 +260,25 @@ def validate_execution_map_integrity(
 ) -> list[Finding]:
     findings: list[Finding] = []
     spec_paths = {relative_path(spec.path, root): spec for spec in specs}
+    expected_artifact_type = get_required_values(root, "execution_map").get(
+        "artifact_type", "execution_map"
+    )
+    allowed_map_types = set(get_allowed_values(root, "map_type", "execution_map"))
     for record in maps:
         rel = relative_path(record.path, root)
-        if record.artifact_type != "execution_map":
+        if record.artifact_type != expected_artifact_type:
             findings.append(
                 Finding(
                     level="ERROR",
                     category="execution_map_format_error",
                     path=rel,
-                    message="execution map must use `artifact_type: execution_map`.",
+                    message=(
+                        "execution map must use "
+                        f"`artifact_type: {expected_artifact_type}`."
+                    ),
                 )
             )
-        if record.map_type not in ALLOWED_MAP_TYPES:
+        if record.map_type not in allowed_map_types:
             findings.append(
                 Finding(
                     level="ERROR",
@@ -278,7 +286,7 @@ def validate_execution_map_integrity(
                     path=rel,
                     message=(
                         "execution map must use `map_type` in "
-                        f"{sorted(ALLOWED_MAP_TYPES)}."
+                        f"{sorted(allowed_map_types)}."
                     ),
                 )
             )

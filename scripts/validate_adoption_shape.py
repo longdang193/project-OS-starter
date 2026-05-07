@@ -1,4 +1,4 @@
-"""
+﻿"""
 @meta
 name: validate_adoption_shape
 type: script
@@ -47,6 +47,12 @@ from planning_lineage_support import (
     discover_threads,
     discover_workstreams,
     render_planning_lineage_yaml,
+)
+
+from planning_artifact_schema import (
+    get_allowed_values,
+    get_required_fields,
+    get_required_values,
 )
 
 from validator_policy import (
@@ -2881,7 +2887,12 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
     spec_records = {
         record.path: record for record in discover_superpowers_artifacts(root, "specs")
     }
+    allowed_layers = set(get_allowed_values(root, "layer", "spec"))
     for folder_name in ("specs", "plans"):
+        artifact_type = folder_name.removesuffix("s")
+        required_fields = set(get_required_fields(root, artifact_type))
+        required_values = get_required_values(root, artifact_type)
+        expected_artifact_type = required_values.get("artifact_type", artifact_type)
         folder = root / "docs" / "superpowers" / folder_name
         if not folder.exists():
             continue
@@ -2894,7 +2905,7 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                 continue
             relative_path = relpath(path, root)
             payload, error, _ = extract_markdown_frontmatter(text)
-            artifact_label = f"Superpowers {folder_name.removesuffix('s')}"
+            artifact_label = f"Superpowers {artifact_type}"
             if error is not None:
                 add_error(
                     findings,
@@ -2912,13 +2923,22 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                 )
                 continue
 
-            artifact_type = payload.get("artifact_type")
-            if artifact_type != folder_name.removesuffix("s"):
+            for required_field in required_fields:
+                if required_field not in payload:
+                    add_error(
+                        findings,
+                        relative_path,
+                        f"{artifact_label} is missing required `{required_field}` frontmatter.",
+                        f"Add `{required_field}` using the canonical planning artifact schema.",
+                    )
+
+            actual_artifact_type = payload.get("artifact_type")
+            if actual_artifact_type != expected_artifact_type:
                 add_error(
                     findings,
                     relative_path,
                     f"{artifact_label} has the wrong artifact_type.",
-                    f"Set `artifact_type: {folder_name.removesuffix('s')}` so the metadata matches the folder.",
+                    f"Set `artifact_type: {expected_artifact_type}` so the metadata matches the canonical planning schema.",
                 )
 
             layer = payload.get("layer")
@@ -2931,6 +2951,13 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                     value=layer,
                     fix="Use a single-line canonical layer such as intent, operating_system, workstream, or change.",
                 )
+                if isinstance(layer, str) and allowed_layers and layer not in allowed_layers:
+                    add_error(
+                        findings,
+                        relative_path,
+                        f"{artifact_label} layer must be one of {sorted(allowed_layers)}.",
+                        "Use the canonical planning schema layer vocabulary.",
+                    )
 
             if layer in {"intent", "operating_system"}:
                 parent_workstream = payload.get("parent_workstream")
@@ -3023,7 +3050,6 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                     "Use related_features: [] unless product-feature impact is intentionally documented.",
                 )
 
-
 def run_validation(root: Path, adoption_mode_path: Path) -> list[Finding]:
     findings: list[Finding] = []
     config = parse_adoption_config(adoption_mode_path, findings, root)
@@ -3079,3 +3105,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

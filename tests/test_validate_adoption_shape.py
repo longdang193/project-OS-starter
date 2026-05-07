@@ -48,7 +48,18 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def seed_planning_schema(root: Path) -> None:
+    source_schema = REPO_ROOT / "repo_config" / "planning_artifact_schema.yaml"
+    write_text(
+        root / "repo_config" / "planning_artifact_schema.yaml",
+        source_schema.read_text(encoding="utf-8"),
+    )
+
+
 def run_validator(repo_root: Path) -> subprocess.CompletedProcess[str]:
+    schema_path = repo_root / "repo_config" / "planning_artifact_schema.yaml"
+    if not schema_path.exists():
+        seed_planning_schema(repo_root)
     return subprocess.run(
         [sys.executable, str(VALIDATOR), "--repo-root", str(repo_root)],
         cwd=REPO_ROOT,
@@ -967,6 +978,7 @@ def test_validator_rejects_intent_folder_without_markdown_files(tmp_path: Path) 
 
 
 def seed_required_folder_surface(root: Path) -> None:
+    seed_planning_schema(root)
     for relative_path in (
         "docs/intent/README.md",
         "docs/operating_system/governance/repo-governance.md",

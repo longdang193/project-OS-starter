@@ -29,6 +29,14 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def seed_planning_schema(root: Path) -> None:
+    source_schema = REPO_ROOT / "repo_config" / "planning_artifact_schema.yaml"
+    write_text(
+        root / "repo_config" / "planning_artifact_schema.yaml",
+        source_schema.read_text(encoding="utf-8"),
+    )
+
+
 def run_validator(repo_root: Path, *extra: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(VALIDATOR), "--repo-root", str(repo_root), *extra],
@@ -52,6 +60,7 @@ def seed_minimum_workstream(
     workstream_status: str,
     thread_status: str,
 ) -> None:
+    seed_planning_schema(root)
     if roadmap_status is None:
         write_text(root / "docs" / "intent" / "master-workstream-roadmap.md", "# Roadmap\n")
     else:

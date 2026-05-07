@@ -8,10 +8,13 @@ hooks:
   post: []
 required_reads:
 - docs/operating_system/governance/repo-governance.md
+- docs/operating_system/templates/implementation-plan-template.md
+- repo_config/planning_artifact_schema.yaml
 tags:
 - skill
 - skill-project-plan-generation
-required_outputs: []
+required_outputs:
+- docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md
 ---
 
 # Project Plan Generation Skill
@@ -27,6 +30,18 @@ This skill is a compatibility layer. Prefer `skill-writing-plans` when available
 Do not apply this rule to general documentation or other file generation tasks.
 
 ## Core Requirements
+
+### Pre-Write Contract Check
+
+Before writing any file, confirm all of the following:
+
+- the canonical main-plan output path required by `required_outputs`:
+  - `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`
+- the canonical repo plan file must be created first
+- supporting docs under `docs/superpowers/plans/audit/` are optional and secondary
+- if the requested file path conflicts with `required_outputs`, follow the skill
+  contract unless the user explicitly overrides it
+- do not satisfy this skill with an artifact-only plan
 
 ### File Locations
 
@@ -81,14 +96,18 @@ Do not write a plan that says only "update docs". Name exact doc targets.
 ### Compatibility Metadata Rule
 
 Even when this compatibility skill is used, new or touched plans should follow
-the current plan metadata contract:
+`repo_config/planning_artifact_schema.yaml` for `artifact_type: plan`.
 
 ```yaml
 ---
 layer: intent | operating_system | workstream | change
 artifact_type: plan
 status: proposed | active | completed | superseded
-parent_workstream: <id> | none
+template_id: implementation-plan            # optional but recommended when using the template
+name: <short-plan-name>                     # recommended canonical identity field
+parent_workstream: <workstream-name> | none # optional; do not restate once parent_thread is present
+parent_thread: <thread-id>                  # preferred for change-layer plans
+parent_spec: docs/superpowers/specs/<file>.md
 targets:
   - <path>
 related_features:
@@ -100,9 +119,14 @@ related_stages:
 
 Rules:
 
-- `layer`, `artifact_type`, and `status` are required
-- `targets` is required when the plan is cross-cutting or otherwise ambiguous in scope
-- `targets` may be omitted only when the plan is narrow and obviously local
+- `layer`, `artifact_type`, and `status` are required.
+- `artifact_type` must be `plan`.
+- Prefer `name` as the canonical identity field for new plans.
+- Use `template_id: implementation-plan` when the canonical implementation-plan template is the source shape.
+- For change-layer plans, prefer `parent_thread` plus `parent_spec`.
+- Do not restate `parent_workstream` when `parent_thread` is present; the validator derives workstream lineage from the thread.
+- Use `parent_workstream: none` only for intent or operating_system scoped artifacts that intentionally have no workstream lineage.
+- `targets`, `related_features`, and `related_stages` remain optional in the schema, but `targets` should be included whenever scope is cross-cutting or ambiguous.
 
 ### Markdown Standards
 
