@@ -8,7 +8,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/2026-04-27-workstream-coverage-and-bounded-change-governance-spec.md
 related_features: []
 related_stages: []
@@ -57,7 +57,7 @@ Dependencies:
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/intent/workstreams/`
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 Affected stages:
   - none
 Affected features:
@@ -76,7 +76,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/skill-planning-dispatch.md`
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
   readme: none
   generated:
     - none
@@ -102,7 +102,7 @@ docs/intent/master-workstream-roadmap.md
 docs/intent/workstreams/README.md
 docs/intent/workstreams/starter-adoption-experience.md
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/superpowers/specs/2026-04-27-workstream-coverage-and-bounded-change-governance-spec.md
 docs/superpowers/plans/2026-04-27-09-40-workstream-coverage-and-bounded-change-governance-plan.md
 ```
@@ -132,7 +132,7 @@ docs/superpowers/plans/2026-04-27-09-40-workstream-coverage-and-bounded-change-g
 
 **Files:**
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 
 - [x] Step 1: Update skill-planning-dispatch so bounded change threads are explicit beneath workstreams.
 - [x] Step 2: Update repo-governance so coverage/progress/divergence tracking and bounded-change parallelism are stated plainly.

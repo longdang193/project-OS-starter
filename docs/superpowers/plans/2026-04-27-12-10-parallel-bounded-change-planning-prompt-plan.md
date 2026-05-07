@@ -7,7 +7,7 @@ targets:
   - docs/operating_system/prompt_templates/
   - docs/intent/workstream-coverage-and-progress-guide.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/2026-04-27-parallel-bounded-change-planning-prompt-spec.md
 related_features: []
 related_stages: []
@@ -54,7 +54,7 @@ Dependencies:
   - `docs/operating_system/prompt_templates/`
   - `docs/intent/workstream-coverage-and-progress-guide.md`
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 Affected stages:
   - none
 Affected features:
@@ -74,7 +74,7 @@ Affected docs:
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
     - `docs/operating_system/skill-planning-dispatch.md`
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
   readme: none
   generated:
     - none
@@ -98,7 +98,7 @@ docs/operating_system/prompt_templates/parallel-bounded-change-planning-prompt.m
 docs/operating_system/prompt_templates/README.md
 docs/intent/workstream-coverage-and-progress-guide.md
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/superpowers/specs/2026-04-27-parallel-bounded-change-planning-prompt-spec.md
 docs/superpowers/plans/2026-04-27-12-10-parallel-bounded-change-planning-prompt-plan.md
 ```
@@ -118,7 +118,7 @@ docs/superpowers/plans/2026-04-27-12-10-parallel-bounded-change-planning-prompt-
 - Modify: `docs/operating_system/prompt_templates/README.md`
 - Modify: `docs/intent/workstream-coverage-and-progress-guide.md`
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 
 - [x] Step 1: Add the prompt to the README with a clear safe-parallelism use case.
 - [x] Step 2: Update the workstream coverage/progress guide so it points to the new prompt for the bounded-change parallelism rule.

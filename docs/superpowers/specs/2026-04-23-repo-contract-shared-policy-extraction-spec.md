@@ -9,7 +9,7 @@ targets:
   - scripts/validator_policy.py
   - tests/test_validate_repo_contracts.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
@@ -61,7 +61,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
 - readme: none
 - generated: none

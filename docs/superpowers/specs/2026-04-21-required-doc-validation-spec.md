@@ -11,7 +11,7 @@ targets:
   - docs/architecture.md
   - docs/adoption_guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
   - tests/test_validate_adoption_shape.py
@@ -40,7 +40,7 @@ Dependencies:
 - `docs/superpowers/specs/2026-04-21-project-doc-surface-spec.md`
 - `docs/superpowers/specs/2026-04-21-required-project-folder-surface-spec.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_adoption_shape.py`
 - `tools/docs/generate_architecture_metadata.py`
 
@@ -71,7 +71,7 @@ Affected docs:
   - `docs/architecture.md`
   - `docs/adoption_guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated: none
 
@@ -313,7 +313,7 @@ Clarify that required root docs are validated for:
 State explicitly that frontmatter is optional for required root docs unless the
 doc participates in architecture linkage.
 
-### `docs/operating_system/repo-governance.md`
+### `docs/operating_system/governance/repo-governance.md`
 
 Add the same rule summary to repo governance expectations so contributors know
 what the validator is checking.

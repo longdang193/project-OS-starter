@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - tools/docs/generate_architecture_metadata.py
   - scripts/validate_adoption_shape.py
   - tests/test_architecture_metadata_generation.py
@@ -53,7 +53,7 @@ related_stages: []
 
 **Files:**
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 - [x] Step 1: Describe `lineage.generated.yaml` as the canonical generated feature-local lineage evidence artifact.
 - [x] Step 2: Clarify that older summary-style lineage shapes are invalid in managed mode.

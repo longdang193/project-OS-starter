@@ -96,8 +96,8 @@ When bootstrapping a new project, review these first:
 - `docs/pipeline.md`
 - `docs/architecture.md`
 - `docs/intent/README.md`
-- `docs/operating_system/repo-governance.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/governance/repo-governance.md`
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
 - `docs/operating_system/templates/agents/*.template.md`
 - `repo_config/agent-adapter-mappings.json`
 - `repo_config/publication-config.json`

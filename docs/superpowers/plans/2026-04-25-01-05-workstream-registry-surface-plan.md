@@ -8,7 +8,7 @@ targets:
   - docs/intent/workstreams/
   - scripts/validate_adoption_shape.py
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - tests/test_validate_adoption_shape.py
   - docs/superpowers/specs/2026-04-25-workstream-registry-surface-spec.md
@@ -75,7 +75,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/skill-planning-dispatch.md`
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
     - `docs/operating_system/prompt_templates/`
   readme: none
   generated:
@@ -100,7 +100,7 @@ docs/intent/workstreams/<workstream-id>.md
 ```text
 docs/intent/master-workstream-roadmap.md
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/operating_system/prompt_templates/README.md
 docs/operating_system/prompt_templates/spec-prompt.md
 docs/operating_system/prompt_templates/plan-prompt.md
@@ -136,7 +136,7 @@ docs/superpowers/specs/2026-04-25-workstream-registry-surface-spec.md
 **Files:**
 - Modify: `scripts/validate_adoption_shape.py`
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/prompt_templates/README.md`
 - Modify: `docs/operating_system/prompt_templates/spec-prompt.md`
 - Modify: `docs/operating_system/prompt_templates/plan-prompt.md`

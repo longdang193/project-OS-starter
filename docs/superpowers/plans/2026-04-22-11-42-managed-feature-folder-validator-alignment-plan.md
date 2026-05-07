@@ -4,7 +4,7 @@ artifact_type: plan
 status: active
 parent_workstream: none
 targets:
-  - docs/operating_system/feature-lifecycle.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -34,7 +34,7 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/feature-lifecycle.md`
+  - `docs/operating_system/lifecycle/feature-lifecycle.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
 - README: none
 - Generated discovery: none
@@ -43,7 +43,7 @@ related_stages: []
 
 **Files:**
 - Modify: `scripts/validate_adoption_shape.py`
-- Docs: `docs/operating_system/feature-lifecycle.md`, `docs/operating_system/skill-doc-system-lifecycle.md`
+- Docs: `docs/operating_system/lifecycle/feature-lifecycle.md`, `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [ ] Step 1: Require `<feature_id>.yaml`, `lineage.generated.yaml`, and `history.md` in managed mode.
 - [ ] Step 2: Keep validator messages explicit about whether the fix is create vs regenerate.

@@ -9,7 +9,7 @@ targets:
   - .agents/skills/skill-writing-plans/SKILL.md
   - .agents/skills/skill-doc-system-lifecycle/SKILL.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/intent/workstream-coverage-and-progress-guide.md
   - docs/generated/planning_lineage.yaml
 related_features: []
@@ -39,7 +39,7 @@ Dependencies:
 - `.agents/skills/skill-writing-plans/SKILL.md`
 - `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/intent/workstream-coverage-and-progress-guide.md`
 - `docs/generated/planning_lineage.yaml`
 
@@ -64,7 +64,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/intent/workstream-coverage-and-progress-guide.md`
 - readme: none
 - generated:

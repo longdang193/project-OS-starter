@@ -5,9 +5,9 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/feature-lifecycle.md
-  - docs/operating_system/stage-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
+  - docs/operating_system/lifecycle/stage-lifecycle.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - scripts/validate_adoption_shape.py
   - tools/docs/generate_architecture_metadata.py
   - tests/test_validate_adoption_shape.py
@@ -38,9 +38,9 @@ Dependencies:
 - `scripts/validate_adoption_shape.py`
 - `tools/docs/generate_architecture_metadata.py`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/feature-lifecycle.md`
-- `docs/operating_system/stage-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/stage-lifecycle.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `tests/test_validate_adoption_shape.py`
 - `tests/test_architecture_metadata_generation.py`
 
@@ -63,9 +63,9 @@ Affected docs:
 - feature_history: all managed feature `history.md`
 - cross_cutting_docs:
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/feature-lifecycle.md`
-  - `docs/operating_system/stage-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/lifecycle/feature-lifecycle.md`
+  - `docs/operating_system/lifecycle/stage-lifecycle.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - generated:
   - `docs/stages/*.yaml`
   - `docs/generated/capability_lineage.yaml`
@@ -309,9 +309,9 @@ just "some generated files" but specific validator-enforced contracts.
 The most important docs to align are:
 
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/feature-lifecycle.md`
-- `docs/operating_system/stage-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/stage-lifecycle.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 The docs should explicitly distinguish:
 

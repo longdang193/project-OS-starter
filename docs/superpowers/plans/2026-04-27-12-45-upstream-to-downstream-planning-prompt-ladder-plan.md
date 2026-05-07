@@ -9,7 +9,7 @@ targets:
   - docs/intent/workstreams/
   - docs/intent/workstream-coverage-and-progress-guide.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/2026-04-27-upstream-to-downstream-planning-prompt-ladder-spec.md
 related_features: []
 related_stages: []

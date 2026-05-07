@@ -12,7 +12,7 @@ targets:
   - docs/architecture.md
   - docs/adoption_guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
   - scripts/setup_hooks.ps1
@@ -68,10 +68,10 @@ related_stages: []
   - `docs/architecture.md`
   - `docs/adoption_guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - Operating-system docs:
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - README: `README.md`
 - Generated discovery: none
 
@@ -96,7 +96,7 @@ related_stages: []
 **Files:**
 - Modify: `docs/adoption_guide.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Docs: exact entries above
 
 - [x] Step 1: Update the adoption guide to name the required and optional root doc set.

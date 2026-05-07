@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/README.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/prompt_templates/
 related_features: []
@@ -30,7 +30,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/prompt_templates/README.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 - required root-doc contract wording in current repo governance
 
@@ -55,7 +55,7 @@ Affected docs:
     - none
   cross_cutting_docs:
     - `docs/operating_system/prompt_templates/README.md`
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
     - `docs/operating_system/skill-doc-system-lifecycle.md`
     - `docs/operating_system/prompt_templates/required-root-doc-update-prompt.md`
   readme: none
@@ -186,7 +186,7 @@ At minimum, the supporting docs should mention that:
 Likely touchpoints:
 
 - `docs/operating_system/prompt_templates/README.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 ## Acceptance Criteria

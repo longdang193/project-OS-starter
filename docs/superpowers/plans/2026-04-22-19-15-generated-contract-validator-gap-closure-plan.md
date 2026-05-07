@@ -7,9 +7,9 @@ targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/feature-lifecycle.md
-  - docs/operating_system/stage-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
+  - docs/operating_system/lifecycle/stage-lifecycle.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
 related_features: []
 related_stages: []
 ---
@@ -46,15 +46,15 @@ related_stages: []
 - Feature contract: none
 - Feature lineage: none
 - Stage source: none
-- Stage contracts: `docs/stages/*.yaml` contract shape documented in `docs/operating_system/stage-lifecycle.md`
-- Feature history: `docs/features/<feature_id>/history.md` contract shape documented in `docs/operating_system/feature-lifecycle.md`
+- Stage contracts: `docs/stages/*.yaml` contract shape documented in `docs/operating_system/lifecycle/stage-lifecycle.md`
+- Feature history: `docs/features/<feature_id>/history.md` contract shape documented in `docs/operating_system/lifecycle/feature-lifecycle.md`
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/feature-lifecycle.md`
-  - `docs/operating_system/stage-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/lifecycle/feature-lifecycle.md`
+  - `docs/operating_system/lifecycle/stage-lifecycle.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - README: none
 - Generated discovery: `docs/generated/capability_lineage.yaml`, `docs/generated/architecture_dag.yaml`
 
@@ -65,9 +65,9 @@ related_stages: []
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/feature-lifecycle.md`
-- `docs/operating_system/stage-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/stage-lifecycle.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 ## Tests To Add Or Update
 
@@ -132,10 +132,10 @@ related_stages: []
 ### Task 4: Update operating-system docs to say these surfaces are validator-enforced
 
 1. Update:
-   - `docs/operating_system/stage-lifecycle.md`
-   - `docs/operating_system/feature-lifecycle.md`
+   - `docs/operating_system/lifecycle/stage-lifecycle.md`
+   - `docs/operating_system/lifecycle/feature-lifecycle.md`
    - `docs/operating_system/skill-doc-system-lifecycle.md`
-   - `docs/operating_system/project-adoption-migration-guide.md`
+   - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 2. Clarify which generated artifact schemas are now adoption-validator enforced.
 3. Keep wording consistent with the canonical source-of-truth model and migration-target language.
 

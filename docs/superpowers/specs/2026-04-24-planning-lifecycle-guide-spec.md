@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - .agents/skills/skill-brainstorming/SKILL.md
   - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
@@ -32,7 +32,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `.agents/skills/skill-brainstorming/SKILL.md`
 - `.agents/skills/skill-planning-dispatch/SKILL.md`
 - `.agents/skills/skill-writing-plans/SKILL.md`
@@ -59,7 +59,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated: none
 
@@ -82,7 +82,7 @@ That is good structure, but the guidance is still spread across several files:
 
 - the skills contain the clearest end-to-end flow
 - `docs/operating_system/skill-planning-dispatch.md` focuses on the triage gate
-- `docs/operating_system/repo-governance.md` names the folders but does not
+- `docs/operating_system/governance/repo-governance.md` names the folders but does not
   act as the single lifecycle explainer
 
 This means a human reader can still miss the intended sequence:
@@ -217,7 +217,7 @@ At minimum:
 
 - update `docs/operating_system/skill-planning-dispatch.md` or add a new lifecycle
   guide there
-- lightly cross-link from `docs/operating_system/repo-governance.md`
+- lightly cross-link from `docs/operating_system/governance/repo-governance.md`
 
 Optional light updates:
 

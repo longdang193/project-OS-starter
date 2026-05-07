@@ -4,7 +4,7 @@ description: Enforce AGENTS.md as the shared cross-tool baseline contract.
 alwaysApply: true
 required_reads:
 - AGENTS.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - baseline
 - cross-tool

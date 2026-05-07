@@ -25,7 +25,7 @@ free-form docs.
 
 - `docs/operating_system/prompt_templates/`
 - `docs/operating_system/prompt_templates/README.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_adoption_shape.py` if validation is added later
 
 ## Linked Spec

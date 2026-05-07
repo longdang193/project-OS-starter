@@ -2,7 +2,7 @@
 name: workflow-live-run-preflight-check
 description: Run the live run preflight check workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-planning-dispatch
 - skill-executing-plans

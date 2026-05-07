@@ -8,7 +8,7 @@ targets:
   - scripts/validate_repo_config.py
   - tests/test_validate_repo_contracts.py
   - tests/test_validate_repo_config.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md
 related_features: []
@@ -53,7 +53,7 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md`
 - README: none
@@ -66,7 +66,7 @@ scripts/validate_repo_contracts.py
 scripts/validate_repo_config.py
 tests/test_validate_repo_contracts.py
 tests/test_validate_repo_config.py
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md
 ```
@@ -110,7 +110,7 @@ Do not:
 ## Task 3: Align Operating-System Guidance
 
 **Files:**
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [x] Step 1: State that required root-doc validation is adoption-shape policy.

@@ -11,9 +11,9 @@ targets:
   - tests/test_setup_hooks.py
   - tests/test_validate_repo_contracts.py
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
-  - docs/operating_system/feature-lifecycle.md
-  - docs/operating_system/stage-lifecycle.md
+  - docs/operating_system/governance/repo-governance.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
+  - docs/operating_system/lifecycle/stage-lifecycle.md
 related_features: []
 related_stages: []
 created_at: 2026-04-22T18:30:00+02:00

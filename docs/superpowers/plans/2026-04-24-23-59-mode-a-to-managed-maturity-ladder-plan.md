@@ -5,9 +5,9 @@ status: completed
 parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/README.md
   - tests/test_validate_adoption_shape.py
   - docs/superpowers/specs/2026-04-24-mode-a-to-managed-maturity-ladder-spec.md
@@ -73,9 +73,9 @@ Affected docs:
   cross_cutting_docs:
     - none
   operating_system_docs:
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
     - `docs/operating_system/skill-doc-system-lifecycle.md`
-    - `docs/operating_system/project-adoption-migration-guide.md`
+    - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   readme: none
   generated:
     - none
@@ -92,9 +92,9 @@ Plan needed: yes
 ```text
 scripts/validate_adoption_shape.py
 tests/test_validate_adoption_shape.py
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/operating_system/skill-doc-system-lifecycle.md
-docs/operating_system/project-adoption-migration-guide.md
+docs/operating_system/adoption/project-adoption-migration-guide.md
 docs/project_templates/mode-a/README.md
 docs/superpowers/specs/2026-04-24-mode-a-to-managed-maturity-ladder-spec.md
 ```
@@ -125,9 +125,9 @@ Suggested verification command:
 ## Task 3: Align Mode A Docs
 
 **Files:**
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/project_templates/mode-a/README.md`
 - Modify: `docs/superpowers/specs/2026-04-24-mode-a-to-managed-maturity-ladder-spec.md`
 

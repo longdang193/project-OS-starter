@@ -9,7 +9,7 @@ targets:
   - docs/superpowers/plans/
   - docs/generated/planning_lineage.yaml
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
 related_features: []
 related_stages: []
@@ -38,7 +38,7 @@ Dependencies:
 - `docs/superpowers/plans/`
 - `docs/generated/planning_lineage.yaml`
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 
 Affected stages:
@@ -62,7 +62,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated:
   - `docs/generated/planning_lineage.yaml`
@@ -236,7 +236,7 @@ Example shape:
 - spec-c
 
 ## Shared-Surface Risks
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 
 ## Recommended Plan Breakdown
 - one plan for spec-a

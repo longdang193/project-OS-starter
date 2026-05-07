@@ -4,9 +4,9 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - docs/operating_system/feature-lifecycle.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - tools/docs/generate_architecture_metadata.py
   - scripts/validate_adoption_shape.py
   - tests/test_architecture_metadata_generation.py
@@ -35,9 +35,9 @@ Dependencies:
 
 - `tools/docs/generate_architecture_metadata.py`
 - `scripts/validate_adoption_shape.py`
-- `docs/operating_system/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 Affected stages:
 
@@ -56,9 +56,9 @@ Affected docs:
 - feature_lineage: all managed `docs/features/*/lineage.generated.yaml`
 - feature_history: none
 - cross_cutting_docs:
-  - `docs/operating_system/feature-lifecycle.md`
+  - `docs/operating_system/lifecycle/feature-lifecycle.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - generated:
   - feature-local `lineage.generated.yaml` files
 
@@ -198,9 +198,9 @@ Update starter guidance so it says plainly:
 
 The key docs to align are:
 
-- `docs/operating_system/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 ## Validator Direction
 

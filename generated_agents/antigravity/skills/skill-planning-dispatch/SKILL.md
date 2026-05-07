@@ -11,7 +11,7 @@ hooks:
 required_reads:
 - docs/operating_system/templates/task-start-routing-guide.md
 - docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - planning
@@ -44,7 +44,7 @@ This skill routes and triages only. It does not author specs or plans.
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-live-run-system.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_planning_lifecycle.py`
 
 If this skill text conflicts with the references above, follow the references.

@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
-  - docs/operating_system/publication-workflow.md
+  - docs/operating_system/procedures/publication-workflow.md
   - repo_config/publication-config.json
 related_features: []
 related_stages: []
@@ -50,7 +50,7 @@ related_stages: []
 
 **Files:**
 - Modify: `.agents/skills/skill-private-public-repo-governance/SKILL.md`
-- Modify: `docs/operating_system/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-workflow.md`
 
 - [x] Step 1: Add starter adoption/bootstrap docs to the private-only examples in the skill.
 - [x] Step 2: Clarify that product-facing setup/usage docs may still be public when rewritten for the public mirror.

@@ -7,7 +7,7 @@ targets:
   - docs/intent/README.md
   - docs/intent/master-workstream-roadmap.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - .agents/skills/skill-brainstorming/SKILL.md
   - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
@@ -35,7 +35,7 @@ Dependencies:
 
 - `docs/intent/README.md`
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `.agents/skills/skill-brainstorming/SKILL.md`
 - `.agents/skills/skill-planning-dispatch/SKILL.md`
 - `.agents/skills/skill-writing-plans/SKILL.md`
@@ -62,7 +62,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated: none
 
@@ -269,7 +269,7 @@ Should be updated so its routing story becomes:
 4. then produce triage
 5. then route to spec/plan
 
-### `docs/operating_system/repo-governance.md`
+### `docs/operating_system/governance/repo-governance.md`
 
 Should point readers to the intent-owned roadmap and explain that
 `operating_system` remains the repo-method branch rather than a product

@@ -53,5 +53,5 @@ If ambiguous:
 
 Canonical lifecycle enforcement remains in:
 
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_planning_lifecycle.py`

@@ -7,7 +7,7 @@ hooks:
   pre: []
   post: []
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - skill-python-refactoring-expert

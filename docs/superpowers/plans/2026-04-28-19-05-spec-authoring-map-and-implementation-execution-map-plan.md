@@ -10,7 +10,7 @@ targets:
   - docs/operating_system/prompt_templates/spec-prompt.md
   - docs/operating_system/prompt_templates/plan-prompt.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/execution_maps/README.md
   - .agents/skills/skill-brainstorming/SKILL.md
   - .agents/skills/skill-planning-dispatch/SKILL.md

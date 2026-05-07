@@ -10,7 +10,7 @@ hooks:
   post:
   - python scripts/hooks/run_validator.py --fast
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - skill-verification-before-completion
@@ -39,7 +39,7 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 
 Before final completion claims, read:
 
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/agent_memory/failure-ledger.md` when the task involved meaningful retries/debugging
 - `docs/operating_system/workflows/workflow-roadmap-to-closeout.md`
 - `docs/operating_system/workflows/workflow-live-run-closeout.md` when the lane includes live-run execution

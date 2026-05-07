@@ -118,7 +118,7 @@ The README should summarize this layer. It should not become the deepest source 
 If the project needs a curated public mirror:
 
 - update `repo_config/publication-config.json`
-- review `docs/operating_system/publication-workflow.md`
+- review `docs/operating_system/procedures/publication-workflow.md`
 - keep private-only materials out of the public allowlist
 - run the dry-run publish workflow before pushing public changes
 
@@ -130,7 +130,7 @@ If the project does not need a public mirror yet:
 
 ## 4. Choose Adoption Mode
 
-Before changing feature, stage, generated discovery, or code/config/test metadata surfaces, read [docs/operating_system/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md), record the chosen mode in `repo_config/adoption-mode.yaml`, and choose one adoption mode:
+Before changing feature, stage, generated discovery, or code/config/test metadata surfaces, read [docs/operating_system/adoption/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md), record the chosen mode in `repo_config/adoption-mode.yaml`, and choose one adoption mode:
 
 - starter method only: adopt intent docs, operating-system docs, agent instructions, publication workflow, and repo governance without feature/stage metadata
 - managed architecture metadata: migrate feature folders, source contracts, generated outputs, and source metadata together
@@ -179,7 +179,7 @@ than placeholder-only text.
 
 ## 5. Define First Features And Stages
 
-Before creating feature or stage metadata, read [docs/operating_system/feature-routing-guide.md](operating_system/feature-routing-guide.md). If this is an existing project migration, also follow [docs/operating_system/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md).
+Before creating feature or stage metadata, read [docs/operating_system/governance/feature-routing-guide.md](operating_system/feature-routing-guide.md). If this is an existing project migration, also follow [docs/operating_system/adoption/project-adoption-migration-guide.md](operating_system/project-adoption-migration-guide.md).
 
 Create feature and stage source files only when they describe real product/domain structure.
 

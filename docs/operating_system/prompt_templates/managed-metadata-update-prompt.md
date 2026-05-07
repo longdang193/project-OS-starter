@@ -19,8 +19,8 @@ related_skills:
 - skill-planning-dispatch
 - skill-verification-before-completion
 required_reads:
-- docs/operating_system/repo-governance.md
-- docs/operating_system/project-adoption-migration-guide.md
+- docs/operating_system/governance/repo-governance.md
+- docs/operating_system/adoption/project-adoption-migration-guide.md
 - AGENTS.md
 tags:
 - prompt

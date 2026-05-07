@@ -8,7 +8,7 @@ targets:
   - tools/docs/generate_architecture_metadata.py
   - scripts/validator_policy.py
   - tests/test_architecture_linkage_audit.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
@@ -36,7 +36,7 @@ Dependencies:
 - `tools/docs/generate_architecture_metadata.py`
 - `scripts/validator_policy.py`
 - `tests/test_architecture_linkage_audit.py`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Affected stages:
@@ -60,7 +60,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
 - readme: none
 - generated: none

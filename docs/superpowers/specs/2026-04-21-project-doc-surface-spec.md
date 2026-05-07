@@ -8,7 +8,7 @@ targets:
   - docs/
   - docs/adoption_guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
   - scripts/setup_hooks.ps1
@@ -40,7 +40,7 @@ Dependencies:
 
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 - `docs/adoption_guide.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_adoption_shape.py`
 - `scripts/sync_architecture_docs.py`
 - `.github/workflows/repo-hooks.yml`
@@ -76,7 +76,7 @@ Affected docs:
   - `docs/testing.md`
   - `docs/adoption_guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: `README.md`
 - generated: none
 
@@ -354,7 +354,7 @@ placement guidance for cross-cutting docs under `docs/*.md`.
 Clarify that these files are the default human-authored cross-cutting project
 docs beneath the top-level `README.md`.
 
-### `docs/operating_system/repo-governance.md`
+### `docs/operating_system/governance/repo-governance.md`
 
 Add the root project documentation surface to the repo governance expectations
 and note that the validation/hook path checks the required set.
@@ -377,7 +377,7 @@ The implementation is complete when:
   - `docs/testing.md`
 - `README.md`, `docs/adoption_guide.md`,
   `docs/operating_system/skill-doc-system-lifecycle.md`, and
-  `docs/operating_system/repo-governance.md` all describe the new contract
+  `docs/operating_system/governance/repo-governance.md` all describe the new contract
 - the validator fails when a required root doc is missing
 - local hook setup and CI run the required-doc check through the normal
   validation path

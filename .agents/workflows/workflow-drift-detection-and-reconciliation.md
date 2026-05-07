@@ -2,7 +2,7 @@
 name: workflow-drift-detection-and-reconciliation
 description: Run the drift detection and reconciliation workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-planning-dispatch
 tags:

@@ -5,7 +5,7 @@ description: Enforce Python contract/style/type expectations for generated and e
 alwaysApply: false
 required_reads:
 - .agents/skills/skill-python-code-standards/SKILL.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - rule
 - python

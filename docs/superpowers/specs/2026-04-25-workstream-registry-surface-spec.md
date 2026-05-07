@@ -8,7 +8,7 @@ targets:
   - docs/intent/workstreams/
   - scripts/validate_adoption_shape.py
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - tests/test_validate_adoption_shape.py
 related_features: []
@@ -36,7 +36,7 @@ Dependencies:
 - `docs/intent/master-workstream-roadmap.md`
 - `scripts/validate_adoption_shape.py`
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 - `tests/test_validate_adoption_shape.py`
 
@@ -62,7 +62,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/prompt_templates/`
 - readme: none
 - generated: none

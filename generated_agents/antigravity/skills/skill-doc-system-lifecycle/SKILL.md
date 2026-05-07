@@ -7,7 +7,7 @@ hooks:
   pre: []
   post: []
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - skill-doc-system-lifecycle
@@ -38,7 +38,7 @@ Apply when:
 
 Before doc-system decisions, read:
 
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/templates/task-start-routing-guide.md` when routing/planning artifacts are in scope
 
 ## Core Principle

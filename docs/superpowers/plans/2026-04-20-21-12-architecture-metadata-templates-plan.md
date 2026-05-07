@@ -5,7 +5,7 @@ status: active
 parent_workstream: none
 targets:
   - docs/architecture_templates/
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/features/README.md
   - docs/stages/README.md
@@ -58,8 +58,8 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/feature-routing-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
+- `docs/operating_system/governance/feature-routing-guide.md`
 - `tools/docs/generate_architecture_metadata.py`
 - `scripts/validate_adoption_shape.py`
 - `scripts/sync_architecture_docs.py`
@@ -94,7 +94,7 @@ Affected docs:
   - `docs/architecture_templates/yaml-architecture.yaml`
   - `docs/architecture_templates/markdown-frontmatter.md`
   - `docs/architecture_templates/mode-b-feature-migration-checklist.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/features/README.md`
   - `docs/stages/README.md`
@@ -119,7 +119,7 @@ Risk level: low
 - Feature history: none
 - Feature-specific docs: none
 - Cross-cutting docs: `docs/architecture_templates/*`
-- Operating-system docs: `docs/operating_system/project-adoption-migration-guide.md`, `docs/operating_system/skill-doc-system-lifecycle.md`
+- Operating-system docs: `docs/operating_system/adoption/project-adoption-migration-guide.md`, `docs/operating_system/skill-doc-system-lifecycle.md`
 - README: none
 - Generated discovery: none
 
@@ -135,7 +135,7 @@ Risk level: low
 - Create: `docs/architecture_templates/yaml-architecture.yaml`
 - Create: `docs/architecture_templates/markdown-frontmatter.md`
 - Create: `docs/architecture_templates/mode-b-feature-migration-checklist.md`
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/features/README.md`
 - Modify: `docs/stages/README.md`
@@ -214,7 +214,7 @@ This plan implements:
 
 **Files:**
 
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/features/README.md`
 - Modify: `docs/stages/README.md`
@@ -261,7 +261,7 @@ git diff --check
 
 ```powershell
 git status --short --branch
-git diff -- docs/architecture_templates docs/operating_system/project-adoption-migration-guide.md docs/operating_system/skill-doc-system-lifecycle.md docs/features/README.md docs/stages/README.md
+git diff -- docs/architecture_templates docs/operating_system/adoption/project-adoption-migration-guide.md docs/operating_system/skill-doc-system-lifecycle.md docs/features/README.md docs/stages/README.md
 ```
 
 ## Acceptance Criteria

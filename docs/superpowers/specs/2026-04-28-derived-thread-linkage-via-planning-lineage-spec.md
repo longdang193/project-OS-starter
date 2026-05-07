@@ -8,7 +8,7 @@ targets:
   - docs/intent/workstreams/threads/
   - docs/generated/planning_lineage.yaml
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - scripts/planning_lineage_support.py
   - scripts/generate_planning_lineage.py
@@ -40,7 +40,7 @@ Dependencies:
 - `docs/intent/workstreams/threads/`
 - `docs/generated/planning_lineage.yaml`
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 - `scripts/planning_lineage_support.py`
 - `scripts/generate_planning_lineage.py`
@@ -68,7 +68,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated:
   - `docs/generated/planning_lineage.yaml`

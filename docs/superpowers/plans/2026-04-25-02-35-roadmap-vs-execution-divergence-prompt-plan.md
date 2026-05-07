@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - docs/superpowers/specs/2026-04-25-roadmap-vs-execution-divergence-prompt-spec.md
@@ -54,7 +54,7 @@ Invariants:
 Dependencies:
   - `docs/operating_system/prompt_templates/`
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/intent/workstreams/`
 Affected stages:
@@ -76,7 +76,7 @@ Affected docs:
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
     - `docs/operating_system/skill-planning-dispatch.md`
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
   readme: none
   generated:
     - none
@@ -102,7 +102,7 @@ docs/operating_system/prompt_templates/validate-or-drift-prompt.md
 docs/operating_system/prompt_templates/roadmap-gap-prompt.md
 docs/operating_system/prompt_templates/workstream-alignment-review-prompt.md
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/intent/master-workstream-roadmap.md
 docs/intent/workstreams/README.md
 docs/superpowers/specs/2026-04-25-roadmap-vs-execution-divergence-prompt-spec.md
@@ -134,7 +134,7 @@ docs/superpowers/plans/2026-04-25-02-35-roadmap-vs-execution-divergence-prompt-p
 
 **Files:**
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/intent/master-workstream-roadmap.md`
 - Modify: `docs/intent/workstreams/README.md`
 

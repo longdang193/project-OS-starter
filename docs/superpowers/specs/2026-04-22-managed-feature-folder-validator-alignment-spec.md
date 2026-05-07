@@ -4,7 +4,7 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - docs/operating_system/feature-lifecycle.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -31,7 +31,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
@@ -53,7 +53,7 @@ Affected docs:
 - feature_lineage: managed `docs/features/*/lineage.generated.yaml`
 - feature_history: managed `docs/features/*/history.md`
 - cross_cutting_docs:
-  - `docs/operating_system/feature-lifecycle.md`
+  - `docs/operating_system/lifecycle/feature-lifecycle.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Generated refresh required: no
@@ -148,7 +148,7 @@ Validator messages should be explicit about the missing artifact and should tell
 
 Update the operating-system docs so they stop sounding softer than the intended contract:
 
-- `docs/operating_system/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 The docs should describe the same required-vs-optional split the validator enforces:

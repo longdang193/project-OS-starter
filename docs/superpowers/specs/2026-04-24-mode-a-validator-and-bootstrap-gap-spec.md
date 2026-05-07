@@ -9,9 +9,9 @@ targets:
   - scripts/sync_architecture_docs.py
   - scripts/validator_policy.py
   - tools/docs/generate_architecture_metadata.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/
   - tests/test_validate_adoption_shape.py
   - tests/test_validate_repo_contracts.py
@@ -42,8 +42,8 @@ Dependencies:
 - `scripts/sync_architecture_docs.py`
 - `tools/docs/generate_architecture_metadata.py`
 - `docs/project_templates/mode-a/`
-- `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Affected stages:
@@ -67,9 +67,9 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - readme: none
 - generated: none
 

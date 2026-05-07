@@ -10,7 +10,7 @@ targets:
   - docs/intent/README.md
   - docs/operating_system/prompt_templates/
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/2026-04-28-bounded-change-thread-file-structure-spec.md
 related_features: []
 related_stages: []

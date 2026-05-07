@@ -7,8 +7,8 @@ targets:
   - repo_config/adoption-mode.yaml
   - scripts/validate_adoption_shape.py
   - docs/adoption_guide.md
-  - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/feature-routing-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
+  - docs/operating_system/governance/feature-routing-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/features/README.md
 related_features: []
@@ -36,8 +36,8 @@ Primary lens: cross-cutting
 Affected docs:
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/feature-routing-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
+  - `docs/operating_system/governance/feature-routing-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/features/README.md`
 - readme: none
@@ -123,7 +123,7 @@ Patch `docs/adoption_guide.md` to say:
 
 ### 5. Update migration guide
 
-Patch `docs/operating_system/project-adoption-migration-guide.md` to say:
+Patch `docs/operating_system/adoption/project-adoption-migration-guide.md` to say:
 
 - adoption mode is recorded in `repo_config/adoption-mode.yaml`
 - managed, legacy, and starter-only mode rules are mechanically checked by the validator
@@ -131,7 +131,7 @@ Patch `docs/operating_system/project-adoption-migration-guide.md` to say:
 
 ### 6. Update routing guide
 
-Patch `docs/operating_system/feature-routing-guide.md` with candidate classification metadata:
+Patch `docs/operating_system/governance/feature-routing-guide.md` with candidate classification metadata:
 
 ```yaml
 candidate_type: product_feature | product_stage | operating_system | spec_only | plan_only | generated | obsolete

@@ -6,9 +6,9 @@ parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/feature-lifecycle.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
   - docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md
   - docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md
 related_features: []
@@ -35,9 +35,9 @@ Dependencies:
 
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 
 Affected stages:
 
@@ -56,9 +56,9 @@ Affected docs:
 - feature_lineage: none
 - feature_history: none
 - cross_cutting_docs:
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/feature-lifecycle.md`
+  - `docs/operating_system/lifecycle/feature-lifecycle.md`
   - `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
   - `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
 - generated: none in the starter repo
@@ -226,9 +226,9 @@ Docs should say:
 
 Docs to align:
 
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/feature-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
 - `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
 

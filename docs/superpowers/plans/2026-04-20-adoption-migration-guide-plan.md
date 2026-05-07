@@ -5,9 +5,9 @@ status: active
 parent_workstream: none
 targets:
   - docs/adoption_guide.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/feature-routing-guide.md
+  - docs/operating_system/governance/feature-routing-guide.md
   - docs/features/README.md
 related_features: []
 related_stages: []
@@ -33,9 +33,9 @@ Primary lens: cross-cutting
 Affected docs:
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/feature-routing-guide.md`
+  - `docs/operating_system/governance/feature-routing-guide.md`
   - `docs/features/README.md`
 - readme: none
 - generated: none
@@ -55,7 +55,7 @@ This plan implements:
 
 ### 1. Add project adoption migration guide
 
-Create `docs/operating_system/project-adoption-migration-guide.md` with:
+Create `docs/operating_system/adoption/project-adoption-migration-guide.md` with:
 
 - adoption mode decision
 - starter method only mode
@@ -75,8 +75,8 @@ Patch `docs/adoption_guide.md` to require choosing an adoption mode before featu
 
 Add cross-links to:
 
-- `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/feature-routing-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
+- `docs/operating_system/governance/feature-routing-guide.md`
 
 ### 3. Update feature README
 
@@ -94,7 +94,7 @@ Add a reference to the migration guide near feature placement rules.
 
 ### 5. Update feature routing guide
 
-Patch `docs/operating_system/feature-routing-guide.md` to explain that it classifies candidates, while `project-adoption-migration-guide.md` governs migrating existing project surfaces.
+Patch `docs/operating_system/governance/feature-routing-guide.md` to explain that it classifies candidates, while `project-adoption-migration-guide.md` governs migrating existing project surfaces.
 
 ### 6. Verify
 
@@ -109,10 +109,10 @@ Search touched docs for accidental literal newline escapes.
 
 ## Acceptance Criteria
 
-- `docs/operating_system/project-adoption-migration-guide.md` exists.
+- `docs/operating_system/adoption/project-adoption-migration-guide.md` exists.
 - `docs/adoption_guide.md` requires adoption-mode selection before feature/stage metadata work.
 - `docs/features/README.md` warns against mixed legacy/managed feature shapes.
 - `docs/operating_system/skill-doc-system-lifecycle.md` names flat feature YAML as legacy-only in managed architecture contexts.
-- `docs/operating_system/feature-routing-guide.md` links classification to migration guidance.
+- `docs/operating_system/governance/feature-routing-guide.md` links classification to migration guidance.
 - No generated files are edited.
 - `git diff --check` passes.

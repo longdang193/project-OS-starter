@@ -8,7 +8,7 @@ hooks:
   post: []
 required_reads:
 - docs/operating_system/templates/task-start-routing-guide.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - planning
@@ -36,7 +36,7 @@ This skill produces design artifacts only.
 - `docs/operating_system/templates/complete-specification-set-template.md`
 - `docs/operating_system/templates/spec-authoring-map-template.md`
 - `docs/operating_system/templates/detailed-specification-template.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 
 If this file conflicts with canonical templates/governance, follow canonical docs.
 

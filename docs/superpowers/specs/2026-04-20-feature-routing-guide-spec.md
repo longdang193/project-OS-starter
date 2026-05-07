@@ -7,7 +7,7 @@ targets:
   - docs/adoption_guide.md
   - docs/features/README.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/feature-routing-guide.md
+  - docs/operating_system/governance/feature-routing-guide.md
 related_features: []
 related_stages: []
 ---
@@ -123,7 +123,7 @@ Generated feature contracts and lineage should be produced by the project archit
 
 ## Proposed Documentation Changes
 
-### Add `docs/operating_system/feature-routing-guide.md`
+### Add `docs/operating_system/governance/feature-routing-guide.md`
 
 Create a dedicated routing guide with these sections:
 
@@ -277,7 +277,7 @@ The validator should be advisory at first unless the project has explicitly adop
 
 The implementation is complete when:
 
-- `docs/operating_system/feature-routing-guide.md` exists and includes decision, eligibility, dependency, and capability-ID rules.
+- `docs/operating_system/governance/feature-routing-guide.md` exists and includes decision, eligibility, dependency, and capability-ID rules.
 - `docs/adoption_guide.md` links to the routing guide before feature/stage creation instructions.
 - `docs/features/README.md` states that features are product/domain capabilities only.
 - `docs/operating_system/skill-doc-system-lifecycle.md` explicitly warns against modeling repo-method work as features.

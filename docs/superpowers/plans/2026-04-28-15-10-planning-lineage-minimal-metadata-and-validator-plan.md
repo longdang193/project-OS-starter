@@ -12,7 +12,7 @@ targets:
   - docs/superpowers/plans/
   - docs/generated/planning_lineage.yaml
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/spec-prompt.md
   - docs/operating_system/prompt_templates/plan-prompt.md
   - scripts/planning_lineage_support.py

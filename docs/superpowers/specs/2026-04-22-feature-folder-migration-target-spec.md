@@ -4,8 +4,8 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/mode-b-example-migration.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/mode-b-example-migration.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/architecture_templates/
   - scripts/validate_adoption_shape.py
@@ -31,7 +31,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 - current starter architecture generator and validators
 
@@ -52,8 +52,8 @@ Affected docs:
 - feature_lineage: managed `docs/features/*/lineage.generated.yaml`
 - feature_history: managed `docs/features/*/history.md`
 - cross_cutting_docs:
-  - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/mode-b-example-migration.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/mode-b-example-migration.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Generated refresh required: yes

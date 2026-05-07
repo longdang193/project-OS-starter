@@ -5,9 +5,9 @@ status: completed
 parent_workstream: none
 targets:
   - docs/project_templates/mode-a/
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/architecture_templates/README.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -55,9 +55,9 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/architecture_templates/README.md`
   - `docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md`
 - README: none
@@ -137,9 +137,9 @@ $env:UV_CACHE_DIR=$env:TEMP; uv run python -m pytest tests/test_validate_adoptio
 
 **Files:**
 
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/architecture_templates/README.md`
 
 - [x] Step 1: Update the Mode A runbook to say "start from `docs/project_templates/mode-a/`."

@@ -5,8 +5,8 @@ status: completed
 parent_workstream: none
 targets:
   - repo_config/adoption-mode.yaml
-  - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/mode-b-example-migration.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/mode-b-example-migration.md
   - docs/adoption_guide.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -52,8 +52,8 @@ related_stages: []
 ## Task 2: Update Docs And Examples
 
 **Files:**
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
-- Modify: `docs/operating_system/mode-b-example-migration.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/mode-b-example-migration.md`
 - Modify: `docs/adoption_guide.md`
 
 - [x] Step 1: Describe the required Mode B shared-surface sync record.

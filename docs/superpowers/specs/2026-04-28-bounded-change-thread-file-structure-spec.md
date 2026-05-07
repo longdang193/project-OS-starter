@@ -8,7 +8,7 @@ targets:
   - docs/intent/workstream-coverage-and-progress-guide.md
   - docs/operating_system/prompt_templates/
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/
   - docs/superpowers/plans/
 related_features: []
@@ -38,7 +38,7 @@ Dependencies:
 - `docs/intent/workstream-coverage-and-progress-guide.md`
 - `docs/operating_system/prompt_templates/`
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/superpowers/specs/`
 - `docs/superpowers/plans/`
 
@@ -65,7 +65,7 @@ Affected docs:
 - operating_system_docs:
   - `docs/operating_system/prompt_templates/`
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated: none
 

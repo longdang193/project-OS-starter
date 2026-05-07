@@ -2,7 +2,7 @@
 name: workflow-spec-to-plan-to-execution
 description: Run the spec to plan to execution workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-planning-dispatch
 tags:

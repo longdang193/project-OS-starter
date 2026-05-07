@@ -6,9 +6,9 @@ parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
   - scripts/validator_policy.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/README.md
   - tests/test_validate_adoption_shape.py
 related_features: []
@@ -35,9 +35,9 @@ Dependencies:
 
 - `scripts/validate_adoption_shape.py`
 - `scripts/validator_policy.py`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/project_templates/mode-a/README.md`
 - `tests/test_validate_adoption_shape.py`
 
@@ -62,9 +62,9 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - readme: none
 - generated: none
 

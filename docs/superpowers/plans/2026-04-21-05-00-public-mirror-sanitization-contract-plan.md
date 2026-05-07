@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/public-safe-doc-rewrite-guide.md
-  - docs/operating_system/publication-workflow.md
+  - docs/operating_system/procedures/publication-workflow.md
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
 related_features: []
 related_stages: []
@@ -60,7 +60,7 @@ related_stages: []
 ## Task 3: Update Publication Governance
 
 **Files:**
-- Modify: `docs/operating_system/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-workflow.md`
 - Modify: `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 
 - [x] Step 1: Update the workflow doc so publication review asks whether a file should be kept, sanitized, or omitted.

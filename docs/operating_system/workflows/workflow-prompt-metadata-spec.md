@@ -2,7 +2,7 @@
 name: workflow-prompt-metadata-spec
 description: Run the workflow and prompt metadata specification procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-doc-system-lifecycle
 tags:

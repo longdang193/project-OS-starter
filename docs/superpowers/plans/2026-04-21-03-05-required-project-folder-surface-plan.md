@@ -8,7 +8,7 @@ targets:
   - docs/adoption_guide.md
   - docs/intent/README.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
 related_features: []
@@ -69,7 +69,7 @@ related_stages: []
 - Modify: `docs/adoption_guide.md`
 - Modify: `docs/intent/README.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 
 - [x] Step 1: Add the required folder surface to the bootstrap/adoption guidance.
 - [x] Step 2: Document the minimum expected file(s) or file types inside each required folder.

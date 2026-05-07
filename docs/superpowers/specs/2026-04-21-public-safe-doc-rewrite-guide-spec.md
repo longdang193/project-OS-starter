@@ -4,7 +4,7 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - docs/operating_system/publication-workflow.md
+  - docs/operating_system/procedures/publication-workflow.md
   - docs/operating_system/
   - docs/adoption_guide.md
   - README.md
@@ -35,7 +35,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/publication-workflow.md`
+- `docs/operating_system/procedures/publication-workflow.md`
 - `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - `docs/adoption_guide.md`
 - `repo_config/publication-config.json`
@@ -66,7 +66,7 @@ Affected docs:
   - `docs/usage.md`
   - `docs/pipeline.md`
   - `docs/architecture.md`
-  - `docs/operating_system/publication-workflow.md`
+  - `docs/operating_system/procedures/publication-workflow.md`
 - readme: `README.md`
 - generated: none
 
@@ -143,7 +143,7 @@ public-safe docs that can stand alone in a curated public mirror.
 
 It should be linked from:
 
-- `docs/operating_system/publication-workflow.md`
+- `docs/operating_system/procedures/publication-workflow.md`
 - any future publication-boundary or governance docs where contributors need to
   move from policy to execution
 
@@ -260,7 +260,7 @@ trigger review before a doc is treated as public-safe.
 
 ## Publication Workflow Update
 
-Update `docs/operating_system/publication-workflow.md` to link to the new
+Update `docs/operating_system/procedures/publication-workflow.md` to link to the new
 rewrite guide from the publication review flow.
 
 The workflow should move from:

@@ -18,7 +18,7 @@ related_skills:
 - skill-planning-dispatch
 required_reads:
 - AGENTS.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - prompt
 - maintenance

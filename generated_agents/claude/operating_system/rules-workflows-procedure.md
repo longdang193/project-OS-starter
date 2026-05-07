@@ -70,4 +70,4 @@ python scripts/validate_agent_metadata_schema.py
 
 Schema source:
 
-- `docs/operating_system/agent-runtime-metadata-schema.md`
+- `docs/operating_system/runtime/agent-runtime-metadata-schema.md`

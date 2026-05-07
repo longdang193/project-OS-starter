@@ -11,7 +11,7 @@ hooks:
 required_reads:
 - docs/operating_system/templates/implementation-plan-template.md
 - docs/operating_system/templates/task-start-routing-guide.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - planning
@@ -40,7 +40,7 @@ Create executable implementation plans from approved design context.
 - `docs/operating_system/templates/implementation-plan-template.md`
 - `docs/operating_system/templates/task-start-routing-guide.md`
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 
 If this file conflicts with canonical templates/governance, follow canonical docs.
 

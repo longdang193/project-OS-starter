@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - tools/docs/generate_architecture_metadata.py
   - scripts/validate_adoption_shape.py
   - tests/test_architecture_metadata_generation.py
@@ -35,7 +35,7 @@ Dependencies:
 - `tools/docs/generate_architecture_metadata.py`
 - `scripts/validate_adoption_shape.py`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 Affected stages:
 
@@ -58,7 +58,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - readme: none
 - generated: aggregate architecture outputs may be indirectly affected through generator consistency
 
@@ -235,7 +235,7 @@ reconstruct every nested evidence entry before it becomes useful.
 Update:
 
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 to explicitly describe `lineage.generated.yaml` as:
 

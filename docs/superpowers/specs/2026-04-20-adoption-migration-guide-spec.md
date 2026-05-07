@@ -5,9 +5,9 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/adoption_guide.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/feature-routing-guide.md
+  - docs/operating_system/governance/feature-routing-guide.md
   - docs/features/README.md
 related_features: []
 related_stages: []
@@ -181,7 +181,7 @@ Classify each candidate as one of:
 - generated output
 - obsolete artifact
 
-Use `docs/operating_system/feature-routing-guide.md` for this classification.
+Use `docs/operating_system/governance/feature-routing-guide.md` for this classification.
 
 ### 3. Remove method-layer pseudo-features
 
@@ -298,7 +298,7 @@ The adoption guide should say:
 - managed mode requires feature folders, generated outputs, and code/config/test metadata together
 - legacy flat feature YAML is temporary and must be explicitly recorded
 
-### Add `docs/operating_system/project-adoption-migration-guide.md`
+### Add `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 Create a detailed migration guide with:
 
@@ -325,7 +325,7 @@ Add a short note:
 - flat feature YAML files are legacy-only
 - do not mix flat authoritative contracts with generated folder contracts
 
-### Update `docs/operating_system/feature-routing-guide.md`
+### Update `docs/operating_system/governance/feature-routing-guide.md`
 
 Add a short cross-reference:
 
@@ -371,10 +371,10 @@ with a recorded decision that managed architecture metadata is not adopted yet.
 The implementation is complete when:
 
 - `docs/adoption_guide.md` requires choosing an adoption mode before feature/stage migration.
-- `docs/operating_system/project-adoption-migration-guide.md` exists and explains the full migration sequence.
+- `docs/operating_system/adoption/project-adoption-migration-guide.md` exists and explains the full migration sequence.
 - `docs/operating_system/skill-doc-system-lifecycle.md` distinguishes managed feature-folder mode from legacy flat YAML mode.
 - `docs/features/README.md` warns against mixing flat authoritative contracts with managed feature folders.
-- `docs/operating_system/feature-routing-guide.md` links classification to migration guidance.
+- `docs/operating_system/governance/feature-routing-guide.md` links classification to migration guidance.
 - The guide explicitly says code/config/test metadata must be updated in managed mode.
 - The guide explicitly says generated discovery must be refreshed from source and not hand-edited.
 - The DE-PROJECT-style half-migration anti-pattern is documented.

@@ -8,9 +8,9 @@ targets:
   - tools/docs/generate_architecture_metadata.py
   - tests/test_validate_adoption_shape.py
   - tests/test_architecture_metadata_generation.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/architecture_templates/markdown-frontmatter.md
 related_features: []
 related_stages: []
@@ -62,9 +62,9 @@ Affected docs:
   - `docs/api.md`
   - `docs/observability.md`
   - `docs/testing.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/architecture_templates/markdown-frontmatter.md`
 - readme: none
 - generated: none

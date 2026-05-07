@@ -9,7 +9,7 @@ targets:
   - tools/docs/generate_architecture_metadata.py
   - tests/test_architecture_linkage_audit.py
   - tests/test_architecture_metadata_generation.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
@@ -53,7 +53,7 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md`
 - README: none
@@ -67,7 +67,7 @@ scripts/audit_architecture_linkage.py
 tools/docs/generate_architecture_metadata.py
 tests/test_architecture_linkage_audit.py
 tests/test_architecture_metadata_generation.py
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md
 ```
@@ -145,7 +145,7 @@ $env:UV_CACHE_DIR=$env:TEMP; uv run python -m pytest tests/test_architecture_met
 ## Task 5: Light Documentation Pass
 
 **Files:**
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md`
 

@@ -23,8 +23,8 @@ discoverability is not treated as its own bounded slice.
 ## Shared Surfaces
 
 - `docs/operating_system/prompt_templates/README.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
+- `docs/operating_system/governance/repo-governance.md`
 
 ## Linked Spec
 

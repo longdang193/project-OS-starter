@@ -4,7 +4,7 @@ description: Enforce AGENTS.md as the shared cross-tool baseline contract.
 alwaysApply: true
 required_reads:
 - AGENTS.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - baseline
 - cross-tool
@@ -25,4 +25,3 @@ To update: edit canonical source, then run sync.
 Use `AGENTS.md` as the shared baseline contract across Codex, Claude, and
 Gemini runtimes. Runtime targets are generated and deployed; do not hand-edit
 runtime target files.
-

@@ -7,7 +7,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/
   - docs/superpowers/plans/
 related_features: []
@@ -36,7 +36,7 @@ Dependencies:
 - `docs/intent/master-workstream-roadmap.md`
 - `docs/intent/workstreams/`
 - `docs/operating_system/skill-planning-dispatch.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/superpowers/specs/`
 - `docs/superpowers/plans/`
 
@@ -62,7 +62,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated: none
 

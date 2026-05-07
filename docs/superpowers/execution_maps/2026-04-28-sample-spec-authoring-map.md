@@ -53,7 +53,7 @@ specs:
 ## Shared-Surface Risks
 
 - `docs/operating_system/prompt_templates/`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `.agents/skills/`
 
 ## Recommended Next Detailed-Spec Sequence

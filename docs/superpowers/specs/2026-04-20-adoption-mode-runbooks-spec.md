@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/adoption_guide.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
 related_features: []
 related_stages: []
 ---
@@ -65,7 +65,7 @@ Operating-system adoption work must stay in the operating-system layer. It must 
 
 ## Proposed Documentation Changes
 
-Update `docs/operating_system/project-adoption-migration-guide.md` with three explicit runbook sections:
+Update `docs/operating_system/adoption/project-adoption-migration-guide.md` with three explicit runbook sections:
 
 ```text
 ## Mode A Step-By-Step: Starter Method Only

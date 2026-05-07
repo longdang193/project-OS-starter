@@ -2,7 +2,7 @@
 name: workflow-live-run-debugging
 description: Run the live run debugging workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-systematic-debugging
 - skill-executing-plans

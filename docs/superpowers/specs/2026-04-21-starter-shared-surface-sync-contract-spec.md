@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - repo_config/adoption-mode.yaml
   - repo_config/
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/adoption_guide.md
   - scripts/validate_adoption_shape.py
 related_features: []
@@ -31,7 +31,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/adoption_guide.md`
 - `repo_config/adoption-mode.yaml`
 - `scripts/validate_adoption_shape.py`
@@ -56,7 +56,7 @@ Affected docs:
 - stage_contract: none
 - feature_docs: none
 - cross_cutting_docs:
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/adoption_guide.md`
 - readme: none
 - generated: none
@@ -143,7 +143,7 @@ starter_sync:
     - generated_instruction_surfaces
     - validation_and_sync_scripts
   divergences:
-    - path: docs/operating_system/publication-workflow.md
+    - path: docs/operating_system/procedures/publication-workflow.md
       class: operating_system_docs
       status: customized
       rationale: Project-specific publication workflow details retained.
@@ -223,7 +223,7 @@ That is enough to stop silent neglect without forcing brittle exact matching.
 
 Update adoption docs so the contract is explicit:
 
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/adoption_guide.md`
 
 The docs should move from:

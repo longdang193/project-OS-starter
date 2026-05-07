@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
-  - docs/operating_system/publication-workflow.md
+  - docs/operating_system/procedures/publication-workflow.md
   - repo_config/publication-config.json
 related_features: []
 related_stages: []
@@ -30,9 +30,9 @@ Invariants:
 Dependencies:
 
 - `.agents/skills/skill-private-public-repo-governance/SKILL.md`
-- `docs/operating_system/publication-workflow.md`
+- `docs/operating_system/procedures/publication-workflow.md`
 - `repo_config/publication-config.json`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 
 Affected stages:
 
@@ -55,7 +55,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
-  - `docs/operating_system/publication-workflow.md`
+  - `docs/operating_system/procedures/publication-workflow.md`
 - readme: none
 - generated: none
 
@@ -153,7 +153,7 @@ The skill should also warn that:
 
 ## Publication Workflow Update
 
-Update `docs/operating_system/publication-workflow.md` to explicitly name
+Update `docs/operating_system/procedures/publication-workflow.md` to explicitly name
 starter adoption/bootstrap docs as private-only by default.
 
 The workflow should teach contributors to distinguish:
@@ -181,7 +181,7 @@ The implementation is complete when:
 
 - the private/public governance skill explicitly treats starter adoption or
   bootstrap docs as private-only by default
-- `docs/operating_system/publication-workflow.md` teaches the same rule
+- `docs/operating_system/procedures/publication-workflow.md` teaches the same rule
 - the docs clearly distinguish private starter-adoption guidance from
   potentially public product-facing docs under `docs/`
 - the resulting rule does not accidentally classify all cross-cutting docs as

@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - docs/superpowers/specs/2026-04-25-roadmap-to-workstream-prompt-ladder-spec.md
@@ -55,7 +55,7 @@ Invariants:
 Dependencies:
   - `docs/operating_system/prompt_templates/`
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/intent/workstreams/`
 Affected stages:
@@ -77,7 +77,7 @@ Affected docs:
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
     - `docs/operating_system/skill-planning-dispatch.md`
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
   readme: none
   generated:
     - none
@@ -107,7 +107,7 @@ docs/operating_system/prompt_templates/plan-prompt.md
 docs/operating_system/prompt_templates/execute-prompt.md
 docs/operating_system/prompt_templates/mode-migration-prompt.md
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/superpowers/specs/2026-04-25-roadmap-to-workstream-prompt-ladder-spec.md
 ```
 
@@ -141,7 +141,7 @@ docs/superpowers/specs/2026-04-25-roadmap-to-workstream-prompt-ladder-spec.md
 
 **Files:**
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 
 - [x] Step 1: Point skill-planning-dispatch to the new roadmap/workstream prompt ladder.
 - [x] Step 2: Update repo-governance so the prompt pack is described as covering roadmap-to-workstream invocation as well as downstream execution prompts.

@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/public-safe-doc-rewrite-guide.md
-  - docs/operating_system/publication-workflow.md
+  - docs/operating_system/procedures/publication-workflow.md
 related_features: []
 related_stages: []
 ---
@@ -57,7 +57,7 @@ related_stages: []
 ## Task 3: Update Publication Workflow Docs
 
 **Files:**
-- Modify: `docs/operating_system/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-workflow.md`
 
 - [x] Step 1: Link the new guide from the publication workflow.
 - [x] Step 2: Make the workflow move cleanly from policy to execution guidance.

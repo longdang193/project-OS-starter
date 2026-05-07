@@ -16,7 +16,7 @@ related_skills:
 - skill-verification-before-completion
 - skill-doc-system-lifecycle
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 - docs/operating_system/rules-workflows-procedure.md
 tags:
 - prompt

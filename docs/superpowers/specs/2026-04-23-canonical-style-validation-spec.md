@@ -7,8 +7,8 @@ targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/governance/repo-governance.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/architecture_templates/feature.source.yaml
   - docs/architecture_templates/stage.source.yaml
   - docs/architecture_templates/markdown-frontmatter.md
@@ -42,8 +42,8 @@ Dependencies:
 - `docs/superpowers/specs/2026-04-22-lineage-generated-schema-contract-spec.md`
 - `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/repo-governance.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/governance/repo-governance.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 Affected stages:
 
@@ -77,8 +77,8 @@ Affected docs:
   - `docs/pipeline.md`
   - `docs/architecture.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/governance/repo-governance.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/architecture_templates/feature.source.yaml`
   - `docs/architecture_templates/stage.source.yaml`
   - `docs/architecture_templates/markdown-frontmatter.md`

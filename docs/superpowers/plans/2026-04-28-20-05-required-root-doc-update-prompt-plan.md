@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/README.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/prompt_templates/required-root-doc-update-prompt.md
   - docs/superpowers/specs/2026-04-28-required-root-doc-update-prompt-spec.md
@@ -49,7 +49,7 @@ related_stages: []
 ## Task 3: Wire It Into The Repo-Control Surface
 
 - [x] Step 1: Update `docs/operating_system/prompt_templates/README.md`.
-- [x] Step 2: Update `docs/operating_system/repo-governance.md`.
+- [x] Step 2: Update `docs/operating_system/governance/repo-governance.md`.
 - [x] Step 3: Update `docs/operating_system/skill-doc-system-lifecycle.md`.
 
 ## Task 4: Close The Loop

@@ -9,7 +9,7 @@ targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_repo_contracts.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
@@ -53,7 +53,7 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md`
 - README: none
@@ -67,7 +67,7 @@ scripts/validate_repo_contracts.py
 scripts/validate_adoption_shape.py
 tests/test_validate_repo_contracts.py
 tests/test_validate_adoption_shape.py
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md
 ```
@@ -156,7 +156,7 @@ $env:UV_CACHE_DIR=$env:TEMP; uv run python -m pytest tests/test_validate_adoptio
 ## Task 5: Light Documentation Pass
 
 **Files:**
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md`
 

@@ -2,7 +2,7 @@
 name: workflow-live-run-verification
 description: Run the live run verification workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-verification-before-completion
 - skill-test-driven-development

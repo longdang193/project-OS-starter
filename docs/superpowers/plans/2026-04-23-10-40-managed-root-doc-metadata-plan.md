@@ -6,9 +6,9 @@ parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/architecture_templates/markdown-frontmatter.md
 related_features: []
 related_stages: []
@@ -56,9 +56,9 @@ related_stages: []
   - `docs/pipeline.md`
   - `docs/architecture.md`
 - Operating-system docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/architecture_templates/markdown-frontmatter.md`
 - README: none
 - Generated discovery: none
@@ -69,9 +69,9 @@ related_stages: []
 
 - `scripts/validate_adoption_shape.py`
 - `tests/test_validate_adoption_shape.py`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/architecture_templates/markdown-frontmatter.md`
 
 ## Tests To Add Or Update

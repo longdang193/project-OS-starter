@@ -7,8 +7,8 @@ targets:
   - repo_config/adoption-mode.yaml
   - scripts/validate_adoption_shape.py
   - docs/adoption_guide.md
-  - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/feature-routing-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
+  - docs/operating_system/governance/feature-routing-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/features/README.md
 related_features: []
@@ -257,13 +257,13 @@ python scripts/validate_adoption_shape.py
 
 If the validator script is optional in a starter-only state, the guide should say to run it once the script exists and before committing adoption changes.
 
-### `docs/operating_system/project-adoption-migration-guide.md`
+### `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 Add `repo_config/adoption-mode.yaml` as the required place to record the chosen mode.
 
 Add mode-specific validator expectations.
 
-### `docs/operating_system/feature-routing-guide.md`
+### `docs/operating_system/governance/feature-routing-guide.md`
 
 Add the candidate classification metadata block and explain how it prevents operating-system work from becoming product feature dependencies.
 

@@ -4,9 +4,9 @@ artifact_type: plan
 status: active
 parent_workstream: none
 targets:
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/mode-b-example-migration.md
+  - docs/operating_system/adoption/mode-b-example-migration.md
 related_features: []
 related_stages: []
 ---
@@ -33,16 +33,16 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/mode-b-example-migration.md`
+  - `docs/operating_system/adoption/mode-b-example-migration.md`
 - README: none
 - Generated discovery: none
 
 ### Task 1: State The Canonical Target
 
 **Files:**
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [ ] Step 1: Name `customer-churn-prediction-azureml/docs/generated/` as the concrete canonical target example.
@@ -52,7 +52,7 @@ related_stages: []
 ### Task 2: Update The Example Migration
 
 **Files:**
-- Modify: `docs/operating_system/mode-b-example-migration.md`
+- Modify: `docs/operating_system/adoption/mode-b-example-migration.md`
 
 - [ ] Step 1: Add the generated-discovery target to the example migration shape.
 - [ ] Step 2: Explain that older `docs/generated/*` summary files should be retired after generator-backed migration.
@@ -60,9 +60,9 @@ related_stages: []
 ### Task 3: Verify
 
 **Files:**
-- Docs: `docs/operating_system/project-adoption-migration-guide.md`
+- Docs: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Docs: `docs/operating_system/skill-doc-system-lifecycle.md`
-- Docs: `docs/operating_system/mode-b-example-migration.md`
+- Docs: `docs/operating_system/adoption/mode-b-example-migration.md`
 
 - [ ] Step 1: Review the touched sections for consistent target wording.
 - [ ] Step 2: Confirm the docs do not imply the old and new generated-discovery families should coexist.

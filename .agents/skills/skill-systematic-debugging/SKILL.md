@@ -11,7 +11,7 @@ hooks:
 required_reads:
 - docs/operating_system/agent_memory/failure-ledger.md
 - docs/operating_system/workflows/workflow-test-failure-triage.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - debugging

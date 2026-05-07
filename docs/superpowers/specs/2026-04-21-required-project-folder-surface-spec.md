@@ -8,7 +8,7 @@ targets:
   - docs/
   - docs/adoption_guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - scripts/validate_adoption_shape.py
   - scripts/sync_architecture_docs.py
   - scripts/setup_hooks.ps1
@@ -40,7 +40,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/adoption_guide.md`
 - `scripts/validate_adoption_shape.py`
 - `scripts/sync_architecture_docs.py`
@@ -68,7 +68,7 @@ Affected docs:
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/setup.md`
   - `docs/configuration.md`
   - `docs/usage.md`
@@ -233,7 +233,7 @@ Minimum expected file rule:
 Baseline files should be documented explicitly:
 
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 
 The validator does not need to require every operating-system file immediately,
 but the governance docs should clearly state that these two files are the
@@ -418,7 +418,7 @@ minimum files or expected file types inside required folders.
 This is the main place to close the current "folder exists but file
 expectations are unclear" gap.
 
-### `docs/operating_system/repo-governance.md`
+### `docs/operating_system/governance/repo-governance.md`
 
 Add the required folder surface to repo governance expectations and state that
 the normal validation path checks it.

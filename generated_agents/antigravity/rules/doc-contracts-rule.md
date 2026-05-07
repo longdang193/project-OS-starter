@@ -4,8 +4,8 @@ description: Enforce document contract consistency for templates, lifecycle meta
   and generated surfaces.
 alwaysApply: true
 required_reads:
-- docs/operating_system/repo-governance.md
-- docs/operating_system/agent-runtime-metadata-schema.md
+- docs/operating_system/governance/repo-governance.md
+- docs/operating_system/runtime/agent-runtime-metadata-schema.md
 tags:
 - rule
 - docs

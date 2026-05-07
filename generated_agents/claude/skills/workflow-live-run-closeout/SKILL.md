@@ -2,7 +2,7 @@
 name: workflow-live-run-closeout
 description: Run the live run closeout workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-verification-before-completion
 - skill-planning-dispatch

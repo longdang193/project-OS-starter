@@ -6,9 +6,9 @@ parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
-  - docs/operating_system/feature-lifecycle.md
+  - docs/operating_system/lifecycle/feature-lifecycle.md
   - docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md
   - docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md
 related_features: []
@@ -54,9 +54,9 @@ related_stages: []
 - Feature-specific docs: none
 - Cross-cutting docs: none
 - Operating-system docs:
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
-  - `docs/operating_system/feature-lifecycle.md`
+  - `docs/operating_system/lifecycle/feature-lifecycle.md`
   - `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
   - `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
 - README: none
@@ -100,9 +100,9 @@ $env:PYTHONPATH=(Resolve-Path '.tmp-tests\pytest-deps').Path; python -m pytest t
 
 **Files:**
 
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
-- Modify: `docs/operating_system/feature-lifecycle.md`
+- Modify: `docs/operating_system/lifecycle/feature-lifecycle.md`
 - Modify: `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
 - Modify: `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
 

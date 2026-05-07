@@ -4,8 +4,8 @@ artifact_type: plan
 status: completed
 parent_workstream: none
 targets:
-  - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/mode-b-example-migration.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/mode-b-example-migration.md
   - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
@@ -49,7 +49,7 @@ related_stages: []
 ## Task 2: Update The Migration Guide
 
 **Files:**
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 - [x] Step 1: Add an explicit “desired migration target” section for newer customer-style feature folders.
 - [x] Step 2: Explain what should stay in `feature.source.yaml` versus generated contract, lineage, and history.
@@ -58,7 +58,7 @@ related_stages: []
 ## Task 3: Update Supporting Docs And Example
 
 **Files:**
-- Modify: `docs/operating_system/mode-b-example-migration.md`
+- Modify: `docs/operating_system/adoption/mode-b-example-migration.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [x] Step 1: Update the Mode B example to prefer the newer source capability shape and partial-generated history target.

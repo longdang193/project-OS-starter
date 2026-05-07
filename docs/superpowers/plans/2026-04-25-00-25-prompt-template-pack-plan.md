@@ -5,9 +5,9 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/README.md
   - docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
 related_features: []
@@ -53,8 +53,8 @@ Invariants:
   - Prompt templates should help users ask for the right artifact, not bypass the lifecycle.
 Dependencies:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/governance/repo-governance.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/project_templates/mode-a/README.md`
 Affected stages:
   - none
@@ -74,8 +74,8 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/skill-planning-dispatch.md`
-    - `docs/operating_system/repo-governance.md`
-    - `docs/operating_system/project-adoption-migration-guide.md`
+    - `docs/operating_system/governance/repo-governance.md`
+    - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   readme: none
   generated:
     - none
@@ -102,9 +102,9 @@ docs/operating_system/prompt_templates/mode-migration-prompt.md
 ## Files To Modify
 
 ```text
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/project-adoption-migration-guide.md
+docs/operating_system/adoption/project-adoption-migration-guide.md
 docs/project_templates/mode-a/README.md
 docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
 ```
@@ -122,8 +122,8 @@ docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
 
 **Files:**
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/project_templates/mode-a/README.md`
 
 - [x] Step 1: Add a pointer from planning guidance to the prompt pack as a practical entrypoint.

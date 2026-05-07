@@ -7,7 +7,7 @@ targets:
   - scripts/validate_adoption_shape.py
   - scripts/validate_repo_contracts.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
@@ -35,7 +35,7 @@ Dependencies:
 - `tests/test_validate_adoption_shape.py`
 - `docs/superpowers/specs/2026-04-23-canonical-style-validation-spec.md`
 - `docs/superpowers/specs/2026-04-23-canonical-ordering-rules-spec.md`
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Affected stages:
@@ -59,7 +59,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
 - readme: none
 - generated: none

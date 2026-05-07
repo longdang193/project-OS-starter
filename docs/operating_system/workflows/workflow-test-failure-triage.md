@@ -2,7 +2,7 @@
 name: workflow-test-failure-triage
 description: Run the test failure triage workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-systematic-debugging
 - skill-test-driven-development

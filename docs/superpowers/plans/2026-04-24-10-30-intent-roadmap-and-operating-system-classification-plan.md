@@ -7,7 +7,7 @@ targets:
   - docs/intent/README.md
   - docs/intent/master-workstream-roadmap.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - .agents/skills/skill-brainstorming/SKILL.md
   - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
@@ -54,7 +54,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/superpowers/specs/2026-04-24-intent-roadmap-and-operating-system-classification-spec.md`
 - README: none
 - Generated discovery: none
@@ -65,7 +65,7 @@ related_stages: []
 docs/intent/README.md
 docs/intent/master-workstream-roadmap.md
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 .agents/skills/skill-brainstorming/SKILL.md
 .agents/skills/skill-planning-dispatch/SKILL.md
 .agents/skills/skill-writing-plans/SKILL.md
@@ -103,7 +103,7 @@ Do not:
 
 **Files:**
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 
 - [x] Step 1: Update `skill-planning-dispatch.md` so the routing story becomes `intent -> workstream or operating_system -> change -> spec/plan`.
 - [x] Step 2: Make the next routing question explicit: “product workstream or operating_system?”

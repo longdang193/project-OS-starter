@@ -2,7 +2,7 @@
 name: workflow-roadmap-to-closeout
 description: Run the roadmap to closeout workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-planning-dispatch
 tags:

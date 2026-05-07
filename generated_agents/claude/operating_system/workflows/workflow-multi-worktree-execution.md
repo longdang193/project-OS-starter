@@ -2,7 +2,7 @@
 name: workflow-multi-worktree-execution
 description: Run the multi-worktree execution workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-using-git-worktrees
 - skill-dispatching-parallel-agents

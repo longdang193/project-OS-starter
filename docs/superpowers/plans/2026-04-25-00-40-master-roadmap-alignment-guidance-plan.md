@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - docs/superpowers/specs/
   - docs/superpowers/plans/
@@ -55,7 +55,7 @@ Invariants:
 Dependencies:
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/operating_system/skill-planning-dispatch.md`
-  - `docs/operating_system/repo-governance.md`
+  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/prompt_templates/`
 Affected stages:
   - none
@@ -75,7 +75,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/skill-planning-dispatch.md`
-    - `docs/operating_system/repo-governance.md`
+    - `docs/operating_system/governance/repo-governance.md`
     - `docs/operating_system/prompt_templates/`
   readme: none
   generated:
@@ -92,7 +92,7 @@ Plan needed: yes
 
 ```text
 docs/operating_system/skill-planning-dispatch.md
-docs/operating_system/repo-governance.md
+docs/operating_system/governance/repo-governance.md
 docs/operating_system/prompt_templates/spec-prompt.md
 docs/operating_system/prompt_templates/plan-prompt.md
 docs/operating_system/prompt_templates/execute-prompt.md
@@ -105,7 +105,7 @@ docs/superpowers/specs/2026-04-25-master-roadmap-alignment-guidance-spec.md
 
 **Files:**
 - Modify: `docs/operating_system/skill-planning-dispatch.md`
-- Modify: `docs/operating_system/repo-governance.md`
+- Modify: `docs/operating_system/governance/repo-governance.md`
 
 - [x] Step 1: Add explicit guidance that product-direction work should name the roadmap thread it follows.
 - [x] Step 2: Add explicit guidance that `parent_workstream: none` should be intentional for operating-system work.

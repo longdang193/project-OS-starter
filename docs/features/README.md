@@ -12,11 +12,11 @@ Do not create features for repo-method work such as starter adoption, repo opera
 
 If the work is about how the repo plans, validates, publishes, documents, or instructs agents, route it to `docs/operating_system/`, `agent-core/`, `.agents/skills/`, `.codex/rules/`, `repo_config/`, scripts, or operating-system specs/plans instead.
 
-Read [docs/operating_system/feature-routing-guide.md](../operating_system/feature-routing-guide.md) before creating feature metadata.
+Read [docs/operating_system/governance/feature-routing-guide.md](../operating_system/feature-routing-guide.md) before creating feature metadata.
 
 ## Adoption Modes
 
-Before creating feature metadata in an existing project, choose an adoption mode in [docs/operating_system/project-adoption-migration-guide.md](../operating_system/project-adoption-migration-guide.md) and record it in `repo_config/adoption-mode.yaml`.
+Before creating feature metadata in an existing project, choose an adoption mode in [docs/operating_system/adoption/project-adoption-migration-guide.md](../operating_system/project-adoption-migration-guide.md) and record it in `repo_config/adoption-mode.yaml`.
 
 In managed architecture metadata mode, feature folders are required and flat `docs/features/*.yaml` files are not authoritative. Run `python scripts/validate_adoption_shape.py` before committing feature-shape changes.
 

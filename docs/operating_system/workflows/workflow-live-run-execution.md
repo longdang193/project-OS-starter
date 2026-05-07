@@ -2,7 +2,7 @@
 name: workflow-live-run-execution
 description: Run the live run execution workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-executing-plans
 tags:

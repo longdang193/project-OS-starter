@@ -4,7 +4,7 @@ artifact_type: plan
 status: active
 parent_workstream: none
 targets:
-  - docs/operating_system/feature-routing-guide.md
+  - docs/operating_system/governance/feature-routing-guide.md
   - docs/adoption_guide.md
   - docs/features/README.md
   - docs/operating_system/skill-doc-system-lifecycle.md
@@ -36,7 +36,7 @@ Affected docs:
 - stage_source: none
 - stage_contract: none
 - cross_cutting_docs:
-  - `docs/operating_system/feature-routing-guide.md`
+  - `docs/operating_system/governance/feature-routing-guide.md`
   - `docs/adoption_guide.md`
   - `docs/features/README.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
@@ -58,7 +58,7 @@ This plan implements:
 
 ### 1. Add the routing guide
 
-Create `docs/operating_system/feature-routing-guide.md` with:
+Create `docs/operating_system/governance/feature-routing-guide.md` with:
 
 - routing decision tree
 - feature eligibility gate
@@ -107,7 +107,7 @@ Inspect the final diff for accidental generated-file edits.
 
 ## Acceptance Criteria
 
-- `docs/operating_system/feature-routing-guide.md` exists and explains routing decisions clearly.
+- `docs/operating_system/governance/feature-routing-guide.md` exists and explains routing decisions clearly.
 - `docs/adoption_guide.md` links to the routing guide before feature/stage creation guidance.
 - `docs/features/README.md` prevents treating repo-method work as product features.
 - `docs/operating_system/skill-doc-system-lifecycle.md` names the `repo-operating-system` anti-pattern.

@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/architecture_templates/
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/features/README.md
   - docs/stages/README.md
@@ -32,8 +32,8 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/skill-doc-system-lifecycle.md`
-- `docs/operating_system/project-adoption-migration-guide.md`
-- `docs/operating_system/feature-routing-guide.md`
+- `docs/operating_system/adoption/project-adoption-migration-guide.md`
+- `docs/operating_system/governance/feature-routing-guide.md`
 - `tools/docs/generate_architecture_metadata.py`
 - `scripts/validate_adoption_shape.py`
 - `scripts/sync_architecture_docs.py`
@@ -68,7 +68,7 @@ Affected docs:
   - `docs/architecture_templates/yaml-architecture.yaml`
   - `docs/architecture_templates/markdown-frontmatter.md`
   - `docs/architecture_templates/mode-b-feature-migration-checklist.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/features/README.md`
   - `docs/stages/README.md`
@@ -194,7 +194,7 @@ docs/architecture_templates/
 Update:
 
 ```text
-docs/operating_system/project-adoption-migration-guide.md
+docs/operating_system/adoption/project-adoption-migration-guide.md
 docs/operating_system/skill-doc-system-lifecycle.md
 docs/features/README.md
 docs/stages/README.md
@@ -209,7 +209,7 @@ Do not update generated discovery for this documentation-only package unless the
 The README should:
 
 - state that templates are for Mode B only
-- link to `docs/operating_system/project-adoption-migration-guide.md`
+- link to `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - link to `docs/operating_system/skill-doc-system-lifecycle.md`
 - include the no-double-entry rule
 - explain which files are copyable human-owned inputs

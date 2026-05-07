@@ -18,7 +18,7 @@ targets:
   - docs/operating_system/provider_settings/
   - docs/operating_system/manifest.yaml
   - docs/operating_system/provider_capabilities.yaml
-  - docs/operating_system/precedence.md
+  - docs/operating_system/governance/precedence.md
   - generated_agents/
 related_features: []
 related_stages: []

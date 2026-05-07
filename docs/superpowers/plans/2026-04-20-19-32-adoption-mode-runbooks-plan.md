@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/adoption_guide.md
-  - docs/operating_system/project-adoption-migration-guide.md
+  - docs/operating_system/adoption/project-adoption-migration-guide.md
 related_features: []
 related_stages: []
 ---
@@ -23,7 +23,7 @@ related_stages: []
 
 **Goal:** Add executable mode-specific adoption runbooks so future agents can choose, migrate, validate, and commit adoption states without creating partial architecture metadata.
 
-**Architecture:** This is an operating-system documentation update. The detailed runbooks belong in `docs/operating_system/project-adoption-migration-guide.md`, while `docs/adoption_guide.md` should route adopters to those runbooks before feature or stage metadata work begins.
+**Architecture:** This is an operating-system documentation update. The detailed runbooks belong in `docs/operating_system/adoption/project-adoption-migration-guide.md`, while `docs/adoption_guide.md` should route adopters to those runbooks before feature or stage metadata work begins.
 
 **Key Invariants:**
 
@@ -58,7 +58,7 @@ Dependencies:
 
 - `repo_config/adoption-mode.yaml`
 - `scripts/validate_adoption_shape.py`
-- `docs/operating_system/feature-routing-guide.md`
+- `docs/operating_system/governance/feature-routing-guide.md`
 
 Affected stages:
 
@@ -81,7 +81,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
-  - `docs/operating_system/project-adoption-migration-guide.md`
+  - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - readme: none
 - generated: none
 
@@ -103,14 +103,14 @@ Risk level: low
 - Feature history: none
 - Feature-specific docs: none
 - Cross-cutting docs: `docs/adoption_guide.md`
-- Operating-system docs: `docs/operating_system/project-adoption-migration-guide.md`
+- Operating-system docs: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - README: none
 - Generated discovery: none
 
 ## File Structure
 
 - Create: none
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/adoption_guide.md`
 - Test: no new test files
 - Generated outputs: none
@@ -127,9 +127,9 @@ This plan implements:
 
 **Files:**
 
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Test: no new test files
-- Docs: `docs/operating_system/project-adoption-migration-guide.md`
+- Docs: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 - [ ] Step 1: Add a `## Mode A Step-By-Step: Starter Method Only` section after the adoption modes overview.
 - [ ] Step 2: Start the runbook by setting `repo_config/adoption-mode.yaml` to `starter_method_only`.
@@ -156,9 +156,9 @@ python scripts/validate_adoption_shape.py
 
 **Files:**
 
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Test: no new test files
-- Docs: `docs/operating_system/project-adoption-migration-guide.md`
+- Docs: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 - [ ] Step 1: Add a `## Mode B Step-By-Step: Managed Architecture Metadata` section after the Mode A runbook.
 - [ ] Step 2: Start the runbook by setting `repo_config/adoption-mode.yaml` to `managed_architecture_metadata`.
@@ -186,9 +186,9 @@ git diff --check
 
 **Files:**
 
-- Modify: `docs/operating_system/project-adoption-migration-guide.md`
+- Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Test: no new test files
-- Docs: `docs/operating_system/project-adoption-migration-guide.md`
+- Docs: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 - [ ] Step 1: Add a `## Mode C Step-By-Step: Legacy Compatibility` section after the Mode B runbook.
 - [ ] Step 2: Start the runbook by setting `repo_config/adoption-mode.yaml` to `legacy_compatibility`.
@@ -214,7 +214,7 @@ python scripts/validate_adoption_shape.py
 - Test: no new test files
 - Docs: `docs/adoption_guide.md`
 
-- [ ] Step 1: In `## 4. Choose Adoption Mode`, link to the three mode-specific runbook headings in `docs/operating_system/project-adoption-migration-guide.md`.
+- [ ] Step 1: In `## 4. Choose Adoption Mode`, link to the three mode-specific runbook headings in `docs/operating_system/adoption/project-adoption-migration-guide.md`.
 - [ ] Step 2: Move the runbook link before any instruction to create, define, or migrate product feature/stage metadata.
 - [ ] Step 3: Keep the existing adoption mode summaries concise; do not duplicate the full runbooks in `docs/adoption_guide.md`.
 - [ ] Step 4: Clarify that adopters should follow the selected runbook before adjusting feature or stage metadata.
@@ -230,7 +230,7 @@ python scripts/validate_adoption_shape.py
 
 - Test: no new test files
 - Docs: `docs/adoption_guide.md`
-- Docs: `docs/operating_system/project-adoption-migration-guide.md`
+- Docs: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 
 - [ ] Step 1: Run the adoption validator:
 
@@ -247,7 +247,7 @@ git diff --check
 - [ ] Step 3: Check the final diff:
 
 ```powershell
-git diff -- docs/adoption_guide.md docs/operating_system/project-adoption-migration-guide.md
+git diff -- docs/adoption_guide.md docs/operating_system/adoption/project-adoption-migration-guide.md
 ```
 
 - [ ] Step 4: Confirm no generated files changed:
@@ -260,7 +260,7 @@ git status --short
 
 ## Acceptance Criteria
 
-- `docs/operating_system/project-adoption-migration-guide.md` contains:
+- `docs/operating_system/adoption/project-adoption-migration-guide.md` contains:
   - `## Mode A Step-By-Step: Starter Method Only`
   - `## Mode B Step-By-Step: Managed Architecture Metadata`
   - `## Mode C Step-By-Step: Legacy Compatibility`

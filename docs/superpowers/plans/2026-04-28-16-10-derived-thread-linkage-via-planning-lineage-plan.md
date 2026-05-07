@@ -9,7 +9,7 @@ targets:
   - docs/intent/workstreams/threads/
   - docs/generated/planning_lineage.yaml
   - docs/operating_system/skill-planning-dispatch.md
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py

@@ -2,7 +2,7 @@
 name: workflow-live-run-scenario-planning
 description: Run the live run scenario planning workflow procedure.
 required_reads:
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 related_skills:
 - skill-brainstorming
 - skill-planning-dispatch

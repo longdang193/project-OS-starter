@@ -969,7 +969,7 @@ def test_validator_rejects_intent_folder_without_markdown_files(tmp_path: Path) 
 def seed_required_folder_surface(root: Path) -> None:
     for relative_path in (
         "docs/intent/README.md",
-        "docs/operating_system/repo-governance.md",
+        "docs/operating_system/governance/repo-governance.md",
         "docs/operating_system/skill-doc-system-lifecycle.md",
         "docs/superpowers/specs/README.md",
         "docs/superpowers/plans/README.md",
@@ -1916,7 +1916,7 @@ layer: operating_system
 artifact_type: spec
 status: proposed
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---
@@ -1942,7 +1942,7 @@ artifact_type: plan
 status: proposed
 parent_workstream: platform-delivery
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---
@@ -2055,7 +2055,7 @@ artifact_type: spec
 status: proposed
 parent_thread: {thread_id}
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---
@@ -2072,7 +2072,7 @@ status: proposed
 parent_thread: {thread_id}
 parent_spec: docs/superpowers/specs/2026-04-25-sample-spec.md
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---
@@ -2101,7 +2101,7 @@ artifact_type: spec
 status: proposed
 parent_thread: platform-delivery.sample-thread
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---
@@ -2118,7 +2118,7 @@ status: proposed
 parent_thread: platform-delivery.sample-thread
 parent_spec: docs/superpowers/specs/2026-04-25-sample-spec.md
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---
@@ -2146,7 +2146,7 @@ artifact_type: spec
 status: proposed
 parent_thread: {thread_id}
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---
@@ -2163,7 +2163,7 @@ status: proposed
 parent_thread: {other_thread_id}
 parent_spec: docs/superpowers/specs/2026-04-25-sample-spec.md
 targets:
-  - docs/operating_system/repo-governance.md
+  - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []
 ---

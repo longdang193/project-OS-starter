@@ -10,7 +10,7 @@ hooks:
   - python scripts/hooks/run_validator.py --fast
 required_reads:
 - docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md
-- docs/operating_system/repo-governance.md
+- docs/operating_system/governance/repo-governance.md
 tags:
 - skill
 - execution
@@ -44,7 +44,7 @@ Load the plan, review it critically, execute task by task, update source-of-trut
 Before execution starts, read:
 
 - the specific implementation plan file being executed
-- `docs/operating_system/repo-governance.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
 - `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
