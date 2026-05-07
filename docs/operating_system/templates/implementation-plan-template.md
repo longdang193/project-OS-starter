@@ -45,5 +45,7 @@ A plan item is considered complete when:
 
 Canonical source-of-truth:
 
+<LINK>
 - `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_planning_lifecycle.py`
+</LINK>

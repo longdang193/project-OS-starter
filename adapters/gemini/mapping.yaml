@@ -2,6 +2,7 @@ platform: antigravity
 mappings:
   - source: AGENTS.md
     destination: generated_agents/antigravity/GEMINI.md
+    mode: render_root_doc_with_manifest
     comment_prefix: "#"
   - source: docs/operating_system/provider_settings/antigravity.yaml
     destination: generated_agents/antigravity/settings.json

@@ -2,6 +2,7 @@ platform: claude
 mappings:
   - source: AGENTS.md
     destination: generated_agents/claude/CLAUDE.md
+    mode: render_root_doc_with_manifest
     comment_prefix: "#"
   - source: docs/operating_system/provider_settings/claude.yaml
     destination: generated_agents/claude/settings.json

@@ -29,13 +29,16 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 
 ## Mandatory Read
 
+<MUST-READ>
 Before final completion claims, read:
 
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/agent_memory/failure-ledger.md` when the task involved meaningful retries/debugging
 - `docs/operating_system/workflows/workflow-roadmap-to-closeout.md`
 - `docs/operating_system/workflows/workflow-live-run-closeout.md` when the lane includes live-run execution
+</MUST-READ>
 
+<EXTREMELY-IMPORTANT>
 ## The Iron Law
 
 ```
@@ -43,6 +46,7 @@ NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 ```
 
 If you haven't run the verification command in this message, you cannot claim it passes.
+</EXTREMELY-IMPORTANT>
 
 ## The Gate Function
 
@@ -138,48 +142,56 @@ Do not let important failures disappear just because the final verification now 
 ## Key Patterns
 
 **Tests:**
+
 ```
 ✅ [Run test command] [See: 34/34 pass] "All tests pass"
 ❌ "Should pass now" / "Looks correct"
 ```
 
 **Regression tests (TDD Red-Green):**
+
 ```
 ✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
 ❌ "I've written a regression test" (without red-green verification)
 ```
 
 **Build:**
+
 ```
 ✅ [Run build] [See: exit 0] "Build passes"
 ❌ "Linter passed" (linter doesn't check compilation)
 ```
 
 **Cloud proof:**
+
 ```
 ✅ Submit or inspect live run → wait for completion → download artifacts → reconcile parent/child truth → state proof strength
 ❌ "Local tests passed so cloud path is fine"
 ```
 
 **Requirements:**
+
 ```
 ✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
 ❌ "Tests pass, phase complete"
 ```
 
 **Doc sync:**
+
 ```
 ✅ Name exact `docs/features/<feature_id>/feature.source.yaml` / generated `docs/features/<feature_id>/<feature_id>.yaml` / `docs/features/<feature_id>/history.md` / `docs/stages/<stage_id>.source.yaml` when relevant / `docs/*.md` / `docs/generated/*` evidence
 ❌ "No doc changes needed" without checking targets
 ```
 
 **Memory disposition:**
+
 ```
 ✅ "Failure ledger updated" / "No memory update needed because <reason>"
 ❌ Silence about important retries or debugging
 ```
 
 **Agent delegation:**
+
 ```
 ✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
 ❌ Trust agent report
@@ -188,6 +200,7 @@ Do not let important failures disappear just because the final verification now 
 ## Why This Matters
 
 From 24 failure memories:
+
 - your human partner said "I don't believe you" - trust broken
 - Undefined functions shipped - would crash
 - Missing requirements shipped - incomplete features
@@ -197,6 +210,7 @@ From 24 failure memories:
 ## When To Apply
 
 **ALWAYS before:**
+
 - ANY variation of success/completion claims
 - ANY expression of satisfaction
 - ANY positive statement about work state
@@ -207,6 +221,7 @@ From 24 failure memories:
 - Declaring completion after meaningful retries/debugging without a memory disposition
 
 **Rule applies to:**
+
 - Exact phrases
 - Paraphrases and synonyms
 - Implications of success

@@ -74,6 +74,17 @@ def _repo_absolute_string(root: Path, relative_path: str) -> str:
     return str((root / normalized).resolve())
 
 
+def _runtime_relative_path(relative_path: str) -> str:
+    normalized = PurePosixPath(relative_path.replace("\\", "/"))
+    if normalized.parts and normalized.parts[0] == "docs":
+        normalized = normalized.relative_to("docs")
+    return str(normalized).replace("/", "\\")
+
+
+def _runtime_absolute_string(target_root: Path, relative_path: str) -> str:
+    return str((target_root / _runtime_relative_path(relative_path)).resolve())
+
+
 def _rewrite_command_to_absolute_repo_path(command: str, root: Path) -> str:
     match = re.match(r'^(python|py)\s+([^"\s][^\s]*)$', command.strip())
     if not match:
@@ -84,41 +95,167 @@ def _rewrite_command_to_absolute_repo_path(command: str, root: Path) -> str:
     return f'{executable} "{_repo_absolute_string(root, target)}"'
 
 
-def _rewrite_frontmatter_lists(meta: dict[str, object], root: Path) -> dict[str, object]:
+def _rewrite_frontmatter_lists(meta: dict[str, object], target_root: Path) -> dict[str, object]:
     rewritten = dict(meta)
     for key in ("required_reads", "required_outputs"):
         value = rewritten.get(key)
         if not isinstance(value, list):
             continue
         rewritten[key] = [
-            _repo_absolute_string(root, item) if isinstance(item, str) and _looks_like_repo_relative_path(item) else item
+            _runtime_absolute_string(target_root, item)
+            if isinstance(item, str) and _looks_like_repo_relative_path(item)
+            else item
             for item in value
         ]
-    hooks = rewritten.get("hooks")
-    if isinstance(hooks, dict):
-        rewritten_hooks = dict(hooks)
-        for key in ("pre", "post"):
-            value = rewritten_hooks.get(key)
-            if not isinstance(value, list):
-                continue
-            rewritten_hooks[key] = [
-                _rewrite_command_to_absolute_repo_path(item, root) if isinstance(item, str) else item
-                for item in value
-            ]
-        rewritten["hooks"] = rewritten_hooks
     return rewritten
 
 
-def _rewrite_text_runtime_paths(text: str, *, root: Path) -> str:
+def _absolute_text_path(
+    value: str,
+    *,
+    repo_root: Path,
+    target_root: Path,
+    current_runtime_dir: Path,
+) -> str:
+    raw_value = value.strip()
+    normalized = PurePosixPath(raw_value.replace("\\", "/"))
+    normalized_text = str(normalized)
+    meaningful_parts = [part for part in normalized.parts if part not in {"."}]
+    if meaningful_parts and meaningful_parts[0] == "scripts":
+        return _repo_absolute_string(repo_root, "/".join(meaningful_parts))
+    if meaningful_parts and meaningful_parts[0] == "docs":
+        return _runtime_absolute_string(target_root, "/".join(meaningful_parts))
+    if meaningful_parts and meaningful_parts[0] in {
+        "skills",
+        "references",
+    }:
+        return str((target_root / str(PurePosixPath(*meaningful_parts)).replace("/", "\\")).resolve())
+    if raw_value.startswith("./") or raw_value.startswith("../"):
+        return str((current_runtime_dir / Path(*normalized.parts)).resolve())
+    if _looks_like_repo_relative_path(raw_value):
+        return _runtime_absolute_string(target_root, raw_value)
+    return value
+
+
+def _rewrite_link_block_content(
+    text: str,
+    *,
+    repo_root: Path,
+    target_root: Path,
+    current_runtime_dir: Path,
+) -> str:
+    markdown_link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+    inline_code_pattern = re.compile(r"`([^`]+)`")
+
+    def _rewrite_inline_value(raw: str) -> str:
+        return _absolute_text_path(
+            raw,
+            repo_root=repo_root,
+            target_root=target_root,
+            current_runtime_dir=current_runtime_dir,
+        )
+
+    text = markdown_link_pattern.sub(
+        lambda match: f"[{match.group(1)}]({_rewrite_inline_value(match.group(2))})",
+        text,
+    )
+    text = inline_code_pattern.sub(
+        lambda match: f"`{_rewrite_inline_value(match.group(1))}`",
+        text,
+    )
+    return text
+
+
+def _rewrite_must_read_block_content(
+    text: str,
+    *,
+    repo_root: Path,
+    target_root: Path,
+    current_runtime_dir: Path,
+) -> str:
+    inline_code_pattern = re.compile(r"`([^`]+)`")
+    return inline_code_pattern.sub(
+        lambda match: f'`{_absolute_text_path(match.group(1), repo_root=repo_root, target_root=target_root, current_runtime_dir=current_runtime_dir)}`',
+        text,
+    )
+
+
+def _rewrite_tagged_blocks(
+    text: str,
+    *,
+    repo_root: Path,
+    target_root: Path,
+    current_runtime_dir: Path,
+) -> str:
+    block_handlers = {
+        "LINK": _rewrite_link_block_content,
+        "MUST-READ": _rewrite_must_read_block_content,
+    }
+    rewritten = text
+    for tag_name, handler in block_handlers.items():
+        pattern = re.compile(rf"<{tag_name}>(.*?)</{tag_name}>", re.DOTALL)
+        rewritten = pattern.sub(
+            lambda match: f"<{tag_name}>"
+            + handler(
+                match.group(1),
+                repo_root=repo_root,
+                target_root=target_root,
+                current_runtime_dir=current_runtime_dir,
+            )
+            + f"</{tag_name}>",
+            rewritten,
+        )
+    return rewritten
+
+
+def _quote_runtime_path_list_entries(frontmatter: str) -> str:
+    lines = frontmatter.splitlines()
+    quoted_lines: list[str] = []
+    in_runtime_path_list = False
+    runtime_list_keys = {"required_reads:", "required_outputs:"}
+    for line in lines:
+        stripped = line.strip()
+        if stripped in runtime_list_keys:
+            in_runtime_path_list = True
+            quoted_lines.append(line)
+            continue
+        if in_runtime_path_list:
+            if line.startswith("-") or line.startswith("  -"):
+                prefix, value = line.split("-", 1)
+                item = value.strip()
+                if item and not (item.startswith('"') and item.endswith('"')):
+                    escaped = item.replace("\\", "\\\\")
+                    line = f'{prefix}- "{escaped}"'
+                quoted_lines.append(line)
+                continue
+            in_runtime_path_list = False
+        quoted_lines.append(line)
+    return "\n".join(quoted_lines)
+
+
+def _rewrite_text_runtime_paths(
+    text: str,
+    *,
+    repo_root: Path,
+    target_root: Path,
+    current_runtime_dir: Path,
+) -> str:
     normalized = text.replace("\r\n", "\n")
     if normalized.startswith("---\n"):
         parts = normalized.split("---\n", 2)
         if len(parts) >= 3:
             payload = yaml.safe_load(parts[1]) or {}
             if isinstance(payload, dict):
-                rewritten_payload = _rewrite_frontmatter_lists(payload, root)
+                rewritten_payload = _rewrite_frontmatter_lists(payload, target_root)
                 frontmatter = yaml.safe_dump(rewritten_payload, sort_keys=False, allow_unicode=False).strip()
+                frontmatter = _quote_runtime_path_list_entries(frontmatter)
                 normalized = f"---\n{frontmatter}\n---\n" + parts[2]
+    normalized = _rewrite_tagged_blocks(
+        normalized,
+        repo_root=repo_root,
+        target_root=target_root,
+        current_runtime_dir=current_runtime_dir,
+    )
     lines: list[str] = []
     for line in normalized.splitlines():
         if line.startswith("Source: "):
@@ -126,20 +263,32 @@ def _rewrite_text_runtime_paths(text: str, *, root: Path) -> str:
             if source_value.startswith("`") and source_value.endswith("`"):
                 raw = source_value[1:-1]
                 if _looks_like_repo_relative_path(raw):
-                    line = f'Source: `{_repo_absolute_string(root, raw)}`'
+                    line = f'Source: `{_repo_absolute_string(repo_root, raw)}`'
             elif _looks_like_repo_relative_path(source_value):
-                line = f'Source: {_repo_absolute_string(root, source_value)}'
+                line = f'Source: {_repo_absolute_string(repo_root, source_value)}'
         elif "  - Source: `" in line and line.rstrip().endswith("`"):
             prefix, raw = line.split("`", 1)
             candidate, _ = raw.rsplit("`", 1)
             if _looks_like_repo_relative_path(candidate):
-                line = f"{prefix}`{_repo_absolute_string(root, candidate)}`"
+                line = f"{prefix}`{_repo_absolute_string(repo_root, candidate)}`"
         lines.append(line)
     return "\n".join(lines)
 
 
-def _render_runtime_text(src: Path, *, root: Path) -> str:
-    return _rewrite_text_runtime_paths(src.read_text(encoding="utf-8"), root=root).rstrip("\n")
+def _render_runtime_text(
+    src: Path,
+    *,
+    repo_root: Path,
+    target_root: Path,
+    generated_root: Path,
+) -> str:
+    runtime_path = target_root / src.relative_to(generated_root)
+    return _rewrite_text_runtime_paths(
+        src.read_text(encoding="utf-8"),
+        repo_root=repo_root,
+        target_root=target_root,
+        current_runtime_dir=runtime_path.parent,
+    ).rstrip("\n")
 
 
 def _looks_generated(path: Path) -> bool:
@@ -155,7 +304,7 @@ def _looks_generated(path: Path) -> bool:
     return "<!--" in text[:256] and "GENERATED FILE - DO NOT EDIT" in text[:512]
 
 
-def _check_platform(generated_root: Path, target_root: Path, *, root: Path) -> list[str]:
+def _check_platform(generated_root: Path, target_root: Path, *, repo_root: Path) -> list[str]:
     issues: list[str] = []
     generated_files = [p for p in generated_root.rglob("*") if p.is_file()]
     for src in generated_files:
@@ -164,12 +313,23 @@ def _check_platform(generated_root: Path, target_root: Path, *, root: Path) -> l
         if not dst.exists():
             issues.append(f"Missing deployed file: {dst.as_posix()}")
             continue
-        if _render_runtime_text(src, root=root) != _read_text(dst):
+        if _render_runtime_text(
+            src,
+            repo_root=repo_root,
+            target_root=target_root,
+            generated_root=generated_root,
+        ) != _read_text(dst):
             issues.append(f"Deployed drift: {dst.as_posix()}")
     return issues
 
 
-def _plan_deploy(generated_root: Path, target_root: Path, *, root: Path, force: bool) -> tuple[list[str], list[str], list[tuple[Path, Path, str]]]:
+def _plan_deploy(
+    generated_root: Path,
+    target_root: Path,
+    *,
+    repo_root: Path,
+    force: bool,
+) -> tuple[list[str], list[str], list[tuple[Path, Path, str]]]:
     changes: list[str] = []
     issues: list[str] = []
     pairs: list[tuple[Path, Path, str]] = []
@@ -177,7 +337,12 @@ def _plan_deploy(generated_root: Path, target_root: Path, *, root: Path, force: 
     for src in generated_files:
         rel = src.relative_to(generated_root)
         dst = target_root / rel
-        rendered = _render_runtime_text(src, root=root)
+        rendered = _render_runtime_text(
+            src,
+            repo_root=repo_root,
+            target_root=target_root,
+            generated_root=generated_root,
+        )
         if dst.exists():
             if rendered == _read_text(dst):
                 continue
@@ -210,9 +375,14 @@ def run() -> int:
             continue
         target_root = PLATFORM_TARGETS[platform]
         if args.check:
-            issues.extend(_check_platform(generated_root, target_root, root=root))
+            issues.extend(_check_platform(generated_root, target_root, repo_root=root))
             continue
-        changes, plan_issues, pairs = _plan_deploy(generated_root, target_root, root=root, force=args.force)
+        changes, plan_issues, pairs = _plan_deploy(
+            generated_root,
+            target_root,
+            repo_root=root,
+            force=args.force,
+        )
         issues.extend(plan_issues)
         if plan_issues:
             continue

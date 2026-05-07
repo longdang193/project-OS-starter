@@ -32,6 +32,7 @@ This skill routes and triages only. It does not author specs or plans.
 
 ## Canonical References
 
+<MUST-READ>
 - `docs/operating_system/templates/task-start-routing-guide.md`
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-live-run-system.md`
@@ -40,13 +41,16 @@ This skill routes and triages only. It does not author specs or plans.
 - `scripts/validate_planning_lifecycle.py`
 
 If this skill text conflicts with the references above, follow the references.
+</MUST-READ>
 
 ## Mandatory Read
 
+<MUST-READ>
 Before producing triage, read:
 
 - canonical references above, especially:
   - `docs/operating_system/templates/task-start-routing-guide.md`
+</MUST-READ>
 
 ## GitNexus Usage
 

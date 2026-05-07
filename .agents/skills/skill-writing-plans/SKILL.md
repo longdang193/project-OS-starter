@@ -30,20 +30,24 @@ Create executable implementation plans from approved design context.
 
 ## Canonical References
 
+<MUST-READ>
 - `docs/operating_system/templates/implementation-plan-template.md`
 - `docs/operating_system/templates/task-start-routing-guide.md`
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/governance/repo-governance.md`
 
 If this file conflicts with canonical templates/governance, follow canonical docs.
+</MUST-READ>
 
 ## Mandatory Read
 
+<MUST-READ>
 Before drafting a plan, read:
 
 - canonical references above, especially:
   - `docs/operating_system/templates/task-start-routing-guide.md`
   - `docs/operating_system/templates/implementation-plan-template.md`
+</MUST-READ>
 
 ## Pre-Write Contract Check
 
@@ -82,6 +86,7 @@ Use GitNexus when plan quality depends on cross-file dependency awareness.
 ## Plan Output
 
 Default path:
+
 - `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`
 
 Use the canonical implementation plan template and fill exact paths, tests, and commands.

@@ -36,24 +36,36 @@ Deploy generated runtime artifacts and verify runtime health.
 Please:
 1. run sync first:
    - python scripts/sync_agent_adapters.py
-2. run deploy preview:
+2. confirm the synced provider root instruction files still contain the generated runtime manifest block:
+   - AGENTS.md
+   - CLAUDE.md
+   - GEMINI.md
+   - required block:
+     <!-- BEGIN GENERATED: RUNTIME_MANIFEST -->
+     ...
+     <!-- END GENERATED: RUNTIME_MANIFEST -->
+   - if the block is missing, stop and fix sync/template generation before deploy
+3. run deploy preview:
    - python scripts/deploy_agent_runtime.py --target all --dry-run
-3. deploy with backups:
+4. deploy with backups:
    - python scripts/deploy_agent_runtime.py --target all --backup
-4. if deployment is blocked by non-generated runtime files, rerun with force:
+5. if deployment is blocked by non-generated runtime files, rerun with force:
    - python scripts/deploy_agent_runtime.py --target all --backup --force
-5. run post-deploy drift check:
+6. run post-deploy drift check:
    - python scripts/deploy_agent_runtime.py --target all --check
-6. run post-deploy repo contract check:
+7. run post-deploy repo contract check:
    - python scripts/validate_repo_contracts.py --fast
-7. report:
+8. report:
+   - whether AGENTS.md / CLAUDE.md / GEMINI.md kept the runtime manifest block
    - deployed targets and changed file counts
    - any forced-overwrite paths
    - drift/check status
+   - repo-contract status
    - unresolved issues and minimal follow-up action
 ```
 
 Expected output:
+- manifest-presence confirmation for provider root instruction files
 - deploy summary for codex/claude/antigravity homes
 - post-deploy check results
 - repo-contract validation result

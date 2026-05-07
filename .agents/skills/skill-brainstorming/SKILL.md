@@ -32,6 +32,7 @@ This skill produces design artifacts only.
 
 ## Canonical References
 
+<MUST-READ>
 - `docs/operating_system/templates/task-start-routing-guide.md`
 - `docs/operating_system/templates/complete-specification-set-template.md`
 - `docs/operating_system/templates/spec-authoring-map-template.md`
@@ -39,13 +40,16 @@ This skill produces design artifacts only.
 - `docs/operating_system/governance/repo-governance.md`
 
 If this file conflicts with canonical templates/governance, follow canonical docs.
+</MUST-READ>
 
 ## Mandatory Read
 
+<MUST-READ>
 Before any skill-brainstorming output, read:
 
 - canonical references above, especially:
   - `docs/operating_system/templates/task-start-routing-guide.md`
+</MUST-READ>
 
 ## GitNexus Usage
 
