@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/README.md
   - docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
@@ -23,7 +23,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a small prompt-template pack that users can copy to guide agents through the repo lifecycle from intent to spec, plan, execution, validation, and mode migration.
 
@@ -52,7 +52,7 @@ Invariants:
   - Planning lifecycle stays `intent -> workstream or operating_system -> change -> spec -> plan -> execution`.
   - Prompt templates should help users ask for the right artifact, not bypass the lifecycle.
 Dependencies:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
   - `docs/project_templates/mode-a/README.md`
@@ -73,7 +73,7 @@ Affected docs:
   cross_cutting_docs:
     - none
   operating_system_docs:
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
     - `docs/operating_system/project-adoption-migration-guide.md`
   readme: none
@@ -103,7 +103,7 @@ docs/operating_system/prompt_templates/mode-migration-prompt.md
 
 ```text
 docs/operating_system/repo-governance.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/project-adoption-migration-guide.md
 docs/project_templates/mode-a/README.md
 docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
@@ -121,7 +121,7 @@ docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
 ## Task 2: Link The Pack From Core Docs
 
 **Files:**
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
 - Modify: `docs/project_templates/mode-a/README.md`

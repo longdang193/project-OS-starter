@@ -4,7 +4,7 @@ artifact_type: plan
 status: completed
 parent_workstream: none
 targets:
-  - .agents/skills/private-public-repo-governance/SKILL.md
+  - .agents/skills/skill-private-public-repo-governance/SKILL.md
   - docs/operating_system/publication-workflow.md
   - repo_config/publication-config.json
 related_features: []
@@ -20,7 +20,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Clarify that starter adoption/bootstrap docs are private-only by default and harden the publication boundary so future public allowlists do not accidentally leak them.
 
@@ -49,7 +49,7 @@ related_stages: []
 ## Task 2: Update Governance Guidance
 
 **Files:**
-- Modify: `.agents/skills/private-public-repo-governance/SKILL.md`
+- Modify: `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - Modify: `docs/operating_system/publication-workflow.md`
 
 - [x] Step 1: Add starter adoption/bootstrap docs to the private-only examples in the skill.

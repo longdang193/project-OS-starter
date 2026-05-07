@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/adoption_guide.md
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/feature-routing-guide.md
   - docs/features/README.md
 related_features: []
@@ -311,7 +311,7 @@ Create a detailed migration guide with:
 - validation checklist
 - DE-PROJECT-style anti-pattern example
 
-### Update `docs/operating_system/doc-system-lifecycle.md`
+### Update `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Add a concise reference to the adoption migration guide.
 
@@ -372,7 +372,7 @@ The implementation is complete when:
 
 - `docs/adoption_guide.md` requires choosing an adoption mode before feature/stage migration.
 - `docs/operating_system/project-adoption-migration-guide.md` exists and explains the full migration sequence.
-- `docs/operating_system/doc-system-lifecycle.md` distinguishes managed feature-folder mode from legacy flat YAML mode.
+- `docs/operating_system/skill-doc-system-lifecycle.md` distinguishes managed feature-folder mode from legacy flat YAML mode.
 - `docs/features/README.md` warns against mixing flat authoritative contracts with managed feature folders.
 - `docs/operating_system/feature-routing-guide.md` links classification to migration guidance.
 - The guide explicitly says code/config/test metadata must be updated in managed mode.

@@ -8,7 +8,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - docs/intent/workstream-coverage-and-progress-guide.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/specs/2026-04-27-upstream-to-downstream-planning-prompt-ladder-spec.md
 related_features: []
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add construction-oriented prompts that build the planning structure top-down: master roadmap, registered workstream set, and bounded change threads.
 

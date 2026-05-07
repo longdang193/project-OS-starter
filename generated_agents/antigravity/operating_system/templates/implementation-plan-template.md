@@ -2,13 +2,13 @@
 template_id: implementation-plan
 document_type: implementation_plan
 target_globs:
-  - docs/superpowers/plans/*.md
+- docs/superpowers/plans/*.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Task Breakdown
-  - Verification
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Task Breakdown
+- Verification
+- Completion Criteria
 required_frontmatter:
   artifact_type: plan
 ---

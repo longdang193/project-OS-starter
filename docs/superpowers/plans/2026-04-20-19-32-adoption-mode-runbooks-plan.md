@@ -19,7 +19,7 @@ related_stages: []
 **Plan Layer:** operating_system
 **Plan Status:** proposed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add executable mode-specific adoption runbooks so future agents can choose, migrate, validate, and commit adoption states without creating partial architecture metadata.
 

@@ -7,7 +7,7 @@ targets:
   - README.md
   - docs/adoption_guide.md
   - docs/intent/README.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Enforce a lean required project folder surface, add `docs/intent/` validation, and document the minimum file expectations for required folders.
 
@@ -68,7 +68,7 @@ related_stages: []
 - Modify: `README.md`
 - Modify: `docs/adoption_guide.md`
 - Modify: `docs/intent/README.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/repo-governance.md`
 
 - [x] Step 1: Add the required folder surface to the bootstrap/adoption guidance.

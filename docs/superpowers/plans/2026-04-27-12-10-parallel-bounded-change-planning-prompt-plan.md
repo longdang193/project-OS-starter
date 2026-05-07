@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
   - docs/intent/workstream-coverage-and-progress-guide.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/specs/2026-04-27-parallel-bounded-change-planning-prompt-spec.md
 related_features: []
@@ -22,7 +22,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a prompt template that helps users decide which bounded change threads can run in parallel safely, what should stay sequential, and how ownership should be split.
 
@@ -53,7 +53,7 @@ Invariants:
 Dependencies:
   - `docs/operating_system/prompt_templates/`
   - `docs/intent/workstream-coverage-and-progress-guide.md`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
 Affected stages:
   - none
@@ -73,7 +73,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
   readme: none
   generated:
@@ -97,7 +97,7 @@ docs/operating_system/prompt_templates/parallel-bounded-change-planning-prompt.m
 ```text
 docs/operating_system/prompt_templates/README.md
 docs/intent/workstream-coverage-and-progress-guide.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
 docs/superpowers/specs/2026-04-27-parallel-bounded-change-planning-prompt-spec.md
 docs/superpowers/plans/2026-04-27-12-10-parallel-bounded-change-planning-prompt-plan.md
@@ -117,7 +117,7 @@ docs/superpowers/plans/2026-04-27-12-10-parallel-bounded-change-planning-prompt-
 **Files:**
 - Modify: `docs/operating_system/prompt_templates/README.md`
 - Modify: `docs/intent/workstream-coverage-and-progress-guide.md`
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 
 - [x] Step 1: Add the prompt to the README with a clear safe-parallelism use case.

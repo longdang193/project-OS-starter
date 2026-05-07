@@ -6,11 +6,11 @@ parent_workstream: none
 targets:
   - docs/intent/README.md
   - docs/intent/master-workstream-roadmap.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
-  - .agents/skills/brainstorming/SKILL.md
-  - .agents/skills/planning-dispatch/SKILL.md
-  - .agents/skills/writing-plans/SKILL.md
+  - .agents/skills/skill-brainstorming/SKILL.md
+  - .agents/skills/skill-planning-dispatch/SKILL.md
+  - .agents/skills/skill-writing-plans/SKILL.md
 related_features: []
 related_stages: []
 ---
@@ -34,11 +34,11 @@ Invariants:
 Dependencies:
 
 - `docs/intent/README.md`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
-- `.agents/skills/brainstorming/SKILL.md`
-- `.agents/skills/planning-dispatch/SKILL.md`
-- `.agents/skills/writing-plans/SKILL.md`
+- `.agents/skills/skill-brainstorming/SKILL.md`
+- `.agents/skills/skill-planning-dispatch/SKILL.md`
+- `.agents/skills/skill-writing-plans/SKILL.md`
 
 Affected stages:
 
@@ -61,7 +61,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
 - readme: none
 - generated: none
@@ -259,7 +259,7 @@ translates purpose into durable work.
 Should become the canonical top-down planning bridge from intent into major
 work.
 
-### `docs/operating_system/planning-dispatch.md`
+### `docs/operating_system/skill-planning-dispatch.md`
 
 Should be updated so its routing story becomes:
 
@@ -307,7 +307,7 @@ Use the smallest strong move:
 
 1. add the master roadmap under `docs/intent/`
 2. preserve `operating_system` as a sibling branch in the planning model
-3. update planning-dispatch and governance docs to make that tree explicit
+3. update skill-planning-dispatch and governance docs to make that tree explicit
 4. keep specs/plans as bounded downstream artifacts
 
 That gives us a stronger top-down planning system without collapsing unlike

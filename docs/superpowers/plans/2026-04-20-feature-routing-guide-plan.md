@@ -7,7 +7,7 @@ targets:
   - docs/operating_system/feature-routing-guide.md
   - docs/adoption_guide.md
   - docs/features/README.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
 ---
@@ -39,7 +39,7 @@ Affected docs:
   - `docs/operating_system/feature-routing-guide.md`
   - `docs/adoption_guide.md`
   - `docs/features/README.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
 - readme: none
 - generated: none
 Generated refresh required: no
@@ -88,7 +88,7 @@ Patch `docs/features/README.md` with a short eligibility gate:
 
 ### 4. Update doc-system lifecycle
 
-Patch `docs/operating_system/doc-system-lifecycle.md` with:
+Patch `docs/operating_system/skill-doc-system-lifecycle.md` with:
 
 - a direct anti-pattern warning against `docs/features/repo-operating-system.yaml`
 - guidance that operating-system specs/plans use `targets`, not product feature `depends_on`
@@ -110,6 +110,6 @@ Inspect the final diff for accidental generated-file edits.
 - `docs/operating_system/feature-routing-guide.md` exists and explains routing decisions clearly.
 - `docs/adoption_guide.md` links to the routing guide before feature/stage creation guidance.
 - `docs/features/README.md` prevents treating repo-method work as product features.
-- `docs/operating_system/doc-system-lifecycle.md` names the `repo-operating-system` anti-pattern.
+- `docs/operating_system/skill-doc-system-lifecycle.md` names the `repo-operating-system` anti-pattern.
 - No generated files are edited.
 - `git diff --check` passes.

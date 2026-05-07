@@ -9,13 +9,13 @@ targets:
   - docs/operating_system/prompt_templates/spec-set-execution-map-prompt.md
   - docs/operating_system/prompt_templates/spec-prompt.md
   - docs/operating_system/prompt_templates/plan-prompt.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/execution_maps/README.md
-  - .agents/skills/brainstorming/SKILL.md
-  - .agents/skills/planning-dispatch/SKILL.md
-  - .agents/skills/writing-plans/SKILL.md
-  - .agents/skills/doc-system-lifecycle/SKILL.md
+  - .agents/skills/skill-brainstorming/SKILL.md
+  - .agents/skills/skill-planning-dispatch/SKILL.md
+  - .agents/skills/skill-writing-plans/SKILL.md
+  - .agents/skills/skill-doc-system-lifecycle/SKILL.md
   - docs/superpowers/specs/2026-04-28-spec-authoring-map-and-implementation-execution-map-spec.md
 related_features: []
 related_stages: []
@@ -30,7 +30,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Refine the planning ladder so the repo teaches two orchestration phases: spec-authoring orchestration before detailed specs, and implementation execution orchestration after approved detailed specs.
 
@@ -58,7 +58,7 @@ related_stages: []
 
 ## Task 3: Update Repo-Control Docs And Skills
 
-- [x] Step 1: Update `planning-dispatch.md`, `repo-governance.md`, and `docs/superpowers/execution_maps/README.md`.
+- [x] Step 1: Update `skill-planning-dispatch.md`, `repo-governance.md`, and `docs/superpowers/execution_maps/README.md`.
 - [x] Step 2: Update the four planning-related skills so they distinguish spec-authoring orchestration from implementation orchestration.
 
 ## Task 4: Close The Loop

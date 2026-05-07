@@ -3,12 +3,12 @@ name: command-execution
 description: Define command execution safety boundaries and escalation conditions.
 alwaysApply: true
 required_reads:
-  - docs/operating_system/repo-governance.md
-  - AGENTS.md
+- docs/operating_system/repo-governance.md
+- AGENTS.md
 tags:
-  - rule
-  - safety
-  - execution
+- rule
+- safety
+- execution
 ---
 
 # Command Execution Rule

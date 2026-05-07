@@ -2,13 +2,13 @@
 template_id: bounded-change-thread
 document_type: bounded_change_thread
 target_globs:
-  - docs/intent/workstreams/threads/*/*.md
+- docs/intent/workstreams/threads/*/*.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Scope
-  - Dependencies
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Scope
+- Dependencies
+- Completion Criteria
 ---
 
 <!--

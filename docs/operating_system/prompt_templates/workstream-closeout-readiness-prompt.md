@@ -10,7 +10,7 @@ prerequisites:
 next_steps:
 - implementation-next-action-gate-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:
@@ -28,7 +28,7 @@ thread creation or spec authoring
 
 Required when proposing workstream closure or claiming completion/pass status:
 
-- run `verification-before-completion` checks before final close recommendation
+- run `skill-verification-before-completion` checks before final close recommendation
 
 Use this when deciding whether a workstream can be marked `completed`.
 

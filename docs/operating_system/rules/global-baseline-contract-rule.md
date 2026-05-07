@@ -11,9 +11,9 @@ tags:
 - governance
 - rule
 ---
+
 # Global Baseline Contract Rule
 
 Use `AGENTS.md` as the shared baseline contract across Codex, Claude, and
 Gemini runtimes. Runtime targets are generated and deployed; do not hand-edit
 runtime target files.
-

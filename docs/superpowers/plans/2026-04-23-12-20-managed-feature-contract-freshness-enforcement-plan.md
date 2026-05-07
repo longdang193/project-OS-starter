@@ -7,7 +7,7 @@ targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/feature-lifecycle.md
   - docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md
   - docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Make managed generated feature contracts fail validation unless they include `revision`, `latest_change_id`, and `last_updated_at`.
 
@@ -55,7 +55,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/feature-lifecycle.md`
   - `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
   - `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
@@ -101,7 +101,7 @@ $env:PYTHONPATH=(Resolve-Path '.tmp-tests\pytest-deps').Path; python -m pytest t
 **Files:**
 
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/feature-lifecycle.md`
 - Modify: `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
 - Modify: `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`

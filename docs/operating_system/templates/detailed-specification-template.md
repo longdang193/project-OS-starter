@@ -2,14 +2,14 @@
 template_id: detailed-specification
 document_type: detailed_specification
 target_globs:
-  - docs/superpowers/specs/*.md
+- docs/superpowers/specs/*.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Design Decisions
-  - Invariants
-  - Validation Plan
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Design Decisions
+- Invariants
+- Validation Plan
+- Completion Criteria
 required_frontmatter:
   artifact_type: spec
 ---

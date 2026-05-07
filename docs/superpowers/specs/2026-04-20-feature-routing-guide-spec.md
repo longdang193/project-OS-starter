@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/adoption_guide.md
   - docs/features/README.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/feature-routing-guide.md
 related_features: []
 related_stages: []
@@ -161,7 +161,7 @@ Required guidance:
 - If no product/domain features are clear yet, leave the folder with only the README.
 - Human-owned feature inputs should use `docs/features/<feature_id>/feature.source.yaml` when managed architecture docs are adopted.
 
-### Update `docs/operating_system/doc-system-lifecycle.md`
+### Update `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Add an explicit anti-pattern:
 
@@ -280,7 +280,7 @@ The implementation is complete when:
 - `docs/operating_system/feature-routing-guide.md` exists and includes decision, eligibility, dependency, and capability-ID rules.
 - `docs/adoption_guide.md` links to the routing guide before feature/stage creation instructions.
 - `docs/features/README.md` states that features are product/domain capabilities only.
-- `docs/operating_system/doc-system-lifecycle.md` explicitly warns against modeling repo-method work as features.
+- `docs/operating_system/skill-doc-system-lifecycle.md` explicitly warns against modeling repo-method work as features.
 - The bad `repo-operating-system` pattern is documented as an anti-pattern.
 - The guide shows the corrected `layer: operating_system` spec/plan metadata shape.
 - The starter remains valid even when no product features have been created yet.

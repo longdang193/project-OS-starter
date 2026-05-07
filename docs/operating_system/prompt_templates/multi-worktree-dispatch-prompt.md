@@ -14,9 +14,9 @@ next_steps:
 - patch-and-pattern-detection-prompt.md
 - thread-closeout-readiness-prompt.md
 related_skills:
-- planning-dispatch
-- using-git-worktrees
-- executing-plans
+- skill-planning-dispatch
+- skill-using-git-worktrees
+- skill-executing-plans
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:

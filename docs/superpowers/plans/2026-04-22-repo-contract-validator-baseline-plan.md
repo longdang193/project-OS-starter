@@ -10,7 +10,7 @@ targets:
   - scripts/setup_hooks.sh
   - tests/test_setup_hooks.py
   - tests/test_validate_repo_contracts.py
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/feature-lifecycle.md
   - docs/operating_system/stage-lifecycle.md

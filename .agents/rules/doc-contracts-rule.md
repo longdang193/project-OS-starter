@@ -1,14 +1,15 @@
 ---
 name: doc-contracts
-description: Enforce document contract consistency for templates, lifecycle metadata, and generated surfaces.
+description: Enforce document contract consistency for templates, lifecycle metadata,
+  and generated surfaces.
 alwaysApply: true
 required_reads:
-  - docs/operating_system/repo-governance.md
-  - docs/operating_system/agent-runtime-metadata-schema.md
+- docs/operating_system/repo-governance.md
+- docs/operating_system/agent-runtime-metadata-schema.md
 tags:
-  - rule
-  - docs
-  - contracts
+- rule
+- docs
+- contracts
 ---
 
 <!--

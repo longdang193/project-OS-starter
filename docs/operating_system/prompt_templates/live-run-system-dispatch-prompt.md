@@ -14,11 +14,11 @@ next_steps:
 - implementation-next-action-gate-prompt.md
 - thread-closeout-readiness-prompt.md
 related_skills:
-- planning-dispatch
-- executing-plans
+- skill-planning-dispatch
+- skill-executing-plans
 required_reads:
 - docs/operating_system/prompt_templates/README.md
-- docs/operating_system/workflows/live-run-system-workflow.md
+- docs/operating_system/workflows/workflow-live-run-system.md
 tags:
 - prompt
 - execution
@@ -39,13 +39,13 @@ Context:
 Rules:
 1. Do not invent unrelated work.
 2. Select from existing live-run workflows only:
-   - live-run-system-workflow.md
-   - live-run-scenario-planning-workflow.md
-   - live-run-preflight-check-workflow.md
-   - live-run-execution-workflow.md
-   - live-run-debugging-workflow.md
-   - live-run-verification-workflow.md
-   - live-run-closeout-workflow.md
+   - workflow-live-run-system.md
+   - workflow-live-run-scenario-planning.md
+   - workflow-live-run-preflight-check.md
+   - workflow-live-run-execution.md
+   - workflow-live-run-debugging.md
+   - workflow-live-run-verification.md
+   - workflow-live-run-closeout.md
 3. If prerequisites are missing, return the minimal unblock action first.
 4. If failure exists, route to evidence-based debugging path.
 5. If run passed, route to verification then closeout.

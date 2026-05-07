@@ -2,13 +2,13 @@
 template_id: complete-specification-set
 document_type: complete_specification_set
 target_globs:
-  - docs/superpowers/execution_maps/*.md
+- docs/superpowers/execution_maps/*.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Spec Inventory
-  - Coverage Check
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Spec Inventory
+- Coverage Check
+- Completion Criteria
 required_frontmatter:
   artifact_type: execution_map
   map_type: complete_spec_set

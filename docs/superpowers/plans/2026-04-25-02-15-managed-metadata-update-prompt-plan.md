@@ -5,9 +5,9 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/superpowers/specs/2026-04-25-managed-metadata-update-prompt-spec.md
 related_features: []
 related_stages: []
@@ -22,7 +22,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a dedicated prompt template for updating already-managed architecture metadata surfaces and wire it into the prompt pack and operating-system guidance.
 
@@ -52,9 +52,9 @@ Invariants:
   - the prompt pack remains concise
 Dependencies:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
 Affected stages:
   - none
 Affected features:
@@ -73,9 +73,9 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
-    - `docs/operating_system/doc-system-lifecycle.md`
+    - `docs/operating_system/skill-doc-system-lifecycle.md`
   readme: none
   generated:
     - none
@@ -99,9 +99,9 @@ docs/operating_system/prompt_templates/managed-metadata-update-prompt.md
 docs/operating_system/prompt_templates/README.md
 docs/operating_system/prompt_templates/validate-or-drift-prompt.md
 docs/operating_system/prompt_templates/mode-migration-prompt.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-25-managed-metadata-update-prompt-spec.md
 docs/superpowers/plans/2026-04-25-02-15-managed-metadata-update-prompt-plan.md
 ```
@@ -129,9 +129,9 @@ docs/superpowers/plans/2026-04-25-02-15-managed-metadata-update-prompt-plan.md
 ## Task 3: Update Operating-System Docs
 
 **Files:**
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [x] Step 1: Mention the new managed-update prompt as the right entrypoint for already-managed metadata repairs or refresh work.
 - [x] Step 2: Keep the distinction among migration, drift discovery, and managed update/fix explicit.

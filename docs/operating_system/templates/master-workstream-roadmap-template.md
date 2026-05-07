@@ -2,13 +2,13 @@
 template_id: master-workstream-roadmap
 document_type: master_workstream_roadmap
 target_globs:
-  - docs/intent/master-workstream-roadmap.md
+- docs/intent/master-workstream-roadmap.md
 required_sections:
-  - Goal
-  - Key Deliverables
-  - Phase Structure
-  - Workstream Index
-  - Completion Criteria
+- Goal
+- Key Deliverables
+- Phase Structure
+- Workstream Index
+- Completion Criteria
 ---
 
 # Master Workstream Roadmap Template

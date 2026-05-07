@@ -19,7 +19,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a dedicated guide that teaches how to rewrite private starter-oriented docs into public-safe, product-facing docs, and link it from the publication workflow.
 

@@ -9,7 +9,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/README.md
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/specs/2026-04-28-bounded-change-thread-file-structure-spec.md
 related_features: []
@@ -25,7 +25,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Make bounded change threads explicit in the worktree, then update the planning prompts and guidance so users move through the thread layer naturally instead of skipping from workstream to spec.
 

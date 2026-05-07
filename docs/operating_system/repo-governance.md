@@ -188,7 +188,7 @@ Minimum file expectations for those required folders:
     from intent into durable workstreams and the parallel operating-system
     branch
 - `docs/operating_system/`
-  - governing repo-method docs such as `repo-governance.md` and `doc-system-lifecycle.md`
+  - governing repo-method docs such as `repo-governance.md` and `skill-skill-doc-system-lifecycle.md`
 - `docs/superpowers/specs/`
   - bounded design artifacts when needed
 - `docs/superpowers/plans/`

@@ -5,7 +5,7 @@ status: active
 parent_workstream: none
 targets:
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/mode-b-example-migration.md
 related_features: []
 related_stages: []
@@ -34,7 +34,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/mode-b-example-migration.md`
 - README: none
 - Generated discovery: none
@@ -43,7 +43,7 @@ related_stages: []
 
 **Files:**
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [ ] Step 1: Name `customer-churn-prediction-azureml/docs/generated/` as the concrete canonical target example.
 - [ ] Step 2: List `architecture_dag.yaml` and `capability_lineage.yaml` as the current managed target files.
@@ -61,7 +61,7 @@ related_stages: []
 
 **Files:**
 - Docs: `docs/operating_system/project-adoption-migration-guide.md`
-- Docs: `docs/operating_system/doc-system-lifecycle.md`
+- Docs: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Docs: `docs/operating_system/mode-b-example-migration.md`
 
 - [ ] Step 1: Review the touched sections for consistent target wording.

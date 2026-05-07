@@ -11,10 +11,10 @@ prerequisites:
 next_steps:
 - implementation-next-action-gate-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
-- docs/operating_system/workflows/roadmap-to-closeout-workflow.md
+- docs/operating_system/workflows/workflow-roadmap-to-closeout.md
 tags:
 - prompt
 - planning

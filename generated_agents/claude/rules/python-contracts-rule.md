@@ -1,14 +1,15 @@
 ---
 name: python-contracts
-description: Enforce Python contract/style/type expectations for generated and edited Python files.
+description: Enforce Python contract/style/type expectations for generated and edited
+  Python files.
 alwaysApply: false
 required_reads:
-  - .agents/skills/python-code-standards/SKILL.md
-  - docs/operating_system/repo-governance.md
+- .agents/skills/skill-python-code-standards/SKILL.md
+- docs/operating_system/repo-governance.md
 tags:
-  - rule
-  - python
-  - contracts
+- rule
+- python
+- contracts
 ---
 
 <!--

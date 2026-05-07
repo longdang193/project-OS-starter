@@ -10,7 +10,7 @@ targets:
   - tests/test_validate_repo_contracts.py
   - tests/test_validate_adoption_shape.py
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
 ---
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Extract the small shared repo-contract policy already duplicated across validators so `history.md` boundary markers and required metadata-marker strings come from one source of truth.
 
@@ -54,7 +54,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md`
 - README: none
 - Generated discovery: none
@@ -68,7 +68,7 @@ scripts/validate_adoption_shape.py
 tests/test_validate_repo_contracts.py
 tests/test_validate_adoption_shape.py
 docs/operating_system/repo-governance.md
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md
 ```
 
@@ -157,7 +157,7 @@ $env:UV_CACHE_DIR=$env:TEMP; uv run python -m pytest tests/test_validate_adoptio
 
 **Files:**
 - Modify: `docs/operating_system/repo-governance.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md`
 
 - [x] Step 1: Note that shared validator contract strings for repo-contract and adoption-shape validation now live in `scripts/validator_policy.py`.

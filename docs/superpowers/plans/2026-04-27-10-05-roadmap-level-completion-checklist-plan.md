@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstream-coverage-and-progress-guide.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/specs/2026-04-27-roadmap-level-completion-checklist-spec.md
 related_features: []
@@ -22,7 +22,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add a short strategic completeness checklist to the master roadmap without turning it into a task tracker.
 
@@ -43,7 +43,7 @@ related_stages: []
 ## Task 2: Clarify Ownership In Supporting Docs
 
 - [x] Step 1: Update `docs/intent/workstream-coverage-and-progress-guide.md` to point to the checklist as a strategic coverage aid.
-- [x] Step 2: Update `docs/operating_system/planning-dispatch.md` and `docs/operating_system/repo-governance.md` so the roadmap checklist is clearly separated from progress tracking.
+- [x] Step 2: Update `docs/operating_system/skill-planning-dispatch.md` and `docs/operating_system/repo-governance.md` so the roadmap checklist is clearly separated from progress tracking.
 
 ## Task 3: Close The Artifact Loop And Verify
 

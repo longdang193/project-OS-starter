@@ -9,7 +9,7 @@ targets:
   - tests/test_validate_repo_contracts.py
   - tests/test_validate_repo_config.py
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
 ---
@@ -38,7 +38,7 @@ Dependencies:
 - `tests/test_validate_repo_contracts.py`
 - `tests/test_validate_repo_config.py`
 - `docs/operating_system/repo-governance.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Affected stages:
 
@@ -62,7 +62,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
 - readme: none
 - generated: none
 

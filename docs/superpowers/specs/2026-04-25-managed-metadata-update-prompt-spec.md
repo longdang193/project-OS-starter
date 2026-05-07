@@ -5,9 +5,9 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
 ---
@@ -31,9 +31,9 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/prompt_templates/`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
-- `docs/operating_system/doc-system-lifecycle.md`
+- `docs/operating_system/skill-doc-system-lifecycle.md`
 
 Affected stages:
 
@@ -57,9 +57,9 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
 - readme: none
 - generated: none
 

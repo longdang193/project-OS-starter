@@ -40,6 +40,21 @@ This repo follows the Codex Skills model for formal skill shape:
 - optional `scripts/`, `references/`, `assets/`, and `agents/openai.yaml` only when they materially help the workflow
 - strong `description` fields so Codex can trigger the right skill reliably
 
+## Canonical Identity Rule
+
+Path identity is canonical for skills.
+
+- canonical skill identity = folder name under `.agents/skills/`
+- metadata `name` must exactly match that folder name
+- generated runtime skill paths should preserve that same identity
+- deploy and drift checks should rely on this structural identity instead of a separate naming translation layer
+
+This keeps validation and runtime deployment deterministic:
+
+- validators only need to confirm path-to-metadata alignment
+- generated runtime outputs can reuse canonical names directly
+- deploy reconciliation stays simpler during renames
+
 ## What Skills Are For
 
 Skills are for:
@@ -91,7 +106,7 @@ New skills are not considered trustworthy just because they were written down.
 
 Before a new skill is treated as landed:
 
-- validate it with the `writing-skills` workflow
+- validate it with the `skill-skill-writing-skills` workflow
 - define a baseline failure scenario
 - define the expected post-skill success behavior
 - tighten loopholes when the first version still leaves room for bad shortcuts

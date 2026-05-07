@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/architecture_templates/feature.source.yaml
@@ -25,7 +25,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add Phase 2 canonical ordering validation for non-semantic managed metadata lists, starting with human-authored sources and managed root-doc frontmatter.
 
@@ -58,7 +58,7 @@ related_stages: []
   - `docs/architecture_templates/stage.source.yaml`
   - `docs/architecture_templates/markdown-frontmatter.md`
 - Operating-system docs:
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/repo-governance.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
   - `docs/superpowers/specs/2026-04-23-canonical-ordering-rules-spec.md`
@@ -70,7 +70,7 @@ related_stages: []
 ```text
 scripts/validate_adoption_shape.py
 tests/test_validate_adoption_shape.py
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/operating_system/repo-governance.md
 docs/operating_system/project-adoption-migration-guide.md
 docs/architecture_templates/feature.source.yaml
@@ -157,7 +157,7 @@ $env:UV_CACHE_DIR=$env:TEMP; uv run python -m pytest tests/test_validate_adoptio
 - Modify: `docs/architecture_templates/feature.source.yaml`
 - Modify: `docs/architecture_templates/stage.source.yaml`
 - Modify: `docs/architecture_templates/markdown-frontmatter.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/operating_system/repo-governance.md`
 - Modify: `docs/operating_system/project-adoption-migration-guide.md`
 - Modify: `docs/superpowers/specs/2026-04-23-canonical-ordering-rules-spec.md`

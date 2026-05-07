@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/adoption_guide.md
   - docs/operating_system/project-adoption-migration-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/operating_system/feature-routing-guide.md
   - docs/features/README.md
 related_features: []
@@ -34,7 +34,7 @@ Affected docs:
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/operating_system/feature-routing-guide.md`
   - `docs/features/README.md`
 - readme: none
@@ -88,7 +88,7 @@ Patch `docs/features/README.md` so it states:
 
 ### 4. Update doc-system lifecycle
 
-Patch `docs/operating_system/doc-system-lifecycle.md` to distinguish managed feature-folder mode from legacy flat YAML mode.
+Patch `docs/operating_system/skill-doc-system-lifecycle.md` to distinguish managed feature-folder mode from legacy flat YAML mode.
 
 Add a reference to the migration guide near feature placement rules.
 
@@ -112,7 +112,7 @@ Search touched docs for accidental literal newline escapes.
 - `docs/operating_system/project-adoption-migration-guide.md` exists.
 - `docs/adoption_guide.md` requires adoption-mode selection before feature/stage metadata work.
 - `docs/features/README.md` warns against mixed legacy/managed feature shapes.
-- `docs/operating_system/doc-system-lifecycle.md` names flat feature YAML as legacy-only in managed architecture contexts.
+- `docs/operating_system/skill-doc-system-lifecycle.md` names flat feature YAML as legacy-only in managed architecture contexts.
 - `docs/operating_system/feature-routing-guide.md` links classification to migration guidance.
 - No generated files are edited.
 - `git diff --check` passes.

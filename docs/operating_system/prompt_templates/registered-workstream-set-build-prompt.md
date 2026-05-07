@@ -11,10 +11,10 @@ next_steps:
 - bounded-change-thread-build-prompt.md
 - roadmap-to-workstream-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
-- docs/operating_system/workflows/roadmap-to-closeout-workflow.md
+- docs/operating_system/workflows/workflow-roadmap-to-closeout.md
 tags:
 - prompt
 - planning

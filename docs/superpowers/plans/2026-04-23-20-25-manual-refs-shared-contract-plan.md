@@ -10,7 +10,7 @@ targets:
   - tests/test_architecture_linkage_audit.py
   - tests/test_architecture_metadata_generation.py
   - docs/operating_system/repo-governance.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
 ---
@@ -24,7 +24,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Centralize the `manual_refs` prohibition so the architecture-linkage audit and architecture generator enforce one shared contract.
 
@@ -54,7 +54,7 @@ related_stages: []
 - Cross-cutting docs: none
 - Operating-system docs:
   - `docs/operating_system/repo-governance.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md`
 - README: none
 - Generated discovery: none
@@ -68,7 +68,7 @@ tools/docs/generate_architecture_metadata.py
 tests/test_architecture_linkage_audit.py
 tests/test_architecture_metadata_generation.py
 docs/operating_system/repo-governance.md
-docs/operating_system/doc-system-lifecycle.md
+docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md
 ```
 
@@ -146,7 +146,7 @@ $env:UV_CACHE_DIR=$env:TEMP; uv run python -m pytest tests/test_architecture_met
 
 **Files:**
 - Modify: `docs/operating_system/repo-governance.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 - Modify: `docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md`
 
 - [x] Step 1: Note that the `manual_refs` prohibition is part of shared internal policy.

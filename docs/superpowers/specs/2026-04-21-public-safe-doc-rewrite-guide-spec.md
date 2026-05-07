@@ -36,7 +36,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/publication-workflow.md`
-- `.agents/skills/private-public-repo-governance/SKILL.md`
+- `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - `docs/adoption_guide.md`
 - `repo_config/publication-config.json`
 

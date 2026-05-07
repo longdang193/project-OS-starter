@@ -7,7 +7,7 @@ targets:
   - docs/intent/README.md
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/specs/2026-04-27-workstream-coverage-and-bounded-change-governance-spec.md
 related_features: []
@@ -23,7 +23,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Document the precise planning ladder, explain how roadmap coverage and workstream progress should be tracked, and define bounded change threads as the safe parallel execution unit.
 
@@ -56,7 +56,7 @@ Invariants:
 Dependencies:
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/intent/workstreams/`
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
 Affected stages:
   - none
@@ -75,7 +75,7 @@ Affected docs:
   cross_cutting_docs:
     - none
   operating_system_docs:
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
   readme: none
   generated:
@@ -101,7 +101,7 @@ docs/intent/README.md
 docs/intent/master-workstream-roadmap.md
 docs/intent/workstreams/README.md
 docs/intent/workstreams/starter-adoption-experience.md
-docs/operating_system/planning-dispatch.md
+docs/operating_system/skill-planning-dispatch.md
 docs/operating_system/repo-governance.md
 docs/superpowers/specs/2026-04-27-workstream-coverage-and-bounded-change-governance-spec.md
 docs/superpowers/plans/2026-04-27-09-40-workstream-coverage-and-bounded-change-governance-plan.md
@@ -131,10 +131,10 @@ docs/superpowers/plans/2026-04-27-09-40-workstream-coverage-and-bounded-change-g
 ## Task 3: Update Planning And Governance Docs
 
 **Files:**
-- Modify: `docs/operating_system/planning-dispatch.md`
+- Modify: `docs/operating_system/skill-planning-dispatch.md`
 - Modify: `docs/operating_system/repo-governance.md`
 
-- [x] Step 1: Update planning-dispatch so bounded change threads are explicit beneath workstreams.
+- [x] Step 1: Update skill-planning-dispatch so bounded change threads are explicit beneath workstreams.
 - [x] Step 2: Update repo-governance so coverage/progress/divergence tracking and bounded-change parallelism are stated plainly.
 
 ## Task 4: Close The Artifact Loop And Verify

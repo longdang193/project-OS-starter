@@ -10,7 +10,7 @@ prerequisites:
 next_steps:
 - implementation-next-action-gate-prompt.md
 related_skills:
-- planning-dispatch
+- skill-planning-dispatch
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:
@@ -28,7 +28,7 @@ initial planning or spec drafting
 
 Required when proposing thread closure (`completed` or `dropped`) or claiming fix/pass status:
 
-- run `verification-before-completion` checks before final close recommendation
+- run `skill-verification-before-completion` checks before final close recommendation
 
 Use this when deciding whether a bounded change thread can be marked
 `completed` or `dropped`.

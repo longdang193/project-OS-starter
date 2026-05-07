@@ -7,7 +7,7 @@ targets:
   - docs/intent/workstreams/
   - docs/intent/workstreams/threads/
   - docs/generated/planning_lineage.yaml
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/prompt_templates/
   - scripts/planning_lineage_support.py
@@ -39,7 +39,7 @@ Dependencies:
 - `docs/intent/workstreams/`
 - `docs/intent/workstreams/threads/`
 - `docs/generated/planning_lineage.yaml`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 - `scripts/planning_lineage_support.py`
@@ -67,7 +67,7 @@ Affected docs:
 - stage_contract: none
 - feature_docs: none
 - cross_cutting_docs:
-  - `docs/operating_system/planning-dispatch.md`
+  - `docs/operating_system/skill-planning-dispatch.md`
   - `docs/operating_system/repo-governance.md`
 - readme: none
 - generated:

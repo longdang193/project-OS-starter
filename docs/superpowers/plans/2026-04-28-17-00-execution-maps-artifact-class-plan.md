@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/superpowers/execution_maps/
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/specs/2026-04-28-execution-maps-artifact-class-spec.md
 related_features: []
@@ -22,7 +22,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Add `docs/superpowers/execution_maps/` as a distinct orchestration artifact class and wire the missing prompt ladder from thread set to spec set to execution map.
 
@@ -49,7 +49,7 @@ related_stages: []
 
 ## Task 3: Align Planning And Governance Docs
 
-- [x] Step 1: Update `planning-dispatch.md` so execution maps have a visible place between spec sets and plans.
+- [x] Step 1: Update `skill-planning-dispatch.md` so execution maps have a visible place between spec sets and plans.
 - [x] Step 2: Update `repo-governance.md` so the artifact boundary around execution maps is explicit.
 
 ## Task 4: Close The Loop And Verify

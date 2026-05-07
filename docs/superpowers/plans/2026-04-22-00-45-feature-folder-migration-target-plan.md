@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/operating_system/mode-b-example-migration.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
 related_features: []
 related_stages: []
 ---
@@ -20,7 +20,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Make the newer customer-style feature-folder shape the explicit migration target so agents know how to move older managed feature folders forward without guessing.
 
@@ -59,7 +59,7 @@ related_stages: []
 
 **Files:**
 - Modify: `docs/operating_system/mode-b-example-migration.md`
-- Modify: `docs/operating_system/doc-system-lifecycle.md`
+- Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 
 - [x] Step 1: Update the Mode B example to prefer the newer source capability shape and partial-generated history target.
 - [x] Step 2: Tighten lifecycle guidance so the source/generated/history boundary is clearer during migration.

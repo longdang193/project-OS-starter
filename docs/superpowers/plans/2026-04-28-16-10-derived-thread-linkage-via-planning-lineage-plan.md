@@ -8,7 +8,7 @@ targets:
   - docs/intent/workstreams/
   - docs/intent/workstreams/threads/
   - docs/generated/planning_lineage.yaml
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/operating_system/prompt_templates/
   - scripts/validate_adoption_shape.py
@@ -26,7 +26,7 @@ related_stages: []
 **Plan Layer:** operating_system  
 **Plan Status:** completed
 
-> **For agentic workers:** Use `executing-plans` or `subagent-driven-development` to implement task-by-task.
+> **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
 
 **Goal:** Keep thread files source-only by pointing users to the generated planning-lineage view for derived spec/plan linkage and enforcing that boundary in validation.
 

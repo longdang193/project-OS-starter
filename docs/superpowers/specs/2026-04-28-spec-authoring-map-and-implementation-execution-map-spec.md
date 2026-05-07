@@ -5,13 +5,13 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/README.md
-  - docs/operating_system/planning-dispatch.md
+  - docs/operating_system/skill-planning-dispatch.md
   - docs/operating_system/repo-governance.md
   - docs/superpowers/execution_maps/README.md
-  - .agents/skills/brainstorming/SKILL.md
-  - .agents/skills/planning-dispatch/SKILL.md
-  - .agents/skills/writing-plans/SKILL.md
-  - .agents/skills/doc-system-lifecycle/SKILL.md
+  - .agents/skills/skill-brainstorming/SKILL.md
+  - .agents/skills/skill-planning-dispatch/SKILL.md
+  - .agents/skills/skill-writing-plans/SKILL.md
+  - .agents/skills/skill-doc-system-lifecycle/SKILL.md
 related_features: []
 related_stages: []
 ---
@@ -39,13 +39,13 @@ Dependencies:
 - `docs/operating_system/prompt_templates/spec-set-execution-map-prompt.md`
 - `docs/operating_system/prompt_templates/spec-prompt.md`
 - `docs/operating_system/prompt_templates/plan-prompt.md`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/superpowers/execution_maps/README.md`
-- `.agents/skills/brainstorming/SKILL.md`
-- `.agents/skills/planning-dispatch/SKILL.md`
-- `.agents/skills/writing-plans/SKILL.md`
-- `.agents/skills/doc-system-lifecycle/SKILL.md`
+- `.agents/skills/skill-brainstorming/SKILL.md`
+- `.agents/skills/skill-planning-dispatch/SKILL.md`
+- `.agents/skills/skill-writing-plans/SKILL.md`
+- `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
 
 Affected stages:
 
@@ -72,7 +72,7 @@ Affected docs:
     - `docs/operating_system/prompt_templates/spec-set-execution-map-prompt.md`
     - `docs/operating_system/prompt_templates/spec-prompt.md`
     - `docs/operating_system/prompt_templates/plan-prompt.md`
-    - `docs/operating_system/planning-dispatch.md`
+    - `docs/operating_system/skill-planning-dispatch.md`
     - `docs/operating_system/repo-governance.md`
     - `docs/superpowers/execution_maps/README.md`
   readme: none
@@ -250,7 +250,7 @@ Update repo-control docs so they teach the refined ladder rather than the
 compressed one:
 
 - `docs/operating_system/prompt_templates/README.md`
-- `docs/operating_system/planning-dispatch.md`
+- `docs/operating_system/skill-planning-dispatch.md`
 - `docs/operating_system/repo-governance.md`
 - `docs/superpowers/execution_maps/README.md`
 
@@ -266,16 +266,16 @@ These docs should:
 Update the planning-related skills so they stop flattening the two
 orchestration phases:
 
-- `brainstorming`
+- `skill-brainstorming`
   - should teach the handoff from complete spec set into spec-authoring map,
     then into detailed specs
-- `planning-dispatch`
+- `skill-planning-dispatch`
   - should route to the correct orchestration phase instead of one generic
     execution-map step
-- `writing-plans`
+- `skill-writing-plans`
   - should assume detailed specs and the implementation execution map already
     exist when plan-level sequencing matters
-- `doc-system-lifecycle`
+- `skill-doc-system-lifecycle`
   - should describe the orchestration artifact roles precisely
 
 ## Open Design Choice

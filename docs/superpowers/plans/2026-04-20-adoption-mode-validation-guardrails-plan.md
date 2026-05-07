@@ -9,7 +9,7 @@ targets:
   - docs/adoption_guide.md
   - docs/operating_system/project-adoption-migration-guide.md
   - docs/operating_system/feature-routing-guide.md
-  - docs/operating_system/doc-system-lifecycle.md
+  - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/features/README.md
 related_features: []
 related_stages: []
@@ -38,7 +38,7 @@ Affected docs:
   - `docs/adoption_guide.md`
   - `docs/operating_system/project-adoption-migration-guide.md`
   - `docs/operating_system/feature-routing-guide.md`
-  - `docs/operating_system/doc-system-lifecycle.md`
+  - `docs/operating_system/skill-doc-system-lifecycle.md`
   - `docs/features/README.md`
 - readme: none
 - generated: none
@@ -146,7 +146,7 @@ Explain that `candidate_type: operating_system` should use `targets` and usually
 
 ### 7. Update lifecycle and feature README docs
 
-Patch `docs/operating_system/doc-system-lifecycle.md` to include `repo_config/adoption-mode.yaml` in the source-of-truth model.
+Patch `docs/operating_system/skill-doc-system-lifecycle.md` to include `repo_config/adoption-mode.yaml` in the source-of-truth model.
 
 Patch `docs/features/README.md` to say folder interpretation is controlled by adoption mode.
 

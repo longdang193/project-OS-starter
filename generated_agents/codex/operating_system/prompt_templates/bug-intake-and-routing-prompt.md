@@ -14,8 +14,8 @@ next_steps:
 - patch-and-pattern-detection-prompt.md
 - live-run-system-dispatch-prompt.md
 related_skills:
-- planning-dispatch
-- systematic-debugging
+- skill-planning-dispatch
+- skill-systematic-debugging
 required_reads:
 - docs/operating_system/prompt_templates/README.md
 tags:
