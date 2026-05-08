@@ -39,6 +39,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Show planned deploy changes without writing.")
     parser.add_argument("--backup", action="store_true", help="Backup overwritten files before deploy.")
     parser.add_argument("--force", action="store_true", help="Allow overwriting runtime files without generated headers.")
+    parser.add_argument(
+        "--rewrite-mode",
+        choices=["relative", "hardcode"],
+        default="relative",
+        help="Whether repo-relative runtime paths stay relative or are rewritten to absolute hardcoded paths.",
+    )
     return parser.parse_args()
 
 
@@ -93,8 +99,15 @@ def _rewrite_command_to_absolute_repo_path(command: str, root: Path) -> str:
     return f'{executable} "{_repo_absolute_string(root, target)}"'
 
 
-def _rewrite_frontmatter_lists(meta: dict[str, object], target_root: Path) -> dict[str, object]:
+def _rewrite_frontmatter_lists(
+    meta: dict[str, object],
+    target_root: Path,
+    *,
+    rewrite_mode: str,
+) -> dict[str, object]:
     rewritten = dict(meta)
+    if rewrite_mode != "hardcode":
+        return rewritten
     for key in ("required_reads", "required_outputs"):
         value = rewritten.get(key)
         if not isinstance(value, list):
@@ -184,7 +197,10 @@ def _rewrite_tagged_blocks(
     repo_root: Path,
     target_root: Path,
     current_runtime_dir: Path,
+    rewrite_mode: str,
 ) -> str:
+    if rewrite_mode != "hardcode":
+        return text
     block_handlers = {
         "LINK": _rewrite_link_block_content,
         "MUST-READ": _rewrite_must_read_block_content,
@@ -237,6 +253,7 @@ def _rewrite_text_runtime_paths(
     repo_root: Path,
     target_root: Path,
     current_runtime_dir: Path,
+    rewrite_mode: str = "relative",
 ) -> str:
     normalized = text.replace("\r\n", "\n")
     if normalized.startswith("---\n"):
@@ -244,7 +261,11 @@ def _rewrite_text_runtime_paths(
         if len(parts) >= 3:
             payload = yaml.safe_load(parts[1]) or {}
             if isinstance(payload, dict):
-                rewritten_payload = _rewrite_frontmatter_lists(payload, target_root)
+                rewritten_payload = _rewrite_frontmatter_lists(
+                    payload,
+                    target_root,
+                    rewrite_mode=rewrite_mode,
+                )
                 frontmatter = yaml.safe_dump(rewritten_payload, sort_keys=False, allow_unicode=False).strip()
                 frontmatter = _quote_runtime_path_list_entries(frontmatter)
                 normalized = f"---\n{frontmatter}\n---\n" + parts[2]
@@ -253,7 +274,10 @@ def _rewrite_text_runtime_paths(
         repo_root=repo_root,
         target_root=target_root,
         current_runtime_dir=current_runtime_dir,
+        rewrite_mode=rewrite_mode,
     )
+    if rewrite_mode != "hardcode":
+        return normalized
     lines: list[str] = []
     for line in normalized.splitlines():
         if line.startswith("Source: "):
@@ -282,6 +306,7 @@ def _render_runtime_text(
     repo_root: Path,
     target_root: Path,
     generated_root: Path,
+    rewrite_mode: str,
 ) -> str:
     runtime_path = target_root / src.relative_to(generated_root)
     return _rewrite_text_runtime_paths(
@@ -289,6 +314,7 @@ def _render_runtime_text(
         repo_root=repo_root,
         target_root=target_root,
         current_runtime_dir=runtime_path.parent,
+        rewrite_mode=rewrite_mode,
     ).rstrip("\n")
 
 
@@ -305,7 +331,13 @@ def _looks_generated(path: Path) -> bool:
     return "<!--" in text[:256] and "GENERATED FILE - DO NOT EDIT" in text[:512]
 
 
-def _check_platform(generated_root: Path, target_root: Path, *, repo_root: Path) -> list[str]:
+def _check_platform(
+    generated_root: Path,
+    target_root: Path,
+    *,
+    repo_root: Path,
+    rewrite_mode: str,
+) -> list[str]:
     issues: list[str] = []
     generated_files = [p for p in generated_root.rglob("*") if p.is_file()]
     for src in generated_files:
@@ -319,6 +351,7 @@ def _check_platform(generated_root: Path, target_root: Path, *, repo_root: Path)
             repo_root=repo_root,
             target_root=target_root,
             generated_root=generated_root,
+            rewrite_mode=rewrite_mode,
         ) != _read_text(dst):
             issues.append(f"Deployed drift: {dst.as_posix()}")
     return issues
@@ -330,6 +363,7 @@ def _plan_deploy(
     *,
     repo_root: Path,
     force: bool,
+    rewrite_mode: str,
 ) -> tuple[list[str], list[str], list[tuple[Path, Path, str]]]:
     changes: list[str] = []
     issues: list[str] = []
@@ -343,6 +377,7 @@ def _plan_deploy(
             repo_root=repo_root,
             target_root=target_root,
             generated_root=generated_root,
+            rewrite_mode=rewrite_mode,
         )
         if dst.exists():
             if rendered == _read_text(dst):
@@ -376,13 +411,21 @@ def run() -> int:
             continue
         target_root = PLATFORM_TARGETS[platform]
         if args.check:
-            issues.extend(_check_platform(generated_root, target_root, repo_root=root))
+            issues.extend(
+                _check_platform(
+                    generated_root,
+                    target_root,
+                    repo_root=root,
+                    rewrite_mode=args.rewrite_mode,
+                )
+            )
             continue
         changes, plan_issues, pairs = _plan_deploy(
             generated_root,
             target_root,
             repo_root=root,
             force=args.force,
+            rewrite_mode=args.rewrite_mode,
         )
         issues.extend(plan_issues)
         if plan_issues:
