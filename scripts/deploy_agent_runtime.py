@@ -76,8 +76,6 @@ def _repo_absolute_string(root: Path, relative_path: str) -> str:
 
 def _runtime_relative_path(relative_path: str) -> str:
     normalized = PurePosixPath(relative_path.replace("\\", "/"))
-    if normalized.parts and normalized.parts[0] == "docs":
-        normalized = normalized.relative_to("docs")
     return str(normalized).replace("/", "\\")
 
 

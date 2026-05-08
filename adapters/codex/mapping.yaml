@@ -9,7 +9,7 @@ mappings:
     mode: render_codex_hooks_from_yaml
     comment_prefix: "#"
   - source: docs/operating_system/rules
-    destination: generated_agents/codex/rules
+    destination: generated_agents/codex/docs/operating_system/rules
     mode: render_codex_rules_tree
     include_glob: "*-rule.md"
     comment_prefix: "#"
@@ -19,11 +19,11 @@ mappings:
     include_glob: "*.md"
     comment_prefix: "#"
   - source: docs/operating_system/prompt_templates
-    destination: generated_agents/codex/prompt_templates
+    destination: generated_agents/codex/docs/operating_system/prompt_templates
     mode: copy_tree
     comment_prefix: "#"
   - source: docs/operating_system
-    destination: generated_agents/codex/operating_system
+    destination: generated_agents/codex/docs/operating_system
     mode: copy_tree
     include_glob: "**/*.md"
     comment_prefix: "#"
