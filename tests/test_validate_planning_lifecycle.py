@@ -175,3 +175,24 @@ def test_completed_workstream_requires_goal_and_key_deliverables() -> None:
         assert "completed workstream must have non-empty `Key Deliverables`" in result.stdout
     finally:
         rmtree(root, ignore_errors=True)
+
+
+def test_thread_with_manual_linked_spec_section_warns_in_strict_mode() -> None:
+    root = make_test_root()
+    try:
+        seed_minimum_workstream(root, workstream_status="active", thread_status="proposed")
+        write_text(
+            root / "docs" / "intent" / "workstreams" / "threads" / "sample-workstream" / "01-sample-thread.md",
+            "---\n"
+            "thread_id: sample-workstream.sample-thread\n"
+            "status: proposed\n"
+            "---\n\n"
+            "# Sample Thread\n\n"
+            "## Linked Spec\n\n"
+            "docs/superpowers/specs/2026-05-08-sample-spec.md\n",
+        )
+        result = run_validator(root, "--strict")
+        assert result.returncode == 1
+        assert "manual thread linkage section is deprecated" in result.stdout.lower()
+    finally:
+        rmtree(root, ignore_errors=True)

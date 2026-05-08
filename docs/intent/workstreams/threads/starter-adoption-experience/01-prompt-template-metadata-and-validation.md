@@ -28,14 +28,6 @@ free-form docs.
 - `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_adoption_shape.py` if validation is added later
 
-## Linked Spec
-
-- none yet
-
-## Linked Plan
-
-- none yet
-
 ## Notes
 
 - this is a good candidate for a spec before implementation

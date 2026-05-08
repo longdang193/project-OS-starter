@@ -26,14 +26,6 @@ discoverability is not treated as its own bounded slice.
 - `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - `docs/operating_system/governance/repo-governance.md`
 
-## Linked Spec
-
-- none yet
-
-## Linked Plan
-
-- none yet
-
 ## Notes
 
 - this may be solvable through docs-only refinement without validator work
