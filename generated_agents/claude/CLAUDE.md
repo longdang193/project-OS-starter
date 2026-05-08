@@ -139,7 +139,7 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
   - Source: `.agents/skills/skill-creating-learning-materials/SKILL.md`
 - `skill-dispatching-parallel-agents` — Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies.
   - Source: `.agents/skills/skill-dispatching-parallel-agents/SKILL.md`
-- `skill-doc-system-lifecycle` — Use when designing, updating, or auditing project docs that may affect source-of-truth placement, metadata, sync rules, or generated discovery.
+- `skill-doc-system-lifecycle` — Use when designing, updating, or auditing project docs, artifact schemas, metadata contracts, sync rules, or generated discovery surfaces that affect source-of-truth placement or validator behavior.
   - Source: `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
 - `skill-executing-plans` — Use when you have a written implementation plan to execute in a separate session with review checkpoints.
   - Source: `.agents/skills/skill-executing-plans/SKILL.md`

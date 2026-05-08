@@ -1,11 +1,14 @@
 ---
 name: skill-doc-system-lifecycle
-description: Use when designing, updating, or auditing project docs that may affect
-  source-of-truth placement, metadata, sync rules, or generated discovery.
+description: Use when designing, updating, or auditing project docs, artifact
+  schemas, metadata contracts, sync rules, or generated discovery surfaces that
+  affect source-of-truth placement or validator behavior.
 allowed-tools: []
 hooks:
-  pre: []
-  post: []
+  pre:
+  - python scripts/hooks/run_validator.py --fast
+  post:
+  - python scripts/hooks/run_validator.py --fast
 required_reads:
 - docs/operating_system/governance/repo-governance.md
 tags:
@@ -44,6 +47,12 @@ Before doc-system decisions, read:
 - `docs/operating_system/templates/detailed-specification-template.md` when spec structure is in scope
 - `docs/operating_system/templates/implementation-execution-map-template.md` when multi-plan execution orchestration is in scope
 - `docs/operating_system/templates/implementation-plan-template.md` when implementation-plan structure is in scope
+- `repo_config/planning_artifact_schema.yaml` when planning metadata contract changes are in scope
+- `repo_config/adoption-mode.yaml` when adoption-state or managed-surface obligations may change
+- `repo_config/agent-adapter-mappings.json` or equivalent adapter mapping config when generated adapter/runtime surfaces are in scope
+- `repo_config/publication-config.json` when publication-boundary contract surfaces are in scope
+- relevant validator and sync scripts under `scripts/` when changing schema/config contracts they enforce
+- relevant tests under `tests/` when changing schema/config contracts they verify
 </MUST-READ>
 
 ## Planning-Lineage Compliance
@@ -52,6 +61,16 @@ Before doc-system decisions, read:
 - Use `docs/generated/planning_lineage.yaml` for derived thread/spec/plan inspection rather than re-entering linkage manually in source docs.
 - Keep source-of-truth ownership upstream; execution and generated inspection surfaces should derive from that ownership.
 - Treat the standardized roadmap/workstream/thread/spec/map/plan templates under `docs/operating_system/templates/` as the canonical shape definitions for those artifact families.
+
+## Artifact-Schema Compliance
+
+- Treat schema/config contract files under `repo_config/` and their owning lifecycle docs as canonical surfaces for artifact-shape policy.
+- Prefer one upstream schema owner over duplicated downstream validator or prose restatement whenever the contract can be derived.
+- When schema contracts change, update the enforcing validators and tests in the same lane.
+- When generated or adapter/runtime surfaces depend on schema/config contracts, refresh them and name that refresh explicitly in closeout evidence.
+- Choose and state a migration policy for existing artifacts: hard break, compatibility alias, or phased migration.
+- New artifacts must follow the current canonical schema; older artifacts may remain grandfathered unless migration is explicitly required.
+- Do not introduce schema-only drift where templates, validators, tests, and generated outputs disagree about the contract.
 
 ## Core Principle
 
