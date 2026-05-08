@@ -1,31 +1,13 @@
 platform: antigravity
 mappings:
-  - source: AGENTS.md
-    destination: generated_agents/antigravity/GEMINI.md
-    mode: render_root_doc_with_manifest
-    comment_prefix: "#"
-  - source: docs/operating_system/provider_settings/antigravity.yaml
-    destination: generated_agents/antigravity/settings.json
-    mode: render_antigravity_settings_from_yaml
-    comment_prefix: "#"
-  - source: docs/operating_system/rules
-    destination: generated_agents/antigravity/docs/operating_system/rules
-    mode: copy_tree
-    include_glob: "*.md"
+  - source: docs/operating_system/rules/global-baseline-contract-rule.md
+    destination: generated_agents/antigravity/rules/global-baseline-contract-rule.md
+    mode: copy_file
     comment_prefix: "#"
   - source: docs/operating_system/rules
     destination: .agents/rules
     mode: copy_tree
     include_glob: "*.md"
-    comment_prefix: "#"
-  - source: docs/operating_system/prompt_templates
-    destination: generated_agents/antigravity/docs/operating_system/prompt_templates
-    mode: copy_tree
-    comment_prefix: "#"
-  - source: docs/operating_system
-    destination: generated_agents/antigravity/docs/operating_system
-    mode: copy_tree
-    include_glob: "**/*.md"
     comment_prefix: "#"
   - source: docs/operating_system/workflows
     destination: generated_agents/antigravity/skills

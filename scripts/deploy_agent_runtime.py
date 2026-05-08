@@ -15,7 +15,7 @@ import yaml
 PLATFORM_TARGETS = {
     "codex": Path.home() / ".codex",
     "claude": Path.home() / ".claude",
-    "antigravity": Path.home() / ".gemini",
+    "antigravity": Path.home() / ".gemini" / "antigravity",
 }
 
 TARGET_ALIASES = {
@@ -331,6 +331,33 @@ def _looks_generated(path: Path) -> bool:
     return "<!--" in text[:256] and "GENERATED FILE - DO NOT EDIT" in text[:512]
 
 
+def _runtime_owned_files(generated_root: Path, target_root: Path) -> set[Path]:
+    return {
+        target_root / src.relative_to(generated_root)
+        for src in generated_root.rglob("*")
+        if src.is_file()
+    }
+
+
+def _runtime_stale_generated_files(generated_root: Path, target_root: Path) -> list[Path]:
+    owned_files = _runtime_owned_files(generated_root, target_root)
+    stale: list[Path] = []
+    for candidate in target_root.rglob("*"):
+        if not candidate.is_file():
+            continue
+        if candidate in owned_files:
+            continue
+        try:
+            candidate.relative_to(target_root / ".backups")
+            continue
+        except ValueError:
+            pass
+        if not _looks_generated(candidate):
+            continue
+        stale.append(candidate)
+    return stale
+
+
 def _check_platform(
     generated_root: Path,
     target_root: Path,
@@ -354,6 +381,8 @@ def _check_platform(
             rewrite_mode=rewrite_mode,
         ) != _read_text(dst):
             issues.append(f"Deployed drift: {dst.as_posix()}")
+    for stale in _runtime_stale_generated_files(generated_root, target_root):
+        issues.append(f"Stale deployed file: {stale.as_posix()}")
     return issues
 
 
@@ -364,10 +393,10 @@ def _plan_deploy(
     repo_root: Path,
     force: bool,
     rewrite_mode: str,
-) -> tuple[list[str], list[str], list[tuple[Path, Path, str]]]:
+) -> tuple[list[str], list[str], list[tuple[Path | None, Path, str | None]]]:
     changes: list[str] = []
     issues: list[str] = []
-    pairs: list[tuple[Path, Path, str]] = []
+    pairs: list[tuple[Path | None, Path, str | None]] = []
     generated_files = [p for p in generated_root.rglob("*") if p.is_file()]
     for src in generated_files:
         rel = src.relative_to(generated_root)
@@ -389,6 +418,9 @@ def _plan_deploy(
         else:
             changes.append(f"create: {dst.as_posix()}")
         pairs.append((src, dst, rendered))
+    for stale in _runtime_stale_generated_files(generated_root, target_root):
+        changes.append(f"remove: {stale.as_posix()}")
+        pairs.append((None, stale, None))
     return changes, issues, pairs
 
 
@@ -439,12 +471,15 @@ def run() -> int:
         if args.backup:
             stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             backup_root = target_root / ".backups" / stamp
-        for _, dst, rendered in pairs:
+        for src, dst, rendered in pairs:
             dst.parent.mkdir(parents=True, exist_ok=True)
             if backup_root is not None and dst.exists():
                 backup_path = backup_root / dst.relative_to(target_root)
                 backup_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(dst, backup_path)
+            if src is None:
+                dst.unlink(missing_ok=True)
+                continue
             dst.write_text(rendered + "\n", encoding="utf-8")
         print(f"Deployed {platform} -> {target_root.as_posix()} ({len(pairs)} changed)")
     if issues:

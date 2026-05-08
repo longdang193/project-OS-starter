@@ -427,6 +427,10 @@ def _expected_codex_rules_paths(src_root: Path, pattern: str, dst_root: Path) ->
     }
 
 
+def _expected_codex_rule_file_path(dst_root: Path) -> set[Path]:
+    return {dst_root.name and Path(dst_root.name)}
+
+
 def _expected_workflow_skill_paths(src_root: Path, pattern: str) -> set[Path]:
     return {
         Path(_strip_extension(path.name)) / "SKILL.md"
@@ -510,6 +514,13 @@ def _sync_file(root: Path, mapping: Mapping, *, platform: str, check: bool) -> l
         rendered = _inject_manifest(
             _render_with_header(src_text, source_rel=source_rel, prefix=mapping.comment_prefix),
             manifest=_render_manifest(root, platform),
+        )
+    elif mapping.mode == "render_codex_rule_file":
+        body = _strip_markdown_frontmatter(src_text)
+        rendered = _render_with_header(
+            body,
+            source_rel=source_rel,
+            prefix=mapping.comment_prefix,
         )
     else:
         rendered = _render_with_header(

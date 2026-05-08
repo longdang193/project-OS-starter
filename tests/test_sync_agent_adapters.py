@@ -59,7 +59,8 @@ def test_find_orphan_generated_surfaces_flags_legacy_unowned_files(tmp_path: Pat
     orphan_file.write_text("legacy", encoding="utf-8")
 
     mappings = [
-        _mapping("docs/operating_system", "generated_agents/antigravity/docs/operating_system"),
+        _mapping("AGENTS.md", "generated_agents/antigravity/GEMINI.md", mode="copy_file"),
+        _mapping("docs/operating_system/rules/global-baseline-contract-rule.md", "generated_agents/antigravity/rules/global-baseline-contract-rule.md", mode="copy_file"),
         _mapping(".agents/skills", "generated_agents/antigravity/skills"),
     ]
 
@@ -70,15 +71,33 @@ def test_find_orphan_generated_surfaces_flags_legacy_unowned_files(tmp_path: Pat
 
 def test_find_orphan_generated_surfaces_ignores_owned_generated_files(tmp_path: Path) -> None:
     root = tmp_path / "repo"
-    owned_file = root / "generated_agents" / "codex" / "docs" / "operating_system" / "rules" / "doc-contracts.rules"
+    owned_file = root / "generated_agents" / "codex" / "rules" / "global-baseline-contract.rules"
     owned_file.parent.mkdir(parents=True, exist_ok=True)
     owned_file.write_text("generated", encoding="utf-8")
 
     mappings = [
-        _mapping("docs/operating_system/rules", "generated_agents/codex/docs/operating_system/rules", mode="render_codex_rules_tree"),
+        _mapping("AGENTS.md", "generated_agents/codex/AGENTS.md", mode="copy_file"),
+        _mapping("docs/operating_system/rules/global-baseline-contract-rule.md", "generated_agents/codex/rules/global-baseline-contract.rules", mode="copy_file"),
         _mapping(".agents/skills", "generated_agents/codex/skills"),
     ]
 
     orphans = SYNC._find_orphan_generated_surfaces(root, mappings)
 
     assert orphans == []
+
+
+def test_find_orphan_generated_surfaces_flags_legacy_docs_tree_after_scope_reduction(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    legacy_file = root / "generated_agents" / "claude" / "docs" / "operating_system" / "prompt_templates" / "legacy.md"
+    legacy_file.parent.mkdir(parents=True, exist_ok=True)
+    legacy_file.write_text("generated", encoding="utf-8")
+
+    mappings = [
+        _mapping("AGENTS.md", "generated_agents/claude/CLAUDE.md", mode="copy_file"),
+        _mapping("docs/operating_system/rules/global-baseline-contract-rule.md", "generated_agents/claude/rules/global-baseline-contract-rule.md", mode="copy_file"),
+        _mapping(".agents/skills", "generated_agents/claude/skills"),
+    ]
+
+    orphans = SYNC._find_orphan_generated_surfaces(root, mappings)
+
+    assert orphans == [legacy_file]

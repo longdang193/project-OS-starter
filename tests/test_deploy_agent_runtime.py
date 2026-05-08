@@ -239,3 +239,7 @@ tags: []
     assert f'- "{required_read_yaml}"' in rendered
     assert frontmatter["hooks"]["pre"] == ["python scripts/run_central_config_checks.py"]
     assert frontmatter["required_reads"] == [required_read_path]
+
+
+def test_antigravity_target_deploys_into_nested_gemini_home() -> None:
+    assert DEPLOY.PLATFORM_TARGETS["antigravity"] == Path.home() / ".gemini" / "antigravity"
