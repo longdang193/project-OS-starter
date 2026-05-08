@@ -42,6 +42,7 @@ Does not belong here:
 
 ## Completed Bounded Change Threads
 
+- [Starter-Kit Least-Privilege Generation](C:/Users/HOANG%20PHI%20LONG%20DANG/repos/project-OS-starter/docs/intent/workstreams/threads/starter-adoption-experience/03-starter-kit-least-privilege-generation.md)
 - establish the master roadmap and workstream registry
 - add roadmap-aware prompt routing
 - add roadmap-vs-execution divergence review prompts
