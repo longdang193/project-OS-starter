@@ -450,6 +450,34 @@ def _preserve_paths_for_destination(
     return preserve
 
 
+def _generated_agent_destination_roots(root: Path, mappings: list[Mapping]) -> set[Path]:
+    generated_root = root / "generated_agents"
+    owned_roots: set[Path] = set()
+    for mapping in mappings:
+        destination = root / mapping.destination
+        try:
+            destination.relative_to(generated_root)
+        except ValueError:
+            continue
+        owned_roots.add(destination)
+    return owned_roots
+
+
+def _find_orphan_generated_surfaces(root: Path, mappings: list[Mapping]) -> list[Path]:
+    generated_root = root / "generated_agents"
+    if not generated_root.exists():
+        return []
+    owned_roots = _generated_agent_destination_roots(root, mappings)
+    orphans: list[Path] = []
+    for path in sorted(generated_root.rglob("*")):
+        if not path.is_file():
+            continue
+        if any(path == owned or owned in path.parents for owned in owned_roots):
+            continue
+        orphans.append(path)
+    return orphans
+
+
 def _sync_file(root: Path, mapping: Mapping, *, platform: str, check: bool) -> list[str]:
     src = root / mapping.source
     dst = root / mapping.destination
@@ -619,8 +647,11 @@ def run() -> int:
     issues: list[str] = []
     destination_preserve_paths: dict[Path, set[Path]] = defaultdict(set)
     loaded_mappings: list[tuple[str, list[Mapping]]] = []
+    all_mappings: list[Mapping] = []
     for mapping_file in mapping_files:
-        loaded_mappings.append(_load_mapping(mapping_file))
+        platform, mappings = _load_mapping(mapping_file)
+        loaded_mappings.append((platform, mappings))
+        all_mappings.extend(mappings)
     for _, mappings in loaded_mappings:
         for mapping in mappings:
             dst_root = root / mapping.destination
@@ -692,6 +723,11 @@ def run() -> int:
             else:
                 issues.extend(_sync_file(root, mapping, platform=platform, check=args.check))
         print(f"Processed adapter: {platform}")
+    if args.check:
+        issues.extend(
+            f"Orphan generated surface: {path.as_posix()}"
+            for path in _find_orphan_generated_surfaces(root, all_mappings)
+        )
     if issues:
         print("Agent adapter sync check failed:")
         for issue in issues:
