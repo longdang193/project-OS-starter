@@ -1,6 +1,9 @@
 ---
 thread_id: starter-adoption-experience.adoption-prompt-discoverability-without-duplication
-status: proposed
+status: dropped
+drop_reason: Existing prompt ladder and adoption migration guide already provide sufficient discoverability coverage for current scope; no bounded duplicate-reduction change is required now.
+drop_approved_by: Antigravity
+dropped_at: 2026-05-08T12:27:00Z
 ---
 
 # Adoption Prompt Discoverability Without Duplication

@@ -1,6 +1,6 @@
 ---
 thread_id: starter-adoption-experience.prompt-template-metadata-and-validation
-status: proposed
+status: completed
 ---
 
 # Prompt Template Metadata And Validation
