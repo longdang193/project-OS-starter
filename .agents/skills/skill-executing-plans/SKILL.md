@@ -38,10 +38,20 @@ Before execution starts, read:
 
 - the specific implementation plan file being executed
 - `docs/operating_system/governance/repo-governance.md`
+- `docs/operating_system/planning/planning-dispatch.md`
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-owned work is in scope
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
 - `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
 </MUST-READ>
+
+## Lifecycle Compliance
+
+- Keep execution inside the approved triaged layer and bounded thread/plan scope.
+- Treat plans as execution guides, not upstream truth; update owning source layers as work lands.
+- Refresh generated feature, stage, history, and discovery surfaces from source when in scope.
+- Do not hand-edit generated managed surfaces to satisfy completion claims.
 
 ## GitNexus Usage
 

@@ -37,6 +37,9 @@ This skill routes and triages only. It does not author specs or plans.
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-live-run-system.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
+- `docs/operating_system/planning/planning-dispatch.md`
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_planning_lifecycle.py`
 
@@ -49,8 +52,18 @@ If this skill text conflicts with the references above, follow the references.
 Before producing triage, read:
 
 - canonical references above, especially:
+  - `docs/operating_system/planning/planning-dispatch.md`
+  - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
   - `docs/operating_system/templates/task-start-routing-guide.md`
 </MUST-READ>
+
+## Lifecycle Compliance
+
+- Start from the owning source layer before routing downstream artifacts.
+- Classify `intent | operating_system | workstream | change` before spec-vs-plan routing.
+- Use the smallest truthful feature-folder reading set; do not load full feature folders by default.
+- Name generated refresh/doc targets in triage when managed feature or stage surfaces are in scope.
+- Do not force operating-system work into fake product workstreams or feature contracts.
 
 ## GitNexus Usage
 

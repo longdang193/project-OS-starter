@@ -33,10 +33,19 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 Before final completion claims, read:
 
 - `docs/operating_system/governance/repo-governance.md`
+- `docs/operating_system/planning/planning-dispatch.md` when the lane changes planning artifacts or bounded thread status
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-managed surfaces are in scope
 - `docs/operating_system/agent_memory/failure-ledger.md` when the task involved meaningful retries/debugging
 - `docs/operating_system/workflows/workflow-roadmap-to-closeout.md`
 - `docs/operating_system/workflows/workflow-live-run-closeout.md` when the lane includes live-run execution
 </MUST-READ>
+
+## Lifecycle Compliance
+
+- Completion claims must respect owning-source and generated-surface boundaries.
+- If planning artifacts, bounded thread state, or result-pack evidence changed, name that evidence explicitly.
+- If generated refresh was required by source changes, completion is blocked until refreshed evidence is named.
 
 <EXTREMELY-IMPORTANT>
 ## The Iron Law

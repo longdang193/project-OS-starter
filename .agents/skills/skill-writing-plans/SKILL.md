@@ -34,6 +34,9 @@ Create executable implementation plans from approved design context.
 - `docs/operating_system/templates/implementation-plan-template.md`
 - `docs/operating_system/templates/task-start-routing-guide.md`
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
+- `docs/operating_system/planning/planning-dispatch.md`
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/operating_system/governance/repo-governance.md`
 
 If this file conflicts with canonical templates/governance, follow canonical docs.
@@ -45,9 +48,18 @@ If this file conflicts with canonical templates/governance, follow canonical doc
 Before drafting a plan, read:
 
 - canonical references above, especially:
+  - `docs/operating_system/planning/planning-dispatch.md`
+  - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
   - `docs/operating_system/templates/task-start-routing-guide.md`
   - `docs/operating_system/templates/implementation-plan-template.md`
 </MUST-READ>
+
+## Lifecycle Compliance
+
+- Preserve upstream layer classification from triage when authoring plan metadata.
+- Use `parent_workstream: none` only when intent or operating-system lineage is intentionally workstream-free.
+- Name exact source, generated, and cross-cutting doc targets when they clarify scope.
+- Respect source-vs-generated ownership boundaries; generated feature, stage, history, and discovery surfaces must derive from owning sources.
 
 ## Pre-Write Contract Check
 
