@@ -1,4 +1,4 @@
-﻿"""
+"""
 @meta
 name: validate_adoption_shape
 type: script
@@ -692,6 +692,34 @@ def registered_workstream_ids(root: Path) -> set[str]:
 
 def registered_thread_ids(root: Path) -> set[str]:
     return set(discover_threads(root))
+
+
+def registered_feature_ids(root: Path) -> set[str]:
+    feature_ids: set[str] = set()
+    for path in feature_source_files(root):
+        try:
+            payload = load_yaml(path)
+        except yaml.YAMLError:
+            continue
+        if isinstance(payload, dict):
+            feature_id = payload.get("feature_id")
+            if isinstance(feature_id, str) and feature_id.strip():
+                feature_ids.add(feature_id.strip())
+    return feature_ids
+
+
+def registered_stage_ids(root: Path) -> set[str]:
+    stage_ids: set[str] = set()
+    for path in stage_source_files(root):
+        try:
+            payload = load_yaml(path)
+        except yaml.YAMLError:
+            continue
+        if isinstance(payload, dict):
+            stage_id = payload.get("stage_id")
+            if isinstance(stage_id, str) and stage_id.strip():
+                stage_ids.add(stage_id.strip())
+    return stage_ids
 
 
 def validate_thread_registry(root: Path, findings: list[Finding]) -> None:
@@ -2959,6 +2987,34 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
                         "Use the canonical planning schema layer vocabulary.",
                     )
 
+            related_features = payload.get("related_features")
+            if isinstance(related_features, list):
+                known_feature_ids = registered_feature_ids(root)
+                invalid_features = [
+                    item for item in related_features if isinstance(item, str) and item not in known_feature_ids
+                ]
+                if invalid_features:
+                    add_error(
+                        findings,
+                        relative_path,
+                        "related_features entries must resolve to registered feature ids.",
+                        "Use only feature_id values declared in docs/features/*/feature.source.yaml.",
+                    )
+
+            related_stages = payload.get("related_stages")
+            if isinstance(related_stages, list):
+                known_stage_ids = registered_stage_ids(root)
+                invalid_stages = [
+                    item for item in related_stages if isinstance(item, str) and item not in known_stage_ids
+                ]
+                if invalid_stages:
+                    add_error(
+                        findings,
+                        relative_path,
+                        "related_stages entries must resolve to registered stage ids.",
+                        "Use only stage_id values declared in docs/stages/*.source.yaml.",
+                    )
+
             if layer in {"intent", "operating_system"}:
                 parent_workstream = payload.get("parent_workstream")
                 _validate_canonical_concise_string(
@@ -3008,16 +3064,24 @@ def validate_specs_and_plans(root: Path, findings: list[Finding]) -> None:
 
             if folder_name == "plans":
                 parent_spec = payload.get("parent_spec")
-                _validate_canonical_repo_relative_path(
-                    findings,
-                    root=root,
-                    path=relative_path,
-                    subject=artifact_label,
-                    field_name="parent_spec",
-                    value=parent_spec,
-                    require_exists=True,
-                    fix="Use a canonical repo-relative path to the parent spec in docs/superpowers/specs/.",
-                )
+                if parent_spec is None:
+                    add_error(
+                        findings,
+                        relative_path,
+                        f"{artifact_label} is missing required `parent_spec` frontmatter.",
+                        "Add `parent_spec` using the canonical planning artifact schema.",
+                    )
+                else:
+                    _validate_canonical_repo_relative_path(
+                        findings,
+                        root=root,
+                        path=relative_path,
+                        subject=artifact_label,
+                        field_name="parent_spec",
+                        value=parent_spec,
+                        require_exists=True,
+                        fix="Use a canonical repo-relative path to the parent spec in docs/superpowers/specs/.",
+                    )
                 if isinstance(parent_spec, str):
                     spec_record = spec_records.get(parent_spec)
                     if spec_record is None:
