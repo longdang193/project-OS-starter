@@ -434,6 +434,22 @@ def _expected_workflow_skill_paths(src_root: Path, pattern: str) -> set[Path]:
     }
 
 
+def _preserve_paths_for_destination(
+    destination_preserve_paths: dict[Path, set[Path]],
+    dst_root: Path,
+) -> set[Path]:
+    preserve: set[Path] = set(destination_preserve_paths.get(dst_root, set()))
+    for other_root, other_paths in destination_preserve_paths.items():
+        if other_root == dst_root:
+            continue
+        try:
+            relative_root = other_root.relative_to(dst_root)
+        except ValueError:
+            continue
+        preserve.update(relative_root / rel_path for rel_path in other_paths)
+    return preserve
+
+
 def _sync_file(root: Path, mapping: Mapping, *, platform: str, check: bool) -> list[str]:
     src = root / mapping.source
     dst = root / mapping.destination
@@ -631,7 +647,8 @@ def run() -> int:
                     )
     for platform, mappings in loaded_mappings:
         for mapping in mappings:
-            preserve_paths = destination_preserve_paths.get(root / mapping.destination)
+            dst_root = root / mapping.destination
+            preserve_paths = _preserve_paths_for_destination(destination_preserve_paths, dst_root)
             if mapping.mode == "copy_tree":
                 issues.extend(
                     _sync_tree(

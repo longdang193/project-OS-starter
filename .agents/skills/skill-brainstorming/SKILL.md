@@ -34,9 +34,13 @@ This skill produces design artifacts only.
 
 <MUST-READ>
 - `docs/operating_system/templates/task-start-routing-guide.md`
+- `docs/operating_system/templates/master-workstream-roadmap-template.md` when roadmap restructuring is in scope
+- `docs/operating_system/templates/registered-workstream-list-template.md` when workstream ownership or registration is in scope
+- `docs/operating_system/templates/bounded-change-thread-template.md` when bounded thread definition is in scope
 - `docs/operating_system/templates/complete-specification-set-template.md`
 - `docs/operating_system/templates/spec-authoring-map-template.md`
 - `docs/operating_system/templates/detailed-specification-template.md`
+- `docs/operating_system/templates/implementation-execution-map-template.md` when downstream execution orchestration is part of the design handoff
 - `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
 - `docs/operating_system/lifecycle/feature-lifecycle.md`
@@ -54,6 +58,7 @@ Before any skill-brainstorming output, read:
   - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
   - `docs/operating_system/templates/task-start-routing-guide.md`
+  - whichever standardized template matches the artifact being drafted
 </MUST-READ>
 
 ## Lifecycle Compliance
@@ -62,6 +67,7 @@ Before any skill-brainstorming output, read:
 - Keep operating-system work on the operating-system branch; do not invent fake product feature ownership.
 - Use the smallest truthful feature-folder reading set when feature-managed surfaces are involved.
 - Keep source-of-truth and generated-surface boundaries explicit in proposed designs.
+- Use the standardized template ladder so complete-spec-set, spec-authoring-map, detailed-spec, and execution-map artifacts stay structurally aligned.
 
 ## GitNexus Usage
 
@@ -71,7 +77,7 @@ guessing.
 - Prefer GitNexus for cross-cutting skill-brainstorming and dependency tracing.
 - For small/local design changes, GitNexus is optional.
 - Before high-trust GitNexus conclusions, check freshness via:
-  - `.\scripts\get_gitnexus_freshness.ps1`
+  - `.\\scripts\\get_gitnexus_freshness.ps1`
 - If GitNexus is stale, use it only as advisory and keep source docs as truth.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
 - If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
@@ -81,13 +87,14 @@ guessing.
 1. Use `skill-planning-dispatch` triage (or verify it already exists).
 2. Explore options and tradeoffs.
 3. Recommend a design direction.
-4. Author the required spec artifact using canonical templates.
+4. Author the required roadmap/workstream/thread/spec/execution-map artifact using the matching canonical template.
 5. Request approval before any implementation planning.
 
 ## Output Paths
 
 - specs -> `docs/superpowers/specs/`
 - execution maps -> `docs/superpowers/execution_maps/`
+- higher planning layers stay in their canonical docs/intent or docs/superpowers locations defined by the routing guide
 
 ## Guardrails
 

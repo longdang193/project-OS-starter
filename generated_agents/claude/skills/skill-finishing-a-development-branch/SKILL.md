@@ -33,6 +33,25 @@ Guide completion of development work by presenting clear options and handling ch
 
 **Announce at start:** "I'm using the skill-finishing-a-development-branch skill to complete this work."
 
+## Mandatory Read
+
+<MUST-READ>
+Before offering merge/PR/cleanup options, read:
+
+- `docs/operating_system/governance/repo-governance.md`
+- `docs/operating_system/planning/planning-dispatch.md` when planning artifacts, bounded thread state, or result-pack evidence changed
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-managed surfaces are in scope
+- `docs/operating_system/workflows/workflow-roadmap-to-closeout.md`
+- `docs/operating_system/workflows/workflow-live-run-closeout.md` when the lane includes live-run execution
+</MUST-READ>
+
+## Lifecycle Compliance
+
+- Do not present merge-ready options until verification and lifecycle/doc evidence are both current.
+- If planning artifacts, bounded thread state, or result-pack evidence changed, name that closure evidence explicitly.
+- If generated refresh was required by source changes, merge/closeout is blocked until refreshed evidence is available.
+
 ## The Process
 
 ### Step 1: Verify Tests

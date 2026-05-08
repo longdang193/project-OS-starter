@@ -6,6 +6,7 @@ target_globs:
 required_sections:
 - Goal
 - Key Deliverables
+- Task/Wave Breakdown
 - Registered Workstreams
 - Traceability
 - Completion Criteria
@@ -19,8 +20,23 @@ required_sections:
 
 ## Key Deliverables
 
-- <deliverable 1>
-- <deliverable 2>
+### <deliverable 1>
+
+Describe one concrete output this registered workstream set must provide, such as ownership clarity, sequencing coverage, or status visibility for the roadmap.
+
+### <deliverable 2>
+
+Describe another concrete output this workstream set must provide, such as gap detection, prioritization signal, or durable ownership mapping.
+
+## Task/Wave Breakdown
+
+### Wave 1
+
+Describe the first pass needed to assemble, validate, or reconcile the registered workstream set.
+
+### Wave 2
+
+Describe the follow-up pass needed to refine statuses, ownership, sequencing, or roadmap alignment.
 
 ## Registered Workstreams
 

@@ -6,7 +6,7 @@ target_globs:
 required_sections:
 - Goal
 - Key Deliverables
-- Execution Waves
+- Task/Wave Breakdown
 - Dependencies And Risks
 - Completion Criteria
 required_frontmatter:
@@ -30,15 +30,23 @@ To update: edit canonical source, then run sync.
 
 ## Key Deliverables
 
-- <deliverable 1>
-- <deliverable 2>
+### <deliverable 1>
 
-## Execution Waves
+Describe one concrete execution-map outcome this document must deliver, such as lane coordination, dependency sequencing, or rollout readiness across downstream plans.
 
-- wave 1:
-  - <plan>
-- wave 2:
-  - <plan>
+### <deliverable 2>
+
+Describe another concrete execution-map result this document must deliver, such as reduced cross-lane uncertainty, explicit handoffs, or readiness for parallel execution.
+
+## Task/Wave Breakdown
+
+### Wave 1
+
+Describe the first implementation wave, including which plans or lanes start first and what dependencies they unlock.
+
+### Wave 2
+
+Describe the next implementation wave, including downstream plans, dependency closures, or rollout sequencing.
 
 ## Dependencies And Risks
 

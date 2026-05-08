@@ -6,7 +6,7 @@ target_globs:
 required_sections:
 - Goal
 - Key Deliverables
-- Task Breakdown
+- Task/Wave Breakdown
 - Verification
 - Completion Criteria
 required_frontmatter:
@@ -21,15 +21,23 @@ required_frontmatter:
 
 ## Key Deliverables
 
-- <deliverable 1>
-- <deliverable 2>
+### <deliverable 1>
 
-## Task Breakdown
+Describe one concrete implementation outcome this plan must deliver, including changed surfaces, expected behavior, and verification intent.
 
-- task 1:
-  - <step>
-- task 2:
-  - <step>
+### <deliverable 2>
+
+Describe another concrete implementation result this plan must deliver, such as test coverage, documentation alignment, or downstream handoff readiness.
+
+## Task/Wave Breakdown
+
+### task 1:
+
+Describe the first executable task, including touched surfaces, intended result, and how it will be verified.
+
+### task 2:
+
+Describe the next executable task, including dependency order, expected outcome, and follow-up verification or handoff.
 
 ## Verification
 

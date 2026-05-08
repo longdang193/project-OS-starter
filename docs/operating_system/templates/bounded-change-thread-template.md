@@ -6,6 +6,7 @@ target_globs:
 required_sections:
 - Goal
 - Key Deliverables
+- Task/Wave Breakdown
 - Scope
 - Dependencies
 - Completion Criteria
@@ -19,8 +20,23 @@ required_sections:
 
 ## Key Deliverables
 
-- <deliverable 1>
-- <deliverable 2>
+### <deliverable 1>
+
+Describe one concrete bounded-thread outcome this document must deliver, including the intended change, the owned slice, and the observable end state.
+
+### <deliverable 2>
+
+Describe another concrete bounded-thread outcome, such as a completed dependency, risk reduction, or closeout gate for the thread.
+
+## Task/Wave Breakdown
+
+### Wave 1
+
+Describe the first bounded slice of work or investigation needed to start the thread safely.
+
+### Wave 2
+
+Describe the next bounded slice needed to complete the thread or hand off to downstream execution artifacts.
 
 ## Scope
 

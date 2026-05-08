@@ -6,7 +6,7 @@ target_globs:
 required_sections:
 - Goal
 - Key Deliverables
-- Authoring Waves
+- Task/Wave Breakdown
 - Parallel Lanes
 - Completion Criteria
 required_frontmatter:
@@ -30,15 +30,23 @@ To update: edit canonical source, then run sync.
 
 ## Key Deliverables
 
-- <deliverable 1>
-- <deliverable 2>
+### <deliverable 1>
 
-## Authoring Waves
+Describe one concrete authoring outcome this map must deliver, such as a completed spec subset, sequencing decision, or dependency-resolved drafting lane.
 
-- wave 1:
-  - <spec>
-- wave 2:
-  - <spec>
+### <deliverable 2>
+
+Describe another concrete authoring result this map must deliver, such as clearer lane ownership, reduced drafting risk, or resolved sequencing.
+
+## Task/Wave Breakdown
+
+### Wave 1
+
+Describe the first authoring wave, including which specs start first and why.
+
+### Wave 2
+
+Describe the second authoring wave, including follow-on specs, dependency handling, or consolidation steps.
 
 ## Parallel Lanes
 
