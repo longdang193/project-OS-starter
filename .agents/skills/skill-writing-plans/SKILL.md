@@ -32,6 +32,7 @@ Create executable implementation plans from approved design context.
 
 <MUST-READ>
 - `docs/operating_system/templates/implementation-plan-template.md`
+- `docs/operating_system/templates/implementation-execution-map-template.md` when a plan is being authored from multi-lane orchestration context
 - `docs/operating_system/templates/task-start-routing-guide.md`
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/planning/planning-dispatch.md`
@@ -52,6 +53,7 @@ Before drafting a plan, read:
   - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
   - `docs/operating_system/templates/task-start-routing-guide.md`
   - `docs/operating_system/templates/implementation-plan-template.md`
+  - `docs/operating_system/templates/implementation-execution-map-template.md` when upstream orchestration exists
 </MUST-READ>
 
 ## Lifecycle Compliance
@@ -60,6 +62,7 @@ Before drafting a plan, read:
 - Use `parent_workstream: none` only when intent or operating-system lineage is intentionally workstream-free.
 - Name exact source, generated, and cross-cutting doc targets when they clarify scope.
 - Respect source-vs-generated ownership boundaries; generated feature, stage, history, and discovery surfaces must derive from owning sources.
+- Keep implementation plans structurally aligned with the standardized `Goal / Key Deliverables / Task/Wave Breakdown / Verification` template shape.
 
 ## Pre-Write Contract Check
 
@@ -72,6 +75,7 @@ Before writing any file, confirm all of the following:
 - the plan must follow the implementation plan template shape, including:
   - frontmatter that satisfies `repo_config/planning_artifact_schema.yaml` for `artifact_type: plan`
   - required sections from `docs/operating_system/templates/implementation-plan-template.md`
+- if an implementation-execution-map already owns multi-lane sequencing, carry that orchestration into task/wave ordering rather than inventing a parallel structure
 - if the requested file path conflicts with `required_outputs`, follow the skill
   contract unless the user explicitly overrides it
 
@@ -84,7 +88,7 @@ Use GitNexus when plan quality depends on cross-file dependency awareness.
 - Prefer GitNexus for broad impact mapping and shared-module dependency checks.
 - For narrowly scoped plans, GitNexus is optional.
 - Before high-trust use, check freshness:
-  - `.\scripts\get_gitnexus_freshness.ps1`
+  - `.\\scripts\\get_gitnexus_freshness.ps1`
 - If stale, use GitNexus only as advisory and keep the plan source-first.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
 - If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
@@ -140,7 +144,7 @@ Rules:
 1. confirm preconditions
 2. complete the pre-write contract check
 3. map files/tests/docs affected
-4. write small testable tasks
+4. write small testable tasks or waves using the standardized plan template shape
 5. include validation commands and rollback notes where needed
 6. hand off to `skill-executing-plans` (or `skill-subagent-driven-development`)
 

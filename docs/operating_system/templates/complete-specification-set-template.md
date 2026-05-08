@@ -6,6 +6,7 @@ target_globs:
 required_sections:
 - Goal
 - Key Deliverables
+- Task/Wave Breakdown
 - Spec Inventory
 - Coverage Check
 - Completion Criteria
@@ -22,8 +23,23 @@ required_frontmatter:
 
 ## Key Deliverables
 
-- <deliverable 1>
-- <deliverable 2>
+### <deliverable 1>
+
+Describe one concrete output this full specification set must provide, such as complete thread coverage, spec readiness, or removal of ambiguity before execution planning.
+
+### <deliverable 2>
+
+Describe another concrete output this spec set must provide, such as dependency completeness, sequencing clarity, or approval readiness.
+
+## Task/Wave Breakdown
+
+### Wave 1
+
+Describe the first pass needed to identify, group, or author the required specifications for the covered threads.
+
+### Wave 2
+
+Describe the follow-up pass needed to close coverage gaps, reconcile dependencies, or finalize the full specification set.
 
 ## Spec Inventory
 

@@ -45,11 +45,24 @@ Load the plan, review it critically, execute task by task, update source-of-trut
 Before execution starts, read:
 
 - the specific implementation plan file being executed
+- `docs/operating_system/templates/implementation-plan-template.md` to confirm canonical plan structure
+- `docs/operating_system/templates/implementation-execution-map-template.md` when upstream multi-lane orchestration is in scope
 - `docs/operating_system/governance/repo-governance.md`
+- `docs/operating_system/planning/planning-dispatch.md`
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-owned work is in scope
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
 - `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
 </MUST-READ>
+
+## Lifecycle Compliance
+
+- Keep execution inside the approved triaged layer and bounded thread/plan scope.
+- Treat plans as execution guides, not upstream truth; update owning source layers as work lands.
+- Refresh generated feature, stage, history, and discovery surfaces from source when in scope.
+- Do not hand-edit generated managed surfaces to satisfy completion claims.
+- Respect the standardized implementation-plan shape and keep task/wave sequencing consistent with any approved implementation execution map.
 
 ## GitNexus Usage
 
@@ -58,7 +71,7 @@ non-trivial.
 
 - Prefer GitNexus for shared-module impact checks and cross-lane dependency tracing.
 - For small/local execution tasks, GitNexus is optional.
-- Before high-trust use, check freshness: <LINK>`.\scripts\get_gitnexus_freshness.ps1`</LINK>
+- Before high-trust use, check freshness: <LINK>`.\\scripts\\get_gitnexus_freshness.ps1`</LINK>
 - If stale, keep GitNexus advisory and execute source-first.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
 - If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
@@ -101,9 +114,10 @@ The plan guides execution; the source layers must be updated as changes are comp
    - `history.md` only when narrative context matters
    - if stage-aware work is in scope, read `docs/stages/<stage_id>.source.yaml`
      before the generated stage contract
-3. Review critically for gaps, ambiguity, or missing prerequisites
-4. If concerns exist, raise them before starting
-5. If clear, create TodoWrite and proceed
+3. Confirm the plan still matches the canonical implementation-plan template shape and any approved implementation-execution-map ordering
+4. Review critically for gaps, ambiguity, or missing prerequisites
+5. If concerns exist, raise them before starting
+6. If clear, create TodoWrite and proceed
 
 ### Step 2: Execute Tasks
 

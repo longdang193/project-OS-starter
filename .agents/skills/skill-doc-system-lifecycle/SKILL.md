@@ -36,6 +36,14 @@ Before doc-system decisions, read:
 - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
 - `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-managed surfaces are in scope
 - `docs/operating_system/templates/task-start-routing-guide.md` when routing/planning artifacts are in scope
+- `docs/operating_system/templates/master-workstream-roadmap-template.md` when roadmap shape is in scope
+- `docs/operating_system/templates/registered-workstream-list-template.md` when workstream registration shape is in scope
+- `docs/operating_system/templates/bounded-change-thread-template.md` when bounded thread shape is in scope
+- `docs/operating_system/templates/complete-specification-set-template.md` when spec-set orchestration is in scope
+- `docs/operating_system/templates/spec-authoring-map-template.md` when spec authoring orchestration is in scope
+- `docs/operating_system/templates/detailed-specification-template.md` when spec structure is in scope
+- `docs/operating_system/templates/implementation-execution-map-template.md` when multi-plan execution orchestration is in scope
+- `docs/operating_system/templates/implementation-plan-template.md` when implementation-plan structure is in scope
 </MUST-READ>
 
 ## Planning-Lineage Compliance
@@ -43,6 +51,7 @@ Before doc-system decisions, read:
 - Treat `docs/superpowers/specs/`, `docs/superpowers/execution_maps/`, and `docs/superpowers/plans/` as execution-facing artifacts, not governing layers.
 - Use `docs/generated/planning_lineage.yaml` for derived thread/spec/plan inspection rather than re-entering linkage manually in source docs.
 - Keep source-of-truth ownership upstream; execution and generated inspection surfaces should derive from that ownership.
+- Treat the standardized roadmap/workstream/thread/spec/map/plan templates under `docs/operating_system/templates/` as the canonical shape definitions for those artifact families.
 
 ## Core Principle
 

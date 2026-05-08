@@ -62,7 +62,7 @@ target_globs:
 required_sections:
   - Goal
   - Key Deliverables
-  - Task Breakdown
+  - Task/Wave Breakdown
   - Verification
 required_frontmatter:
   artifact_type: plan
@@ -122,7 +122,7 @@ template_id: implementation-plan
 
 ## Key Deliverables
 
-## Task Breakdown
+## Task/Wave Breakdown
 - task 1
 
 ## Verification
@@ -156,7 +156,7 @@ Ship safely.
 ## Key Deliverables
 - deliverable one
 
-## Task Breakdown
+## Task/Wave Breakdown
 - task 1
 
 ## Verification
@@ -183,7 +183,7 @@ target_globs:
 required_sections:
   - Goal
   - Key Deliverables
-  - Phase Structure
+  - Task/Wave Breakdown
   - Workstream Index
   - Completion Criteria
 required_frontmatter:
@@ -208,7 +208,7 @@ Roadmap goal.
 ## Key Deliverables
 - one
 
-## Phase Structure
+## Task/Wave Breakdown
 ### Phase 1
 #### Goal
 Phase one goal.
