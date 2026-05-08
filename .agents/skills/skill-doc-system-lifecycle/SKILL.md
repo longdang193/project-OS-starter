@@ -32,8 +32,17 @@ Apply when:
 Before doc-system decisions, read:
 
 - `docs/operating_system/governance/repo-governance.md`
+- `docs/operating_system/planning/planning-dispatch.md`
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-managed surfaces are in scope
 - `docs/operating_system/templates/task-start-routing-guide.md` when routing/planning artifacts are in scope
 </MUST-READ>
+
+## Planning-Lineage Compliance
+
+- Treat `docs/superpowers/specs/`, `docs/superpowers/execution_maps/`, and `docs/superpowers/plans/` as execution-facing artifacts, not governing layers.
+- Use `docs/generated/planning_lineage.yaml` for derived thread/spec/plan inspection rather than re-entering linkage manually in source docs.
+- Keep source-of-truth ownership upstream; execution and generated inspection surfaces should derive from that ownership.
 
 ## Core Principle
 

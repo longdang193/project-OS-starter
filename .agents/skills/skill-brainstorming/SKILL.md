@@ -37,6 +37,9 @@ This skill produces design artifacts only.
 - `docs/operating_system/templates/complete-specification-set-template.md`
 - `docs/operating_system/templates/spec-authoring-map-template.md`
 - `docs/operating_system/templates/detailed-specification-template.md`
+- `docs/operating_system/planning/planning-dispatch.md`
+- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/lifecycle/feature-lifecycle.md`
 - `docs/operating_system/governance/repo-governance.md`
 
 If this file conflicts with canonical templates/governance, follow canonical docs.
@@ -48,8 +51,17 @@ If this file conflicts with canonical templates/governance, follow canonical doc
 Before any skill-brainstorming output, read:
 
 - canonical references above, especially:
+  - `docs/operating_system/planning/planning-dispatch.md`
+  - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
   - `docs/operating_system/templates/task-start-routing-guide.md`
 </MUST-READ>
+
+## Lifecycle Compliance
+
+- Start from the owning source layer before defining downstream design artifacts.
+- Keep operating-system work on the operating-system branch; do not invent fake product feature ownership.
+- Use the smallest truthful feature-folder reading set when feature-managed surfaces are involved.
+- Keep source-of-truth and generated-surface boundaries explicit in proposed designs.
 
 ## GitNexus Usage
 
