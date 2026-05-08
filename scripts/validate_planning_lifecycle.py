@@ -563,6 +563,18 @@ def validate_lifecycle_coverage(
                     message="no implementation plans linked to this workstream's bounded threads.",
                 )
             )
+        for thread in ws_threads:
+            thread_body = extract_body(thread.path)
+            if any(section in thread_body.lower() for section in ("## linked spec", "## linked plan")):
+                findings.append(
+                    Finding(
+                        level="WARN",
+                        category="planning_lifecycle_warning",
+                        path=relative_path(thread.path, root),
+                        message="manual thread linkage section is deprecated; use generated planning lineage instead.",
+                    )
+                )
+
         if workstream.status == "completed":
             workstream_body = extract_body(workstream.path)
             ws_goal = extract_h2_section(workstream_body, "Goal")

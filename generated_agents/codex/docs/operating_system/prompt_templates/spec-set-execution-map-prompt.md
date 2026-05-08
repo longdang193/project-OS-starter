@@ -53,6 +53,7 @@ Please:
 4. call out shared-surface coordination risks
 5. recommend the bounded implementation-plan breakdown
 6. draft the execution map in docs/superpowers/execution_maps/
+7. include canonical execution-map metadata, including `artifact_type: execution_map`, `map_type: implementation_execution`, `layer`, `status`, `parent_workstream`, `threads`, and `name` as the preferred identity field
 ```
 
 Expected output:

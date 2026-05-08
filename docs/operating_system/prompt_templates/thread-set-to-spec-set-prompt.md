@@ -37,7 +37,7 @@ Context:
 - thread files in scope:
 - known dependencies between threads:
 - known shared surfaces:
-- existing specs already linked through planning_lineage:
+- existing specs already visible through `docs/generated/planning_lineage.yaml`:
 
 Please:
 1. decide which threads need specs

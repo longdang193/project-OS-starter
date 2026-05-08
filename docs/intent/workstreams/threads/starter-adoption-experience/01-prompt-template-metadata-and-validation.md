@@ -1,6 +1,6 @@
 ---
 thread_id: starter-adoption-experience.prompt-template-metadata-and-validation
-status: proposed
+status: completed
 ---
 
 # Prompt Template Metadata And Validation
@@ -27,14 +27,6 @@ free-form docs.
 - `docs/operating_system/prompt_templates/README.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_adoption_shape.py` if validation is added later
-
-## Linked Spec
-
-- none yet
-
-## Linked Plan
-
-- none yet
 
 ## Notes
 

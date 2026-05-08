@@ -645,6 +645,19 @@ def run() -> int:
                     destination_preserve_paths[dst_root].update(
                         _expected_workflow_skill_paths(src_root, pattern)
                     )
+
+    destination_roots = list(destination_preserve_paths.keys())
+    for dst_root in destination_roots:
+        for other_root in destination_roots:
+            if other_root == dst_root:
+                continue
+            try:
+                rel = other_root.relative_to(dst_root)
+            except ValueError:
+                continue
+            destination_preserve_paths[dst_root].update(
+                rel / path for path in destination_preserve_paths[other_root]
+            )
     for platform, mappings in loaded_mappings:
         for mapping in mappings:
             dst_root = root / mapping.destination

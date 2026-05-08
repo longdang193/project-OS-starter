@@ -2572,3 +2572,151 @@ timeline:
     assert result.returncode == 1
     assert "timeline[0] is missing required keys" in result.stdout.lower()
 
+
+def test_validator_accepts_change_artifacts_with_registered_feature_and_stage_refs(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_stage_source(tmp_path, "sample_stage")
+    seed_generated_stage_contract(tmp_path, "sample_stage")
+    seed_generated_discovery(tmp_path)
+    thread_id = seed_thread_registry_entry(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "specs" / "2026-05-08-sample-spec.md",
+        f"""---
+layer: change
+artifact_type: spec
+status: proposed
+parent_thread: {thread_id}
+targets:
+  - docs/operating_system/governance/repo-governance.md
+related_features:
+  - sample-feature
+related_stages:
+  - sample_stage
+---
+
+# Sample Spec
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-05-08-sample-plan.md",
+        f"""---
+layer: change
+artifact_type: plan
+status: proposed
+parent_thread: {thread_id}
+parent_spec: docs/superpowers/specs/2026-05-08-sample-spec.md
+targets:
+  - docs/operating_system/governance/repo-governance.md
+related_features:
+  - sample-feature
+related_stages:
+  - sample_stage
+---
+
+# Sample Plan
+""",
+    )
+    generator = run_planning_lineage_generator(tmp_path)
+    assert generator.returncode == 0, generator.stderr
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+
+
+def test_validator_rejects_change_spec_with_unknown_related_feature(tmp_path: Path) -> None:
+    seed_required_managed_mode_surface(tmp_path)
+    seed_managed_feature_folder(tmp_path)
+    seed_generated_discovery(tmp_path)
+    thread_id = seed_thread_registry_entry(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "specs" / "2026-05-08-sample-spec.md",
+        f"""---
+layer: change
+artifact_type: spec
+status: proposed
+parent_thread: {thread_id}
+targets:
+  - docs/operating_system/governance/repo-governance.md
+related_features:
+  - missing-feature
+related_stages: []
+---
+
+# Sample Spec
+""",
+    )
+    generator = run_planning_lineage_generator(tmp_path)
+    assert generator.returncode == 0, generator.stderr
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "related_features entries must resolve to registered feature ids" in result.stdout.lower()
+
+
+def test_validator_rejects_change_plan_without_parent_spec(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    thread_id = seed_thread_registry_entry(tmp_path)
+    write_text(
+        tmp_path / "docs" / "superpowers" / "plans" / "2026-05-08-sample-plan.md",
+        f"""---
+layer: change
+artifact_type: plan
+status: proposed
+parent_thread: {thread_id}
+targets:
+  - docs/operating_system/governance/repo-governance.md
+related_features: []
+related_stages: []
+---
+
+# Sample Plan
+""",
+    )
+    generator = run_planning_lineage_generator(tmp_path)
+    assert generator.returncode == 0, generator.stderr
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 1
+    assert "superpowers plan is missing required `parent_spec` frontmatter" in result.stdout.lower()
+
+
+def test_validator_accepts_workstream_with_registered_workstreams_on_roadmap(tmp_path: Path) -> None:
+    seed_required_folder_surface(tmp_path)
+    seed_required_starter_docs(tmp_path)
+    write_text(
+        tmp_path / "docs" / "intent" / "master-workstream-roadmap.md",
+        """---
+artifact_type: roadmap
+layer: intent
+status: proposed
+roadmap_id: master-workstream-roadmap
+registered_workstreams:
+  - platform-delivery
+---
+
+# Roadmap
+""",
+    )
+    write_text(
+        tmp_path / "docs" / "intent" / "workstreams" / "platform-delivery.md",
+        """---
+artifact_type: workstream
+layer: workstream
+status: proposed
+workstream_id: platform-delivery
+roadmap_id: master-workstream-roadmap
+---
+
+# Platform Delivery
+""",
+    )
+
+    result = run_validator(tmp_path)
+
+    assert result.returncode == 0, result.stdout
+
