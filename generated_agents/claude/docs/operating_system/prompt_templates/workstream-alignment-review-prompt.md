@@ -41,7 +41,7 @@ Review whether this proposed change belongs to the named workstream.
 
 Change context:
 - proposed change:
-- proposed workstream id:
+- proposed workstream id or canonical workstream name:
 - workstream doc:
 - why I think it belongs there:
 - possible operating_system angle:
@@ -49,7 +49,7 @@ Change context:
 Please:
 1. assess whether the change fits the named workstream
 2. recommend a different registered workstream if the fit is weak
-3. say if this should really use `parent_workstream: none` because it is operating_system work
+3. say if this should really use `parent_workstream: none` because it is operating_system work rather than product workstream execution
 4. explain the reasoning briefly
 5. recommend the next artifact or prompt to use
 ```

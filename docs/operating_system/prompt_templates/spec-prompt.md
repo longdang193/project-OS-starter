@@ -42,7 +42,7 @@ Work item:
 - affected area:
 - constraints:
 - what should stay true:
-- bounded change thread this follows (use a valid `thread_id` from `docs/intent/workstreams/threads/`; use `none` only for true operating_system work):
+- bounded change thread this follows (use a valid thread artifact from `docs/intent/workstreams/threads/`; prefer its canonical `name` and keep the legacy `thread_id` only when needed to locate the existing file; use `none` only for true operating_system work):
 - if `none`, explain why this should not attach to a product workstream thread:
 
 Please:
@@ -52,6 +52,9 @@ Please:
 4. draft the detailed spec in docs/superpowers/specs/ using the canonical detailed specification template
 5. include required frontmatter for the spec, including at minimum:
    - `artifact_type: spec`
+   - `layer`
+   - `status`
+   - `name` as the preferred identity field for new specs
 6. include required sections with exact names:
    - `## Goal`
    - `## Key Deliverables`
