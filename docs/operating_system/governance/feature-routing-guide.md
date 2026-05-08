@@ -77,9 +77,8 @@ Do not create stages only to organize repo-method work. For example, adapter syn
 | Product workflow stage | `docs/stages/<stage_id>.source.yaml` | feature dependency workaround |
 | Repo governance | `docs/operating_system/*.md` | `docs/features/repo-operating-system.yaml` |
 | Agent workflow | `.agents/skills/` | product feature metadata |
-| Hard agent invariant | adapter rule source and generated provider runtime rules | feature capability |
-| Adapter generation | `agent-core/adapters/`, `repo_config/`, scripts | product feature |
-| Publication boundary | `repo_config/publication-config.json` and operating-system docs | product feature |
+| Hard agent invariant | shipped root agent docs and operating-system governance | feature capability |
+| Source-only generation/publication machinery | source-owned private repo config and source workflows | product feature or consume-only starter docs |
 | One-time design | `docs/superpowers/specs/*.md` | permanent feature |
 | One-time execution | `docs/superpowers/plans/*.md` | permanent feature |
 | Private analysis tooling | operating-system docs or private tool config | public/product feature |
@@ -127,7 +126,7 @@ parent_workstream: none
 targets:
   - docs/intent/
   - docs/operating_system/
-  - agent-core/adapters/
+  - .agents/skills/
   - repo_config/
   - scripts/
 related_features: []
@@ -186,7 +185,7 @@ parent_workstream: none
 targets:
   - docs/intent/
   - docs/operating_system/
-  - agent-core/adapters/
+  - .agents/skills/
   - repo_config/
   - scripts/
 related_features: []
@@ -216,7 +215,9 @@ When a project already has a method-layer feature such as `repo-operating-system
 A future validator may warn or fail on these patterns:
 
 - feature IDs such as `repo-operating-system`, `agent-rules`, `docs-governance`, or `publication-workflow`
-- feature contracts whose refs mostly point to `docs/operating_system/`, `agent-core/`, `.agents/`, `.codex/`, `repo_config/`, or scripts
+- feature contracts whose refs mostly point to `docs/operating_system/`,
+  source-only generation machinery, `.agents/`, `.codex/`, `repo_config/`, or
+  scripts
 - `depends_on` edges from product features to repo-method concepts
 - capability IDs containing spaces, colons, backticks, or sentence punctuation
 - generated feature contracts created by hand when the adopted convention expects `feature.source.yaml`

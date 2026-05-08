@@ -13,15 +13,17 @@ The canonical Codex skill surface remains:
 This repo does not currently use a hidden `.codex/` directory as the
 canonical Codex skill root. The active ownership model is:
 
-- `AGENTS.md` for repo-wide Codex instructions
-- `.agents/skills/` for canonical Codex skills
-- `.codex/agents/` for optional narrow Codex subagent configuration
+- `AGENTS.md` for repo-wide agent instructions
+- `.agents/skills/` for canonical reusable skills
+- `.agents/agents/` for optional lightweight repo-local playbooks
 - `docs/operating_system/` for human governance
 - `.codex/rules/` for generated rules output
 
-Phase 2 does not move canonical skill ownership into `agent-core/skills/`.
+Current starter-kit governance keeps canonical skill ownership in
+`.agents/skills/`.
 
-That migration stays deferred until the adapter and sync model is more mature.
+Any future migration stays deferred until a source-owned generation model is
+stable and consume-only starter-kit output remains truthful.
 
 ## Codex Skills Model
 
@@ -67,15 +69,14 @@ Skills are not for:
 Those belong in:
 
 - `docs/operating_system/`
-- `agent-core/policies/`
 - `.codex/rules/`
 
 `.codex/rules/` is a generated rules surface. It is not the canonical home for
 skills, agent memory, or repo governance.
 
-## Relationship To Subagents
+## Relationship To Playbooks
 
-If `.codex/agents/` exists in this repo:
+If `.agents/agents/` exists in this repo:
 
 - it is an optional specialist executor layer
 - it does not replace `.agents/skills/`
@@ -110,7 +111,8 @@ In this repo, skill additions should be treated as process TDD rather than
 plain documentation edits.
 ## Migration Rule
 
-If future work introduces `agent-core/skills/`, that layer must not become canonical until:
+If future work introduces a new source-owned generation layer for skills, that
+layer must not become canonical until:
 
 - sync behavior is defined
 - verification proves outputs are trustworthy
