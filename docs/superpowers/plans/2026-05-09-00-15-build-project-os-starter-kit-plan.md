@@ -16,7 +16,7 @@ targets:
   - project-OS-starter-kit/
 ---
 
-# Goal
+## Goal
 
 Build a generated `project-OS-starter-kit` from `project-OS-starter` so the starter repo remains the single source of truth while the kit becomes a clone-ready, consume-only downstream starter. The kit must ship prebuilt agent entry surfaces and the minimum governance, planning, template, script, and validation surfaces needed for normal starter usage, while excluding adapter-regeneration and runtime-bundle deployment machinery.
 

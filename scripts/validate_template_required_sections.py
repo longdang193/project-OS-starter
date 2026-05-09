@@ -376,7 +376,7 @@ def validate_documents(
                     )
                     continue
                 phase_subsections = _extract_h4_sections(phase_block)
-                for sub in ("Goal", "Key Deliverables"):
+                for sub in ("Goal", "Exit Criteria"):
                     sub_content = phase_subsections.get(sub)
                     if sub_content is None:
                         findings.append(
@@ -395,6 +395,7 @@ def validate_documents(
                                 message=f"`{phase_name}` subsection `{sub}` is empty.",
                             )
                         )
+            continue
     return findings
 
 

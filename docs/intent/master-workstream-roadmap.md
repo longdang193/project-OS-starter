@@ -26,14 +26,16 @@ traceability and keeps product workstream scope separate from
 Establish the starter adoption planning lifecycle foundation with one explicit,
 traceable product workstream and bounded thread execution.
 
-#### Key Deliverables
+#### Enables
 
-- activate and maintain `starter-adoption-experience` as the registered
-  workstream anchor
-- keep bounded change threads under
-  `docs/intent/workstreams/threads/starter-adoption-experience/`
-- ensure downstream artifacts use canonical planning lineage and lifecycle
-  validation flow
+- activation of bounded thread execution under `starter-adoption-experience`
+- truthful downstream spec and plan lineage using canonical lifecycle validation flow
+
+#### Exit Criteria
+
+- `starter-adoption-experience` remains the active registered workstream anchor
+- bounded change threads remain scoped under `docs/intent/workstreams/threads/starter-adoption-experience/`
+- downstream artifacts are using canonical planning lineage and lifecycle validation flow
 
 ### Phase 2
 
@@ -42,15 +44,20 @@ traceable product workstream and bounded thread execution.
 Define the next durable product workstream expansion only after Phase 1 closure
 evidence confirms stable lifecycle behavior.
 
-#### Key Deliverables
+#### Depends On
 
-- identify additional roadmap outcomes that are not already covered by
-  `starter-adoption-experience`
-- map each new durable outcome to either:
-  - a new registered product workstream, or
-  - explicit `operating_system` ownership when it is method work
-- document unresolved scope decisions as explicit gaps before downstream plan
-  expansion
+- Phase 1
+
+#### Enables
+
+- new registered product workstreams for durable roadmap outcomes
+- explicit `operating_system` ownership classification for method work
+
+#### Exit Criteria
+
+- additional roadmap outcomes not already covered by `starter-adoption-experience` are identified
+- each new durable outcome is mapped to either a registered product workstream or explicit `operating_system` ownership
+- unresolved scope decisions are documented as explicit gaps before downstream plan expansion
 
 ### Phase 3
 
@@ -59,12 +66,15 @@ evidence confirms stable lifecycle behavior.
 Consolidate multi-workstream governance and closure readiness once Phase 2
 scope is concretely registered and bounded.
 
-#### Key Deliverables
+#### Depends On
 
-- verify roadmap-to-workstream coverage is complete for intended outcomes
-- validate cross-workstream dependency and closure logic at roadmap level
-- maintain explicit unresolved-gap tracking where scope remains intentionally
-  undecided
+- Phase 2
+
+#### Exit Criteria
+
+- roadmap-to-workstream coverage is complete for intended outcomes
+- cross-workstream dependency and closure logic is validated at roadmap level
+- unresolved gaps remain explicitly tracked where scope is intentionally undecided
 
 ## Workstream Index
 

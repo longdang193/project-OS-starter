@@ -71,6 +71,8 @@ Before drafting a plan, read:
 - Name exact source, generated, and cross-cutting doc targets when they clarify scope.
 - Respect source-vs-generated ownership boundaries; generated feature, stage, history, and discovery surfaces must derive from owning sources.
 - Keep implementation plans structurally aligned with the standardized `Goal / Key Deliverables / Task/Wave Breakdown / Verification` template shape.
+- Prefer `Task` blocks for directly executable slices, reserving `Wave` for true orchestration.
+- Keep artifact outcomes in `Key Deliverables`, task-local proof inside task `Verification`, and final proof in top-level `Verification` without duplicating the same fact across sections.
 
 ## Pre-Write Contract Check
 

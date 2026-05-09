@@ -63,6 +63,7 @@ Before execution starts, read:
 - Refresh generated feature, stage, history, and discovery surfaces from source when in scope.
 - Do not hand-edit generated managed surfaces to satisfy completion claims.
 - Respect the standardized implementation-plan shape and keep task/wave sequencing consistent with any approved implementation execution map.
+- Treat task-local verification as owned by each task block and reserve top-level plan `Verification` for final artifact proof.
 
 ## GitNexus Usage
 
@@ -128,7 +129,13 @@ For each task:
 3. Select the next action using `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`.
 4. Do not invent unrelated next steps; choose only from approved roadmap/workstream/thread/spec/map/plan artifacts.
 5. Run required verifications
-6. Update affected source layers as part of the task:
+6. Keep the executing plan synchronized with real task state:
+
+- mark completed checklist items or task status markers when work materially lands
+- record blockers, deferrals, or reordered steps when execution diverges from the original plan
+- keep verification notes truthful when a task-local proof point is completed or intentionally deferred
+
+1. Update affected source layers as part of the task:
 
 - code
 - `docs/intent/*.md` when project-purpose sources change
@@ -139,6 +146,7 @@ For each task:
 - other focused docs under `docs/features/<feature_id>/` if feature-specific explanation changed
 - `docs/*.md` if cross-cutting product explanation changed
 - `README.md` if navigation changed
+<EXTREMELY-IMPORTANT>
 - before marking the task fully complete, decide whether execution revealed a reusable memory update:
   - invariant → `docs/operating_system/agent_memory/invariants.md`
   - pattern → `docs/operating_system/agent_memory/patterns.md`
@@ -146,6 +154,7 @@ For each task:
   - reusable unresolved question → `docs/operating_system/agent_memory/open-questions.md`
 
 If yes, update the relevant memory file as part of task closeout. If no, complete the task without forcing a memory edit.
+</EXTREMELY-IMPORTANT>
 
 1. Mark task `completed`
 

@@ -23,6 +23,9 @@ required_frontmatter:
 
 ## Key Deliverables
 
+Use this section for artifact-level design outcomes only.
+Do not restate detailed decisions, invariants, or proof methods here.
+
 ### <deliverable 1>
 
 Describe one concrete specification outcome this document must deliver, such as a resolved design boundary, contract decision, or validated implementation constraint.
@@ -33,25 +36,87 @@ Describe another concrete specification result this document must deliver, such 
 
 ## Task/Wave Breakdown
 
-### Wave 1
+Use this section for progression from source-first analysis into decision closure and validation readiness.
+Do not duplicate the canonical decision, invariant, or validation records here.
 
-Describe the first design or analysis pass needed to define the specification correctly.
+### Wave 1: Source-first analysis
 
-### Wave 2
+**Purpose:**
+- define current behavior, boundaries, and design constraints before proposing decisions
 
-Describe the follow-up pass needed to resolve open questions, tighten decisions, or prepare the spec for approval.
+**Steps:**
+- [ ] inspect current source-of-truth surfaces
+- [ ] identify unresolved contract edges
+- [ ] record affected invariants, interfaces, and dependency boundaries
+
+**Verification:**
+- [ ] current-state understanding is explicit enough to support concrete design decisions
+
+**Exit Criteria:**
+- no core design decision depends on unstated assumptions
+
+### Wave 2: Decision closure
+
+**Purpose:**
+- resolve design choices and document why chosen shape is preferred
+
+**Steps:**
+- [ ] define major design decisions
+- [ ] compare alternatives where non-obvious
+- [ ] record impact on interfaces, invariants, and downstream implementation
+
+**Verification:**
+- [ ] each major design question has a documented decision or explicit deferral
+
+**Exit Criteria:**
+- design is internally coherent and bounded
+
+### Wave 3: Validation and approval readiness
+
+**Purpose:**
+- prepare the spec for implementation handoff by making proof expectations explicit
+
+**Steps:**
+- [ ] define validation plan
+- [ ] confirm invariant preservation strategy
+- [ ] identify any open approval questions or follow-up notes
+
+**Verification:**
+- [ ] validation plan proves intended behavior and contract preservation
+
+**Exit Criteria:**
+- spec is ready for approval or implementation planning
 
 ## Design Decisions
 
-- <decision>
+This section is the canonical design-choice record.
+Keep chosen approach, alternatives, and impact here.
+Do not restate invariants or full validation procedure here.
+
+### Decision: <short title>
+
+- context: <why decision exists>
+- choice: <selected approach>
+- alternatives considered:
+  - <alternative>
+- impact:
+  - <affected interface, boundary, or downstream implication>
 
 ## Invariants
+
+This section is the canonical constraint record.
+Keep only what must remain true.
 
 - <must remain true>
 
 ## Validation Plan
 
-- <how to verify>
+This section is the canonical proof record.
+Keep how claims will be verified here.
+
+- proof target: <claim>
+  - method: <test, inspection, comparison, or run>
+  - evidence: <expected proof>
 
 ## Completion Criteria
 

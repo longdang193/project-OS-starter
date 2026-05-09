@@ -16,6 +16,22 @@ Use these source templates when creating or revising the corresponding planning 
 - implementation execution map -> `docs/operating_system/templates/implementation-execution-map-template.md`
 - implementation plan -> `docs/operating_system/templates/implementation-plan-template.md`
 
+## Canonical Section Semantics
+
+Keep top-level section names aligned with the standardized templates.
+Within those templates, keep subsection ownership distinct:
+
+- roadmap -> `Phase` blocks own sequencing; `Workstream Index` owns registry data
+- registered workstream list -> waves own reconciliation flow; `Registered Workstreams` owns canonical rows
+- bounded change thread -> waves own progression; `Scope` owns boundaries; `Dependencies` owns prerequisites and handoff facts
+- complete specification set -> waves own sequencing; `Spec Inventory` owns spec rows; `Coverage Check` owns thread coverage
+- spec-authoring map -> waves own ordering and merge rationale; `Parallel Lanes` owns lane membership
+- detailed spec -> waves own design progression; `Design Decisions` owns choices; `Invariants` owns constraints; `Validation Plan` owns proof
+- implementation execution map -> waves own execution order; `Dependencies And Risks` owns stable cross-lane dependency and risk facts
+- implementation plan -> `Task` blocks own executable slices; top-level `Verification` owns final artifact proof
+
+Prefer one source of truth per fact. Do not restate the same outcome, inventory, or proof detail in multiple sections.
+
 ## Decision Order
 
 Start at the lowest valid layer and move upward only when required evidence is
