@@ -5,12 +5,11 @@ A private starter repository for carrying forward the repo operating system with
 ## What This Repo Owns
 
 - `docs/operating_system/`: human-readable repo governance and workflows
-- `docs/operating_system/agent_memory/`: compact reusable agent memory for repo work
 - `.agents/skills/`: canonical Codex skill discovery surface
 - `docs/operating_system/templates/agents/`: source templates for generated instruction outputs
-- `repo_config/`: starter-level configuration for adapter generation and public publication
+- `repo_config/`: starter-level configuration for shipped starter validation and planning contracts
 - `configs/`: starter-level runtime and workflow configuration
-- `scripts/`: sync, verify, and curated public-mirror workflows
+- `scripts/`: validation, hooks, and curated repo workflows
 
 ## Canonical Vs Generated
 
@@ -55,12 +54,8 @@ First-hour flow:
 4. fill `docs/intent/` before deep workflow docs
 5. decide whether the private/public publication workflow applies
 6. define initial feature/stage sources only when the project shape is clear
-7. update adapter templates and run adapter sync
-
-```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
-```
+7. review starter governance and shipped root agent docs before adding any
+   source-only factory workflows
 
 ## Agent Memory
 
@@ -79,10 +74,10 @@ The starter includes `.github/workflows/repo-hooks.yml` as a default CI hook lay
 
 It checks:
 
-- adapter sync and verification
-- generated-file drift
+- repo-contract validation
+- generated-file drift for shipped starter surfaces
 - a baseline test command
-- publication-boundary dry runs
+- publication-boundary dry runs when that workflow is adopted
 
 The default workflow assumes a Python-style test command. Update the baseline-test step during project bootstrap if your repo uses a different test runner or no `tests/` directory.
 
@@ -99,10 +94,9 @@ When bootstrapping a new project, review these first:
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
 - `docs/operating_system/templates/agents/*.template.md`
-- `repo_config/agent-adapter-mappings.json`
-- `repo_config/publication-config.json`
+- `repo_config/planning_artifact_schema.yaml`
+- `repo_config/adoption-mode.yaml`
 - `.github/workflows/repo-hooks.yml`
-- `docs/operating_system/agent_memory/*`
 
 ## Optional Nested AGENTS Templates
 
@@ -111,7 +105,9 @@ The starter ships with optional example templates:
 - `docs/operating_system/templates/agents/example-runtime-AGENTS.template.md`
 - `docs/operating_system/templates/agents/example-admin-AGENTS.template.md`
 
-These are examples only. They are not wired into generation until you add them to `repo_config/agent-adapter-mappings.json`.
+These are examples only. Keep them as optional starter guidance unless your
+source repo also owns a separate generation workflow for additional agent entry
+surfaces.
 
 ## Public Mirror Workflow
 

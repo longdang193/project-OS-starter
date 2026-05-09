@@ -208,7 +208,11 @@ Use feature YAML for:
 
 Do not create product feature contracts for repo-method work. For example, do not create `docs/features/repo-operating-system.yaml` or a `repo-operating-system` feature folder to track starter adoption, adapter generation, intent-layer setup, publication policy, agent/rule governance, GitNexus setup, or documentation-system governance.
 
-Route those concerns to `docs/operating_system/`, `agent-core/`, `.agents/skills/`, `.codex/rules/`, `repo_config/`, scripts, or operating-system specs/plans. See `docs/operating_system/governance/feature-routing-guide.md` before creating feature metadata.
+Route those concerns to `docs/operating_system/`, `.agents/skills/`,
+`.agents/agents/`, `.codex/rules/`, `repo_config/`, scripts, or
+operating-system specs/plans. See
+`docs/operating_system/governance/feature-routing-guide.md` before creating
+feature metadata.
 
 For active features, `feature.source.yaml` is the human-owned source and the
 concrete feature-id contract, for example `model-training-pipeline.yaml`, is

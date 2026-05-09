@@ -23,8 +23,7 @@ prevent destructive execution without explicit approval flow.
 - `git branch --show-current`
 - `python -m py_compile`
 - `pytest`
-- `scripts/sync_agent_adapters.ps1`
-- `scripts/verify_agent_adapters.ps1`
+- `scripts/validate_repo_contracts.py --fast`
 - `scripts/publish_public_repo.ps1`
 
 ## Prompt Before Execute

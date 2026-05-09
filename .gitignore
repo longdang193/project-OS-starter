@@ -11,5 +11,4 @@ Thumbs.db
 *.log
 .worktrees/
 .tmp-tests/
-
-.worktrees/
+generated_exports/

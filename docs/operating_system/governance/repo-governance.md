@@ -24,26 +24,19 @@ The repo uses four distinct internal layers:
 - internal tooling pilots
 - agent memory under `docs/operating_system/agent_memory/`
 
-2. `agent-core/`
-- shared agent-facing source material
-- small principles
-- structured policy intent
-- adapter source files
-
-3. `.agents/skills/`
-- repo-local Codex skill discovery surface
+2. `.agents/skills/`
+- canonical reusable skill/workflow surface
 - focused execution workflows
 
-4. `.codex/agents/`
-- optional repo-local Codex subagent configuration
-- narrow specialist executor roles only
+3. `.agents/agents/`
+- optional lightweight repo-local playbooks for task-specialized subagent roles
 - subordinate to `AGENTS.md`, `docs/operating_system/`, and `.agents/skills/`
 
-5. adapter outputs
+4. shipped root instruction docs
 - `AGENTS.md`
-- nested `AGENTS.md`
-- generated provider runtime rule outputs
-- sync and verification scripts under `scripts/`
+- `GEMINI.md`
+- `CLAUDE.md`
+- final consume-only entry artifacts for downstream starter clones
 
 For copyable user-facing prompts that help invoke the lifecycle cleanly, use
 `docs/operating_system/prompt_templates/`. That folder is the practical
@@ -57,13 +50,13 @@ It now covers both:
 - managed-mode update/fix prompts for already-managed repos
 - planning-alignment review prompts for roadmap/workstream vs execution drift
 
-The repo now uses `.codex/` as its active Codex config/generated root, while
-still splitting Codex ownership by role:
+The repo uses shipped root instruction docs as final downstream entry surfaces,
+while still splitting ownership by role:
 
-- `AGENTS.md` for repo-wide Codex instructions
-- `.agents/skills/` for canonical Codex skills
+- `AGENTS.md` for repo-wide agent instructions
+- `.agents/skills/` for canonical reusable skills
+- `.agents/agents/` for optional repo-local playbooks
 - `docs/operating_system/` for human governance
-- `.codex/` for repo-local Codex config and generated outputs
 
 The repo also splits configuration ownership by purpose:
 
@@ -348,29 +341,18 @@ Does not own:
 
 `docs/operating_system/agent_memory/` stores compact operational memory for agents. It does not replace feature docs, specs, plans, or generated rules.
 
-### `agent-core/`
-
-Owns:
-
-- shared agent-facing material that may be rendered into adapter-specific files
-
-Does not own:
-
-- the full human governance layer
-- public product docs
-
 ### `.agents/skills/`
 
 Owns:
 
 - reusable execution workflows
-- the canonical Codex skill discovery surface in phase 2
+- canonical reusable skill discovery surface
 
 Does not own:
 
 - publication policy
 - repo-wide governance
-- adapter syntax
+- playbook-specific local overrides
 
 Formal shape is governed by `docs/operating_system/governance/skills-governance.md`.
 
@@ -395,26 +377,6 @@ Rules:
 - playbooks must remain subordinate to `AGENTS.md`, `docs/operating_system/`, and `.agents/skills/`
 - this repo does not need repo-local playbooks until a real repeated specialization gap is proven
 
-### `.codex/agents/`
-
-Owns:
-
-- optional repo-local Codex subagent configuration
-- narrow specialist executor definitions for repeated workflows
-
-Does not own:
-
-- repo-wide governance
-- canonical workflow skills
-- agent memory
-
-Rules:
-
-- this layer is optional, not required
-- first-pass subagents should stay read-only
-- subagents must remain narrower than skills and subordinate to `AGENTS.md`, `docs/operating_system/`, and `.agents/skills/`
-- `.codex/agents/` is the only repo-local Codex subagent surface
-
 ### `.codex/rules/`
 
 Owns:
@@ -428,9 +390,9 @@ Does not own:
 - agent memory
 - repo governance
 
-`.codex/rules/` is a generated surface created by repo scripts under the
-active `.codex/` root. That root does not replace `.agents/skills/` as the
-canonical skill surface.
+`.codex/rules/` is a generated surface created by source-owned tooling. It does
+not replace `.agents/skills/` as the canonical skill surface, and consume-only
+starter kits must not ship the surrounding `.codex/` root.
 
 ### `repo_config/`
 
@@ -439,6 +401,7 @@ Owns:
 - repo/system configuration
 - publication boundary configuration
 - adapter generation mappings
+- starter-kit assembly manifest and generated-kit contract inputs
 
 Does not own:
 
@@ -466,7 +429,7 @@ Does not own:
 The following are private-only by default:
 
 - `docs/operating_system/`
-- `agent-core/`
+- source-only generation machinery and private build inputs
 - `.codex/`
 - root and nested `AGENTS.md`
 - `.agents/`
@@ -485,9 +448,66 @@ The public repo must not depend on these files to understand or use the product.
 
 Mode A templates under `docs/project_templates/mode-a/` are public-safe starting
 points for new project docs and config. A downstream project may copy and fill
-them, but the starter's private operating-system docs, specs, plans, adapters,
-agent memory, and generated instruction surfaces still require an explicit
-curated publication decision before entering a public mirror.
+them, but the starter's private operating-system docs, specs, plans,
+source-only generation machinery, agent memory, and generated instruction
+surfaces still require an explicit curated publication decision before entering
+a public mirror.
+
+## Starter-Kit Boundary
+
+`project-OS-starter-kit` is a generated clone-ready starter derived from
+`project-OS-starter`. It is not an independently edited source repo.
+
+Hard ownership rules:
+
+- `project-OS-starter` is sole development source of truth
+- adapter regeneration happens only in `project-OS-starter`
+- kit publication happens only from `project-OS-starter`
+- direct edits to generated `project-OS-starter-kit` outputs are not allowed
+- downstream kit repos consume shipped `AGENTS.md`, `GEMINI.md`, and
+  `CLAUDE.md` as final artifacts and must not keep adapter sync/regeneration
+  machinery
+
+Source-owned starter-kit assembly inputs live under `repo_config/`:
+
+- `starter-kit-manifest.json` defines shipped paths and forbidden paths
+- `starter-kit-closure.json` records kept skill/workflow closure and
+  source-only conditional references that must not leak into the consume-only
+  kit
+
+Required starter-kit surfaces currently include:
+
+- root agent entry docs: `AGENTS.md`, `GEMINI.md`, `CLAUDE.md`
+- `.agents/skills/` and `.agents/workflows/` that remain valid downstream
+- `docs/operating_system/` governance, lifecycle, procedures, templates,
+  prompt templates, and adoption docs needed by shipped skills/workflows
+- `docs/superpowers/` planning/spec execution surfaces needed for normal
+  starter use
+- `repo_config/planning_artifact_schema.yaml`
+- other `repo_config/` inputs explicitly required by shipped starter workflow,
+  including the starter-kit manifest itself when maintainers rebuild the kit
+- validation scripts, repo-contract hooks, and tests needed to keep shipped
+  starter instructions truthful
+
+Forbidden starter-kit surfaces include:
+
+- `.codex/`
+- `adapters/`
+- source-only generation machinery and private build inputs
+- `generated_agents/`
+- `repo_config/agent-adapter-mappings.json`
+- `repo_config/publication-config.json`
+- adapter sync/verify scripts and downstream adapter-regeneration machinery
+- runtime-bundle deploy/validate/test surfaces that exist only for source-repo
+  runtime publication
+- factory-only docs, configs, and tests whose instructions would be false in a
+  consume-only cloned starter
+
+When a skill, workflow, prompt, or doc is shipped in the starter kit, every
+script, template, prompt, governance doc, and validator path it directly names
+must also ship unless that instruction is first rewritten at the source layer.
+The kit must be assembled from this closure, not from broad folder copying by
+default.
 
 ## GitNexus Freshness Policy
 
@@ -524,29 +544,22 @@ pack entry at
 
 ## Current Phase
 
-Phase 2 keeps `.agents/skills/` as the canonical skill source.
+Current starter-kit governance keeps `.agents/skills/` as the canonical skill
+source.
 
-This avoids breaking current Codex skill discovery while the new `agent-core/` and adapter sync layer stabilizes.
+Optional repo-local playbooks, when used, live under `.agents/agents/` and stay
+subordinate to the skill layer rather than replacing it.
 
-Subagents, when used, complement the skill layer rather than replacing it.
+Source-only generation machinery may evolve over time, but consume-only starter
+kit output must keep shipping final root instruction docs instead of generation
+inputs.
 
-Longer term, `agent-core/skills/` may become canonical, with `.agents/skills/` generated or synchronized from it.
+## Source-Only Generation Workflow
 
-## Adapter Workflow
-
-When changing:
-
-- `docs/operating_system/templates/agents/*`
-- `agent-core/policies/*`
-- generated `AGENTS.md`
-- generated provider runtime rules
-
-run:
-
-```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
-```
+When source-owned generation machinery changes, update it only in
+`project-OS-starter` and then rebuild the generated starter kit. Do not add
+those source-only generation commands or paths to consume-only starter
+instructions.
 
 ## Hook Workflow
 

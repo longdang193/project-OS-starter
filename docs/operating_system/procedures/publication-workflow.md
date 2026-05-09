@@ -27,6 +27,30 @@ Do not develop normally in the public repo.
 .\scripts\publish_public_repo.ps1 -Push
 ```
 
+## Starter-Kit Generation vs Public Publication
+
+`project-OS-starter-kit` is not public-mirror publication output. It is a
+separate generated starter derived from `project-OS-starter`.
+
+Rules:
+
+- build or refresh the starter kit only from `project-OS-starter`
+- do not edit generated `project-OS-starter-kit` output directly
+- starter-kit generation may ship private operating-system and planning
+  surfaces on purpose when they are part of the clone-ready starter contract
+- public publication must still exclude those private-only surfaces unless they
+  are intentionally rewritten for public use
+- adapter regeneration stays source-only even when the starter kit ships final
+  `AGENTS.md`, `GEMINI.md`, and `CLAUDE.md`
+
+Treat these as separate workflows:
+
+- public mirror workflow -> curated product-facing export
+- starter-kit workflow -> clone-ready consume-only starter export
+
+For exact maintainer rebuild and validation steps, use
+[Starter-Kit Workflow](starter-kit-workflow.md).
+
 ## Private-Only Paths
 
 The publication workflow must exclude internal-only material such as:
@@ -34,7 +58,7 @@ The publication workflow must exclude internal-only material such as:
 - `docs/adoption_guide.md`
 - `docs/operating_system/`
 - `docs/operating_system/agent_memory/`
-- `agent-core/`
+- source-only generation machinery and private build inputs
 - `.codex/`
 - `AGENTS.md`
 - `.agents/`
@@ -131,3 +155,6 @@ If repo-level config ownership or publication config under `repo_config/` change
 
 before publishing so publication boundaries and adapter mapping inputs are still
 internally consistent.
+
+Starter-kit rebuilds use a different workflow and different verification target.
+Do not substitute public-mirror publication checks for starter-kit validation.

@@ -49,8 +49,8 @@ Before doc-system decisions, read:
 - `docs/operating_system/templates/implementation-plan-template.md` when implementation-plan structure is in scope
 - `repo_config/planning_artifact_schema.yaml` when planning metadata contract changes are in scope
 - `repo_config/adoption-mode.yaml` when adoption-state or managed-surface obligations may change
-- `repo_config/agent-adapter-mappings.json` or equivalent adapter mapping config when generated adapter/runtime surfaces are in scope
-- `repo_config/publication-config.json` when publication-boundary contract surfaces are in scope
+- `repo_config/agent-adapter-mappings.json` or equivalent adapter mapping config only in source repos that own adapter/runtime generation; consume-only starter-kit clones should treat this surface as absent by design
+- `repo_config/publication-config.json` only in source repos that own curated public publication; consume-only starter-kit clones should treat this surface as absent by design
 - relevant validator and sync scripts under `scripts/` when changing schema/config contracts they enforce
 - relevant tests under `tests/` when changing schema/config contracts they verify
 </MUST-READ>
