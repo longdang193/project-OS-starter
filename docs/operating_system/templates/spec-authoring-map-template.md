@@ -22,6 +22,9 @@ required_frontmatter:
 
 ## Key Deliverables
 
+Use this section for artifact-level authoring outcomes only.
+Do not restate canonical lane membership or wave sequencing details here.
+
 ### <deliverable 1>
 
 Describe one concrete authoring outcome this map must deliver, such as a completed spec subset, sequencing decision, or dependency-resolved drafting lane.
@@ -32,20 +35,79 @@ Describe another concrete authoring result this map must deliver, such as cleare
 
 ## Task/Wave Breakdown
 
-### Wave 1
+Use this section for wave ordering, merge points, and dependency rationale.
+Do not duplicate the canonical lane registry here.
 
-Describe the first authoring wave, including which specs start first and why.
+### Wave 1: Foundational authoring lanes
 
-### Wave 2
+**Purpose:**
+- start with specs that unblock later design work
 
-Describe the second authoring wave, including follow-on specs, dependency handling, or consolidation steps.
+**Starts First Because:**
+- <dependency reason>
+
+**Lane Goals:**
+- <goal 1>
+- <goal 2>
+
+**Verification:**
+- [ ] foundational specs are sufficient to unblock dependent lanes
+
+**Exit Criteria:**
+- dependent spec lanes can start without guessing
+
+### Wave 2: Parallel authoring and dependency handling
+
+**Purpose:**
+- author follow-on specs in safe parallel or staged lanes
+
+**Steps:**
+- [ ] assign specs to lanes
+- [ ] confirm lane dependencies
+- [ ] identify merge or review points
+- [ ] record any unresolved drafting risks
+
+**Verification:**
+- [ ] lane ordering and dependencies are explicit
+
+**Exit Criteria:**
+- parallel spec work can proceed without boundary confusion
+
+### Wave 3: Reconciliation and approval readiness
+
+**Purpose:**
+- consolidate authored specs into one coherent design set
+
+**Steps:**
+- [ ] reconcile overlapping decisions
+- [ ] confirm missing coverage is closed or deferred explicitly
+- [ ] prepare handoff to implementation execution map
+
+**Verification:**
+- [ ] authored spec set is coherent and handoff-ready
+
+**Exit Criteria:**
+- approved design can move into implementation orchestration
 
 ## Parallel Lanes
 
+This section is the canonical lane registry.
+Keep lane membership and dependencies here; do not restate wave rationale here.
+
 - lane A:
-  - <spec>
+  - specs:
+    - <spec>
+  - depends_on:
+    - <lane> | none
+  - unblock_targets:
+    - <lane or decision>
 - lane B:
-  - <spec>
+  - specs:
+    - <spec>
+  - depends_on:
+    - <lane> | none
+  - unblock_targets:
+    - <lane or decision>
 
 ## Completion Criteria
 

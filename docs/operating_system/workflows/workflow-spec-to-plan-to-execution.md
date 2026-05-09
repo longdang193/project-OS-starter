@@ -41,12 +41,13 @@ Move from approved bounded work item context to controlled execution and closeou
 
 - spec gate: design decisions are explicit and bounded
 - planning gate: plan has clear lineage, tasks, verification
-- execution gate: next action is selected only from existing artifacts
+- execution gate: next action is selected only from existing artifacts and the active plan reflects completed, blocked, or deferred work truthfully
 
 ## Exit Criteria
 
 - execution completed for current bounded scope, or
 - blocked state documented with one minimal prerequisite next action
+- executing plan status/checklists are updated to match actual completed, blocked, or deferred work before closeout
 
 ## Related Prompts
 

@@ -76,6 +76,7 @@ Before any skill-brainstorming output, read:
 - Use the smallest truthful feature-folder reading set when feature-managed surfaces are involved.
 - Keep source-of-truth and generated-surface boundaries explicit in proposed designs.
 - Use the standardized template ladder so complete-spec-set, spec-authoring-map, detailed-spec, and execution-map artifacts stay structurally aligned.
+- Keep section ownership distinct inside drafted artifacts: sequencing belongs in phases or waves, canonical rows belong in inventory or registry sections, constraints belong in invariant or scope sections, and proof belongs in validation sections.
 
 ## GitNexus Usage
 

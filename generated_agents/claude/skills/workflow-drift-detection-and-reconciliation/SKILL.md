@@ -54,6 +54,7 @@ Detect drift against roadmap/workstream intent and reconcile downstream artifact
 
 - drift inventory resolved or explicitly documented with next actions
 - validation status captured for corrected artifacts
+- if an active execution plan was reconciled, its status/checklists reflect the corrected completed, blocked, or deferred state
 
 ## Related Prompts
 

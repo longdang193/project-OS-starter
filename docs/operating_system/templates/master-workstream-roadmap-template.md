@@ -19,9 +19,12 @@ required_sections:
 
 ## Key Deliverables
 
+Use this section for roadmap-wide outcomes only.
+Do not restate phase sequencing, phase gates, or workstream-registry details here.
+
 ### <deliverable 1>
 
-Describe one concrete roadmap outcome this document must deliver, including scope, intended result, and how success will be recognized at roadmap level.
+Describe one concrete roadmap-wide outcome this document must deliver, including scope, intended result, and how success will be recognized at roadmap level.
 
 ### <deliverable 2>
 
@@ -29,57 +32,67 @@ Describe one additional roadmap-level outcome this document must deliver, includ
 
 ## Task/Wave Breakdown
 
-### Phase 1
+Use `Phase` blocks for strategic sequencing.
+Within each phase:
+
+- `Goal` owns the phase outcome
+- `Depends On` and `Enables` own sequencing context
+- `Exit Criteria` owns the gate for moving to later phases
+
+Do not restate roadmap-wide Key Deliverables or copy the Workstream Index into phase prose.
+
+### Phase 1: <phase name>
 
 #### Goal
 
 <phase-1 outcome>
 
-#### Key Deliverables
+#### Enables
 
-### <phase-1 deliverable 1>
+- <downstream phase, workstream, or decision this phase unlocks>
 
-Describe one concrete outcome Phase 1 must deliver before later phases can safely begin.
+#### Exit Criteria
 
-### <phase-1 deliverable 2>
+- <what must be true before later phases can safely begin>
 
-Describe a second concrete Phase 1 outcome, milestone, or gating result needed for downstream workstreams.
-
-### Phase 2
+### Phase 2: <phase name>
 
 #### Goal
 
 <phase-2 outcome>
 
-#### Key Deliverables
+#### Depends On
 
-### <phase-2 deliverable 1>
+- Phase 1
 
-Describe one concrete Phase 2 outcome that builds on Phase 1 and advances the roadmap toward its target state.
+#### Enables
 
-### <phase-2 deliverable 2>
+- <downstream phase, workstream, or decision this phase unlocks>
 
-Describe a second concrete Phase 2 outcome, checkpoint, or readiness gate required before Phase 3.
+#### Exit Criteria
 
-### Phase 3
+- <what must be true before later phases can safely begin>
+
+### Phase 3: <phase name>
 
 #### Goal
 
 <phase-3 outcome>
 
-#### Key Deliverables
+#### Depends On
 
-### <phase-3 deliverable 1>
+- Phase 2
 
-Describe one concrete Phase 3 outcome that completes or hardens the roadmap target state.
+#### Exit Criteria
 
-### <phase-3 deliverable 2>
-
-Describe a final Phase 3 outcome that proves the roadmap is operationally complete or ready for closeout.
+- <what proves the roadmap target state is complete or ready for closeout>
 
 ## Workstream Index
 
-- <workstream-id> - <summary>
+This section is the canonical workstream registry for the roadmap.
+Do not restate phase sequencing here.
+
+- `<workstream-id>` - <summary>
 
 ## Completion Criteria
 

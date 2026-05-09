@@ -21,6 +21,9 @@ required_frontmatter:
 
 ## Key Deliverables
 
+Use this section for final implementation outcomes only.
+Do not restate task-by-task execution details or local verification steps here.
+
 ### <deliverable 1>
 
 Describe one concrete implementation outcome this plan must deliver, including changed surfaces, expected behavior, and verification intent.
@@ -31,17 +34,74 @@ Describe another concrete implementation result this plan must deliver, such as 
 
 ## Task/Wave Breakdown
 
-### task 1:
+Use `Task` for directly executable implementation slices.
+Use `Wave` only when plan truly needs orchestration across multiple related tasks.
 
-Describe the first executable task, including touched surfaces, intended result, and how it will be verified.
+Within each task:
+- `Purpose` owns bounded outcome
+- `Files` owns touched-surface inventory
+- `Preconditions` owns prerequisites
+- `Steps` owns execution sequence
+- `Verification` owns task-local proof
+- `Exit Criteria` owns task completion gate
 
-### task 2:
+Do not duplicate final artifact verification commands here unless a command is truly both task-local and final.
 
-Describe the next executable task, including dependency order, expected outcome, and follow-up verification or handoff.
+### Task 1: <short task title>
+
+**Purpose:**
+- <bounded outcome this task delivers>
+
+**Files:**
+- Inspect: `<path>`
+- Modify: `<path>`
+- Verify: `<path>`
+
+**Preconditions:**
+- <upstream dependency, source-first fact, or prior task result>
+
+**Steps:**
+- [ ] Step 1: <first bounded action>
+- [ ] Step 2: <second bounded action>
+- [ ] Step 3: <verification-aligned follow-up>
+
+**Verification:**
+- [ ] <command, assertion, or inspection target>
+
+**Exit Criteria:**
+- <what makes this task done>
+
+### Task 2: <short task title>
+
+**Purpose:**
+- <bounded outcome this task delivers>
+
+**Files:**
+- Inspect: `<path>`
+- Modify: `<path>`
+- Verify: `<path>`
+
+**Preconditions:**
+- Task 1 complete
+- <any additional dependency>
+
+**Steps:**
+- [ ] Step 1: <first bounded action>
+- [ ] Step 2: <second bounded action>
+- [ ] Step 3: <verification-aligned follow-up>
+
+**Verification:**
+- [ ] <command, assertion, or inspection target>
+
+**Exit Criteria:**
+- <what makes this task done>
 
 ## Verification
 
-- <command>
+Use this section for final artifact-level verification only.
+Do not copy every task-local proof here.
+
+- <final command>
 
 ## Completion Criteria
 
