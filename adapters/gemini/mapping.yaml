@@ -1,5 +1,9 @@
 platform: antigravity
 mappings:
+  - source: AGENTS.md
+    destination: generated_agents/antigravity/GEMINI.md
+    mode: render_root_doc_with_manifest
+    comment_prefix: "#"
   - source: docs/operating_system/rules/global-baseline-contract-rule.md
     destination: generated_agents/antigravity/rules/global-baseline-contract-rule.md
     mode: copy_file

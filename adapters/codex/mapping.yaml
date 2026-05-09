@@ -1,5 +1,9 @@
 platform: codex
 mappings:
+  - source: AGENTS.md
+    destination: generated_agents/codex/AGENTS.md
+    mode: render_root_doc_with_manifest
+    comment_prefix: "#"
   - source: docs/operating_system/rules/global-baseline-contract-rule.md
     destination: generated_agents/codex/rules/global-baseline-contract.rules
     mode: render_codex_rule_file
