@@ -45,6 +45,7 @@ For multi-step procedures with decision gates, use workflow docs under:
 |---|---|
 | New bug, route unknown | [bug-intake-and-routing-prompt.md](./bug-intake-and-routing-prompt.md) |
 | Audit bundle authoring/repair for qualifying failure | [audit-report-with-evidence-prompt.md](./audit-report-with-evidence-prompt.md) |
+| Post-audit remediation routing (plan-first vs patch-now) | [post-audit-plan-and-patch-prompt.md](./post-audit-plan-and-patch-prompt.md) |
 | Patch implementation + pattern scan | [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md) |
 | Post-patch regression scope decision | [post-patch-regression-scope-prompt.md](./post-patch-regression-scope-prompt.md) |
 | Deferred likely/risk finding capture | [known-issue-capture-prompt.md](./known-issue-capture-prompt.md) |
