@@ -50,6 +50,7 @@ Handle live-run failures with evidence-first debugging and bounded fixes.
    ```powershell
    .\.venv\Scripts\python.exe scripts\audit_check.py docs/superpowers/plans/audit/<audit_id>
    ```
+
 5. Define one bounded fix:
    - minimal scope
    - no unrelated changes
@@ -57,7 +58,9 @@ Handle live-run failures with evidence-first debugging and bounded fixes.
 7. Trigger targeted rerun through `workflow-live-run-execution`.
 8. Route to `workflow-live-run-verification` when rerun result is successful;
    continue debugging when rerun fails.
+<MUST-DO>
 9. Update in-scope execution-context handoff artifacts when failure boundary, fix path, or verification disposition changed.
+</MUST-DO>
 
 ## Decision Gates
 
@@ -97,5 +100,7 @@ If linkage is incomplete, do not mark resolved.
 - required audit bundle exists or allowed bypass is explicitly recorded
 - bounded fix is applied
 - targeted rerun evidence exists for the applied fix
+<MUST-DO>
 - in-scope execution-context handoff artifacts are updated
+</MUST-DO>
 - workflow is ready to transition to verification or next bounded debug pass
