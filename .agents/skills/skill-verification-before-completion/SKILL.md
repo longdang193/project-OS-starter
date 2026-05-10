@@ -39,6 +39,7 @@ Before final completion claims, read:
 - `docs/operating_system/agent_memory/failure-ledger.md` when the task involved meaningful retries/debugging
 - `docs/operating_system/workflows/workflow-roadmap-to-closeout.md`
 - `docs/operating_system/workflows/workflow-live-run-closeout.md` when the lane includes live-run execution
+- `docs/operating_system/rules/audit-evidence-mandate-rule.md` when the lane includes qualifying failures
 </MUST-READ>
 
 ## Lifecycle Compliance
@@ -71,7 +72,8 @@ BEFORE claiming any status or expressing satisfaction:
 5. CLOUD-PROOF CHECK: If the claim depends on cloud-owned behavior, verify the live cloud artifacts rather than extrapolating from local tests
 6. DOC SYNC CHECK: If behavior changed, name the exact feature/doc targets updated or intentionally unchanged
 7. MEMORY DISPOSITION CHECK: If the work involved meaningful failures, retries, or debugging, update `docs/operating_system/agent_memory/failure-ledger.md` or explicitly state why no memory update was needed
-8. ONLY THEN: Make the claim
+8. AUDIT GATE CHECK: For qualifying failures, confirm audit bundle exists (or explicit allowed bypass), using canonical paths from `docs/operating_system/rules/audit-evidence-mandate-rule.md`
+9. ONLY THEN: Make the claim
 
 Skip any step = lying, not verifying
 ```

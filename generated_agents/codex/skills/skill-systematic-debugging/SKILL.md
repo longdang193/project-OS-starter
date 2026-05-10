@@ -12,6 +12,7 @@ required_reads:
 - docs/operating_system/agent_memory/failure-ledger.md
 - docs/operating_system/workflows/workflow-test-failure-triage.md
 - docs/operating_system/governance/repo-governance.md
+- docs/operating_system/rules/audit-evidence-mandate-rule.md
 tags:
 - skill
 - debugging
@@ -139,6 +140,11 @@ You MUST complete each phase before proceeding to the next.
    THEN analyze evidence to identify failing component
    THEN investigate that specific component
    ```
+
+   **Audit gate (mandatory):**
+   - if trigger conditions in `docs/operating_system/rules/audit-evidence-mandate-rule.md` are met and no active audit exists, create/update audit bundle at `docs/superpowers/plans/audit/<audit_id>/`
+   - use `docs/operating_system/templates/audit-report-with-evidence-template.md` for `report.md`
+
 
    **Example (multi-layer system):**
 
@@ -319,7 +325,7 @@ If you catch yourself thinking:
 | **1. Root Cause** | Read errors, reproduce, check changes, gather evidence | Understand WHAT and WHY |
 | **2. Pattern** | Find working examples, compare | Identify differences |
 | **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
-| **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass |
+| **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass, audit linkage complete when required |
 
 ## When Process Reveals "No Root Cause"
 

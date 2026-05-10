@@ -42,12 +42,20 @@ Handle live-run failures with evidence-first debugging and bounded fixes.
    - stage
    - component
    - contract/invariant that broke
-4. Define one bounded fix:
+4. Audit gate:
+   - if qualifying problem trigger is met and no active audit exists, create audit bundle at `docs/superpowers/plans/audit/<audit_id>/`
+   - initialize `report.md` from `docs/operating_system/templates/audit-report-with-evidence-template.md`
+   - during verification loop for qualifying failures, run:
+
+   ```powershell
+   .\.venv\Scripts\python.exe scripts\audit_check.py docs/superpowers/plans/audit/<audit_id>
+   ```
+5. Define one bounded fix:
    - minimal scope
    - no unrelated changes
-5. Apply the fix.
-6. Trigger targeted rerun through `workflow-live-run-execution`.
-7. Route to `workflow-live-run-verification` when rerun result is successful;
+6. Apply the fix.
+7. Trigger targeted rerun through `workflow-live-run-execution`.
+8. Route to `workflow-live-run-verification` when rerun result is successful;
    continue debugging when rerun fails.
 
 ## Decision Gates
@@ -56,16 +64,18 @@ Handle live-run failures with evidence-first debugging and bounded fixes.
    - do not patch without captured evidence and failure boundary.
 2. No boundary, no patch:
    - if failure boundary is unclear, continue investigation rather than coding.
-3. Minimality gate:
+3. Audit mandate gate:
+   - when trigger conditions in `docs/operating_system/rules/audit-evidence-mandate-rule.md` apply, debugging is incomplete until audit bundle exists (or explicit allowed bypass is recorded).
+4. Minimality gate:
    - reject fixes that alter unrelated modules/contracts.
-4. Rerun gate:
+5. Rerun gate:
    - every fix must be exercised by targeted rerun evidence.
 
 ## Traceability Requirements
 
 Record explicit linkage:
 
-- failure evidence -> boundary decision -> bounded fix -> rerun evidence
+- failure evidence -> boundary decision -> audit record -> bounded fix -> rerun evidence
 
 If linkage is incomplete, do not mark resolved.
 
@@ -81,6 +91,7 @@ If linkage is incomplete, do not mark resolved.
 ## Exit Criteria
 
 - failure boundary is explicitly identified
+- required audit bundle exists or allowed bypass is explicitly recorded
 - bounded fix is applied
 - targeted rerun evidence exists for the applied fix
 - workflow is ready to transition to verification or next bounded debug pass

@@ -78,6 +78,8 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
 > Regenerate via: `scripts/sync_agent_adapters.py`.
 
 ### Rules Manifest
+- `audit-evidence-mandate-rule.md` — Enforce mandatory audit report with evidence for qualifying problem classes before closure claims.
+  - Source: `docs/operating_system/rules/audit-evidence-mandate-rule.md`
 - `command-execution-rule.md` — Define command execution safety boundaries and escalation conditions.
   - Source: `docs/operating_system/rules/command-execution-rule.md`
 - `doc-contracts-rule.md` — Enforce document contract consistency for templates, lifecycle metadata, and generated surfaces.

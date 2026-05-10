@@ -54,6 +54,7 @@ Before execution starts, read:
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
 - `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
+- `docs/operating_system/rules/audit-evidence-mandate-rule.md` when executing debugging/verification/closeout tasks for qualifying failures
 </MUST-READ>
 
 ## Lifecycle Compliance
@@ -135,7 +136,12 @@ For each task:
 - record blockers, deferrals, or reordered steps when execution diverges from the original plan
 - keep verification notes truthful when a task-local proof point is completed or intentionally deferred
 
-1. Update affected source layers as part of the task:
+7. Audit mandate check during execution:
+
+- when a task enters qualifying-failure space (debugging/verification/closeout/test-failure triage), ensure audit bundle exists or explicitly record allowed bypass per `docs/operating_system/rules/audit-evidence-mandate-rule.md`
+- use canonical audit template/storage paths only; do not duplicate template text in task docs
+
+8. Update affected source layers as part of the task:
 
 - code
 - `docs/intent/*.md` when project-purpose sources change
@@ -188,10 +194,17 @@ For long-running execution, maintain a resumable execution context pack and keep
 Canonical template:
 - `docs/operating_system/templates/execution-context-pack-template.md`
 
+Canonical durable storage (Option B):
+- `docs/superpowers/execution_context_packs/<lane-id>/latest.md`
+
+Governance policy:
+- `docs/operating_system/governance/execution-context-pack-governance.md`
+
 Context-pack policy in this skill:
-- refresh context pack when task state, verification state, or blocker/risk changes
-- refresh context pack before recommending new-session handoff
+- refresh canonical context pack when task state, verification state, or blocker/risk changes
+- refresh canonical context pack before recommending new-session handoff
 - keep context pack concise and source-linked
+- worktree `artifacts/execution_context_pack.md` is optional mirror, not durable source
 
 ## Optional Raw Session Context
 

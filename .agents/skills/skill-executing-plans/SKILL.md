@@ -46,6 +46,7 @@ Before execution starts, read:
 - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
 - `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
 - `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
+- `docs/operating_system/rules/audit-evidence-mandate-rule.md` when executing debugging/verification/closeout tasks for qualifying failures
 </MUST-READ>
 
 ## Lifecycle Compliance
@@ -127,7 +128,12 @@ For each task:
 - record blockers, deferrals, or reordered steps when execution diverges from the original plan
 - keep verification notes truthful when a task-local proof point is completed or intentionally deferred
 
-1. Update affected source layers as part of the task:
+7. Audit mandate check during execution:
+
+- when a task enters qualifying-failure space (debugging/verification/closeout/test-failure triage), ensure audit bundle exists or explicitly record allowed bypass per `docs/operating_system/rules/audit-evidence-mandate-rule.md`
+- use canonical audit template/storage paths only; do not duplicate template text in task docs
+
+8. Update affected source layers as part of the task:
 
 - code
 - `docs/intent/*.md` when project-purpose sources change
