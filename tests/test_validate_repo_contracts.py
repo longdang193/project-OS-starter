@@ -213,7 +213,22 @@ def test_build_subprocess_steps_keeps_sync_for_managed_mode(tmp_path: Path) -> N
 
     assert any("validate_adoption_shape.py" in step for step in rendered)
     assert any("sync_architecture_docs.py --check" in step for step in rendered)
+    assert any("validate_agent_runtime_drift.py --skip-deploy-check" in step for step in rendered)
     assert any("validate_repo_config.py" in step for step in rendered)
+
+
+def test_build_subprocess_steps_skips_runtime_drift_for_starter_method_only(tmp_path: Path) -> None:
+    write_adoption_mode(tmp_path, "starter_method_only")
+
+    steps = VALIDATOR.build_subprocess_steps(
+        root=tmp_path,
+        python_executable="python",
+        fast=True,
+    )
+
+    rendered = [" ".join(step) for step in steps]
+
+    assert not any("validate_agent_runtime_drift.py --skip-deploy-check" in step for step in rendered)
 
 
 def test_shared_repo_contract_markers_match_expected_contract() -> None:

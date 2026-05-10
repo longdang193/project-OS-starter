@@ -21,6 +21,7 @@ lifecycle:
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 
 from build_starter_kit import load_manifest, repo_root
@@ -116,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="generated_exports",
         help="Parent directory of built starter-kit root when --kit-root is omitted.",
     )
+    parser.add_argument(
+        "--compare-kit-root",
+        required=False,
+        help="Optional second starter-kit tree to compare against the resolved --kit-root.",
+    )
     return parser
 
 
@@ -152,6 +158,48 @@ def _scan_forbidden_content(*, kit_root: Path) -> list[str]:
             if "generated_by: scripts/sync_agent_adapters.py" in content and token == "scripts/sync_agent_adapters.py":
                 continue
             errors.append(f"Forbidden content reference in {relative_path}: {token}")
+    return errors
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _iter_tree_paths(root: Path) -> set[Path]:
+    paths: set[Path] = set()
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative_path = path.relative_to(root)
+        if relative_path.parts and relative_path.parts[0] == ".git":
+            continue
+        paths.add(relative_path)
+    return paths
+
+
+def compare_tree_parity(*, expected_root: Path, actual_root: Path) -> list[str]:
+    errors: list[str] = []
+    expected_paths = _iter_tree_paths(expected_root)
+    actual_paths = _iter_tree_paths(actual_root)
+
+    missing_paths = sorted(expected_paths - actual_paths)
+    unexpected_paths = sorted(actual_paths - expected_paths)
+
+    for relative_path in missing_paths:
+        errors.append(f"Missing path in compared tree: {relative_path.as_posix()}")
+    for relative_path in unexpected_paths:
+        errors.append(f"Unexpected path present in compared tree: {relative_path.as_posix()}")
+
+    for relative_path in sorted(expected_paths & actual_paths):
+        expected_path = expected_root / relative_path
+        actual_path = actual_root / relative_path
+        if _file_digest(expected_path) != _file_digest(actual_path):
+            errors.append(f"Content mismatch for path: {relative_path.as_posix()}")
+
     return errors
 
 
@@ -197,6 +245,9 @@ def main() -> int:
         kit_root = (output_root / manifest.output_root).resolve()
 
     errors = validate_starter_kit(kit_root=kit_root, manifest_path=manifest_path.resolve())
+    if args.compare_kit_root:
+        compare_root = Path(args.compare_kit_root).resolve()
+        errors.extend(compare_tree_parity(expected_root=kit_root, actual_root=compare_root))
     if errors:
         for error in errors:
             print(f"ERROR: {error}")

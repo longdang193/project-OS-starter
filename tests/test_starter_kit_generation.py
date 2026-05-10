@@ -8,6 +8,8 @@ covers:
   - Starter-kit manifest-driven generation excludes adapter-regeneration and runtime-bundle surfaces
   - Starter-kit verification catches forbidden shipped paths and missing required surfaces
   - Starter-kit generation supports omitted copied subpaths and required empty directories
+  - Starter-kit build fails fast when expected generated provider root instruction files are missing
+  - Starter-kit validation can detect parity drift between generated export and synced sibling repo trees
 tags:
   - fast
   - ci-safe
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import pytest
 import sys
 from pathlib import Path
 
@@ -161,3 +164,48 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
     errors = VERIFY.validate_starter_kit(kit_root=kit_root, manifest_path=manifest_path)
 
     assert any("Forbidden content reference" in error for error in errors)
+
+
+def test_build_starter_kit_fails_when_generated_root_instruction_missing(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    write_text(repo_root / "AGENTS.md", "# agents\n")
+    write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")
+    write_text(repo_root / ".agents" / "skills" / "skill-doc-system-lifecycle" / "SKILL.md", "# skill\n")
+    write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
+    write_text(repo_root / "docs" / "operating_system" / "governance" / "repo-governance.md", "# governance\n")
+    manifest_path = make_manifest(repo_root)
+
+    with pytest.raises(FileNotFoundError, match="generated_agents/antigravity/GEMINI.md"):
+        BUILD.build_starter_kit(
+            repo_root=repo_root,
+            manifest_path=manifest_path,
+            output_root=repo_root / "out",
+        )
+
+
+def test_compare_tree_reports_stale_sibling_files(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    sibling_root = tmp_path / "sibling"
+    write_text(generated_root / "docs" / "operating_system" / "templates" / "implementation-plan-template.md", "new\n")
+    write_text(generated_root / "tests" / "test_validate_repo_contracts.py", "fresh\n")
+    write_text(sibling_root / "docs" / "operating_system" / "templates" / "implementation-plan-template.md", "old\n")
+    write_text(sibling_root / "tests" / "test_validate_repo_contracts.py", "fresh\n")
+    write_text(sibling_root / "extra.txt", "unexpected\n")
+
+    errors = VERIFY.compare_tree_parity(expected_root=generated_root, actual_root=sibling_root)
+
+    assert any("Content mismatch" in error for error in errors)
+    assert any("Unexpected path present" in error for error in errors)
+
+
+def test_compare_tree_accepts_matching_generated_and_sibling_roots(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    sibling_root = tmp_path / "sibling"
+    write_text(generated_root / "AGENTS.md", "# agents\n")
+    write_text(generated_root / "docs" / "operating_system" / "templates" / "implementation-plan-template.md", "same\n")
+    write_text(sibling_root / "AGENTS.md", "# agents\n")
+    write_text(sibling_root / "docs" / "operating_system" / "templates" / "implementation-plan-template.md", "same\n")
+
+    errors = VERIFY.compare_tree_parity(expected_root=generated_root, actual_root=sibling_root)
+
+    assert errors == []

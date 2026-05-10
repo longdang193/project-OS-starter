@@ -29,6 +29,23 @@ workflows, skills, root instructions, and hooks.
 | Claude | `~/.claude/**` | `CLAUDE.md`, `rules/`, `skills/`, and `settings.json` are native runtime surfaces. |
 | Antigravity/Gemini | `~/.gemini/**` | `GEMINI.md` is root instructions; `skills/**` is routed to `~/.gemini/antigravity/skills/**`. |
 
+## Starter-Kit Local Targets
+
+| Surface | Path | Contract |
+| --- | --- | --- |
+| Generated export | `generated_exports/project-OS-starter-kit` | Rebuilt artifact owned by source repo build flow. |
+| Sibling starter-kit repo | `C:\Users\HOANG PHI LONG DANG\repos\project-OS-starter-kit` | Local git checkout that must be updated by full-tree sync from generated export before commit/push. |
+
+When work says "update starter kit", default meaning is:
+
+1. rebuild generated export
+2. validate generated export
+3. mirror full tree into sibling starter-kit repo
+4. verify parity between both trees
+5. commit/push sibling repo when publication is intended
+
+Partial directory-only syncs are not canonical closeout.
+
 ## Local Mirrors
 
 `.agents/rules` and `.agents/workflows` may remain local mirrors for repo discovery, but they

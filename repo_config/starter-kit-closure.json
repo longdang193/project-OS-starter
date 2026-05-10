@@ -86,6 +86,16 @@
     "tests/test_sync_agent_adapters.py",
     "tests/test_deploy_agent_runtime.py"
   ],
+  "localSyncContract": {
+    "generatedExportRoot": "generated_exports/project-OS-starter-kit",
+    "siblingRepoPath": "C:\\Users\\HOANG PHI LONG DANG\\repos\\project-OS-starter-kit",
+    "requiredBehavior": [
+      "Rebuild and validate generated export first.",
+      "Mirror full generated tree into sibling starter-kit repo rather than syncing selective subdirectories.",
+      "Verify parity between generated export and sibling repo before commit or push.",
+      "Block git publication when parity or prerequisite validation fails."
+    ]
+  },
   "auditedAdjustments": [
     {
       "path": ".agents/skills/skill-doc-system-lifecycle/SKILL.md",

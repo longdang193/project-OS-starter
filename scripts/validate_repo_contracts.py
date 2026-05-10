@@ -227,10 +227,11 @@ def build_subprocess_steps(
         [python_executable, agent_metadata_schema_script],
         [python_executable, provider_settings_schema_script],
         [python_executable, generated_header_script],
-        [python_executable, agent_runtime_drift_script, "--skip-deploy-check"],
     ]
     if adoption_mode is None:
         adoption_mode = read_adoption_mode(root)
+    if adoption_mode != "starter_method_only":
+        steps.append([python_executable, agent_runtime_drift_script, "--skip-deploy-check"])
     if adoption_mode != "starter_method_only":
         sync_script = str(root / "scripts" / "sync_architecture_docs.py")
         steps.append([python_executable, sync_script, "--check"])
