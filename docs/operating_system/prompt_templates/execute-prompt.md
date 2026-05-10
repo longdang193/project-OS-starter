@@ -44,7 +44,11 @@ Please:
 2. confirm the execution still matches the roadmap thread or the operating-system justification
 3. implement it task by task
 4. keep source-of-truth docs in sync as changes land
-5. keep plan state and context pack state synchronized as progress lands using `docs/operating_system/templates/execution-context-pack-template.md`; do not defer sync updates to session end only
+5. keep plan state and canonical context pack state synchronized as progress lands using:
+   - template: `docs/operating_system/templates/execution-context-pack-template.md`
+   - canonical path: `docs/superpowers/execution_context_packs/<lane-id>/latest.md`
+   - governance: `docs/operating_system/governance/execution-context-pack-governance.md`
+   - optional mirror: `artifacts/execution_context_pack.md`
 6. determine each next action using `implementation-next-action-gate-prompt.md`; do not invent unrelated next steps
 7. run the relevant verification commands
 8. if this execution closes a plan/workstream, run the closeout gate checks:
@@ -56,4 +60,4 @@ Please:
 
 Expected output:
 - implemented changes plus verification results
-- explicit note that plan state and context pack state were updated during execution, or explicit reason they were unchanged
+- explicit note that plan state and canonical context pack state were updated during execution, or explicit reason they were unchanged

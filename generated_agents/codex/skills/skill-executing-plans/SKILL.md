@@ -181,6 +181,59 @@ After all tasks are complete:
 2. Verify generated files were not edited manually
 3. Review diffs for completeness
 
+## Session Continuation Protocol
+
+For long-running execution, maintain a resumable execution context pack and keep it current as progress lands.
+
+Canonical template:
+- `docs/operating_system/templates/execution-context-pack-template.md`
+
+Context-pack policy in this skill:
+- refresh context pack when task state, verification state, or blocker/risk changes
+- refresh context pack before recommending new-session handoff
+- keep context pack concise and source-linked
+
+## Optional Raw Session Context
+
+Optional deep context may reference raw Gemini logs only when ambiguity remains after checking source files and plan/spec artifacts.
+
+Allowed reference form:
+- `conversation_id`
+- `overview.txt` path under `.gemini/antigravity/brain/<conversation-id>/.system_generated/logs/overview.txt`
+
+Resume order must be:
+1. context pack
+2. referenced source files and plan/spec artifacts
+3. optional raw session log only when ambiguity remains
+
+If raw log conflicts with current source/docs/tests, trust current source/docs/tests.
+
+## Anti-Stall Execution Rule
+
+After selecting next eligible action, execute the smallest concrete safe step in the same turn.
+
+Valid progress turn must end with at least one of:
+- file inspection needed for immediate edit/verification
+- file edits
+- verification command execution
+- explicit blocker requiring user decision/access/approval
+- context-pack refresh for imminent handoff
+
+Invalid progress turn:
+- status-only narration without concrete action
+- “next I will ...” with no blocker and no execution
+
+## Stall Watchdog
+
+Treat as stall when two consecutive execution turns have no concrete progress and no real blocker.
+
+If stall detected:
+1. state `stall detected`
+2. name last completed concrete action
+3. name exact blocked edge
+4. execute smallest safe next step immediately, or
+5. refresh context pack and request precise unblock input
+
 ### Step 4: Complete Development
 
 After code, docs, and generated discovery are all updated and verified:

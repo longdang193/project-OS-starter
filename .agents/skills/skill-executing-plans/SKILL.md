@@ -180,10 +180,17 @@ For long-running execution, maintain a resumable execution context pack and keep
 Canonical template:
 - `docs/operating_system/templates/execution-context-pack-template.md`
 
+Canonical durable storage (Option B):
+- `docs/superpowers/execution_context_packs/<lane-id>/latest.md`
+
+Governance policy:
+- `docs/operating_system/governance/execution-context-pack-governance.md`
+
 Context-pack policy in this skill:
-- refresh context pack when task state, verification state, or blocker/risk changes
-- refresh context pack before recommending new-session handoff
+- refresh canonical context pack when task state, verification state, or blocker/risk changes
+- refresh canonical context pack before recommending new-session handoff
 - keep context pack concise and source-linked
+- worktree `artifacts/execution_context_pack.md` is optional mirror, not durable source
 
 ## Optional Raw Session Context
 
