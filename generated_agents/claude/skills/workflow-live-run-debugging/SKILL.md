@@ -57,6 +57,7 @@ Handle live-run failures with evidence-first debugging and bounded fixes.
 7. Trigger targeted rerun through `workflow-live-run-execution`.
 8. Route to `workflow-live-run-verification` when rerun result is successful;
    continue debugging when rerun fails.
+9. Update in-scope execution-context handoff artifacts when failure boundary, fix path, or verification disposition changed.
 
 ## Decision Gates
 
@@ -70,12 +71,14 @@ Handle live-run failures with evidence-first debugging and bounded fixes.
    - reject fixes that alter unrelated modules/contracts.
 5. Rerun gate:
    - every fix must be exercised by targeted rerun evidence.
+6. Handoff gate:
+   - if execution-context handoff artifacts are in scope, debugging pass is blocked until those artifacts are updated with current failure boundary/fix/verification status.
 
 ## Traceability Requirements
 
 Record explicit linkage:
 
-- failure evidence -> boundary decision -> audit record -> bounded fix -> rerun evidence
+- failure evidence -> boundary decision -> audit record -> bounded fix -> rerun evidence -> handoff artifact updates
 
 If linkage is incomplete, do not mark resolved.
 
@@ -94,4 +97,5 @@ If linkage is incomplete, do not mark resolved.
 - required audit bundle exists or allowed bypass is explicitly recorded
 - bounded fix is applied
 - targeted rerun evidence exists for the applied fix
+- in-scope execution-context handoff artifacts are updated
 - workflow is ready to transition to verification or next bounded debug pass
