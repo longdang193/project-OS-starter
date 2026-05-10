@@ -93,21 +93,23 @@ Use in this order:
 
 1. [planning-readiness-gate-prompt.md](./planning-readiness-gate-prompt.md)
 2. [live-run-system-dispatch-prompt.md](./live-run-system-dispatch-prompt.md)
-3. [execution-readiness-gate-prompt.md](./execution-readiness-gate-prompt.md)
-4. [implementation-next-action-gate-prompt.md](./implementation-next-action-gate-prompt.md)
-5. [execute-prompt.md](./execute-prompt.md)
-6. [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md) (when selected action is a patch/debug lane)
-7. [multi-worktree-dispatch-prompt.md](./multi-worktree-dispatch-prompt.md) (when independent lanes are detected)
-8. [multi-worktree-merge-and-reconcile-prompt.md](./multi-worktree-merge-and-reconcile-prompt.md) (if lane split happened)
-9. [live-run-closeout-decision-prompt.md](./live-run-closeout-decision-prompt.md)
-10. [thread-closeout-readiness-prompt.md](./thread-closeout-readiness-prompt.md)
-11. [workstream-closeout-readiness-prompt.md](./workstream-closeout-readiness-prompt.md)
-12. [roadmap-closeout-readiness-prompt.md](./roadmap-closeout-readiness-prompt.md) (if roadmap closure is in scope)
+3. [live-run-deliverable-check-prompt.md](./live-run-deliverable-check-prompt.md)
+4. [execution-readiness-gate-prompt.md](./execution-readiness-gate-prompt.md)
+5. [implementation-next-action-gate-prompt.md](./implementation-next-action-gate-prompt.md)
+6. [execute-prompt.md](./execute-prompt.md)
+7. [patch-and-pattern-detection-prompt.md](./patch-and-pattern-detection-prompt.md) (when selected action is a patch/debug lane)
+8. [multi-worktree-dispatch-prompt.md](./multi-worktree-dispatch-prompt.md) (when independent lanes are detected)
+9. [multi-worktree-merge-and-reconcile-prompt.md](./multi-worktree-merge-and-reconcile-prompt.md) (if lane split happened)
+10. [live-run-closeout-decision-prompt.md](./live-run-closeout-decision-prompt.md)
+11. [thread-closeout-readiness-prompt.md](./thread-closeout-readiness-prompt.md)
+12. [workstream-closeout-readiness-prompt.md](./workstream-closeout-readiness-prompt.md)
+13. [roadmap-closeout-readiness-prompt.md](./roadmap-closeout-readiness-prompt.md) (if roadmap closure is in scope)
 
 ```mermaid
 flowchart TD
   P["planning-readiness-gate-prompt.md"] --> A["live-run-system-dispatch-prompt.md"]
-  A --> R["execution-readiness-gate-prompt.md"]
+  A --> Q["live-run-deliverable-check-prompt.md"]
+  Q --> R["execution-readiness-gate-prompt.md"]
   R --> B["implementation-next-action-gate-prompt.md"]
   B --> C["execute-prompt.md"]
   C --> D{"Selected action is patch/debug?"}
