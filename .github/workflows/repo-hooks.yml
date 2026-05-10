@@ -16,12 +16,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Detect adoption mode
+        id: adoption_mode
+        run: |
+          $match = Select-String -Path repo_config/adoption-mode.yaml -Pattern '^adoption_mode:\s*(.+)$'
+          if (-not $match) {
+            throw "Unable to determine adoption_mode from repo_config/adoption-mode.yaml"
+          }
+          $mode = $match.Matches[0].Groups[1].Value.Trim()
+          "value=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Set up Python 3.11
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         run: |
           python -m pip install --upgrade pip
           if (Test-Path requirements.txt) {
@@ -34,13 +46,20 @@ jobs:
             python -m pip install -e .
           }
 
+      - name: Skip adapter-integrity for starter_method_only
+        if: steps.adoption_mode.outputs.value == 'starter_method_only'
+        run: Write-Host "Skipping source-owned adapter integrity checks for starter_method_only repos."
+
       - name: Sync adapter outputs
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         run: .\scripts\sync_agent_adapters.ps1
 
       - name: Verify adapter outputs
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         run: .\scripts\verify_agent_adapters.ps1
 
       - name: Fail on untracked generated outputs
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         run: |
           $paths = @(
             (Get-Content -Raw repo_config/agent-adapter-mappings.json | ConvertFrom-Json | ForEach-Object {
@@ -55,6 +74,7 @@ jobs:
           }
 
       - name: Fail on generated drift
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         run: git diff --exit-code
 
   baseline-tests:
@@ -63,6 +83,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Detect adoption mode
+        id: adoption_mode
+        run: |
+          $match = Select-String -Path repo_config/adoption-mode.yaml -Pattern '^adoption_mode:\s*(.+)$'
+          if (-not $match) {
+            throw "Unable to determine adoption_mode from repo_config/adoption-mode.yaml"
+          }
+          $mode = $match.Matches[0].Groups[1].Value.Trim()
+          "value=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -83,7 +113,12 @@ jobs:
           }
 
       - name: Run architecture sync check
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         run: python scripts/sync_architecture_docs.py --check
+
+      - name: Skip architecture sync for starter_method_only
+        if: steps.adoption_mode.outputs.value == 'starter_method_only'
+        run: Write-Host "Skipping source-owned architecture sync check for starter_method_only repos."
 
       - name: Run baseline test command
         run: |
@@ -100,12 +135,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Detect adoption mode
+        id: adoption_mode
+        run: |
+          $match = Select-String -Path repo_config/adoption-mode.yaml -Pattern '^adoption_mode:\s*(.+)$'
+          if (-not $match) {
+            throw "Unable to determine adoption_mode from repo_config/adoption-mode.yaml"
+          }
+          $mode = $match.Matches[0].Groups[1].Value.Trim()
+          "value=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Set up Python 3.11
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
         run: |
           python -m pip install --upgrade pip
           if (Test-Path requirements.txt) {
@@ -118,6 +165,10 @@ jobs:
             python -m pip install -e .
           }
 
-      - name: Run publication boundary dry check
-        run: .\scripts\publish_public_repo.ps1
+      - name: Skip publication-boundary for starter_method_only
+        if: steps.adoption_mode.outputs.value == 'starter_method_only'
+        run: Write-Host "Skipping source-owned publication-boundary checks for starter_method_only repos."
 
+      - name: Run publication boundary dry check
+        if: steps.adoption_mode.outputs.value != 'starter_method_only'
+        run: .\scripts\publish_public_repo.ps1
