@@ -95,6 +95,7 @@ from validator_policy import (
     MODE_A_TEMPLATE_REQUIRED_FILES,
     MODE_A_TEMPLATE_ROOT,
     MODE_A_TEMPLATE_SPEC_PATH,
+    normalize_adoption_mode,
     PLACEHOLDER_PATTERNS,
     REQUIRED_DOC_KEYWORDS,
     REQUIRED_LINEAGE_TOP_LEVEL_KEYS,
@@ -232,7 +233,7 @@ def parse_adoption_config(path: Path, findings: list[Finding], root: Path) -> Ad
         )
         return None
 
-    mode = payload.get("adoption_mode")
+    mode = normalize_adoption_mode(payload.get("adoption_mode"))
     managed = payload.get("managed_architecture_metadata")
     legacy = payload.get("legacy_feature_contracts")
     generator = payload.get("architecture_generator", "none")

@@ -141,7 +141,7 @@ Specs and plans that create or change feature, stage, generated, or source metad
 
 ```yaml
 candidate_type: product_feature | product_stage | operating_system | spec_only | plan_only | generated | obsolete
-adoption_mode: starter_method_only | managed_architecture_metadata | legacy_compatibility
+adoption_mode: consumer_starter_mode (alias: starter_method_only) | source_of_truth_owner (alias: managed_architecture_metadata) | legacy_compatibility_mode (alias: legacy_compatibility)
 creates_feature_metadata: true | false
 creates_stage_metadata: true | false
 updates_code_metadata: true | false

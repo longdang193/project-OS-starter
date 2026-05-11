@@ -21,17 +21,17 @@ tags:
 # Mode Migration Prompt
 
 Use this when you want to assess or plan migration from
-`starter_method_only` to `managed_architecture_metadata`.
+`consumer_starter_mode (alias: starter_method_only)` to `source_of_truth_owner (alias: managed_architecture_metadata)`.
 
 If you are not sure whether this migration belongs to a product workstream or
 to `operating_system`, use `roadmap-to-workstream-prompt.md` first.
 
-If the repo is already in `managed_architecture_metadata` and the job is to
+If the repo is already in `source_of_truth_owner (alias: managed_architecture_metadata)` and the job is to
 update or repair managed surfaces in place, use
 `managed-metadata-update-prompt.md` instead.
 
 ```text
-Assess or plan the migration from starter_method_only to managed_architecture_metadata.
+Assess or plan the migration from consumer_starter_mode (alias: starter_method_only) to source_of_truth_owner (alias: managed_architecture_metadata).
 
 Repo context:
 - current repo:

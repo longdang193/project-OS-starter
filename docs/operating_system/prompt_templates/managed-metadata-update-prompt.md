@@ -4,7 +4,7 @@ description: Update or repair managed architecture metadata in source-of-truth o
 type: prompt
 stage: maintenance
 entry_points:
-- repository is already in managed_architecture_metadata mode and metadata drift/fixes
+- repository is already in source_of_truth_owner (alias: managed_architecture_metadata) mode and metadata drift/fixes
   are needed
 - validator findings indicate managed metadata inconsistency across source and generated
   surfaces
@@ -30,10 +30,10 @@ tags:
 
 # Managed Metadata Update Prompt
 
-Use this when the repo is already in `managed_architecture_metadata` and you
+Use this when the repo is already in `source_of_truth_owner (alias: managed_architecture_metadata)` and you
 want to update or repair managed metadata surfaces in place.
 
-If the repo is still in `starter_method_only`, use
+If the repo is still in `consumer_starter_mode (alias: starter_method_only)`, use
 `mode-migration-prompt.md` first.
 
 ```text

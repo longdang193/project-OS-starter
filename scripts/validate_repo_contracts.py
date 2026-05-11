@@ -50,6 +50,7 @@ from validator_policy import (
     GENERATED_HISTORY_END_MARKER,
     GENERATED_HISTORY_START_MARKER,
     HUMAN_NOTES_HEADING,
+    normalize_adoption_mode,
     SETUP_META_MARKER,
 )
 
@@ -121,7 +122,7 @@ def read_adoption_mode(root: Path) -> str | None:
     payload = load_adoption_mode_payload(root)
     if payload is None:
         return None
-    mode = payload.get("adoption_mode")
+    mode = normalize_adoption_mode(payload.get("adoption_mode"))
     if mode not in ALLOWED_MODES:
         return None
     return mode
