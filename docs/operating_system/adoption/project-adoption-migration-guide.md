@@ -30,7 +30,7 @@ python scripts/validate_adoption_shape.py
 
 ## Adoption Modes
 
-### Mode A: Starter Method Only
+### Mode A: Consumer Starter Mode (alias: starter_method_only)
 
 Use this mode when the project wants repo governance, intent docs, agent rules, adapter sync, publication workflow, and operating-system docs, but does not yet want feature/stage lineage.
 
@@ -43,7 +43,7 @@ Rules:
 - use operating-system specs/plans for repo-method adoption work
 - `scripts/validate_adoption_shape.py` should pass with starter scaffold files only
 
-### Mode B: Managed Architecture Metadata
+### Mode B: Source-of-Truth Owner (alias: managed_architecture_metadata)
 
 Use this mode when the project wants feature/stage contracts, generated lineage, generated discovery, and code/config/test traceability.
 
@@ -61,7 +61,7 @@ Rules:
 - record starter shared-surface review in `repo_config/adoption-mode.yaml`
 - `scripts/validate_adoption_shape.py` should pass after generated discovery is refreshed
 
-### Mode C: Legacy Compatibility
+### Mode C: Legacy Compatibility Mode (alias: legacy_compatibility)
 
 Use this mode when a project already has flat feature YAML and is not ready for managed architecture metadata.
 
@@ -74,7 +74,7 @@ Rules:
 - create a follow-up migration plan before adding deeper traceability
 - `scripts/validate_adoption_shape.py` should warn about missing follow-up migration when none is recorded
 
-## Mode A Step-By-Step: Starter Method Only
+## Mode A Step-By-Step: Consumer Starter Mode (alias: starter_method_only)
 
 Prompt shortcut: use
 `docs/operating_system/prompt_templates/mode-migration-prompt.md` when you want
@@ -84,7 +84,7 @@ Use this runbook when the project wants the starter's repo operating-system meth
 
 1. Start by copying `docs/project_templates/mode-a/` into the project root, then fill the placeholders instead of inventing file shapes by hand. The pack includes required root docs, `docs/intent/` anchors, `repo_config/`, `configs/`, `scripts/README.md`, and `tests/README.md`.
 2. Keep the copied `repo_config/adoption-mode.yaml` set to `consumer_starter_mode (alias: starter_method_only)`.
-3. Treat Mode A as lighter than managed metadata:
+3. Treat Mode A (consumer_starter_mode) as lighter than managed metadata:
    - the canonical validation path should validate starter-method repo shape and adoption boundaries
    - it should not require the managed architecture sync/generator toolchain by default
    - missing managed-only scripts are not a Mode A bootstrap failure unless the repo has opted into managed architecture metadata
@@ -128,11 +128,11 @@ python scripts/validate_adoption_shape.py
 
 Stop and create a Mode B migration plan instead of adding one-off feature files if the project needs product feature lineage, stage ownership, or generated feature contracts.
 
-## Mode B Step-By-Step: Managed Architecture Metadata
+## Mode B Step-By-Step: Source-of-Truth Owner (alias: managed_architecture_metadata)
 
 Use this runbook when the project wants managed metadata for product features, stages, capabilities, generated contracts, generated discovery, and source traceability.
 
-Do not switch to Mode B just because one feature folder exists. Mode B means the project has adopted the managed metadata contract across docs, generated outputs, and source metadata.
+Do not switch to Mode B (source_of_truth_owner) just because one feature folder exists. Mode B means project has adopted managed metadata contract across docs, generated outputs, and source metadata.
 
 For a concrete one-feature migration, see [Mode B Example Migration](mode-b-example-migration.md).
 
@@ -230,9 +230,9 @@ git diff --check
 
 20. Commit only after managed metadata, shared repo-control files, the `starter_sync` review record, generated files, source metadata, validation, and tests agree.
 
-## Mode C Step-By-Step: Legacy Compatibility
+## Mode C Step-By-Step: Legacy Compatibility Mode (alias: legacy_compatibility)
 
-Use this runbook when an existing project already has legacy flat feature contracts and needs a temporary holding pattern before moving to Mode A or Mode B.
+Use this runbook when project already has legacy flat feature contracts and needs temporary holding pattern before moving to Mode A or Mode B (source_of_truth_owner).
 
 Legacy compatibility is temporary. It should make the follow-up migration discoverable instead of letting legacy metadata become an accidental permanent contract.
 
