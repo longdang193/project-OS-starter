@@ -2,7 +2,7 @@
 name: deliverable-verdict-gate-prompt
 description: Assess whether in-scope deliverables are met using explicit criteria and evidence-backed verdicts.
 type: prompt
-stage: verification
+stage: execution
 entry_points:
 - need objective verdict on whether deliverables are met
 - closeout/readiness decision requires deliverable-level evidence

@@ -23,6 +23,7 @@
     "scripts/validate_prompt_ladder.py",
     "scripts/validate_prompt_metadata_schema.py",
     "scripts/validate_provider_settings_schema.py",
+    "scripts/validate_python_meta_headers.py",
     "scripts/validate_repo_config.py",
     "scripts/validate_repo_contracts.py",
     "scripts/validate_template_required_sections.py",
