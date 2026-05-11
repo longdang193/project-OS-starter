@@ -84,6 +84,8 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
   - Source: `docs/operating_system/rules/command-execution-rule.md`
 - `doc-contracts-rule.md` — Enforce document contract consistency for templates, lifecycle metadata, and generated surfaces.
   - Source: `docs/operating_system/rules/doc-contracts-rule.md`
+- `env-gitignore-contract-rule.md` — Enforce baseline .env ignore rules in .gitignore to prevent secret leakage.
+  - Source: `docs/operating_system/rules/env-gitignore-contract-rule.md`
 - `global-baseline-contract-rule.md` — Enforce AGENTS.md as the shared cross-tool baseline contract.
   - Source: `docs/operating_system/rules/global-baseline-contract-rule.md`
 - `publication-boundary-rule.md` — Enforce private/public publication boundaries and controlled export workflow.

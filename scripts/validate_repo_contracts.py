@@ -218,6 +218,7 @@ def build_subprocess_steps(
     agent_metadata_schema_script = str(root / "scripts" / "validate_agent_metadata_schema.py")
     provider_settings_schema_script = str(root / "scripts" / "validate_provider_settings_schema.py")
     generated_header_script = str(root / "scripts" / "validate_generated_header_format.py")
+    env_gitignore_contract_script = str(root / "scripts" / "validate_env_gitignore_contract.py")
     agent_runtime_drift_script = str(root / "scripts" / "validate_agent_runtime_drift.py")
     steps: list[list[str]] = [
         [python_executable, adoption_shape_script],
@@ -230,6 +231,7 @@ def build_subprocess_steps(
         [python_executable, agent_metadata_schema_script],
         [python_executable, provider_settings_schema_script],
         [python_executable, generated_header_script],
+        [python_executable, env_gitignore_contract_script],
     ]
     if adoption_mode is None:
         adoption_mode = read_adoption_mode(root)
