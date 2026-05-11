@@ -18,6 +18,8 @@ import sys
 
 import yaml
 
+from validator_policy import DEFAULT_REPO_ROLE, normalize_adoption_mode
+
 
 @dataclass(frozen=True)
 class Mapping:
@@ -427,8 +429,34 @@ def _expected_codex_rules_paths(src_root: Path, pattern: str, dst_root: Path) ->
     }
 
 
-def _expected_codex_rule_file_path(dst_root: Path) -> set[Path]:
-    return {dst_root.name and Path(dst_root.name)}
+def _read_adoption_config(root: Path) -> tuple[str, str]:
+    mode_file = root / "repo_config" / "adoption-mode.yaml"
+    if not mode_file.exists():
+        return "managed_architecture_metadata", DEFAULT_REPO_ROLE
+    payload = yaml.safe_load(mode_file.read_text(encoding="utf-8")) or {}
+    if not isinstance(payload, dict):
+        return "managed_architecture_metadata", DEFAULT_REPO_ROLE
+    mode = normalize_adoption_mode(payload.get("adoption_mode"))
+    repo_role = payload.get("repo_role", DEFAULT_REPO_ROLE)
+    normalized_mode = mode if isinstance(mode, str) and mode.strip() else "managed_architecture_metadata"
+    normalized_role = repo_role if isinstance(repo_role, str) and repo_role.strip() else DEFAULT_REPO_ROLE
+    return normalized_mode, normalized_role
+
+
+def _is_optional_provider_settings_source(root: Path, source_path: Path) -> bool:
+    try:
+        rel = source_path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return False
+    if not rel.startswith("docs/operating_system/provider_settings/"):
+        return False
+    if not rel.endswith(".yaml"):
+        return False
+    adoption_mode, repo_role = _read_adoption_config(root)
+    requires_source_owned_provider_settings = (
+        adoption_mode != "starter_method_only" and repo_role == "source_owner"
+    )
+    return not requires_source_owned_provider_settings
 
 
 def _expected_workflow_skill_paths(src_root: Path, pattern: str) -> set[Path]:
@@ -486,6 +514,11 @@ def _sync_file(root: Path, mapping: Mapping, *, platform: str, check: bool) -> l
     src = root / mapping.source
     dst = root / mapping.destination
     if not src.exists():
+        if _is_optional_provider_settings_source(root, src):
+            print(
+                "SKIP:sync_agent_adapters:provider_settings source omitted for starter_method_only or consumer_derived mode"
+            )
+            return []
         return [f"Missing source: {src.as_posix()}"]
     src_text = src.read_text(encoding="utf-8")
     source_rel = src.relative_to(root).as_posix()

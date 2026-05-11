@@ -24,7 +24,7 @@ managed root-doc metadata are adoption-shape contract surfaces, and the
 canonical repo-contract gate should invoke the adoption-shape validator rather
 than duplicating that policy downstream.
 
-The same ownership rule applies to adoption modes: `consumer_starter_mode (alias: starter_method_only)`
+The same ownership rule applies to adoption modes: `starter_method_only`
 should not be routed through managed architecture sync/generator checks unless
 the repo has actually adopted managed architecture metadata. Lighter upstream
 mode promises should not be silently re-expanded by downstream validator flow.
@@ -70,7 +70,7 @@ planning layers:
 README remains a synthesized orientation layer. It should summarize the source
 layers rather than becoming a parallel source of truth.
 
-For `consumer_starter_mode (alias: starter_method_only)`, the validator may also emit warning-level discovery
+For `starter_method_only`, the validator may also emit warning-level discovery
 findings when a repo has obvious runtime surface but lacks lightweight prose
 anchors such as `docs/features/README.md` or `docs/api.md`. That warning layer
 exists to help scratch-built repos notice missing doc homes before they adopt
@@ -78,7 +78,7 @@ managed metadata. `docs/pipeline.md` remains a separately required root doc.
 
 The intended progression is:
 
-`consumer_starter_mode (alias: starter_method_only) -> lightweight anchors -> source_of_truth_owner (alias: managed_architecture_metadata)`
+`starter_method_only -> lightweight anchors -> managed_architecture_metadata`
 
 So these lightweight anchors are an early discoverability step, not the final
 documentation maturity target for a stable product repo.
@@ -86,10 +86,9 @@ documentation maturity target for a stable product repo.
 When the repo keeps growing after those anchors are present, the validator may
 emit a second-tier warning that the project appears to have outgrown
 lightweight anchors and should plan migration to
-`source_of_truth_owner (alias: managed_architecture_metadata)`.
+`managed_architecture_metadata`.
 
-Once a repo is already in `source_of_truth_owner (alias: managed_architecture_metadata)`, treat "update or fix
-the managed surfaces" as a separate workflow from migration. Use the dedicated
+Once a repository is already in managed_architecture_metadata mode and metadata drift/fixes are needed, treat this as a separate workflow from migration. Use the dedicated
 managed-update prompt in `docs/operating_system/prompt_templates/` when the job
 is to edit human-owned managed sources, refresh generated outputs, and rerun
 the canonical checks in place.
@@ -193,7 +192,7 @@ When configs or AML components use `# @architecture` metadata:
 
 Use feature YAML for product/domain feature contracts only.
 
-For existing-project migrations, first choose an adoption mode in `docs/operating_system/adoption/project-adoption-migration-guide.md` and record it in `repo_config/adoption-mode.yaml`. Validate the shape with `python scripts/validate_adoption_shape.py`.
+For existing-project migrations, first choose an adoption mode and record it in `repo_config/adoption-mode.yaml`. Validate the shape with `python scripts/validate_adoption_shape.py`.
 
 Validator-owned contract policy for this adoption check and shared repo-contract
 marker strings now lives in `scripts/validator_policy.py`. Treat that module as
@@ -479,7 +478,7 @@ When these docs drift from current repo reality, use the prompt-pack entry at
 That prompt is for cross-cutting summary maintenance, not for inventing a new
 source-of-truth layer under `docs/`.
 
-In `source_of_truth_owner (alias: managed_architecture_metadata)` mode, these same required root docs are also
+In `managed_architecture_metadata` mode, these same required root docs are also
 validator-enforced architecture-linked docs. They must include frontmatter with
 the canonical root-doc `doc_id`, a non-empty `doc_type`, and an `explains`
 mapping. The expected steady-state migration target is:
