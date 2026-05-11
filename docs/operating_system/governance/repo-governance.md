@@ -134,7 +134,7 @@ gate runs that validator directly. The normal validation path now checks:
 - each required doc covers its intended subject at a lightweight semantic level
 - obvious placeholder-only text does not pass
 
-In `source_of_truth_owner (alias: source_of_truth_owner (alias: managed_architecture_metadata))` mode, those required root docs also become
+In `source_of_truth_owner (alias: managed_architecture_metadata)` mode, those required root docs also become
 validator-enforced metadata-linked docs through the same adoption-shape
 validator. They must carry frontmatter with a canonical `doc_id`, a non-empty
 `doc_type`, and an `explains` mapping that links the doc back to the relevant
@@ -212,7 +212,7 @@ The normal validation and hook path should fail when the required folder
 surface is missing, while conditional folders should be required only when the
 project shape or adopted workflow actually uses them.
 
-For `consumer_starter_mode (alias: consumer_starter_mode (alias: starter_method_only))` specifically, that means the canonical validator path
+For `consumer_starter_mode (alias: starter_method_only)` specifically, that means the canonical validator path
 should not quietly escalate the repo into managed architecture sync/generator
 requirements. Mode A may keep `docs/features/`, `docs/stages/`, and
 `docs/generated/` absent or prose-only until the repo explicitly adopts managed
@@ -226,7 +226,7 @@ discovery debt, not managed-metadata violations.
 
 The intended maturity ladder is:
 
-`consumer_starter_mode (alias: consumer_starter_mode (alias: starter_method_only)) -> lightweight anchors -> source_of_truth_owner (alias: source_of_truth_owner (alias: managed_architecture_metadata))`
+`consumer_starter_mode (alias: starter_method_only) -> lightweight anchors -> source_of_truth_owner (alias: managed_architecture_metadata)`
 
 So `docs/features/README.md` and `docs/api.md` are waypoints, not the mature
 destination for repos with durable product surface.
@@ -235,7 +235,7 @@ For some repos, the starter may emit a second warning tier after those anchors
 already exist:
 
 - the repo appears to have outgrown lightweight anchors
-- migration planning toward `source_of_truth_owner (alias: source_of_truth_owner (alias: managed_architecture_metadata))` should begin
+- migration planning toward `source_of_truth_owner (alias: managed_architecture_metadata)` should begin
 
 That second-tier warning is still advisory in this phase. It exists to make the
 starter more lifecycle-aware, not to declare the repo invalid overnight.
