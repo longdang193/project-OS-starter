@@ -61,12 +61,12 @@ Validator tests cover `repo_role` parsing/validation and strict stage-surface be
 - Plan approved for execution.
 
 **Steps:**
-- [ ] Compare canonical mode/alias rules against validator dispatch and error/warn paths.
-- [ ] Confirm strictness target: missing/forbidden managed surfaces should fail under reconciled policy.
-- [ ] Record concrete line-level patch points for policy + docs alignment.
+- [x] Compare canonical mode/alias rules against validator dispatch and error/warn paths.
+- [x] Confirm strictness target: missing/forbidden managed surfaces should fail under reconciled policy.
+- [x] Record concrete line-level patch points for policy + docs alignment.
 
 **Verification:**
-- [ ] Drift table prepared inline in execution notes with file/line references.
+- [x] Drift table prepared inline in execution notes with file/line references.
 
 **Exit Criteria:**
 - Patch boundaries are explicit and implementation-ready.
@@ -93,7 +93,7 @@ Validator tests cover `repo_role` parsing/validation and strict stage-surface be
 - [x] Update config examples/templates to include `repo_role`.
 
 **Verification:**
-- [ ] `py scripts/validate_repo_contracts.py --fast`
+- [x] `py scripts/validate_repo_contracts.py --fast`
 
 **Exit Criteria:**
 - Validator behavior matches reconciled contract and config examples parse cleanly.
