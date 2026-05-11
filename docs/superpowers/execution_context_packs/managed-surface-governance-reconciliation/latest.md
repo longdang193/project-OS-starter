@@ -2,73 +2,71 @@
 
 ## 1) Objective
 
-- **Workstream / Plan:** `docs/superpowers/plans/2026-05-11-14-45-managed-surface-governance-reconciliation-plan.md`
-- **Goal:** Enforce full managed-surface contract with role-based authority split and aligned validator/docs behavior.
-- **Bounded Scope (in-scope only):** validator policy, adoption-shape validation, adoption config samples/templates, governance/adoption docs, targeted tests.
-- **Out of Scope (explicit):** unrelated runtime feature work.
+- **Workstream / Plan:** `docs/superpowers/plans/2026-05-11-17-19-strict-capability-linkage-plan.md`
+- **Goal:** Enforce strict ownership-aware Python `@meta` capability linkage with upstream-grounded capability IDs.
+- **Bounded Scope (in-scope only):** policy text alignment, validator enforcement, test coverage, plan/context synchronization, closeout verification.
+- **Out of Scope (explicit):** unrelated runtime feature work, broad architecture metadata backlog cleanup outside this plan scope.
 
 ## 2) Canonical Inputs (Source of Truth)
 
-- **Primary plan:** `docs/superpowers/plans/2026-05-11-14-45-managed-surface-governance-reconciliation-plan.md`
-- **Specs / maps / thread docs:** none
+- **Primary plan:** `docs/superpowers/plans/2026-05-11-17-19-strict-capability-linkage-plan.md`
+- **Specs / maps / thread docs:** `docs/superpowers/specs/metadata-linkage-governance-spec.md`
 - **Governance / workflow rules used:**
-  - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
-  - `docs/operating_system/governance/execution-context-pack-governance.md`
   - `docs/operating_system/templates/execution-context-pack-template.md`
+  - `docs/operating_system/governance/execution-context-pack-governance.md`
+  - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
 
 ## 3) Current Task State
 
-- **Completed:** Tasks 1–4 complete (policy patch, docs reconciliation, regression coverage, verification).
-- **In Progress:** closeout only.
+- **Completed:** Task 1 policy wording, Task 2 validator strict mode implementation, Task 3 regression tests, Task 4 synchronization and closeout gates.
+- **In Progress:** none.
 - **Deferred / Dropped:** none.
 - **Known divergence from plan (if any):** none.
 
 ## 4) Files Changed This Session
 
-- `scripts/validator_policy.py`
-- `scripts/validate_adoption_shape.py`
-- `repo_config/adoption-mode.yaml`
-- `docs/project_templates/mode-a/repo_config/adoption-mode.yaml`
-- `docs/operating_system/adoption/project-adoption-migration-guide.md`
-- `docs/operating_system/governance/repo-governance.md`
-- `docs/operating_system/governance/feature-routing-guide.md`
-- `tests/test_validate_adoption_shape.py`
-- `docs/superpowers/plans/2026-05-11-14-45-managed-surface-governance-reconciliation-plan.md`
+- `docs/operating_system/rules/python-contracts-rule.md` — required ownership + strict capability policy language.
+- `.agents/skills/skill-doc-system-lifecycle/SKILL.md` — grounding checklist aligned to ownership semantics.
+- `docs/operating_system/workflows/workflow-live-run-preflight-check.md` — metadata gate tightened with ownership checks.
+- `scripts/validate_python_meta_headers.py` — strict ownership and feature-capability enforcement flags.
+- `scripts/validate_repo_contracts.py` — strict flags wired for non-`starter_method_only` mode.
+- `tests/test_validate_python_meta_headers.py` — strict matrix regression tests added.
+- `docs/superpowers/plans/2026-05-11-17-19-strict-capability-linkage-plan.md` — progress synchronized.
 
 ## 5) Verification State
 
 - **Last commands run:**
-  - `py -m pytest tests/test_validate_adoption_shape.py -q`
-  - `py scripts/validate_repo_contracts.py --fast`
   - `py scripts/validate_planning_lifecycle.py --strict`
-- **Result summary:** all pass.
+  - `py scripts/validate_checkpoint_packs.py`
+  - `py scripts/validate_repo_contracts.py --fast`
+- **Result summary:** all closeout gates pass.
 - **Failing checks (if any):** none.
-- **Gaps still unverified:** none for planned scope.
+- **Gaps still unverified:** none for this plan scope.
 
 ## 6) Open Blockers / Risks
 
-- none.
+- none in this plan scope.
 
 ## 7) Next Exact Action
 
-- **Action type:** closeout
-- **Target:** plan + branch status review
-- **Exact command or edit intent:** finalize closeout summary and handoff.
-- **Why this is next:** completion criteria satisfied; only closure/handoff remains.
+- **Action type:** close now
+- **Target:** `docs/superpowers/plans/2026-05-11-17-19-strict-capability-linkage-plan.md`
+- **Exact command or edit intent:** no further implementation action; keep terminal state and proceed to branch-level integration workflow.
+- **Why this is next:** completion criteria satisfied and all verification gates passed.
 
 ## 8) Resume Prompt (Copy/Paste)
 
 ```text
-Read this execution context pack first. If no new scope is added, perform closeout summary and integration decision.
+Read this execution context pack first. Run closeout gate trio now, update plan Task 4 checklist with results, and close if all gates pass.
 ```
 
 ## 9) Optional Deep Context (Consult Only)
 
 - **conversation_id:** `e633e065-b5f1-4748-8330-033799db0c98`
 - **overview_log:** `.gemini/antigravity/brain/e633e065-b5f1-4748-8330-033799db0c98/.system_generated/logs/overview.txt`
-- **consult_if:** audit evidence needed.
-- **notes_from_log (optional, concise):** none.
+- **consult_if:** result provenance or scope boundary is disputed.
+- **notes_from_log (optional, concise):** user selected strict ownership required for all governed Python files.
 
 ## Source-Truth Rule
 

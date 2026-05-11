@@ -222,6 +222,18 @@ def build_subprocess_steps(
     env_gitignore_contract_script = str(root / "scripts" / "validate_env_gitignore_contract.py")
     python_meta_headers_script = str(root / "scripts" / "validate_python_meta_headers.py")
     agent_runtime_drift_script = str(root / "scripts" / "validate_agent_runtime_drift.py")
+    python_meta_step = [python_executable, python_meta_headers_script]
+    if adoption_mode is None:
+        adoption_mode = read_adoption_mode(root)
+    if adoption_mode != "starter_method_only":
+        python_meta_step.extend(
+            [
+                "--enforce-capability-linkage",
+                "--require-ownership",
+                "--require-feature-capabilities",
+            ]
+        )
+
     steps: list[list[str]] = [
         [python_executable, adoption_shape_script],
         [python_executable, checkpoint_pack_script],
@@ -234,10 +246,8 @@ def build_subprocess_steps(
         [python_executable, provider_settings_schema_script],
         [python_executable, generated_header_script],
         [python_executable, env_gitignore_contract_script],
-        [python_executable, python_meta_headers_script],
+        python_meta_step,
     ]
-    if adoption_mode is None:
-        adoption_mode = read_adoption_mode(root)
     if adoption_mode != "starter_method_only":
         steps.append([python_executable, agent_runtime_drift_script, "--skip-deploy-check"])
     if adoption_mode != "starter_method_only":

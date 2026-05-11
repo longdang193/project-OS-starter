@@ -1,9 +1,21 @@
 """
-Generate platform-specific agent runtime artifacts from canonical repo sources.
-
-Usage:
-  python scripts/sync_agent_adapters.py
-  python scripts/sync_agent_adapters.py --check
+@meta
+name: sync_agent_adapters
+type: script
+domain: governance
+responsibility:
+  - Generate runtime adapter artifacts from canonical adapter mappings.
+  - Enforce role-aware source inclusion/omission during adapter sync.
+  - Detect and report drift in check mode for managed generated surfaces.
+inputs:
+  - Adapter mapping files under adapters/*
+  - Canonical source files referenced by mapping rules
+  - Repo adoption mode and role configuration
+outputs:
+  - Updated generated runtime artifacts across adapter destinations
+  - Drift/failure diagnostics when --check is used
+lifecycle:
+  status: active
 """
 
 from __future__ import annotations

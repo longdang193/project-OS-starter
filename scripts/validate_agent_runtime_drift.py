@@ -1,5 +1,18 @@
 """
-Validate drift across generated agent artifacts and deployed runtime targets.
+@meta
+name: validate_agent_runtime_drift
+type: script
+domain: validation
+responsibility:
+  - Validate drift across generated agent artifacts and deployed runtime targets.
+  - Execute adapter sync and deploy-runtime checks in deterministic validation order.
+inputs:
+  - Repo root with scripts and generated adapter artifacts
+  - Optional deploy drift skip flag
+outputs:
+  - Exit status and drift validation diagnostics
+lifecycle:
+  status: active
 """
 
 from __future__ import annotations
