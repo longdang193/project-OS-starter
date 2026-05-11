@@ -227,11 +227,11 @@ git diff --check
 
 ## Mode C Step-By-Step: Legacy Compatibility Mode (alias: legacy_compatibility)
 
-Use this runbook when project already has legacy flat feature contracts and needs temporary holding pattern before moving to Mode A or Mode B (source_of_truth_owner).
+Use this runbook when project already has legacy flat feature contracts and needs temporary holding pattern before moving to Mode A or Mode B.
 
 Legacy compatibility is temporary. It should make the follow-up migration discoverable instead of letting legacy metadata become an accidental permanent contract.
 
-1. Set `repo_config/adoption-mode.yaml` to `legacy_compatibility_mode (alias: legacy_compatibility)`.
+1. Set `repo_config/adoption-mode.yaml` to `legacy_compatibility`.
 2. Record `migration_follow_up.required: true` and point it at the plan or issue that will migrate the project to Mode A or Mode B.
 3. Inventory existing flat feature contracts.
 4. Classify which flat contracts are real product features and which are method-layer material.
