@@ -37,6 +37,11 @@ ADOPTION_MODE_ALIASES = {
     "source_of_truth_owner": "managed_architecture_metadata",
     "legacy_compatibility_mode": "legacy_compatibility",
 }
+ALLOWED_REPO_ROLES = {
+    "source_owner",
+    "consumer_derived",
+}
+DEFAULT_REPO_ROLE = "source_owner"
 METHOD_FEATURE_IDS = {"repo-operating-system"}
 METHOD_FEATURE_PREFIXES = (
     "repo-",
