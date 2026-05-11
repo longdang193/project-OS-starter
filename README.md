@@ -131,4 +131,11 @@ The starter now separates configuration by role:
 - `configs/` for runtime/workflow configuration
 - `docs/features/*/*.yaml` and `docs/stages/*.yaml` for human-authored lifecycle contracts
 
+## Reusable Documentation Update Prompt
+
+Use this reusable prompt when updating docs in any project:
+
+- `docs/prompts/docs-update-prompt.md`
+
+Keep it generic and repo-agnostic. Apply with a separate README-only prompt when needed.
 
