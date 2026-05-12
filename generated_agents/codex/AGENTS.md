@@ -167,6 +167,8 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
   - Source: `.agents/skills/skill-receiving-code-review/SKILL.md`
 - `skill-requesting-code-review` — Use when completing tasks, implementing major features, or before merging to verify work meets requirements.
   - Source: `.agents/skills/skill-requesting-code-review/SKILL.md`
+- `skill-spec-drafting` — Use when drafting or refining a detailed specification before implementation planning or coding.
+  - Source: `.agents/skills/skill-spec-drafting/SKILL.md`
 - `skill-subagent-driven-development` — Use when executing implementation plans with independent tasks in the current session.
   - Source: `.agents/skills/skill-subagent-driven-development/SKILL.md`
 - `skill-systematic-debugging` — Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes.

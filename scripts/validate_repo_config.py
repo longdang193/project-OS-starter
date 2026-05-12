@@ -3,6 +3,7 @@
 name: validate_repo_config
 type: script
 domain: config
+distribution_tier: starter_kit
 responsibility:
   - Validate repo-level config ownership surfaces for shape and path sanity.
   - Validate runtime config YAML files under configs/ as parseable top-level mappings.
@@ -36,6 +37,7 @@ REQUIRED_PUBLICATION_KEYS = {
     "requiredPaths",
     "allowedGeneratedPaths",
     "scrubPrivateReferencePaths",
+    "forbiddenMetadataMarkers",
 }
 REQUIRED_STARTER_KIT_KEYS = {
     "outputRoot",

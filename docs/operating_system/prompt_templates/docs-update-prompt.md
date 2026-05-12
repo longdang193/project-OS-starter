@@ -1,3 +1,27 @@
+---
+name: docs-update-prompt
+description: Reconcile docs folder content with implemented behavior and intended outcomes.
+type: prompt
+stage: closeout
+entry_points:
+- need to update docs/**/* after implementation changes
+- need structured doc drift reconciliation before closure
+prerequisites:
+- current code, config, and test surfaces are available for verification
+next_steps:
+- readme-update-prompt.md
+related_skills:
+- skill-doc-system-lifecycle
+- skill-verification-before-completion
+required_reads:
+- docs/operating_system/prompt_templates/README.md
+tags:
+- prompt
+- documentation
+- reconciliation
+distribution_tier: starter_kit
+---
+
 Bring docs/ into alignment with current shipped implementation and intended outcomes, so docs are accurate, navigable, and maintainable.
 
 Scope:

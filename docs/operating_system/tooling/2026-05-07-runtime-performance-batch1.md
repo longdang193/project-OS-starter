@@ -1,6 +1,7 @@
 ---
 name: runtime-performance-batch1
 description: Batch 1 performance optimization summary for runtime governance scripts.
+distribution_tier: starter_kit
 ---
 
 # Runtime Performance Batch 1
