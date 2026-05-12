@@ -14,8 +14,12 @@
     "scripts/audit_capture.ps1",
     "scripts/audit_check.py",
     "scripts/new_audit.ps1",
+    "scripts/setup_hooks.ps1",
+    "scripts/setup_hooks.sh",
+    "scripts/publish_public_repo.ps1",
     "scripts/hooks/run_validator.py",
     "scripts/planning_artifact_schema.py",
+    "scripts/planning_lineage_support.py",
     "scripts/sync_agent_adapters.py",
     "scripts/validate_adoption_shape.py",
     "scripts/validate_agent_metadata_schema.py",
@@ -40,6 +44,7 @@
     "tests/test_validate_repo_config.py",
     "tests/test_validate_repo_contracts.py",
     "tests/test_validate_template_required_sections.py",
+    "tests/test_setup_hooks.py",
     "README.md"
   ],
   "requiredPaths": [

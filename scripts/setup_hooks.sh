@@ -1,4 +1,5 @@
-#!/usr/bin/env sh
+# distribution_tier: starter_kit
+#!/usr/bin/env bash
 set -eu
 
 repo_root="$(git rev-parse --show-toplevel)"

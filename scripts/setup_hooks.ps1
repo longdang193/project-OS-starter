@@ -1,5 +1,6 @@
 param()
 
+# distribution_tier: starter_kit
 $ErrorActionPreference = "Stop"
 
 $repoRoot = git rev-parse --show-toplevel
