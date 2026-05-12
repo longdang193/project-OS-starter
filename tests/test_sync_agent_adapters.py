@@ -7,6 +7,7 @@ domain: docs
 covers:
   - Sync adapter check flags stale generated files outside current mapping ownership
   - Sync adapter orphan detection ignores currently owned generated destinations
+  - Sync adapter no-mapping behavior is role- and selector-aware
 tags:
   - fast
   - ci-safe
@@ -50,6 +51,11 @@ def _mapping(source: str, destination: str, mode: str = "copy_tree") -> object:
         comment_prefix="#",
         include_glob="**/*.md",
     )
+
+
+def _write_yaml(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def test_find_orphan_generated_surfaces_flags_legacy_unowned_files(tmp_path: Path) -> None:
@@ -101,3 +107,68 @@ def test_find_orphan_generated_surfaces_flags_legacy_docs_tree_after_scope_reduc
     orphans = SYNC._find_orphan_generated_surfaces(root, mappings)
 
     assert orphans == [legacy_file]
+
+
+def test_run_skips_when_consumer_default_selection_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    _write_yaml(
+        root / "repo_config" / "adoption-mode.yaml",
+        "adoption_mode: managed_architecture_metadata\nrepo_role: consumer_derived\n",
+    )
+    _write_yaml(
+        root / "repo_config" / "adapter-sync-policy.yaml",
+        "default_platforms:\n  - codex\n",
+    )
+
+    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
+    monkeypatch.setattr(sys, "argv", ["sync_agent_adapters.py", "--check"]) 
+
+    assert SYNC.run() == 0
+
+
+def test_run_fails_when_source_owner_default_selection_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    _write_yaml(
+        root / "repo_config" / "adoption-mode.yaml",
+        "adoption_mode: managed_architecture_metadata\nrepo_role: source_owner\n",
+    )
+    _write_yaml(
+        root / "repo_config" / "adapter-sync-policy.yaml",
+        "default_platforms:\n  - codex\n",
+    )
+
+    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
+    monkeypatch.setattr(sys, "argv", ["sync_agent_adapters.py", "--check"]) 
+
+    assert SYNC.run() == 1
+
+
+def test_run_fails_when_consumer_explicit_platform_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    _write_yaml(
+        root / "repo_config" / "adoption-mode.yaml",
+        "adoption_mode: managed_architecture_metadata\nrepo_role: consumer_derived\n",
+    )
+
+    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["sync_agent_adapters.py", "--check", "--platform", "codex"],
+    )
+
+    assert SYNC.run() == 1
+
+
+def test_run_fails_when_consumer_all_platforms_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    _write_yaml(
+        root / "repo_config" / "adoption-mode.yaml",
+        "adoption_mode: managed_architecture_metadata\nrepo_role: consumer_derived\n",
+    )
+
+    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
+    monkeypatch.setattr(sys, "argv", ["sync_agent_adapters.py", "--check", "--all-platforms"])
+
+    assert SYNC.run() == 1
+
