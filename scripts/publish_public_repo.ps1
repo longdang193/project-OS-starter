@@ -159,6 +159,54 @@ function Assert-NoLocalAbsoluteLinks {
     }
 }
 
+function Assert-NoForbiddenMetadataMarkers {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationRoot,
+        [string[]]$Markers
+    )
+
+    if (-not $Markers -or $Markers.Count -eq 0) {
+        return
+    }
+
+    $files = Get-ChildItem -LiteralPath $DestinationRoot -Recurse -File -Include *.md,*.yaml,*.yml,*.txt,*.json
+    foreach ($file in $files) {
+        $content = Get-Content -Raw -LiteralPath $file.FullName
+        foreach ($marker in $Markers) {
+            if (-not [string]::IsNullOrWhiteSpace($marker) -and $content -match [regex]::Escape($marker)) {
+                throw "Forbidden metadata marker found in public export: $($file.FullName) -> $marker"
+            }
+        }
+    }
+}
+
+function Assert-NoForbiddenFilenameMarkers {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationRoot,
+        [string[]]$Markers
+    )
+
+    if (-not $Markers -or $Markers.Count -eq 0) {
+        return
+    }
+
+    $files = Get-ChildItem -LiteralPath $DestinationRoot -Recurse -File
+    foreach ($file in $files) {
+        $name = $file.Name.ToLowerInvariant()
+        foreach ($marker in $Markers) {
+            if ([string]::IsNullOrWhiteSpace($marker)) {
+                continue
+            }
+            $needle = $marker.ToLowerInvariant()
+            if ($name.Contains($needle)) {
+                throw "Forbidden filename marker found in public export: $($file.FullName) -> $marker"
+            }
+        }
+    }
+}
+
 function Remove-UnlistedGeneratedDocs {
     param(
         [Parameter(Mandatory = $true)]
@@ -248,6 +296,8 @@ $forbiddenPaths = @($config.forbiddenPaths)
 $requiredPaths = @($config.requiredPaths)
 $allowedGeneratedPaths = @($config.allowedGeneratedPaths)
 $scrubPrivateReferencePaths = @($config.scrubPrivateReferencePaths)
+$forbiddenMetadataMarkers = @($config.forbiddenMetadataMarkers)
+$forbiddenFilenameMarkers = @($config.forbiddenFilenameMarkers)
 
 $remoteUrl = $null
 if ($Push) {
@@ -294,6 +344,8 @@ foreach ($relativePath in $requiredPaths) {
 
 Assert-NoPrivateReferences -DestinationRoot $ExportRoot
 Assert-NoLocalAbsoluteLinks -DestinationRoot $ExportRoot
+Assert-NoForbiddenMetadataMarkers -DestinationRoot $ExportRoot -Markers $forbiddenMetadataMarkers
+Assert-NoForbiddenFilenameMarkers -DestinationRoot $ExportRoot -Markers $forbiddenFilenameMarkers
 
 Write-Host "Public export prepared at: $ExportRoot"
 

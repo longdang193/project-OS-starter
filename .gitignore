@@ -14,3 +14,5 @@ Thumbs.db
 .worktrees/
 .tmp-tests/
 generated_exports/
+*.private.*
+*.local.*

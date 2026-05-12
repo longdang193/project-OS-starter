@@ -25,7 +25,7 @@ import argparse
 from pathlib import Path
 
 
-REQUIRED_ENTRIES = (".env", ".env.*")
+REQUIRED_ENTRIES = (".env", ".env.*", "*.private.*", "*.local.*")
 EXAMPLE_ALLOWLIST_ENTRY = "!.env.example"
 
 
