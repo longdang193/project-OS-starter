@@ -9,6 +9,7 @@
     "docs/operating_system",
     "repo_config/adoption-mode.yaml",
     "repo_config/planning_artifact_schema.yaml",
+    "repo_config/publication-config.json",
     "scripts/audit_capture.ps1",
     "scripts/audit_check.py",
     "scripts/new_audit.ps1",
@@ -51,6 +52,7 @@
     "docs/superpowers/specs",
     "docs/superpowers/execution_maps",
     "repo_config/planning_artifact_schema.yaml",
+    "repo_config/publication-config.json",
     "scripts/validate_repo_contracts.py",
     "tests/test_validate_repo_contracts.py"
   ],
@@ -60,7 +62,6 @@
     "agent-core",
     "generated_agents",
     "repo_config/agent-adapter-mappings.json",
-    "repo_config/publication-config.json",
     "repo_config/starter-kit-closure.json",
     "scripts/build_starter_kit.py",
     "scripts/deploy_agent_runtime.py",

@@ -92,6 +92,10 @@ ALLOWED_CONDITIONAL_REFERENCES = {
         Path("docs/operating_system/governance/feature-routing-guide.md"),
         "adapters/",
     ),
+    (
+        Path("docs/operating_system/publication/public-repo-publication-policy.md"),
+        "repo_config/publication-config.json",
+    ),
 }
 
 
