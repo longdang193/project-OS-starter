@@ -1,1 +1,120 @@
----\ntemplate_id: implementation-plan\ndocument_type: implementation_plan\ntarget_globs:\n- docs/superpowers/plans/*.md\nrequired_sections:\n- Goal\n- Key Deliverables\n- Task/Wave Breakdown\n- Verification\n- Completion Criteria\nrequired_frontmatter:\n  artifact_type: plan\ndistribution_tier: starter_kit\n---\n\n# Implementation Plan Template\n\n## Goal\n\n<what this plan must deliver>\n\n## Key Deliverables\n\nUse this section for final implementation outcomes only.\nDo not restate task-by-task execution details or local verification steps here.\n\n### <deliverable 1>\n\nDescribe one concrete implementation outcome this plan must deliver, including changed surfaces, expected behavior, and verification intent.\n\n### <deliverable 2>\n\nDescribe another concrete implementation result this plan must deliver, such as test coverage, documentation alignment, or downstream handoff readiness.\n\n## Task/Wave Breakdown\n\nUse `Task` for directly executable implementation slices.\nUse `Wave` only when plan truly needs orchestration across multiple related tasks.\n\nWithin each task:\n- `Purpose` owns bounded outcome\n- `Files` owns touched-surface inventory\n- `Preconditions` owns prerequisites\n- `Steps` owns execution sequence\n- `Verification` owns task-local proof\n- `Exit Criteria` owns task completion gate\n\nDo not duplicate final artifact verification commands here unless a command is truly both task-local and final.\n\n### Task 1: <short task title>\n\n**Purpose:**\n- <bounded outcome this task delivers>\n\n**Files:**\n- Inspect: `<path>`\n- Modify: `<path>`\n- Verify: `<path>`\n\n**Preconditions:**\n- <upstream dependency, source-first fact, or prior task result>\n\n**Steps:**\n- [ ] Step 1: <first bounded action>\n- [ ] Step 2: <second bounded action>\n- [ ] Step 3: <verification-aligned follow-up>\n\n**Verification:**\n- [ ] <command, assertion, or inspection target>\n\n**Exit Criteria:**\n- <what makes this task done>\n\n### Task 2: <short task title>\n\n**Purpose:**\n- <bounded outcome this task delivers>\n\n**Files:**\n- Inspect: `<path>`\n- Modify: `<path>`\n- Verify: `<path>`\n\n**Preconditions:**\n- Task 1 complete\n- <any additional dependency>\n\n**Steps:**\n- [ ] Step 1: <first bounded action>\n- [ ] Step 2: <second bounded action>\n- [ ] Step 3: <verification-aligned follow-up>\n\n**Verification:**\n- [ ] <command, assertion, or inspection target>\n\n**Exit Criteria:**\n- <what makes this task done>\n\n## Verification\n\nUse this section for final artifact-level verification only.\nDo not copy every task-local proof here.\n\n- <final command>\n\n## Completion Criteria\n\nA plan item is considered complete when:\n\n1. all Key Deliverables are satisfied\n2. all downstream/child items are terminal\n3. every child item is `completed` or `dropped`\n\nCanonical source-of-truth:\n\n<LINK>\n- `docs/operating_system/governance/repo-governance.md`\n- `scripts/validate_planning_lifecycle.py`\n</LINK>\n
+---
+template_id: implementation-plan
+document_type: implementation_plan
+target_globs:
+- docs/superpowers/plans/*.md
+required_sections:
+- Goal
+- Key Deliverables
+- Task/Wave Breakdown
+- Verification
+- Completion Criteria
+required_frontmatter:
+  artifact_type: plan
+distribution_tier: starter_kit
+---
+
+# Implementation Plan Template
+
+## Goal
+
+<what this plan must deliver>
+
+## Key Deliverables
+
+Use this section for final implementation outcomes only.
+Do not restate task-by-task execution details or local verification steps here.
+
+### <deliverable 1>
+
+Describe one concrete implementation outcome this plan must deliver, including changed surfaces, expected behavior, and verification intent.
+
+### <deliverable 2>
+
+Describe another concrete implementation result this plan must deliver, such as test coverage, documentation alignment, or downstream handoff readiness.
+
+## Task/Wave Breakdown
+
+Use `Task` for directly executable implementation slices.
+Use `Wave` only when plan truly needs orchestration across multiple related tasks.
+
+Within each task:
+- `Purpose` owns bounded outcome
+- `Files` owns touched-surface inventory
+- `Preconditions` owns prerequisites
+- `Steps` owns execution sequence
+- `Verification` owns task-local proof
+- `Exit Criteria` owns task completion gate
+
+Do not duplicate final artifact verification commands here unless a command is truly both task-local and final.
+
+### Task 1: <short task title>
+
+**Purpose:**
+- <bounded outcome this task delivers>
+
+**Files:**
+- Inspect: `<path>`
+- Modify: `<path>`
+- Verify: `<path>`
+
+**Preconditions:**
+- <upstream dependency, source-first fact, or prior task result>
+
+**Steps:**
+- [ ] Step 1: <first bounded action>
+- [ ] Step 2: <second bounded action>
+- [ ] Step 3: <verification-aligned follow-up>
+
+**Verification:**
+- [ ] <command, assertion, or inspection target>
+
+**Exit Criteria:**
+- <what makes this task done>
+
+### Task 2: <short task title>
+
+**Purpose:**
+- <bounded outcome this task delivers>
+
+**Files:**
+- Inspect: `<path>`
+- Modify: `<path>`
+- Verify: `<path>`
+
+**Preconditions:**
+- Task 1 complete
+- <any additional dependency>
+
+**Steps:**
+- [ ] Step 1: <first bounded action>
+- [ ] Step 2: <second bounded action>
+- [ ] Step 3: <verification-aligned follow-up>
+
+**Verification:**
+- [ ] <command, assertion, or inspection target>
+
+**Exit Criteria:**
+- <what makes this task done>
+
+## Verification
+
+Use this section for final artifact-level verification only.
+Do not copy every task-local proof here.
+
+- <final command>
+
+## Completion Criteria
+
+A plan item is considered complete when:
+
+1. all Key Deliverables are satisfied
+2. all downstream/child items are terminal
+3. every child item is `completed` or `dropped`
+
+Canonical source-of-truth:
+
+<LINK>
+- `docs/operating_system/governance/repo-governance.md`
+- `scripts/validate_planning_lifecycle.py`
+</LINK>

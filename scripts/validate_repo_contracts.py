@@ -578,6 +578,10 @@ def validate_starter_kit_classification(root: Path) -> list[ValidationIssue]:
         if not path.is_file() or not _is_metadata_capable(path):
             continue
         rel = relative_path(path, root)
+        if rel.startswith("generated_exports/"):
+            continue
+        if rel.startswith("generated_agents/"):
+            continue
         if rel in in_kit:
             continue
         if _has_distribution_tier(path, STARTER_KIT_DISTRIBUTION_TIER):

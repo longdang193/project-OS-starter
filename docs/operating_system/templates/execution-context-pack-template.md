@@ -1,1 +1,101 @@
----\nname: execution-context-pack-template\ntemplate_id: execution-context-pack-template\ndocument_type: template\ndescription: Template for resumable execution handoff during long-running implementation work.\ntype: template\nstage: execution\ntarget_globs:\n- artifacts/execution_context_pack.md\nrequired_sections:\n- Objective\n- Canonical Inputs (Source of Truth)\n- Current Task State\n- Files Changed This Session\n- Verification State\n- Open Blockers / Risks\n- Next Exact Action\n- Resume Prompt (Copy/Paste)\n- Optional Deep Context (Consult Only)\n- Source-Truth Rule\ntags:\n- handoff\n- execution\n- context-pack\ndistribution_tier: starter_kit\n---\n\n# Execution Context Pack\n\nUse this artifact as primary handoff packet between sessions.\nKeep concise, source-linked, and current as progress lands.\n\n## 1) Objective\n\n- **Workstream / Plan:**\n- **Goal:**\n- **Bounded Scope (in-scope only):**\n- **Out of Scope (explicit):**\n\n## 2) Canonical Inputs (Source of Truth)\n\nList only files that currently govern execution.\n\n- **Primary plan:**\n- **Specs / maps / thread docs:**\n- **Governance / workflow rules used:**\n\n## 3) Current Task State\n\n- **Completed:**\n- **In Progress:**\n- **Deferred / Dropped:**\n- **Known divergence from plan (if any):**\n\n## 4) Files Changed This Session\n\n- `path/to/file` — short reason\n- `path/to/file` — short reason\n\n## 5) Verification State\n\n- **Last commands run:**\n- **Result summary:**\n- **Failing checks (if any):**\n- **Gaps still unverified:**\n\n## 6) Open Blockers / Risks\n\n- blocker or risk\n- required unblock input / dependency / approval\n\n## 7) Next Exact Action\n\nSingle smallest concrete action to run first in next session.\n\n- **Action type:** (edit / command / verification / docs sync)\n- **Target:**\n- **Exact command or edit intent:**\n- **Why this is next:**\n\n## 8) Resume Prompt (Copy/Paste)\n\n```text\nRead this execution context pack first. Verify its state against listed source files. Then execute the Next Exact Action immediately. Do not re-plan unless blocker is found.\n```\n\n## 9) Optional Deep Context (Consult Only)\n\nUse only when ambiguity remains after checking source files.\n\n- **conversation_id:**\n- **overview_log:** `.gemini/antigravity/brain/<conversation-id>/.system_generated/logs/overview.txt`\n- **consult_if:** (what ambiguity requires this)\n- **notes_from_log (optional, concise):**\n\n## Source-Truth Rule\n\nIf context pack, source files, and raw log disagree:\n1. source files and current tests/checks win\n2. then context pack\n3. raw log is fallback evidence only\n
+---
+name: execution-context-pack-template
+template_id: execution-context-pack-template
+document_type: template
+description: Template for resumable execution handoff during long-running implementation work.
+type: template
+stage: execution
+target_globs:
+- artifacts/execution_context_pack.md
+required_sections:
+- Objective
+- Canonical Inputs (Source of Truth)
+- Current Task State
+- Files Changed This Session
+- Verification State
+- Open Blockers / Risks
+- Next Exact Action
+- Resume Prompt (Copy/Paste)
+- Optional Deep Context (Consult Only)
+- Source-Truth Rule
+tags:
+- handoff
+- execution
+- context-pack
+distribution_tier: starter_kit
+---
+
+# Execution Context Pack
+
+Use this artifact as primary handoff packet between sessions.
+Keep concise, source-linked, and current as progress lands.
+
+## 1) Objective
+
+- **Workstream / Plan:**
+- **Goal:**
+- **Bounded Scope (in-scope only):**
+- **Out of Scope (explicit):**
+
+## 2) Canonical Inputs (Source of Truth)
+
+List only files that currently govern execution.
+
+- **Primary plan:**
+- **Specs / maps / thread docs:**
+- **Governance / workflow rules used:**
+
+## 3) Current Task State
+
+- **Completed:**
+- **In Progress:**
+- **Deferred / Dropped:**
+- **Known divergence from plan (if any):**
+
+## 4) Files Changed This Session
+
+- `path/to/file` — short reason
+- `path/to/file` — short reason
+
+## 5) Verification State
+
+- **Last commands run:**
+- **Result summary:**
+- **Failing checks (if any):**
+- **Gaps still unverified:**
+
+## 6) Open Blockers / Risks
+
+- blocker or risk
+- required unblock input / dependency / approval
+
+## 7) Next Exact Action
+
+Single smallest concrete action to run first in next session.
+
+- **Action type:** (edit / command / verification / docs sync)
+- **Target:**
+- **Exact command or edit intent:**
+- **Why this is next:**
+
+## 8) Resume Prompt (Copy/Paste)
+
+```text
+Read this execution context pack first. Verify its state against listed source files. Then execute the Next Exact Action immediately. Do not re-plan unless blocker is found.
+```
+
+## 9) Optional Deep Context (Consult Only)
+
+Use only when ambiguity remains after checking source files.
+
+- **conversation_id:**
+- **overview_log:** `.gemini/antigravity/brain/<conversation-id>/.system_generated/logs/overview.txt`
+- **consult_if:** (what ambiguity requires this)
+- **notes_from_log (optional, concise):**
+
+## Source-Truth Rule
+
+If context pack, source files, and raw log disagree:
+1. source files and current tests/checks win
+2. then context pack
+3. raw log is fallback evidence only

@@ -1,1 +1,105 @@
----\ntemplate_id: registered-workstream-list\ndocument_type: registered_workstream_list\ntarget_globs:\n- docs/superpowers/workstreams/registered-workstream-list.md\nrequired_sections:\n- Goal\n- Key Deliverables\n- Task/Wave Breakdown\n- Registered Workstreams\n- Traceability\n- Completion Criteria\ndistribution_tier: starter_kit\n---\n\n# Registered Workstream List Template\n\n## Goal\n\n<what this registered workstream set covers>\n\n## Key Deliverables\n\nUse this section for artifact-level outcomes such as ownership clarity, sequencing clarity, and roadmap coverage confidence.\nDo not restate the canonical registry rows here.\n\n### <deliverable 1>\n\nDescribe one concrete output this registered workstream set must provide, such as ownership clarity, sequencing coverage, or status visibility for the roadmap.\n\n### <deliverable 2>\n\nDescribe another concrete output this workstream set must provide, such as gap detection, prioritization signal, or durable ownership mapping.\n\n## Task/Wave Breakdown\n\nUse this section for assembly and reconciliation sequence.\nDo not duplicate the canonical workstream records here.\n\n### Wave 1: Initial inventory and ownership pass\n\n**Purpose:**\n- identify all workstreams required by current roadmap coverage\n\n**Steps:**\n- [ ] extract workstream candidates from roadmap outcomes\n- [ ] merge duplicate or overlapping lanes\n- [ ] assign initial status and ownership intent\n- [ ] identify obvious coverage gaps or unresolved boundaries\n\n**Verification:**\n- [ ] every major roadmap lane maps to a workstream or explicit gap note\n\n**Exit Criteria:**\n- initial workstream inventory is complete enough for refinement\n\n### Wave 2: Sequencing and reconciliation pass\n\n**Purpose:**\n- refine the registered set so it is durable, traceable, and planning-ready\n\n**Steps:**\n- [ ] confirm workstream summaries and statuses\n- [ ] confirm sequencing and dependency relationships\n- [ ] confirm roadmap alignment for each registered workstream\n- [ ] record deferred or unresolved items explicitly\n\n**Verification:**\n- [ ] registered workstream set has no unexplained ownership or sequencing gaps\n\n**Exit Criteria:**\n- registered workstream list is stable enough for downstream thread planning\n\n## Registered Workstreams\n\nThis section is the canonical registry.\nKeep durable records here; do not restate roadmap traceability prose or wave sequencing.\n\n- `workstream_id`: <id>\n  - status: <proposed|active|blocked|completed|dropped>\n  - summary: <one line>\n\n## Traceability\n\nUse this section for source and reconciliation notes only.\nDo not repeat the registry rows here.\n\n- roadmap source: `docs/intent/master-workstream-roadmap.md`\n- uncovered items: <item> | none\n- merged or deferred items: <item> | none\n\n## Completion Criteria\n\nA workstream-list item is considered complete when:\n\n1. all Key Deliverables are satisfied\n2. all downstream/child items are terminal\n3. every child item is `completed` or `dropped`\n\nCanonical source-of-truth:\n\n<LINK>\n- `docs/operating_system/governance/repo-governance.md`\n- `scripts/validate_planning_lifecycle.py`\n</LINK>\n
+---
+template_id: registered-workstream-list
+document_type: registered_workstream_list
+target_globs:
+- docs/superpowers/workstreams/registered-workstream-list.md
+required_sections:
+- Goal
+- Key Deliverables
+- Task/Wave Breakdown
+- Registered Workstreams
+- Traceability
+- Completion Criteria
+distribution_tier: starter_kit
+---
+
+# Registered Workstream List Template
+
+## Goal
+
+<what this registered workstream set covers>
+
+## Key Deliverables
+
+Use this section for artifact-level outcomes such as ownership clarity, sequencing clarity, and roadmap coverage confidence.
+Do not restate the canonical registry rows here.
+
+### <deliverable 1>
+
+Describe one concrete output this registered workstream set must provide, such as ownership clarity, sequencing coverage, or status visibility for the roadmap.
+
+### <deliverable 2>
+
+Describe another concrete output this workstream set must provide, such as gap detection, prioritization signal, or durable ownership mapping.
+
+## Task/Wave Breakdown
+
+Use this section for assembly and reconciliation sequence.
+Do not duplicate the canonical workstream records here.
+
+### Wave 1: Initial inventory and ownership pass
+
+**Purpose:**
+- identify all workstreams required by current roadmap coverage
+
+**Steps:**
+- [ ] extract workstream candidates from roadmap outcomes
+- [ ] merge duplicate or overlapping lanes
+- [ ] assign initial status and ownership intent
+- [ ] identify obvious coverage gaps or unresolved boundaries
+
+**Verification:**
+- [ ] every major roadmap lane maps to a workstream or explicit gap note
+
+**Exit Criteria:**
+- initial workstream inventory is complete enough for refinement
+
+### Wave 2: Sequencing and reconciliation pass
+
+**Purpose:**
+- refine the registered set so it is durable, traceable, and planning-ready
+
+**Steps:**
+- [ ] confirm workstream summaries and statuses
+- [ ] confirm sequencing and dependency relationships
+- [ ] confirm roadmap alignment for each registered workstream
+- [ ] record deferred or unresolved items explicitly
+
+**Verification:**
+- [ ] registered workstream set has no unexplained ownership or sequencing gaps
+
+**Exit Criteria:**
+- registered workstream list is stable enough for downstream thread planning
+
+## Registered Workstreams
+
+This section is the canonical registry.
+Keep durable records here; do not restate roadmap traceability prose or wave sequencing.
+
+- `workstream_id`: <id>
+  - status: <proposed|active|blocked|completed|dropped>
+  - summary: <one line>
+
+## Traceability
+
+Use this section for source and reconciliation notes only.
+Do not repeat the registry rows here.
+
+- roadmap source: `docs/intent/master-workstream-roadmap.md`
+- uncovered items: <item> | none
+- merged or deferred items: <item> | none
+
+## Completion Criteria
+
+A workstream-list item is considered complete when:
+
+1. all Key Deliverables are satisfied
+2. all downstream/child items are terminal
+3. every child item is `completed` or `dropped`
+
+Canonical source-of-truth:
+
+<LINK>
+- `docs/operating_system/governance/repo-governance.md`
+- `scripts/validate_planning_lifecycle.py`
+</LINK>

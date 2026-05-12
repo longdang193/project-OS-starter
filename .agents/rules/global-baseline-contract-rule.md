@@ -10,6 +10,7 @@ tags:
 - cross-tool
 - governance
 - rule
+distribution_tier: starter_kit
 ---
 
 <!--
@@ -25,4 +26,3 @@ To update: edit canonical source, then run sync.
 Use `AGENTS.md` as the shared baseline contract across Codex, Claude, and
 Gemini runtimes. Runtime targets are generated and deployed; do not hand-edit
 runtime target files.
-

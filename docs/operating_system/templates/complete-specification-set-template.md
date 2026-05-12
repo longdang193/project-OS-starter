@@ -1,1 +1,127 @@
----\ntemplate_id: complete-specification-set\ndocument_type: complete_specification_set\ntarget_globs:\n- docs/superpowers/execution_maps/*.md\nrequired_sections:\n- Goal\n- Key Deliverables\n- Task/Wave Breakdown\n- Spec Inventory\n- Coverage Check\n- Completion Criteria\nrequired_frontmatter:\n  artifact_type: execution_map\n  map_type: complete_spec_set\ndistribution_tier: starter_kit\n---\n\n# Complete Specification Set Template\n\n## Goal\n\n<what this full spec set enables>\n\n## Key Deliverables\n\nUse this section for artifact-level completeness outcomes only.\nDo not repeat the canonical spec inventory or thread coverage matrix here.\n\n### <deliverable 1>\n\nDescribe one concrete output this full specification set must provide, such as complete thread coverage, spec readiness, or removal of ambiguity before execution planning.\n\n### <deliverable 2>\n\nDescribe another concrete output this spec set must provide, such as dependency completeness, sequencing clarity, or approval readiness.\n\n## Task/Wave Breakdown\n\nUse this section for the sequence of inventory, gap closure, and authoring readiness.\nDo not duplicate canonical inventory rows or coverage lists here.\n\n### Wave 1: Inventory existing specification coverage\n\n**Purpose:**\n- identify all existing or required specs relevant to covered threads\n\n**Steps:**\n- [ ] list current specs already covering in-scope threads\n- [ ] map each spec to its primary purpose\n- [ ] identify missing or partial coverage areas\n\n**Verification:**\n- [ ] every in-scope thread appears in inventory, partial-coverage list, or uncovered list\n\n**Exit Criteria:**\n- current specification landscape is fully visible\n\n### Wave 2: Close coverage gaps\n\n**Purpose:**\n- determine what additional specifications are needed for complete coverage\n\n**Steps:**\n- [ ] define missing spec lanes\n- [ ] record dependency relationships between specs\n- [ ] classify which specs are ready, missing, or blocked\n\n**Verification:**\n- [ ] uncovered areas are reduced to explicit approved gaps only\n\n**Exit Criteria:**\n- complete required spec set is known\n\n### Wave 3: Finalize authoring readiness\n\n**Purpose:**\n- prepare full specification set for downstream spec-authoring orchestration\n\n**Steps:**\n- [ ] confirm final inventory\n- [ ] confirm dependency ordering\n- [ ] confirm handoff to spec-authoring map\n\n**Verification:**\n- [ ] complete specification set is ready to drive authoring order\n\n**Exit Criteria:**\n- downstream spec-authoring orchestration can begin without re-inventory\n\n## Spec Inventory\n\nThis section is the canonical specification registry.\nKeep durable spec records here; do not restate thread coverage lists here.\n\n- `docs/superpowers/specs/<spec-file>.md`\n  - purpose: <one line>\n  - status: <ready|missing|blocked>\n  - depends_on:\n    - <spec-path> | none\n\n## Coverage Check\n\nThis section is the canonical thread-coverage view.\nDo not repeat full spec inventory details here.\n\n- covered threads:\n  - <thread-id>\n- partial coverage:\n  - <thread-id> - <gap>\n- uncovered threads:\n  - <thread-id> | none\n\n## Completion Criteria\n\nA complete-spec-set item is considered complete when:\n\n1. all Key Deliverables are satisfied\n2. all downstream/child items are terminal\n3. every child item is `completed` or `dropped`\n\nCanonical source-of-truth:\n\n<LINK>\n- `docs/operating_system/governance/repo-governance.md`\n- `scripts/validate_planning_lifecycle.py`\n</LINK>\n
+---
+template_id: complete-specification-set
+document_type: complete_specification_set
+target_globs:
+- docs/superpowers/execution_maps/*.md
+required_sections:
+- Goal
+- Key Deliverables
+- Task/Wave Breakdown
+- Spec Inventory
+- Coverage Check
+- Completion Criteria
+required_frontmatter:
+  artifact_type: execution_map
+  map_type: complete_spec_set
+distribution_tier: starter_kit
+---
+
+# Complete Specification Set Template
+
+## Goal
+
+<what this full spec set enables>
+
+## Key Deliverables
+
+Use this section for artifact-level completeness outcomes only.
+Do not repeat the canonical spec inventory or thread coverage matrix here.
+
+### <deliverable 1>
+
+Describe one concrete output this full specification set must provide, such as complete thread coverage, spec readiness, or removal of ambiguity before execution planning.
+
+### <deliverable 2>
+
+Describe another concrete output this spec set must provide, such as dependency completeness, sequencing clarity, or approval readiness.
+
+## Task/Wave Breakdown
+
+Use this section for the sequence of inventory, gap closure, and authoring readiness.
+Do not duplicate canonical inventory rows or coverage lists here.
+
+### Wave 1: Inventory existing specification coverage
+
+**Purpose:**
+- identify all existing or required specs relevant to covered threads
+
+**Steps:**
+- [ ] list current specs already covering in-scope threads
+- [ ] map each spec to its primary purpose
+- [ ] identify missing or partial coverage areas
+
+**Verification:**
+- [ ] every in-scope thread appears in inventory, partial-coverage list, or uncovered list
+
+**Exit Criteria:**
+- current specification landscape is fully visible
+
+### Wave 2: Close coverage gaps
+
+**Purpose:**
+- determine what additional specifications are needed for complete coverage
+
+**Steps:**
+- [ ] define missing spec lanes
+- [ ] record dependency relationships between specs
+- [ ] classify which specs are ready, missing, or blocked
+
+**Verification:**
+- [ ] uncovered areas are reduced to explicit approved gaps only
+
+**Exit Criteria:**
+- complete required spec set is known
+
+### Wave 3: Finalize authoring readiness
+
+**Purpose:**
+- prepare full specification set for downstream spec-authoring orchestration
+
+**Steps:**
+- [ ] confirm final inventory
+- [ ] confirm dependency ordering
+- [ ] confirm handoff to spec-authoring map
+
+**Verification:**
+- [ ] complete specification set is ready to drive authoring order
+
+**Exit Criteria:**
+- downstream spec-authoring orchestration can begin without re-inventory
+
+## Spec Inventory
+
+This section is the canonical specification registry.
+Keep durable spec records here; do not restate thread coverage lists here.
+
+- `docs/superpowers/specs/<spec-file>.md`
+  - purpose: <one line>
+  - status: <ready|missing|blocked>
+  - depends_on:
+    - <spec-path> | none
+
+## Coverage Check
+
+This section is the canonical thread-coverage view.
+Do not repeat full spec inventory details here.
+
+- covered threads:
+  - <thread-id>
+- partial coverage:
+  - <thread-id> - <gap>
+- uncovered threads:
+  - <thread-id> | none
+
+## Completion Criteria
+
+A complete-spec-set item is considered complete when:
+
+1. all Key Deliverables are satisfied
+2. all downstream/child items are terminal
+3. every child item is `completed` or `dropped`
+
+Canonical source-of-truth:
+
+<LINK>
+- `docs/operating_system/governance/repo-governance.md`
+- `scripts/validate_planning_lifecycle.py`
+</LINK>
