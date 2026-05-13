@@ -1,10 +1,10 @@
 ---
 name: git-worktree-preflight-and-create-prompt
-description: Guide safe git worktree create/reuse with mandatory freshness preflight and decision logging.
+description: Guide safe git worktree creation with mandatory freshness preflight and decision logging.
 type: prompt
 stage: execution
 entry_points:
-- create or reuse a git worktree for isolated execution
+- create a git worktree for isolated execution
 - enforce base-branch freshness and divergence decisions before worktree operations
 prerequisites:
 - repository root is known
@@ -32,9 +32,10 @@ distribution_tier: starter_kit
 
 - non-git environments
 - tasks that do not require isolated workspace
+- PR, merge, closeout, or lifecycle reconciliation orchestration
 
 ```text
-Set up or reuse a git worktree safely with freshness checks.
+Set up a git worktree safely with freshness checks.
 
 Do in order:
 1) Run `git status --short` on base branch.
@@ -53,9 +54,15 @@ Do in order:
    - ahead/behind counts
    - user decision record
    - baseline test status
+
+Stop boundary:
+- End after worktree create/reuse result and preflight evidence are captured.
+- Do not run closeout validators, PR orchestration, merge decisions, or lifecycle reconciliation in this prompt.
+- If caller asks for merge/closeout, route to `single-lane-merge-and-reconcile-prompt.md`.
 ```
 
 Expected output:
 - one safe worktree create/reuse result with freshness evidence
 - explicit divergence decision log when ahead/behind was non-zero
 - baseline test outcome or blocker requiring user decision
+- one selected next action only
