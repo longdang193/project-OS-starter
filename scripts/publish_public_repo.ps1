@@ -420,7 +420,8 @@ foreach ($relativePath in $publicPaths) {
 
 Remove-UnlistedGeneratedDocs -DestinationRoot $ExportRoot -AllowedGeneratedPaths $allowedGeneratedPaths
 Remove-PrivateAdapterFiles -DestinationRoot $ExportRoot
-Remove-ForbiddenMetadataMarkedFiles -DestinationRoot $ExportRoot -Markers $forbiddenMetadataMarkers
+# Keep exported allowlist output intact until required-path checks run.
+# Marker policy enforcement remains fail-fast at Assert-NoForbiddenMetadataMarkers.
 
 foreach ($relativePath in $scrubPrivateReferencePaths) {
     Remove-PrivateReferenceLines -DestinationRoot $ExportRoot -RelativePath $relativePath
