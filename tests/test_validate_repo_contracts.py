@@ -207,6 +207,7 @@ def test_build_subprocess_steps_skips_sync_for_starter_method_only(tmp_path: Pat
 
 def test_build_subprocess_steps_keeps_sync_for_managed_mode(tmp_path: Path) -> None:
     write_adoption_mode(tmp_path, "managed_architecture_metadata")
+    write_text(tmp_path / "scripts" / "sync_architecture_docs.py", "def main():\n    return 0\n")
 
     steps = VALIDATOR.build_subprocess_steps(
         root=tmp_path,
@@ -218,6 +219,23 @@ def test_build_subprocess_steps_keeps_sync_for_managed_mode(tmp_path: Path) -> N
 
     assert any("validate_adoption_shape.py" in step for step in rendered)
     assert any("sync_architecture_docs.py --check" in step for step in rendered)
+    assert any("validate_agent_runtime_drift.py --skip-deploy-check" in step for step in rendered)
+    assert any("validate_repo_config.py" in step for step in rendered)
+
+
+def test_build_subprocess_steps_skips_sync_when_script_missing_in_managed_mode(tmp_path: Path) -> None:
+    write_adoption_mode(tmp_path, "managed_architecture_metadata")
+
+    steps = VALIDATOR.build_subprocess_steps(
+        root=tmp_path,
+        python_executable="python",
+        fast=True,
+    )
+
+    rendered = [" ".join(step) for step in steps]
+
+    assert any("validate_adoption_shape.py" in step for step in rendered)
+    assert not any("sync_architecture_docs.py --check" in step for step in rendered)
     assert any("validate_agent_runtime_drift.py --skip-deploy-check" in step for step in rendered)
     assert any("validate_repo_config.py" in step for step in rendered)
 

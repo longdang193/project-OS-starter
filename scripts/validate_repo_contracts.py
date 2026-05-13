@@ -263,9 +263,9 @@ def build_subprocess_steps(
     ]
     if adoption_mode != "starter_method_only":
         steps.append([python_executable, agent_runtime_drift_script, "--skip-deploy-check"])
-    if adoption_mode != "starter_method_only":
-        sync_script = str(root / "scripts" / "sync_architecture_docs.py")
-        steps.append([python_executable, sync_script, "--check"])
+        sync_script = root / "scripts" / "sync_architecture_docs.py"
+        if sync_script.exists():
+            steps.append([python_executable, str(sync_script), "--check"])
     steps.append([python_executable, repo_config_script])
     if not fast:
         pytest_targets = [
