@@ -319,3 +319,27 @@ distribution_tier: starter_kit
     issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
 
     assert any("not included in starter-kit manifest" in issue.message for issue in issues)
+
+
+def test_starter_kit_classification_ignores_tmp_tests_tree(tmp_path: Path) -> None:
+    write_text(
+        tmp_path / "repo_config" / "starter-kit-manifest.json",
+        """{
+  "copyPaths": ["docs"]
+}
+""",
+    )
+    write_text(
+        tmp_path / ".tmp-tests" / "scratch.py",
+        """\"\"\"
+@meta
+name: scratch
+type: script
+distribution_tier: starter_kit
+\"\"\"
+""",
+    )
+
+    issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
+
+    assert issues == []
