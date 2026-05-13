@@ -1,7 +1,7 @@
 ---
 layer: operating_system
 artifact_type: plan
-status: proposed
+status: completed
 template_id: implementation-plan
 name: script-performance-reliability-hardening
 parent_workstream: none

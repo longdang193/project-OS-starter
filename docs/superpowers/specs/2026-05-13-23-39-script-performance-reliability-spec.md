@@ -1,7 +1,7 @@
 ---
 layer: operating_system
 artifact_type: spec
-status: proposed
+status: completed
 template_id: detailed-specification
 name: script-performance-reliability
 parent_workstream: none
@@ -109,12 +109,12 @@ Provide explicit success criteria and proof requirements that ensure performance
 - finalize proof model for speed, parity, and reliability
 
 **Steps:**
-- [ ] define before/after benchmark comparison requirements
-- [ ] define regression and edge-case test additions
-- [ ] define acceptance thresholds and fallback decisions
+- [x] define before/after benchmark comparison requirements
+- [x] define regression and edge-case test additions
+- [x] define acceptance thresholds and fallback decisions
 
 **Verification:**
-- [ ] validation plan can prove both improvement and compatibility
+- [x] validation plan can prove both improvement and compatibility
 
 **Exit Criteria:**
 - spec is implementation-plan ready
