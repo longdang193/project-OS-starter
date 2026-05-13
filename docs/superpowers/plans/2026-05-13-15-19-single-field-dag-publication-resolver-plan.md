@@ -1,7 +1,7 @@
 ---
 layer: operating_system
 artifact_type: plan
-status: proposed
+status: completed
 template_id: implementation-plan
 name: single-field-dag-publication-resolver
 parent_workstream: none
@@ -156,6 +156,17 @@ Align repo-config validator and publication workflow documentation with new mixe
 - `py -3 scripts/validate_repo_config.py`
 - `py -3 scripts/validate_repo_contracts.py --fast`
 - `powershell -ExecutionPolicy Bypass -File scripts/publish_public_repo.ps1`
+- `py -3 -m pytest tests/test_validate_repo_config.py -q`
+- `py -3 scripts/validate_planning_lifecycle.py --strict`
+- `py -3 scripts/validate_checkpoint_packs.py`
+
+## Closure
+
+- Lane status: closed
+- Closure commit: `4944f11`
+- Push status: `origin/main` updated
+- Closure validators: pass
+
 
 ## Completion Criteria
 
