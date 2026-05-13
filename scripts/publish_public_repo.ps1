@@ -423,6 +423,48 @@ function Remove-UnlistedGeneratedDocs {
     }
 }
 
+function Remove-PythonBuildArtifacts {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $DestinationRoot)) {
+        return
+    }
+
+    $cacheDirs = Get-ChildItem -LiteralPath $DestinationRoot -Recurse -Directory -Filter '__pycache__' -ErrorAction SilentlyContinue
+    foreach ($dir in $cacheDirs) {
+        Remove-Item -LiteralPath $dir.FullName -Recurse -Force
+    }
+
+    $pycFiles = Get-ChildItem -LiteralPath $DestinationRoot -Recurse -File -Filter '*.pyc' -ErrorAction SilentlyContinue
+    foreach ($file in $pycFiles) {
+        Remove-Item -LiteralPath $file.FullName -Force
+    }
+}
+
+function Remove-PythonBuildArtifacts {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $DestinationRoot)) {
+        return
+    }
+
+    $cacheDirs = Get-ChildItem -LiteralPath $DestinationRoot -Recurse -Directory -Filter '__pycache__' -ErrorAction SilentlyContinue
+    foreach ($dir in $cacheDirs) {
+        Remove-Item -LiteralPath $dir.FullName -Recurse -Force
+    }
+
+    $pycFiles = Get-ChildItem -LiteralPath $DestinationRoot -Recurse -File -Filter '*.pyc' -ErrorAction SilentlyContinue
+    foreach ($file in $pycFiles) {
+        Remove-Item -LiteralPath $file.FullName -Force
+    }
+}
+
 function Remove-PrivateAdapterFiles {
     param(
         [Parameter(Mandatory = $true)]
@@ -531,6 +573,7 @@ foreach ($relativePath in $effectivePublicPaths) {
     )
 }
 
+Remove-PythonBuildArtifacts -DestinationRoot $ExportRoot
 Remove-UnlistedGeneratedDocs -DestinationRoot $ExportRoot -AllowedGeneratedPaths $allowedGeneratedPaths
 Remove-PrivateAdapterFiles -DestinationRoot $ExportRoot
 # Keep exported allowlist output intact until required-path checks run.
