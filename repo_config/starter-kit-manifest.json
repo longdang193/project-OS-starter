@@ -17,6 +17,8 @@
     "scripts/setup_hooks.ps1",
     "scripts/setup_hooks.sh",
     "scripts/publish_public_repo.ps1",
+    "scripts/format_contract_yaml.py",
+    "scripts/generate_planning_lineage.py",
     "scripts/hooks/run_validator.py",
     "scripts/planning_artifact_schema.py",
     "scripts/planning_lineage_support.py",
@@ -59,6 +61,8 @@
     "docs/superpowers/execution_maps",
     "repo_config/planning_artifact_schema.yaml",
     "repo_config/publication-config.json",
+    "scripts/format_contract_yaml.py",
+    "scripts/generate_planning_lineage.py",
     "scripts/validate_repo_contracts.py",
     "tests/test_validate_repo_contracts.py"
   ],
@@ -75,7 +79,6 @@
     "scripts/sync_agent_adapters.ps1",
     "scripts/verify_agent_adapters.ps1",
     "scripts/sync_architecture_docs.py",
-    "scripts/format_contract_yaml.py",
     "tests/test_sync_agent_adapters.py",
     "tests/test_deploy_agent_runtime.py"
   ],

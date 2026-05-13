@@ -25,6 +25,8 @@
     "repo_config/adoption-mode.yaml",
     "repo_config/planning_artifact_schema.yaml",
     "scripts/hooks/run_validator.py",
+    "scripts/format_contract_yaml.py",
+    "scripts/generate_planning_lineage.py",
     "scripts/validate_adoption_shape.py",
     "scripts/validate_agent_metadata_schema.py",
     "scripts/validate_checkpoint_packs.py",
@@ -82,7 +84,6 @@
     "scripts/verify_agent_adapters.ps1",
     "scripts/deploy_agent_runtime.py",
     "scripts/sync_architecture_docs.py",
-    "scripts/format_contract_yaml.py",
     "tests/test_sync_agent_adapters.py",
     "tests/test_deploy_agent_runtime.py"
   ],
