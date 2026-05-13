@@ -49,12 +49,12 @@ Audit report and manifest include bounded fix path, verification commands/result
 - Current publication behavior and scanner flow confirmed from audit evidence.
 
 **Steps:**
-- [ ] Step 1: Add helper assertion that each configured `publicPaths` entry exists and is a file (not directory).
-- [ ] Step 2: Invoke assertion in the `foreach ($relativePath in $publicPaths)` loop before `Copy-PublicPath`.
-- [ ] Step 3: Keep all existing scanner/forbidden/required checks unchanged.
+- [x] Step 1: Add helper assertion that each configured `publicPaths` entry exists and is a file (not directory).
+- [x] Step 2: Invoke assertion in the `foreach ($relativePath in $publicPaths)` loop before `Copy-PublicPath`.
+- [x] Step 3: Keep all existing scanner/forbidden/required checks unchanged.
 
 **Verification:**
-- [ ] `git diff -- scripts/publish_public_repo.ps1` shows only guard function + call-site edits.
+- [x] `git diff -- scripts/publish_public_repo.ps1` shows only guard function + call-site edits.
 
 **Exit Criteria:**
 - Script fails early with explicit message when `publicPaths` contains directory path.
@@ -74,12 +74,12 @@ Audit report and manifest include bounded fix path, verification commands/result
 - Safe local verification path available.
 
 **Steps:**
-- [ ] Step 1: Run publication script with current config and capture success/fail status.
-- [ ] Step 2: Temporarily add directory entry (e.g., `scripts`) to `publicPaths`; run publication; confirm early guard failure.
-- [ ] Step 3: Revert temporary config change; run targeted search for similar broad allowlist patterns and classify `confirmed | likely | risk` with fix-now/defer decisions.
+- [x] Step 1: Run publication script with current config and capture success/fail status.
+- [x] Step 2: Temporarily add directory entry (e.g., `scripts`) to `publicPaths`; run publication; confirm early guard failure.
+- [x] Step 3: Revert temporary config change; run targeted search for similar broad allowlist patterns and classify `confirmed | likely | risk` with fix-now/defer decisions.
 
 **Verification:**
-- [ ] Commands and outputs captured under audit evidence paths.
+- [x] Commands and outputs captured under audit evidence paths.
 
 **Exit Criteria:**
 - Original failure mode blocked at config-guard boundary; no permanent config drift introduced.
@@ -100,12 +100,12 @@ Audit report and manifest include bounded fix path, verification commands/result
 - Python interpreter path available in executing workspace.
 
 **Steps:**
-- [ ] Step 1: Update report sections (`Fix And Verification`, `Risk And Disposition`, `Completion Checklist`) with concrete outcomes.
-- [ ] Step 2: Append new evidence artifact records with SHA256 in `manifest.yaml`.
-- [ ] Step 3: Run audit completeness gate and capture pass/fail details.
+- [x] Step 1: Update report sections (`Fix And Verification`, `Risk And Disposition`, `Completion Checklist`) with concrete outcomes.
+- [x] Step 2: Append new evidence artifact records with SHA256 in `manifest.yaml`.
+- [x] Step 3: Run audit completeness gate and capture pass/fail details.
 
 **Verification:**
-- [ ] `python scripts/audit_check.py docs/superpowers/plans/audit/20260513-1358-publicpath-scan-failure`
+- [x] `python scripts/audit_check.py docs/superpowers/plans/audit/20260513-1358-publicpath-scan-failure`
 
 **Exit Criteria:**
 - Audit gate passes, or exact missing items documented with minimal next action.
