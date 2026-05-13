@@ -126,6 +126,25 @@ function Get-RelativePathCompat {
     return $relative.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
 }
 
+function Assert-PublicPathIsFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$RelativePath
+    )
+
+    $source = Join-Path $SourceRoot $RelativePath
+    if (-not (Test-Path -LiteralPath $source)) {
+        throw "Configured public path does not exist: $RelativePath"
+    }
+
+    $item = Get-Item -LiteralPath $source
+    if ($item.PSIsContainer) {
+        throw "Directory-level publicPaths entry is not allowed: $RelativePath. Use explicit file paths only."
+    }
+}
+
 function Assert-ForbiddenPathAbsent {
     param(
         [Parameter(Mandatory = $true)]
@@ -395,6 +414,7 @@ if ($Push) {
 }
 
 foreach ($relativePath in $publicPaths) {
+    Assert-PublicPathIsFile -SourceRoot $repoRoot -RelativePath $relativePath
     Copy-PublicPath -SourceRoot $repoRoot -DestinationRoot $ExportRoot -RelativePath $relativePath
 }
 

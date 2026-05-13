@@ -1,0 +1,15 @@
+Pattern findings for directory-level allowlist risk:
+
+- confirmed:
+  - scripts/publish_public_repo.ps1 previously allowed directory entries in `publicPaths` and copied recursively.
+  - reproducer confirmed `scripts` triggers guard fail after patch.
+
+- likely:
+  - docs/project_templates/mode-a/repo_config/publication-config.json also defines `publicPaths`; if template consumers add broad directory entries, same failure mode likely.
+
+- risk:
+  - future edits to any publication-config-like file can reintroduce broad directory entries unless additional lint/schema rule added.
+
+Decision:
+- fix now: enforce runtime guard in publish_public_repo.ps1 (implemented).
+- defer: add static lint/schema contract for `publicPaths` file-only policy across template/config surfaces.

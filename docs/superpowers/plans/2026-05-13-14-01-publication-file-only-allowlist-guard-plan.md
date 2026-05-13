@@ -4,15 +4,14 @@ artifact_type: plan
 status: proposed
 template_id: implementation-plan
 name: publication-file-only-allowlist-guard
-parent_thread: 27f7d4ad-ca3d-4fa5-8794-8a5db66c4c93
+parent_thread: starter-adoption-experience.prompt-template-metadata-and-validation
+parent_spec: docs/superpowers/specs/2026-05-03-per-workstream-lifecycle-coverage-and-bootstrap-linkages-spec.md
 targets:
   - scripts/publish_public_repo.ps1
   - docs/superpowers/plans/audit/20260513-1358-publicpath-scan-failure/report.md
   - docs/superpowers/plans/audit/20260513-1358-publicpath-scan-failure/manifest.yaml
-related_features:
-  - publication-boundary-hardening
-related_stages:
-  - publish-public-repo
+related_features: []
+related_stages: []
 ---
 
 ## Goal

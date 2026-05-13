@@ -10,10 +10,8 @@ targets:
   - docs/operating_system/prompt_templates/git-worktree-preflight-and-create-prompt.md
   - docs/operating_system/prompt_templates/README.md
   - docs/operating_system/prompt_templates/multi-worktree-dispatch-prompt.md
-related_features:
-  - repo-operating-system
-related_stages:
-  - none
+related_features: []
+related_stages: []
 ---
 
 ## Goal

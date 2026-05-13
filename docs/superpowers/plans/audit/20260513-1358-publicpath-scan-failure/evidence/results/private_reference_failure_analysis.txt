@@ -1,0 +1,12 @@
+Observed causal chain:
+1) publish_public_repo.ps1 uses publicPaths to copy allowlisted paths into export root.
+2) If publicPaths includes scripts/, scripts/audit_capture.ps1 is exported.
+3) scripts/audit_capture.ps1 contains literal: docs/superpowers/plans/audit/$AuditId.
+4) Assert-NoPrivateReferences scans exported text and matches deny pattern docs/superpowers/.
+5) Script hard-fails with private-only reference found.
+
+Relevant sources:
+- scripts/publish_public_repo.ps1:157-185 (Assert-NoPrivateReferences)
+- scripts/publish_public_repo.ps1:397-399 (copy publicPaths)
+- scripts/publish_public_repo.ps1:417 (assertion call)
+- scripts/audit_capture.ps1:8 (private path literal)
