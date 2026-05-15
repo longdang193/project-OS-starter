@@ -27,6 +27,8 @@
     "scripts/hooks/run_validator.py",
     "scripts/format_contract_yaml.py",
     "scripts/generate_planning_lineage.py",
+    "scripts/brainstorming_capture.ps1",
+    "scripts/new_brainstorming_report.ps1",
     "scripts/validate_adoption_shape.py",
     "scripts/validate_agent_metadata_schema.py",
     "scripts/validate_checkpoint_packs.py",
@@ -46,7 +48,8 @@
     "tests/test_validate_prompt_ladder.py",
     "tests/test_validate_repo_config.py",
     "tests/test_validate_repo_contracts.py",
-    "tests/test_validate_template_required_sections.py"
+    "tests/test_validate_template_required_sections.py",
+    "docs/superpowers/plans/brainstorming/README.md"
   ],
   "requiredEmptyDirectories": [
     "docs/superpowers/plans",
