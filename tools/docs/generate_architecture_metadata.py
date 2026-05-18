@@ -26,6 +26,7 @@ tags:
   - docs
   - lineage
   - metadata
+distribution_tier: starter_kit
 lifecycle:
   status: active
 """

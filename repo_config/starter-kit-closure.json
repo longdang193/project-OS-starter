@@ -26,6 +26,8 @@
     "repo_config/planning_artifact_schema.yaml",
     "scripts/hooks/run_validator.py",
     "scripts/format_contract_yaml.py",
+    "scripts/sync_architecture_docs.py",
+    "scripts/audit_architecture_linkage.py",
     "scripts/generate_planning_lineage.py",
     "scripts/brainstorming_capture.ps1",
     "scripts/new_brainstorming_report.ps1",
@@ -43,6 +45,9 @@
     "scripts/validate_template_required_sections.py",
     "scripts/validator_policy.py",
     "tests/test_validate_adoption_shape.py",
+    "tests/test_architecture_metadata_generation.py",
+    "tests/test_architecture_linkage_audit.py",
+    "tests/test_format_contract_yaml.py",
     "tests/test_validate_agent_metadata_schema.py",
     "tests/test_validate_planning_lifecycle.py",
     "tests/test_validate_prompt_ladder.py",
@@ -86,7 +91,6 @@
     "scripts/sync_agent_adapters.ps1",
     "scripts/verify_agent_adapters.ps1",
     "scripts/deploy_agent_runtime.py",
-    "scripts/sync_architecture_docs.py",
     "tests/test_sync_agent_adapters.py",
     "tests/test_deploy_agent_runtime.py"
   ],
@@ -108,6 +112,10 @@
     {
       "path": "repo_config/starter-kit-manifest.json",
       "change": "Dropped broad docs/superpowers copy and replaced it with empty starter directories plus targeted operating-system omissions."
+    },
+    {
+      "path": "repo_config/starter-kit-manifest.json",
+      "change": "Restored sync_architecture_docs dependency chain (script, generator, audit script, and architecture tests) so shipped prompts/skills referencing architecture sync remain executable in kit."
     }
   ]
 }

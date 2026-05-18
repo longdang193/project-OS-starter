@@ -65,6 +65,7 @@ Use in this order:
 9. [thread-closeout-readiness-prompt.md](./thread-closeout-readiness-prompt.md)
 10. [workstream-closeout-readiness-prompt.md](./workstream-closeout-readiness-prompt.md)
 11. [roadmap-closeout-readiness-prompt.md](./roadmap-closeout-readiness-prompt.md) (if roadmap closure is in scope)
+12. [next-actions-toward-closure-prompt.md](./next-actions-toward-closure-prompt.md) (when reconciliation passed and final merge/push execution is needed)
 
 ```mermaid
 flowchart TD
@@ -142,6 +143,7 @@ Use in this order:
 3. [roadmap-closeout-readiness-prompt.md](./roadmap-closeout-readiness-prompt.md)
 4. [single-lane-merge-and-reconcile-prompt.md](./single-lane-merge-and-reconcile-prompt.md) (for single-lane PR/merge + reconciliation)
 5. [multi-worktree-merge-and-reconcile-prompt.md](./multi-worktree-merge-and-reconcile-prompt.md) (for multi-lane PR/merge + reconciliation)
+6. [next-actions-toward-closure-prompt.md](./next-actions-toward-closure-prompt.md) (for deterministic final closure action execution)
 
 ## Reconciliation Ladder (After Roadmap Format Change)
 
@@ -170,6 +172,7 @@ Use in this order:
 - [git-worktree-preflight-and-create-prompt.md](./git-worktree-preflight-and-create-prompt.md)
 - [single-lane-merge-and-reconcile-prompt.md](./single-lane-merge-and-reconcile-prompt.md)
 - [multi-worktree-merge-and-reconcile-prompt.md](./multi-worktree-merge-and-reconcile-prompt.md)
+- [next-actions-toward-closure-prompt.md](./next-actions-toward-closure-prompt.md)
 
 ## Live Run Helpers
 
