@@ -111,3 +111,56 @@ def test_schema_fails_when_required_fields_missing() -> None:
     finally:
         rmtree(root, ignore_errors=True)
 
+def test_learning_materials_skill_requires_blank_line_before_h2() -> None:
+    root = _mkroot()
+    try:
+        _write(
+            root / ".agents/skills/skill-creating-learning-materials/SKILL.md",
+            """---
+name: skill-creating-learning-materials
+description: demo
+allowed-tools: []
+hooks:
+  pre: []
+  post: []
+required_reads: []
+required_outputs: []
+tags: []
+---
+# Creating Learning Materials
+## No Blank Before This Heading
+body
+""",
+        )
+        findings = VALIDATOR.validate(root)
+        assert any("empty line before" in f.message for f in findings)
+    finally:
+        rmtree(root, ignore_errors=True)
+
+def test_learning_materials_skill_allows_blank_line_before_h2() -> None:
+    root = _mkroot()
+    try:
+        _write(
+            root / ".agents/skills/skill-creating-learning-materials/SKILL.md",
+            """---
+name: skill-creating-learning-materials
+description: demo
+allowed-tools: []
+hooks:
+  pre: []
+  post: []
+required_reads: []
+required_outputs: []
+tags: []
+---
+# Creating Learning Materials
+
+## Blank Before This Heading
+body
+""",
+        )
+        findings = VALIDATOR.validate(root)
+        assert not any("empty line before" in f.message for f in findings)
+    finally:
+        rmtree(root, ignore_errors=True)
+

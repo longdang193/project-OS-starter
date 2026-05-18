@@ -55,6 +55,15 @@ def _extract_frontmatter(path: Path) -> dict[str, Any] | None:
         return None
     return payload
 
+def _extract_body_without_frontmatter(path: Path) -> str:
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    if not text.startswith("---"):
+        return text
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return text
+    return parts[2]
+
 
 def _require_list(meta: dict[str, Any], key: str, findings: list[Finding], rel: str) -> None:
     value = meta.get(key)
@@ -115,6 +124,20 @@ def validate(root: Path) -> list[Finding]:
         _require_list(meta, "required_outputs", findings, rel)
         _require_list(meta, "tags", findings, rel)
         _require_resolved_skill_refs(meta, "related_skills", findings, rel, known_skills)
+        if path.parent.name == "skill-creating-learning-materials":
+            body_lines = _extract_body_without_frontmatter(path).splitlines()
+            for idx, line in enumerate(body_lines):
+                if not line.startswith("## "):
+                    continue
+                if idx == 0 or body_lines[idx - 1].strip():
+                    findings.append(
+                        Finding(
+                            "agent_metadata_schema_error",
+                            rel,
+                            "each `##` heading must have an empty line before it.",
+                        )
+                    )
+                    break
 
     # Rules
     rules_root = root / "docs" / "operating_system" / "rules"
