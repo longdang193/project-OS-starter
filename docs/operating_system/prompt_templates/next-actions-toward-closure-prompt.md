@@ -61,11 +61,19 @@ If all gates pass:
    - `git checkout main`
    - `git pull --ff-only`
    - `git merge --ff-only <lane-branch>`
-   - If fast-forward is not possible: stop and return reconciliation-required notice.
-5. Run post-merge checks on `main` (same commands).
-6. Push:
+   - If fast-forward is not possible:
+     - stop automatic merge,
+     - return `reconciliation-required` with exact conflicting files and cause,
+     - propose one minimal resolution plan (rebase lane onto `main` or bounded non-ff merge with justification),
+     - require explicit approval before executing conflict resolution or non-ff merge.
+5. Resolution policy:
+   - Do not auto-resolve semantic conflicts.
+   - Do not continue to push while conflicts or reconciliation blockers remain.
+   - After approved resolution, rerun pre-merge checks before merge/push.
+6. Run post-merge checks on `main` (same commands).
+7. Push:
    - `git push origin main`
-7. Produce final closure report with:
+8. Produce final closure report with:
    - completed actions,
    - verification outcomes,
    - merge/push proof,

@@ -164,6 +164,7 @@ Use in this order:
 - [workstream-alignment-review-prompt.md](./workstream-alignment-review-prompt.md)
 - [brainstorming-detailed-report-generation-prompt.md](./brainstorming-detailed-report-generation-prompt.md)
 - [roadmap-gap-prompt.md](./roadmap-gap-prompt.md)
+- [refactor-ssot-symmetry-invariance-prompt.md](./refactor-ssot-symmetry-invariance-prompt.md)
 - [parallel-bounded-change-planning-prompt.md](./parallel-bounded-change-planning-prompt.md)
 - [planning-readiness-gate-prompt.md](./planning-readiness-gate-prompt.md)
 - [deliverable-verdict-gate-prompt.md](./deliverable-verdict-gate-prompt.md)
