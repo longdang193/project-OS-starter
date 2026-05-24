@@ -68,6 +68,13 @@ If all gates pass:
      - require explicit approval before executing conflict resolution or non-ff merge.
 5. Resolution policy:
    - Do not auto-resolve semantic conflicts.
+   - Do not use stash as an untracked temporary resolution path (`stash-and-forget` is prohibited).
+   - If stash is used intentionally, closure is blocked until stash reconciliation proof is recorded:
+     - stash entry id(s),
+     - pop/apply result,
+     - resolved files,
+     - verification rerun result,
+     - confirmation that no lane-related stash remains (or explicit tracked follow-up).
    - Do not continue to push while conflicts or reconciliation blockers remain.
    - After approved resolution, rerun pre-merge checks before merge/push.
 6. Run post-merge checks on `main` (same commands).

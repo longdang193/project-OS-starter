@@ -68,11 +68,17 @@ Please:
    - open/update PR
    - merge now
    - hold/defer with reason
+   - do not use stash as a closure shortcut; no `stash-and-forget` flow is allowed
 6. after merge, run required post-merge verification and report impact
 7. reconcile lifecycle/status/evidence:
    - thread/workstream status updates
    - checkpoint/result-pack evidence linkage
    - unresolved risk log
+   - if stash was used during conflict resolution, require explicit stash reconciliation evidence:
+     - stash entry id(s)
+     - pop/apply outcome
+     - resolved files and verification rerun proof
+     - zero remaining stash entries for this lane or explicit tracked follow-up item
 8. if blockers remain, return the minimal prerequisite action needed to unblock
 9. return one selected next action and why alternatives are not yet eligible
    - if closure criteria are already satisfied, select `close now` and explain why further actions are not eligible
