@@ -81,8 +81,15 @@ When the user asks to save or create learning artifacts, write one Markdown file
 per question under:
 
 ```text
-docs/learning/
+C:\Users\HOANG PHI LONG DANG\OneDrive\OBSIDIAN 24 09 01\24 09 01 obsidian-go-obsidian_v.0.3.1\<project_slug>\
 ```
+
+Choose `<project_slug>`:
+
+- If user supplies `[project]` (or explicit project name), use that.
+- Else use current repo folder name from working directory.
+- Sanitize: lowercase ASCII, spaces to `-`, remove `* " \ / < > : | ?`, trim.
+
 
 Use this filename format:
 
@@ -94,6 +101,7 @@ Rules:
 
 - Use the current local date and hour.
 - Use one question per file.
+- Create `<project_slug>` folder if missing.
 - Start each file with the required frontmatter from the templates reference.
 - Include validator-friendly metadata in frontmatter: `question_type`,
   `learning_mode`, `bloom_level`, and `source_scope`.

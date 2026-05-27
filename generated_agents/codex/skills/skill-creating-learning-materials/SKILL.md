@@ -113,6 +113,8 @@ Rules:
 - Keep `<title>` lowercase, ASCII, hyphenated, and descriptive in the filename.
 - Do not create a file for quick inline examples or brief explanations.
 - Card bodies inside Markdown still use the question templates.
+- Card-body formatting rule: include exactly one empty line before each `##`
+  heading.
 
 ## References
 
