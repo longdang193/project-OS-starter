@@ -54,6 +54,13 @@ Before offering merge/PR/cleanup options, read:
 - If planning artifacts, bounded thread state, or result-pack evidence changed, name that closure evidence explicitly.
 - If generated refresh was required by source changes, merge/closeout is blocked until refreshed evidence is available.
 - If qualifying failures occurred, merge/closeout is blocked until required audit bundle exists (or explicit allowed bypass is recorded) per `docs/operating_system/rules/audit-evidence-mandate-rule.md`.
+- Do not use stash as a closeout shortcut. `stash-and-forget` is prohibited.
+- If stash is used during conflict handling, closeout is blocked until stash reconciliation evidence is recorded:
+  - stash entry id(s)
+  - pop/apply outcome
+  - resolved files
+  - verification rerun evidence
+  - no remaining lane-related stash entries (or explicit tracked follow-up)
 
 ## The Process
 
