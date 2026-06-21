@@ -20,6 +20,7 @@ tags:
 - skill-writing-plans
 required_outputs:
 - docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md
+distribution_tier: starter_kit
 ---
 
 <!--
@@ -103,10 +104,15 @@ Use GitNexus when plan quality depends on cross-file dependency awareness.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
 - If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
 
+## Planning Standard: Structural Symmetry
+
+When breaking down tasks, ensure the plan implements shared abstractions rather than redundant, parallel logic. Task steps should consolidate equivalent logic and eliminate unnecessary special cases unless their operational difference is strictly required.
+
 ## Preconditions
 
 - triage exists (`skill-planning-dispatch`)
 - design context exists (approved detailed spec or approved execution-map context)
+- if approved spec is missing, stop and route to `skill-spec-drafting` or `/workflow-prompt-metadata-spec`
 - scope is bounded enough for implementation
 
 ## Plan Output
@@ -152,11 +158,12 @@ Rules:
 ## Minimal Workflow
 
 1. confirm preconditions
-2. complete the pre-write contract check
-3. map files/tests/docs affected
-4. write small testable tasks or waves using the standardized plan template shape
-5. include validation commands and rollback notes where needed
-6. hand off to `skill-executing-plans` (or `skill-subagent-driven-development`)
+2. if approved spec missing, route to `skill-spec-drafting` or `/workflow-prompt-metadata-spec` and stop
+3. complete the pre-write contract check
+4. map files/tests/docs affected
+5. write small testable tasks or waves using the standardized plan template shape
+6. include validation commands and rollback notes where needed
+7. hand off to `skill-executing-plans` (or `skill-subagent-driven-development`)
 
 ## Guardrails
 

@@ -24,7 +24,7 @@ distribution_tier: starter_kit
 
 ## Overview
 
-Load the plan, review it critically, execute task by task, update source-of-truth docs as work lands, then finish the branch.
+Load the plan, review it critically, execute task by task, update source-of-truth docs as work lands, then close out the branch through the verification gate.
 
 **Announce at start:** "I'm using the skill-executing-plans skill to implement this plan."
 
@@ -244,8 +244,8 @@ If stall detected:
 
 After code, docs, and generated discovery are all updated and verified:
 
-- Announce: "I'm using the skill-finishing-a-development-branch skill to complete this work."
-- **REQUIRED SUB-SKILL:** Use `superpowers:skill-finishing-a-development-branch`
+- Announce: "I'm using the skill-verification-before-completion skill to complete this work."
+- **REQUIRED SUB-SKILL:** Use `superpowers:skill-verification-before-completion`
 - Follow that skill to verify tests, present options, and complete the branch
 
 ---
@@ -347,4 +347,4 @@ Return to review when:
 
 - `superpowers:skill-using-git-worktrees` — set up isolated workspace before starting
 - `superpowers:skill-writing-plans` — creates the plan
-- `superpowers:skill-finishing-a-development-branch` — completes the work after execution
+- `superpowers:skill-verification-before-completion` — verifies and closes out the work after execution

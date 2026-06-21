@@ -18,6 +18,8 @@ PLATFORM_TARGETS = {
     "antigravity": Path.home() / ".gemini" / "antigravity",
 }
 
+SHARED_SKILLS_TARGET = Path.home() / ".agents" / "skills"
+
 TARGET_ALIASES = {
     "gemini": "antigravity",
 }
@@ -331,42 +333,131 @@ def _looks_generated(path: Path) -> bool:
     return "<!--" in text[:256] and "GENERATED FILE - DO NOT EDIT" in text[:512]
 
 
-def _runtime_owned_files(generated_root: Path, target_root: Path) -> set[Path]:
+RUNTIME_DEPLOY_EXCLUDE_PREFIXES = {
+    "codex": ("skills/",),
+}
+
+
+def _runtime_deploy_exclude_prefixes(platform: str) -> tuple[str, ...]:
+    return RUNTIME_DEPLOY_EXCLUDE_PREFIXES.get(platform, ())
+
+
+def _runtime_path_is_excluded(platform: str, relative_path: PurePosixPath) -> bool:
+    relative_text = relative_path.as_posix()
+    for prefix in _runtime_deploy_exclude_prefixes(platform):
+        normalized_prefix = prefix.rstrip("/")
+        if relative_text == normalized_prefix or relative_text.startswith(f"{normalized_prefix}/"):
+            return True
+    return False
+
+
+def _iter_generated_runtime_files(platform: str, generated_root: Path) -> list[Path]:
+    return [
+        src
+        for src in generated_root.rglob("*")
+        if src.is_file()
+        and not _runtime_path_is_excluded(
+            platform,
+            PurePosixPath(src.relative_to(generated_root).as_posix()),
+        )
+    ]
+
+
+def _runtime_owned_files(
+    generated_root: Path,
+    target_root: Path,
+    platform: str = "",
+) -> set[Path]:
+    return {
+        target_root / src.relative_to(generated_root)
+        for src in _iter_generated_runtime_files(platform, generated_root)
+    }
+
+
+def _runtime_excluded_managed_files(
+    generated_root: Path,
+    target_root: Path,
+    platform: str = "",
+) -> set[Path]:
     return {
         target_root / src.relative_to(generated_root)
         for src in generated_root.rglob("*")
         if src.is_file()
+        and _runtime_path_is_excluded(
+            platform,
+            PurePosixPath(src.relative_to(generated_root).as_posix()),
+        )
     }
 
 
-def _runtime_stale_generated_files(generated_root: Path, target_root: Path) -> list[Path]:
-    owned_files = _runtime_owned_files(generated_root, target_root)
+def _runtime_managed_roots(generated_root: Path, target_root: Path) -> set[Path]:
+    roots: set[Path] = set()
+    for src in generated_root.rglob("*"):
+        if not src.is_file():
+            continue
+        relative = src.relative_to(generated_root)
+        if relative.parts[0] == "skills" and len(relative.parts) > 1:
+            roots.add(target_root / relative.parts[0] / relative.parts[1])
+            continue
+        roots.add(target_root / relative.parts[0])
+    return roots
+
+
+def _runtime_should_ignore_existing_path(platform: str, target_root: Path, candidate: Path) -> bool:
+    relative = candidate.relative_to(target_root).as_posix()
+    if platform == "codex":
+        if relative == "rules/default.rules":
+            return True
+        if relative.startswith("skills/.system/"):
+            return True
+    return False
+
+
+def _runtime_stale_generated_files(
+    generated_root: Path,
+    target_root: Path,
+    platform: str = "",
+) -> list[Path]:
+    owned_files = _runtime_owned_files(generated_root, target_root, platform=platform)
+    excluded_managed_files = _runtime_excluded_managed_files(
+        generated_root,
+        target_root,
+        platform=platform,
+    )
     stale: list[Path] = []
-    for candidate in target_root.rglob("*"):
-        if not candidate.is_file():
+    for managed_root in _runtime_managed_roots(generated_root, target_root):
+        if managed_root.is_file():
+            candidates = [managed_root]
+        elif managed_root.is_dir():
+            candidates = [path for path in managed_root.rglob("*") if path.is_file()]
+        else:
             continue
-        if candidate in owned_files:
-            continue
-        try:
-            candidate.relative_to(target_root / ".backups")
-            continue
-        except ValueError:
-            pass
-        if not _looks_generated(candidate):
-            continue
-        stale.append(candidate)
+        for candidate in candidates:
+            if candidate in owned_files:
+                continue
+            try:
+                candidate.relative_to(target_root / ".backups")
+                continue
+            except ValueError:
+                pass
+            if candidate in excluded_managed_files:
+                stale.append(candidate)
+                continue
+            if _runtime_should_ignore_existing_path(platform, target_root, candidate):
+                continue
+            if not _looks_generated(candidate):
+                stale.append(candidate)
     return stale
-
-
 def _check_platform(
     generated_root: Path,
     target_root: Path,
     *,
     repo_root: Path,
     rewrite_mode: str,
+    platform: str = "",
 ) -> list[str]:
     issues: list[str] = []
-    generated_files = [p for p in generated_root.rglob("*") if p.is_file()]
+    generated_files = _iter_generated_runtime_files(platform, generated_root)
     for src in generated_files:
         rel = src.relative_to(generated_root)
         dst = target_root / rel
@@ -381,7 +472,7 @@ def _check_platform(
             rewrite_mode=rewrite_mode,
         ) != _read_text(dst):
             issues.append(f"Deployed drift: {dst.as_posix()}")
-    for stale in _runtime_stale_generated_files(generated_root, target_root):
+    for stale in _runtime_stale_generated_files(generated_root, target_root, platform=platform):
         issues.append(f"Stale deployed file: {stale.as_posix()}")
     return issues
 
@@ -393,11 +484,12 @@ def _plan_deploy(
     repo_root: Path,
     force: bool,
     rewrite_mode: str,
+    platform: str = "",
 ) -> tuple[list[str], list[str], list[tuple[Path | None, Path, str | None]]]:
     changes: list[str] = []
     issues: list[str] = []
     pairs: list[tuple[Path | None, Path, str | None]] = []
-    generated_files = [p for p in generated_root.rglob("*") if p.is_file()]
+    generated_files = _iter_generated_runtime_files(platform, generated_root)
     for src in generated_files:
         rel = src.relative_to(generated_root)
         dst = target_root / rel
@@ -412,13 +504,15 @@ def _plan_deploy(
             if rendered == _read_text(dst):
                 continue
             if not force and not _looks_generated(dst):
-                issues.append(f"Refusing to overwrite non-generated runtime file without --force: {dst.as_posix()}")
+                issues.append(
+                    f"Refusing to overwrite non-generated runtime file without --force: {dst.as_posix()}"
+                )
                 continue
             changes.append(f"update: {dst.as_posix()}")
         else:
             changes.append(f"create: {dst.as_posix()}")
         pairs.append((src, dst, rendered))
-    for stale in _runtime_stale_generated_files(generated_root, target_root):
+    for stale in _runtime_stale_generated_files(generated_root, target_root, platform=platform):
         changes.append(f"remove: {stale.as_posix()}")
         pairs.append((None, stale, None))
     return changes, issues, pairs
@@ -431,11 +525,126 @@ def _resolved_targets(raw_target: str) -> list[str]:
     return [canonical]
 
 
+def _repo_skill_names(skills_root: Path) -> set[str]:
+    return {
+        path.name
+        for path in skills_root.iterdir()
+        if path.is_dir() and (path / "SKILL.md").exists()
+    }
+
+
+def _shared_skill_owned_files(skills_root: Path, target_root: Path) -> set[Path]:
+    owned: set[Path] = set()
+    for skill_name in _repo_skill_names(skills_root):
+        for src in (skills_root / skill_name).rglob("*"):
+            if not src.is_file():
+                continue
+            owned.add(target_root / skill_name / src.relative_to(skills_root / skill_name))
+    return owned
+
+
+def _shared_skill_stale_files(skills_root: Path, target_root: Path) -> list[Path]:
+    stale: list[Path] = []
+    skill_names = _repo_skill_names(skills_root)
+    owned_files = _shared_skill_owned_files(skills_root, target_root)
+    for skill_name in skill_names:
+        deployed_root = target_root / skill_name
+        if not deployed_root.exists():
+            continue
+        for candidate in deployed_root.rglob("*"):
+            if candidate.is_file() and candidate not in owned_files:
+                stale.append(candidate)
+    return stale
+
+
+def _check_shared_skills(skills_root: Path, target_root: Path) -> list[str]:
+    issues: list[str] = []
+    for skill_name in sorted(_repo_skill_names(skills_root)):
+        for src in (skills_root / skill_name).rglob("*"):
+            if not src.is_file():
+                continue
+            dst = target_root / skill_name / src.relative_to(skills_root / skill_name)
+            if not dst.exists():
+                issues.append(f"Missing deployed shared skill file: {dst.as_posix()}")
+                continue
+            if _read_text(src) != _read_text(dst):
+                issues.append(f"Deployed shared skill drift: {dst.as_posix()}")
+    for stale in _shared_skill_stale_files(skills_root, target_root):
+        issues.append(f"Stale deployed shared skill file: {stale.as_posix()}")
+    return issues
+
+
+def _plan_shared_skill_deploy(
+    skills_root: Path,
+    target_root: Path,
+    *,
+    force: bool,
+) -> tuple[list[str], list[str], list[tuple[Path | None, Path, str | None]]]:
+    changes: list[str] = []
+    issues: list[str] = []
+    pairs: list[tuple[Path | None, Path, str | None]] = []
+    for skill_name in sorted(_repo_skill_names(skills_root)):
+        for src in (skills_root / skill_name).rglob("*"):
+            if not src.is_file():
+                continue
+            dst = target_root / skill_name / src.relative_to(skills_root / skill_name)
+            rendered = _read_text(src)
+            if dst.exists():
+                if rendered == _read_text(dst):
+                    continue
+                if not force and not _looks_generated(dst):
+                    issues.append(
+                        f"Refusing to overwrite non-generated shared skill file without --force: {dst.as_posix()}"
+                    )
+                    continue
+                changes.append(f"update: {dst.as_posix()}")
+            else:
+                changes.append(f"create: {dst.as_posix()}")
+            pairs.append((src, dst, rendered))
+    for stale in _shared_skill_stale_files(skills_root, target_root):
+        changes.append(f"remove: {stale.as_posix()}")
+        pairs.append((None, stale, None))
+    return changes, issues, pairs
+
+
 def run() -> int:
     args = parse_args()
     root = repo_root()
     targets = _resolved_targets(args.target)
     issues: list[str] = []
+    shared_skills_root = root / ".agents" / "skills"
+    if args.check:
+        issues.extend(_check_shared_skills(shared_skills_root, SHARED_SKILLS_TARGET))
+    else:
+        changes, plan_issues, pairs = _plan_shared_skill_deploy(
+            shared_skills_root,
+            SHARED_SKILLS_TARGET,
+            force=args.force,
+        )
+        issues.extend(plan_issues)
+        if not plan_issues:
+            if args.dry_run:
+                print(f"[dry-run] shared skills -> {SHARED_SKILLS_TARGET.as_posix()}")
+                for change in changes:
+                    print(f"- {change}")
+            else:
+                backup_root: Path | None = None
+                if args.backup:
+                    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+                    backup_root = SHARED_SKILLS_TARGET / ".backups" / stamp
+                for src, dst, rendered in pairs:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    if backup_root is not None and dst.exists():
+                        backup_path = backup_root / dst.relative_to(SHARED_SKILLS_TARGET)
+                        backup_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(dst, backup_path)
+                    if src is None:
+                        dst.unlink(missing_ok=True)
+                        continue
+                    dst.write_text(rendered + "\n", encoding="utf-8")
+                print(
+                    f"Deployed shared skills -> {SHARED_SKILLS_TARGET.as_posix()} ({len(pairs)} changed)"
+                )
     for platform in targets:
         generated_root = root / "generated_agents" / platform
         if not generated_root.exists():
@@ -449,6 +658,7 @@ def run() -> int:
                     target_root,
                     repo_root=root,
                     rewrite_mode=args.rewrite_mode,
+                    platform=platform,
                 )
             )
             continue
@@ -458,6 +668,7 @@ def run() -> int:
             repo_root=root,
             force=args.force,
             rewrite_mode=args.rewrite_mode,
+            platform=platform,
         )
         issues.extend(plan_issues)
         if plan_issues:

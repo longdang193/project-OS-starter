@@ -1,15 +1,5 @@
 [
   {
-    "source": "docs/operating_system/templates/agents/root-AGENTS.template.md",
-    "destination": "AGENTS.md",
-    "prefix": "#"
-  },
-  {
-    "source": "docs/operating_system/templates/agents/docs-AGENTS.template.md",
-    "destination": "docs/AGENTS.md",
-    "prefix": "#"
-  },
-  {
     "source": "docs/operating_system/rules/command-execution-rule.md",
     "destination": ".codex/rules/command-execution.rules",
     "prefix": "#"

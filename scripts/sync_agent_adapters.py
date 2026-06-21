@@ -199,48 +199,6 @@ def _extract_title_and_summary(path: Path, *, body: str | None = None) -> tuple[
     return title, summary.rstrip(".") + "."
 
 
-def _workflow_skill_text(src: Path) -> str:
-    raw = src.read_text(encoding="utf-8")
-    normalized = raw.replace("\r\n", "\n")
-    meta: dict[str, object] = {}
-    body = _strip_markdown_frontmatter(raw).strip()
-    if normalized.startswith("---\n"):
-        parts = normalized.split("---\n", 2)
-        if len(parts) >= 3:
-            payload = yaml.safe_load(parts[1]) or {}
-            if isinstance(payload, dict):
-                meta = dict(payload)
-            body = parts[2].lstrip("\n").strip()
-    title, summary = _extract_title_and_summary(src, body=body)
-    skill_name = _strip_extension(src.name)
-    title_heading = f"# {title}"
-    if body.startswith(title_heading):
-        body = body[len(title_heading) :].lstrip("\n")
-    meta["name"] = str(meta.get("name") or skill_name)
-    meta["description"] = str(meta.get("description") or summary)
-    allowed = meta.get("allowed-tools")
-    if not isinstance(allowed, list):
-        meta["allowed-tools"] = []
-    required_reads = meta.get("required_reads")
-    if not isinstance(required_reads, list):
-        meta["required_reads"] = []
-    required_outputs = meta.get("required_outputs")
-    if not isinstance(required_outputs, list):
-        meta["required_outputs"] = []
-    related_skills = meta.get("related_skills")
-    if related_skills is not None and not isinstance(related_skills, list):
-        meta["related_skills"] = []
-    tags = meta.get("tags")
-    if not isinstance(tags, list):
-        tags = []
-    if "workflow-skill" not in tags:
-        tags.append("workflow-skill")
-    meta["tags"] = tags
-    frontmatter = yaml.safe_dump(meta, sort_keys=False, allow_unicode=False).strip()
-    heading = f"# {title}\n\n"
-    return f"---\n{frontmatter}\n---\n\n{heading}{body}\n"
-
-
 def _render_manifest(root: Path, platform: str) -> str:
     rules_root = root / "docs" / "operating_system" / "rules"
     workflows_root = root / "docs" / "operating_system" / "workflows"
@@ -260,13 +218,12 @@ def _render_manifest(root: Path, platform: str) -> str:
         title, summary = _extract_title_and_summary(path)
         lines.append(f"- `{path.name}` — {summary}")
         lines.append(f"  - Source: `docs/operating_system/rules/{path.name}`")
-    lines.extend(["", "### Workflow-Skills Manifest"])
+    lines.extend(["", "### Workflows Manifest"])
     for path in sorted(workflows_root.glob("*.md")):
-        title, summary = _extract_title_and_summary(path)
-        skill_name = _strip_extension(path.name)
-        lines.append(f"- `{skill_name}` — {summary}")
+        _, summary = _extract_title_and_summary(path)
+        workflow_name = _strip_extension(path.name)
+        lines.append(f"- `{workflow_name}` — {summary}")
         lines.append(f"  - Source: `docs/operating_system/workflows/{path.name}`")
-        lines.append(f"  - Generated skill: `skills/{skill_name}/SKILL.md`")
     lines.extend(["", "### Native Skills Manifest"])
     for path in sorted(skills_root.glob("*/SKILL.md")):
         title, summary = _extract_title_and_summary(path)
@@ -277,12 +234,12 @@ def _render_manifest(root: Path, platform: str) -> str:
     if platform == "codex":
         lines.extend([
             "- `AGENTS.md` is the authoritative Codex root instruction surface.",
-            "- Rules are summarized here; workflow runtime invocation flows through skill surfaces.",
+            "- Rules are summarized here; workflow invocation stays anchored in workflow docs and prompt surfaces.",
         ])
     elif platform == "claude":
         lines.extend([
             "- `CLAUDE.md` complements provider-native rules and skills surfaces.",
-            "- Workflows are deployed as skills for consistent invocation.",
+            "- Workflow procedures stay documented under `docs/operating_system/workflows/` rather than deploying as runtime skills.",
         ])
     else:
         lines.extend([
@@ -541,13 +498,6 @@ def _is_optional_provider_settings_source(root: Path, source_path: Path) -> bool
         adoption_mode != "starter_method_only" and repo_role == "source_owner"
     )
     return not requires_source_owned_provider_settings
-
-
-def _expected_workflow_skill_paths(src_root: Path, pattern: str) -> set[Path]:
-    return {
-        Path(_strip_extension(path.name)) / "SKILL.md"
-        for path in _iter_matching_files(src_root, pattern)
-    }
 
 
 def _preserve_paths_for_destination(
@@ -812,13 +762,6 @@ def run() -> int:
                     destination_preserve_paths[dst_root].update(
                         _expected_codex_rules_paths(src_root, pattern, dst_root)
                     )
-            elif mapping.mode == "render_workflow_skills_tree":
-                src_root = root / mapping.source
-                if src_root.exists():
-                    pattern = mapping.include_glob or "*.md"
-                    destination_preserve_paths[dst_root].update(
-                        _expected_workflow_skill_paths(src_root, pattern)
-                    )
 
     destination_roots = list(destination_preserve_paths.keys())
     for dst_root in destination_roots:
@@ -848,15 +791,6 @@ def run() -> int:
             elif mapping.mode == "render_codex_rules_tree":
                 issues.extend(
                     _sync_codex_rules_tree(
-                        root,
-                        mapping,
-                        check=args.check,
-                        preserve_paths=preserve_paths,
-                    )
-                )
-            elif mapping.mode == "render_workflow_skills_tree":
-                issues.extend(
-                    _sync_workflow_skills_tree(
                         root,
                         mapping,
                         check=args.check,

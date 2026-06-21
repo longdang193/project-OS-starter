@@ -1,8 +1,8 @@
 ---
 name: skill-verification-before-completion
-description: Use when about to claim work is complete, fixed, or passing, before committing
-  or creating PRs - requires running verification commands and confirming output before
-  making any success claims; evidence before assertions always
+description: Use when about to claim work is complete, fixed, or passing, or when
+  preparing to commit, merge, or open a PR - requires fresh verification evidence
+  before completion or branch-closeout claims
 allowed-tools: []
 hooks:
   pre:
@@ -109,6 +109,33 @@ If the task involved meaningful failures, repeated retries, or notable debugging
 - if no, say explicitly why the failure was too task-local, one-off, or already captured elsewhere
 
 Do not let important failures disappear just because the final verification now passes.
+
+## Branch Closeout Options
+
+When verification succeeds and implementation is complete, this skill also owns branch-closeout routing.
+
+After evidence is current:
+
+1. Determine base branch.
+2. Present only eligible next actions:
+   - open or update PR
+   - merge now
+   - keep branch open with explicit reason
+   - clean up local branch/worktree after merge when safe
+3. Block merge or PR claims if verification, audit, lifecycle, or stash-reconciliation gates are incomplete.
+4. Name the exact next action taken and the proof that made it eligible.
+
+## Branch Closeout Gate
+
+Before offering merge, PR, push, or cleanup options, confirm:
+
+- fresh verification evidence exists for the lane
+- required doc and generated-surface sync is complete
+- required audit bundle exists for qualifying failures, or allowed bypass is explicit
+- no unresolved stash-based reconciliation remains
+- branch target and merge path are identified
+
+If any gate fails, stop at the blocking report rather than presenting closeout as ready.
 
 ## Common Failures
 

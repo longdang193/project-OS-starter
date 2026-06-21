@@ -93,46 +93,33 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
 - `python-contracts-rule.md` — Enforce Python contract/style/type expectations for generated and edited Python files.
   - Source: `docs/operating_system/rules/python-contracts-rule.md`
 
-### Workflow-Skills Manifest
+### Workflows Manifest
 - `workflow-drift-detection-and-reconciliation` — Run the drift detection and reconciliation workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
-  - Generated skill: `skills/workflow-drift-detection-and-reconciliation/SKILL.md`
 - `workflow-live-run-closeout` — Run the live run closeout workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-live-run-closeout.md`
-  - Generated skill: `skills/workflow-live-run-closeout/SKILL.md`
 - `workflow-live-run-debugging` — Run the live run debugging workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-live-run-debugging.md`
-  - Generated skill: `skills/workflow-live-run-debugging/SKILL.md`
 - `workflow-live-run-execution` — Run the live run execution workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-live-run-execution.md`
-  - Generated skill: `skills/workflow-live-run-execution/SKILL.md`
 - `workflow-live-run-preflight-check` — Run the live run preflight check workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-live-run-preflight-check.md`
-  - Generated skill: `skills/workflow-live-run-preflight-check/SKILL.md`
 - `workflow-live-run-scenario-planning` — Run the live run scenario planning workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-live-run-scenario-planning.md`
-  - Generated skill: `skills/workflow-live-run-scenario-planning/SKILL.md`
 - `workflow-live-run-system` — Run the live run system workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-live-run-system.md`
-  - Generated skill: `skills/workflow-live-run-system/SKILL.md`
 - `workflow-live-run-verification` — Run the live run verification workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-live-run-verification.md`
-  - Generated skill: `skills/workflow-live-run-verification/SKILL.md`
 - `workflow-multi-worktree-execution` — Run the multi-worktree execution workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-multi-worktree-execution.md`
-  - Generated skill: `skills/workflow-multi-worktree-execution/SKILL.md`
 - `workflow-prompt-metadata-spec` — Run the workflow and prompt metadata specification procedure.
   - Source: `docs/operating_system/workflows/workflow-prompt-metadata-spec.md`
-  - Generated skill: `skills/workflow-prompt-metadata-spec/SKILL.md`
 - `workflow-roadmap-to-closeout` — Run the roadmap to closeout workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-roadmap-to-closeout.md`
-  - Generated skill: `skills/workflow-roadmap-to-closeout/SKILL.md`
 - `workflow-spec-to-plan-to-execution` — Run the spec to plan to execution workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
-  - Generated skill: `skills/workflow-spec-to-plan-to-execution/SKILL.md`
 - `workflow-test-failure-triage` — Run the test failure triage workflow procedure.
   - Source: `docs/operating_system/workflows/workflow-test-failure-triage.md`
-  - Generated skill: `skills/workflow-test-failure-triage/SKILL.md`
 
 ### Native Skills Manifest
 - `skill-brainstorming` — Use when exploring or defining new behavior, features, components, or non-trivial changes before implementation.
@@ -147,16 +134,12 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
   - Source: `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
 - `skill-executing-plans` — Use when you have a written implementation plan to execute in a separate session with review checkpoints.
   - Source: `.agents/skills/skill-executing-plans/SKILL.md`
-- `skill-finishing-a-development-branch` — Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup.
-  - Source: `.agents/skills/skill-finishing-a-development-branch/SKILL.md`
 - `skill-plan-document-reviewer` — Use when a spec or implementation plan is about to guide significant work, especially for cross-cutting, handoff-heavy, or starter/public-sync changes where scope drift, weak validation, or genericity leakage would be costly.
   - Source: `.agents/skills/skill-plan-document-reviewer/SKILL.md`
 - `skill-planning-dispatch` — Use when a task needs planning, design, or implementation routing before specs, plans, or code changes begin.
   - Source: `.agents/skills/skill-planning-dispatch/SKILL.md`
 - `skill-private-public-repo-governance` — Use when a project needs a private internal repo and a separate public curated repo, or when deciding what should stay private versus what can be published in a clean product-facing repository.
   - Source: `.agents/skills/skill-private-public-repo-governance/SKILL.md`
-- `skill-project-plan-generation` — Use when the user explicitly asks for a Markdown plan document and the compatibility planning layer is needed.
-  - Source: `.agents/skills/skill-project-plan-generation/SKILL.md`
 - `skill-python-code-standards` — Use when generating or modifying any Python file to enforce style, types, and quality.
   - Source: `.agents/skills/skill-python-code-standards/SKILL.md`
 - `skill-python-file-metadata` — Add structured metadata to files with behavioral weight (scripts, workflows, tests, utilities).
@@ -167,6 +150,8 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
   - Source: `.agents/skills/skill-receiving-code-review/SKILL.md`
 - `skill-requesting-code-review` — Use when completing tasks, implementing major features, or before merging to verify work meets requirements.
   - Source: `.agents/skills/skill-requesting-code-review/SKILL.md`
+- `skill-spec-drafting` — Use when drafting or refining a detailed specification before implementation planning or coding.
+  - Source: `.agents/skills/skill-spec-drafting/SKILL.md`
 - `skill-subagent-driven-development` — Use when executing implementation plans with independent tasks in the current session.
   - Source: `.agents/skills/skill-subagent-driven-development/SKILL.md`
 - `skill-systematic-debugging` — Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes.
@@ -177,7 +162,7 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
   - Source: `.agents/skills/skill-using-git-worktrees/SKILL.md`
 - `skill-using-superpowers` — Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions.
   - Source: `.agents/skills/skill-using-superpowers/SKILL.md`
-- `skill-verification-before-completion` — Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always.
+- `skill-verification-before-completion` — Use when about to claim work is complete, fixed, or passing, or when preparing to commit, merge, or open a PR - requires fresh verification evidence before completion or branch-closeout claims.
   - Source: `.agents/skills/skill-verification-before-completion/SKILL.md`
 - `skill-writing-plans` — Use when a confirmed design needs a multi-step implementation plan before code changes begin.
   - Source: `.agents/skills/skill-writing-plans/SKILL.md`
@@ -186,7 +171,7 @@ corepack pnpm --allow-build=@ladybugdb/core --allow-build=onnxruntime-node --all
 
 ### Resolution Notes
 - `CLAUDE.md` complements provider-native rules and skills surfaces.
-- Workflows are deployed as skills for consistent invocation.
+- Workflow procedures stay documented under `docs/operating_system/workflows/` rather than deploying as runtime skills.
 
 <!-- MANIFEST_METADATA
 version: 1

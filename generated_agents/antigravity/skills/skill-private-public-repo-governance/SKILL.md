@@ -13,6 +13,7 @@ tags:
 - skill
 - skill-private-public-repo-governance
 required_outputs: []
+distribution_tier: starter_kit
 ---
 
 <!--
@@ -35,6 +36,20 @@ Core rule:
 - public repo = curated downstream mirror
 
 Do not treat both repos as equal day-to-day development sources.
+
+## Canonical Publication Docs
+
+Use these docs as governing references for publication boundaries:
+
+- `docs/operating_system/publication/public-repo-publication-policy.md`
+- `docs/operating_system/publication/public-repo-publishing.md`
+- `docs/operating_system/publication/public-safe-doc-rewrite-guide.md`
+
+Precedence rule:
+
+- boundary rules -> publication policy doc
+- execution steps -> publishing runbook
+- sanitization patterns -> rewrite guide
 
 ## When to Use
 

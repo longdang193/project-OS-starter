@@ -39,6 +39,10 @@ from pathlib import Path
 import subprocess
 import sys
 
+import yaml
+
+from validator_policy import normalize_adoption_mode
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -48,7 +52,26 @@ def pytest_basetemp(default_relative: str) -> str:
     override = os.environ.get("REPO_VALIDATOR_PYTEST_BASETEMP")
     if override:
         return override
-    return default_relative
+    return f"{default_relative}-{os.getpid()}"
+
+
+def has_managed_architecture_generator(root: Path) -> bool:
+    adoption_mode_path = root / "repo_config" / "adoption-mode.yaml"
+    if not adoption_mode_path.exists():
+        return True
+
+    payload = yaml.safe_load(adoption_mode_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return True
+
+    adoption_mode = normalize_adoption_mode(payload.get("adoption_mode"))
+    if adoption_mode == "starter_method_only":
+        return False
+    if payload.get("managed_architecture_metadata") is False:
+        return False
+    if str(payload.get("architecture_generator", "")).strip().lower() == "none":
+        return False
+    return True
 
 
 def build_steps(*, check_only: bool, python_executable: str) -> list[list[str]]:
@@ -57,29 +80,34 @@ def build_steps(*, check_only: bool, python_executable: str) -> list[list[str]]:
     awareness_audit = str(root / "scripts" / "audit_architecture_linkage.py")
     formatter = str(root / "scripts" / "format_contract_yaml.py")
     adoption_validator = str(root / "scripts" / "validate_adoption_shape.py")
-    steps: list[list[str]] = []
+    pytest_step = [
+        python_executable,
+        "-m",
+        "pytest",
+        "--basetemp",
+        pytest_basetemp(".tmp-tests/architecture-pytest"),
+        "tests/test_architecture_metadata_generation.py",
+        "tests/test_architecture_linkage_audit.py",
+        "tests/test_format_contract_yaml.py",
+        "tests/test_validate_adoption_shape.py",
+        "tests/test_setup_hooks.py",
+        "-q",
+    ]
+
+    steps: list[list[str]] = [[python_executable, adoption_validator]]
+    if not has_managed_architecture_generator(root):
+        steps.append(pytest_step)
+        return steps
+
     if not check_only:
         steps.append([python_executable, generator])
     steps.extend(
         [
-            [python_executable, adoption_validator],
             [python_executable, generator, "--validate-only"],
             [python_executable, generator, "--check"],
             [python_executable, awareness_audit, "--strict-awareness", "--report-awareness"],
             [python_executable, formatter, "--check"],
-            [
-                python_executable,
-                "-m",
-                "pytest",
-                "--basetemp",
-                pytest_basetemp(".tmp-tests/architecture-pytest"),
-                "tests/test_architecture_metadata_generation.py",
-                "tests/test_architecture_linkage_audit.py",
-                "tests/test_format_contract_yaml.py",
-                "tests/test_validate_adoption_shape.py",
-                "tests/test_setup_hooks.py",
-                "-q",
-            ],
+            pytest_step,
         ]
     )
     return steps

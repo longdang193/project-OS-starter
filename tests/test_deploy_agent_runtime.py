@@ -243,3 +243,87 @@ tags: []
 
 def test_antigravity_target_deploys_into_nested_gemini_home() -> None:
     assert DEPLOY.PLATFORM_TARGETS["antigravity"] == Path.home() / ".gemini" / "antigravity"
+
+
+
+def test_generated_runtime_files_skip_repo_skills_for_codex(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    generated_root.mkdir(parents=True)
+    (generated_root / "AGENTS.md").write_text("root", encoding="utf-8")
+    skill_file = generated_root / "skills" / "demo" / "SKILL.md"
+    skill_file.parent.mkdir(parents=True, exist_ok=True)
+    skill_file.write_text("skill", encoding="utf-8")
+
+    codex_files = DEPLOY._iter_generated_runtime_files("codex", generated_root)
+    claude_files = DEPLOY._iter_generated_runtime_files("claude", generated_root)
+
+    assert generated_root / "AGENTS.md" in codex_files
+    assert skill_file not in codex_files
+    assert skill_file in claude_files
+
+
+def test_runtime_stale_generated_files_marks_excluded_codex_skills(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    target_root = tmp_path / "runtime"
+    generated_root.mkdir(parents=True)
+    target_root.mkdir(parents=True, exist_ok=True)
+
+    skill_file = generated_root / "skills" / "demo" / "SKILL.md"
+    skill_file.parent.mkdir(parents=True, exist_ok=True)
+    skill_file.write_text("generated skill", encoding="utf-8")
+
+    runtime_skill = target_root / "skills" / "demo" / "SKILL.md"
+    runtime_skill.parent.mkdir(parents=True, exist_ok=True)
+    runtime_skill.write_text(
+        "<!-- GENERATED FILE - DO NOT EDIT -->\nbody\n",
+        encoding="utf-8",
+    )
+
+    stale = DEPLOY._runtime_stale_generated_files(
+        generated_root,
+        target_root,
+        platform="codex",
+    )
+
+    assert runtime_skill in stale
+
+
+def test_shared_skill_deploy_preserves_unrelated_installed_skills(tmp_path: Path) -> None:
+    skills_root = tmp_path / "repo-skills"
+    target_root = tmp_path / "user-skills"
+    repo_skill = skills_root / "skill-demo"
+    repo_skill.mkdir(parents=True)
+    (repo_skill / "SKILL.md").write_text("demo skill\n", encoding="utf-8")
+    unrelated_skill = target_root / "gitnexus-cli"
+    unrelated_skill.mkdir(parents=True)
+    (unrelated_skill / "SKILL.md").write_text("external skill\n", encoding="utf-8")
+
+    changes, issues, pairs = DEPLOY._plan_shared_skill_deploy(
+        skills_root,
+        target_root,
+        force=False,
+    )
+
+    assert issues == []
+    assert len(changes) == 1
+    assert changes[0].startswith("create: ")
+    _, destination, rendered = pairs[0]
+    assert destination == target_root / "skill-demo" / "SKILL.md"
+    assert rendered == "demo skill"
+    assert all("gitnexus-cli" not in change for change in changes)
+
+
+def test_shared_skill_check_detects_missing_and_stale_repo_owned_files(tmp_path: Path) -> None:
+    skills_root = tmp_path / "repo-skills"
+    target_root = tmp_path / "user-skills"
+    repo_skill = skills_root / "skill-demo"
+    repo_skill.mkdir(parents=True)
+    (repo_skill / "SKILL.md").write_text("demo skill\n", encoding="utf-8")
+    deployed_skill = target_root / "skill-demo"
+    deployed_skill.mkdir(parents=True)
+    (deployed_skill / "extra.md").write_text("stale\n", encoding="utf-8")
+
+    issues = DEPLOY._check_shared_skills(skills_root, target_root)
+
+    assert f"Missing deployed shared skill file: {(deployed_skill / 'SKILL.md').as_posix()}" in issues
+    assert f"Stale deployed shared skill file: {(deployed_skill / 'extra.md').as_posix()}" in issues
