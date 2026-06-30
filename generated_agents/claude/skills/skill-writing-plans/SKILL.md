@@ -94,15 +94,16 @@ Do not create an artifact-only plan when this skill applies.
 
 ## GitNexus Usage
 
-Use GitNexus when plan quality depends on cross-file dependency awareness.
+Use GitNexus MCP when plan quality depends on cross-file dependency awareness.
 
-- Prefer GitNexus for broad impact mapping and shared-module dependency checks.
+- Prefer GitNexus MCP tools for broad impact mapping, shared-module dependency checks, and repo audits.
+- Use it to find Single Source of Truth, structural symmetry, and invariance violations worth turning into bounded plan work.
 - For narrowly scoped plans, GitNexus is optional.
 - Before high-trust use, check freshness:
-  - `.\\scripts\\get_gitnexus_freshness.ps1`
-- If stale, use GitNexus only as advisory and keep the plan source-first.
+  - `.\scripts\get_gitnexus_freshness.ps1`
+- If stale, use GitNexus only as advisory and keep plan source-first.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue MCP-first.
 
 ## Planning Standard: Structural Symmetry
 

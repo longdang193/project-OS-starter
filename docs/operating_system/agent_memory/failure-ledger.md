@@ -21,6 +21,7 @@ Use this file for repeated or important failures, not every small mistake.
 - Correct behavior: Generated headers should use repo-relative source paths so outputs stay stable across machines and worktrees.
 - Prevention added or required: Keep repo-relative path handling in the adapter sync and verify scripts.
 - Related artifacts:
+  - `scripts/sync_agent_adapters.py`
   - `scripts/sync_agent_adapters.ps1`
   - `scripts/verify_agent_adapters.ps1`
 

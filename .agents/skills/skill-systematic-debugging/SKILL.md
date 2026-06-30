@@ -75,15 +75,16 @@ Use for ANY technical issue:
 
 ## GitNexus Usage
 
-Use GitNexus as a debugging accelerator for cross-file trace and impact lookup.
+Use GitNexus MCP as a debugging accelerator for cross-file trace and impact lookup.
 
-- Prefer GitNexus for multi-module failures and unclear call/data flows.
+- Prefer GitNexus MCP tools for multi-module failures, unclear call/data flows, and repo audits.
+- Use it to spot Single Source of Truth, structural symmetry, and invariance violations when bug smells like drift or duplicated logic.
 - For simple local failures, GitNexus is optional.
 - Before high-trust conclusions, check freshness:
   - `.\scripts\get_gitnexus_freshness.ps1`
 - If stale, GitNexus remains advisory; prove fixes with source/tests/run evidence.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue MCP-first.
 
 ## The Four Phases
 

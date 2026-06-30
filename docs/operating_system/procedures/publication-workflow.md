@@ -131,8 +131,8 @@ Before publication, confirm:
 If publication-boundary or adapter files changed first, run:
 
 ```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
+python scripts/sync_agent_adapters.py --all-platforms
+python scripts/sync_agent_adapters.py --check --all-platforms
 ```
 
 before running the curated publish workflow.

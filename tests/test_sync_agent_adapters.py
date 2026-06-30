@@ -109,6 +109,32 @@ def test_find_orphan_generated_surfaces_flags_legacy_docs_tree_after_scope_reduc
     assert orphans == [legacy_file]
 
 
+
+def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    src_root = root / ".agents" / "skills"
+    skill_dir = src_root / "skill-sample"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text("---\nname: skill-sample\ndescription: Use when sample applies\n---\n", encoding="utf-8")
+    (skill_dir / "task-reviewer-prompt.md").write_text("prompt body\n", encoding="utf-8")
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "helper.sh").write_text("#!/usr/bin/env bash\necho helper\n", encoding="utf-8")
+
+    mapping = SYNC.Mapping(
+        source=".agents/skills",
+        destination="generated_agents/codex/skills",
+        mode="copy_tree",
+        comment_prefix="#",
+        include_glob="**/*",
+    )
+
+    issues = SYNC._sync_tree(root, mapping, check=False)
+
+    assert issues == []
+    assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "SKILL.md").exists()
+    assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "task-reviewer-prompt.md").exists()
+    assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "helper.sh").exists()
 def test_run_skips_when_consumer_default_selection_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "repo"
     _write_yaml(
@@ -171,4 +197,3 @@ def test_run_fails_when_consumer_all_platforms_has_no_mappings(tmp_path: Path, m
     monkeypatch.setattr(sys, "argv", ["sync_agent_adapters.py", "--check", "--all-platforms"])
 
     assert SYNC.run() == 1
-

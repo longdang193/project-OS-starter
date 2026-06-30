@@ -32,8 +32,9 @@ Use this file for repo-wide behavior only. More specific directory instructions 
 GitNexus is an optional private-only analysis tool for this repo. Use it when it helps with cross-file tracing, impact analysis, or repo navigation, but do not treat it as a replacement for source code, tests, or repo governance docs.
 
 - Check freshness before high-trust GitNexus use with `.\scripts\get_gitnexus_freshness.ps1`, especially for impact analysis, refactoring, or pre-commit scope checks.
-- Use `gitnexus_impact` before higher-risk refactors, renames, or changes to shared orchestration code.
+- Use GitNexus MCP tools before higher-risk refactors, renames, or changes to shared orchestration code.
 - Use `gitnexus_detect_changes()` as an extra safety check when graph-level confirmation is useful before committing.
+- Use GitNexus MCP repo audits to find Single Source of Truth, symmetry, and invariance violations before broad cleanup work.
 - If GitNexus is stale:
   - exploration may still use it as an advisory lookup layer
   - debugging may still use it as advisory if conclusions are labeled accordingly
@@ -44,12 +45,13 @@ GitNexus is an optional private-only analysis tool for this repo. Use it when it
 
 Practical GitNexus workflow:
 
-- for architecture lookup, start with `gitnexus_query()` and `gitnexus_context()`
+- for architecture lookup, start with GitNexus MCP query/context tools
 - for debugging, use GitNexus as a tracing aid, but keep conclusions source-first if freshness is stale
-- for higher-risk refactors, use `gitnexus_impact()` before edits when it materially improves safety
+- for higher-risk refactors, use GitNexus MCP impact tools before edits when they materially improve safety
 - for broader changes, `gitnexus_detect_changes()` is a useful pre-commit scope check, not a blanket requirement for every tiny edit
+- for repo-quality cleanup, use GitNexus MCP to audit Single Source of Truth, symmetry, and invariance violations before proposing shared refactors
 
-If GitNexus needs a refresh on this Windows machine, prefer:
+If GitNexus graph data needs a refresh on this Windows machine, prefer:
 
 ```powershell
 npx gitnexus analyze

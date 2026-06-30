@@ -140,8 +140,8 @@ This plan implements:
 - [ ] Step 7: Include adapter sync and verify commands when adapter, instruction, or generated rule surfaces changed:
 
 ```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
+python scripts/sync_agent_adapters.py --all-platforms
+python scripts/sync_agent_adapters.py --check --all-platforms
 ```
 
 - [ ] Step 8: End the runbook with:

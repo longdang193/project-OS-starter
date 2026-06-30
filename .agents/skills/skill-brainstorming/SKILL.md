@@ -73,16 +73,18 @@ Before any skill-brainstorming output, read:
 
 ## GitNexus Usage
 
-Use GitNexus selectively for cross-file architecture lookup when it reduces
-guessing.
+Use GitNexus MCP first for cross-file architecture lookup when it reduces
+guessing. Fall back to CLI refresh only when MCP data is stale, missing, or
+needs rebuild.
 
-- Prefer GitNexus for cross-cutting skill-brainstorming and dependency tracing.
+- Prefer GitNexus MCP tools for cross-cutting skill-brainstorming, dependency tracing, and repo audits.
+- Use it to audit repos for Single Source of Truth, structural symmetry, and invariance violations before proposing broad refactors.
 - For small/local design changes, GitNexus is optional.
 - Before high-trust GitNexus conclusions, check freshness via:
-  - `.\\scripts\\get_gitnexus_freshness.ps1`
-- If GitNexus is stale, use it only as advisory and keep source docs as truth.
+  - `.\scripts\get_gitnexus_freshness.ps1`
+- If GitNexus is stale, use MCP/graph results only as advisory and keep source docs as truth.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue source-first.
 
 ## Architectural Principle: Structural Symmetry
 

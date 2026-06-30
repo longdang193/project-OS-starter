@@ -85,15 +85,16 @@ Before producing triage, read:
 
 ## GitNexus Usage
 
-Use GitNexus when routing requires cross-file impact clarity.
+Use GitNexus MCP when routing requires cross-file impact clarity.
 
-- Prefer GitNexus for cross-cutting routing and impact checks.
+- Prefer GitNexus MCP tools for cross-cutting routing, impact checks, and repo audits.
+- Use it to spot Single Source of Truth, structural symmetry, and invariance violations before planning cross-cutting cleanup.
 - For small/local routing decisions, GitNexus is optional.
 - Before high-trust use, check freshness:
-  - `.\\scripts\\get_gitnexus_freshness.ps1`
+  - `.\scripts\get_gitnexus_freshness.ps1`
 - If stale, treat GitNexus as advisory and route source-first.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue source-first.
 
 ## Required Output
 

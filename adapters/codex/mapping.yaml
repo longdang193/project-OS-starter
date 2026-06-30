@@ -16,5 +16,5 @@ mappings:
   - source: .agents/skills
     destination: generated_agents/codex/skills
     mode: copy_tree
-    include_glob: "*/SKILL.md"
+    include_glob: "**/*"
     comment_prefix: "#"

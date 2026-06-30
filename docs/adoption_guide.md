@@ -223,9 +223,11 @@ Keep this split:
 After changing adapter sources or mappings, run:
 
 ```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
+python scripts/sync_agent_adapters.py --all-platforms
+python scripts/sync_agent_adapters.py --check --all-platforms
 ```
+
+Use PowerShell wrappers only for legacy generated-surface flows that still depend on them.
 
 ## 7. Validate After Customization
 
@@ -235,8 +237,8 @@ Minimum adoption and adapter check:
 
 ```powershell
 python scripts/validate_adoption_shape.py
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
+python scripts/sync_agent_adapters.py --all-platforms
+python scripts/sync_agent_adapters.py --check --all-platforms
 ```
 
 If publication config changed:

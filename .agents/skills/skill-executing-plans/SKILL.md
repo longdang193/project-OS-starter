@@ -61,15 +61,16 @@ Before execution starts, read:
 
 ## GitNexus Usage
 
-Use GitNexus selectively during execution when cross-file coordination is
+Use GitNexus MCP selectively during execution when cross-file coordination is
 non-trivial.
 
-- Prefer GitNexus for shared-module impact checks and cross-lane dependency tracing.
+- Prefer GitNexus MCP tools for shared-module impact checks, cross-lane dependency tracing, and repo audits.
+- Use it to catch Single Source of Truth, structural symmetry, and invariance violations before they spread across lanes.
 - For small/local execution tasks, GitNexus is optional.
-- Before high-trust use, check freshness: <LINK>`.\\scripts\\get_gitnexus_freshness.ps1`</LINK>
+- Before high-trust use, check freshness: <LINK>`.\scripts\get_gitnexus_freshness.ps1`</LINK>
 - If stale, keep GitNexus advisory and execute source-first.
 - If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If GitNexus has tooling or query issues, consult the `gitnexus-guide` skill first; if unresolved, continue source-first.
+- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue MCP-first flow.
 
 ## Source-of-Truth Rule
 

@@ -109,8 +109,8 @@ Use this runbook when the project wants the starter's repo operating-system meth
 8. If adapter sources, agent instructions, or generated rule surfaces changed, run:
 
 ```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
+python scripts/sync_agent_adapters.py --all-platforms
+python scripts/sync_agent_adapters.py --check --all-platforms
 ```
 
 9. Validate the selected mode:
@@ -204,8 +204,8 @@ docs/features/<feature_id>/lineage.generated.yaml
 14. Re-run starter-controlled generators and sync steps after shared repo-control files change. At minimum, run adapter sync if adapter sources or mappings changed:
 
 ```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
+python scripts/sync_agent_adapters.py --all-platforms
+python scripts/sync_agent_adapters.py --check --all-platforms
 ```
 
 15. Refresh generated architecture surfaces from source using the project generator when one exists. If no generator exists, do not hand-invent generated files; add the generator first or stay in legacy compatibility.

@@ -123,8 +123,8 @@ primary_features:
 10. Re-run adapter sync as well if the starter diff changed adapter sources, mappings, or generated instruction surfaces:
 
 ```powershell
-.\scripts\sync_agent_adapters.ps1
-.\scripts\verify_agent_adapters.ps1
+python scripts/sync_agent_adapters.py --all-platforms
+python scripts/sync_agent_adapters.py --check --all-platforms
 ```
 
 11. Run the project architecture generator or sync workflow so generated feature contracts, lineage, and discovery come from source.
