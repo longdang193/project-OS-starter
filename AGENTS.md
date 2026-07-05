@@ -62,6 +62,12 @@ Practical GitNexus workflow:
 If GitNexus graph data needs a refresh on this Windows machine, prefer:
 
 ```powershell
+gitnexus analyze
+```
+
+If `gitnexus` is not on `PATH`, use this fallback:
+
+```powershell
 npx gitnexus analyze
 ```
 
