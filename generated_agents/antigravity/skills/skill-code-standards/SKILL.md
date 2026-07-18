@@ -178,6 +178,7 @@ Do not claim quality from review alone. Fresh executable evidence owns completio
 ## Guardrails
 
 - Preserve security, accessibility, data safety, and explicit requirements.
+- For material front-end work, follow `docs/operating_system/rules/frontend-ui-rule.md` and use `ui-ux-pro-max` when available.
 - Avoid speculative abstraction and configuration.
 - Prefer smallest root-cause change in shared owner.
 - Generated files follow generator; edit canonical source.

@@ -111,6 +111,7 @@ Inspect smallest evidence set needed to understand:
 - canonical and generated surfaces
 - applicable native or existing repository capabilities
 - constraints imposed by compatibility, security, accessibility, performance, publication, or external systems
+- for material front-end scope, `ui-ux-pro-max` guidance and explicit responsive, theme, accessibility, and affected-state acceptance criteria
 
 Do not design from guessed repository behavior.
 

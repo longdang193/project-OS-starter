@@ -4,7 +4,7 @@ The starter is succeeding when it supports outcomes like these:
 
 - a new project can explain what it is for without burying that purpose inside specs or README drift
 - repo method, planning, and documentation rules are strong enough to prevent early chaos
-- feature and stage source layers can grow without becoming hand-maintained duplicates of generated outputs
+- executable product truth stays in code, configuration, schemas, and tests without parallel YAML contracts
 - skills and rules complement each other instead of competing for ownership
 - future projects can reuse the starter with only domain-specific adaptation, not a full rewrite
 

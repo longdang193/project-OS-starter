@@ -43,9 +43,10 @@ Read only what supports current claims:
 - active plan and completion criteria
 - linked specification acceptance criteria and preserved invariants
 - affected validators, tests, schemas, generated procedures, and maintained documentation
+- fresh rendered or browser evidence for material visual changes, covering relevant viewports, supported themes, affected states, keyboard use, focus, contrast, and reduced motion
 - audit rule only when its failure trigger applies
 - publication rules only when reporting publication readiness
-- relevant agent memory only after meaningful retries, debugging, or reusable failure discovery
+- configured MCP memory only after meaningful retries, debugging, or reusable failure discovery; store lessons only after fresh evidence confirms them
 
 Do not require retired architecture-sync scripts, persistent context packs, or missing reconciliation prompts.
 

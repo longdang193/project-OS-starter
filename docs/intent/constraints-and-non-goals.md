@@ -4,8 +4,7 @@
 
 - the private repo remains the development source of truth
 - the public repo, when used, is derived through curated publication rather than developed independently
-- feature and stage source docs remain the owners of feature/stage meaning
-- generated docs and lineage surfaces must stay generated rather than becoming hand-maintained forks
+- code, configuration, schemas, and tests own executable product behavior
 - README remains a synthesized orientation layer, not the deepest truth surface
 
 ## Non-Goals
@@ -20,5 +19,5 @@
 
 - if the question is "what is this project for?" start in `docs/intent/`
 - if the question is "how should this repo build and govern work?" start in `docs/operating_system/`
-- if the question is "what does this feature or stage mean right now?" start in `docs/features/` or `docs/stages/`
+- if the question is "what does product behavior mean right now?" start in code, configuration, schemas, and tests; use `docs/features/` only for durable explanation
 - if the question is "what design or implementation slice are we doing now?" start in `docs/superpowers/specs/` or `docs/superpowers/plans/`

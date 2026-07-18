@@ -49,20 +49,13 @@ FORBIDDEN_CONTENT_TOKENS = (
     ".codex/agents/",
     "agent-core/",
     "scripts/sync_agent_adapters.py",
-    "scripts/sync_agent_adapters.ps1",
-    "scripts/verify_agent_adapters.ps1",
     "scripts/deploy_agent_runtime.py",
-    "repo_config/agent-adapter-mappings.json",
     "repo_config/publication-config.json",
     "generated_agents/",
     "adapters/",
 )
 
 ALLOWED_CONDITIONAL_REFERENCES = {
-    (
-        Path("docs/operating_system/governance/repo-governance.md"),
-        "repo_config/agent-adapter-mappings.json",
-    ),
     (
         Path("docs/operating_system/governance/repo-governance.md"),
         "repo_config/publication-config.json",

@@ -90,14 +90,16 @@ Detailed policy lives in `docs/operating_system/tooling/code-intelligence-tools.
 
 ## Agent Memory
 
-`docs/operating_system/agent_memory/` stores reusable lessons, patterns, and failure history. Consult only when current task touches a recorded invariant, recurring failure, retry, or known operational lesson. Memory does not override source or tests.
+Configured MCP Memory Server stores verified reusable lessons outside repository. Use it conditionally for recorded invariants, recurring failures, resumed work, or known operational constraints. Memory never overrides source, tests, ADRs, current governance, or explicit instructions.
+
+Canonical policy: `docs/operating_system/rules/agent-memory-rule.md`.
 
 ## Publication Boundary
 
 - Private repository remains source of truth.
 - Build public export in disposable location.
 - Publish only allowlisted content.
-- Exclude private governance, agent memory, local tool state, credentials, internal audits, and private generated indexes.
+- Exclude private governance, MCP memory data and backups, local tool state, credentials, internal audits, and private generated indexes.
 - Run dry-run verification and inspect export before push.
 - Push only with explicit authorization.
 
@@ -107,7 +109,6 @@ Detailed policy lives in `docs/operating_system/publication/public-repo-publicat
 
 Keep only configuration with an active consumer. `repo_config/` currently owns:
 
-- `agent-adapter-mappings.json`
 - `planning_artifact_schema.yaml`
 - `publication-config.json`
 - `starter-kit-manifest.json`

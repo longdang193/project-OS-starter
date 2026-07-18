@@ -102,64 +102,6 @@ def test_validator_fails_when_publication_config_is_missing_required_keys() -> N
         rmtree(test_root, ignore_errors=True)
 
 
-def test_validator_allows_missing_adapter_mappings_file() -> None:
-    test_root = make_test_root()
-    try:
-        publication_config = test_root / "repo_config" / "publication-config.json"
-        starter_kit_manifest = test_root / "repo_config" / "starter-kit-manifest.json"
-
-        write_json(publication_config, _valid_publication_config())
-        write_json(starter_kit_manifest, valid_starter_kit_manifest())
-        write_text(test_root / "README.md", "# readme\n")
-
-        result = run_validator(
-            "--publication-config",
-            str(publication_config),
-            "--adapter-mappings",
-            str(test_root / "repo_config" / "agent-adapter-mappings.json"),
-            "--starter-kit-manifest",
-            str(starter_kit_manifest),
-        )
-
-        assert result.returncode == 0
-    finally:
-        rmtree(test_root, ignore_errors=True)
-
-
-def test_validator_fails_when_adapter_mapping_source_is_missing() -> None:
-    test_root = make_test_root()
-    try:
-        publication_config = test_root / "repo_config" / "publication-config.json"
-        adapter_mappings = test_root / "repo_config" / "agent-adapter-mappings.json"
-        starter_kit_manifest = test_root / "repo_config" / "starter-kit-manifest.json"
-
-        write_json(publication_config, _valid_publication_config())
-        write_json(
-            adapter_mappings,
-            [
-                {
-                    "source": "docs/operating_system/templates/agents/missing.template.md",
-                    "destination": "AGENTS.md",
-                    "prefix": "#",
-                }
-            ],
-        )
-        write_json(starter_kit_manifest, valid_starter_kit_manifest())
-        write_text(test_root / "README.md", "# readme\n")
-
-        result = run_validator(
-            "--publication-config",
-            str(publication_config),
-            "--adapter-mappings",
-            str(adapter_mappings),
-            "--starter-kit-manifest",
-            str(starter_kit_manifest),
-        )
-
-        assert result.returncode == 1
-        assert "missing adapter source" in result.stdout.lower()
-    finally:
-        rmtree(test_root, ignore_errors=True)
 
 
 def test_validator_allows_missing_starter_kit_manifest_file() -> None:
@@ -173,8 +115,6 @@ def test_validator_allows_missing_starter_kit_manifest_file() -> None:
         result = run_validator(
             "--publication-config",
             str(publication_config),
-            "--adapter-mappings",
-            str(test_root / "repo_config" / "agent-adapter-mappings.json"),
             "--starter-kit-manifest",
             str(test_root / "repo_config" / "starter-kit-manifest.json"),
         )

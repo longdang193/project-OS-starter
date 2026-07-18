@@ -23,7 +23,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VALIDATOR_PATH = REPO_ROOT / "scripts" / "validate_repo_contracts.py"
-POLICY_PATH = REPO_ROOT / "scripts" / "validator_policy.py"
 SCRIPTS_ROOT = str(REPO_ROOT / "scripts")
 
 if SCRIPTS_ROOT not in sys.path:
@@ -41,7 +40,6 @@ def load_module(name: str, path: Path):
 
 
 VALIDATOR = load_module("validate_repo_contracts", VALIDATOR_PATH)
-POLICY = load_module("validator_policy_for_tests", POLICY_PATH)
 ENV_GITIGNORE_VALIDATOR = load_module(
     "validate_env_gitignore_contract",
     REPO_ROOT / "scripts" / "validate_env_gitignore_contract.py",
@@ -93,7 +91,6 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
     rendered = [" ".join(step) for step in steps]
 
     assert any("validate_template_required_sections.py" in step for step in rendered)
-    assert any("validate_prompt_ladder.py" in step for step in rendered)
     assert any("validate_prompt_metadata_schema.py" in step for step in rendered)
     assert any("validate_env_gitignore_contract.py" in step for step in rendered)
     assert any("validate_repo_config.py" in step for step in rendered)
@@ -101,8 +98,9 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
     assert not any("validate_python_meta_headers.py" in step for step in rendered)
 
 
-def test_shared_repo_contract_markers_match_expected_contract() -> None:
-    assert POLICY.SETUP_META_MARKER == "@meta"
+def test_starter_kit_classification_constants_match_contract() -> None:
+    assert VALIDATOR.STARTER_KIT_DISTRIBUTION_TIER == "starter_kit"
+    assert VALIDATOR.STARTER_KIT_CLASSIFICATION_ENFORCEMENT == "fail"
 
 
 def test_validate_env_gitignore_contract_passes_with_required_entries(tmp_path: Path) -> None:

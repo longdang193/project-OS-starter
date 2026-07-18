@@ -8,45 +8,38 @@ To update: edit canonical source, then run sync.
 
 # Project Agent Instructions
 
-This file is the repo-wide instruction layer for Codex.
+This file is repo-wide instruction layer. More specific directory instructions override it.
 
-## Scope
+## Core Rules
 
-Use this file for repo-wide behavior only. More specific directory instructions may override it.
+- Keep changes aligned with owning code, documentation, and configuration layers.
+- Read scoped `AGENTS.md` files before modifying files under their directories.
+- Treat source code and tests as authoritative when documentation or analysis tools disagree.
+- Update tests and documentation when behavior or contracts change.
+- Never expose private governance, credentials, agent memory, or internal tooling through public publication.
+- For generated agent surfaces, edit canonical sources, then run required sync and verification commands.
 
-## Repo Rules
+## Agent Memory
 
-- The private repo is the development source of truth.
-- The public repo is updated only through the curated publish procedure.
-- Repo governance lives in `docs/operating_system/`.
-- Agent memory lives in `docs/operating_system/agent_memory/`.
-- Skills live in `.agents/skills/`, which remains the canonical Codex skill surface.
-- `.codex/rules/` is a generated rules output surface, not the canonical home for skills or memory.
-- Skills should follow the Codex Skills model: one focused method per skill, with `SKILL.md` as the primary entrypoint.
+Use configured MCP Memory Server only when current work can benefit from reusable project knowledge. Fetch memory for shared workflows, known invariants, recurring failures, resumed work, or high-risk changes. Store only verified, reusable lessons; never store transient progress, guesses, secrets, personal data, or facts already obvious from authoritative sources.
 
-## Working Expectations
+Memory informs work but never overrides explicit instructions, source code, tests, ADRs, or current governance. If memory tools are unavailable, continue source-first without recreating repository-file memory.
 
-- Keep changes aligned with the owning code and doc layer.
-- Consult relevant agent memory before planning when the task touches reusable repo methods or known invariants.
-- Consult `docs/operating_system/agent_memory/failure-ledger.md` during debugging, retries, or after important mistakes.
-- Update the agent-memory layer when a significant reusable lesson emerges.
-- Update tests and docs when behavior or contracts change.
-- Do not expose private operating-system or agent-core material through the public mirror.
-- If you change `docs/operating_system/templates/agents/*`, generated `AGENTS.md`, or generated provider runtime rules, run the sync and verify scripts before considering the change complete.
+Detailed policy: `docs/operating_system/rules/agent-memory-rule.md`.
+
+## Front-End Work
+
+For material UI, UX, accessibility, responsive-layout, or visual-design work, use `ui-ux-pro-max` when available. Reuse existing components and design tokens, prefer semantic native controls, and verify affected states, keyboard access, focus, contrast, responsive behavior, reduced motion, and supported themes.
+
+Skip skill for copy-only edits, mechanical selector changes, or isolated nonvisual logic. If unavailable, follow existing product design system and `docs/operating_system/rules/frontend-ui-rule.md`; do not block safe local fix.
 
 ## Code Intelligence
 
-Use native code tools for small local work, Serena for exact symbols and
-references, and GitNexus for broad flows or impact. Do not query both by
-default. Source and tests win every conflict; unavailable tools never block
-safe source-first work.
+Use native code tools for small local work, Serena for exact symbols and references, and GitNexus for broad flows or impact. Do not query both by default. Source and tests win every conflict; unavailable tools never block safe source-first work.
 
-- Serena runs with `--context codex --project-from-cwd`, `no-memories`, and
-  `no-onboarding`. Never commit `.serena/` state.
-- GitNexus remains optional and private-only. Check freshness before high-trust
-  impact or refactor use; never make refresh a universal completion gate.
-- Tests and CI own enforcement. `docs/architecture.md` and ADRs own durable
-  architecture intent.
+- Serena runs with `--context codex --project-from-cwd`, `no-memories`, and `no-onboarding`. Never commit `.serena/` state.
+- GitNexus remains optional and private-only. Check freshness before high-trust impact or refactor use; never make refresh a universal completion gate.
+- Tests and CI own enforcement. `docs/architecture.md` and ADRs own durable architecture intent.
 - Detailed policy: `docs/operating_system/tooling/code-intelligence-tools.md`.
 
 <!-- BEGIN GENERATED: RUNTIME_MANIFEST -->
@@ -58,12 +51,16 @@ safe source-first work.
 > Regenerate via: `scripts/sync_agent_adapters.py`.
 
 ### Rules Manifest
+- `agent-memory-rule.md` — Govern conditional use of persistent project memory through MCP Memory Server.
+  - Source: `docs/operating_system/rules/agent-memory-rule.md`
 - `audit-evidence-mandate-rule.md` — Require formal audit evidence only for serious or explicitly requested incidents.
   - Source: `docs/operating_system/rules/audit-evidence-mandate-rule.md`
 - `command-execution-rule.md` — Define command execution safety boundaries and escalation conditions.
   - Source: `docs/operating_system/rules/command-execution-rule.md`
 - `doc-contracts-rule.md` — Enforce canonical ownership and generated-surface integrity for documentation.
   - Source: `docs/operating_system/rules/doc-contracts-rule.md`
+- `frontend-ui-rule.md` — Route material front-end work through repository UI and accessibility requirements.
+  - Source: `docs/operating_system/rules/frontend-ui-rule.md`
 - `publication-boundary-rule.md` — Enforce private/public publication boundaries and controlled export workflow.
   - Source: `docs/operating_system/rules/publication-boundary-rule.md`
 - `python-contracts-rule.md` — Enforce typing, exception, data-safety, and verification invariants for Python changes.
@@ -84,8 +81,6 @@ safe source-first work.
   - Source: `.agents/skills/skill-executing-plans/SKILL.md`
 - `skill-finishing-a-development-branch` — Use after fresh completion verification when an explicitly authorized Git disposition is needed for a branch or worktree.
   - Source: `.agents/skills/skill-finishing-a-development-branch/SKILL.md`
-- `skill-parallel-execution` — Use when two or more independent change lanes can run without shared write ownership.
-  - Source: `.agents/skills/skill-parallel-execution/SKILL.md`
 - `skill-plan-document-reviewer` — Use when a specification or implementation plan needs correctness and readiness review before approval, handoff, or costly execution.
   - Source: `.agents/skills/skill-plan-document-reviewer/SKILL.md`
 - `skill-private-public-repo-governance` — Use when separating private development truth from curated public publication.

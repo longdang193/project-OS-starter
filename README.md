@@ -52,21 +52,14 @@ First-hour flow:
    - `tests/`
 4. fill `docs/intent/` before deep procedure docs
 5. decide whether the private/public publication procedure applies
-6. define initial feature/stage sources only when the project shape is clear
-7. review starter governance and shipped root agent docs before adding any
+6. review starter governance and shipped root agent docs before adding any
    source-only factory procedures
 
 ## Agent Memory
 
-The starter includes `docs/operating_system/agent_memory/` as a compact repo-memory layer for:
+Use official MCP Memory Server for verified reusable project knowledge. See `docs/operating_system/rules/agent-memory-rule.md` for fetch, update, privacy, precedence, and fallback policy; see `docs/operating_system/procedures/mcp-memory-server-setup.md` for client setup.
 
-- stable invariants
-- recurring operating patterns
-- important failures that should become guardrails
-- open questions that may affect future agent behavior
-
-Keep this layer short and operational. Add memory when a lesson is likely to help future sessions, and promote repeated failures into rules, tests, hooks, or explicit follow-up work.
-
+Memory data is private local state outside repository. Source code, tests, ADRs, current governance, and explicit instructions remain authoritative.
 
 ## Customize First
 
@@ -111,10 +104,7 @@ Push to the configured public remote when ready:
 
 The default starter config keeps operating-system docs, skills, adapter sources, generated agent files, and other private-only materials out of the public mirror.
 
-The starter now separates configuration by role:
-
-- `repo_config/` for repo/system configuration
-- `docs/features/*/*.yaml` and `docs/stages/*.yaml` for human-authored lifecycle contracts
+Repo/system configuration lives in `repo_config/`. Optional durable product feature documentation may live in `docs/features/`; code, configuration, schemas, and tests own executable behavior.
 
 ## Reusable Documentation Update Prompt
 

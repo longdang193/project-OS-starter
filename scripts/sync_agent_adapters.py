@@ -41,6 +41,8 @@ class Mapping:
 
 
 GENERATED_BY = "scripts/sync_agent_adapters.py"
+ROOT_INSTRUCTION_SOURCE = "docs/operating_system/templates/agents/root-AGENTS.template.md"
+ROOT_INSTRUCTION_DESTINATION = "AGENTS.md"
 MANIFEST_BEGIN = "<!-- BEGIN GENERATED: RUNTIME_MANIFEST -->"
 MANIFEST_END = "<!-- END GENERATED: RUNTIME_MANIFEST -->"
 
@@ -499,6 +501,22 @@ def _sync_codex_rules_tree(
     return issues
 
 
+
+def _sync_root_instruction(root: Path, *, check: bool) -> list[str]:
+    return _sync_file(
+        root,
+        Mapping(
+            source=ROOT_INSTRUCTION_SOURCE,
+            destination=ROOT_INSTRUCTION_DESTINATION,
+            mode="copy_file",
+            comment_prefix="#",
+            include_glob=None,
+        ),
+        platform="shared",
+        check=check,
+    )
+
+
 def run() -> int:
     args = parse_args()
     root = repo_root()
@@ -514,7 +532,7 @@ def run() -> int:
         return 1
     selected_display = ",".join(sorted(selected_platforms)) if selected_platforms else "all"
     print(f"Adapter selection: {selected_display} (selector={selector})")
-    issues: list[str] = []
+    issues: list[str] = _sync_root_instruction(root, check=args.check)
     destination_preserve_paths: dict[Path, set[Path]] = defaultdict(set)
     loaded_mappings: list[tuple[str, list[Mapping]]] = []
     all_mappings: list[Mapping] = []

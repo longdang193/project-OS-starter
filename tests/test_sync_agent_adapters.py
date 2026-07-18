@@ -148,3 +148,20 @@ def test_resolve_platform_selection_respects_explicit_platforms(tmp_path: Path) 
 def test_resolve_platform_selection_all_platforms(tmp_path: Path) -> None:
     args = type("Args", (), {"all_platforms": True, "platform": []})()
     assert SYNC._resolve_platform_selection(tmp_path, args) == (set(), "all-platforms")
+
+
+def test_sync_root_instruction_generates_and_checks_agents(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    template = root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md"
+    template.parent.mkdir(parents=True)
+    template.write_text("# Root Rules\n", encoding="utf-8")
+
+    assert SYNC._sync_root_instruction(root, check=False) == []
+    generated = root / "AGENTS.md"
+    assert "Source: docs/operating_system/templates/agents/root-AGENTS.template.md" in generated.read_text(encoding="utf-8")
+    assert SYNC._sync_root_instruction(root, check=True) == []
+
+    generated.write_text("stale\n", encoding="utf-8")
+    assert SYNC._sync_root_instruction(root, check=True) == [
+        f"Drift detected: {generated.as_posix()}"
+    ]

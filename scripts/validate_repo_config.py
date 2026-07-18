@@ -50,25 +50,18 @@ REQUIRED_STARTER_KIT_KEYS = {
     "requiredPaths",
     "forbiddenPaths",
 }
-ALLOWED_MAPPING_MODE_KEYS = {"prefix", "headerMode"}
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Validate repo config ownership surfaces, publication boundaries, "
-            "optional adapter mappings, starter-kit manifest, and runtime config YAML shape."
+            "starter-kit manifest and runtime config YAML shape."
         )
     )
     parser.add_argument(
         "--publication-config",
         default="repo_config/publication-config.json",
         help="Path to publication-config.json.",
-    )
-    parser.add_argument(
-        "--adapter-mappings",
-        default="repo_config/agent-adapter-mappings.json",
-        help="Path to agent-adapter-mappings.json.",
     )
     parser.add_argument(
         "--starter-kit-manifest",
@@ -167,50 +160,6 @@ def validate_starter_kit_manifest(payload: Any, errors: list[str]) -> None:
             errors.append(f"Starter-kit manifest key `{key}` must be a list of strings.")
 
 
-def validate_adapter_mappings(
-    payload: Any,
-    repo_root: Path,
-    errors: list[str],
-) -> None:
-    if not isinstance(payload, list):
-        errors.append("Adapter mappings must be a JSON array.")
-        return
-
-    destinations: set[str] = set()
-
-    for index, item in enumerate(payload, start=1):
-        if not isinstance(item, dict):
-            errors.append(f"Adapter mapping #{index} must be an object.")
-            continue
-
-        source = item.get("source")
-        destination = item.get("destination")
-        if not isinstance(source, str) or not source.strip():
-            errors.append(f"Adapter mapping #{index} is missing a valid `source`.")
-        if not isinstance(destination, str) or not destination.strip():
-            errors.append(f"Adapter mapping #{index} is missing a valid `destination`.")
-
-        mode_keys = ALLOWED_MAPPING_MODE_KEYS & set(item.keys())
-        if not mode_keys:
-            errors.append(
-                f"Adapter mapping #{index} must define one of: "
-                + ", ".join(sorted(ALLOWED_MAPPING_MODE_KEYS))
-            )
-        if len(mode_keys) > 1:
-            errors.append(
-                f"Adapter mapping #{index} must not define both `prefix` and `headerMode`."
-            )
-
-        if isinstance(destination, str):
-            if destination in destinations:
-                errors.append(f"Duplicate adapter destination: {destination}")
-            destinations.add(destination)
-
-        if isinstance(source, str):
-            source_path = (repo_root / source).resolve()
-            if not source_path.exists():
-                errors.append(f"Missing adapter source: {source}")
-
 
 def validate_runtime_configs(runtime_root: Path, errors: list[str]) -> None:
     yaml_paths = sorted(runtime_root.glob("*.yaml"))
@@ -240,7 +189,6 @@ def main() -> int:
     args = parser.parse_args()
 
     publication_config_path = Path(args.publication_config).resolve()
-    adapter_mappings_path = Path(args.adapter_mappings).resolve()
     starter_kit_manifest_path = Path(args.starter_kit_manifest).resolve()
     repo_root = infer_repo_root(args.repo_root, publication_config_path, starter_kit_manifest_path)
 
@@ -261,12 +209,6 @@ def main() -> int:
         errors.append(f"Publication config could not be parsed: {exc}")
         publication_config = None
 
-    adapter_mappings = None
-    if adapter_mappings_path.exists():
-        try:
-            adapter_mappings = load_json(adapter_mappings_path)
-        except json.JSONDecodeError as exc:
-            errors.append(f"Adapter mappings could not be parsed: {exc}")
 
     starter_kit_manifest = None
     if starter_kit_manifest_path.exists():
@@ -277,8 +219,6 @@ def main() -> int:
 
     if publication_config is not None:
         validate_publication_config(publication_config, errors)
-    if adapter_mappings is not None:
-        validate_adapter_mappings(adapter_mappings, repo_root, errors)
     if starter_kit_manifest is not None:
         validate_starter_kit_manifest(starter_kit_manifest, errors)
 

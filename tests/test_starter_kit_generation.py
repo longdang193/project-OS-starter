@@ -76,10 +76,7 @@ def make_manifest(repo_root: Path) -> Path:
             "forbiddenPaths": [
                 ".codex",
                 "adapters",
-                "repo_config/agent-adapter-mappings.json",
                 "scripts/sync_agent_adapters.py",
-                "scripts/sync_agent_adapters.ps1",
-                "scripts/verify_agent_adapters.ps1",
                 "scripts/deploy_agent_runtime.py",
                 "tests/test_sync_agent_adapters.py",
                 "tests/test_deploy_agent_runtime.py",
@@ -159,7 +156,7 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
     write_text(kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(kit_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(kit_root / "docs" / "superpowers" / "plans" / ".gitkeep", "")
-    write_text(kit_root / "README.md", "see repo_config/agent-adapter-mappings.json\n")
+    write_text(kit_root / "README.md", "see scripts/deploy_agent_runtime.py\n")
 
     errors = VERIFY.validate_starter_kit(kit_root=kit_root, manifest_path=manifest_path)
 

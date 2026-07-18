@@ -89,7 +89,7 @@ You MUST complete each phase before proceeding to the next.
    - If not reproducible → gather more data, don't guess
 
 3. **Check Failure Memory When The Issue Looks Familiar**
-   - If the failure appears repeated, method-related, or suspiciously similar to a previous repo-operating issue, read `docs/operating_system/agent_memory/failure-ledger.md`
+   - If the failure appears repeated, method-related, or suspiciously similar to a previous repo-operating issue, search configured MCP memory for matching symptoms, confirmed causes, and fixes
    - Use it to recognize known failure modes earlier
    - Do not skip direct investigation just because something looks familiar
 

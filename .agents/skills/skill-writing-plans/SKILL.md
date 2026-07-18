@@ -44,6 +44,7 @@ stop and use `skill-spec-drafting`.
 - Read governance only when ownership, generation, publication, or repository boundaries affect execution.
 - Use native tools for local file mapping, Serena for exact symbols and references, and GitNexus for broad flow or impact when fresh and materially useful. Do not query both by default.
 - Read related execution skills only when the chosen execution approach requires them.
+- Name `ui-ux-pro-max` only for tasks requiring material visual or interaction judgment, and include rendered viewport, theme, and accessibility proof for those tasks.
 
 Source and tests remain authoritative when documents or optional tools disagree.
 

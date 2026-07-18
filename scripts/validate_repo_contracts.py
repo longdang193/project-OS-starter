@@ -37,10 +37,9 @@ import sys
 from types import ModuleType
 
 import json
-from validator_policy import (
-    STARTER_KIT_CLASSIFICATION_ENFORCEMENT,
-    STARTER_KIT_DISTRIBUTION_TIER,
-)
+
+STARTER_KIT_CLASSIFICATION_ENFORCEMENT = "fail"
+STARTER_KIT_DISTRIBUTION_TIER = "starter_kit"
 
 
 @dataclass(frozen=True)
@@ -97,9 +96,7 @@ IN_PROCESS_SCRIPT_NAMES = {
     "validate_planning_lifecycle.py",
     "validate_template_required_sections.py",
     "validate_learning_materials_format.py",
-    "validate_prompt_ladder.py",
     "validate_prompt_metadata_schema.py",
-    "validate_execution_context_pack_references.py",
     "validate_agent_metadata_schema.py",
     "validate_generated_header_format.py",
     "validate_agent_runtime_drift.py",
@@ -173,7 +170,6 @@ def build_subprocess_steps(
     planning_lifecycle_script = str(root / "scripts" / "validate_planning_lifecycle.py")
     template_sections_script = str(root / "scripts" / "validate_template_required_sections.py")
     learning_format_script = str(root / "scripts" / "validate_learning_materials_format.py")
-    prompt_ladder_script = str(root / "scripts" / "validate_prompt_ladder.py")
     prompt_metadata_schema_script = str(root / "scripts" / "validate_prompt_metadata_schema.py")
     repo_config_script = str(root / "scripts" / "validate_repo_config.py")
     agent_metadata_schema_script = str(root / "scripts" / "validate_agent_metadata_schema.py")
@@ -185,7 +181,6 @@ def build_subprocess_steps(
         [python_executable, planning_lifecycle_script],
         [python_executable, template_sections_script],
         [python_executable, learning_format_script],
-        [python_executable, prompt_ladder_script],
         [python_executable, prompt_metadata_schema_script],
         [python_executable, agent_metadata_schema_script],
         [python_executable, generated_header_script],

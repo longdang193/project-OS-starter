@@ -13,7 +13,6 @@
     "docs/generated",
     "docs/intent",
     "docs/operating_system",
-    "docs/stages",
     "docs/superpowers",
     "logs",
     "tmp",
@@ -27,8 +26,7 @@
   "allowedGeneratedPaths": [],
   "scrubPrivateReferencePaths": [
     "README.md",
-    "docs/features",
-    "docs/stages"
+    "docs/features"
   ],
   "forbiddenMetadataMarkers": [
     "repo: private"

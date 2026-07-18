@@ -46,7 +46,7 @@ Read only what the current task needs:
 - `skill-systematic-debugging` after unexpected failures or unexplained behavior
 - `skill-test-driven-development` for non-trivial behavior changes or bug fixes
 - governance or publication rules only when those boundaries are in scope
-- relevant agent memory only when the task touches a known reusable workflow or repeats a recorded failure mode
+- configured MCP memory only when the task touches a known reusable workflow or repeats a recorded failure mode; follow `docs/operating_system/rules/agent-memory-rule.md`
 
 Do not load every linked document or skill by default.
 

@@ -26,6 +26,7 @@ from shutil import rmtree
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VALIDATOR_PATH = REPO_ROOT / "scripts" / "validate_template_required_sections.py"
+SCHEMA_HELPER_PATH = REPO_ROOT / "scripts" / "planning_artifact_schema.py"
 
 
 def load_module(name: str, path: Path):
@@ -39,6 +40,7 @@ def load_module(name: str, path: Path):
 
 
 VALIDATOR = load_module("validate_template_required_sections", VALIDATOR_PATH)
+SCHEMA = load_module("planning_artifact_schema_for_template_tests", SCHEMA_HELPER_PATH)
 
 
 def make_test_root() -> Path:
@@ -432,3 +434,21 @@ Historical behavior.
         assert VALIDATOR.validate_documents(root, rules, require_template_selection=False) == []
     finally:
         rmtree(root, ignore_errors=True)
+
+
+def test_shipped_planning_templates_cover_schema_required_frontmatter() -> None:
+    templates = {
+        "plan": REPO_ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md",
+        "spec": REPO_ROOT / "docs" / "operating_system" / "templates" / "detailed-specification-template.md",
+    }
+
+    for artifact_type, template_path in templates.items():
+        frontmatter, _ = VALIDATOR._extract_frontmatter_and_body(template_path)
+        required_frontmatter = frontmatter["required_frontmatter"]
+        required_fields = SCHEMA.get_required_fields(REPO_ROOT, artifact_type)
+        required_values = SCHEMA.get_required_values(REPO_ROOT, artifact_type)
+
+        assert set(required_fields) <= set(required_frontmatter)
+        assert all(required_frontmatter[key] == value for key, value in required_values.items())
+        for field in ("status", "layer"):
+            assert required_frontmatter[field] in SCHEMA.get_allowed_values(REPO_ROOT, field, artifact_type)

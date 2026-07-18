@@ -12,6 +12,8 @@ required_sections:
 - Completion Criteria
 required_frontmatter:
   artifact_type: spec
+  status: proposed
+  layer: change
 distribution_tier: starter_kit
 ---
 
