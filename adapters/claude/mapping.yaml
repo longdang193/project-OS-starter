@@ -4,10 +4,6 @@ mappings:
     destination: generated_agents/claude/CLAUDE.md
     mode: render_root_doc_with_manifest
     comment_prefix: "#"
-  - source: docs/operating_system/rules/global-baseline-contract-rule.md
-    destination: generated_agents/claude/rules/global-baseline-contract-rule.md
-    mode: copy_file
-    comment_prefix: "#"
   - source: docs/operating_system/rules
     destination: .agents/rules
     mode: copy_tree

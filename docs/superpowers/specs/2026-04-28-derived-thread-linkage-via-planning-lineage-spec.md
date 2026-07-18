@@ -7,7 +7,7 @@ targets:
   - docs/intent/workstreams/
   - docs/intent/workstreams/threads/
   - docs/generated/planning_lineage.yaml
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - scripts/planning_lineage_support.py
@@ -22,10 +22,10 @@ related_stages: []
 
 ## Triage
 
-Layer: operating_system  
-Feature type: MODIFY  
-Summary: Keep bounded change thread files free of linked spec/plan fields and derive all downstream linkage only through `parent_thread`, exposing the result in `docs/generated/planning_lineage.yaml`.  
-Reasoning: The repo has already committed to the rule that canonical truth should flow downward from upstream layers and downstream layers should derive views from it rather than re-entering it. Putting `linked_spec` and `linked_plan` back into thread files would reintroduce a sync-managed duplicate fact into an upstream source layer.  
+Layer: operating_system
+Feature type: MODIFY
+Summary: Keep bounded change thread files free of linked spec/plan fields and derive all downstream linkage only through `parent_thread`, exposing the result in `docs/generated/planning_lineage.yaml`.
+Reasoning: The repo has already committed to the rule that canonical truth should flow downward from upstream layers and downstream layers should derive views from it rather than re-entering it. Putting `linked_spec` and `linked_plan` back into thread files would reintroduce a sync-managed duplicate fact into an upstream source layer.
 Invariants:
 
 - thread files remain canonical for thread meaning, not derived downstream linkage
@@ -39,7 +39,7 @@ Dependencies:
 - `docs/intent/workstreams/`
 - `docs/intent/workstreams/threads/`
 - `docs/generated/planning_lineage.yaml`
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 - `scripts/planning_lineage_support.py`
@@ -67,16 +67,16 @@ Affected docs:
 - stage_contract: none
 - feature_docs: none
 - cross_cutting_docs:
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated:
   - `docs/generated/planning_lineage.yaml`
 
-Generated refresh required: yes  
-Capability IDs: none  
-Invariant IDs: none  
-Spec needed: yes  
+Generated refresh required: yes
+Capability IDs: none
+Invariant IDs: none
+Spec needed: yes
 Plan needed: yes
 
 ## Problem

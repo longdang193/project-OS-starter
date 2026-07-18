@@ -15,11 +15,11 @@ related_stages: []
 
 # Required Root Doc Update Prompt Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-28-required-root-doc-update-prompt-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-28-required-root-doc-update-prompt-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.

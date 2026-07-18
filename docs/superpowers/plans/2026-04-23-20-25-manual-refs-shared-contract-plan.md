@@ -17,11 +17,11 @@ related_stages: []
 
 # Manual Refs Shared Contract Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-manual-refs-shared-contract-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -36,8 +36,8 @@ related_stages: []
 - The audit stays a focused awareness/strict checker.
 - The generator keeps its existing validation and generation flow.
 
-**Rollout / Revert:**  
-- rollback_trigger: The shared-contract extraction changes generator or audit behavior unexpectedly, or widens beyond the `manual_refs` seam.  
+**Rollout / Revert:**
+- rollback_trigger: The shared-contract extraction changes generator or audit behavior unexpectedly, or widens beyond the `manual_refs` seam.
 - rollback_method: Inline the `manual_refs` rule back into the audit and generator, keep the spec/plan, and retry with a smaller helper surface.
 
 ---

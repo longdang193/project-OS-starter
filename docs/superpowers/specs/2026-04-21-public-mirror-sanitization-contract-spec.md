@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - docs/operating_system/public-safe-doc-rewrite-guide.md
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
   - repo_config/publication-config.json
 related_features: []
@@ -31,7 +31,7 @@ Invariants:
 Dependencies:
 
 - `docs/operating_system/public-safe-doc-rewrite-guide.md`
-- `docs/operating_system/procedures/publication-workflow.md`
+- `docs/operating_system/procedures/publication-procedure.md`
 - `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - `repo_config/publication-config.json`
 
@@ -56,7 +56,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/operating_system/public-safe-doc-rewrite-guide.md`
-  - `docs/operating_system/procedures/publication-workflow.md`
+  - `docs/operating_system/procedures/publication-procedure.md`
   - `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - readme: none
 - generated: none
@@ -254,9 +254,9 @@ It should teach agents and maintainers to prefer sanitization when:
 - the schema or headings are safe to reveal
 - sensitive values can be removed without misrepresenting the project
 
-## Publication Workflow Changes
+## Publication Procedure Changes
 
-Update `docs/operating_system/procedures/publication-workflow.md` so publication review
+Update `docs/operating_system/procedures/publication-procedure.md` so publication review
 asks:
 
 - should this file be kept as-is?

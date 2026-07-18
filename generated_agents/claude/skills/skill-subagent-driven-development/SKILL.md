@@ -1,17 +1,7 @@
 ---
 name: skill-subagent-driven-development
-description: Use when executing implementation plans with independent tasks in the
-  current session
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-subagent-driven-development
-required_outputs: []
+description: Use when executing an approved implementation plan through sequential fresh subagents with task-level review in the current session.
+required_reads: []
 distribution_tier: starter_kit
 ---
 
@@ -25,16 +15,25 @@ To update: edit canonical source, then run sync.
 
 # Subagent-Driven Development
 
-Execute plan by dispatching a fresh implementer subagent per task, a task review (spec compliance + code quality) after each, and a broad whole-branch review at the end.
+Execute an approved plan by dispatching a fresh implementer subagent per task, reviewing spec compliance and code quality after each task, then requesting a broad whole-branch review.
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
-**Core principle:** Fresh subagent per task + task review (spec + quality) + broad final review = high quality, fast iteration
+**Core principle:** Fresh subagent per task + task review (spec + quality) + broad final review = bounded context with early defect detection
 
 **Narration:** between tool calls, narrate at most one short line — the
 ledger and the tool results carry the record.
 
 **Continuous execution:** Do not pause to check in with your human partner between tasks. Execute all tasks from the plan without stopping. The only reasons to stop are: BLOCKED status you cannot resolve, ambiguity that genuinely prevents progress, or all tasks complete. "Should I continue?" prompts and progress summaries waste their time — they asked you to execute the plan, so execute it.
+
+## Ownership And Preconditions
+
+- `skill-executing-plans` owns general approved-plan execution invariants; this skill specializes that execution through sequential fresh implementers and per-task reviewers.
+- Tasks must be separable enough for isolated briefs, but implementers remain sequential in one workspace.
+- Explicit authorization for per-task commits is required because `scripts/review-package` uses recorded commit ranges. Without that authorization, use `skill-executing-plans` directly.
+- Use `skill-using-git-worktrees` when isolation materially reduces risk; an already-safe workspace does not require a new worktree.
+- Use `skill-parallel-execution` instead when independent lanes should run concurrently with disjoint write ownership.
+- Approved plan and settled behavior are required. Return unresolved design to `skill-spec-drafting` or `skill-writing-plans`.
 
 ## When to Use
 
@@ -52,15 +51,15 @@ digraph when_to_use {
     "Tasks mostly independent?" -> "Stay in this session?" [label="yes"];
     "Tasks mostly independent?" -> "Manual execution or brainstorm first" [label="no - tightly coupled"];
     "Stay in this session?" -> "subagent-driven-development" [label="yes"];
-    "Stay in this session?" -> "executing-plans" [label="no - parallel session"];
+    "Stay in this session?" -> "executing-plans" [label="no - handoff or direct execution"];
 }
 ```
 
-**vs. Executing Plans (parallel session):**
+**vs. Executing Plans (direct or handoff execution):**
 - Same session (no context switch)
 - Fresh subagent per task (no context pollution)
 - Review after each task (spec compliance + code quality), broad review at the end
-- Faster iteration (no human-in-loop between tasks)
+- Review loop stays in one coordinating session
 
 ## The Process
 
@@ -82,8 +81,9 @@ digraph process {
 
     "Read plan, note context and global constraints, create todos" [shape=box];
     "More tasks remain?" [shape=diamond];
-    "Dispatch final code reviewer subagent (../requesting-code-review/code-reviewer.md)" [shape=box];
-    "Use superpowers:skill-verification-before-completion" [shape=box style=filled fillcolor=lightgreen];
+    "Dispatch final code reviewer subagent (../skill-requesting-code-review/code-reviewer.md)" [shape=box];
+    "Use skill-verification-before-completion" [shape=box style=filled fillcolor=lightgreen];
+    "Use skill-finishing-a-development-branch when authorized" [shape=box];
 
     "Read plan, note context and global constraints, create todos" -> "Dispatch implementer subagent (./implementer-prompt.md)";
     "Dispatch implementer subagent (./implementer-prompt.md)" -> "Implementer subagent asks questions?";
@@ -97,8 +97,9 @@ digraph process {
     "Task reviewer reports spec ✅ and quality approved?" -> "Mark task complete in todo list and progress ledger" [label="yes"];
     "Mark task complete in todo list and progress ledger" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
-    "More tasks remain?" -> "Dispatch final code reviewer subagent (../requesting-code-review/code-reviewer.md)" [label="no"];
-    "Dispatch final code reviewer subagent (../requesting-code-review/code-reviewer.md)" -> "Use superpowers:skill-verification-before-completion";
+    "More tasks remain?" -> "Dispatch final code reviewer subagent (../skill-requesting-code-review/code-reviewer.md)" [label="no"];
+    "Dispatch final code reviewer subagent (../skill-requesting-code-review/code-reviewer.md)" -> "Use skill-verification-before-completion";
+    "Use skill-verification-before-completion" -> "Use skill-finishing-a-development-branch when authorized";
 }
 ```
 
@@ -118,39 +119,17 @@ conflicts that only emerge from implementation.
 
 ## Model Selection
 
-Use the least powerful model that can handle each role to conserve cost and increase speed.
+Use platform default inherited model unless a task-specific reason justifies an available override.
 
-**Mechanical implementation tasks** (isolated functions, clear specs, 1-2 files): use a fast, cheap model. Most implementation tasks are mechanical when the plan is well-specified.
+Override only when:
 
-**Integration and judgment tasks** (multi-file coordination, pattern matching, debugging): use a standard model.
+- task needs materially stronger architecture or debugging judgment
+- bounded mechanical work can safely use a faster supported model
+- user explicitly requests a model
 
-**Architecture and design tasks**: use the most capable available model.
-The final whole-branch review is one of these — dispatch it on the most
-capable available model, not the session default.
-
-**Review tasks**: choose the model with the same judgment, scaled to the
-diff's size, complexity, and risk. A small mechanical diff does not need the
-most capable model; a subtle concurrency change does.
-
-**Always specify the model explicitly when dispatching a subagent.** An
-omitted model inherits your session's model — often the most capable and
-most expensive — which silently defeats this section.
-
-**Turn count beats token price.** Wall-clock and context cost scale with how
-many turns a subagent takes, and the cheapest models routinely take 2-3× the
-turns on multi-step work — costing more overall. Use a mid-tier model as the
-floor for reviewers and for implementers working from prose descriptions.
-When the task's plan text contains the complete code to write, the
-implementation is transcription plus testing: use the cheapest tier for
-that implementer. Single-file mechanical fixes also take the cheapest tier.
-
-**Task complexity signals (implementation tasks):**
-- Touches 1-2 files with a complete spec → cheap model
-- Touches multiple files with integration concerns → standard model
-- Requires design judgment or broad codebase understanding → most capable model
+Do not hard-code provider tiers or require an override for every dispatch. Reviewers need enough capability for diff risk; implementers need enough capability for task ambiguity. Follow current agent tool contract.
 
 ## Handling Implementer Status
-
 Implementer subagents report one of four statuses. Handle each appropriately:
 
 **DONE:** Generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
@@ -287,7 +266,7 @@ a ledger file, not only in todos.
 
 - [implementer-prompt.md](implementer-prompt.md) - Dispatch implementer subagent
 - [task-reviewer-prompt.md](task-reviewer-prompt.md) - Dispatch task reviewer subagent (spec compliance + code quality)
-- Final whole-branch review: use superpowers:skill-requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md)
+- Final whole-branch review: use `skill-requesting-code-review`'s [code-reviewer.md](../skill-requesting-code-review/code-reviewer.md)
 
 ## Example Workflow
 
@@ -425,14 +404,17 @@ Done!
 
 ## Integration
 
-**Required workflow skills:**
-- **superpowers:skill-using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
-- **superpowers:skill-writing-plans** - Creates the plan this skill executes
-- **superpowers:skill-requesting-code-review** - Code review template for the final whole-branch review
-- **superpowers:skill-verification-before-completion** - Complete development after all tasks
+**Related skills:**
+- **`skill-using-git-worktrees`** - Establishes isolation only when it materially reduces risk
+- **`skill-writing-plans`** - Creates approved executable plan
+- **`skill-requesting-code-review`** - Owns final whole-branch review request and template
+- **`skill-receiving-code-review`** - Evaluates returned findings before fixes
+- **`skill-verification-before-completion`** - Runs fresh final proof after reviews pass
+- **`skill-finishing-a-development-branch`** - Handles authorized Git disposition only after verified handoff
 
 **Subagents should use:**
-- **superpowers:skill-test-driven-development** - Subagents follow TDD for each task
+- **`skill-test-driven-development`** - Guides each implementer for non-trivial behavior
 
-**Alternative workflow:**
-- **superpowers:skill-executing-plans** - Use for parallel session instead of same-session execution
+**Alternatives:**
+- **`skill-executing-plans`** - Use for direct execution, absent commit authorization, tightly coupled tasks, or another-session handoff
+- **`skill-parallel-execution`** - Use for concurrent disjoint lanes; do not parallelize implementers inside this skill

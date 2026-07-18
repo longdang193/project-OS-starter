@@ -16,10 +16,10 @@ related_stages: []
 
 # Generated Contract Validator Gap Closure Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
+**Feature Source:** `none`
+**Feature Contract:** `none`
 **Spec:** `docs/superpowers/specs/2026-04-22-generated-contract-validator-gap-closure-spec.md`
-**Type:** modify  
+**Type:** modify
 **Plan Layer:** operating_system
 **Plan Status:** active
 
@@ -34,8 +34,8 @@ related_stages: []
 - Adoption-shape validation should enforce schema, not reimplement the full generator semantics.
 - New checks should catch older drifted shapes like nested stage contracts without making the validator brittle to harmless empty generated discovery.
 
-**Rollout / Revert:**  
-- rollback_trigger: The new validator rejects the current starter repo or obviously valid managed fixtures.  
+**Rollout / Revert:**
+- rollback_trigger: The new validator rejects the current starter repo or obviously valid managed fixtures.
 - rollback_method: Revert the new schema validators and their tests, then reintroduce narrower checks one artifact family at a time.
 
 ---

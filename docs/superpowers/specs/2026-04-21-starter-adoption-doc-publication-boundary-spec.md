@@ -5,7 +5,7 @@ status: proposed
 parent_workstream: none
 targets:
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
   - repo_config/publication-config.json
 related_features: []
 related_stages: []
@@ -30,7 +30,7 @@ Invariants:
 Dependencies:
 
 - `.agents/skills/skill-private-public-repo-governance/SKILL.md`
-- `docs/operating_system/procedures/publication-workflow.md`
+- `docs/operating_system/procedures/publication-procedure.md`
 - `repo_config/publication-config.json`
 - `docs/operating_system/governance/repo-governance.md`
 
@@ -55,7 +55,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/adoption_guide.md`
-  - `docs/operating_system/procedures/publication-workflow.md`
+  - `docs/operating_system/procedures/publication-procedure.md`
 - readme: none
 - generated: none
 
@@ -151,9 +151,9 @@ The skill should also warn that:
 - setup/usage docs can still be public when they are rewritten for product
   users or contributors rather than private starter adopters
 
-## Publication Workflow Update
+## Publication Procedure Update
 
-Update `docs/operating_system/procedures/publication-workflow.md` to explicitly name
+Update `docs/operating_system/procedures/publication-procedure.md` to explicitly name
 starter adoption/bootstrap docs as private-only by default.
 
 The workflow should teach contributors to distinguish:
@@ -181,7 +181,7 @@ The implementation is complete when:
 
 - the private/public governance skill explicitly treats starter adoption or
   bootstrap docs as private-only by default
-- `docs/operating_system/procedures/publication-workflow.md` teaches the same rule
+- `docs/operating_system/procedures/publication-procedure.md` teaches the same rule
 - the docs clearly distinguish private starter-adoption guidance from
   potentially public product-facing docs under `docs/`
 - the resulting rule does not accidentally classify all cross-cutting docs as

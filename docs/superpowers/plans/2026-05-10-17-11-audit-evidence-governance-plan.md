@@ -8,7 +8,6 @@ parent_workstream: none
 targets:
   - docs/operating_system/rules/
   - docs/operating_system/templates/
-  - docs/operating_system/workflows/
   - .agents/skills/
   - docs/superpowers/plans/audit/
   - scripts/
@@ -124,12 +123,7 @@ Provide script tooling to scaffold audits, register evidence artifacts, and enfo
 - Enforce usage through approved hard scope: workflow procedural gates + MUST-PATCH skills + `skill-executing-plans`, while avoiding duplicated policy text.
 
 **Files:**
-- Inspect: `.agents/workflows/` and `.agents/skills/`
 - Modify (workflows):
-  - `.agents/workflows/workflow-live-run-debugging.md`
-  - `.agents/workflows/workflow-live-run-verification.md`
-  - `.agents/workflows/workflow-live-run-closeout.md`
-  - `.agents/workflows/workflow-test-failure-triage.md`
 - Modify (skills MUST PATCH):
   - `.agents/skills/skill-systematic-debugging/SKILL.md`
   - `.agents/skills/skill-verification-before-completion/SKILL.md`

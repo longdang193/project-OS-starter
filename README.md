@@ -4,12 +4,11 @@ A private starter repository for carrying forward the repo operating system with
 
 ## What This Repo Owns
 
-- `docs/operating_system/`: human-readable repo governance and workflows
+- `docs/operating_system/`: human-readable repo governance and procedures
 - `.agents/skills/`: canonical Codex skill discovery surface
 - `docs/operating_system/templates/agents/`: source templates for generated instruction outputs
 - `repo_config/`: starter-level configuration for shipped starter validation and planning contracts
-- `configs/`: starter-level runtime and workflow configuration
-- `scripts/`: validation, hooks, and curated repo workflows
+- `scripts/`: validation, hooks, and curated repo procedures
 
 ## Canonical Vs Generated
 
@@ -51,35 +50,23 @@ First-hour flow:
    - `repo_config/`
    - `scripts/`
    - `tests/`
-4. fill `docs/intent/` before deep workflow docs
-5. decide whether the private/public publication workflow applies
+4. fill `docs/intent/` before deep procedure docs
+5. decide whether the private/public publication procedure applies
 6. define initial feature/stage sources only when the project shape is clear
 7. review starter governance and shipped root agent docs before adding any
-   source-only factory workflows
+   source-only factory procedures
 
 ## Agent Memory
 
 The starter includes `docs/operating_system/agent_memory/` as a compact repo-memory layer for:
 
 - stable invariants
-- recurring workflow patterns
+- recurring operating patterns
 - important failures that should become guardrails
 - open questions that may affect future agent behavior
 
 Keep this layer short and operational. Add memory when a lesson is likely to help future sessions, and promote repeated failures into rules, tests, hooks, or explicit follow-up work.
 
-## Hook Workflow
-
-The starter includes `.github/workflows/repo-hooks.yml` as a default CI hook layer.
-
-It checks:
-
-- repo-contract validation
-- generated-file drift for shipped starter surfaces
-- a baseline test command
-- publication-boundary dry runs when that workflow is adopted
-
-The default workflow assumes a Python-style test command. Update the baseline-test step during project bootstrap if your repo uses a different test runner or no `tests/` directory.
 
 ## Customize First
 
@@ -92,11 +79,10 @@ When bootstrapping a new project, review these first:
 - `docs/architecture.md`
 - `docs/intent/README.md`
 - `docs/operating_system/governance/repo-governance.md`
-- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
+- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/templates/agents/*.template.md`
 - `repo_config/planning_artifact_schema.yaml`
-- `repo_config/adoption-mode.yaml`
-- `.github/workflows/repo-hooks.yml`
+- `repo_config/planning_artifact_schema.yaml`
 
 ## Optional Nested AGENTS Templates
 
@@ -106,10 +92,10 @@ The starter ships with optional example templates:
 - `docs/operating_system/templates/agents/example-admin-AGENTS.template.md`
 
 These are examples only. Keep them as optional starter guidance unless your
-source repo also owns a separate generation workflow for additional agent entry
+source repo also owns a separate generation procedure for additional agent entry
 surfaces.
 
-## Public Mirror Workflow
+## Public Mirror Procedure
 
 Use the curated publication script to prepare a public-safe export:
 
@@ -128,7 +114,6 @@ The default starter config keeps operating-system docs, skills, adapter sources,
 The starter now separates configuration by role:
 
 - `repo_config/` for repo/system configuration
-- `configs/` for runtime/workflow configuration
 - `docs/features/*/*.yaml` and `docs/stages/*.yaml` for human-authored lifecycle contracts
 
 ## Reusable Documentation Update Prompt

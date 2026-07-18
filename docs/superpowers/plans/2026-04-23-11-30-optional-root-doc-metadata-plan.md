@@ -18,11 +18,11 @@ related_stages: []
 
 # Optional Root Doc Metadata Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-optional-root-doc-metadata-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-optional-root-doc-metadata-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** active
 
 **Goal:** Keep optional root docs optional when absent, but validator-enforce their managed metadata shape when present.

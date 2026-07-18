@@ -1,168 +1,255 @@
 ---
 name: skill-writing-plans
-description: Use when a confirmed design needs a multi-step implementation plan before
-  code changes begin.
-allowed-tools: []
-hooks:
-  pre:
-  - python scripts/hooks/run_validator.py --fast
-  post:
-  - python scripts/hooks/run_validator.py --fast
-required_reads:
-- docs/operating_system/templates/implementation-plan-template.md
-- docs/operating_system/templates/task-start-routing-guide.md
-- docs/operating_system/governance/repo-governance.md
-- repo_config/planning_artifact_schema.yaml
-tags:
-- skill
-- planning
-- implementation-plan
-- skill-writing-plans
-required_outputs:
-- docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md
+description: Use when an approved specification or direct approved scope needs an executable multi-step implementation plan.
+required_reads: []
 distribution_tier: starter_kit
 ---
-
 # Writing Plans
 
 ## Role
 
-Create executable implementation plans from approved design context.
+Turn an approved specification or direct approved scope into an executable plan
+that another engineer or agent can follow without inventing design, paths,
+symbols, task boundaries, or proof.
 
-## Canonical References
+This skill owns implementation decomposition, dependency order, execution
+approach, required skills, shared-write controls, and verification design. It
+does not own unresolved product behavior, implementation itself, final
+completion claims, or Git disposition.
 
-<MUST-READ>
-- `docs/operating_system/templates/implementation-plan-template.md`
-- `docs/operating_system/templates/implementation-execution-map-template.md` when a plan is being authored from multi-lane orchestration context
-- `docs/operating_system/templates/task-start-routing-guide.md`
-- `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
-- `docs/operating_system/planning/planning-dispatch.md`
-- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
-- `docs/operating_system/lifecycle/feature-lifecycle.md`
-- `docs/operating_system/governance/repo-governance.md`
+## When To Use
 
-If this file conflicts with canonical templates/governance, follow canonical docs.
-</MUST-READ>
+Use this skill when work needs several ordered edits, spans multiple maintained
+surfaces, carries meaningful migration or rollback risk, or needs a durable
+handoff.
 
-## Mandatory Read
+Do not create a plan for a local, reversible, design-clear change whose files,
+edit, and proof are already obvious. Approved intent may move directly to
+execution and verification.
 
-<MUST-READ>
-Before drafting a plan, read:
+## Inputs
 
-- canonical references above, especially:
-  - `docs/operating_system/planning/planning-dispatch.md`
-  - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
-  - `docs/operating_system/templates/task-start-routing-guide.md`
-  - `docs/operating_system/templates/implementation-plan-template.md`
-  - `docs/operating_system/templates/implementation-execution-map-template.md` when upstream orchestration exists
-</MUST-READ>
+- approved specification, or direct approved scope when no durable spec is needed
+- current source, tests, configuration, validators, and maintained docs relevant to the change
+- repository status and generated-surface boundaries
+- known constraints, compatibility requirements, risks, and completion evidence
 
-## Lifecycle Compliance
+If behavior, interfaces, invariants, or acceptance criteria remain unresolved,
+stop and use `skill-spec-drafting`.
 
-- Preserve upstream layer classification from triage when authoring plan metadata.
-- Use `parent_workstream: none` only when intent or operating-system lineage is intentionally workstream-free.
-- Name exact source, generated, and cross-cutting doc targets when they clarify scope.
-- Respect source-vs-generated ownership boundaries; generated feature, stage, history, and discovery surfaces must derive from owning sources.
-- Keep implementation plans structurally aligned with the standardized `Goal / Key Deliverables / Task/Wave Breakdown / Verification` template shape.
-- Prefer `Task` blocks for directly executable slices, reserving `Wave` for true orchestration.
-- Keep artifact outcomes in `Key Deliverables`, task-local proof inside task `Verification`, and final proof in top-level `Verification` without duplicating the same fact across sections.
+## Conditional References
 
-## Pre-Write Contract Check
+- Read the approved specification in full when one exists.
+- Use `docs/operating_system/templates/implementation-plan-template.md` when saving a canonical plan.
+- Read governance only when ownership, generation, publication, or repository boundaries affect execution.
+- Use native tools for local file mapping, Serena for exact symbols and references, and GitNexus for broad flow or impact when fresh and materially useful. Do not query both by default.
+- Read related execution skills only when the chosen execution approach requires them.
 
-Before writing any file, confirm all of the following:
+Source and tests remain authoritative when documents or optional tools disagree.
 
-- the canonical output path required by `required_outputs`:
-  - `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`
-- the canonical file must be created first; supporting artifacts are optional and
-  secondary
-- the plan must follow the implementation plan template shape, including:
-  - frontmatter that satisfies `repo_config/planning_artifact_schema.yaml` for `artifact_type: plan`
-  - required sections from `docs/operating_system/templates/implementation-plan-template.md`
-- if an implementation-execution-map already owns multi-lane sequencing, carry that orchestration into task/wave ordering rather than inventing a parallel structure
-- if the requested file path conflicts with `required_outputs`, follow the skill
-  contract unless the user explicitly overrides it
+## Artifact Boundaries
 
-Do not create an artifact-only plan when this skill applies.
+- optional roadmap: coordinated direction across several outcomes
+- specification: approved behavior, interfaces, design decisions, invariants, acceptance criteria, and validation intent
+- implementation plan: ordered tasks, dependencies, exact files and symbols, execution approach, required skills, shared-write controls, commands, and exit criteria
+- execution skill: implementation and task-local proof
+- verification skill: final evidence and plan reconciliation
+- branch-finishing skill: explicitly authorized Git disposition
 
-## GitNexus Usage
+No artifact is required merely to connect two other artifacts.
 
-Use GitNexus MCP when plan quality depends on cross-file dependency awareness.
+## Planning Process
 
-- Prefer GitNexus MCP tools for broad impact mapping, shared-module dependency checks, and repo audits.
-- Use it to find Single Source of Truth, structural symmetry, and invariance violations worth turning into bounded plan work.
-- For narrowly scoped plans, GitNexus is optional.
-- Before high-trust use, check freshness:
-  - `.\scripts\get_gitnexus_freshness.ps1`
-- If stale, use GitNexus only as advisory and keep plan source-first.
-- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue MCP-first.
+### 1. Confirm Approved Scope
 
-## Planning Standard: Structural Symmetry
+- identify requested outcome, preserved behavior, exclusions, and approval state
+- separate required work from desirable follow-up
+- stop if implementation would require an unapproved behavioral decision
 
-When breaking down tasks, ensure the plan implements shared abstractions rather than redundant, parallel logic. Task steps should consolidate equivalent logic and eliminate unnecessary special cases unless their operational difference is strictly required.
+### 2. Re-read The Specification
 
-## Preconditions
+When a spec exists:
 
-- triage exists (`skill-planning-dispatch`)
-- design context exists (approved detailed spec or approved execution-map context)
-- if approved spec is missing, stop and route to `skill-spec-drafting` or `/workflow-prompt-metadata-spec`
-- scope is bounded enough for implementation
+- map every requirement, invariant, interface, migration rule, and acceptance criterion
+- identify explicit non-goals
+- note open questions that block task design
+- record which requirements need code, configuration, tests, docs, migration, generated refresh, or operational proof
 
-## Plan Output
+### 3. Inspect Current Repository Truth
+
+- locate exact files, symbols, callers, tests, commands, and generated consumers
+- distinguish canonical inputs from generated outputs
+- inspect existing helpers and patterns before proposing new code
+- identify unrelated working-tree changes that execution must preserve
+- confirm deletion targets have no active consumer
+
+### 4. Define Implementation Outcomes
+
+State concrete results, not activities. Each outcome should describe changed
+behavior or maintained surfaces and how completion can be proven.
+
+### 5. Choose Execution Approach
+
+Select one:
+
+- `inline sequential`: default; one executor owns ordered tasks
+- `subagent-ready`: tasks have clear ownership and can be delegated independently
+- `parallel-capable`: two or more lanes have disjoint write sets and no hidden ordering dependency
+
+Also state:
+
+- required skills per task or lane
+- optional worktree need
+- shared files or symbols that force serialization
+- sequential fallback when delegation or parallel execution is unavailable
+
+Do not create a separate orchestration artifact. Plan owns this decision.
+
+### 6. Build Dependency Order
+
+Order tasks by executable truth:
+
+1. prerequisite inspection or baseline proof
+2. canonical contract or shared-owner change
+3. direct consumers
+4. focused tests and validators
+5. dependent docs and generated outputs
+6. broad verification and reconciliation
+
+Do not schedule generated edits before canonical inputs. Do not split tasks only
+to create artificial parallelism.
+
+### 7. Right-Size Tasks
+
+A task should produce one bounded, reviewable outcome with one clear exit gate.
+
+Split a task when it:
+
+- has more than one independent behavioral outcome
+- mixes canonical changes with unrelated cleanup
+- has multiple write owners
+- cannot be verified with one coherent proof set
+- contains a risky migration that deserves its own stop point
+
+Merge tasks when they:
+
+- touch the same owner and cannot pass independently
+- repeat the same setup or verification
+- separate a tiny code edit from its required test
+- exist only to mirror document sections
+
+Use waves only when several tasks share a real prerequisite. Do not use fixed
+task counts or time quotas.
+
+### 8. Write Task Contracts
+
+Each task must include:
+
+```markdown
+### Task N: <bounded outcome>
+
+**Purpose:**
+**Specification Coverage:**
+**Required Skills:**
+**Files And Symbols:**
+**Dependencies:**
+**Steps:**
+**Verification:**
+**Exit Criteria:**
+```
+
+Name exact paths, symbols, commands, expected results, and generated consumers.
+If a symbol does not yet exist, name its intended owner and contract. Steps
+must be executable actions, not restated goals. Add task-level execution mode
+only when it differs from the plan-level `Execution Approach`.
+
+### 9. Define Verification Strategy
+
+- task-local proof covers each bounded task
+- final proof covers implementation outcomes and cross-task integration
+- behavioral changes include focused regression proof
+- generated surfaces refresh only when canonical inputs changed
+- destructive or migration work includes rollback or stop conditions
+- commands must exist in the current repository
+
+### 10. Write The Canonical Plan
 
 Default path:
 
 - `docs/superpowers/plans/YYYY-MM-DD-HH-MM-<topic>-plan.md`
 
-Use the canonical implementation plan template and fill exact paths, tests, and commands.
-
-Plan frontmatter should follow the canonical planning schema for `artifact_type: plan`:
+Minimum frontmatter:
 
 ```yaml
 ---
-layer: intent | operating_system | workstream | change
+layer: intent | operating_system | change
 artifact_type: plan
 status: proposed | active | completed | superseded
-template_id: implementation-plan            # optional but recommended when using the template
-name: <short-plan-name>                     # recommended canonical identity field
-parent_workstream: <workstream-name> | none # optional; use for intent/operating_system/workstream scoped plans
-parent_thread: <thread-id>                  # use for change-layer plans
-parent_spec: docs/superpowers/specs/<file>.md
+template_id: implementation-plan
+name: <short-plan-name>
+parent_spec: docs/superpowers/specs/<file>.md # only when a spec exists
 targets:
   - <path>
-related_features:
-  - <feature_id>
-related_stages:
-  - <stage_id>
 ---
 ```
 
-Rules:
+`layer`, `artifact_type`, and `status` are required. Use `parent_spec` only when
+it resolves to a real owning spec. Use `targets` for cross-cutting work. Do not
+invent extra planning metadata or intermediary artifacts.
 
-- `layer`, `artifact_type`, and `status` are required for plans.
-- `artifact_type` must be `plan`.
-- Use `name` as the preferred canonical identity field for new plans.
-- Use `template_id: implementation-plan` when the canonical implementation-plan template is the source shape.
-- For change-layer plans, prefer `parent_thread` and `parent_spec`.
-- Do not restate `parent_workstream` when `parent_thread` is present; the validator derives workstream lineage from the thread.
-- Use `parent_workstream: none` only for intent or operating_system scoped artifacts that intentionally have no workstream lineage.
-- Include `targets`, `related_features`, and `related_stages` whenever they clarify scope; treat `targets` as effectively required for cross-cutting work.
+### 11. Self-Review Once
 
-## Minimal Workflow
+After the full plan is written, review it with fresh eyes:
 
-1. confirm preconditions
-2. if approved spec missing, route to `skill-spec-drafting` or `/workflow-prompt-metadata-spec` and stop
-3. complete the pre-write contract check
-4. map files/tests/docs affected
-5. write small testable tasks or waves using the standardized plan template shape
-6. include validation commands and rollback notes where needed
-7. hand off to `skill-executing-plans` (or `skill-subagent-driven-development`)
+1. **Spec coverage:** For every requirement and section in the spec, point to a task that implements or proves it. Add missing tasks.
+2. **Placeholder scan:** Search for red flags from `No Placeholders`. Replace each with exact content.
+3. **Cross-task consistency:** Confirm paths, types, method signatures, property names, commands, and generated owners remain identical across tasks.
+4. **Ownership:** Confirm canonical sources change before generated outputs and shared writes have one owner.
+5. **Task sizing:** Split mixed outcomes and merge artificial fragments.
+
+Fix issues inline. Do not run a second full self-review.
+
+## No Placeholders
+
+Do not leave:
+
+- `TODO`, `TBD`, `placeholder`, or `fill later`
+- `as needed`, `if necessary`, or equivalent undecided branches
+- `relevant files`, `appropriate tests`, or unnamed owners
+- `handle errors`, `update docs`, `etc.`, or other non-executable steps
+- unresolved `<path>`, `<function>`, `<command>`, or template tokens
+
+If information cannot be discovered, state the blocking decision and stop
+instead of hiding uncertainty inside the plan.
+
+## Review And Handoff
+
+- use `skill-plan-document-reviewer` before costly, cross-cutting, migration-heavy, or handoff-heavy execution
+- hand off approved plans to `skill-executing-plans`
+- use `skill-using-git-worktrees` only when isolation materially reduces risk
+- use `skill-parallel-execution` only for disjoint write ownership
+- final completion flows through `skill-verification-before-completion`, then optional `skill-finishing-a-development-branch`
+
+The plan is ready for completion verification only when required outcomes,
+tasks, task-local proof, deviations, and final commands are reconciled. A
+checked box records progress; it is not proof. Only
+`skill-verification-before-completion` may set final plan status to `completed`
+after returning `verified`.
+
+## Red Flags
+
+- plan copies the specification instead of decomposing implementation
+- tasks say what to achieve but not where or how to verify it
+- later tasks rename symbols or types defined earlier
+- generated outputs are edited as canonical sources
+- parallel lanes share files or hidden prerequisites
+- every task invokes every skill
+- plan creates new orchestration, lineage, registry, or handoff layers
+- completion depends on child documents rather than implementation evidence
 
 ## Guardrails
 
 - No implementation code in this skill.
-- Do not duplicate lifecycle/routing policy text here.
-- Keep guidance concise; canonical template carries required structure.
-- Plan tasks so later execution can pick next actions via the next-action gate prompt.
-- Do not author plan steps that require inventing unrelated execution actions.
-- Satisfy `required_outputs` before creating optional supporting artifacts.
+- Preserve unrelated user work.
+- Prefer existing helpers, tests, and native repository commands.
+- Keep smallest task set that fully covers approved scope.

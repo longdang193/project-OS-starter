@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/public-safe-doc-rewrite-guide.md
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
 related_features: []
 related_stages: []
@@ -13,11 +13,11 @@ related_stages: []
 
 # Public Mirror Sanitization Contract Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-21-public-mirror-sanitization-contract-spec.md`  
-**Type:** change  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-21-public-mirror-sanitization-contract-spec.md`
+**Type:** change
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -33,8 +33,8 @@ related_stages: []
 - Public publication guidance should preserve reproducible structure whenever that structure is safe to reveal.
 - Omission should be intentional, not the default response to every private reference.
 
-**Rollout / Revert:**  
-- rollback_trigger: the new guidance becomes confusing enough that maintainers cannot tell when to sanitize versus omit  
+**Rollout / Revert:**
+- rollback_trigger: the new guidance becomes confusing enough that maintainers cannot tell when to sanitize versus omit
 - rollback_method: revert to the simpler rewrite guide while preserving the private/public boundary and the existing forbidden-path safeguards
 
 ---
@@ -60,7 +60,7 @@ related_stages: []
 ## Task 3: Update Publication Governance
 
 **Files:**
-- Modify: `docs/operating_system/procedures/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-procedure.md`
 - Modify: `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 
 - [x] Step 1: Update the workflow doc so publication review asks whether a file should be kept, sanitized, or omitted.

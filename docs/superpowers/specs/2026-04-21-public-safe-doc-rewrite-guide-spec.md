@@ -4,7 +4,7 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
   - docs/operating_system/
   - docs/adoption_guide.md
   - README.md
@@ -35,7 +35,7 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/procedures/publication-workflow.md`
+- `docs/operating_system/procedures/publication-procedure.md`
 - `.agents/skills/skill-private-public-repo-governance/SKILL.md`
 - `docs/adoption_guide.md`
 - `repo_config/publication-config.json`
@@ -66,7 +66,7 @@ Affected docs:
   - `docs/usage.md`
   - `docs/pipeline.md`
   - `docs/architecture.md`
-  - `docs/operating_system/procedures/publication-workflow.md`
+  - `docs/operating_system/procedures/publication-procedure.md`
 - readme: `README.md`
 - generated: none
 
@@ -143,7 +143,7 @@ public-safe docs that can stand alone in a curated public mirror.
 
 It should be linked from:
 
-- `docs/operating_system/procedures/publication-workflow.md`
+- `docs/operating_system/procedures/publication-procedure.md`
 - any future publication-boundary or governance docs where contributors need to
   move from policy to execution
 
@@ -258,9 +258,9 @@ The guide should name concrete rewrite red flags, for example:
 The presence of these is not always automatically wrong, but they should
 trigger review before a doc is treated as public-safe.
 
-## Publication Workflow Update
+## Publication Procedure Update
 
-Update `docs/operating_system/procedures/publication-workflow.md` to link to the new
+Update `docs/operating_system/procedures/publication-procedure.md` to link to the new
 rewrite guide from the publication review flow.
 
 The workflow should move from:

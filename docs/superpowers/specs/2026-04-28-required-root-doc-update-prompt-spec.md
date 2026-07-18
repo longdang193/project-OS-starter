@@ -16,10 +16,10 @@ related_stages: []
 
 ## Triage
 
-Layer: operating_system  
-Feature type: ADD  
-Summary: Add a dedicated prompt for updating the validator-enforced required root docs under `docs/`.  
-Reasoning: The repo has a validator-enforced required root-doc surface, but the prompt pack does not yet provide a direct maintenance prompt for keeping those docs in sync with current repo reality.  
+Layer: operating_system
+Feature type: ADD
+Summary: Add a dedicated prompt for updating the validator-enforced required root docs under `docs/`.
+Reasoning: The repo has a validator-enforced required root-doc surface, but the prompt pack does not yet provide a direct maintenance prompt for keeping those docs in sync with current repo reality.
 Invariants:
 
 - required root docs remain cross-cutting summaries rather than new source-of-truth layers

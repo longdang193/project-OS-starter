@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
   - docs/operating_system/governance/repo-governance.md
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/adoption/project-adoption-migration-guide.md
   - docs/project_templates/mode-a/README.md
   - docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
@@ -16,11 +16,11 @@ related_stages: []
 
 # Prompt Template Pack Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -35,8 +35,8 @@ related_stages: []
 - Each template must say when to use it and what output to expect.
 - Prompt templates remain optional guidance, not validator-enforced repo files.
 
-**Rollout / Revert:**  
-- rollback_trigger: the prompt files become overly long, duplicate operating-system docs, or blur multiple lifecycle steps together.  
+**Rollout / Revert:**
+- rollback_trigger: the prompt files become overly long, duplicate operating-system docs, or blur multiple lifecycle steps together.
 - rollback_method: trim or remove the prompt pack and restore the docs to link only to the core operating-system guides.
 
 ---
@@ -52,7 +52,7 @@ Invariants:
   - Planning lifecycle stays `intent -> workstream or operating_system -> change -> spec -> plan -> execution`.
   - Prompt templates should help users ask for the right artifact, not bypass the lifecycle.
 Dependencies:
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   - `docs/project_templates/mode-a/README.md`
@@ -73,7 +73,7 @@ Affected docs:
   cross_cutting_docs:
     - none
   operating_system_docs:
-    - `docs/operating_system/skill-planning-dispatch.md`
+    - `docs/operating_system/planning/planning-dispatch.md`
     - `docs/operating_system/governance/repo-governance.md`
     - `docs/operating_system/adoption/project-adoption-migration-guide.md`
   readme: none
@@ -103,7 +103,7 @@ docs/operating_system/prompt_templates/mode-migration-prompt.md
 
 ```text
 docs/operating_system/governance/repo-governance.md
-docs/operating_system/skill-planning-dispatch.md
+docs/operating_system/planning/planning-dispatch.md
 docs/operating_system/adoption/project-adoption-migration-guide.md
 docs/project_templates/mode-a/README.md
 docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
@@ -121,7 +121,7 @@ docs/superpowers/specs/2026-04-25-prompt-template-pack-spec.md
 ## Task 2: Link The Pack From Core Docs
 
 **Files:**
-- Modify: `docs/operating_system/skill-planning-dispatch.md`
+- Modify: `docs/operating_system/planning/planning-dispatch.md`
 - Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - Modify: `docs/project_templates/mode-a/README.md`

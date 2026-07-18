@@ -16,11 +16,11 @@ related_stages: []
 
 # Managed Root Doc Metadata Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-managed-root-doc-metadata-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-managed-root-doc-metadata-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** active
 
 > **For agentic workers:** Use `skill-executing-plans` when carrying out the implementation in-session.
@@ -35,8 +35,8 @@ related_stages: []
 - Starter-only repos are not forced into managed root-doc frontmatter.
 - Metadata should help discovery and validation without turning every Markdown file into a metadata-heavy artifact.
 
-**Rollout / Revert:**  
-- rollback_trigger: The new validator rejects the current starter repo fixtures or obviously valid managed root-doc examples.  
+**Rollout / Revert:**
+- rollback_trigger: The new validator rejects the current starter repo fixtures or obviously valid managed root-doc examples.
 - rollback_method: Revert the managed root-doc metadata validator and keep only the existing presence/substance checks until the contract is refined.
 
 ---

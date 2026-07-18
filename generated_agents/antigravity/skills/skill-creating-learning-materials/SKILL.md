@@ -1,18 +1,7 @@
 ---
 name: skill-creating-learning-materials
-description: Use when generating source-grounded learning questions, Anki-ready cards,
-  Socratic prompts, interview prep, Bloom's Taxonomy exercises, multiple choice, Q&A,
-  sequencing, or drag-and-drop study materials.
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-creating-learning-materials
-required_outputs: []
+description: Use when creating source-grounded questions, cards, exercises, or study materials.
+required_reads: []
 distribution_tier: starter_kit
 ---
 

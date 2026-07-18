@@ -143,7 +143,7 @@ starter_sync:
     - generated_instruction_surfaces
     - validation_and_sync_scripts
   divergences:
-    - path: docs/operating_system/procedures/publication-workflow.md
+    - path: docs/operating_system/procedures/publication-procedure.md
       class: operating_system_docs
       status: customized
       rationale: Project-specific publication workflow details retained.

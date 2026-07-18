@@ -268,7 +268,6 @@ The normal check path should continue to run through:
 
 - `scripts/sync_architecture_docs.py`
 - local hook setup scripts
-- `.github/workflows/repo-hooks.yml`
 
 Frontmatter-specific validation when frontmatter is present should continue to
 live in `tools/docs/generate_architecture_metadata.py`.

@@ -13,7 +13,6 @@
 - **Specs / maps / thread docs:** `docs/superpowers/specs/2026-05-13-23-39-script-performance-reliability-spec.md`
 - **Governance / workflow rules used:**
   - `docs/operating_system/templates/implementation-plan-template.md`
-  - `docs/operating_system/templates/execution-context-pack-template.md`
   - `docs/operating_system/governance/execution-context-pack-governance.md`
 
 ## 3) Current Task State

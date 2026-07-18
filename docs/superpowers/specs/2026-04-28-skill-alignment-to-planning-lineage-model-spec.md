@@ -5,10 +5,9 @@ status: completed
 parent_workstream: none
 targets:
   - .agents/skills/skill-brainstorming/SKILL.md
-  - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
   - .agents/skills/skill-doc-system-lifecycle/SKILL.md
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/intent/workstream-coverage-and-progress-guide.md
   - docs/generated/planning_lineage.yaml
@@ -20,10 +19,10 @@ related_stages: []
 
 ## Triage
 
-Layer: operating_system  
-Feature type: MODIFY  
-Summary: Align the planning-related skills to the repo’s current planning-lineage model so skills stop teaching older routing and metadata assumptions.  
-Reasoning: The repo’s planning system has advanced materially: explicit thread files, `parent_thread`, `parent_spec`, generated `planning_lineage.yaml`, a strict derived-linkage boundary, and the new `execution_maps/` artifact class. The docs and prompt pack now reflect that model, but the skills that guide agent behavior may still describe older flows such as workstream-to-spec shortcuts or `parent_workstream` as the main downstream linkage.  
+Layer: operating_system
+Feature type: MODIFY
+Summary: Align the planning-related skills to the repo’s current planning-lineage model so skills stop teaching older routing and metadata assumptions.
+Reasoning: The repo’s planning system has advanced materially: explicit thread files, `parent_thread`, `parent_spec`, generated `planning_lineage.yaml`, a strict derived-linkage boundary, and the new `execution_maps/` artifact class. The docs and prompt pack now reflect that model, but the skills that guide agent behavior may still describe older flows such as workstream-to-spec shortcuts or `parent_workstream` as the main downstream linkage.
 Invariants:
 
 - skills should teach the same planning ladder as the current docs
@@ -35,10 +34,9 @@ Invariants:
 Dependencies:
 
 - `.agents/skills/skill-brainstorming/SKILL.md`
-- `.agents/skills/skill-planning-dispatch/SKILL.md`
 - `.agents/skills/skill-writing-plans/SKILL.md`
 - `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/intent/workstream-coverage-and-progress-guide.md`
 - `docs/generated/planning_lineage.yaml`
@@ -63,17 +61,17 @@ Affected docs:
 - stage_contract: none
 - feature_docs: none
 - cross_cutting_docs:
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
   - `docs/intent/workstream-coverage-and-progress-guide.md`
 - readme: none
 - generated:
   - `docs/generated/planning_lineage.yaml`
 
-Generated refresh required: no  
-Capability IDs: none  
-Invariant IDs: none  
-Spec needed: yes  
+Generated refresh required: no
+Capability IDs: none
+Invariant IDs: none
+Spec needed: yes
 Plan needed: yes
 
 ## Problem
@@ -128,7 +126,6 @@ What should align:
   are involved
 - `parent_thread` / `parent_spec` expectations in downstream artifact thinking
 
-### 2. `skill-planning-dispatch`
 
 Why review it:
 
@@ -202,7 +199,6 @@ Update:
 - planning ladder examples
 - downstream artifact handoff language
 
-### `skill-planning-dispatch`
 
 Update:
 

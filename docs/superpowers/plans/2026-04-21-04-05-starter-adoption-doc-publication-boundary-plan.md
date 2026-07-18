@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
   - repo_config/publication-config.json
 related_features: []
 related_stages: []
@@ -13,11 +13,11 @@ related_stages: []
 
 # Starter Adoption Doc Publication Boundary Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-21-starter-adoption-doc-publication-boundary-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-21-starter-adoption-doc-publication-boundary-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -32,8 +32,8 @@ related_stages: []
 - Starter adoption/bootstrap guidance remains private-only by default.
 - Publication rules remain allowlist-first.
 
-**Rollout / Revert:**  
-- rollback_trigger: the new rule accidentally classifies ordinary product-facing docs as private  
+**Rollout / Revert:**
+- rollback_trigger: the new rule accidentally classifies ordinary product-facing docs as private
 - rollback_method: remove the explicit starter-adoption boundary entries while preserving the broader private/public governance model
 
 ---
@@ -50,7 +50,7 @@ related_stages: []
 
 **Files:**
 - Modify: `.agents/skills/skill-private-public-repo-governance/SKILL.md`
-- Modify: `docs/operating_system/procedures/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-procedure.md`
 
 - [x] Step 1: Add starter adoption/bootstrap docs to the private-only examples in the skill.
 - [x] Step 2: Clarify that product-facing setup/usage docs may still be public when rewritten for the public mirror.

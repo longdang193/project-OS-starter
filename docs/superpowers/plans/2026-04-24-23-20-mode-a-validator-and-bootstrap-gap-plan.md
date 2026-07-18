@@ -20,11 +20,11 @@ related_stages: []
 
 # Mode A Validator And Bootstrap Gap Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-validator-and-bootstrap-gap-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-validator-and-bootstrap-gap-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -39,8 +39,8 @@ related_stages: []
 - The canonical repo-contract command must stay canonical, but its steps must respect adoption mode.
 - Mode A bootstrap requirements must be explicit and self-contained for Mode A itself.
 
-**Rollout / Revert:**  
-- rollback_trigger: Mode-aware branching weakens managed-mode checks or leaves Mode A unable to detect real starter drift.  
+**Rollout / Revert:**
+- rollback_trigger: Mode-aware branching weakens managed-mode checks or leaves Mode A unable to detect real starter drift.
 - rollback_method: Restore the previous repo-contract orchestration, keep the spec/plan, and retry with a narrower branching surface after isolating the failing assumption.
 
 ---

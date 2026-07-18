@@ -8,7 +8,7 @@ agent/runtime operating guidance.
 <LINK>
 - [governance/repo-governance.md](./governance/repo-governance.md)
 - [planning/planning-dispatch.md](./planning/planning-dispatch.md)
-- [lifecycle/doc-system-lifecycle.md](./lifecycle/doc-system-lifecycle.md)
+- [governance/repo-governance.md](./governance/repo-governance.md)
 </LINK>
 
 ## Sections
@@ -37,7 +37,6 @@ agent/runtime operating guidance.
   - tooling-specific operating-system references
 - `workflows/`
   - canonical workflow documents used as human and generated workflow surfaces
-- `provider_settings/`
   - provider-specific adapter/runtime settings sources
 
 ## Notes

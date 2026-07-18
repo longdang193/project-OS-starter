@@ -1,17 +1,7 @@
 ---
 name: skill-requesting-code-review
-description: Use when completing tasks, implementing major features, or before merging
-  to verify work meets requirements
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-requesting-code-review
-required_outputs: []
+description: Use when completed code changes need independent review before further implementation, handoff, merge, or release.
+required_reads: []
 distribution_tier: starter_kit
 ---
 
@@ -54,10 +44,10 @@ HEAD_SHA=$(git rev-parse HEAD)
 Dispatch a `general-purpose` subagent, filling the template at `code-reviewer.md`
 
 **Placeholders:**
-- `{DESCRIPTION}` - Brief summary of what you built
-- `{PLAN_OR_REQUIREMENTS}` - What it should do
-- `{BASE_SHA}` - Starting commit
-- `{HEAD_SHA}` - Ending commit
+- `[DESCRIPTION]` - Brief summary of what you built
+- `[PLAN_OR_REQUIREMENTS]` - What it should do
+- `[BASE_SHA]` - Starting commit
+- `[HEAD_SHA]` - Ending commit
 
 **3. Act on feedback:**
 - Fix Critical issues immediately
@@ -92,9 +82,9 @@ You: [Fix progress indicators]
 [Continue to Task 3]
 ```
 
-## Integration with Workflows
+## Integration
 
-**Subagent-Driven Development:**
+**Delegated or parallel execution:**
 - Review after EACH task
 - Catch issues before they compound
 - Fix before moving to next task

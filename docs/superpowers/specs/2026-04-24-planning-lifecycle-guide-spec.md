@@ -4,10 +4,9 @@ artifact_type: spec
 status: proposed
 parent_workstream: none
 targets:
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - .agents/skills/skill-brainstorming/SKILL.md
-  - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
 related_features: []
 related_stages: []
@@ -31,10 +30,9 @@ Invariants:
 
 Dependencies:
 
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `.agents/skills/skill-brainstorming/SKILL.md`
-- `.agents/skills/skill-planning-dispatch/SKILL.md`
 - `.agents/skills/skill-writing-plans/SKILL.md`
 
 Affected stages:
@@ -58,7 +56,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated: none
@@ -74,14 +72,13 @@ Plan needed: yes
 The repo already has the pieces of the planning workflow:
 
 - `docs/intent/` for project purpose and outcome sources
-- `skill-planning-dispatch` for layer classification and triage
 - `skill-brainstorming` for design and spec writing
 - `skill-writing-plans` for implementation plans
 
 That is good structure, but the guidance is still spread across several files:
 
 - the skills contain the clearest end-to-end flow
-- `docs/operating_system/skill-planning-dispatch.md` focuses on the triage gate
+- `docs/operating_system/planning/planning-dispatch.md` focuses on the triage gate
 - `docs/operating_system/governance/repo-governance.md` names the folders but does not
   act as the single lifecycle explainer
 
@@ -116,17 +113,15 @@ planning lifecycle.
 
 Recommended outcome:
 
-- keep `docs/operating_system/skill-planning-dispatch.md` as the canonical guide, but
+- keep `docs/operating_system/planning/planning-dispatch.md` as the canonical guide, but
   expand or restructure it so the lifecycle is explicit from the start
 
 Alternative acceptable outcome:
 
 - add a new `docs/operating_system/planning-lifecycle.md` and let
-  `skill-planning-dispatch.md` remain the narrower triage-focused companion
 
 Recommendation:
 
-- prefer evolving `skill-planning-dispatch.md` unless the content becomes awkward
   enough that a separate front-door guide is cleaner
 
 The key requirement is not the filename. It is having one plainly readable
@@ -171,7 +166,6 @@ their detail:
 - `skill-brainstorming`
   - design exploration
   - spec writing
-- `skill-planning-dispatch`
   - layer classification
   - triage block
   - routing decision
@@ -215,7 +209,7 @@ Benefits:
 
 At minimum:
 
-- update `docs/operating_system/skill-planning-dispatch.md` or add a new lifecycle
+- update `docs/operating_system/planning/planning-dispatch.md` or add a new lifecycle
   guide there
 - lightly cross-link from `docs/operating_system/governance/repo-governance.md`
 

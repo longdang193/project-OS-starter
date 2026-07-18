@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
@@ -16,11 +16,11 @@ related_stages: []
 
 # Roadmap Vs Execution Divergence Prompt Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-25-roadmap-vs-execution-divergence-prompt-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-25-roadmap-vs-execution-divergence-prompt-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -35,8 +35,8 @@ related_stages: []
 - the prompt preserves the `workstream` vs `operating_system` distinction
 - the wording stays short and copyable
 
-**Rollout / Revert:**  
-- rollback_trigger: the new prompt overlaps too heavily with gap/drift prompts  
+**Rollout / Revert:**
+- rollback_trigger: the new prompt overlaps too heavily with gap/drift prompts
 - rollback_method: remove the new prompt and keep only any wording changes that still clarify the prompt-pack map
 
 ---
@@ -53,7 +53,7 @@ Invariants:
   - the prompt should support roadmap-wide and workstream-local review
 Dependencies:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
   - `docs/intent/master-workstream-roadmap.md`
   - `docs/intent/workstreams/`
@@ -75,7 +75,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
-    - `docs/operating_system/skill-planning-dispatch.md`
+    - `docs/operating_system/planning/planning-dispatch.md`
     - `docs/operating_system/governance/repo-governance.md`
   readme: none
   generated:
@@ -101,7 +101,7 @@ docs/operating_system/prompt_templates/README.md
 docs/operating_system/prompt_templates/validate-or-drift-prompt.md
 docs/operating_system/prompt_templates/roadmap-gap-prompt.md
 docs/operating_system/prompt_templates/workstream-alignment-review-prompt.md
-docs/operating_system/skill-planning-dispatch.md
+docs/operating_system/planning/planning-dispatch.md
 docs/operating_system/governance/repo-governance.md
 docs/intent/master-workstream-roadmap.md
 docs/intent/workstreams/README.md
@@ -133,7 +133,7 @@ docs/superpowers/plans/2026-04-25-02-35-roadmap-vs-execution-divergence-prompt-p
 ## Task 3: Update Roadmap And Governance Docs
 
 **Files:**
-- Modify: `docs/operating_system/skill-planning-dispatch.md`
+- Modify: `docs/operating_system/planning/planning-dispatch.md`
 - Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/intent/master-workstream-roadmap.md`
 - Modify: `docs/intent/workstreams/README.md`

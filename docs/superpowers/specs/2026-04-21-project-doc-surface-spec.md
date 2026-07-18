@@ -13,7 +13,6 @@ targets:
   - scripts/sync_architecture_docs.py
   - scripts/setup_hooks.ps1
   - scripts/setup_hooks.sh
-  - .github/workflows/repo-hooks.yml
   - tests/test_validate_adoption_shape.py
   - tests/test_setup_hooks.py
 related_features: []
@@ -43,7 +42,6 @@ Dependencies:
 - `docs/operating_system/governance/repo-governance.md`
 - `scripts/validate_adoption_shape.py`
 - `scripts/sync_architecture_docs.py`
-- `.github/workflows/repo-hooks.yml`
 
 Affected stages:
 
@@ -320,7 +318,6 @@ Update these paths accordingly:
 - `scripts/setup_hooks.ps1`
 - `scripts/setup_hooks.sh`
 - `scripts/sync_architecture_docs.py`
-- `.github/workflows/repo-hooks.yml`
 
 The check should be part of the same baseline doc-validation path used before
 commit and in CI.

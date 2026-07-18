@@ -137,9 +137,7 @@ Define how Gemini conversation logs such as `.gemini/antigravity/brain/<conversa
 **Files:**
 - Inspect: `docs/operating_system/governance/repo-governance.md`
 - Inspect: `docs/operating_system/lifecycle/doc-system-lifecycle.md`
-- Inspect: `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
 - Modify: `docs/operating_system/governance/repo-governance.md`
-- Modify: `docs/operating_system/workflows/` 
 - Verify: `docs/operating_system/`
 
 **Preconditions:**

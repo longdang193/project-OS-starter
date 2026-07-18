@@ -41,7 +41,6 @@ is explicit where it matters most.
   - map relevant skills per prompt:
     - `skill-executing-plans`
     - `skill-verification-before-completion`
-    - `skill-planning-dispatch` (where rerouting applies)
 - task 3:
   - update `prompt_templates/README.md` to document selective use of
     `Related Skills` in high-impact prompts

@@ -10,10 +10,9 @@ targets:
   - scripts/publish_public_repo.ps1
   - scripts/validate_repo_config.py
   - scripts/validate_repo_contracts.py
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
 related_features: []
 related_stages: []
-distribution_tier: starter_kit
 ---
 
 # Implementation Plan: Single-Field DAG Publication Resolver
@@ -46,7 +45,7 @@ Align repo-config validator and publication workflow documentation with new mixe
 **Files:**
 - Inspect: `repo_config/publication-config.json`
 - Inspect: `scripts/publish_public_repo.ps1`
-- Modify: `docs/operating_system/procedures/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-procedure.md`
 - Verify: `scripts/validate_repo_config.py`
 
 **Preconditions:**
@@ -125,7 +124,7 @@ Align repo-config validator and publication workflow documentation with new mixe
 
 **Files:**
 - Inspect: `repo_config/publication-config.json`
-- Modify: `docs/operating_system/procedures/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-procedure.md`
 - Modify: `docs/superpowers/plans/audit/<new-audit-id>/...` (if audit bundle required by lane policy)
 - Verify: `scripts/publish_public_repo.ps1`
 

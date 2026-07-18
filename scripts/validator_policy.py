@@ -5,7 +5,7 @@ type: module
 domain: docs
 distribution_tier: starter_kit
 responsibility:
-  - Centralize validator-owned adoption-shape policy constants and field registries.
+  - Centralize validator-owned metadata constants and field registries.
   - Keep schema, template, and canonical-style rule data separate from validator flow logic.
 inputs:
   - Internal validator policy maintained in code.
@@ -27,7 +27,7 @@ from collections.abc import Mapping
 # Adoption and folder surface policy.
 ALLOWED_MODES = {
     "starter_method_only",
-    "managed_architecture_metadata",
+    "managed_runtime",
     "legacy_compatibility",
     "consumer_starter_mode",
     "source_of_truth_owner",
@@ -35,7 +35,7 @@ ALLOWED_MODES = {
 }
 ADOPTION_MODE_ALIASES = {
     "consumer_starter_mode": "starter_method_only",
-    "source_of_truth_owner": "managed_architecture_metadata",
+    "source_of_truth_owner": "managed_runtime",
     "legacy_compatibility_mode": "legacy_compatibility",
 }
 ALLOWED_REPO_ROLES = {
@@ -194,8 +194,6 @@ MODE_A_OUTGROWN_MIN_RUNTIME_BREADTH_DIRS = 3
 
 # Generated schema and feature/stage contract policy.
 GENERATED_INDEX_NAMES = {
-    "architecture_dag.yaml",
-    "capability_lineage.yaml",
     "feature_capabilities_index.yaml",
     "feature_dependency_graph.yaml",
     "feature_overview.md",
@@ -266,8 +264,6 @@ STAGE_CONTRACT_STRING_LIST_OPTIONAL_KEYS = {
     "invariants",
     "human_notes",
 }
-CAPABILITY_LINEAGE_REQUIRED_KEYS = {"features"}
-ARCHITECTURE_DAG_REQUIRED_KEYS = {"nodes", "edges"}
 REQUIRED_LINEAGE_TOP_LEVEL_KEYS = {"feature_id", "source", "invariants", "capabilities", "timeline"}
 LEGACY_LINEAGE_TOP_LEVEL_KEYS = {
     "generated_contract",
@@ -312,7 +308,6 @@ LINEAGE_COMPLETENESS_STATUSES = {"complete", "excepted", "incomplete"}
 GENERATED_HISTORY_START_MARKER = "<!-- GENERATED HISTORY START -->"
 GENERATED_HISTORY_END_MARKER = "<!-- GENERATED HISTORY END -->"
 HUMAN_NOTES_HEADING = "## Human Notes"
-ARCHITECTURE_METADATA_MARKER_LINE = "# @architecture"
 SETUP_META_MARKER = "@meta"
 STARTER_KIT_DISTRIBUTION_TIER = "starter_kit"
 STARTER_KIT_CLASSIFICATION_ENFORCEMENT = "fail"
@@ -337,40 +332,7 @@ def format_manual_refs_forbidden_message(*, owner: str | None = None) -> str:
     return f"{owner}: {message}"
 
 
-# Template and metadata-scan policy.
-MODE_A_TEMPLATE_SPEC_PATH = "docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md"
-MODE_A_TEMPLATE_ROOT = "docs/project_templates/mode-a"
-MODE_A_TEMPLATE_REQUIRED_FILES = (
-    "README.md",
-    "docs/setup.md",
-    "docs/configuration.md",
-    "docs/usage.md",
-    "docs/pipeline.md",
-    "docs/architecture.md",
-    "docs/intent/README.md",
-    "docs/intent/project-charter.md",
-    "docs/intent/constraints-and-non-goals.md",
-    "docs/intent/stakeholders.md",
-    "docs/intent/success-outcomes.md",
-    "repo_config/adoption-mode.yaml",
-    "repo_config/publication-config.json",
-    "repo_config/agent-adapter-mappings.json",
-    "configs/starter-runtime.yaml",
-    "scripts/README.md",
-    "tests/README.md",
-)
-MODE_A_TEMPLATE_MANAGED_MARKERS = (
-    "@capability",
-    "@proves",
-    "feature.source.yaml",
-    "stage.source.yaml",
-    "explains.features",
-    "capability_id:",
-    "capability_ids:",
-)
-MANAGED_FEATURE_TEMPLATE_PATH = "docs/architecture_templates/feature.source.yaml"
-YAML_ARCHITECTURE_TEMPLATE_PATH = "docs/architecture_templates/yaml-architecture.yaml"
-MARKDOWN_FRONTMATTER_TEMPLATE_PATH = "docs/architecture_templates/markdown-frontmatter.md"
+# Metadata-scan policy.
 METADATA_SCAN_SUFFIXES = {".py", ".yaml", ".yml", ".sql", ".md"}
 METADATA_SCAN_SKIP_DIRS = {
     ".git",
@@ -388,8 +350,6 @@ METADATA_SCAN_SKIP_DIRS = {
     "tools",
 }
 FEATURE_METADATA_PATTERNS = (
-    "@capability",
-    "@proves",
     "explains.features",
     "capability_id:",
     "capability_ids:",

@@ -8,7 +8,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - docs/intent/workstream-coverage-and-progress-guide.md
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/2026-04-27-upstream-to-downstream-planning-prompt-ladder-spec.md
 related_features: []
@@ -17,11 +17,11 @@ related_stages: []
 
 # Upstream-To-Downstream Planning Prompt Ladder Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-27-upstream-to-downstream-planning-prompt-ladder-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-27-upstream-to-downstream-planning-prompt-ladder-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.

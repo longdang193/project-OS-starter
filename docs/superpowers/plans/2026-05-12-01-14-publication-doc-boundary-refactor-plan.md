@@ -10,7 +10,7 @@ targets:
   - docs/operating_system/publication/public-repo-publication-policy.md
   - docs/operating_system/publication/public-repo-publishing.md
   - docs/operating_system/publication/public-safe-doc-rewrite-guide.md
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
 related_features: []
 related_stages: []
@@ -72,7 +72,7 @@ All files mentioning these docs route to correct canonical owner and avoid cross
 - ensure external references point to right owner doc
 
 **Files:**
-- Modify: `docs/operating_system/procedures/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-procedure.md`
 - Modify: mention files in `docs/superpowers/specs/` and `docs/superpowers/plans/` as needed
 - Verify: repository-wide mention scan
 

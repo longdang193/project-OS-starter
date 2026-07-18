@@ -7,7 +7,7 @@ targets:
   - docs/intent/workstreams/
   - docs/intent/workstream-coverage-and-progress-guide.md
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/
   - docs/superpowers/plans/
@@ -37,7 +37,7 @@ Dependencies:
 - `docs/intent/workstreams/`
 - `docs/intent/workstream-coverage-and-progress-guide.md`
 - `docs/operating_system/prompt_templates/`
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/superpowers/specs/`
 - `docs/superpowers/plans/`
@@ -64,7 +64,7 @@ Affected docs:
 - cross_cutting_docs: none
 - operating_system_docs:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated: none

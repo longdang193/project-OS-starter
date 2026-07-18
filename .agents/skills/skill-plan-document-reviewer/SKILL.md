@@ -1,154 +1,185 @@
 ---
 name: skill-plan-document-reviewer
-description: Use when a spec or implementation plan is about to guide significant work, especially for cross-cutting, handoff-heavy, or starter/public-sync changes where scope drift, weak validation, or genericity leakage would be costly.
-allowed-tools: []
-hooks:
-  pre:
-  - python scripts/hooks/run_validator.py --fast
-  post:
-  - python scripts/hooks/run_validator.py --fast
-required_reads:
-- docs/operating_system/agent_memory/
-- docs/operating_system/repo-governance.md
-- docs/operating_system/templates/implementation-plan-template.md
-- docs/operating_system/templates/detailed-specification-template.md
-required_outputs: []
-tags:
-- skill
-- review
-- planning
-- skill-plan-document-reviewer
+description: Use when a specification or implementation plan needs correctness and readiness review before approval, handoff, or costly execution.
+required_reads: []
 distribution_tier: starter_kit
 ---
-
 # Plan Document Reviewer
 
-Review specs and implementation plans before execution the way code review reviews code: findings first, risk first, no style policing.
+## Role
 
-When the planning problem resembles a known repo-method failure, consult `docs/operating_system/agent_memory/` before concluding the documents are sound.
+Review specifications and implementation plans the way code review reviews changes: findings first, risk first, evidence first, no style policing.
 
-## When to Use
+This skill detects incorrect, contradictory, underspecified, unprovable, overengineered, or execution-unsafe proposals. It does not author replacement documents, implement code, or claim completed behavior passes.
 
-Use this skill when:
+## When To Use
 
-- a spec or plan is about to drive real implementation work
-- another session or agent will execute the plan
-- the work is cross-cutting, operational, or starter/public-sync related
-- a flawed plan would waste significant time or create hidden risk
+Use when:
 
-Do not use it for:
+- a specification or plan will drive real implementation
+- another session, agent, team, or worktree will execute it
+- work is cross-cutting, operational, data-sensitive, starter/public-sync, or expensive to reverse
+- a flawed contract, task order, or validation strategy would create hidden risk
 
-- tiny one-step tasks
-- rewriting the whole plan from scratch
-- reviewing code diffs after implementation
+Skip for tiny, local, reversible tasks with settled behavior and obvious proof.
+
+## Ownership Boundaries
+
+- `skill-spec-drafting` creates approved behavior, interfaces, decisions, invariants, acceptance criteria, and validation intent.
+- `skill-writing-plans` creates exact tasks, files, commands, dependencies, and task-local verification.
+- this skill identifies readiness defects in those artifacts without silently rewriting them
+- `skill-using-git-worktrees` optionally establishes isolated workspace identity
+- `skill-executing-plans` discovers implementation reality and performs task-local proof
+- `skill-verification-before-completion` runs final proof and produces verified, incomplete, or blocked result
+- `skill-finishing-a-development-branch` owns authorized Git disposition after verified result
+- `skill-requesting-code-review` initiates implementation-diff review; `skill-receiving-code-review` evaluates returned findings; neither reviews proposed documents
+
+## Conditional References
+
+- Read target specification or plan in full.
+- Read linked specification when reviewing a plan.
+- Inspect named source, tests, configuration, schemas, and scripts needed to verify material claims.
+- Read `references/technical-review-checklist.md` when proposal has substantial software, API, data, analytics, ML, optimization, storage, integration, platform, starter, or publication implications.
+- Consult relevant agent memory only when proposal resembles a known reusable failure mode.
+- Read governance only when ownership or publication boundaries are in scope.
+
+Do not load every reference for every review.
+
+## Code Intelligence
+
+Use native tools for direct evidence and local search. Use Serena for exact symbols and references. Use GitNexus for broad dependency, duplication, ownership, or implementation-path analysis when fresh and materially useful. Do not query both by default. Source and tests remain authoritative.
 
 ## Review Process
 
-1. Read the target document or the spec+plan pair.
-2. Identify the claimed scope:
-   - goal
-   - invariants
-   - named files
-   - validation steps
-3. Review for execution risk:
-   - what could fail during execution?
-   - what is underspecified?
-   - what is likely to drift?
-4. Return findings first, ordered by severity.
-5. Add only the open questions that affect safe execution.
-6. End with a short readiness judgment:
-   - ready
-   - ready with fixes
-   - not ready
+### 1. Establish Claimed Contract
 
-Use severity tags that make execution risk obvious:
+Identify:
 
-- `P1` blocking execution risk
-- `P2` important weakness that should be fixed before major execution
-- `P3` smaller improvement or hardening opportunity
+- goal and success criteria
+- approved decisions and preserved invariants
+- non-goals and admissible cases
+- named files, interfaces, schemas, and generated surfaces
+- task order and dependencies for plans
+- validation claims and proposed proof
 
-## Review Checklist
+### 2. Verify Repository Evidence
 
-Check these areas:
+Check material claims against current repository state:
 
-- scope clarity
-  - does the claimed scope match the named files and workstreams?
-  - are likely collateral file changes missing from the file map?
-- execution order
-  - is the task order safe and realistic?
-- prerequisites
-  - are required setup steps, assumptions, or dependencies missing?
-  - does the plan assume a clean branch, passing baseline, existing remote, or available credentials without saying so?
-- validation quality
-  - do the proposed checks actually prove the intended completion claims?
-- source-of-truth targeting
-  - are feature docs, cross-cutting docs, and generated outputs handled correctly?
-- generated vs canonical confusion
-  - does the plan treat generated files as outputs instead of source?
-- rollout and merge risk
-  - does the plan hide risky integration, CI, or baseline assumptions?
-- genericity leakage
-  - for starter/public sync work, does the plan accidentally copy project-specific behavior into generic layers?
-- completion readiness
-  - if executed exactly as written, would the final verification be trustworthy?
-- structural symmetry and abstraction
-  - does the plan introduce redundant computation or parallel logic that could be unified?
-  - are shared structures correctly refactored into common abstractions or pipelines?
-  - does the plan reject unnecessary special cases unless their operational difference is explicitly justified?
+- named files and symbols exist
+- proposed owners are canonical rather than generated
+- referenced commands and scripts exist
+- shared mechanisms are reused where semantics match
+- native or installed capabilities are considered before custom replacements
+- likely consumers and collateral files are represented
+
+Do not raise native-capability findings without identifying concrete supported capability and repository evidence.
+
+### 3. Review By Root Cause
+
+Review these universal areas:
+
+1. goal, scope, non-goals, and admissible cases
+2. contracts, identity, defaults, errors, retries, and fallbacks
+3. consistency between requirements, examples, decisions, acceptance criteria, and plan tasks
+4. ownership, SSOT, generated boundaries, symmetry, and reuse
+5. execution order, prerequisites, integration, rollback, and handoff risk
+6. validation quality, reproducibility, edge cases, and failure proof
+7. unnecessary complexity, custom infrastructure, and speculative abstraction
+
+Use only applicable conditional profiles from technical checklist. Group repeated symptoms under one root-cause finding.
+
+### 4. Check Artifact Symmetry
+
+For a specification:
+
+- approved behavior is explicit without implementation sequencing
+- interfaces and invariants are consistent across admissible cases
+- acceptance criteria are observable and validation intent is executable
+- unresolved design is not disguised as future implementation detail
+
+For an implementation plan:
+
+- plan implements approved specification without duplicating design analysis
+- every task names concrete owners, dependencies, edits, and task-local proof
+- generated outputs derive from named canonical inputs
+- execution approach, dependency order, and shared-write ownership are explicit when they affect safe execution
+- final verification can prove every completion criterion
+
+### 5. Classify Findings
+
+Use one severity system:
+
+- `P1`: blocks safe or correct approval or execution
+- `P2`: material correctness, maintainability, ownership, or validation weakness
+- `P3`: optional simplification or hardening
+
+Do not inflate style preferences into findings.
+
+### 6. Decide Readiness
+
+Use one verdict:
+
+- `not ready`: one or more P1 findings remain
+- `ready with required fixes`: no P1, but P2 fixes are required before execution
+- `implementation-ready`: no unresolved P1 or required P2 findings
+
+Verdict does not change artifact frontmatter status automatically.
+
+## Finding Format
+
+For each important issue provide:
+
+```markdown
+### [P1|P2|P3] Finding title
+
+**Problem:** Exact contradiction, omission, or unsafe assumption.
+
+**Why it matters:** Correctness, execution, validation, or maintenance consequence.
+
+**Evidence:** Exact document section plus repository evidence.
+
+**Preserve:** Behavior or invariant that must remain.
+
+**Smallest safe correction:** Keep, simplify, merge, delete, replace, or grandfather.
+```
+
+Add concrete example only when evidence needs illustration.
 
 ## Output Format
 
-Use this structure:
-
 ### Findings
 
-- list issues first, ordered by severity
-- explain the concrete execution risk
-- cite exact file references when possible
+List root-cause findings first, ordered by severity. If none, say so explicitly.
 
-### Open Questions / Assumptions
+### Open Questions Or Assumptions
 
-- include only unresolved points that affect safe execution
+Include only unresolved items that affect safe approval or execution.
 
-### Summary
+### Must-Fix Before Approval
 
-- say `ready`, `ready with fixes`, or `not ready`
-- if there are no findings, say that explicitly and mention any residual thin spots
+List smallest required P1 and P2 corrections. Exclude optional improvements.
 
-## Review Standards
+### Smallest Safe Version
 
-- prioritize execution risk over writing style
-- do not rewrite the plan unless asked
-- do not invent missing scope; call it out instead
-- distinguish blocking gaps from optional improvements
-- be especially careful with:
-  - weak verification
-  - missing doc targets
-  - hidden prerequisites
-  - starter/public genericity leaks
-  - generated-output churn without source changes
+Describe smallest end-to-end correction preserving correctness, SSOT, symmetry, native reuse, reproducibility, testability, and clear ownership. Do not rewrite unaffected scope. Provide full alternative design only when current proposal is fundamentally unsound.
 
-## Common Findings
+### Review Verdict
 
-- validation is too weak to support later completion claims
-- file map does not match the claimed scope
-- important prerequisites are assumed but not stated
-- generic starter sync would copy project-specific material
-- plan says “later” where a blocking decision is actually needed now
-- generated outputs are treated like source-of-truth docs
+State exactly one readiness verdict and short reason.
+
+## Red Flags
+
+- rewriting document instead of reviewing it
+- repeating one root cause across several sections
+- treating artifact metadata status as review verdict
+- reviewing implementation diffs instead of proposed contract
+- claiming tests or behavior pass before execution
+- demanding every technical profile for an unrelated plan
+- rejecting custom code based on assumed native support
+- proposing new orchestration, registry, validator, or abstraction without demonstrated need
+- reporting optional polish as approval blocker
 
 ## Integration
 
-Use this skill:
-
-- after spec/plan drafting
-- before `executing-plans`
-- before handing a plan to another session or subagent
-- before high-risk cross-cutting work
-
-This skill complements:
-
-- `brainstorming` for design
-- plan writing for document creation
-- `executing-plans` for implementation
-- `skill-plan-document-reviewer` for document review
+Use after `skill-spec-drafting` or `skill-writing-plans` when review cost is justified and before `skill-executing-plans` or external handoff.

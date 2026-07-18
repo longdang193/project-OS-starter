@@ -13,10 +13,10 @@ related_stages: []
 
 # Feature Contract Freshness Metadata Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
+**Feature Source:** `none`
+**Feature Contract:** `none`
 **Spec:** `docs/superpowers/specs/2026-04-22-feature-contract-freshness-metadata-spec.md`
-**Type:** modify  
+**Type:** modify
 **Plan Layer:** operating_system
 **Plan Status:** active
 

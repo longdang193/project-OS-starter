@@ -18,11 +18,11 @@ related_stages: []
 
 # Canonical Ordering Rules Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-canonical-ordering-rules-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-canonical-ordering-rules-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -38,8 +38,8 @@ related_stages: []
 - Phase 2A must stay limited to low-ambiguity human-authored lists and managed frontmatter.
 - Generated ref-family ordering stays out of this pass unless tests prove the current starter fixtures are already stable.
 
-**Rollout / Revert:**  
-- rollback_trigger: Phase 2A flags current starter fixtures or realistic managed examples whose order is actually semantic or generator-dependent.  
+**Rollout / Revert:**
+- rollback_trigger: Phase 2A flags current starter fixtures or realistic managed examples whose order is actually semantic or generator-dependent.
 - rollback_method: Remove the ordering helper calls for the noisy fields, keep the spec/plan, and retry with a narrower field set.
 
 ---

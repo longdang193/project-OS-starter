@@ -135,65 +135,16 @@ def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "SKILL.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "task-reviewer-prompt.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "helper.sh").exists()
-def test_run_skips_when_consumer_default_selection_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "repo"
-    _write_yaml(
-        root / "repo_config" / "adoption-mode.yaml",
-        "adoption_mode: managed_architecture_metadata\nrepo_role: consumer_derived\n",
-    )
-    _write_yaml(
-        root / "repo_config" / "adapter-sync-policy.yaml",
-        "default_platforms:\n  - codex\n",
-    )
-
-    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
-    monkeypatch.setattr(sys, "argv", ["sync_agent_adapters.py", "--check"]) 
-
-    assert SYNC.run() == 0
+def test_resolve_platform_selection_defaults_to_codex(tmp_path: Path) -> None:
+    args = type("Args", (), {"all_platforms": False, "platform": []})()
+    assert SYNC._resolve_platform_selection(tmp_path, args) == ({"codex"}, "default")
 
 
-def test_run_fails_when_source_owner_default_selection_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "repo"
-    _write_yaml(
-        root / "repo_config" / "adoption-mode.yaml",
-        "adoption_mode: managed_architecture_metadata\nrepo_role: source_owner\n",
-    )
-    _write_yaml(
-        root / "repo_config" / "adapter-sync-policy.yaml",
-        "default_platforms:\n  - codex\n",
-    )
-
-    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
-    monkeypatch.setattr(sys, "argv", ["sync_agent_adapters.py", "--check"]) 
-
-    assert SYNC.run() == 1
+def test_resolve_platform_selection_respects_explicit_platforms(tmp_path: Path) -> None:
+    args = type("Args", (), {"all_platforms": False, "platform": ["claude"]})()
+    assert SYNC._resolve_platform_selection(tmp_path, args) == ({"claude"}, "explicit")
 
 
-def test_run_fails_when_consumer_explicit_platform_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "repo"
-    _write_yaml(
-        root / "repo_config" / "adoption-mode.yaml",
-        "adoption_mode: managed_architecture_metadata\nrepo_role: consumer_derived\n",
-    )
-
-    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["sync_agent_adapters.py", "--check", "--platform", "codex"],
-    )
-
-    assert SYNC.run() == 1
-
-
-def test_run_fails_when_consumer_all_platforms_has_no_mappings(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "repo"
-    _write_yaml(
-        root / "repo_config" / "adoption-mode.yaml",
-        "adoption_mode: managed_architecture_metadata\nrepo_role: consumer_derived\n",
-    )
-
-    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
-    monkeypatch.setattr(sys, "argv", ["sync_agent_adapters.py", "--check", "--all-platforms"])
-
-    assert SYNC.run() == 1
+def test_resolve_platform_selection_all_platforms(tmp_path: Path) -> None:
+    args = type("Args", (), {"all_platforms": True, "platform": []})()
+    assert SYNC._resolve_platform_selection(tmp_path, args) == (set(), "all-platforms")

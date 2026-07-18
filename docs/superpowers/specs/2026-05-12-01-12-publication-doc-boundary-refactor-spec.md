@@ -9,7 +9,7 @@ targets:
   - docs/operating_system/publication/public-repo-publication-policy.md
   - docs/operating_system/publication/public-repo-publishing.md
   - docs/operating_system/publication/public-safe-doc-rewrite-guide.md
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
   - .agents/skills/skill-private-public-repo-governance/SKILL.md
 related_features: []
 related_stages: []
@@ -39,55 +39,24 @@ Update files that mention these docs so links and wording route readers to corre
 
 Ensure `skill-private-public-repo-governance` explicitly references publication docs and states precedence expectations for boundary rules.
 
-## Task/Wave Breakdown
+## Design Analysis
 
-### Wave 1: Current-state overlap audit
+### Current state
 
-**Purpose:**
-- capture overlap patterns and duplication hotspots before edits
+- three publication documents contain overlapping policy, runbook, and rewrite guidance
+- downstream references can preserve ambiguity when ownership is not explicit
 
-**Steps:**
-- [ ] inventory all sections in three publication docs
-- [ ] classify each section as policy, runbook, or rewrite guidance
-- [ ] map all repo files that reference the three docs
+### Constraints
 
-**Verification:**
-- [ ] overlap matrix clearly shows duplicate/ambiguous sections
+- each content type needs one canonical owner
+- summaries may link to canonical detail but must not restate it
+- active references and governance skill wording must follow the surviving boundaries
 
-**Exit Criteria:**
-- no planned move/delete is based on assumption
+### Alternatives
 
-### Wave 2: Boundary contract definition
-
-**Purpose:**
-- lock document scope boundaries and precedence rules
-
-**Steps:**
-- [ ] define ownership table per document
-- [ ] define required cross-links between three docs
-- [ ] define no-duplication rule with allowed summary exception
-
-**Verification:**
-- [ ] each content type has exactly one canonical owner
-
-**Exit Criteria:**
-- refactor edits can be executed without scope ambiguity
-
-### Wave 3: Reference and skill alignment design
-
-**Purpose:**
-- align downstream references and governance skill wording
-
-**Steps:**
-- [ ] define update rules for files referencing these docs
-- [ ] define required publication-doc mention block for governance skill
-- [ ] define validation expectations for future drift checks
-
-**Verification:**
-- [ ] reference update plan covers all discovered mention files
-
-**Exit Criteria:**
-- design ready for implementation planning
+- keep overlapping documents: rejected because drift remains
+- consolidate all publication content into one document: rejected because policy, runbook, and rewrite methods have distinct owners
+- preserve three focused documents with explicit boundaries: selected
 
 ## Design Decisions
 

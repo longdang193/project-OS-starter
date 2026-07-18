@@ -2,7 +2,7 @@
 
 ## 1) Objective
 
-- **Workstream / Plan:** `docs/superpowers/plans/2026-05-11-17-19-strict-capability-linkage-plan.md`
+- **Scope / Plan:** `docs/superpowers/plans/2026-05-11-17-19-strict-capability-linkage-plan.md`
 - **Goal:** Enforce strict ownership-aware Python `@meta` capability linkage with upstream-grounded capability IDs.
 - **Bounded Scope (in-scope only):** policy text alignment, validator enforcement, test coverage, plan/context synchronization, closeout verification.
 - **Out of Scope (explicit):** unrelated runtime feature work, broad architecture metadata backlog cleanup outside this plan scope.
@@ -10,10 +10,9 @@
 ## 2) Canonical Inputs (Source of Truth)
 
 - **Primary plan:** `docs/superpowers/plans/2026-05-11-17-19-strict-capability-linkage-plan.md`
-- **Specs / maps / thread docs:** `docs/superpowers/specs/metadata-linkage-governance-spec.md`
+- **Specification:** `docs/superpowers/specs/metadata-linkage-governance-spec.md`
 - **Governance / workflow rules used:**
   - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
-  - `docs/operating_system/templates/execution-context-pack-template.md`
   - `docs/operating_system/governance/execution-context-pack-governance.md`
   - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
 
@@ -28,7 +27,6 @@
 
 - `docs/operating_system/rules/python-contracts-rule.md` — required ownership + strict capability policy language.
 - `.agents/skills/skill-doc-system-lifecycle/SKILL.md` — grounding checklist aligned to ownership semantics.
-- `docs/operating_system/workflows/workflow-live-run-preflight-check.md` — metadata gate tightened with ownership checks.
 - `scripts/validate_python_meta_headers.py` — strict ownership and feature-capability enforcement flags.
 - `scripts/validate_repo_contracts.py` — strict flags wired for non-`starter_method_only` mode.
 - `tests/test_validate_python_meta_headers.py` — strict matrix regression tests added.
@@ -38,7 +36,6 @@
 
 - **Last commands run:**
   - `py scripts/validate_planning_lifecycle.py --strict`
-  - `py scripts/validate_checkpoint_packs.py`
   - `py scripts/validate_repo_contracts.py --fast`
 - **Result summary:** all closeout gates pass.
 - **Failing checks (if any):** none.
@@ -58,7 +55,7 @@
 ## 8) Resume Prompt (Copy/Paste)
 
 ```text
-Read this execution context pack first. Run closeout gate trio now, update plan Task 4 checklist with results, and close if all gates pass.
+This historical lane is closed. Use current source, tests, and active skills for any new work.
 ```
 
 ## 9) Optional Deep Context (Consult Only)
@@ -74,4 +71,3 @@ If context pack, source files, and raw log disagree:
 1. source files and current tests/checks win
 2. then context pack
 3. raw log is fallback evidence only
-

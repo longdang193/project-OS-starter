@@ -5,18 +5,18 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/public-safe-doc-rewrite-guide.md
-  - docs/operating_system/procedures/publication-workflow.md
+  - docs/operating_system/procedures/publication-procedure.md
 related_features: []
 related_stages: []
 ---
 
 # Public-Safe Doc Rewrite Guide Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-21-public-safe-doc-rewrite-guide-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-21-public-safe-doc-rewrite-guide-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -30,8 +30,8 @@ related_stages: []
 - Public-facing setup, usage, configuration, pipeline, and architecture docs may still be published when intentionally rewritten.
 - The first implementation stays guide-only; it does not add a publication linter yet.
 
-**Rollout / Revert:**  
-- rollback_trigger: the guide becomes too prescriptive or starts treating all cross-cutting docs as private  
+**Rollout / Revert:**
+- rollback_trigger: the guide becomes too prescriptive or starts treating all cross-cutting docs as private
 - rollback_method: remove or simplify the guide while preserving the existing publication-boundary rules
 
 ---
@@ -54,10 +54,10 @@ related_stages: []
 - [x] Step 3: Include a concise rewrite checklist and red-flag content list.
 - [x] Step 4: Keep the guide aligned with the existing private/public boundary rules.
 
-## Task 3: Update Publication Workflow Docs
+## Task 3: Update Publication Procedure Docs
 
 **Files:**
-- Modify: `docs/operating_system/procedures/publication-workflow.md`
+- Modify: `docs/operating_system/procedures/publication-procedure.md`
 
 - [x] Step 1: Link the new guide from the publication workflow.
 - [x] Step 2: Make the workflow move cleanly from policy to execution guidance.

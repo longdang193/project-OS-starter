@@ -5,7 +5,6 @@ status: closed
 name: single-field-dag-publication-resolver
 plan: docs/superpowers/plans/2026-05-13-15-19-single-field-dag-publication-resolver-plan.md
 lane: single-field-dag-publication-resolver
-distribution_tier: starter_kit
 ---
 
 # Execution Context Pack
@@ -32,7 +31,6 @@ distribution_tier: starter_kit
 - `py -3 scripts/validate_repo_contracts.py --fast` ✅
 - `py -3 -m pytest tests/test_validate_repo_config.py -q` ✅
 - `py -3 scripts/validate_planning_lifecycle.py --strict` ✅
-- `py -3 scripts/validate_checkpoint_packs.py` ✅
 - post-push `py -3 scripts/validate_repo_contracts.py --fast` ✅
 
 ## 5) Risks / Follow-up

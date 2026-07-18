@@ -17,11 +17,11 @@ related_stages: []
 
 # Mode A To Managed Maturity Ladder Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-to-managed-maturity-ladder-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-to-managed-maturity-ladder-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -36,8 +36,8 @@ related_stages: []
 - `docs/features/README.md` remains a useful early anchor.
 - The wording must clearly name `managed_architecture_metadata` as the mature destination.
 
-**Rollout / Revert:**  
-- rollback_trigger: the new wording sounds like forced immediate migration rather than staged guidance.  
+**Rollout / Revert:**
+- rollback_trigger: the new wording sounds like forced immediate migration rather than staged guidance.
 - rollback_method: restore the previous warning/doc phrasing and retry with narrower language.
 
 ---

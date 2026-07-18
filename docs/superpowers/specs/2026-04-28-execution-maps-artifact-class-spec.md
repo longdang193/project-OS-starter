@@ -8,7 +8,7 @@ targets:
   - docs/superpowers/specs/
   - docs/superpowers/plans/
   - docs/generated/planning_lineage.yaml
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
 related_features: []
@@ -19,10 +19,10 @@ related_stages: []
 
 ## Triage
 
-Layer: operating_system  
-Feature type: ADD  
-Summary: Add `docs/superpowers/execution_maps/` as a separate artifact class for orchestration across a set of specs, with a strict boundary that keeps execution maps distinct from specs, plans, thread files, and generated lineage views.  
-Reasoning: The planning system now has a clear ladder from thread sets to specs and from specs to plans, but it still lacks a dedicated human-authored artifact for multi-spec execution orchestration. That orchestration is too broad for a single plan, not design-oriented enough to belong in specs, and too cross-cutting to live in thread files.  
+Layer: operating_system
+Feature type: ADD
+Summary: Add `docs/superpowers/execution_maps/` as a separate artifact class for orchestration across a set of specs, with a strict boundary that keeps execution maps distinct from specs, plans, thread files, and generated lineage views.
+Reasoning: The planning system now has a clear ladder from thread sets to specs and from specs to plans, but it still lacks a dedicated human-authored artifact for multi-spec execution orchestration. That orchestration is too broad for a single plan, not design-oriented enough to belong in specs, and too cross-cutting to live in thread files.
 Invariants:
 
 - execution maps are orchestration artifacts, not design specs
@@ -37,7 +37,7 @@ Dependencies:
 - `docs/superpowers/specs/`
 - `docs/superpowers/plans/`
 - `docs/generated/planning_lineage.yaml`
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 
@@ -61,16 +61,16 @@ Affected docs:
 - stage_contract: none
 - feature_docs: none
 - cross_cutting_docs:
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated:
   - `docs/generated/planning_lineage.yaml`
 
-Generated refresh required: no  
-Capability IDs: none  
-Invariant IDs: none  
-Spec needed: yes  
+Generated refresh required: no
+Capability IDs: none
+Invariant IDs: none
+Spec needed: yes
 Plan needed: yes
 
 ## Problem

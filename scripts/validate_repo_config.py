@@ -6,11 +6,9 @@ domain: config
 distribution_tier: starter_kit
 responsibility:
   - Validate repo-level config ownership surfaces for shape and path sanity.
-  - Validate runtime config YAML files under configs/ as parseable top-level mappings.
 inputs:
   - repo_config/publication-config.json
   - repo_config/starter-kit-manifest.json (optional; validated when present)
-  - configs/*.yaml
 outputs:
   - Exit status and human-readable validation results.
 tags:
@@ -79,11 +77,6 @@ def build_parser() -> argparse.ArgumentParser:
             "Path to starter-kit-manifest.json. Optional in consumer repos; "
             "validated when present."
         ),
-    )
-    parser.add_argument(
-        "--runtime-config-root",
-        default="configs",
-        help="Directory containing runtime/workflow YAML configs.",
     )
     parser.add_argument(
         "--repo-root",
@@ -249,7 +242,6 @@ def main() -> int:
     publication_config_path = Path(args.publication_config).resolve()
     adapter_mappings_path = Path(args.adapter_mappings).resolve()
     starter_kit_manifest_path = Path(args.starter_kit_manifest).resolve()
-    runtime_config_root = Path(args.runtime_config_root).resolve()
     repo_root = infer_repo_root(args.repo_root, publication_config_path, starter_kit_manifest_path)
 
     errors: list[str] = []
@@ -257,9 +249,6 @@ def main() -> int:
     for path, label in ((publication_config_path, "Publication config"),):
         if not path.exists():
             errors.append(f"{label} path does not exist: {path}")
-
-    if not runtime_config_root.exists():
-        errors.append(f"Runtime config root does not exist: {runtime_config_root}")
 
     if errors:
         for error in errors:
@@ -292,8 +281,6 @@ def main() -> int:
         validate_adapter_mappings(adapter_mappings, repo_root, errors)
     if starter_kit_manifest is not None:
         validate_starter_kit_manifest(starter_kit_manifest, errors)
-
-    validate_runtime_configs(runtime_config_root, errors)
 
     if errors:
         for error in errors:

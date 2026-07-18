@@ -13,7 +13,6 @@ targets:
   - scripts/sync_architecture_docs.py
   - scripts/setup_hooks.ps1
   - scripts/setup_hooks.sh
-  - .github/workflows/repo-hooks.yml
   - tests/test_validate_adoption_shape.py
   - tests/test_setup_hooks.py
 related_features: []
@@ -44,7 +43,6 @@ Dependencies:
 - `docs/adoption_guide.md`
 - `scripts/validate_adoption_shape.py`
 - `scripts/sync_architecture_docs.py`
-- `.github/workflows/repo-hooks.yml`
 
 Affected stages:
 
@@ -381,7 +379,6 @@ These folder checks should run through the normal baseline validation path:
 - `scripts/sync_architecture_docs.py`
 - `scripts/setup_hooks.ps1`
 - `scripts/setup_hooks.sh`
-- `.github/workflows/repo-hooks.yml`
 
 The goal is one canonical doc-shape validation path, not a second forgotten
 command.

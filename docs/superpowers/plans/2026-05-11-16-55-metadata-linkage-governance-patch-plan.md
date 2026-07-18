@@ -9,7 +9,6 @@ parent_spec: none
 targets:
   - docs/operating_system/rules/python-contracts-rule.md
   - .agents/skills/skill-doc-system-lifecycle/SKILL.md
-  - .agents/workflows/workflow-live-run-preflight-check.md
   - scripts/validate_python_meta_headers.py
   - tests/
 related_features: []
@@ -92,9 +91,6 @@ Preflight workflow and validator follow-up tasks documented and executed (or int
 - Add runtime preflight check to catch disconnected metadata before completion claims.
 
 **Files:**
-- Inspect: `.agents/workflows/workflow-live-run-preflight-check.md`
-- Modify: `.agents/workflows/workflow-live-run-preflight-check.md`
-- Verify: `.agents/workflows/workflow-live-run-preflight-check.md`
 
 **Preconditions:**
 - Task 2 complete.
@@ -142,7 +138,6 @@ Preflight workflow and validator follow-up tasks documented and executed (or int
 
 - `py scripts/validate_repo_contracts.py --fast` ✅
 - `py tools/docs/generate_architecture_metadata.py --check` ⚠️ fails currently due to existing unrelated baseline issue: `generated_exports/project-OS-starter-kit/scripts/audit_check.py: missing @meta top-of-file metadata`
-- `git diff -- docs/operating_system/rules/python-contracts-rule.md .agents/skills/skill-doc-system-lifecycle/SKILL.md docs/operating_system/workflows/workflow-live-run-preflight-check.md scripts/validate_python_meta_headers.py` ✅
 
 ## Completion Criteria
 

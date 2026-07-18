@@ -11,7 +11,7 @@ targets:
   - docs/superpowers/specs/
   - docs/superpowers/plans/
   - docs/generated/planning_lineage.yaml
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/spec-prompt.md
   - docs/operating_system/prompt_templates/plan-prompt.md
@@ -25,11 +25,11 @@ related_stages: []
 
 # Planning Lineage Minimal Metadata And Validator Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-28-planning-lineage-minimal-metadata-and-validator-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-28-planning-lineage-minimal-metadata-and-validator-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.

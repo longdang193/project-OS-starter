@@ -15,7 +15,6 @@ targets:
   - docs/operating_system/templates/implementation-execution-map-template.md
   - docs/operating_system/templates/implementation-plan-template.md
   - docs/operating_system/templates/task-start-routing-guide.md
-  - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-brainstorming/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
   - .agents/skills/skill-executing-plans/SKILL.md
@@ -74,7 +73,6 @@ Identify which skills should read, route to, or author which template surfaces.
 
 Expected minimum mapping:
 
-- `skill-planning-dispatch` -> routing guide plus ladder awareness across roadmap/workstream/thread/spec/map/plan templates
 - `skill-brainstorming` -> complete spec set, spec-authoring map, detailed specification templates
 - `skill-writing-plans` -> implementation plan template
 - `skill-executing-plans` -> execution against plan output, not template authoring, but should recognize normalized plan structure
@@ -168,7 +166,6 @@ Document which template references each skill should gain or keep.
 
 Likely review set:
 
-- `.agents/skills/skill-planning-dispatch/SKILL.md`
 - `.agents/skills/skill-brainstorming/SKILL.md`
 - `.agents/skills/skill-writing-plans/SKILL.md`
 - `.agents/skills/skill-executing-plans/SKILL.md`
@@ -202,7 +199,6 @@ Define safe execution order so shared templates update before skill references d
 
 ## Skill Review: Which Skills Need Which Templates
 
-### `skill-planning-dispatch`
 
 Should use or explicitly understand:
 

@@ -1,24 +1,9 @@
 ---
 name: skill-brainstorming
-description: Use when exploring or defining new behavior, features, components, or
-  non-trivial changes before implementation.
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/templates/task-start-routing-guide.md
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- planning
-- design
-- skill-brainstorming
-required_outputs:
-- docs/superpowers/specs/
+description: Use when exploring or defining non-trivial behavior before implementation.
+required_reads: []
 distribution_tier: starter_kit
 ---
-
 # Brainstorming Ideas Into Designs
 
 <HARD-GATE>
@@ -31,87 +16,68 @@ Do NOT write code or implement anything before:
 
 This skill produces design artifacts only.
 
-## Canonical References
+## Conditional References
 
-<MUST-READ>
-- `docs/operating_system/templates/task-start-routing-guide.md`
-- `docs/operating_system/templates/master-workstream-roadmap-template.md` when roadmap restructuring is in scope
-- `docs/operating_system/templates/registered-workstream-list-template.md` when workstream ownership or registration is in scope
-- `docs/operating_system/templates/bounded-change-thread-template.md` when bounded thread definition is in scope
-- `docs/operating_system/templates/complete-specification-set-template.md`
-- `docs/operating_system/templates/spec-authoring-map-template.md`
-- `docs/operating_system/templates/detailed-specification-template.md`
-- `docs/operating_system/templates/implementation-execution-map-template.md` when downstream execution orchestration is part of the design handoff
-- `docs/operating_system/planning/planning-dispatch.md`
-- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
-- `docs/operating_system/lifecycle/feature-lifecycle.md`
-- `docs/operating_system/governance/repo-governance.md`
+- Read `docs/operating_system/planning/planning-dispatch.md` to choose the smallest truthful planning tier.
+- Read `docs/operating_system/templates/brainstorming-detailed-report-template.md` only when user requests a saved detailed brainstorming report.
+- Read `docs/operating_system/governance/repo-governance.md` only when ownership or publication boundaries are in scope.
+- If guidance conflicts with current source or tests, current executable truth wins.
 
-If this file conflicts with canonical templates/governance, follow canonical docs.
-</MUST-READ>
+## Artifact Boundaries
 
-## Mandatory Read
+- Brainstorming owns problem exploration, options, trade-offs, recommendations, assumptions, and unresolved questions.
+- Approved behavior, interfaces, decisions, and invariants belong in specifications.
+- Exact tasks, sequencing, dependencies, and execution approach belong in implementation plans.
 
-<MUST-READ>
-Before any skill-brainstorming output, read:
+## Code Intelligence
 
-- canonical references above, especially:
-  - `docs/operating_system/planning/planning-dispatch.md`
-  - `docs/operating_system/lifecycle/doc-system-lifecycle.md`
-  - `docs/operating_system/templates/task-start-routing-guide.md`
-  - whichever standardized template matches the artifact being drafted
-</MUST-READ>
+Use native tools for local evidence, Serena for exact symbols and references, and GitNexus for broad flow or impact when fresh. Do not query both by default. Optional tool failure never blocks source-first design.
 
-## Lifecycle Compliance
-
-- Start from the owning source layer before defining downstream design artifacts.
-- Keep operating-system work on the operating-system branch; do not invent fake product feature ownership.
-- Use the smallest truthful feature-folder reading set when feature-managed surfaces are involved.
-- Keep source-of-truth and generated-surface boundaries explicit in proposed designs.
-- Use the standardized template ladder so complete-spec-set, spec-authoring-map, detailed-spec, and execution-map artifacts stay structurally aligned.
-- Keep section ownership distinct inside drafted artifacts: sequencing belongs in phases or waves, canonical rows belong in inventory or registry sections, constraints belong in invariant or scope sections, and proof belongs in validation sections.
-
-## GitNexus Usage
-
-Use GitNexus MCP first for cross-file architecture lookup when it reduces
-guessing. Fall back to CLI refresh only when MCP data is stale, missing, or
-needs rebuild.
-
-- Prefer GitNexus MCP tools for cross-cutting skill-brainstorming, dependency tracing, and repo audits.
-- Use it to audit repos for Single Source of Truth, structural symmetry, and invariance violations before proposing broad refactors.
-- For small/local design changes, GitNexus is optional.
-- Before high-trust GitNexus conclusions, check freshness via:
-  - `.\scripts\get_gitnexus_freshness.ps1`
-- If GitNexus is stale, use MCP/graph results only as advisory and keep source docs as truth.
-- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue source-first.
-
-## Architectural Principle: Structural Symmetry
-
-When exploring and designing new features, always prioritize structural symmetry and invariance. Consolidate equivalent logic into unified abstractions, reusable functions, or generalized pipelines. Eliminate unnecessary special cases—preserve divergent logic only when it is operationally, mathematically, or domain-specifically required. The goal is to minimize redundant computation and simplify the system's mental model.
-
-## Minimal Workflow
+## Brainstorming Process
 
 <MUST-DO>
-1. Use `skill-planning-dispatch` triage (or verify it already exists).
-2. Explore options and tradeoffs.
-3. Recommend a design direction.
-4. Present brainstorming output first.
-5. Ask user: "Do you want a more detailed report using the brainstorming report template?"
-6. If user says yes, save report using canonical bundle path `docs/superpowers/plans/brainstorming/<report_id>/` and:
+1. Establish context:
+   - confirm objective, affected users, constraints, and known evidence
+   - inspect relevant source, tests, and maintained documentation
+   - separate observed facts from assumptions
+   - ask only questions that could change option selection
+2. Define the core problem:
+   - state one primary problem
+   - distinguish root causes from symptoms
+   - identify the consequence of leaving the problem unchanged
+   - stop and route to specification or planning when the design is already settled
+3. Generate two or three materially different viable options:
+   - include the smallest viable change and status quo when credible
+   - reject options that violate known invariants or duplicate existing mechanisms
+   - do not create alternatives that differ only in naming or document structure
+4. Compare every option using the same criteria:
+   - expected impact
+   - complexity and maintenance cost
+   - compatibility with the existing system
+   - risks and reversibility
+   - evidence or validation still needed
+   - conditions where the option fits best
+5. Recommend one direction:
+   - explain why it wins against the alternatives
+   - state accepted trade-offs
+   - list assumptions and unresolved questions
+   - prefer consolidated behavior; preserve special cases only when operationally necessary
+   - keep the recommendation design-level, without file-by-file implementation sequencing
+6. Present the current situation, core problem, options, comparison, recommendation, unresolved questions, and immediate next decision.
+7. Ask the user to approve, revise, or reject the recommendation.
+8. Do not create a report by default. If the user requests a detailed report:
    - scaffold with `.\\scripts\\new_brainstorming_report.ps1 -ReportId <report_id>`
    - write report to `docs/superpowers/plans/brainstorming/<report_id>/report.md` using `docs/operating_system/templates/brainstorming-detailed-report-template.md`
-   - optionally capture supporting artifacts with `.\\scripts\\brainstorming_capture.ps1 -ReportId <report_id> -SourceFile <path> -Type input`
-7. Author required roadmap/workstream/thread/spec/execution-map artifact using matching canonical template when requested.
-8. Request approval before any implementation planning.
+   - link supporting files directly only when they materially help
+9. Restate accepted recommendations in approved direct scope or a specification; do not treat the report as design truth.
+10. Request approval before implementation planning when a plan is needed. Direct approved scope may proceed without a saved spec or plan when the change is local, reversible, and design-clear.
 </MUST-DO>
 
 ## Output Paths
 
 - specs -> `docs/superpowers/specs/`
-- execution maps -> `docs/superpowers/execution_maps/`
 - detailed brainstorming reports -> `docs/superpowers/plans/brainstorming/<report_id>/report.md`
-- higher planning layers stay in their canonical docs/intent or docs/superpowers locations defined by the routing guide
+- optional roadmap -> `docs/intent/master-workstream-roadmap.md`
 
 ## Guardrails
 

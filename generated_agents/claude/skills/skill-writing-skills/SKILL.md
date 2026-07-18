@@ -1,17 +1,7 @@
 ---
 name: skill-writing-skills
-description: Use when creating new skills, editing existing skills, or verifying skills
-  work before deployment
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-writing-skills
-required_outputs: []
+description: Use when creating, editing, or validating reusable skills.
+required_reads: []
 distribution_tier: starter_kit
 ---
 
@@ -235,7 +225,7 @@ Use words Claude would search for:
 **Problem:** getting-started and frequently-referenced skills load into EVERY conversation. Every token counts.
 
 **Target word counts:**
-- getting-started workflows: <150 words each
+- getting-started guides: <150 words each
 - Frequently-loaded skills: <200 words total
 - Other skills: <500 words (still be concise)
 
@@ -281,7 +271,7 @@ You: Searching...
 **Verification:**
 ```bash
 wc -w skills/path/SKILL.md
-# getting-started workflows: aim for <150 each
+# getting-started guides: aim for <150 each
 # Other frequently-loaded: aim for <200 total
 ```
 
@@ -418,7 +408,7 @@ Different skill types need different test approaches:
 
 ### Discipline-Enforcing Skills (rules/requirements)
 
-**Examples:** TDD, skill-verification-before-completion, designing-before-coding
+**Examples:** TDD, systematic debugging, verification closeout
 
 **Test with:**
 - Academic questions: Do they understand the rules?

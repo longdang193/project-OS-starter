@@ -5,8 +5,6 @@ Use this template when dispatching an implementer subagent.
 ```
 Subagent (general-purpose):
   description: "Implement Task N: [task name]"
-  model: [MODEL — REQUIRED: choose per SKILL.md Model Selection; an omitted
-         model silently inherits the session's most expensive one]
   prompt: |
     You are implementing Task N: [task name]
 
@@ -29,13 +27,18 @@ Subagent (general-purpose):
 
     **Ask them now.** Raise any concerns before starting work.
 
+    ## Git Authorization
+
+    Per-task commit authorization: [AUTHORIZED: YES]
+    If this is not YES, stop and report BLOCKED. Do not commit.
+
     ## Your Job
 
     Once you're clear on requirements:
     1. Implement exactly what the task specifies
     2. Write tests (following TDD if task says to)
     3. Verify implementation works
-    4. Commit your work
+    4. Commit your work only under authorization above
     5. Self-review (see below)
     6. Report back
 

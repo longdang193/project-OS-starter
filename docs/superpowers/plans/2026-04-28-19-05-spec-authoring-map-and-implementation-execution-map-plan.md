@@ -9,11 +9,10 @@ targets:
   - docs/operating_system/prompt_templates/spec-set-execution-map-prompt.md
   - docs/operating_system/prompt_templates/spec-prompt.md
   - docs/operating_system/prompt_templates/plan-prompt.md
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/execution_maps/README.md
   - .agents/skills/skill-brainstorming/SKILL.md
-  - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
   - .agents/skills/skill-doc-system-lifecycle/SKILL.md
   - docs/superpowers/specs/2026-04-28-spec-authoring-map-and-implementation-execution-map-spec.md
@@ -23,11 +22,11 @@ related_stages: []
 
 # Spec-Authoring Map And Implementation Execution Map Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-28-spec-authoring-map-and-implementation-execution-map-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-28-spec-authoring-map-and-implementation-execution-map-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -58,7 +57,6 @@ related_stages: []
 
 ## Task 3: Update Repo-Control Docs And Skills
 
-- [x] Step 1: Update `skill-planning-dispatch.md`, `repo-governance.md`, and `docs/superpowers/execution_maps/README.md`.
 - [x] Step 2: Update the four planning-related skills so they distinguish spec-authoring orchestration from implementation orchestration.
 
 ## Task 4: Close The Loop

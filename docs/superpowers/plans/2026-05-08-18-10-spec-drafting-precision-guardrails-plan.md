@@ -5,7 +5,6 @@ status: proposed
 template_id: implementation-plan
 name: spec-drafting-precision-guardrails
 parent_workstream: none
-parent_spec: docs/superpowers/specs/spec-drafting-precision-guardrails-spec.md
 targets:
   - docs/operating_system/templates/detailed-specification-template.md
   - .agents/skills/skill-brainstorming/SKILL.md

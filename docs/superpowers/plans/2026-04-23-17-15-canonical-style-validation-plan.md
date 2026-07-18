@@ -18,11 +18,11 @@ related_stages: []
 
 # Canonical Style Validation Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-canonical-style-validation-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-canonical-style-validation-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -37,8 +37,8 @@ related_stages: []
 - Phase 1 stays objective and low-ambiguity; broader ordering rules wait for later work.
 - Managed templates should model canonical formatting rather than merely tolerated formatting.
 
-**Rollout / Revert:**  
-- rollback_trigger: Phase 1 rules produce noisy false positives in current starter fixtures or clearly valid managed examples.  
+**Rollout / Revert:**
+- rollback_trigger: Phase 1 rules produce noisy false positives in current starter fixtures or clearly valid managed examples.
 - rollback_method: Remove the new helper calls, revert the affected template/doc wording, and keep the spec for a narrower retry.
 
 ---

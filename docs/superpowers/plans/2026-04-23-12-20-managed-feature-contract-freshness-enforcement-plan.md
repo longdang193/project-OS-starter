@@ -17,11 +17,11 @@ related_stages: []
 
 # Managed Feature Contract Freshness Enforcement Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-managed-feature-contract-freshness-enforcement-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-managed-feature-contract-freshness-enforcement-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -37,8 +37,8 @@ related_stages: []
 - The validator checks presence and type, not semantic correctness of timestamps or change IDs.
 - Existing unrelated generator/test working-tree changes must remain untouched.
 
-**Rollout / Revert:**  
-- rollback_trigger: Focused validator tests fail in a way unrelated to freshness enforcement.  
+**Rollout / Revert:**
+- rollback_trigger: Focused validator tests fail in a way unrelated to freshness enforcement.
 - rollback_method: Revert the validator freshness block, the added tests, and the docs wording changes from this plan.
 
 ---

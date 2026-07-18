@@ -13,10 +13,10 @@ related_stages: []
 
 # Generated Discovery Migration Target Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
+**Feature Source:** `none`
+**Feature Contract:** `none`
 **Spec:** `docs/superpowers/specs/2026-04-22-generated-discovery-migration-target-spec.md`
-**Type:** modify  
+**Type:** modify
 **Plan Layer:** operating_system
 **Plan Status:** active
 

@@ -1,24 +1,7 @@
 ---
 name: skill-systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior,
-  before proposing fixes
-allowed-tools: []
-hooks:
-  pre:
-  - python scripts/hooks/run_validator.py --fast
-  post:
-  - python scripts/hooks/run_validator.py --fast
-required_reads:
-- docs/operating_system/agent_memory/failure-ledger.md
-- docs/operating_system/workflows/workflow-test-failure-triage.md
-- docs/operating_system/governance/repo-governance.md
-- docs/operating_system/rules/audit-evidence-mandate-rule.md
-tags:
-- skill
-- debugging
-- root-cause
-- skill-systematic-debugging
-required_outputs: []
+description: Use when diagnosing bugs, failures, or unexpected behavior before proposing fixes.
+required_reads: []
 distribution_tier: starter_kit
 ---
 
@@ -75,24 +58,15 @@ Use for ANY technical issue:
 - You're in a hurry (rushing guarantees rework)
 - Manager wants it fixed NOW (systematic is faster than thrashing)
 
-## Related Workflows
+## Related Skills
 
-- `docs/operating_system/workflows/workflow-live-run-debugging.md` (live-run failure debugging path)
-- `docs/operating_system/workflows/workflow-test-failure-triage.md` (test-failure classification and minimal-fix path)
-- `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md` (use when failures are caused by planning/execution drift)
+- Use `skill-dispatching-parallel-agents` only after evidence separates failures into independent problem domains.
+- Each dispatched investigator follows this debugging method inside its assigned domain.
+- Keep possibly shared-cause failures together until root-cause evidence proves independence.
 
-## GitNexus Usage
+## Code Intelligence
 
-Use GitNexus MCP as a debugging accelerator for cross-file trace and impact lookup.
-
-- Prefer GitNexus MCP tools for multi-module failures, unclear call/data flows, and repo audits.
-- Use it to spot Single Source of Truth, structural symmetry, and invariance violations when bug smells like drift or duplicated logic.
-- For simple local failures, GitNexus is optional.
-- Before high-trust conclusions, check freshness:
-  - `.\scripts\get_gitnexus_freshness.ps1`
-- If stale, GitNexus remains advisory; prove fixes with source/tests/run evidence.
-- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue MCP-first.
+Use native tools for local failures, Serena for exact symbol/reference tracing, and GitNexus for broad flows when fresh. Source, tests, and reproduction evidence remain authoritative.
 
 ## The Four Phases
 
@@ -144,8 +118,9 @@ You MUST complete each phase before proceeding to the next.
    ```
 
    **Audit gate (mandatory):**
-   - if trigger conditions in `docs/operating_system/rules/audit-evidence-mandate-rule.md` are met and no active audit exists, create/update audit bundle at `docs/superpowers/plans/audit/<audit_id>/`
-   - use `docs/operating_system/templates/audit-report-with-evidence-template.md` for `report.md`
+   - if trigger conditions in `docs/operating_system/rules/audit-evidence-mandate-rule.md` are met and no active audit exists, create or update `docs/superpowers/plans/audit/<audit_id>/report.md`
+   - use `docs/operating_system/templates/audit-report-with-evidence-template.md`
+   - add evidence or reproduction files only when they contain real artifacts needed by report
 
 
    **Example (multi-layer system):**
@@ -353,7 +328,7 @@ These techniques are part of systematic debugging and available in this director
 **Related skills:**
 
 - **superpowers:skill-test-driven-development** - For creating failing test case (Phase 4, Step 1)
-- **superpowers:skill-verification-before-completion** - Verify fix worked before claiming success
+- **skill-verification-before-completion** - Verify fix worked before claiming success
 
 ## Real-World Impact
 

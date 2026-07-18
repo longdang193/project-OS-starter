@@ -12,6 +12,7 @@ Thumbs.db
 .DS_Store
 *.log
 .worktrees/
+.serena/
 .tmp-tests/
 generated_exports/
 *.private.*

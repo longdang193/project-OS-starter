@@ -16,11 +16,11 @@ related_stages: []
 
 # Lineage Generated Schema Contract Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-22-lineage-generated-schema-contract-spec.md`  
-**Type:** change  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-22-lineage-generated-schema-contract-spec.md`
+**Type:** change
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -35,8 +35,8 @@ related_stages: []
 - The canonical lineage file is evidence-oriented and capability-keyed.
 - Legacy top-level summary keys in `lineage.generated.yaml` are invalid in managed mode.
 
-**Rollout / Revert:**  
-- rollback_trigger: validator enforcement proves too brittle for repos already carrying canonical lineage files  
+**Rollout / Revert:**
+- rollback_trigger: validator enforcement proves too brittle for repos already carrying canonical lineage files
 - rollback_method: keep the doc clarifications, relax the validator to warnings temporarily, and refine the shape checks before re-enabling hard failures
 
 ---

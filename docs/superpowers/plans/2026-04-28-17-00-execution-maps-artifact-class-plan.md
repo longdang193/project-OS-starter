@@ -6,7 +6,7 @@ parent_workstream: none
 targets:
   - docs/superpowers/execution_maps/
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/2026-04-28-execution-maps-artifact-class-spec.md
 related_features: []
@@ -15,11 +15,11 @@ related_stages: []
 
 # Execution Maps Artifact Class Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-28-execution-maps-artifact-class-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-28-execution-maps-artifact-class-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -49,7 +49,6 @@ related_stages: []
 
 ## Task 3: Align Planning And Governance Docs
 
-- [x] Step 1: Update `skill-planning-dispatch.md` so execution maps have a visible place between spec sets and plans.
 - [x] Step 2: Update `repo-governance.md` so the artifact boundary around execution maps is explicit.
 
 ## Task 4: Close The Loop And Verify

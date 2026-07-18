@@ -20,11 +20,11 @@ related_stages: []
 
 # Required Doc Validation Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-21-required-doc-validation-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-21-required-doc-validation-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -39,8 +39,8 @@ related_stages: []
 - Semantic checks should stay transparent and easy to understand.
 - The normal sync/check path remains the canonical enforcement surface.
 
-**Rollout / Revert:**  
-- rollback_trigger: lightweight semantic checks produce noisy false failures for short but real docs  
+**Rollout / Revert:**
+- rollback_trigger: lightweight semantic checks produce noisy false failures for short but real docs
 - rollback_method: remove or relax the required-doc semantic heuristics while preserving path-presence checks and existing frontmatter validation
 
 ---

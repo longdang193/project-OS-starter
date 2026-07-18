@@ -17,11 +17,11 @@ related_stages: []
 
 # Required Project Folder Surface Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-21-required-project-folder-surface-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-21-required-project-folder-surface-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -36,8 +36,8 @@ related_stages: []
 - If a folder is required, the repo docs should describe the minimum files or file types expected inside it.
 - The normal sync/check path remains the canonical enforcement surface.
 
-**Rollout / Revert:**  
-- rollback_trigger: required-folder validation creates noisy failures for the starter or for legitimate minimal repos  
+**Rollout / Revert:**
+- rollback_trigger: required-folder validation creates noisy failures for the starter or for legitimate minimal repos
 - rollback_method: remove the new required-folder validator block and tests, keep the documentation-only guidance, and preserve the root-doc checks
 
 ---

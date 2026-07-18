@@ -1,19 +1,7 @@
 ---
 name: skill-central-config-layer
-description: Use this skill when a project needs shared configuration across multiple
-  modules, services, agents, or pipelines. Helps design, validate, and refactor a
-  central configuration layer for environment settings, runtime behavior, taxonomies,
-  thresholds, defaults, and normalization rules.
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-central-config-layer
-required_outputs: []
+description: Use when shared configuration spans multiple modules, services, agents, or pipelines.
+required_reads: []
 distribution_tier: starter_kit
 ---
 

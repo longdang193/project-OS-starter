@@ -1,20 +1,9 @@
 ---
 name: skill-test-driven-development
-description: Use when implementing any feature or bugfix, before writing implementation
-  code
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-test-driven-development
-required_outputs: []
+description: Use when implementing non-trivial behavior or bug fixes with regression proof.
+required_reads: []
 distribution_tier: starter_kit
 ---
-
 # Test-Driven Development (TDD)
 
 ## Overview

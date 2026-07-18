@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/intent/master-workstream-roadmap.md
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - docs/superpowers/specs/
@@ -33,7 +33,7 @@ Invariants:
 Dependencies:
 
 - `docs/intent/master-workstream-roadmap.md`
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/prompt_templates/`
 
@@ -58,7 +58,7 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs: none
 - operating_system_docs:
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/prompt_templates/`
 - readme: none

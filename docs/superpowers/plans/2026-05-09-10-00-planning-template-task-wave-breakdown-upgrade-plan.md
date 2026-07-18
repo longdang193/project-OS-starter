@@ -17,7 +17,6 @@ targets:
   - docs/operating_system/templates/task-start-routing-guide.md
   - .agents/skills/skill-brainstorming/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
-  - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-executing-plans/SKILL.md
   - repo_config/planning_artifact_schema.yaml
   - scripts/validate_planning_lifecycle.py
@@ -64,7 +63,6 @@ At minimum, bound impact on:
 - `task-start-routing-guide.md`
 - `skill-brainstorming`
 - `skill-writing-plans`
-- `skill-planning-dispatch`
 - `skill-executing-plans`
 - `repo_config/planning_artifact_schema.yaml`
 - `scripts/validate_planning_lifecycle.py`
@@ -198,7 +196,6 @@ This deliverable must explicitly prevent duplication between sections such as de
 - Inspect: `docs/operating_system/templates/task-start-routing-guide.md`
 - Inspect: `.agents/skills/skill-brainstorming/SKILL.md`
 - Inspect: `.agents/skills/skill-writing-plans/SKILL.md`
-- Inspect: `.agents/skills/skill-planning-dispatch/SKILL.md`
 - Inspect: `.agents/skills/skill-executing-plans/SKILL.md`
 - Inspect: `repo_config/planning_artifact_schema.yaml`
 - Inspect: `scripts/validate_planning_lifecycle.py`

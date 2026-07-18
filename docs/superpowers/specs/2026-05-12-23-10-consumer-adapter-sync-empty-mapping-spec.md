@@ -33,55 +33,25 @@ No relaxation for source-owner repos or explicit platform override flows; missin
 
 Automated tests cover consumer default skip, source-owner hard-fail, and override-path hard-fail behavior.
 
-## Task/Wave Breakdown
+## Design Analysis
 
-### Wave 1: Source-first behavior framing
+### Current state
 
-**Purpose:**
-- Establish current selection/mapping resolution semantics and identify safe guard insertion point.
+- platform selection can come from mode-policy defaults, `--platform`, or `--all-platforms`
+- empty adapter mappings currently trigger failure without distinguishing consumer-derived selection
+- consumer starter-kit output intentionally excludes the `adapters/` publication surface
 
-**Steps:**
-- [ ] Confirm current platform selection paths: mode-policy defaults, `--platform`, `--all-platforms`.
-- [ ] Confirm current failure trigger when no adapter mappings resolve.
-- [ ] Confirm consumer starter-kit boundary that forbids `adapters/` publication surface.
+### Constraints
 
-**Verification:**
-- [ ] Current-state behavior is documented with no ambiguity around selection source and failure condition.
+- consumer-derived default selection may skip when no mappings exist
+- source-owner and explicit platform selection must continue to fail on missing mappings
+- diagnostics must distinguish intentional skip from configuration failure
 
-**Exit Criteria:**
-- Guard conditions and non-guard conditions are explicit and testable.
+### Alternatives
 
-### Wave 2: Decision closure and contract wording
-
-**Purpose:**
-- Close design decisions for skip conditions, failure conditions, and operator messaging.
-
-**Steps:**
-- [ ] Define exact skip predicate for consumer-derived mode-policy/default selection with no mappings.
-- [ ] Define explicit non-skip paths (`source_owner`, `--platform`, `--all-platforms`).
-- [ ] Define stable skip/fail messages for validator diagnostics.
-
-**Verification:**
-- [ ] All decision edges map to deterministic outcome (`skip success` vs `hard fail`).
-
-**Exit Criteria:**
-- Design can be implemented without policy guesswork.
-
-### Wave 3: Validation readiness and handoff
-
-**Purpose:**
-- Prepare implementation-ready proof plan and bounded scope for follow-on plan execution.
-
-**Steps:**
-- [ ] Define targeted unit tests for skip/fail matrix.
-- [ ] Define command-level verification sequence.
-- [ ] Define rollback boundary if regression appears in source-owner flow.
-
-**Verification:**
-- [ ] Proof targets cover all critical branches of behavior.
-
-**Exit Criteria:**
-- Spec is implementation-plan ready.
+- always fail: rejected because valid consumer output has no adapter mapping
+- always skip: rejected because it hides source-owner and explicit-selection errors
+- skip only consumer-derived empty mappings: selected
 
 ## Design Decisions
 

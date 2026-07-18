@@ -10,7 +10,7 @@ targets:
   - docs/superpowers/specs/
   - docs/superpowers/plans/
   - docs/generated/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - scripts/validate_adoption_shape.py
   - tests/test_validate_adoption_shape.py
@@ -22,10 +22,10 @@ related_stages: []
 
 ## Triage
 
-Layer: operating_system  
-Feature type: MODIFY  
-Summary: Replace redundant planning-lineage metadata with a nearest-parent model, then enforce the lineage contract through validation and a generated roll-up surface.  
-Reasoning: The planning ladder now exists in the repo, but the metadata is at risk of repeating the same upstream fact in multiple downstream layers. That creates drift pressure and violates the operating principle that canonical truth should flow downward while downstream layers derive views from it.  
+Layer: operating_system
+Feature type: MODIFY
+Summary: Replace redundant planning-lineage metadata with a nearest-parent model, then enforce the lineage contract through validation and a generated roll-up surface.
+Reasoning: The planning ladder now exists in the repo, but the metadata is at risk of repeating the same upstream fact in multiple downstream layers. That creates drift pressure and violates the operating principle that canonical truth should flow downward while downstream layers derive views from it.
 Invariants:
 
 - canonical truth flows downward from intent to roadmap to workstream to thread
@@ -67,16 +67,16 @@ Affected docs:
 - feature_docs: none
 - cross_cutting_docs:
   - `docs/intent/master-workstream-roadmap.md`
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
 - readme: none
 - generated:
   - `docs/generated/planning_lineage.yaml`
 
-Generated refresh required: yes  
-Capability IDs: none  
-Invariant IDs: none  
-Spec needed: yes  
+Generated refresh required: yes
+Capability IDs: none
+Invariant IDs: none
+Spec needed: yes
 Plan needed: yes
 
 ## Problem

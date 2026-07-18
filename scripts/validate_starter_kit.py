@@ -42,7 +42,6 @@ CONTENT_SCAN_ROOTS = (
     Path("CLAUDE.md"),
     Path("README.md"),
     Path(".agents/skills"),
-    Path(".agents/workflows"),
     Path("docs/operating_system"),
 )
 
@@ -60,14 +59,6 @@ FORBIDDEN_CONTENT_TOKENS = (
 )
 
 ALLOWED_CONDITIONAL_REFERENCES = {
-    (
-        Path(".agents/skills/skill-doc-system-lifecycle/SKILL.md"),
-        "repo_config/agent-adapter-mappings.json",
-    ),
-    (
-        Path(".agents/skills/skill-doc-system-lifecycle/SKILL.md"),
-        "repo_config/publication-config.json",
-    ),
     (
         Path("docs/operating_system/governance/repo-governance.md"),
         "repo_config/agent-adapter-mappings.json",

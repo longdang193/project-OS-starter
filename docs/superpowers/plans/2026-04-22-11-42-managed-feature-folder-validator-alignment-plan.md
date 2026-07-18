@@ -14,10 +14,10 @@ related_stages: []
 
 # Managed Feature Folder Validator Alignment Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
+**Feature Source:** `none`
+**Feature Contract:** `none`
 **Spec:** `docs/superpowers/specs/2026-04-22-managed-feature-folder-validator-alignment-spec.md`
-**Type:** modify  
+**Type:** modify
 **Plan Layer:** operating_system
 **Plan Status:** active
 

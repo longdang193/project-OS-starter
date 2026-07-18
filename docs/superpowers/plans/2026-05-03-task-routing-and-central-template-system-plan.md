@@ -8,18 +8,18 @@ targets:
   - docs/operating_system/templates/
   - docs/operating_system/prompt_templates/
   - .agents/skills/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
 related_features: []
 related_stages: []
 ---
 
 # Task Routing And Central Template System Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-05-03-task-routing-and-central-template-system-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-05-03-task-routing-and-central-template-system-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** proposed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -52,7 +52,7 @@ without ambiguity.
 - [ ] Create canonical routing guide template under:
   - `docs/operating_system/templates/routing/task-start-routing-guide.md`
 - [ ] Link routing guide from:
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - relevant prompt templates where task-start choice is made
 
 ## Task 3: Update Skills To Use Canonical Templates

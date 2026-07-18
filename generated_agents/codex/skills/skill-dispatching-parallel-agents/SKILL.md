@@ -1,17 +1,7 @@
 ---
 name: skill-dispatching-parallel-agents
-description: Use when facing 2+ independent tasks that can be worked on without shared
-  state or sequential dependencies
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-dispatching-parallel-agents
-required_outputs: []
+description: Use when two or more independent problem domains can be investigated or handled concurrently without shared state, sequential dependencies, or overlapping write ownership.
+required_reads: []
 distribution_tier: starter_kit
 ---
 
@@ -33,6 +23,18 @@ When you have multiple unrelated failures (different test files, different subsy
 
 **Core principle:** Dispatch one agent per independent problem domain. Let them work concurrently.
 
+## Ownership And Connections
+
+- This skill owns fan-out and fan-in method: prove independence, create focused self-contained agent tasks, dispatch concurrently, review results, and combine evidence.
+- `skill-parallel-execution` owns planned concurrent implementation lanes, exact write ownership, integration, and combined verification.
+- `skill-subagent-driven-development` owns sequential fresh implementers with per-task review in one workspace.
+- `skill-executing-plans` owns general approved-plan execution and routes concurrent write lanes to `skill-parallel-execution`.
+- `skill-systematic-debugging` owns root-cause method inside each investigation; do not parallelize failures until shared-cause risk is assessed.
+- `skill-using-git-worktrees` provides isolation when concurrent writers need separate workspaces.
+- `skill-requesting-code-review` and `skill-receiving-code-review` own review exchange after implementation changes.
+- `skill-verification-before-completion` owns fresh final proof after results are integrated.
+
+Use this skill directly for independent investigations, audits, research questions, or bounded fixes. For approved multi-lane implementation, use it as the dispatch method under `skill-parallel-execution` rather than as a second coordinator.
 ## When to Use
 
 ```dot
@@ -54,14 +56,12 @@ digraph when_to_use {
 ```
 
 **Use when:**
-
 - 3+ test files failing with different root causes
 - Multiple subsystems broken independently
 - Each problem can be understood without context from others
 - No shared state between investigations
 
 **Don't use when:**
-
 - Failures are related (fix one might fix others)
 - Need to understand full system state
 - Agents would interfere with each other
@@ -71,7 +71,6 @@ digraph when_to_use {
 ### 1. Identify Independent Domains
 
 Group failures by what's broken:
-
 - File A tests: Tool approval flow
 - File B tests: Batch completion behavior
 - File C tests: Abort functionality
@@ -81,7 +80,6 @@ Each domain is independent - fixing tool approval doesn't affect abort tests.
 ### 2. Create Focused Agent Tasks
 
 Each agent gets:
-
 - **Specific scope:** One test file or subsystem
 - **Clear goal:** Make these tests pass
 - **Constraints:** Don't change other code
@@ -89,18 +87,20 @@ Each agent gets:
 
 ### 3. Dispatch in Parallel
 
-```typescript
-// In Claude Code / AI environment
-Task("Fix agent-tool-abort.test.ts failures")
-Task("Fix batch-completion-behavior.test.ts failures")
-Task("Fix tool-approval-race-conditions.test.ts failures")
-// All three run concurrently
+Use the platform-native parallel dispatch facility. Issue all independent spawn calls in the same round when supported; dispatching one and waiting before the next is sequential.
+
+```text
+Subagent: "Fix agent-tool-abort.test.ts failures"
+Subagent: "Fix batch-completion-behavior.test.ts failures"
+Subagent: "Fix tool-approval-race-conditions.test.ts failures"
+# Start all three before waiting for results.
 ```
+
+If the platform has no concurrent agent support, run lanes sequentially and report that limitation. Do not simulate parallelism with overlapping edits in one workspace.
 
 ### 4. Review and Integrate
 
 When agents return:
-
 - Read each summary
 - Verify fixes don't conflict
 - Run full test suite
@@ -109,7 +109,6 @@ When agents return:
 ## Agent Prompt Structure
 
 Good agent prompts are:
-
 1. **Focused** - One clear problem domain
 2. **Self-contained** - All context needed to understand the problem
 3. **Specific about output** - What should the agent return?
@@ -161,7 +160,6 @@ Return: Summary of what you found and what you fixed.
 **Scenario:** 6 test failures across 3 files after major refactoring
 
 **Failures:**
-
 - agent-tool-abort.test.ts: 3 failures (timing issues)
 - batch-completion-behavior.test.ts: 2 failures (tools not executing)
 - tool-approval-race-conditions.test.ts: 1 failure (execution count = 0)
@@ -169,7 +167,6 @@ Return: Summary of what you found and what you fixed.
 **Decision:** Independent domains - abort logic separate from batch completion separate from race conditions
 
 **Dispatch:**
-
 ```
 Agent 1 → Fix agent-tool-abort.test.ts
 Agent 2 → Fix batch-completion-behavior.test.ts
@@ -177,7 +174,6 @@ Agent 3 → Fix tool-approval-race-conditions.test.ts
 ```
 
 **Results:**
-
 - Agent 1: Replaced timeouts with event-based waiting
 - Agent 2: Fixed event structure bug (threadId in wrong place)
 - Agent 3: Added wait for async tool execution to complete
@@ -196,7 +192,6 @@ Agent 3 → Fix tool-approval-race-conditions.test.ts
 ## Verification
 
 After agents return:
-
 1. **Review each summary** - Understand what changed
 2. **Check for conflicts** - Did agents edit same code?
 3. **Run full suite** - Verify all fixes work together
@@ -205,7 +200,6 @@ After agents return:
 ## Real-World Impact
 
 From debugging session (2025-10-03):
-
 - 6 failures across 3 files
 - 3 agents dispatched in parallel
 - All investigations completed concurrently

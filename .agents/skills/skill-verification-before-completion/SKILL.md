@@ -1,275 +1,234 @@
 ---
 name: skill-verification-before-completion
-description: Use when about to claim work is complete, fixed, or passing, or when
-  preparing to commit, merge, or open a PR - requires fresh verification evidence
-  before completion or branch-closeout claims
-allowed-tools: []
-hooks:
-  pre:
-  - python scripts/hooks/run_validator.py --fast
-  post:
-  - python scripts/hooks/run_validator.py --fast
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-verification-before-completion
-required_outputs: []
+description: Use when implementation appears complete and fresh evidence is required before final status or branch-finishing handoff.
+required_reads: []
 distribution_tier: starter_kit
 ---
-
 # Verification Before Completion
 
-## Overview
+## Role
 
-Claiming work is complete without verification is dishonesty, not efficiency.
+Prove whether implementation is complete. Reconcile approved scope, current repository state, tests, maintained contracts, and generated outputs before setting final plan status or handing work to branch finishing.
 
-**Core principle:** Evidence before claims, always.
+This skill owns completion evidence and closure readiness. It does not commit, pull, rebase, merge, push, create pull requests, publish, delete branches, or remove worktrees.
 
-**Violating the letter of this rule is violating the spirit of this rule.**
+## Inputs
 
-## Mandatory Read
+Receive from `skill-executing-plans`:
 
-<MUST-READ>
-Before final completion claims, read:
+- active plan and linked specification when they exist
+- workspace path and creation mechanism
+- branch name or detached HEAD
+- base branch and base commit when known
+- current HEAD
+- staged, unstaged, untracked, and preserved unrelated changes
+- task-local verification already run
+- known failures, deferrals, and blockers
 
-- `docs/operating_system/governance/repo-governance.md`
-- `docs/operating_system/planning/planning-dispatch.md` when the lane changes planning artifacts or bounded thread status
-- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
-- `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-managed surfaces are in scope
-- `docs/operating_system/agent_memory/failure-ledger.md` when the task involved meaningful retries/debugging
-- `docs/operating_system/workflows/workflow-roadmap-to-closeout.md`
-- `docs/operating_system/workflows/workflow-live-run-closeout.md` when the lane includes live-run execution
-- `docs/operating_system/rules/audit-evidence-mandate-rule.md` when the lane includes qualifying failures
-</MUST-READ>
+If required implementation remains, return to `skill-executing-plans`.
 
-## Lifecycle Compliance
+## Conditional References
 
-- Completion claims must respect owning-source and generated-surface boundaries.
-- If planning artifacts, bounded thread state, or result-pack evidence changed, name that evidence explicitly.
-- If generated refresh was required by source changes, completion is blocked until refreshed evidence is named.
+Read only what supports current claims:
 
-<EXTREMELY-IMPORTANT>
-## The Iron Law
+- active plan and completion criteria
+- linked specification acceptance criteria and preserved invariants
+- affected validators, tests, schemas, generated procedures, and maintained documentation
+- audit rule only when its failure trigger applies
+- publication rules only when reporting publication readiness
+- relevant agent memory only after meaningful retries, debugging, or reusable failure discovery
 
-```
-NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
-```
+Do not require retired architecture-sync scripts, persistent context packs, or missing reconciliation prompts.
 
-If you haven't run the verification command in this message, you cannot claim it passes.
-</EXTREMELY-IMPORTANT>
+## Evidence Rule
 
-## The Gate Function
+No completion claim without fresh evidence from command output or direct inspection that proves claim.
 
-```
-BEFORE claiming any status or expressing satisfaction:
+Old output, confidence, plan checkboxes alone, code review, agent summaries, and partial tests are not completion proof.
 
-1. IDENTIFY: What command proves this claim?
-2. RUN: Execute the FULL command (fresh, complete)
-3. READ: Full output, check exit code, count failures
-4. VERIFY: Does output confirm the claim?
-   - If NO: State actual status with evidence
-   - If YES: State claim WITH evidence
-5. CLOUD-PROOF CHECK: If the claim depends on cloud-owned behavior, verify the live cloud artifacts rather than extrapolating from local tests
-6. DOC SYNC CHECK: If behavior changed, name the exact feature/doc targets updated or intentionally unchanged
-7. MEMORY DISPOSITION CHECK: If the work involved meaningful failures, retries, or debugging, update `docs/operating_system/agent_memory/failure-ledger.md` or explicitly state why no memory update was needed
-8. AUDIT GATE CHECK: For qualifying failures, confirm audit bundle exists (or explicit allowed bypass), using canonical paths from `docs/operating_system/rules/audit-evidence-mandate-rule.md`
-9. ONLY THEN: Make the claim
-
-Skip any step = lying, not verifying
-```
-
-## Doc Sync Gate
+## Verification Process
 
-If the task changed behavior, contract, architecture, or navigation, completion requires explicit doc evidence.
+### 1. Confirm Verified State Candidate
 
-Minimum check:
+Record exact candidate state:
 
-- identify the affected `docs/features/<feature_id>/feature.source.yaml`, or
-  explicitly justify why no feature-source change was needed
-- identify the affected `docs/features/<feature_id>/<feature_id>.yaml` as the
-  generated contract surface when one exists
-- identify the affected `docs/features/<feature_id>/lineage.generated.yaml` if
-  evidence or generated history inputs changed
-- identify the affected `docs/stages/<stage_id>.source.yaml` and
-  `docs/stages/<stage_id>.yaml` when stage-aware work is in scope
-- identify `docs/features/<feature_id>/history.md` and any other focused docs under `docs/features/<feature_id>/` that changed or were reviewed
-- identify any cross-feature docs under `docs/*.md` that changed or were reviewed
-- identify whether `README.md` changed
-- identify whether `docs/generated/*` was regenerated
+- workspace path
+- native or manual worktree mechanism
+- branch or detached state
+- current HEAD
+- base branch and base commit when known
+- staged diff
+- unstaged diff
+- untracked files in scope
+- unrelated changes intentionally preserved
 
-If behavior changed and no feature YAML/doc target is named, the task is not complete.
+Verification applies only to this recorded state. Later content-changing commit hooks, edits, rebase, conflict resolution, merge, generated refresh, or base update invalidate affected evidence.
 
-## Memory Disposition Gate
+### 2. Define Completion Claims
 
-If the task involved meaningful failures, repeated retries, or notable debugging:
+List concrete claims requiring proof:
 
-- check whether the lesson belongs in `docs/operating_system/agent_memory/failure-ledger.md`
-- if yes, update it before claiming completion
-- if no, say explicitly why the failure was too task-local, one-off, or already captured elsewhere
+- requested behavior exists
+- original defect no longer reproduces when applicable
+- preserved behavior still works
+- specification acceptance criteria are satisfied
+- all required plan tasks are complete
+- required maintained contracts are aligned
+- generated outputs match changed canonical inputs
+- no known required work remains
 
-Do not let important failures disappear just because the final verification now passes.
+Do not use one broad claim such as “everything works.”
 
-## Branch Closeout Options
+### 3. Reconcile Plan And Specification
 
-When verification succeeds and implementation is complete, this skill also owns branch-closeout routing.
+For every required task and criterion classify:
 
-After evidence is current:
+- proven complete
+- incomplete
+- blocked
+- deferred with explicit approval
+- not applicable with reason
 
-1. Determine base branch.
-2. Present only eligible next actions:
-   - open or update PR
-   - merge now
-   - keep branch open with explicit reason
-   - clean up local branch/worktree after merge when safe
-3. Block merge or PR claims if verification, audit, lifecycle, or stash-reconciliation gates are incomplete.
-4. Name the exact next action taken and the proof that made it eligible.
-
-## Branch Closeout Gate
-
-Before offering merge, PR, push, or cleanup options, confirm:
-
-- fresh verification evidence exists for the lane
-- required doc and generated-surface sync is complete
-- required audit bundle exists for qualifying failures, or allowed bypass is explicit
-- no unresolved stash-based reconciliation remains
-- branch target and merge path are identified
-
-If any gate fails, stop at the blocking report rather than presenting closeout as ready.
-
-## Common Failures
-
-| Claim | Requires | Not Sufficient |
-|-------|----------|----------------|
-| Tests pass | Test command output: 0 failures | Previous run, "should pass" |
-| Linter clean | Linter output: 0 errors | Partial check, extrapolation |
-| Build succeeds | Build command: exit 0 | Linter passing, logs look good |
-| Bug fixed | Test original symptom: passes | Code changed, assumed fixed |
-| Regression test works | Red-green cycle verified | Test passes once |
-| Cloud workflow proven | Live run artifacts reconciled | Local dry-run or unit tests only |
-| Agent completed | VCS diff shows changes | Agent reports "success" |
-| Requirements met | Line-by-line checklist | Tests passing |
-| Docs updated | Exact file list and regeneration evidence | "Docs updated as needed" |
+Do not require raw `- [ ]` count to equal zero. Optional, historical, deferred, and not-applicable items may remain when disposition is explicit.
 
-## Red Flags - STOP
+Use existing planning and template validators when planning artifacts changed. Do not duplicate required-section parsing inside skill.
 
-- Using "should", "probably", "seems to"
-- Expressing satisfaction before verification ("Great!", "Perfect!", "Done!", etc.)
-- About to commit/push/PR without verification
-- About to claim completion without naming doc targets after behavior changes
-- About to claim completion after meaningful debugging without addressing memory disposition
-- Trusting agent success reports
-- Relying on partial verification
-- Thinking "just this once"
-- Tired and wanting work over
-- **ANY wording implying success without having run verification**
-
-## Rationalization Prevention
-
-| Excuse | Reality |
-|--------|---------|
-| "Should work now" | RUN the verification |
-| "I'm confident" | Confidence ≠ evidence |
-| "Just this once" | No exceptions |
-| "Linter passed" | Linter ≠ compiler |
-| "Agent said success" | Verify independently |
-| "I'm tired" | Exhaustion ≠ excuse |
-| "Partial check is enough" | Partial proves nothing |
-| "Different words so rule doesn't apply" | Spirit over letter |
-| "Docs probably don't need updates" | Name the targets or say why not |
+### 4. Map Claims To Evidence
 
-## Key Patterns
+| Claim | Minimum evidence |
+|---|---|
+| bug fixed | original reproduction or regression test passes |
+| behavior implemented | focused behavioral test or executable demonstration |
+| tests pass | named fresh test command exits successfully |
+| build succeeds | named fresh build command exits successfully |
+| validator clean | affected validator exits successfully |
+| generated output current | canonical sync or check reports no drift |
+| requirements met | every required criterion reconciled |
+| docs aligned | affected maintained owner inspected or validated |
+| external behavior works | live or external evidence, not local inference |
 
-**Tests:**
+### 5. Run Focused Proof
 
-```
-✅ [Run test command] [See: 34/34 pass] "All tests pass"
-❌ "Should pass now" / "Looks correct"
-```
+Run first:
 
-**Regression tests (TDD Red-Green):**
+1. original reproduction or regression test
+2. tests nearest changed behavior
+3. affected validator, formatter, type checker, build, or integration check
 
-```
-✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
-❌ "I've written a regression test" (without red-green verification)
-```
+Read full output, exit code, failure count, and skipped checks.
 
-**Build:**
+### 6. Run Required Broad Proof
 
-```
-✅ [Run build] [See: exit 0] "Build passes"
-❌ "Linter passed" (linter doesn't check compilation)
-```
+Select broader checks from changed scope:
 
-**Cloud proof:**
+- repository contracts after governance, schema, validator, planning, or agent-runtime changes
+- full tests after cross-cutting behavior changes
+- generated adapter drift after canonical agent-source changes
+- starter-kit build and validation after starter-distributed changes
+- publication dry run after publication-owned changes
+- live checks when claim depends on external state
+- `git diff --check` before verified result
 
-```
-✅ Submit or inspect live run → wait for completion → download artifacts → reconcile parent/child truth → state proof strength
-❌ "Local tests passed so cloud path is fine"
-```
+Do not run every repository command for a local, non-behavioral edit.
 
-**Requirements:**
+### 7. Inspect Repository State
 
-```
-✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
-❌ "Tests pass, phase complete"
-```
+Inspect:
 
-**Doc sync:**
+- final changed-file list and diff
+- staged, unstaged, and untracked files
+- accidental edits outside approved scope
+- generated files changed without canonical inputs
+- canonical inputs changed without required generated refresh
+- stale references, merge markers, temporary artifacts, or unresolved lane-related stashes
 
-```
-✅ Name exact `docs/features/<feature_id>/feature.source.yaml` / generated `docs/features/<feature_id>/<feature_id>.yaml` / `docs/features/<feature_id>/history.md` / `docs/stages/<stage_id>.source.yaml` when relevant / `docs/*.md` / `docs/generated/*` evidence
-❌ "No doc changes needed" without checking targets
-```
+Do not require unrelated historical stashes to be removed.
 
-**Memory disposition:**
+### 8. Handle Failed Evidence
 
-```
-✅ "Failure ledger updated" / "No memory update needed because <reason>"
-❌ Silence about important retries or debugging
-```
+When required proof fails:
 
-**Agent delegation:**
+1. report exact command or inspection
+2. include relevant output and file reference
+3. classify failure as introduced, pre-existing, environmental, external, or unknown
+4. return introduced or unknown implementation failures to `skill-executing-plans` and `skill-systematic-debugging`
+5. keep plan status non-completed
 
-```
-✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
-❌ Trust agent report
-```
+A successful unrelated command does not cancel failed required proof.
 
-## Why This Matters
+### 9. Set Plan Status
 
-From 24 failure memories:
+Set plan status to `completed` only when:
 
-- your human partner said "I don't believe you" - trust broken
-- Undefined functions shipped - would crash
-- Missing requirements shipped - incomplete features
-- Time wasted on false completion → redirect → rework
-- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+- every required implementation outcome is proven satisfied
+- every required task and task-local verification item is proven complete
+- every approved deferral is recorded and no longer treated as required current scope
+- required focused and broad checks pass
+- maintained and generated truth surfaces are aligned
+- no unresolved required task, failed required check, stale status, or unrecorded scope deviation remains
 
-## When To Apply
+Return `verified` when these conditions pass, then update plan status. A checked
+box is progress state, not completion proof.
 
-**ALWAYS before:**
+Plan `completed` means implementation and verification are complete. It does not mean branch merged, pushed, published, or cleaned.
 
-- ANY variation of success/completion claims
-- ANY expression of satisfaction
-- ANY positive statement about work state
-- Committing, PR creation, task completion
-- Moving to next task
-- Delegating to agents
-- Declaring behavior changes complete without doc sync evidence
-- Declaring completion after meaningful retries/debugging without a memory disposition
+### 10. Produce Verification Result
 
-**Rule applies to:**
+Return exactly one result:
 
-- Exact phrases
-- Paraphrases and synonyms
-- Implications of success
-- ANY communication suggesting completion/correctness
+- `verified`: required implementation and evidence complete; branch finishing may be offered
+- `incomplete`: required work remains within approved scope
+- `blocked`: progress requires user decision, access, external state, or resolution outside current skill
 
-## The Bottom Line
+For `verified`, include:
 
-**No shortcuts for verification.**
+- workspace path and mechanism
+- branch or detached state
+- verified HEAD
+- verified staged, unstaged, and untracked in-scope state
+- base branch and base commit when known
+- verification commands and results
+- approved deferrals and residual risks
+- explicit handoff to `skill-finishing-a-development-branch`
 
-Run the command. Read the output. THEN claim the result.
+For `incomplete` or `blocked`, include:
 
-This is non-negotiable.
+1. failed claim or criterion
+2. exact file and section or command
+3. evidence
+4. smallest required fix or unblock condition
+
+## Authorization Boundary
+
+Verification makes Git closure eligible. It does not authorize:
+
+- commit
+- fetch or pull
+- branch creation
+- rebase
+- merge
+- push
+- pull request creation or update
+- publication
+- branch deletion
+- worktree removal or pruning
+- stash creation, apply, pop, or drop
+
+## Red Flags
+
+- claiming success before command completes
+- relying on old or partial output
+- treating raw checkbox count as executable truth
+- marking plan complete with required work open
+- ignoring skipped or environment-dependent checks
+- saying docs align without inspecting affected owners
+- performing Git mutation from verification skill
+- handing off without exact verified repository state
+- requiring retired architecture or context-pack systems
+
+## Integration
+
+- `skill-using-git-worktrees` provides workspace identity when isolation is used.
+- `skill-executing-plans` performs implementation and task-local verification.
+- `skill-systematic-debugging` investigates failed proof.
+- `skill-finishing-a-development-branch` performs explicitly authorized Git disposition after `verified` result.

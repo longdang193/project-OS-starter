@@ -18,11 +18,11 @@ related_stages: []
 
 # Mode A Missing-Surface Discovery Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-missing-surface-discovery-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-missing-surface-discovery-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -37,8 +37,8 @@ related_stages: []
 - Managed feature/stage metadata is still not required in Mode A.
 - Required root-doc enforcement stays separate from missing-surface discovery.
 
-**Rollout / Revert:**  
-- rollback_trigger: the new heuristics warn on tiny starter repos or create noisy false positives on clearly non-API projects.  
+**Rollout / Revert:**
+- rollback_trigger: the new heuristics warn on tiny starter repos or create noisy false positives on clearly non-API projects.
 - rollback_method: remove the starter-only discovery pass, keep the spec/plan/docs, and retry with narrower heuristics or higher thresholds.
 
 ---

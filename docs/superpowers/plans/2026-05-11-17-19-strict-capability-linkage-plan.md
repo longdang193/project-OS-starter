@@ -9,7 +9,6 @@ parent_spec: docs/superpowers/specs/metadata-linkage-governance-spec.md
 targets:
   - docs/operating_system/rules/python-contracts-rule.md
   - .agents/skills/skill-doc-system-lifecycle/SKILL.md
-  - docs/operating_system/workflows/workflow-live-run-preflight-check.md
   - scripts/validate_python_meta_headers.py
   - scripts/validate_repo_contracts.py
   - tests/test_validate_python_meta_headers.py
@@ -46,7 +45,6 @@ Plan/context-pack state, preflight workflow checks, and validation commands are 
 - Inspect: `docs/operating_system/lifecycle/doc-system-lifecycle.md`
 - Modify: `docs/operating_system/rules/python-contracts-rule.md`
 - Modify: `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
-- Modify: `docs/operating_system/workflows/workflow-live-run-preflight-check.md`
 - Verify: `docs/operating_system/rules/python-contracts-rule.md`
 
 **Preconditions:**

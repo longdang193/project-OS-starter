@@ -5,7 +5,7 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/skill-doc-system-lifecycle.md
   - docs/superpowers/specs/2026-04-25-managed-metadata-update-prompt-spec.md
@@ -15,11 +15,11 @@ related_stages: []
 
 # Managed Metadata Update Prompt Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-25-managed-metadata-update-prompt-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-25-managed-metadata-update-prompt-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -34,8 +34,8 @@ related_stages: []
 - the prompt does not imply that generated files are hand-edited sources
 - the wording stays short and copyable
 
-**Rollout / Revert:**  
-- rollback_trigger: the new prompt overlaps too heavily with migration or drift prompts  
+**Rollout / Revert:**
+- rollback_trigger: the new prompt overlaps too heavily with migration or drift prompts
 - rollback_method: remove the new prompt and retain only any clarifying wording that still reduces ambiguity
 
 ---
@@ -52,7 +52,7 @@ Invariants:
   - the prompt pack remains concise
 Dependencies:
   - `docs/operating_system/prompt_templates/`
-  - `docs/operating_system/skill-planning-dispatch.md`
+  - `docs/operating_system/planning/planning-dispatch.md`
   - `docs/operating_system/governance/repo-governance.md`
   - `docs/operating_system/skill-doc-system-lifecycle.md`
 Affected stages:
@@ -73,7 +73,7 @@ Affected docs:
     - none
   operating_system_docs:
     - `docs/operating_system/prompt_templates/`
-    - `docs/operating_system/skill-planning-dispatch.md`
+    - `docs/operating_system/planning/planning-dispatch.md`
     - `docs/operating_system/governance/repo-governance.md`
     - `docs/operating_system/skill-doc-system-lifecycle.md`
   readme: none
@@ -99,7 +99,7 @@ docs/operating_system/prompt_templates/managed-metadata-update-prompt.md
 docs/operating_system/prompt_templates/README.md
 docs/operating_system/prompt_templates/validate-or-drift-prompt.md
 docs/operating_system/prompt_templates/mode-migration-prompt.md
-docs/operating_system/skill-planning-dispatch.md
+docs/operating_system/planning/planning-dispatch.md
 docs/operating_system/governance/repo-governance.md
 docs/operating_system/skill-doc-system-lifecycle.md
 docs/superpowers/specs/2026-04-25-managed-metadata-update-prompt-spec.md
@@ -129,7 +129,7 @@ docs/superpowers/plans/2026-04-25-02-15-managed-metadata-update-prompt-plan.md
 ## Task 3: Update Operating-System Docs
 
 **Files:**
-- Modify: `docs/operating_system/skill-planning-dispatch.md`
+- Modify: `docs/operating_system/planning/planning-dispatch.md`
 - Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/skill-doc-system-lifecycle.md`
 

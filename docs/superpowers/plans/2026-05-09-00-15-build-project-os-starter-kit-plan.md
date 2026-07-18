@@ -38,7 +38,6 @@ Add bounded generation and verification workflow so maintainers can rebuild the 
 
 ### task 1: define kit contract, ownership, and allowed surface
 
-Author or update operating-system documentation that defines `project-OS-starter-kit` as a generated clone-ready starter derived from `project-OS-starter`. Record the hard boundary that the starter repo is the sole source of truth and sole location for adapter regeneration, while the kit is consume-only. Translate current discussion into an explicit include/exclude matrix covering top-level docs, `.agents/skills/`, `.agents/workflows/`, `repo_config/`, required `docs/` layers, scripts, and tests. Name exact forbidden surfaces such as `.codex/`, `repo_config/agent-adapter-mappings.json`, `adapters/`, adapter sync/verify scripts, runtime-bundle deploy/validate/test scripts, and their related tests.
 
 ### task 2: inventory kept skills and derive required script/doc closure
 

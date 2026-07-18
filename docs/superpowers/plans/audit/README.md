@@ -1,84 +1,44 @@
-# Audit Artifact Storage
+# Audit Report Storage
 
-Canonical path for each audit:
+Use formal audit report only when `docs/operating_system/rules/audit-evidence-mandate-rule.md` triggers or user explicitly requests one.
 
-- `docs/superpowers/plans/audit/<audit_id>/`
+## Save Contract
 
-Recommended structure:
+Canonical path:
+
+```text
+docs/superpowers/plans/audit/<audit_id>/report.md
+```
+
+New IDs use:
+
+```text
+YYYY-MM-DD-HH-MM-<topic>
+```
+
+Existing audit IDs and bundles are grandfathered.
+
+Minimum structure:
 
 ```text
 docs/superpowers/plans/audit/<audit_id>/
   report.md
-  manifest.yaml
-  evidence/
-    images/
-    results/
-  repro/
-    steps.md
-    commands.ps1
-    inputs/
+  evidence/    # optional; only when real evidence files exist
+  repro/       # optional; only when runnable assets do not fit in report
 ```
 
-## Rules
+Rules:
 
-1. `report.md` should follow:
-   - `docs/operating_system/templates/audit-report-with-evidence-template.md`
-2. `manifest.yaml` tracks artifact path, type, timestamp, checksum.
-3. Use repo-relative paths in report links.
-4. Redact secrets before storage.
-5. Enforce trigger/closure behavior from:
-   - `docs/operating_system/rules/audit-evidence-mandate-rule.md`
+1. Use `docs/operating_system/templates/audit-report-with-evidence-template.md`.
+2. Keep reproduction commands in `report.md` unless separate files add real value.
+3. Link supporting files with repo-relative paths.
+4. Redact secrets before saving evidence.
+5. Do not create placeholder files, empty evidence folders, manifests, artifact indexes, or report checklists.
 
-## Rollout Policy
-
-### Effective date behavior
-
-- New qualifying problems discovered on or after policy adoption: audit is mandatory before closeout claims.
-- Existing audits continue under same canonical template/storage contract.
-
-### Legacy and in-flight issues
-
-- In-flight qualifying issue with no audit yet: create minimum viable audit bundle before next closeout/verification claim.
-- Minimum viable backfill:
-  - `report.md` with finding, expected vs actual, root cause boundary
-  - at least one reproducible command sequence in `repro/commands.ps1`
-  - at least one evidence artifact registered in `manifest.yaml`
-
-### Allowed bypass (must be explicit)
-
-- docs-only or typo-only non-behavior change
-- same failure already tracked by active audit bundle in same scope
-
-When bypass used, record reason in verification/closeout notes.
-
-## Operator Quickstart
-
-1. Create scaffold:
+## Create
 
 ```powershell
-.\scripts\new_audit.ps1 -AuditId <audit_id>
+.\scripts\new_audit.ps1 -AuditId <YYYY-MM-DD-HH-MM-topic>
 ```
 
-2. Capture evidence artifacts:
-
-```powershell
-.\scripts\audit_capture.ps1 -AuditId <audit_id> -SourceFile <path> -Type image
-.\scripts\audit_capture.ps1 -AuditId <audit_id> -SourceFile <path> -Type result
-```
-
-3. Validate audit bundle completeness:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\audit_check.py docs/superpowers/plans/audit/<audit_id>
-```
-
-4. Link audit path in workflow/skill execution notes for debugging, verification, and closeout.
-
-## Known Limitations And Future Hardening
-
-- `audit_check.py` currently validates required structure/sections, not deep semantic quality.
-- workflow-level hard gates are enforced; repo-global hard gate not enabled in this rollout.
-- future hardening options:
-  - enforce manifest checksum uniqueness
-  - verify referenced evidence links exist in report body
-  - optional repo-wide CI gate for qualifying lanes
+`skill-systematic-debugging` owns report creation and updates. `skill-verification-before-completion` checks required audit evidence only when mandate applies.

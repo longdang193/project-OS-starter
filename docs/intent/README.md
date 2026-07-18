@@ -33,24 +33,15 @@ the intent layer, with deeper intent docs beside it as needed.
 - [constraints-and-non-goals.md](./constraints-and-non-goals.md)
   - limits, boundaries, and deliberate exclusions
 - [master-workstream-roadmap.md](./master-workstream-roadmap.md)
-  - top-down bridge from intent into durable workstreams and the parallel
-    operating-system branch
-- [workstream-coverage-and-progress-guide.md](./workstream-coverage-and-progress-guide.md)
-  - precise ladder from roadmap to execution, plus coverage/progress/divergence
-    tracking rules
-- [workstreams/threads/README.md](./workstreams/threads/README.md)
-  - explicit bounded change thread file surface between registered
-    workstreams and downstream specs/plans
+  - optional coordination across several outcomes
 
 ## Rules
 
 - keep these docs stable and source-like
 - do not turn them into execution logs or release notes
 - treat them as source material for later README synthesis
-- use `master-workstream-roadmap.md` to translate intent into durable planning
-  threads without replacing the upstream intent docs
-- use `workstream-coverage-and-progress-guide.md` when you need the precise
-  execution ladder from roadmap coverage into bounded change thread files,
-  specs, plans, and safe parallel work
+- use `master-workstream-roadmap.md` only when several outcomes need coordinated direction
+- move directly from approved intent to execution when work is local, reversible, and design-clear
+- create a specification or plan only when its owned reasoning or execution detail is needed
 - if a document is really about how the repo should build, govern, or route
   work, it belongs in `docs/operating_system/` instead

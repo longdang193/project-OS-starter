@@ -184,4 +184,3 @@ Keep publication security gates (`forbiddenPaths`, metadata markers, filename ma
 2. validator behavior and policy docs agree on contract semantics.
 3. implementation planning handoff has no unresolved design ambiguities.
 4. acceptance criteria have explicit measurable proof methods.
-

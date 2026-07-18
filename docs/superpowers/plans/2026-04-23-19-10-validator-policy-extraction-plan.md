@@ -15,11 +15,11 @@ related_stages: []
 
 # Validator Policy Extraction Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-validator-policy-extraction-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-validator-policy-extraction-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -34,8 +34,8 @@ related_stages: []
 - The extracted layer remains starter-owned internal policy, not runtime config.
 - This pass only targets `validate_adoption_shape.py`; any later sharing with `validate_repo_contracts.py` is explicitly deferred.
 
-**Rollout / Revert:**  
-- rollback_trigger: The refactor changes validator output unexpectedly, introduces import fragility, or makes policy harder rather than easier to follow.  
+**Rollout / Revert:**
+- rollback_trigger: The refactor changes validator output unexpectedly, introduces import fragility, or makes policy harder rather than easier to follow.
 - rollback_method: Inline the extracted constants back into `validate_adoption_shape.py`, keep the spec/plan for a narrower retry, and revisit the grouping approach.
 
 ---

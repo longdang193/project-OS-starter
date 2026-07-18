@@ -10,6 +10,5 @@ providers:
     generated_root: generated_agents/antigravity
 sources:
   rules: docs/operating_system/rules
-  workflows: docs/operating_system/workflows
   skills: .agents/skills
   prompts: docs/operating_system/prompt_templates

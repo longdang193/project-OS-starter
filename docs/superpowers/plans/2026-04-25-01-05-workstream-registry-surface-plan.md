@@ -7,7 +7,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/workstreams/
   - scripts/validate_adoption_shape.py
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/operating_system/prompt_templates/
   - tests/test_validate_adoption_shape.py
@@ -18,11 +18,11 @@ related_stages: []
 
 # Workstream Registry Surface Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-25-workstream-registry-surface-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-25-workstream-registry-surface-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -37,8 +37,8 @@ related_stages: []
 - `parent_workstream: none` remains valid for intent and operating-system artifacts.
 - Named workstream validation must be source-backed by registry docs, not a hardcoded list.
 
-**Rollout / Revert:**  
-- rollback_trigger: the registry shape is too heavy, or validator enforcement breaks valid current artifacts.  
+**Rollout / Revert:**
+- rollback_trigger: the registry shape is too heavy, or validator enforcement breaks valid current artifacts.
 - rollback_method: keep the registry docs, revert named-id enforcement, and retry with a looser compatibility rule.
 
 ---
@@ -74,7 +74,7 @@ Affected docs:
   cross_cutting_docs:
     - none
   operating_system_docs:
-    - `docs/operating_system/skill-planning-dispatch.md`
+    - `docs/operating_system/planning/planning-dispatch.md`
     - `docs/operating_system/governance/repo-governance.md`
     - `docs/operating_system/prompt_templates/`
   readme: none
@@ -99,7 +99,7 @@ docs/intent/workstreams/<workstream-id>.md
 
 ```text
 docs/intent/master-workstream-roadmap.md
-docs/operating_system/skill-planning-dispatch.md
+docs/operating_system/planning/planning-dispatch.md
 docs/operating_system/governance/repo-governance.md
 docs/operating_system/prompt_templates/README.md
 docs/operating_system/prompt_templates/spec-prompt.md
@@ -135,7 +135,7 @@ docs/superpowers/specs/2026-04-25-workstream-registry-surface-spec.md
 
 **Files:**
 - Modify: `scripts/validate_adoption_shape.py`
-- Modify: `docs/operating_system/skill-planning-dispatch.md`
+- Modify: `docs/operating_system/planning/planning-dispatch.md`
 - Modify: `docs/operating_system/governance/repo-governance.md`
 - Modify: `docs/operating_system/prompt_templates/README.md`
 - Modify: `docs/operating_system/prompt_templates/spec-prompt.md`

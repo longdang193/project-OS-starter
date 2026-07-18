@@ -5,11 +5,10 @@ status: completed
 parent_workstream: none
 targets:
   - docs/operating_system/prompt_templates/README.md
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/execution_maps/README.md
   - .agents/skills/skill-brainstorming/SKILL.md
-  - .agents/skills/skill-planning-dispatch/SKILL.md
   - .agents/skills/skill-writing-plans/SKILL.md
   - .agents/skills/skill-doc-system-lifecycle/SKILL.md
 related_features: []
@@ -20,10 +19,10 @@ related_stages: []
 
 ## Triage
 
-Layer: operating_system  
-Feature type: MODIFY  
-Summary: Split the current single "execution map" concept into two distinct orchestration layers: a spec-authoring map before detailed specs and an implementation execution map after approved detailed specs.  
-Reasoning: The current ladder is clearer than the old workstream-to-plan shortcut, but it still overloads one "execution map" term across two different orchestration questions. We now need the repo to teach the more precise flow from complete spec coverage into detailed-spec authoring, and then from approved detailed specs into implementation sequencing.  
+Layer: operating_system
+Feature type: MODIFY
+Summary: Split the current single "execution map" concept into two distinct orchestration layers: a spec-authoring map before detailed specs and an implementation execution map after approved detailed specs.
+Reasoning: The current ladder is clearer than the old workstream-to-plan shortcut, but it still overloads one "execution map" term across two different orchestration questions. We now need the repo to teach the more precise flow from complete spec coverage into detailed-spec authoring, and then from approved detailed specs into implementation sequencing.
 Invariants:
 
 - canonical planning truth still flows downward from intent and workstreams
@@ -39,11 +38,10 @@ Dependencies:
 - `docs/operating_system/prompt_templates/spec-set-execution-map-prompt.md`
 - `docs/operating_system/prompt_templates/spec-prompt.md`
 - `docs/operating_system/prompt_templates/plan-prompt.md`
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/superpowers/execution_maps/README.md`
 - `.agents/skills/skill-brainstorming/SKILL.md`
-- `.agents/skills/skill-planning-dispatch/SKILL.md`
 - `.agents/skills/skill-writing-plans/SKILL.md`
 - `.agents/skills/skill-doc-system-lifecycle/SKILL.md`
 
@@ -72,7 +70,7 @@ Affected docs:
     - `docs/operating_system/prompt_templates/spec-set-execution-map-prompt.md`
     - `docs/operating_system/prompt_templates/spec-prompt.md`
     - `docs/operating_system/prompt_templates/plan-prompt.md`
-    - `docs/operating_system/skill-planning-dispatch.md`
+    - `docs/operating_system/planning/planning-dispatch.md`
     - `docs/operating_system/governance/repo-governance.md`
     - `docs/superpowers/execution_maps/README.md`
   readme: none
@@ -250,7 +248,7 @@ Update repo-control docs so they teach the refined ladder rather than the
 compressed one:
 
 - `docs/operating_system/prompt_templates/README.md`
-- `docs/operating_system/skill-planning-dispatch.md`
+- `docs/operating_system/planning/planning-dispatch.md`
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/superpowers/execution_maps/README.md`
 
@@ -269,7 +267,6 @@ orchestration phases:
 - `skill-brainstorming`
   - should teach the handoff from complete spec set into spec-authoring map,
     then into detailed specs
-- `skill-planning-dispatch`
   - should route to the correct orchestration phase instead of one generic
     execution-map step
 - `skill-writing-plans`

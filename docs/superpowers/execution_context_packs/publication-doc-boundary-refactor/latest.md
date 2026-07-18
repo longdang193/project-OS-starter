@@ -17,7 +17,6 @@ List only files that currently govern execution.
 - **Primary plan:** `docs/superpowers/plans/2026-05-12-01-14-publication-doc-boundary-refactor-plan.md`
 - **Specs / maps / thread docs:** `docs/superpowers/specs/2026-05-12-01-12-publication-doc-boundary-refactor-spec.md`
 - **Governance / workflow rules used:**
-  - `docs/operating_system/templates/execution-context-pack-template.md`
   - `docs/operating_system/governance/execution-context-pack-governance.md`
 
 ## 3) Current Task State
@@ -36,7 +35,7 @@ List only files that currently govern execution.
 - `docs/operating_system/publication/public-repo-publication-policy.md` — policy-only scope + authority/precedence.
 - `docs/operating_system/publication/public-repo-publishing.md` — procedure-only runbook.
 - `docs/operating_system/publication/public-safe-doc-rewrite-guide.md` — scope + canonical companion links.
-- `docs/operating_system/procedures/publication-workflow.md` — removed duplicated boundary lists, linked canonical owners.
+- `docs/operating_system/procedures/publication-procedure.md` — removed duplicated boundary lists, linked canonical owners.
 - `.agents/skills/skill-private-public-repo-governance/SKILL.md` — added canonical publication docs and precedence.
 - `docs/superpowers/plans/2026-05-12-01-14-publication-doc-boundary-refactor-plan.md` — task checkboxes marked complete.
 

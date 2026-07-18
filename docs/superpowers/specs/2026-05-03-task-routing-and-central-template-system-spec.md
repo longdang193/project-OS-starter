@@ -7,7 +7,7 @@ targets:
   - docs/operating_system/templates/
   - docs/operating_system/prompt_templates/
   - .agents/skills/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
 related_features: []
 related_stages: []

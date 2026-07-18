@@ -18,11 +18,11 @@ related_stages: []
 
 # Mode A Outgrown-Threshold Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-outgrown-threshold-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-24-mode-a-outgrown-threshold-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -37,8 +37,8 @@ related_stages: []
 - Small starter-only repos stay clean.
 - The outgrown-threshold warning explicitly points to `managed_architecture_metadata`.
 
-**Rollout / Revert:**  
-- rollback_trigger: the new heuristic warns on obviously small repos or creates noisy false positives on repos that are still comfortably Mode A.  
+**Rollout / Revert:**
+- rollback_trigger: the new heuristic warns on obviously small repos or creates noisy false positives on repos that are still comfortably Mode A.
 - rollback_method: remove the outgrown-threshold helper and warning, keep the spec/plan/docs, and recalibrate thresholds in a narrower follow-up.
 
 ---

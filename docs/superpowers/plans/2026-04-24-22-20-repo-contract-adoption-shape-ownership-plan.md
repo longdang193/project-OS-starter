@@ -17,11 +17,11 @@ related_stages: []
 
 # Repo Contract And Adoption-Shape Ownership Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-24-repo-contract-adoption-shape-ownership-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -36,8 +36,8 @@ related_stages: []
 - Repo-config validation remains about repo/system config and runtime config shape.
 - The canonical repo-contract gate invokes the true owner for adoption-shape drift.
 
-**Rollout / Revert:**  
-- rollback_trigger: The cleanup removes needed coverage from the canonical repo-contract gate or changes unrelated validator behavior.  
+**Rollout / Revert:**
+- rollback_trigger: The cleanup removes needed coverage from the canonical repo-contract gate or changes unrelated validator behavior.
 - rollback_method: Reintroduce the removed orchestration step or restore the prior validator wiring, but do not keep long-term duplicated root-doc policy in both validators.
 
 ---

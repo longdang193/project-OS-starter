@@ -1,351 +1,224 @@
 ---
 name: skill-executing-plans
-description: Use when you have a written implementation plan to execute in a separate
-  session with review checkpoints
-allowed-tools: []
-hooks:
-  pre:
-  - python scripts/hooks/run_validator.py --fast
-  post:
-  - python scripts/hooks/run_validator.py --fast
-required_reads:
-- docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- execution
-- delivery
-- skill-executing-plans
-required_outputs: []
+description: Use when executing an approved implementation plan or resuming partially completed planned work.
+required_reads: []
 distribution_tier: starter_kit
 ---
-
 # Executing Plans
 
-## Overview
+## Role
 
-Load the plan, review it critically, execute task by task, update source-of-truth docs as work lands, then close out the branch through the verification gate.
+Execute an approved implementation plan against current repository truth, preserve unrelated work, and verify each material task before advancing.
 
-**Announce at start:** "I'm using the skill-executing-plans skill to implement this plan."
+This skill owns plan execution. It does not own design decisions, planning structure, final completion claims, Git safety rules, debugging technique, or parallel-lane coordination.
 
-**If subagents are available:** prefer `superpowers:skill-subagent-driven-development` for higher quality. Otherwise use this skill.
+## Preconditions
 
----
+Before editing, confirm:
 
-## Mandatory Read
+- an approved implementation plan or explicit approved task sequence exists
+- behavioral and interface decisions needed for the next task are settled
+- workspace path, creation mechanism, branch or detached state, base branch, base commit, and current HEAD are understood
+- staged, unstaged, untracked, and unrelated user changes are understood and preserved
+- required credentials, dependencies, and external services for the next task are available, or the plan identifies a safe fallback
 
-<MUST-READ>
-Before execution starts, read:
+If the plan has a blocking design gap, stop and return it to `skill-spec-drafting` or `skill-writing-plans`. Do not invent design during execution.
 
-- the specific implementation plan file being executed
-- `docs/operating_system/templates/implementation-plan-template.md` to confirm canonical plan structure
-- `docs/operating_system/templates/implementation-execution-map-template.md` when upstream multi-lane orchestration is in scope
-- `docs/operating_system/governance/repo-governance.md`
-- `docs/operating_system/planning/planning-dispatch.md`
-- `docs/operating_system/lifecycle/doc-system-lifecycle.md`
-- `docs/operating_system/lifecycle/feature-lifecycle.md` when feature-owned work is in scope
-- `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
-- `docs/operating_system/workflows/workflow-spec-to-plan-to-execution.md`
-- `docs/operating_system/workflows/workflow-drift-detection-and-reconciliation.md`
-- `docs/operating_system/rules/audit-evidence-mandate-rule.md` when executing debugging/verification/closeout tasks for qualifying failures
-</MUST-READ>
+## Conditional References
 
-## Lifecycle Compliance
+Read only what the current task needs:
 
-- Keep execution inside the approved triaged layer and bounded thread/plan scope.
-- Treat plans as execution guides, not upstream truth; update owning source layers as work lands.
-- Refresh generated feature, stage, history, and discovery surfaces from source when in scope.
-- Do not hand-edit generated managed surfaces to satisfy completion claims.
-- Respect the standardized implementation-plan shape and keep task/wave sequencing consistent with any approved implementation execution map.
-- Treat task-local verification as owned by each task block and reserve top-level plan `Verification` for final artifact proof.
+- the implementation plan in full before execution starts
+- linked specification sections governing the active task
+- `skill-plan-document-reviewer` when a costly or high-risk plan has not received readiness review
+- `skill-using-git-worktrees` when isolation materially reduces risk
+- `skill-subagent-driven-development` when approved tasks are separable, same-session sequential delegation is useful, and per-task commits are authorized
+- `skill-parallel-execution` when two or more lanes have disjoint write ownership
+- `skill-systematic-debugging` after unexpected failures or unexplained behavior
+- `skill-test-driven-development` for non-trivial behavior changes or bug fixes
+- governance or publication rules only when those boundaries are in scope
+- relevant agent memory only when the task touches a known reusable workflow or repeats a recorded failure mode
 
-## GitNexus Usage
+Do not load every linked document or skill by default.
 
-Use GitNexus MCP selectively during execution when cross-file coordination is
-non-trivial.
+## Code Intelligence
 
-- Prefer GitNexus MCP tools for shared-module impact checks, cross-lane dependency tracing, and repo audits.
-- Use it to catch Single Source of Truth, structural symmetry, and invariance violations before they spread across lanes.
-- For small/local execution tasks, GitNexus is optional.
-- Before high-trust use, check freshness: <LINK>`.\scripts\get_gitnexus_freshness.ps1`</LINK>
-- If stale, keep GitNexus advisory and execute source-first.
-- If GitNexus conflicts with source/docs/tests, trust source/docs/tests.
-- If MCP data is stale or missing, use GitNexus CLI only to refresh or re-index, then continue MCP-first flow.
+Use native tools for direct file inspection and local search. Use Serena for exact symbols and references. Use GitNexus for broad flows or impact when fresh and materially useful. Do not query both by default. Source and tests remain authoritative.
 
-## Source-of-Truth Rule
+Before modifying a shared symbol, route, validator, generator, or orchestration function, inspect its direct consumers and affected tests. Fix root cause at the narrowest shared owner.
 
-During execution, keep these layers in sync:
+## Execution Process
 
-```text
-code/                                 → real truth
-docs/intent/*.md                     → project purpose and outcome sources
-docs/operating_system/*.md           → repo method and governance sources
-docs/stages/*.source.yaml            → human-owned stage source
-docs/stages/*.yaml                   → generated stage contract
-docs/features/*/feature.source.yaml  → human-owned feature source
-docs/features/*/<feature_id>.yaml    → generated feature contract
-docs/features/*/lineage.generated.yaml → generated feature evidence
-docs/features/<feature_id>/          → feature-specific explanation + partial-generated history
-docs/*.md                            → cross-cutting product explanation
-README.md                            → overview
-docs/generated/                      → generated discovery
-```
+### 1. Establish Execution State
 
-Do not treat the plan as the source of truth.
-The plan guides execution; the source layers must be updated as changes are completed.
+1. Read the full plan and any approved specification governing it.
+2. Inspect workspace path, creation mechanism, branch or detached state, base branch and commit, current HEAD, repository status, and existing diffs.
+3. Identify completed, active, blocked, and remaining plan tasks from repository evidence rather than plan checkboxes alone.
+4. Record preserved invariants and explicit out-of-scope work.
+5. Identify generated outputs, publication surfaces, or local mirrors that derive from canonical files in scope.
 
----
+Do not reset, clean, overwrite, or reformat unrelated user work. Do not create a stash as routine execution mechanism. Pre-existing or explicitly authorized lane-related stashes are reconciled during branch finishing.
 
-## The Process
+### 2. Review Plan Readiness
 
-### Step 1: Load and Review Plan
+Before the first edit, check:
 
-1. Read the plan file
-2. Read the linked spec and the minimum truthful set for any affected feature folder:
-   - `docs/intent/*.md` when the plan layer is `intent`
-   - `docs/operating_system/*.md` when the plan layer is `operating_system`
-   - `feature.source.yaml` first
-   - generated `docs/features/<feature_id>/<feature_id>.yaml` when the assembled contract is needed
-   - `lineage.generated.yaml` for evidence, ownership, or drift work
-   - `history.md` only when narrative context matters
-   - if stage-aware work is in scope, read `docs/stages/<stage_id>.source.yaml`
-     before the generated stage contract
-3. Confirm the plan still matches the canonical implementation-plan template shape and any approved implementation-execution-map ordering
-4. Review critically for gaps, ambiguity, or missing prerequisites
-5. If concerns exist, raise them before starting
-6. If clear, create TodoWrite and proceed
+- named files and symbols still exist
+- commands still match current repository tooling
+- task order respects real dependencies
+- each task has proof strong enough to support its exit claim
+- generated files are outputs, not proposed edit targets
+- no task duplicates behavior already implemented elsewhere
 
-### Step 2: Execute Tasks
+For a small correctable mismatch, update the plan and continue. For changed scope, unresolved design, unsafe deletion, or missing acceptance criteria, stop for plan or specification revision.
+
+### 3. Select Next Action
+
+Choose the smallest unblocked action from approved scope:
+
+1. prerequisite inspection
+2. focused failing check or reproducible baseline when behavior changes
+3. canonical source edit
+4. focused verification
+5. dependent documentation or generated refresh
+6. task status update
+
+Keep exactly one local task active unless parallel execution is explicitly justified. Do not invent adjacent cleanup merely because it is nearby.
+
+### 4. Execute One Task
 
 For each task:
 
-1. Mark it `in_progress`
-2. Follow plan steps exactly
-3. Select the next action using `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`.
-4. Do not invent unrelated next steps; choose only from approved roadmap/workstream/thread/spec/map/plan artifacts.
-5. Run required verifications
-6. Keep the executing plan synchronized with real task state:
+1. inspect owning source and direct consumers
+2. confirm smallest root-cause change
+3. add or update the smallest useful check for non-trivial logic
+4. edit canonical files only
+5. remove superseded behavior when replacement is proven
+6. run focused verification immediately
+7. inspect diff for accidental scope growth
+8. update plan task state when repository evidence supports it
 
-- mark completed checklist items or task status markers when work materially lands
-- record blockers, deferrals, or reordered steps when execution diverges from the original plan
-- keep verification notes truthful when a task-local proof point is completed or intentionally deferred
+A task is complete only when its requested output exists, preserved behavior remains intact, and task-local verification passes.
 
-7. Audit mandate check during execution:
+### 5. Handle Divergence
 
-- when a task enters qualifying-failure space (debugging/verification/closeout/test-failure triage), ensure audit bundle exists or explicitly record allowed bypass per `docs/operating_system/rules/audit-evidence-mandate-rule.md`
-- use canonical audit template/storage paths only; do not duplicate template text in task docs
+Plans guide execution; current source and tests expose reality.
 
-8. Update affected source layers as part of the task:
+When execution differs from the plan:
 
-- code
-- `docs/intent/*.md` when project-purpose sources change
-- `docs/operating_system/*.md` when repo method or governance changes
-- `docs/stages/*.source.yaml` when stage meaning changes
-- `docs/features/*/feature.source.yaml` if current feature state changed
-- `docs/features/<feature_id>/history.md` only when human explanation/history notes changed
-- other focused docs under `docs/features/<feature_id>/` if feature-specific explanation changed
-- `docs/*.md` if cross-cutting product explanation changed
-- `README.md` if navigation changed
-<EXTREMELY-IMPORTANT>
-- before marking the task fully complete, decide whether execution revealed a reusable memory update:
-  - invariant → `docs/operating_system/agent_memory/invariants.md`
-  - pattern → `docs/operating_system/agent_memory/patterns.md`
-  - repeated or important failure → `docs/operating_system/agent_memory/failure-ledger.md`
-  - reusable unresolved question → `docs/operating_system/agent_memory/open-questions.md`
+- correct stale file paths, command names, or harmless ordering directly in the plan
+- record a necessary implementation substitution and why it preserves approved behavior
+- return to planning when the change affects scope, architecture, interfaces, invariants, acceptance criteria, or user-visible behavior
+- never silently skip a task because implementation became inconvenient
+- never weaken a validator or test merely to make execution pass
 
-If yes, update the relevant memory file as part of task closeout. If no, complete the task without forcing a memory edit.
-</EXTREMELY-IMPORTANT>
+### 6. Handle Failures
 
-1. Mark task `completed`
+After a failed command:
 
-Do not postpone all doc updates until the end if the task changes current feature state.
-Do not hand-edit generated feature contracts, generated stage contracts,
-`lineage.generated.yaml`, or generated history blocks; update the owning source
-and rerun the canonical sync/check workflow instead.
+1. capture exact command, exit code, and relevant error
+2. determine whether failure is introduced, pre-existing, environmental, or unrelated
+3. use `skill-systematic-debugging` when cause is not obvious
+4. fix introduced regressions before continuing dependent work
+5. stop after repeated failure when progress requires user input, credentials, external state, or design change
 
-### Step 3: Final Sync and Verification
+Do not rerun unchanged failing commands without a new hypothesis.
 
-After all tasks are complete:
+### 7. Keep Truth Surfaces Aligned
 
-1. Run all final checks in the plan
-2. Confirm source layers are in sync:
+Update only surfaces affected by changed behavior or contracts:
 
-- code matches shipped behavior
-- intent docs reflect current purpose when they were in scope
-- operating-system docs reflect current repo method when they were in scope
-- stage sources reflect the intended architectural boundary model when they are in scope
-- feature sources reflect current state
-- docs reflect final explanation/history where needed
+- code, configuration, tests, and validators own executable truth
+- specifications own approved behavior and invariants
+- plans own implementation tasks and verification history
+- governance and workflows own repository method
+- generated adapters, indexes, starter output, or publication mirrors derive from canonical sources
 
-1. Run `scripts/sync_architecture_docs.py` when architecture metadata surfaces changed
-2. Verify generated files were not edited manually
-3. Review diffs for completeness
+Regenerate only outputs whose canonical inputs changed. Do not require documentation updates when behavior and maintained contracts remain unchanged.
 
-## Session Continuation Protocol
+### 8. Verify The Active Task
 
-For long-running execution, maintain a resumable execution context pack and keep it current as progress lands.
+Run verification in increasing scope for the task being completed:
 
-Canonical template:
-- `docs/operating_system/templates/execution-context-pack-template.md`
+1. original reproduction or focused test
+2. tests nearest changed code
+3. affected validator, build, or integration command
+4. generated refresh only when canonical inputs changed
+5. inspect task diff for accidental scope growth
 
-Canonical durable storage (Option B):
-- `docs/superpowers/execution_context_packs/<lane-id>/latest.md`
+Fresh output must support the task-local completion claim. A partial check proves only its tested scope.
 
-Governance policy:
-- `docs/operating_system/governance/execution-context-pack-governance.md`
+### 9. Reconcile Plan Progress
 
-Context-pack policy in this skill:
-- refresh canonical context pack when task state, verification state, or blocker/risk changes
-- refresh canonical context pack before recommending new-session handoff
-- keep context pack concise and source-linked
-- worktree `artifacts/execution_context_pack.md` is optional mirror, not durable source
+After each task:
 
-## Optional Raw Session Context
+- compare its exit criteria with repository evidence
+- mark completed items only when proof exists
+- record legitimate divergence, blockers, or deferrals
+- leave failed or incomplete work open
+- select the next smallest unblocked task
 
-Optional deep context may reference raw Gemini logs only when ambiguity remains after checking source files and plan/spec artifacts.
+Do not set the plan to `completed` from this skill merely because implementation edits are finished.
 
-Allowed reference form:
-- `conversation_id`
-- `overview.txt` path under `.gemini/antigravity/brain/<conversation-id>/.system_generated/logs/overview.txt`
+### 10. Hand Off For Completion Verification
 
-Resume order must be:
-1. context pack
-2. referenced source files and plan/spec artifacts
-3. optional raw session log only when ambiguity remains
+When all required plan tasks appear complete:
 
-If raw log conflicts with current source/docs/tests, trust current source/docs/tests.
+1. inspect final repository status and changed files
+2. record workspace path, mechanism, branch or detached state, base commit, current HEAD, and working-tree state
+3. ensure plan task state matches repository evidence
+4. invoke `skill-verification-before-completion`
+5. let that skill run fresh final proof, reconcile outcomes, tasks, deviations, and repository state, then set final plan status only when it returns `verified`
 
-## Anti-Stall Execution Rule
+Commit, push, merge, publish, delete, or clean worktrees only with explicit authorization.
 
-After selecting next eligible action, execute the smallest concrete safe step in the same turn.
+## Handoff
 
-Valid progress turn must end with at least one of:
-- file inspection needed for immediate edit/verification
-- file edits
-- verification command execution
-- explicit blocker requiring user decision/access/approval
-- context-pack refresh for imminent handoff
+When execution must continue in another task or session, leave a compact handoff in the active plan or user response containing:
 
-Invalid progress turn:
-- status-only narration without concrete action
-- “next I will ...” with no blocker and no execution
+- last completed task
+- current repository state and active task
+- exact changed files
+- verification already run and current failures
+- next smallest unblocked action
+- blockers or required decisions
 
-## Stall Watchdog
+Do not create a persistent context-pack system or duplicate source truth for ordinary handoff.
 
-Treat as stall when two consecutive execution turns have no concrete progress and no real blocker.
+## Stop Conditions
 
-If stall detected:
-1. state `stall detected`
-2. name last completed concrete action
-3. name exact blocked edge
-4. execute smallest safe next step immediately, or
-5. refresh context pack and request precise unblock input
+Stop and request direction when:
 
-### Step 4: Complete Development
+- approved scope is ambiguous in a way that changes behavior
+- a required destructive action lacks authorization
+- user work conflicts with the planned edit
+- required credentials, access, or external state are unavailable
+- repeated verification failures need a design decision
+- the plan no longer matches approved specification or current architecture
 
-After code, docs, and generated discovery are all updated and verified:
+Continue source-first when optional analysis tools are unavailable.
 
-- Announce: "I'm using the skill-verification-before-completion skill to complete this work."
-- **REQUIRED SUB-SKILL:** Use `superpowers:skill-verification-before-completion`
-- Follow that skill to verify tests, present options, and complete the branch
+## Red Flags
 
----
-
-## Required Doc Update Rule
-
-Before execution is considered complete, the agent must update docs as needed.
-
-Minimum required checks:
-
-- if behavior changed → update code
-- if project-purpose sources changed → update `docs/intent/*.md`
-- if repo method or governance changed → update `docs/operating_system/*.md`
-- if stage-aware boundary docs changed → update `docs/stages/*.source.yaml` when in scope
-- if current feature state changed → update `docs/features/*/feature.source.yaml`
-- if feature-specific explanation/history changed → update `docs/features/<feature_id>/`
-- if cross-cutting product explanation changed → update `docs/*.md`
-- if navigation changed → update `README.md`
-- if execution revealed a reusable memory lesson → update `docs/operating_system/agent_memory/*`
-- after architecture source changes → rerun the canonical architecture sync/check workflow
-
-Do not finish execution with stale feature YAML or stale generated discovery.
-
-Before completion, list the exact files updated or intentionally left unchanged for:
-
-- `docs/intent/*.md` when in scope
-- `docs/operating_system/*.md` when in scope
-- `docs/stages/<stage_id>.source.yaml` when in scope
-- `docs/stages/<stage_id>.yaml` when in scope
-- `docs/features/<feature_id>/feature.source.yaml`
-- `docs/features/<feature_id>/<feature_id>.yaml`
-- `docs/features/<feature_id>/lineage.generated.yaml`
-- `docs/features/<feature_id>/history.md`
-- any other focused docs under `docs/features/<feature_id>/`
-- any cross-feature docs under `docs/*.md`
-- any memory files under `docs/operating_system/agent_memory/` that changed or were intentionally left unchanged
-- `README.md`
-- regenerated `docs/generated/*`
-
-Use this completion checklist:
-
-- intent docs updated?
-- operating-system docs updated?
-- stage sources updated?
-- stage contracts updated?
-- feature sources updated?
-- contract updated?
-- feature lineage updated?
-- feature history updated?
-- other feature-specific docs updated?
-- cross-cutting docs updated?
-- agent memory updated or explicitly not needed?
-- README updated?
-- generated docs refreshed?
-
----
-
-## When to Stop and Ask for Help
-
-Stop immediately when:
-
-- blocked by missing dependency or access
-- plan has critical gaps
-- an instruction is unclear
-- verification fails repeatedly
-- feature/doc updates required by the change are unclear
-
-Ask instead of guessing.
-
----
-
-## When to Revisit Review
-
-Return to review when:
-
-- the plan is updated
-- the spec changed
-- the feature contract changed materially
-- the implementation approach no longer matches the plan
-
----
-
-## Remember
-
-- review first
-- execute task by task
-- do not skip verifications
-- keep source-of-truth layers updated during execution
-- rerun `scripts/sync_architecture_docs.py` before finishing when architecture metadata changed
-- prefer `scripts/sync_architecture_docs.py` as the canonical architecture sync/check workflow when architecture metadata surfaces changed
-- stop when blocked
-- never implement on main/master without explicit user consent
-
----
+- editing before reading the full plan
+- trusting plan checkboxes over repository evidence
+- implementing unresolved design choices
+- changing generated output instead of canonical source
+- broad refactoring during a bounded task
+- skipping focused verification until the end
+- treating old test output as current proof
+- hiding failed checks behind a successful unrelated command
+- claiming completion with required tasks still open
+- creating new orchestration, lineage, or handoff layers
 
 ## Integration
 
-**Required workflow skills:**
-
-- `superpowers:skill-using-git-worktrees` — set up isolated workspace before starting
-- `superpowers:skill-writing-plans` — creates the plan
-- `superpowers:skill-verification-before-completion` — verifies and closes out the work after execution
+- `skill-writing-plans` produces executable plans.
+- `skill-plan-document-reviewer` checks readiness before costly execution.
+- `skill-using-git-worktrees` optionally establishes isolated workspace identity.
+- `skill-subagent-driven-development` specializes this method with sequential fresh implementers and per-task review.
+- `skill-parallel-execution` coordinates independent concurrent write lanes; `skill-dispatching-parallel-agents` supplies focused fan-out and fan-in method.
+- `skill-systematic-debugging` owns failure diagnosis.
+- `skill-test-driven-development` owns behavior-change proof during implementation.
+- `skill-verification-before-completion` produces final evidence result.
+- `skill-finishing-a-development-branch` performs authorized Git disposition after verified result.

@@ -57,13 +57,12 @@ def seed_template(root: Path) -> None:
         root / "docs" / "operating_system" / "templates" / "implementation-plan-template.md",
         """---
 template_id: implementation-plan
-document_type: plan
 target_globs:
   - docs/superpowers/plans/*.md
 required_sections:
   - Goal
-  - Key Deliverables
-  - Task/Wave Breakdown
+  - Implementation Outcomes
+  - Task Breakdown
   - Verification
 required_frontmatter:
   artifact_type: plan
@@ -73,6 +72,61 @@ required_frontmatter:
 """,
     )
 
+
+def seed_spec_template(root: Path) -> None:
+    write_text(
+        root / "docs" / "operating_system" / "templates" / "detailed-specification-template.md",
+        """---
+template_id: detailed-specification
+target_globs:
+  - docs/superpowers/specs/*.md
+required_sections:
+  - Goal and Problem
+  - Required Outcomes
+  - Design Analysis
+  - Design Decisions
+  - Invariants and Edge Cases
+  - Validation Plan
+  - Completion Criteria
+required_frontmatter:
+  artifact_type: spec
+---
+
+# Detailed Specification Template
+""",
+    )
+
+def seed_audit_template(root: Path) -> None:
+    write_text(
+        root / "docs" / "operating_system" / "templates" / "audit-report-with-evidence-template.md",
+        """---
+template_id: audit-report-with-evidence
+target_globs:
+  - docs/superpowers/plans/audit/*/report.md
+required_sections:
+  - Current situation
+  - Evidence and reproduction
+---
+
+# Audit Template
+""",
+    )
+
+def seed_brainstorming_template(root: Path) -> None:
+    write_text(
+        root / "docs" / "operating_system" / "templates" / "brainstorming-detailed-report-template.md",
+        """---
+template_id: brainstorming-detailed-report
+target_globs:
+  - docs/superpowers/plans/brainstorming/*/report.md
+required_sections:
+  - Current situation
+  - Options analysis
+---
+
+# Brainstorming Template
+""",
+    )
 
 def test_missing_required_section_fails() -> None:
     root = make_test_root()
@@ -105,7 +159,7 @@ Ship safely.
         rmtree(root, ignore_errors=True)
 
 
-def test_empty_goal_and_key_deliverables_fail() -> None:
+def test_empty_goal_and_legacy_outcomes_fail() -> None:
     root = make_test_root()
     try:
         seed_template(root)
@@ -138,7 +192,7 @@ template_id: implementation-plan
         rmtree(root, ignore_errors=True)
 
 
-def test_document_type_mismatch_fails() -> None:
+def test_required_frontmatter_mismatch_fails() -> None:
     root = make_test_root()
     try:
         seed_template(root)
@@ -170,70 +224,211 @@ Ship safely.
     finally:
         rmtree(root, ignore_errors=True)
 
-
-def test_master_roadmap_requires_per_phase_goal_and_deliverables() -> None:
+def test_nested_audit_report_is_discovered_from_template_glob() -> None:
     root = make_test_root()
     try:
+        seed_audit_template(root)
         write_text(
-            root / "docs" / "operating_system" / "templates" / "master-workstream-roadmap-template.md",
+            root / "docs" / "superpowers" / "plans" / "audit" / "demo" / "report.md",
             """---
-template_id: master-workstream-roadmap
-document_type: roadmap
-target_globs:
-  - docs/intent/master-workstream-roadmap.md
-required_sections:
-  - Goal
-  - Key Deliverables
-  - Task/Wave Breakdown
-  - Workstream Index
-  - Completion Criteria
-required_frontmatter:
-  artifact_type: roadmap
+template_id: audit-report-with-evidence
 ---
 
-# Master Workstream Roadmap Template
-""",
-        )
-        write_text(
-            root / "docs" / "intent" / "master-workstream-roadmap.md",
-            """---
-template_id: master-workstream-roadmap
-artifact_type: roadmap
----
+# Audit
 
-# Master Workstream Roadmap
-
-## Goal
-Roadmap goal.
-
-## Key Deliverables
-- one
-
-## Task/Wave Breakdown
-### Phase 1
-#### Goal
-Phase one goal.
-#### Key Deliverables
-- one
-### Phase 2
-#### Goal
-Phase two goal.
-### Phase 3
-#### Goal
-Phase three goal.
-#### Key Deliverables
-- three
-
-## Workstream Index
-- ws
-
-## Completion Criteria
-All done.
+## Current situation
+Failure reproduced.
 """,
         )
         rules, findings = VALIDATOR.discover_template_rules(root)
         assert findings == []
         issues = VALIDATOR.validate_documents(root, rules, require_template_selection=False)
-        assert any(issue.category == "template_phase_structure_missing" for issue in issues)
+        assert any(issue.category == "template_section_missing" for issue in issues)
+    finally:
+        rmtree(root, ignore_errors=True)
+
+def test_nested_brainstorming_report_is_discovered_from_template_glob() -> None:
+    root = make_test_root()
+    try:
+        seed_brainstorming_template(root)
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "brainstorming" / "demo" / "report.md",
+            """---
+template_id: brainstorming-detailed-report
+---
+
+# Brainstorming
+
+## Current situation
+Direction remains unclear.
+""",
+        )
+        rules, findings = VALIDATOR.discover_template_rules(root)
+        assert findings == []
+        issues = VALIDATOR.validate_documents(root, rules, require_template_selection=False)
+        assert any(issue.category == "template_section_missing" for issue in issues)
+    finally:
+        rmtree(root, ignore_errors=True)
+
+def test_plan_accepts_current_and_legacy_section_names() -> None:
+    root = make_test_root()
+    try:
+        seed_template(root)
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "current-plan.md",
+            """---
+artifact_type: plan
+template_id: implementation-plan
+---
+
+# Current Plan
+
+## Goal
+Ship safely.
+
+## Implementation Outcomes
+- working behavior
+
+## Task Breakdown
+- bounded task
+
+## Verification
+- pytest -q
+""",
+        )
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "legacy-plan.md",
+            """---
+artifact_type: plan
+template_id: implementation-plan
+---
+
+# Legacy Plan
+
+## Goal
+Ship safely.
+
+## Key Deliverables
+- working behavior
+
+## Task/Wave Breakdown
+- bounded task
+
+## Verification
+- pytest -q
+""",
+        )
+        rules, _ = VALIDATOR.discover_template_rules(root)
+        issues = VALIDATOR.validate_documents(root, rules, require_template_selection=False)
+        assert issues == []
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_spec_requires_design_analysis_not_task_breakdown() -> None:
+    root = make_test_root()
+    try:
+        seed_spec_template(root)
+        write_text(
+            root / "docs" / "superpowers" / "specs" / "demo-spec.md",
+            """---
+artifact_type: spec
+template_id: detailed-specification
+---
+
+# Demo Spec
+
+## Goal and Problem
+Define current problem and desired behavior.
+
+## Required Outcomes
+- approved contract
+
+## Design Analysis
+Current evidence, scope, requirements, and options.
+
+## Design Decisions
+Use one owner.
+
+## Invariants and Edge Cases
+No duplicate truth; minimal and failure cases remain correct.
+
+## Validation Plan
+- inspect contract
+
+## Completion Criteria
+- contract approved
+""",
+        )
+        rules, findings = VALIDATOR.discover_template_rules(root)
+        assert findings == []
+        assert VALIDATOR.validate_documents(root, rules, require_template_selection=False) == []
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_spec_accepts_legacy_section_aliases() -> None:
+    root = make_test_root()
+    try:
+        seed_spec_template(root)
+        write_text(
+            root / "docs" / "superpowers" / "specs" / "legacy-spec.md",
+            """---
+artifact_type: spec
+template_id: detailed-specification
+status: proposed
+---
+
+# Legacy Spec
+
+## Goal
+Define behavior.
+
+## Key Deliverables
+- approved contract
+
+## Design Analysis
+Current evidence and options.
+
+## Design Decisions
+Use one owner.
+
+## Invariants
+No duplicate truth.
+
+## Validation Plan
+- inspect contract
+
+## Completion Criteria
+- contract approved
+""",
+        )
+        rules, findings = VALIDATOR.discover_template_rules(root)
+        assert findings == []
+        assert VALIDATOR.validate_documents(root, rules, require_template_selection=False) == []
+    finally:
+        rmtree(root, ignore_errors=True)
+
+def test_completed_spec_grandfathers_old_required_sections() -> None:
+    root = make_test_root()
+    try:
+        seed_spec_template(root)
+        write_text(
+            root / "docs" / "superpowers" / "specs" / "completed-spec.md",
+            """---
+artifact_type: spec
+template_id: detailed-specification
+status: completed
+---
+
+# Completed Spec
+
+## Goal
+Historical behavior.
+""",
+        )
+        rules, findings = VALIDATOR.discover_template_rules(root)
+        assert findings == []
+        assert VALIDATOR.validate_documents(root, rules, require_template_selection=False) == []
     finally:
         rmtree(root, ignore_errors=True)

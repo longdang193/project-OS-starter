@@ -2,7 +2,7 @@
 
 ## 1) Objective
 
-- **Workstream / Plan:** `docs/superpowers/plans/2026-05-12-23-11-consumer-adapter-sync-empty-mapping-plan.md`
+- **Scope / Plan:** `docs/superpowers/plans/2026-05-12-23-11-consumer-adapter-sync-empty-mapping-plan.md`
 - **Goal:** Implement role-aware empty-mapping skip for consumer-derived default selection while preserving strict fail-closed behavior elsewhere.
 - **Bounded Scope (in-scope only):** `scripts/sync_agent_adapters.py`, `tests/test_sync_agent_adapters.py`, targeted validators, plan state tracking.
 - **Out of Scope (explicit):** publication forbidden-path policy changes, shipping `adapters/` into starter-kit, broad policy schema redesign.
@@ -10,10 +10,9 @@
 ## 2) Canonical Inputs (Source of Truth)
 
 - **Primary plan:** `docs/superpowers/plans/2026-05-12-23-11-consumer-adapter-sync-empty-mapping-plan.md`
-- **Specs / maps / thread docs:** `docs/superpowers/specs/2026-05-12-23-10-consumer-adapter-sync-empty-mapping-spec.md`
+- **Specification:** `docs/superpowers/specs/2026-05-12-23-10-consumer-adapter-sync-empty-mapping-spec.md`
 - **Governance / workflow rules used:**
   - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
-  - `docs/operating_system/templates/execution-context-pack-template.md`
   - `docs/operating_system/governance/execution-context-pack-governance.md`
 
 ## 3) Current Task State
@@ -37,7 +36,6 @@
   - `py -3 scripts/validate_agent_runtime_drift.py --skip-deploy-check`
   - `py -3 scripts/validate_repo_contracts.py --fast`
   - `py -3 scripts/validate_planning_lifecycle.py --strict`
-  - `py -3 scripts/validate_checkpoint_packs.py`
   - `py -3 scripts/validate_repo_contracts.py --fast`
 - **Result summary:** all passed.
 - **Failing checks (if any):** none.
@@ -57,7 +55,7 @@
 ## 8) Resume Prompt (Copy/Paste)
 
 ```text
-This plan lane is complete. Start new request or run branch finishing workflow if integration step is requested.
+This historical lane is closed. Use current source, tests, and active skills for any new work.
 ```
 
 ## 9) Optional Deep Context (Consult Only)

@@ -48,12 +48,10 @@ Implement a single-source runtime governance pipeline so Codex, Claude, and Anti
 - Task 1: Canonical source and mapping baseline
   - Confirm canonical source of truth:
     - `docs/operating_system/rules/*.md`
-    - `docs/operating_system/workflows/*.md`
     - `.agents/skills/*/SKILL.md`
     - canonical root instruction templates.
   - Treat `.agents/skills/*/SKILL.md` as the canonical shared skill authoring surface, not as a generated Codex-only mirror.
   - Ensure adapter mappings are mapping-only and contain no duplicated semantic source content.
-  - Validate workspace mirrors (`.agents/rules`, `.agents/workflows`) are generated outputs, not manual authoring surfaces.
 
 - Task 2: Root entrypoint generation and deploy
   - Add provider entrypoint generation outputs:

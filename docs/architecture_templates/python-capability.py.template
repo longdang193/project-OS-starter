@@ -1,9 +1,0 @@
-def build_revenue_summary(records: list[BillingRecord]) -> RevenueSummary:
-    """
-    @capability billing-insights.billing-revenue-summary
-    """
-    ...
-
-
-# Use one canonical capability owner where possible.
-# Do not scatter the same @capability marker across helper functions.

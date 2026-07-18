@@ -16,11 +16,11 @@ related_stages: []
 
 # Starter Shared-Surface Sync Contract Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-21-starter-shared-surface-sync-contract-spec.md`  
-**Type:** change  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-21-starter-shared-surface-sync-contract-spec.md`
+**Type:** change
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -35,8 +35,8 @@ related_stages: []
 - The first validator pass checks record presence and schema, not file equality.
 - Mode A and Mode C should not be forced into the same sync-record strictness.
 
-**Rollout / Revert:**  
-- rollback_trigger: the sync-record schema proves too heavy for ordinary Mode B adoption work  
+**Rollout / Revert:**
+- rollback_trigger: the sync-record schema proves too heavy for ordinary Mode B adoption work
 - rollback_method: relax the validator back to doc-only guidance while preserving the Mode B diff-review instructions
 
 ---

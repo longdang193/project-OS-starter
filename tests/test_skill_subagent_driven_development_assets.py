@@ -1,24 +1,3 @@
-"""
-@meta
-name: test_skill_subagent_driven_development_assets
-type: test
-scope: unit
-domain: agent_workflow
-ownership: infrastructure
-responsibility:
-  - Verify SDD helper scripts create working-tree scratch state safely.
-  - Verify task brief and review package helpers emit expected artifacts.
-covers:
-  - .agents/skills/skill-subagent-driven-development/scripts/sdd-workspace
-  - .agents/skills/skill-subagent-driven-development/scripts/task-brief
-  - .agents/skills/skill-subagent-driven-development/scripts/review-package
-tags:
-  - fast
-  - ci-safe
-lifecycle:
-  status: active
-"""
-
 from __future__ import annotations
 
 import os
@@ -125,6 +104,3 @@ def test_review_package_writes_commit_log_and_diff(tmp_path: Path) -> None:
     assert f"# Review package: {base_sha}..{head_sha}" in package
     assert "expand demo" in package
     assert "+beta" in package
-
-
-

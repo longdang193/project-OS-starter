@@ -11,7 +11,6 @@
 - **Specs / maps / thread docs:** none
 - **Governance / workflow rules used:**
   - `docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md`
-  - `docs/operating_system/templates/execution-context-pack-template.md`
   - `docs/operating_system/governance/execution-context-pack-governance.md`
 
 ## 3) Current Task State

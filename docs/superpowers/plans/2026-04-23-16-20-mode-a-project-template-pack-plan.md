@@ -17,11 +17,11 @@ related_stages: []
 
 # Mode A Project Template Pack Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-mode-a-project-template-pack-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -38,8 +38,8 @@ related_stages: []
 - The template path mirrors the destination path.
 - Mode B templates remain under `docs/architecture_templates/`.
 
-**Rollout / Revert:**  
-- rollback_trigger: Template-pack validation creates false positives for existing starter use or Mode B templates.  
+**Rollout / Revert:**
+- rollback_trigger: Template-pack validation creates false positives for existing starter use or Mode B templates.
 - rollback_method: Remove the new template-pack files and corresponding validation/doc references.
 
 ---

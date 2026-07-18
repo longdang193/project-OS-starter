@@ -69,7 +69,7 @@ def make_manifest(repo_root: Path) -> Path:
                 "AGENTS.md",
                 "GEMINI.md",
                 "CLAUDE.md",
-                ".agents/skills/skill-doc-system-lifecycle/SKILL.md",
+                ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
                 "docs/superpowers/plans",
             ],
@@ -88,7 +88,7 @@ def make_manifest(repo_root: Path) -> Path:
                 "AGENTS.md",
                 "generated_agents/antigravity/GEMINI.md",
                 "generated_agents/claude/CLAUDE.md",
-                ".agents/skills/skill-doc-system-lifecycle/SKILL.md",
+                ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
                 "docs/operating_system",
             ],
@@ -108,7 +108,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     write_text(repo_root / "AGENTS.md", "# agents\n")
     write_text(repo_root / "generated_agents" / "antigravity" / "GEMINI.md", "# gemini\n")
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")
-    write_text(repo_root / ".agents" / "skills" / "skill-doc-system-lifecycle" / "SKILL.md", "# skill\n")
+    write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(repo_root / "docs" / "operating_system" / "governance" / "repo-governance.md", "# governance\n")
     write_text(repo_root / "docs" / "operating_system" / "runtime" / "internal.md", "omit me\n")
@@ -124,7 +124,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     assert (kit_root / "AGENTS.md").exists()
     assert (kit_root / "GEMINI.md").exists()
     assert (kit_root / "CLAUDE.md").exists()
-    assert (kit_root / ".agents" / "skills" / "skill-doc-system-lifecycle" / "SKILL.md").exists()
+    assert (kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md").exists()
     assert (kit_root / "repo_config" / "planning_artifact_schema.yaml").exists()
     assert (kit_root / "docs" / "superpowers" / "plans").is_dir()
     assert not (kit_root / "docs" / "operating_system" / "runtime").exists()
@@ -156,7 +156,7 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
     write_text(kit_root / "AGENTS.md", "# agents\n")
     write_text(kit_root / "GEMINI.md", "# gemini\n")
     write_text(kit_root / "CLAUDE.md", "# claude\n")
-    write_text(kit_root / ".agents" / "skills" / "skill-doc-system-lifecycle" / "SKILL.md", "# skill\n")
+    write_text(kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(kit_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(kit_root / "docs" / "superpowers" / "plans" / ".gitkeep", "")
     write_text(kit_root / "README.md", "see repo_config/agent-adapter-mappings.json\n")
@@ -170,7 +170,7 @@ def test_build_starter_kit_fails_when_generated_root_instruction_missing(tmp_pat
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")
-    write_text(repo_root / ".agents" / "skills" / "skill-doc-system-lifecycle" / "SKILL.md", "# skill\n")
+    write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(repo_root / "docs" / "operating_system" / "governance" / "repo-governance.md", "# governance\n")
     manifest_path = make_manifest(repo_root)

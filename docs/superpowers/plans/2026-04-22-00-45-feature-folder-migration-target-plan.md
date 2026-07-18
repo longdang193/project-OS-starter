@@ -13,11 +13,11 @@ related_stages: []
 
 # Feature Folder Migration Target Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-22-feature-folder-migration-target-spec.md`  
-**Type:** change  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-22-feature-folder-migration-target-spec.md`
+**Type:** change
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -32,8 +32,8 @@ related_stages: []
 - `lineage.generated.yaml` stays the canonical evidence-oriented generated lineage artifact.
 - `history.md` should use the partial-generated history pattern when the starter history model is adopted.
 
-**Rollout / Revert:**  
-- rollback_trigger: the guidance over-prescribes repo-specific details that should stay optional  
+**Rollout / Revert:**
+- rollback_trigger: the guidance over-prescribes repo-specific details that should stay optional
 - rollback_method: keep the target folder contract and source/generated/history split, but relax the examples if they prove too narrow
 
 ---

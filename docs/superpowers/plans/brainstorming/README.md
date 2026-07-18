@@ -1,43 +1,42 @@
 # Brainstorming Report Storage
 
-Canonical path for each brainstorming report:
+Create saved brainstorming report only when user requests detailed report.
 
-- `docs/superpowers/plans/brainstorming/<report_id>/`
+## Save Contract
 
-Recommended structure:
+Canonical path:
+
+```text
+docs/superpowers/plans/brainstorming/<report_id>/report.md
+```
+
+New IDs use:
+
+```text
+YYYY-MM-DD-HH-MM-<topic>
+```
+
+Existing report IDs and bundles are grandfathered.
+
+Minimum structure:
 
 ```text
 docs/superpowers/plans/brainstorming/<report_id>/
   report.md
-  manifest.yaml
-  context/
-    summary.md
-  evidence/
-    inputs/
 ```
 
-## Rules
+Rules:
 
-1. `report.md` should follow:
-   - `docs/operating_system/templates/brainstorming-detailed-report-template.md`
-2. `manifest.yaml` tracks report path, optional supporting artifacts, timestamp, checksum.
-3. Use repo-relative paths in report links.
-4. Redact secrets before storage.
-5. Generate report bundle only after user explicitly asks for detailed report.
+1. Use `docs/operating_system/templates/brainstorming-detailed-report-template.md`.
+2. Keep report exploratory; accepted recommendations move to approved scope or specification.
+3. Link supporting files directly only when they materially help.
+4. Redact secrets before saving linked inputs.
+5. Do not create context summaries, manifests, placeholder evidence folders, or duplicate planning artifacts.
 
-## Operator Quickstart
-
-1. Create scaffold:
+## Create
 
 ```powershell
-.\scripts\new_brainstorming_report.ps1 -ReportId <report_id>
+.\scripts\new_brainstorming_report.ps1 -ReportId <YYYY-MM-DD-HH-MM-topic>
 ```
 
-2. Optional supporting artifact capture:
-
-```powershell
-.\scripts\brainstorming_capture.ps1 -ReportId <report_id> -SourceFile <path> -Type input
-```
-
-3. Fill `report.md` using:
-   - `docs/operating_system/templates/brainstorming-detailed-report-template.md`
+`skill-brainstorming` owns report creation and updates.

@@ -1,21 +1,9 @@
 ---
 name: skill-using-superpowers
-description: Use when starting any conversation - establishes how to find and use
-  skills, requiring Skill tool invocation before ANY response including clarifying
-  questions
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-using-superpowers
-required_outputs: []
+description: Use when selecting relevant repository skills before acting.
+required_reads: []
 distribution_tier: starter_kit
 ---
-
 <SUBAGENT-STOP>
 If you were dispatched as a subagent to execute a specific task, skip this skill.
 </SUBAGENT-STOP>

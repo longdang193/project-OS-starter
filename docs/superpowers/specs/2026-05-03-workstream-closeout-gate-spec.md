@@ -19,10 +19,10 @@ related_stages: []
 
 ## Triage
 
-Layer: operating_system  
-Feature type: ADD  
-Summary: Add a mandatory closeout gate that blocks marking a plan bundle or workstream as complete unless thread statuses and checkpoint evidence are reconciled.  
-Reasoning: Recent execution showed a hygiene gap where implementation completion was recorded, but workstream/thread metadata remained stale (`active`/`proposed`). This creates false progress signals and weakens lineage trust.  
+Layer: operating_system
+Feature type: ADD
+Summary: Add a mandatory closeout gate that blocks marking a plan bundle or workstream as complete unless thread statuses and checkpoint evidence are reconciled.
+Reasoning: Recent execution showed a hygiene gap where implementation completion was recorded, but workstream/thread metadata remained stale (`active`/`proposed`). This creates false progress signals and weakens lineage trust.
 Invariants:
 
 - completion claims must match lineage metadata state
@@ -168,10 +168,10 @@ Expected output must include:
 
 ## Risks And Mitigations
 
-- Risk: teams bypass gate for urgent merges  
+- Risk: teams bypass gate for urgent merges
 Mitigation: enforce in CI and protected branch checks.
 
-- Risk: false failures on legacy data  
+- Risk: false failures on legacy data
 Mitigation: initial migration mode with targeted backlog cleanup, then strict enforcement.
 
 ## Rollout

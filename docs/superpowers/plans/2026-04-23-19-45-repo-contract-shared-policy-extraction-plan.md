@@ -17,11 +17,11 @@ related_stages: []
 
 # Repo Contract Shared Policy Extraction Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md`  
-**Type:** modify  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-23-repo-contract-shared-policy-extraction-spec.md`
+**Type:** modify
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -36,8 +36,8 @@ related_stages: []
 - The meaning of `history.md` boundaries and required metadata markers does not change in this pass.
 - Existing validator behavior remains stable aside from internal import cleanup.
 
-**Rollout / Revert:**  
-- rollback_trigger: Shared-policy extraction changes validator behavior, introduces import coupling problems, or broadens scope beyond the duplicated marker rules.  
+**Rollout / Revert:**
+- rollback_trigger: Shared-policy extraction changes validator behavior, introduces import coupling problems, or broadens scope beyond the duplicated marker rules.
 - rollback_method: Inline the moved constants back into the validator scripts, keep the spec/plan for a narrower retry, and revisit the shared-policy boundary.
 
 ---

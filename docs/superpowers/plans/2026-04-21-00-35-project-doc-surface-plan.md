@@ -17,7 +17,6 @@ targets:
   - scripts/sync_architecture_docs.py
   - scripts/setup_hooks.ps1
   - scripts/setup_hooks.sh
-  - .github/workflows/repo-hooks.yml
   - tests/test_validate_adoption_shape.py
   - tests/test_setup_hooks.py
 related_features: []
@@ -26,11 +25,11 @@ related_stages: []
 
 # Project Documentation Surface Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-21-project-doc-surface-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-21-project-doc-surface-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.
@@ -45,8 +44,8 @@ related_stages: []
 - Optional docs are documented but do not fail validation when absent.
 - Feature/stage/source-of-truth ownership rules remain unchanged.
 
-**Rollout / Revert:**  
-- rollback_trigger: validation or hook updates create noisy false failures for the starter repo  
+**Rollout / Revert:**
+- rollback_trigger: validation or hook updates create noisy false failures for the starter repo
 - rollback_method: remove the required-doc validator block and its tests, keep prose-only guidance, and restore prior hook/CI behavior
 
 ---
@@ -111,7 +110,6 @@ related_stages: []
 - Modify: `scripts/sync_architecture_docs.py`
 - Modify: `scripts/setup_hooks.ps1`
 - Modify: `scripts/setup_hooks.sh`
-- Modify: `.github/workflows/repo-hooks.yml`
 - Test: `tests/test_validate_adoption_shape.py`
 - Test: `tests/test_setup_hooks.py`
 

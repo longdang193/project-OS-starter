@@ -9,7 +9,7 @@ targets:
   - docs/intent/master-workstream-roadmap.md
   - docs/intent/README.md
   - docs/operating_system/prompt_templates/
-  - docs/operating_system/skill-planning-dispatch.md
+  - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/governance/repo-governance.md
   - docs/superpowers/specs/2026-04-28-bounded-change-thread-file-structure-spec.md
 related_features: []
@@ -18,11 +18,11 @@ related_stages: []
 
 # Bounded Change Thread File Structure Implementation Plan
 
-**Feature Source:** `none`  
-**Feature Contract:** `none`  
-**Spec:** `docs/superpowers/specs/2026-04-28-bounded-change-thread-file-structure-spec.md`  
-**Type:** add  
-**Plan Layer:** operating_system  
+**Feature Source:** `none`
+**Feature Contract:** `none`
+**Spec:** `docs/superpowers/specs/2026-04-28-bounded-change-thread-file-structure-spec.md`
+**Type:** add
+**Plan Layer:** operating_system
 **Plan Status:** completed
 
 > **For agentic workers:** Use `skill-executing-plans` or `skill-subagent-driven-development` to implement task-by-task.

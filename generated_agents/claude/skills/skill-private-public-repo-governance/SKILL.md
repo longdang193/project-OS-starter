@@ -1,18 +1,8 @@
 ---
 name: skill-private-public-repo-governance
-description: Use when a project needs a private internal repo and a separate public
-  curated repo, or when deciding what should stay private versus what can be published
-  in a clean product-facing repository.
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
+description: Use when separating private development truth from curated public publication.
 required_reads:
 - docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-private-public-repo-governance
-required_outputs: []
 distribution_tier: starter_kit
 ---
 
@@ -136,7 +126,7 @@ Examples:
 - sample artifacts
 - architecture notes that may include internal workflow detail
 
-## Publication Workflow
+## Publication Procedure
 
 Preferred model:
 

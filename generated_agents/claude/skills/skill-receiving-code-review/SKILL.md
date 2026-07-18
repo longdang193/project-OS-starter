@@ -1,18 +1,7 @@
 ---
 name: skill-receiving-code-review
-description: Use when receiving code review feedback, before implementing suggestions,
-  especially if feedback seems unclear or technically questionable - requires technical
-  rigor and verification, not performative agreement or blind implementation
-allowed-tools: []
-hooks:
-  pre: []
-  post: []
-required_reads:
-- docs/operating_system/governance/repo-governance.md
-tags:
-- skill
-- skill-receiving-code-review
-required_outputs: []
+description: Use when code review feedback must be evaluated before accepting, rejecting, clarifying, or implementing it.
+required_reads: []
 distribution_tier: starter_kit
 ---
 
