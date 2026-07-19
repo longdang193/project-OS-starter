@@ -98,7 +98,7 @@ These thoughts mean STOP—you're rationalizing:
 When multiple skills could apply, use this order:
 
 1. **Process skills first** (skill-brainstorming, systematic-debugging) - these determine HOW to approach the task
-2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
+2. **Implementation skills second** (skill-distinctive-frontend-design, ui-ux-pro-max, mcp-builder) - these guide execution
 
 "Let's build X" → skill-brainstorming first, then implementation skills.
 "Fix this bug" → debugging first, then domain-specific skills.

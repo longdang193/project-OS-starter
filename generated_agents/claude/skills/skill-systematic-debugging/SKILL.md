@@ -87,6 +87,9 @@ You MUST complete each phase before proceeding to the next.
    - What are the exact steps?
    - Does it happen every time?
    - If not reproducible → gather more data, don't guess
+   - For browser-visible failures, use Playwright MCP to reproduce repeatable flows and capture semantic state; use Chrome DevTools MCP to inspect console, network, computed layout and styles, runtime behavior, Lighthouse, and performance evidence
+   - When both are needed, reproduce with Playwright MCP, diagnose with Chrome DevTools MCP, then verify the corrected flow with Playwright MCP; do not duplicate the same inspection
+   - Browser MCP replay is diagnostic evidence, not committed regression coverage; preserve the failure in the existing browser test suite before fixing when practical
 
 3. **Check Failure Memory When The Issue Looks Familiar**
    - If the failure appears repeated, method-related, or suspiciously similar to a previous repo-operating issue, search configured MCP memory for matching symptoms, confirmed causes, and fixes
