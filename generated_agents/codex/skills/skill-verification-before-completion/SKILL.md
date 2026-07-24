@@ -44,6 +44,7 @@ Read only what supports current claims:
 - linked specification acceptance criteria and preserved invariants
 - affected validators, tests, schemas, generated procedures, and maintained documentation
 - fresh rendered or browser evidence for material visual changes, following `docs/operating_system/rules/frontend-ui-rule.md` for Playwright MCP and Chrome DevTools MCP selection and covering relevant viewports, supported themes, affected states, keyboard use, focus, contrast, and reduced motion
+- stateful-route evidence for in-scope deep links, refresh, browser Back/Forward, failed mutations, retry, duplicate submission prevention, and optimistic rollback
 - audit rule only when its failure trigger applies
 - publication rules only when reporting publication readiness
 - configured MCP memory only after meaningful retries, debugging, or reusable failure discovery; store lessons only after fresh evidence confirms them
@@ -116,6 +117,9 @@ Use existing planning and template validators when planning artifacts changed. D
 | requirements met | every required criterion reconciled |
 | docs aligned | affected maintained owner inspected or validated |
 | external behavior works | live or external evidence, not local inference |
+| performance improved | identical before/after workload and environment, named metric, variance or tail evidence, and correctness checks |
+| performance budget met | fresh configured benchmark, budget, or monitoring evidence passes |
+| frontend/backend integration complete | canonical contract check, focused backend and frontend tests, verified browser flow, and fulfilled sidecar removed or narrowed to an explicit blocker |
 
 ### 5. Run Focused Proof
 
@@ -243,4 +247,6 @@ Verification makes Git closure eligible. It does not authorize:
 - `skill-using-git-worktrees` provides workspace identity when isolation is used.
 - `skill-executing-plans` performs implementation and task-local verification.
 - `skill-systematic-debugging` investigates failed proof.
+- `skill-performance-optimization` defines performance workloads, metrics, targets, and comparison evidence.
+- `skill-full-stack-integration` defines cross-boundary contract, MCP routing, browser evidence, and sidecar lifecycle.
 - `skill-finishing-a-development-branch` performs explicitly authorized Git disposition after `verified` result.

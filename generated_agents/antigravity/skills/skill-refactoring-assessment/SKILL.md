@@ -37,7 +37,7 @@ If scope is missing, infer smallest useful scope from request and repository evi
 
 Read only references needed for current assessment:
 
-- `docs/operating_system/tooling/code-intelligence-tools.md` when selecting Serena, GitNexus, or native tools
+- `docs/operating_system/tooling/code-intelligence-tools.md` when selecting native tools, Serena, GitNexus, or DeepWiki for unfamiliar external repository orientation
 - `docs/operating_system/rules/audit-evidence-mandate-rule.md` when user requests an audit or evidence suggests a qualifying incident
 - `docs/operating_system/templates/audit-report-with-evidence-template.md` only when a formal audit bundle is required
 - `skill-brainstorming` when desired behavior or design direction remains unclear

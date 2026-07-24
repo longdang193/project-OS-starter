@@ -6,9 +6,10 @@ Use live code intelligence for discovery. Keep source, tests, and CI as truth.
 
 | Need | Default tool |
 |---|---|
-| Small local text or file change | native code tools |
-| Exact symbol, declaration, implementation, reference, or diagnostic | Serena |
-| End-to-end flow, route, process, module cluster, cross-repo relation, or broad impact | GitNexus |
+| Current files and small local changes | native code tools |
+| Exact symbols, references, implementations, or diagnostics | Serena |
+| Execution flows, dependencies, impact analysis, or cross-repository contracts | GitNexus |
+| Unfamiliar external GitHub repository structure, architecture summaries, or focused repository Q&A | DeepWiki |
 | Correctness and architecture enforcement | tests, static checks, CI |
 | Durable architecture boundaries and rationale | `docs/architecture.md`, ADRs |
 
@@ -21,6 +22,15 @@ Use live code intelligence for discovery. Keep source, tests, and CI as truth.
 5. Move from Serena to GitNexus only when local evidence exposes broader uncertainty.
 6. Current source and tests win every conflict.
 7. Tool absence or stale indexes never block safe source-first work.
+
+## DeepWiki Workflow
+
+1. Use `read_wiki_structure` for a low-cost topic map.
+2. Use `ask_question` for focused architecture or repository questions.
+3. Use `read_wiki_contents` only when full generated documentation is required.
+4. Hand off to local source inspection and Serena before implementation.
+5. Hand off to GitNexus before broad impact analysis, dependency tracing, or refactoring decisions.
+6. Treat tests and pinned source code as final source of truth.
 
 ## Serena
 
@@ -38,8 +48,34 @@ Use live code intelligence for discovery. Keep source, tests, and CI as truth.
 - Never make GitNexus refresh a universal completion gate.
 - Never publish `.gitnexus/` or GitNexus-specific internal notes.
 
+## DeepWiki
+
+- Use DeepWiki for advisory orientation in unfamiliar external GitHub repositories, not current working-tree analysis.
+- Treat output as advisory when source commit or freshness is unknown.
+- Verify APIs, security assumptions, runtime behavior, and tests against pinned upstream source.
+- Do not use DeepWiki as proof of exact references, diagnostics, test results, dependency impact, or refactor safety.
+
+## Skill Association
+
+Use DeepWiki directly with:
+
+- `skill-brainstorming`
+- `skill-spec-drafting`
+- `skill-writing-plans`
+- `skill-plan-document-reviewer`
+- `skill-full-stack-integration`
+
+Use DeepWiki conditionally, only when unfamiliar external repository context is material, with:
+
+- `skill-systematic-debugging`
+- `skill-refactoring-assessment`
+- `skill-performance-optimization`
+- `skill-code-standards`
+
+Do not associate DeepWiki with execution, verification, testing, code-review, or branch-completion skills. Do not create a separate DeepWiki skill; this policy owns tool selection and handoff rules.
+
 ## Boundary
 
-Neither tool owns architecture or runtime behavior. Use `docs/architecture.md`
+No code-intelligence tool owns architecture or runtime behavior. Use `docs/architecture.md`
 for durable system shape, ADRs for significant decisions, and native tests/CI
 for enforceable boundaries.

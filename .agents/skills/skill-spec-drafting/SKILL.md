@@ -1,7 +1,8 @@
 ---
 name: skill-spec-drafting
 description: Use when a problem, approved direction, or diagnosed defect needs a precise behavioral and design specification before implementation planning.
-required_reads: []
+required_reads:
+- docs/operating_system/tooling/code-intelligence-tools.md
 distribution_tier: starter_kit
 ---
 # Spec Drafting

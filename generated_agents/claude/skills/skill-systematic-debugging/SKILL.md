@@ -60,6 +60,8 @@ Use for ANY technical issue:
 
 ## Related Skills
 
+- Use `skill-performance-optimization` when the defect is a measured latency, throughput, memory, query, bundle, rendering, or Core Web Vitals problem requiring comparable before/after proof.
+- Use `skill-full-stack-integration` when the failure crosses frontend behavior, typed clients, API contracts, route handling, authorization, or backend responses.
 - Use `skill-dispatching-parallel-agents` only after evidence separates failures into independent problem domains.
 - Each dispatched investigator follows this debugging method inside its assigned domain.
 - Keep possibly shared-cause failures together until root-cause evidence proves independence.
@@ -67,6 +69,8 @@ Use for ANY technical issue:
 ## Code Intelligence
 
 Use native tools for local failures, Serena for exact symbol/reference tracing, and GitNexus for broad flows when fresh. Source, tests, and reproduction evidence remain authoritative.
+
+When failure depends on an unfamiliar external GitHub repository, consult `docs/operating_system/tooling/code-intelligence-tools.md` before using DeepWiki for advisory orientation.
 
 ## The Four Phases
 
@@ -331,6 +335,8 @@ These techniques are part of systematic debugging and available in this director
 **Related skills:**
 
 - **superpowers:skill-test-driven-development** - For creating failing test case (Phase 4, Step 1)
+- **skill-performance-optimization** - Define representative workloads, metrics, targets, and comparable performance proof
+- **skill-full-stack-integration** - Reconcile frontend intent, transport contracts, API impact, and browser evidence
 - **skill-verification-before-completion** - Verify fix worked before claiming success
 
 ## Real-World Impact

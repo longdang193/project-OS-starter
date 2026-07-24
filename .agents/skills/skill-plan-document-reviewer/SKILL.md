@@ -1,7 +1,8 @@
 ---
 name: skill-plan-document-reviewer
 description: Use when a specification or implementation plan needs correctness and readiness review before approval, handoff, or costly execution.
-required_reads: []
+required_reads:
+- docs/operating_system/tooling/code-intelligence-tools.md
 distribution_tier: starter_kit
 ---
 # Plan Document Reviewer

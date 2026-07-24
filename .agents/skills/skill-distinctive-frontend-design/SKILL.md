@@ -36,10 +36,12 @@ Skip for copy changes, mechanical CSS fixes, isolated frontend logic, or product
 Avoid defaulting to these without product-specific reason:
 
 - centered hero, gradient headline, floating blobs, and three-card feature grid
+- uniform card grids that ignore information priority and scanning order
 - purple-blue gradients, glass cards, excessive rounded containers, or uniform shadows
 - interchangeable sans-serif typography with no deliberate hierarchy
 - animation on every element instead of one meaningful transition or reveal
 - decorative effects that weaken content order or controls
+- placeholder copy that hides wrapping, overflow, density, or empty-content problems
 
 Before completion, answer:
 

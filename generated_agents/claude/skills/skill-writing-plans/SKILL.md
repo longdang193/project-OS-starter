@@ -1,7 +1,8 @@
 ---
 name: skill-writing-plans
 description: Use when an approved specification or direct approved scope needs an executable multi-step implementation plan.
-required_reads: []
+required_reads:
+- docs/operating_system/tooling/code-intelligence-tools.md
 distribution_tier: starter_kit
 ---
 
@@ -54,6 +55,8 @@ stop and use `skill-spec-drafting`.
 - Use native tools for local file mapping, Serena for exact symbols and references, and GitNexus for broad flow or impact when fresh and materially useful. Do not query both by default.
 - Read related execution skills only when the chosen execution approach requires them.
 - Name `ui-ux-pro-max` only for tasks requiring material visual or interaction judgment, and include rendered viewport, theme, and accessibility proof for those tasks.
+- Name `skill-performance-optimization` only for explicit performance requirements or measured regressions. Performance tasks must identify baseline command or evidence source, representative workload and environment, target metric, threshold owner, and regression proof.
+- Name `skill-full-stack-integration` when a task crosses frontend behavior and backend contracts or routes. Identify matching sidecar, canonical contract owner, route impact, generated consumers, focused backend and frontend proof, browser flow, and sidecar removal condition.
 
 Source and tests remain authoritative when documents or optional tools disagree.
 
@@ -178,6 +181,7 @@ only when it differs from the plan-level `Execution Approach`.
 - task-local proof covers each bounded task
 - final proof covers implementation outcomes and cross-task integration
 - behavioral changes include focused regression proof
+- performance claims use identical before/after workloads and environments, named metrics, owned targets, and correctness checks
 - generated surfaces refresh only when canonical inputs changed
 - destructive or migration work includes rollback or stop conditions
 - commands must exist in the current repository

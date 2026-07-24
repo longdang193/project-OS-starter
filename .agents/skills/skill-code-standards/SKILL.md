@@ -42,6 +42,8 @@ When repository convention conflicts with generic advice, preserve repository co
 
 ### 1. Read Existing Contracts
 
+When compatibility depends on an unfamiliar external GitHub repository, consult `docs/operating_system/tooling/code-intelligence-tools.md` before using DeepWiki for advisory orientation. Pinned source remains authoritative.
+
 Before editing:
 
 1. inspect applicable repository instructions
@@ -170,6 +172,8 @@ Do not claim quality from review alone. Fresh executable evidence owns completio
 
 - Preserve security, accessibility, data safety, and explicit requirements.
 - For material front-end work, follow `docs/operating_system/rules/frontend-ui-rule.md` and use `ui-ux-pro-max` when available.
+- For explicit performance requirements or measured regressions, use `skill-performance-optimization`; do not invent universal budgets or optimize without comparable evidence.
+- For frontend-to-backend contract wiring, use `skill-full-stack-integration`; colocated notes may describe UI intent but must not duplicate canonical transport schemas.
 - Avoid speculative abstraction and configuration.
 - Prefer smallest root-cause change in shared owner.
 - Generated files follow generator; edit canonical source.

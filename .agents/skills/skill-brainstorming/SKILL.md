@@ -1,7 +1,8 @@
 ---
 name: skill-brainstorming
 description: Use when exploring or defining non-trivial behavior before implementation.
-required_reads: []
+required_reads:
+- docs/operating_system/tooling/code-intelligence-tools.md
 distribution_tier: starter_kit
 ---
 # Brainstorming Ideas Into Designs
