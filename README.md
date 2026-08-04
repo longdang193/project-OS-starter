@@ -61,6 +61,10 @@ Use official MCP Memory Server for verified reusable project knowledge. See `doc
 
 Memory data is private local state outside repository. Source code, tests, ADRs, current governance, and explicit instructions remain authoritative.
 
+## Integration MCPs
+
+Optional Context7 and Specmatic MCP servers support version-specific library research and OpenAPI contract work. See `docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md` for private Codex setup, smoke tests, fallbacks, and removal.
+
 ## Customize First
 
 When bootstrapping a new project, review these first:

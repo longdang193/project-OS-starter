@@ -28,6 +28,7 @@ This skill produces design artifacts only.
 ## Artifact Boundaries
 
 - Brainstorming owns problem exploration, options, trade-offs, recommendations, assumptions, and unresolved questions.
+- When approved direction still needs prototype validation, hand off to `skill-spec-drafting` and `docs/operating_system/templates/draft-specification-template.md`; do not create a second permanent brainstorming or UI-intent artifact.
 - Approved behavior, interfaces, decisions, and invariants belong in specifications.
 - Exact tasks, sequencing, dependencies, and execution approach belong in implementation plans.
 

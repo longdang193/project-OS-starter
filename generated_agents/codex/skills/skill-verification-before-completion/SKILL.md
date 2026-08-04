@@ -119,7 +119,8 @@ Use existing planning and template validators when planning artifacts changed. D
 | external behavior works | live or external evidence, not local inference |
 | performance improved | identical before/after workload and environment, named metric, variance or tail evidence, and correctness checks |
 | performance budget met | fresh configured benchmark, budget, or monitoring evidence passes |
-| frontend/backend integration complete | canonical contract check, focused backend and frontend tests, verified browser flow, and fulfilled sidecar removed or narrowed to an explicit blocker |
+| backend behavior complete | direct backend boundary, important business/failure paths, final state or side effects, fresh automated output, plus contract, real-dependency, representative-operation trace, or performance proof when applicable |
+| frontend/backend integration complete | backend behavior evidence, canonical contract check when applicable, focused frontend tests, verified browser flow, and fulfilled sidecar removed or narrowed to an explicit blocker |
 
 ### 5. Run Focused Proof
 
@@ -247,6 +248,7 @@ Verification makes Git closure eligible. It does not authorize:
 - `skill-using-git-worktrees` provides workspace identity when isolation is used.
 - `skill-executing-plans` performs implementation and task-local verification.
 - `skill-systematic-debugging` investigates failed proof.
+- `skill-backend-verification` provides task-local direct backend evidence independent of frontend availability.
 - `skill-performance-optimization` defines performance workloads, metrics, targets, and comparison evidence.
 - `skill-full-stack-integration` defines cross-boundary contract, MCP routing, browser evidence, and sidecar lifecycle.
 - `skill-finishing-a-development-branch` performs explicitly authorized Git disposition after `verified` result.

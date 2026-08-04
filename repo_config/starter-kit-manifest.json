@@ -64,7 +64,6 @@
     "docs/operating_system/provider_capabilities.yaml",
     "docs/operating_system/procedures/runtime-adapter-procedure.md",
     "docs/operating_system/runtime",
-    "docs/operating_system/tooling",
     "docs/operating_system/prompt_templates/runtime-deploy-and-verify-prompt.md"
   ],
   "createEmptyDirs": [

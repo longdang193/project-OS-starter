@@ -92,6 +92,8 @@ Subagent (general-purpose):
     - **Misunderstood:** right feature built the wrong way, wrong problem
       solved
 
+    Reject frontend-only, browser-only, client-only, mock-only, or MCP-only evidence for backend claims. When task requires backend behavior, verify implementer report includes direct boundary, important failure, final state or side-effect, and fresh automated evidence. Check contract, real dependency, representative trace, browser, and Specmatic evidence only when task or specification requires them. Missing required evidence is spec-compliance issue; do not broaden review into unrelated suites.
+
     If a requirement cannot be verified from this diff alone (it lives in
     unchanged code or spans tasks), report it as a ⚠️ item instead of
     broadening your search.

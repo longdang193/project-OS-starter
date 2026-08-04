@@ -1,6 +1,6 @@
 ---
 name: skill-dispatching-parallel-agents
-description: Use when two or more independent problem domains can be investigated or handled concurrently without shared state, sequential dependencies, or overlapping write ownership.
+description: Use when two or more independent investigations or approved implementation lanes can run concurrently without shared state, hidden dependencies, or overlapping write ownership.
 required_reads: []
 distribution_tier: starter_kit
 ---
@@ -25,16 +25,15 @@ When you have multiple unrelated failures (different test files, different subsy
 
 ## Ownership And Connections
 
-- This skill owns fan-out and fan-in method: prove independence, create focused self-contained agent tasks, dispatch concurrently, review results, and combine evidence.
-- `skill-parallel-execution` owns planned concurrent implementation lanes, exact write ownership, integration, and combined verification.
+- This skill owns fan-out and fan-in for independent investigations and approved concurrent implementation lanes: prove independence, assign exact write ownership, create focused self-contained tasks, dispatch concurrently, review results, integrate, and combine evidence.
 - `skill-subagent-driven-development` owns sequential fresh implementers with per-task review in one workspace.
-- `skill-executing-plans` owns general approved-plan execution and routes concurrent write lanes to `skill-parallel-execution`.
+- `skill-executing-plans` owns general approved-plan execution and routes disjoint concurrent lanes here.
 - `skill-systematic-debugging` owns root-cause method inside each investigation; do not parallelize failures until shared-cause risk is assessed.
 - `skill-using-git-worktrees` provides isolation when concurrent writers need separate workspaces.
 - `skill-requesting-code-review` and `skill-receiving-code-review` own review exchange after implementation changes.
 - `skill-verification-before-completion` owns fresh final proof after results are integrated.
 
-Use this skill directly for independent investigations, audits, research questions, or bounded fixes. For approved multi-lane implementation, use it as the dispatch method under `skill-parallel-execution` rather than as a second coordinator.
+Use this skill directly for independent investigations, audits, research questions, bounded fixes, or approved multi-lane implementation with disjoint write ownership.
 ## When to Use
 
 ```dot

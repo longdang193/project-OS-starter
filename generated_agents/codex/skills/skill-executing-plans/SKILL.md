@@ -42,7 +42,7 @@ Read only what the current task needs:
 - `skill-plan-document-reviewer` when a costly or high-risk plan has not received readiness review
 - `skill-using-git-worktrees` when isolation materially reduces risk
 - `skill-subagent-driven-development` when approved tasks are separable, same-session sequential delegation is useful, and per-task commits are authorized
-- `skill-parallel-execution` when two or more lanes have disjoint write ownership
+- `skill-dispatching-parallel-agents` when two or more lanes have disjoint write ownership
 - `skill-systematic-debugging` after unexpected failures or unexplained behavior
 - `skill-test-driven-development` for non-trivial behavior changes or bug fixes
 - governance or publication rules only when those boundaries are in scope
@@ -226,7 +226,7 @@ Continue source-first when optional analysis tools are unavailable.
 - `skill-plan-document-reviewer` checks readiness before costly execution.
 - `skill-using-git-worktrees` optionally establishes isolated workspace identity.
 - `skill-subagent-driven-development` specializes this method with sequential fresh implementers and per-task review.
-- `skill-parallel-execution` coordinates independent concurrent write lanes; `skill-dispatching-parallel-agents` supplies focused fan-out and fan-in method.
+- `skill-dispatching-parallel-agents` coordinates independent concurrent write lanes and their fan-out/fan-in method.
 - `skill-systematic-debugging` owns failure diagnosis.
 - `skill-test-driven-development` owns behavior-change proof during implementation.
 - `skill-verification-before-completion` produces final evidence result.

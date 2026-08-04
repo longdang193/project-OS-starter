@@ -364,6 +364,8 @@ Bug found? Write failing test reproducing it. Follow TDD cycle. Test proves fix 
 
 Never fix bugs without a test.
 
+For material backend behavior, TDD owns implementation loop while `skill-backend-verification` owns direct boundary, failure, state, dependency, contract, and representative-operation evidence required by `docs/operating_system/rules/backend-verification-rule.md`.
+
 ## Testing Anti-Patterns
 
 When adding mocks or test utilities, read @testing-anti-patterns.md to avoid common pitfalls:

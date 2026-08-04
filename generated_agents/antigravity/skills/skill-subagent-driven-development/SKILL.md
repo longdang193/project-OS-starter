@@ -32,8 +32,9 @@ ledger and the tool results carry the record.
 - Tasks must be separable enough for isolated briefs, but implementers remain sequential in one workspace.
 - Explicit authorization for per-task commits is required because `scripts/review-package` uses recorded commit ranges. Without that authorization, use `skill-executing-plans` directly.
 - Use `skill-using-git-worktrees` when isolation materially reduces risk; an already-safe workspace does not require a new worktree.
-- Use `skill-parallel-execution` instead when independent lanes should run concurrently with disjoint write ownership.
+- Use `skill-dispatching-parallel-agents` instead when independent lanes should run concurrently with disjoint write ownership.
 - Approved plan and settled behavior are required. Return unresolved design to `skill-spec-drafting` or `skill-writing-plans`.
+- Task `Required Skills` determine implementer methods. Do not inject every backend, frontend, contract, or tooling skill into every brief.
 
 ## When to Use
 
@@ -417,4 +418,4 @@ Done!
 
 **Alternatives:**
 - **`skill-executing-plans`** - Use for direct execution, absent commit authorization, tightly coupled tasks, or another-session handoff
-- **`skill-parallel-execution`** - Use for concurrent disjoint lanes; do not parallelize implementers inside this skill
+- **`skill-dispatching-parallel-agents`** - Use for concurrent disjoint lanes; do not parallelize implementers inside this skill

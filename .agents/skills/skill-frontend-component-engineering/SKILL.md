@@ -9,7 +9,7 @@ distribution_tier: starter_kit
 
 ## Role
 
-Choose the smallest component and state structure with one owner per fact and clear failure behavior. Visual direction, accessibility, responsive layout, and rendered evidence remain in `docs/operating_system/rules/frontend-ui-rule.md` and `skill-distinctive-frontend-design`.
+Implement approved UI behavior using smallest component and state structure with one owner per fact and clear failure behavior. Visual direction, accessibility, responsive layout, and rendered evidence remain in `docs/operating_system/rules/frontend-ui-rule.md` and `skill-distinctive-frontend-design`.
 
 ## When To Use
 
@@ -20,7 +20,7 @@ Skip for copy-only changes, isolated styling, or simple presentational component
 ## Core Method
 
 1. Inspect existing components, router, data cache, state libraries, and tests.
-2. Read a matching `*.integration.md` sidecar when present and use `skill-full-stack-integration` for backend contract or route work.
+2. Read approved specification and matching `*.integration.md` sidecar when present. Use `skill-full-stack-integration` for backend contract or route work; do not invent missing product behavior during implementation.
 3. Define the component contract and name the single owner of each state value.
 4. Choose the nearest native owner that satisfies the behavior:
    - local state for component-only interaction
@@ -47,6 +47,7 @@ A searchable table whose filters, sort, page, and tab must survive refresh and s
 - verify pending, retry, duplicate submission, failure restoration, and server reconciliation for mutations
 - add the smallest focused regression check using existing test tooling
 - follow `docs/operating_system/rules/frontend-ui-rule.md` for browser and accessibility evidence
+- use Context7 only for version-specific framework or accessibility-library questions not answered by pinned project sources
 
 ## Common Mistakes
 

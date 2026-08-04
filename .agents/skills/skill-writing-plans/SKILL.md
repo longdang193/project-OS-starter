@@ -47,6 +47,7 @@ stop and use `skill-spec-drafting`.
 - Read related execution skills only when the chosen execution approach requires them.
 - Name `ui-ux-pro-max` only for tasks requiring material visual or interaction judgment, and include rendered viewport, theme, and accessibility proof for those tasks.
 - Name `skill-performance-optimization` only for explicit performance requirements or measured regressions. Performance tasks must identify baseline command or evidence source, representative workload and environment, target metric, threshold owner, and regression proof.
+- Name `skill-backend-verification` for material backend behavior. Identify direct boundary, important failures, final state or side effects, rollback/idempotency, material real dependencies, contract proof, and representative-operation trace mechanism by applicability.
 - Name `skill-full-stack-integration` when a task crosses frontend behavior and backend contracts or routes. Identify matching sidecar, canonical contract owner, route impact, generated consumers, focused backend and frontend proof, browser flow, and sidecar removal condition.
 
 Source and tests remain authoritative when documents or optional tools disagree.
@@ -104,6 +105,7 @@ Also state:
 
 - required skills per task or lane
 - optional worktree need
+- commit policy; `skill-subagent-driven-development` requires explicit per-task commit authorization
 - shared files or symbols that force serialization
 - sequential fallback when delegation or parallel execution is unavailable
 
@@ -126,6 +128,7 @@ to create artificial parallelism.
 ### 7. Right-Size Tasks
 
 A task should produce one bounded, reviewable outcome with one clear exit gate.
+For backend or frontend/backend work, prefer smallest valuable capability slice: contract when applicable, backend implementation, direct backend proof, consumer integration when present, representative trace when material, then slice verification.
 
 Split a task when it:
 
@@ -172,6 +175,7 @@ only when it differs from the plan-level `Execution Approach`.
 - task-local proof covers each bounded task
 - final proof covers implementation outcomes and cross-task integration
 - behavioral changes include focused regression proof
+- backend behavior includes direct boundary, business/failure, state or side-effect, and fresh automated proof; contract, real dependency, trace, browser, and performance evidence remain applicability-based
 - performance claims use identical before/after workloads and environments, named metrics, owned targets, and correctness checks
 - generated surfaces refresh only when canonical inputs changed
 - destructive or migration work includes rollback or stop conditions
@@ -232,7 +236,7 @@ instead of hiding uncertainty inside the plan.
 - use `skill-plan-document-reviewer` before costly, cross-cutting, migration-heavy, or handoff-heavy execution
 - hand off approved plans to `skill-executing-plans`
 - use `skill-using-git-worktrees` only when isolation materially reduces risk
-- use `skill-parallel-execution` only for disjoint write ownership
+- use `skill-dispatching-parallel-agents` only for disjoint write ownership
 - final completion flows through `skill-verification-before-completion`, then optional `skill-finishing-a-development-branch`
 
 The plan is ready for completion verification only when required outcomes,

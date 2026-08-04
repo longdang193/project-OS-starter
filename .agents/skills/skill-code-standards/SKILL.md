@@ -172,8 +172,9 @@ Do not claim quality from review alone. Fresh executable evidence owns completio
 
 - Preserve security, accessibility, data safety, and explicit requirements.
 - For material front-end work, follow `docs/operating_system/rules/frontend-ui-rule.md` and use `ui-ux-pro-max` when available.
+- For material backend behavior changes, follow `docs/operating_system/rules/backend-verification-rule.md` and use `skill-backend-verification` for direct proof independent of consumers.
 - For explicit performance requirements or measured regressions, use `skill-performance-optimization`; do not invent universal budgets or optimize without comparable evidence.
-- For frontend-to-backend contract wiring, use `skill-full-stack-integration`; colocated notes may describe UI intent but must not duplicate canonical transport schemas.
+- For frontend-to-backend contract wiring, follow `docs/operating_system/rules/frontend-backend-integration-rule.md` and use `skill-full-stack-integration`; colocated notes may map contracts to UI states but must not duplicate canonical transport schemas.
 - Avoid speculative abstraction and configuration.
 - Prefer smallest root-cause change in shared owner.
 - Generated files follow generator; edit canonical source.

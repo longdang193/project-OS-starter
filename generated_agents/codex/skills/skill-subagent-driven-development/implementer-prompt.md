@@ -43,7 +43,7 @@ Subagent (general-purpose):
     ## Your Job
 
     Once you're clear on requirements:
-    1. Implement exactly what the task specifies
+    1. Use only Required Skills named by task and implement exactly what task specifies
     2. Write tests (following TDD if task says to)
     3. Verify implementation works
     4. Commit your work only under authorization above
@@ -126,6 +126,14 @@ Subagent (general-purpose):
     Write your full report to [REPORT_FILE]:
     - What you implemented (or what you attempted, if blocked)
     - What you tested and test results
+    - **Backend Evidence** when backend behavior is in scope:
+      - direct boundary exercised
+      - important success and failure behavior
+      - final state or side effects
+      - rollback/idempotency and real-dependency disposition
+      - contract and representative-operation trace evidence when applicable
+    - **UI Evidence** when material UI is in scope: rendered viewport/container, supported themes, affected states, keyboard/focus/accessibility, and browser console/runtime result
+    - **Specmatic Evidence** only when plan names it: contract discovery, validation, mock, example, or conformance action and result
     - **TDD Evidence** (if TDD was required for this task):
       - RED: command run, relevant failing output before implementation, and why the failure was expected
       - GREEN: command run and relevant passing output after implementation

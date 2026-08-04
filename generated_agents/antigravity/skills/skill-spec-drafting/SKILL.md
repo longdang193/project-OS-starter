@@ -59,6 +59,15 @@ Specification owns:
 
 Implementation plan owns exact files, task order, commands, dependencies, rollout steps, and execution waves.
 
+## Draft To Final Lifecycle
+
+- Use `docs/operating_system/templates/draft-specification-template.md` when behavior, UI intent, or state transitions still need prototype validation.
+- Save draft under final `docs/superpowers/specs/*.md` path with `template_id: draft-specification` and `status: proposed`.
+- Keep assumptions, open questions, prototype reference, and findings in same file while design remains unsettled.
+- After explicit approval, replace draft content in place with `docs/operating_system/templates/detailed-specification-template.md`, set `template_id: detailed-specification` and `status: active`, and preserve accepted prototype evidence and approved deferrals.
+- Do not keep parallel permanent draft/final files. Git history preserves draft state.
+- For material backend behavior, define verification claims using `docs/operating_system/rules/backend-verification-rule.md`; frontend proof never replaces backend proof.
+
 ## Evidence Gathering
 
 ### Tool Selection
@@ -248,12 +257,13 @@ Before approval:
 
 Only after reasoning is complete:
 
-1. use `docs/operating_system/templates/detailed-specification-template.md`
-2. save to `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
+1. choose draft template only when prototype validation remains; otherwise use detailed template after behavior approval
+2. save once to `docs/superpowers/specs/YYYY-MM-DD-HH-MM-<topic>-spec.md`
 3. use frontmatter satisfying `repo_config/planning_artifact_schema.yaml`
 4. select truthful layer and targets
 5. keep required sections non-empty
-6. run template and planning validators
+6. promote draft in place after approval rather than creating second file
+7. run template and planning validators
 
 Format records specification; it does not replace specification reasoning.
 
@@ -264,7 +274,7 @@ Format records specification; it does not replace specification reasoning.
 layer: intent | operating_system | change
 artifact_type: spec
 status: proposed | active | completed | superseded
-template_id: detailed-specification
+template_id: draft-specification | detailed-specification
 name: <short-spec-name>
 targets:
   - <canonical or affected path>
@@ -279,10 +289,10 @@ Use only applicable optional metadata. Do not add metadata without active consum
 
 ## Review And Handoff
 
-1. Present specification and unresolved approved deferrals.
-2. Request explicit approval.
+1. Present draft findings or detailed specification and unresolved approved deferrals.
+2. Request explicit approval; when draft exists, promote same file to detailed active specification.
 3. For cross-cutting, data-sensitive, operational, starter/public-sync, or expensive-to-reverse specifications, use `skill-plan-document-reviewer` before approval or planning handoff.
-4. After approval, hand off to `skill-writing-plans`.
+4. After detailed specification is active, hand off to `skill-writing-plans`.
 5. `skill-executing-plans` starts only after executable plan or explicit approved task sequence exists.
 6. `skill-verification-before-completion` later proves acceptance and completion criteria.
 7. `skill-finishing-a-development-branch` owns authorized Git disposition after verified implementation.

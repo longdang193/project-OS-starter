@@ -35,7 +35,7 @@ Add to your Codex config (`~/.codex/config.toml`):
 multi_agent = true
 ```
 
-This enables `spawn_agent`, `wait_agent`, and `close_agent` for `skill-dispatching-parallel-agents` fan-out under `skill-parallel-execution` when independent lanes justify delegation.
+This enables `spawn_agent`, `wait_agent`, and `close_agent` for `skill-dispatching-parallel-agents` when independent lanes justify delegation.
 
 Legacy note: older Codex builds exposed spawned-agent waiting as `wait`. Current Codex uses `wait_agent` for spawned agents.
 

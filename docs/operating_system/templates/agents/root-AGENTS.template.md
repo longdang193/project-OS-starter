@@ -76,11 +76,15 @@ Memory informs work but never overrides explicit instructions, source code, test
 
 Detailed policy: `docs/operating_system/rules/agent-memory-rule.md`.
 
+## Backend Work
+
+For every material backend behavior change, use `skill-backend-verification` whether or not a frontend exists. Prove behavior through direct boundary tests, important success and failure paths, final state or side effects, and fresh automated output. Add contract, real-dependency, representative-operation trace, or performance evidence only when applicable. Frontend and browser evidence never substitute for backend proof.
+
 ## Front-End Work
 
-For material UI, UX, accessibility, responsive-layout, or visual-design work, use `ui-ux-pro-max` when available. Reuse existing components and design tokens, prefer semantic native controls, and verify affected states, keyboard access, focus, contrast, responsive behavior, reduced motion, and supported themes.
+For material UI, UX, accessibility, responsive-layout, or visual-design work, use `ui-ux-pro-max` when available and target platform fits its scope. Existing project design-system sources remain canonical. Reuse existing components and design tokens, prefer semantic native controls, and verify affected states, keyboard access, focus, contrast, responsive behavior, reduced motion, and supported themes.
 
-When a matching `*.integration.md` exists, use `skill-full-stack-integration`. Integration notes own temporary UI intent and acceptance evidence, not transport schemas; canonical schemas, generated clients, backend routes, and tests establish current behavior. Report any conflict and affected owners, then ask the user to decide before implementation.
+When work crosses frontend behavior and backend contracts or routes, use `skill-full-stack-integration`. Matching `*.integration.md` notes own temporary contract-to-UI mapping, unresolved mismatches, and acceptance evidence, not transport schemas. Canonical schemas, generated clients, backend routes, and tests establish current behavior. Report conflicts and affected owners before implementation.
 
 When browser MCPs are available, use Playwright MCP for repeatable user flows, accessibility snapshots, viewport checks, and screenshots; use Chrome DevTools MCP for console, network, computed layout and styles, Lighthouse, and performance diagnosis. Use both only when their roles differ. Browser evidence does not replace committed regression tests.
 

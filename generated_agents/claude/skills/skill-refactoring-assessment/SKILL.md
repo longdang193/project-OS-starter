@@ -45,7 +45,7 @@ Read only references needed for current assessment:
 - `skill-writing-plans` when design is settled but execution needs ordered tasks
 - `skill-test-driven-development` before a bounded behavior-preserving patch
 - `skill-executing-plans` only after a plan is approved
-- `skill-parallel-execution` only when selected actions have disjoint write ownership
+- `skill-dispatching-parallel-agents` only when selected actions have disjoint write ownership
 - `skill-verification-before-completion` after implementation
 - `skill-finishing-a-development-branch` only after fresh verification and explicit Git authorization
 
@@ -109,7 +109,7 @@ Route rather than perform next stage:
 | Unresolved behavior, interface, schema, default, compatibility, or invariant | `skill-spec-drafting` |
 | Settled design with multi-step execution | `skill-writing-plans` |
 | Approved implementation plan | `skill-executing-plans` |
-| Independent actions with disjoint write ownership | `skill-parallel-execution` |
+| Independent actions with disjoint write ownership | `skill-dispatching-parallel-agents` |
 | Completed implementation | `skill-verification-before-completion` |
 | Verified work needing authorized Git disposition | `skill-finishing-a-development-branch` |
 
