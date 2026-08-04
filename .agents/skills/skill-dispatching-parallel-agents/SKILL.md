@@ -18,6 +18,7 @@ When you have multiple unrelated failures (different test files, different subsy
 ## Ownership And Connections
 
 - This skill owns fan-out and fan-in for independent investigations and approved concurrent implementation lanes: prove independence, assign exact write ownership, create focused self-contained tasks, dispatch concurrently, review results, integrate, and combine evidence.
+- When dispatching subagents, follow the active `Subagent Routing` policy. Select the agent type explicitly and never override its template model or reasoning effort.
 - `skill-subagent-driven-development` owns sequential fresh implementers with per-task review in one workspace.
 - `skill-executing-plans` owns general approved-plan execution and routes disjoint concurrent lanes here.
 - `skill-systematic-debugging` owns root-cause method inside each investigation; do not parallelize failures until shared-cause risk is assessed.

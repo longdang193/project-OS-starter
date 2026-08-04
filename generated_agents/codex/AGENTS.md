@@ -19,6 +19,31 @@ This file is repo-wide instruction layer. More specific directory instructions o
 - Never expose private governance, credentials, agent memory, or internal tooling through public publication.
 - For generated agent surfaces, edit canonical sources, then run required sync and verification commands.
 
+## Subagent Routing
+
+Use only these agent types:
+
+- `low`: small, narrow, low-risk work.
+- `normal`: routine implementation, testing, exploration, and focused analysis.
+- `high`: difficult reasoning, architecture, broad debugging, or high-risk work.
+
+When spawning a subagent:
+
+- Select the template through the platform's agent-type selector; task names only label work.
+- Use a fresh-context fork when selecting a different agent type.
+- Never override the template's model or reasoning effort.
+- Do not select unnamed or other agent types.
+- Subagents must not spawn other agents unless explicitly requested.
+
+Routing order:
+
+1. Use `low` for clearly bounded work involving one file, one lookup, one localized edit, or one targeted check.
+2. Use `normal` for ordinary delegated work, including focused multi-file implementation.
+3. Use `high` only when work is materially complex, high-risk, architectural, or `normal` could not resolve it.
+4. If scope grows beyond the selected agent, stop and delegate again using the appropriate higher agent type.
+
+Do not use `low` for multi-file implementation, architectural decisions, ambiguous debugging, security-sensitive changes, migrations, or broad refactors.
+
 ## Project Design Rules
 
 ### Use SSOT
