@@ -85,22 +85,9 @@ def test_task_brief_extracts_single_task(tmp_path: Path) -> None:
     assert "Task 1: Alpha" not in brief
 
 
-def test_review_package_writes_commit_log_and_diff(tmp_path: Path) -> None:
-    _init_repo(tmp_path)
-    target = tmp_path / "demo.txt"
-    target.write_text("alpha\n", encoding="utf-8")
-    _git(tmp_path, "add", "demo.txt")
-    _git(tmp_path, "commit", "-m", "base")
-    base_sha = _git(tmp_path, "rev-parse", "HEAD")
+def test_subagent_assets_use_claims_without_review_package() -> None:
+    skill_root = SCRIPTS_DIR.parent
 
-    target.write_text("alpha\nbeta\n", encoding="utf-8")
-    _git(tmp_path, "commit", "-am", "expand demo")
-    head_sha = _git(tmp_path, "rev-parse", "HEAD")
-
-    output = tmp_path / "review.diff"
-    _run_script(tmp_path, "review-package", base_sha, head_sha, str(output))
-
-    package = output.read_text(encoding="utf-8")
-    assert f"# Review package: {base_sha}..{head_sha}" in package
-    assert "expand demo" in package
-    assert "+beta" in package
+    assert not (SCRIPTS_DIR / "review-package").exists()
+    assert "claimed_result" in (skill_root / "implementer-prompt.md").read_text(encoding="utf-8")
+    assert "claimed_result" in (skill_root / "task-reviewer-prompt.md").read_text(encoding="utf-8")

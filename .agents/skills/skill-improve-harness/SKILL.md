@@ -1,0 +1,22 @@
+---
+name: skill-improve-harness
+description: Use when recurring verified friction needs a bounded harness improvement experiment.
+required_reads: []
+distribution_tier: starter_kit
+---
+# Improve Harness
+
+Use only after user or authorized controller requests harness improvement.
+
+1. Choose one representative job and record baseline retries, human help,
+   proof quality, and maintenance cost.
+2. Find earliest gap. Assign owner: harness, consumer repository, agent
+   runtime, CI or environment, external service, or human decision.
+3. Propose smallest authorized change. Do not install tools, collect telemetry,
+   or mutate policy during ordinary task execution.
+4. Prove change with native check. Re-run representative job from equivalent
+   start using fresh agent context.
+5. Compare result with baseline. End as `keep`, `revise`, `remove`, or
+   `pending fresh rerun`.
+
+Do not treat merged code as confirmed improvement without fresh rerun proof.

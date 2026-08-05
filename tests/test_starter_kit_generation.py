@@ -130,6 +130,22 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     assert not (kit_root / "scripts" / "sync_agent_adapters.py").exists()
 
 
+def test_production_manifest_includes_harness_and_excludes_run_state(tmp_path: Path) -> None:
+    BUILD.build_starter_kit(
+        repo_root=REPO_ROOT,
+        manifest_path=REPO_ROOT / "repo_config" / "starter-kit-manifest.json",
+        output_root=tmp_path,
+    )
+
+    kit_root = tmp_path / "project-OS-starter-kit"
+    assert (kit_root / "agents" / "roles.yaml").is_file()
+    assert (kit_root / "repo_config" / "harness.yaml").is_file()
+    assert (kit_root / "scripts" / "harness_task.py").is_file()
+    assert (kit_root / "scripts" / "validate_harness_config.py").is_file()
+    assert (kit_root / "docs" / "operating_system" / "tooling" / "harness-routing.generated.md").is_file()
+    assert not (kit_root / ".harness").exists()
+
+
 def test_validate_starter_kit_reports_missing_required_and_present_forbidden(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     manifest_path = make_manifest(repo_root)

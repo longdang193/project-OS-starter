@@ -41,7 +41,7 @@ Read only what the current task needs:
 - linked specification sections governing the active task
 - `skill-plan-document-reviewer` when a costly or high-risk plan has not received readiness review
 - `skill-using-git-worktrees` when isolation materially reduces risk
-- `skill-subagent-driven-development` when approved tasks are separable, same-session sequential delegation is useful, and per-task commits are authorized
+- `skill-subagent-driven-development` when controller selects validated sequential-agent execution for separable approved tasks
 - `skill-dispatching-parallel-agents` when two or more lanes have disjoint write ownership
 - `skill-systematic-debugging` after unexpected failures or unexplained behavior
 - `skill-test-driven-development` for non-trivial behavior changes or bug fixes

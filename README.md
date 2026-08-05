@@ -65,6 +65,16 @@ Memory data is private local state outside repository. Source code, tests, ADRs,
 
 Optional Context7 and Specmatic MCP servers support version-specific library research and OpenAPI contract work. See `docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md` for private Codex setup, smoke tests, fallbacks, and removal.
 
+Semble MCP and ast-grep CLI remain optional discovery tools. See `docs/operating_system/procedures/code-intelligence-tools-setup.md`; neither belongs in repository config or CI.
+
+## Harness
+
+First layer: `agents/*.toml`, `agents/roles.yaml`, and
+`repo_config/harness.yaml`. Run `scripts/harness_task.py preflight` to resolve
+controller task metadata; run `verify` for fresh evidence. `.harness/` stores
+optional ignored local run artifacts. No scheduler, daemon, or job manager
+ships with starter kit.
+
 ## Customize First
 
 When bootstrapping a new project, review these first:

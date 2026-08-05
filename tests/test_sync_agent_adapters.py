@@ -160,8 +160,7 @@ def test_sync_root_instruction_generates_and_checks_agents(tmp_path: Path) -> No
     generated = root / "AGENTS.md"
     content = generated.read_text(encoding="utf-8")
     assert "Source: docs/operating_system/templates/agents/root-AGENTS.template.md" in content
-    assert "## Runtime Extension Manifest (Generated)" in content
-    assert "`AGENTS.md` is the authoritative Codex root instruction surface." in content
+    assert "## Runtime Extension Manifest (Generated)" not in content
     assert SYNC._sync_root_instruction(root, check=True) == []
 
     generated.write_text("stale\n", encoding="utf-8")

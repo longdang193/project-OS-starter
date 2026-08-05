@@ -114,7 +114,7 @@ Also state:
 
 - required skills per task or lane
 - optional worktree need
-- commit policy; `skill-subagent-driven-development` requires explicit per-task commit authorization
+- commit policy; commits remain separate from subagent dispatch and review
 - shared files or symbols that force serialization
 - sequential fallback when delegation or parallel execution is unavailable
 

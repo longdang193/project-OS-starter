@@ -1,0 +1,638 @@
+---
+artifact_type: spec
+template_id: detailed-specification
+status: active
+layer: change
+---
+
+# Uniform Harness Execution Orchestrator
+
+## Goal and Problem
+
+### Problem
+
+- current behavior: `scripts/harness_task.py` resolves task packets through
+  `repo_config/harness.yaml` and independently verifies a returned claim, but
+  no component owns dispatch, workspace preparation, claim collection, retry,
+  escalation, approval resume, and final decision as one lifecycle.
+- affected users, systems, or maintainers: controller implementations and all
+  task routes using the repository harness.
+- evidence: `resolve_task()` emits a packet and `verify_task()` verifies a
+  claim, while CLI exposes only `preflight` and `verify`.
+- consequence of no change: each controller recreates orchestration glue,
+  causing divergent workspace, retry, approval, evidence, and failure behavior.
+
+### Goal
+
+- desired outcome: one packet-driven executor owns deterministic lifecycle
+  stages while controller retains classification and final decision authority.
+- observable success: every supported execution mode follows the same lifecycle
+  and produces one reproducible run record with explicit evidence and decision.
+
+## Required Outcomes
+
+### Outcome: Uniform lifecycle execution
+
+- affected actor or system: controller and harness executor.
+- required result: one `run` operation performs preflight, authorization,
+  workspace preparation, dispatch, claim collection, verification, and decision
+  handling in one ordered lifecycle.
+- success condition: no route-specific execution pipeline owns separate state,
+  evidence, retry, or approval semantics.
+
+### Outcome: Reproducible run authority
+
+- affected actor or system: controller, agents, reviewers, and auditors.
+- required result: each execution has one canonical run record containing the
+  request, immutable per-attempt packet snapshots, lanes, claims, evidence,
+  frictions, decisions, and state history.
+- success condition: a maintainer can identify what was authorized, attempted,
+  verified, and decided without reconciling competing lifecycle files.
+
+### Outcome: Honest verification
+
+- affected actor or system: verifier and controller.
+- required result: every acceptance criterion has explicit evidence or remains
+  unresolved for review; absence of a generic blocker never proves a criterion.
+- success condition: automated evidence, review evidence, and approval evidence
+  are distinguishable in the run record and final decision.
+
+### Outcome: Controlled mode expansion
+
+- affected actor or system: controller and execution-mode handlers.
+- required result: first release executes `single_agent`; later sequential and
+  parallel modes use the same lifecycle and run schema when their handlers are
+  implemented and verified.
+- success condition: unsupported modes block before dispatch and never silently
+  downgrade to `single_agent`.
+
+## Design Analysis
+
+### Current State and Evidence
+
+| Question | Evidence | Source | Confidence | Specification implication |
+|---|---|---|---|---|
+| Where route policy lives | Routes select template, role, rules, skills, tools, workspace, checks, gates, and permitted modes. | `repo_config/harness.yaml` | high | Keep static execution policy canonical in this file. |
+| What the harness currently owns | `resolve_task()` returns a packet; `verify_task()` checks diff scope, gates, state transition, and configured checks. | `scripts/harness_task.py` | high | Extend existing owner with lifecycle execution; do not create a second harness. |
+| Where role contracts live | Roles define write capability, accepted templates, result kind, and required fields. | `agents/roles.yaml` | high | Keep role contract separate from routing policy. |
+| Current verification limitation | Every acceptance criterion is marked proven whenever no blocker exists. | `scripts/harness_task.py` | high | Replace implicit success with criterion-specific evidence. |
+| Current authorization limitation | Claim payload can declare `approved_gates`; verifier trusts that value. | `scripts/harness_task.py` | high | Controller-issued approval records must replace agent-declared approval. |
+| Current change-set limitation | Changed-path collection uses tracked Git diff only. | `scripts/harness_task.py` | high | Define a complete immutable change-set snapshot, including untracked paths. |
+| Current orchestration policy | Sequential and parallel modes declare review and workspace requirements but no executor provisions or dispatches them. | `repo_config/harness.yaml` | high | Treat mode policy and implemented mode capability as separate facts. |
+
+### Prototype and Validation Evidence
+
+- prototype reference: Not applicable. Direction was approved from source and
+  harness-test evidence; no UI or external prototype applies.
+- validated scenarios and states: packet selection, state-transition rejection,
+  scope escape, approval gate, failed check, and evidence-file output have
+  focused automated coverage.
+- findings incorporated into approved behavior: approval is authorization, not
+  semantic review; `allowed_paths` is maximum scope, not planned write intent;
+  packet snapshots must be immutable per attempt rather than per whole run.
+- rejected alternatives: per-route runners, a persistent scheduler or daemon,
+  and a separate prompt-policy layer.
+
+### Scope
+
+- included behavior: a `run` lifecycle operation, per-run record, immutable
+  attempt packets, common decisions, evidence-based criteria, common pre/post
+  gate evaluation, and single-agent execution first.
+- affected boundaries: `scripts/harness_task.py`, harness policy, task/claim
+  contracts, role-result validation, local `.harness/` run artifacts, and
+  controller-to-agent dispatch adapter.
+- admissible cases: a requested mode is admissible only when route policy allows
+  it and an executor handler for that mode is registered and verified.
+- compatibility expectation: existing standalone `preflight` and `verify`
+  behavior remains available while `run` becomes the lifecycle owner.
+
+### Non-Goals
+
+- natural-language task classification inside the Python harness.
+- a background daemon, queue, scheduler, or distributed worker pool.
+- automatic policy mutation from friction records.
+- silently changing route, template, tool set, workspace, or execution mode
+  during an attempt.
+- a provider-independent hard sandbox where the selected platform cannot impose
+  tool restrictions.
+- parallel execution in the first executable slice.
+
+### Requirements and Behavioral Contract
+
+#### Requirement: Controller classification and preflight
+
+- trigger or actor: controller receives a user request and chooses task type,
+  desired execution mode, allowed scope, planned write paths, and acceptance
+  criteria.
+- preconditions: task request is structurally valid and names a configured
+  route.
+- required behavior: executor validates policy and resolves one packet before
+  any workspace change or agent dispatch.
+- output or state change: run state advances from `classified` to `planned`; a
+  packet snapshot is recorded for the attempt.
+- failure behavior: invalid route, unsafe paths, unavailable mode, missing role,
+  or unavailable required capability returns a machine-readable block decision
+  and performs no dispatch.
+- observable acceptance: packet records template, role, rules, skills, tools,
+  workspace, checks, gates, mode, allowed paths, and base reference.
+
+#### Requirement: One lifecycle for every execution mode
+
+- trigger or actor: executor receives a planned attempt with an admissible mode.
+- preconditions: packet preflight passed and required authorization is present.
+- required behavior: execute this order for every mode: authorize, prepare
+  workspace, dispatch lanes, collect claims, verify, emit outcome, obtain
+  controller decision, apply transition, and persist.
+- output or state change: lifecycle transitions use common run states and common
+  decision objects; mode only changes lane count, workspace strategy, and review
+  requirement.
+- failure behavior: unsupported mode returns `block` with
+  `execution_mode_unavailable`; no fallback mode is selected.
+- observable acceptance: a single-agent attempt has one lane; later sequential
+  and parallel attempts use the same outer record and decision protocol.
+
+#### Requirement: Immutable packet per attempt
+
+- trigger or actor: controller retries or escalates a run.
+- preconditions: previous attempt has a recorded decision.
+- required behavior: controller creates a successor attempt and preflights a
+  new packet snapshot; prior attempt packet, claim, evidence, and decision stay
+  unchanged.
+- output or state change: successor attempt is `planned` before dispatch.
+- failure behavior: changing a packet in place is invalid and blocks run
+  continuation until a successor attempt is created.
+- observable acceptance: escalation from `single_agent` to `parallel_lanes`,
+  when parallel support exists, creates a later attempt rather than mutating
+  attempt one.
+
+#### Requirement: Explicit lane plan
+
+- trigger or actor: controller requests a managed execution mode.
+- preconditions: selected mode is admissible for the route and executor.
+- required behavior: packet records a normalized lane plan. Each lane has stable
+  `lane_id`, role, allowed paths, dependency IDs, workspace requirement, and
+  write capability. `single_agent` normalizes to one `primary` lane.
+- output or state change: sequential lanes execute in declared dependency order;
+  parallel writable lanes have no unresolved dependencies and disjoint allowed
+  paths.
+- failure behavior: duplicate lane ID, unknown dependency, dependency cycle, or
+  overlapping writable paths blocks before workspace preparation.
+- observable acceptance: later execution modes add lane data, not a separate
+  lifecycle or a route-specific runner.
+
+#### Requirement: Workspace preparation and lane ownership
+
+- trigger or actor: executor begins an authorized attempt.
+- preconditions: mode capability is available.
+- required behavior: current-workspace mode records current repository identity;
+  isolated mode provisions one workspace per writable lane. Parallel writable
+  lanes require disjoint allowed paths.
+- output or state change: each lane records workspace kind, stable path or
+  worktree identity, role, allowed paths, and attempts.
+- failure behavior: unavailable workspace capability, dirty-conflict policy, or
+  overlapping writable paths blocks before dispatch.
+- observable acceptance: shared-workspace parallel work is rejected unless all
+  lanes are read-only.
+
+#### Requirement: Agent dispatch and claim collection
+
+- trigger or actor: executor dispatches an authorized lane.
+- preconditions: packet, workspace, selected template, role contract, and
+  required platform capability are available.
+- required behavior: a host dispatch adapter receives lane ID, immutable packet,
+  workspace identity, timeout, and cancellation token; it returns either one
+  normalized `claimed_result` or normalized dispatch failure. Agent prompt is
+  rendered from packet and role contract; prompt is derived presentation, never
+  a policy source. Agent returns only a `claimed_result` matching role-required
+  fields.
+- output or state change: lane claim is attached to its attempt in the run
+  record; state advances from `running` to `observed` after all required lane
+  claims arrive.
+- failure behavior: dispatch error, missing claim, invalid result kind, or
+  missing required fields produces a common decision without accepting work.
+- observable acceptance: agents never write the shared run record and never
+  spawn child agents.
+
+#### Requirement: Complete change-set snapshot
+
+- trigger or actor: executor begins verification for an observed attempt.
+- preconditions: attempt packet has a base reference resolved to an immutable
+  commit ID before dispatch.
+- required behavior: controller derives actual changed paths from tracked added,
+  modified, deleted, renamed, and staged changes against that commit plus
+  untracked nonignored paths. It records path and change kind in attempt
+  evidence; agent-reported `changed_files` is advisory only.
+- output or state change: scope and post-execution gate evaluation consume this
+  recorded snapshot.
+- failure behavior: unresolved base commit, malformed path, or incomplete
+  change-set collection blocks acceptance.
+- observable acceptance: an untracked file outside allowed scope cannot bypass
+  scope or protected-path checks.
+
+#### Requirement: Evidence-based verification
+
+- trigger or actor: executor collects an observed attempt.
+- preconditions: claims are structurally valid.
+- required behavior: verifier evaluates actual changed paths, configured checks,
+  gates, transitions, and one evidence declaration per acceptance criterion.
+- output or state change: each criterion stores `proven`, `failed`, or
+  `review_required` with evidence reference; state advances through `verifying`.
+- failure behavior: missing evidence declaration, failed evidence, scope escape,
+  unapproved protected change, or failed configured check prevents acceptance.
+- observable acceptance: no criterion is auto-proven solely because unrelated
+  checks passed.
+
+#### Requirement: Common gate engine
+
+- trigger or actor: executor preflights a write-capable attempt and verifies an
+  observed attempt.
+- preconditions: route defines approval gates or defaults apply.
+- required behavior: one path-matching mechanism evaluates gate policy twice:
+  first against `planned_write_paths`, then against actual changed paths.
+  Only controller-issued approval records may satisfy a gate; agents cannot
+  declare approvals in claims.
+- output or state change: unapproved planned protected paths request approval
+  before dispatch; unapproved actual protected paths prevent acceptance after
+  execution.
+- failure behavior: `planned_write_paths` is required for new write-capable
+  managed-run requests. Legacy standalone tasks retain existing post-change
+  gate behavior.
+- observable acceptance: `allowed_paths` remains authorization maximum and is
+  never reused as planned-write input.
+
+#### Requirement: Uniform decision protocol
+
+- trigger or actor: preflight, authorization, workspace, dispatch, collection,
+  verification, or review cannot continue normally.
+- preconditions: run has an active attempt.
+- required behavior: executor emits one machine-readable outcome with reason,
+  evidence references, and allowed decisions. Controller records one decision
+  object with `kind`, `next_state`, and optional successor-attempt instruction.
+- output or state change: supported kinds are `accept`, `retry`, `escalate`,
+  `request_approval`, and `block`.
+- failure behavior: unknown kind or invalid state transition blocks the run.
+- observable acceptance: controller handles every failure source through the
+  same decision shape without route-specific branches; executor never accepts,
+  retries, escalates, or approves autonomously.
+
+#### Requirement: Bounded retries and approval resume
+
+- trigger or actor: controller receives retry, escalation, approval, or block
+  outcome.
+- preconditions: static route policy names one retry policy.
+- required behavior: harness policy owns maximum attempts, retryable reasons,
+  escalation after exhaustion, and approval-resume rules. Approval record binds
+  gate, approver identity, approved path scope, attempt ID, and issuance time.
+- output or state change: retry or escalation creates a successor planned
+  attempt; approval resume creates a successor planned attempt only when its
+  record matches requested scope and gate.
+- failure behavior: exhausted retry budget, invalid controller decision, stale
+  approval, or decision outside allowed outcome blocks the run.
+- observable acceptance: no agent claim can bypass a gate or create unbounded
+  retry loop.
+
+#### Requirement: Friction capture without autonomous mutation
+
+- trigger or actor: agent, workspace, tool, or verifier reports degraded or
+  blocked progress.
+- preconditions: friction has a normalized category and source attempt or lane.
+- required behavior: executor records friction in the run record and includes
+  it in decision evidence. Harness policy does not change during the run.
+- output or state change: friction is classified as informational, retryable,
+  escalating, or blocking by the common decision protocol.
+- failure behavior: malformed friction is rejected from the claim; repeated
+  verified friction may later enter the separate harness-improvement route.
+- observable acceptance: a non-blocking observation does not fail unrelated
+  verification merely because it exists.
+
+### Constraints and Alternatives
+
+- constraint: static policy and mutable execution history have different owners.
+- alternative: per-route runners.
+  - benefit: direct short-term implementation.
+  - trade-off: duplicated state, evidence, and failure semantics.
+  - reason rejected: violates symmetry and creates policy drift.
+- alternative: daemon or scheduler.
+  - benefit: asynchronous queueing and background workers.
+  - trade-off: durable service, worker, queue, and recovery complexity.
+  - reason rejected: one foreground lifecycle command meets current need.
+- alternative: separate prompt-policy templates.
+  - benefit: provider-specific wording.
+  - trade-off: packet and prompt can conflict.
+  - reason rejected: prompts must render resolved packet only.
+
+## Design Decisions
+
+### Decision: Controller decides; executor applies deterministic transitions
+
+- context: controller must retain final authority, while every lifecycle stage
+  needs uniform machine-readable handling.
+- selected approach: verifier and executor emit an outcome containing evidence,
+  reason, and allowed decisions. Controller records the decision; executor
+  validates and applies only that recorded decision.
+- rationale: prevents automatic retries, escalation, acceptance, or approval
+  from bypassing controller authority while preserving one decision protocol.
+- state contract:
+
+  | Current state | Event or decision | Next state |
+  |---|---|---|
+  | `classified` | valid preflight | `planned` |
+  | `planned` | authorized dispatch | `running` |
+  | `running` | complete claims | `observed` |
+  | `running` | dispatch interruption | `blocked` |
+  | `observed` | verification starts | `verifying` |
+  | `verifying` | outcome requires controller decision | `awaiting_decision` |
+  | `awaiting_decision` | `accept` | `accepted` |
+  | `awaiting_decision` | `retry` or `escalate` | `planned` for successor attempt |
+  | `awaiting_decision` | `request_approval` or `block` | `blocked` |
+  | `blocked` | matching controller approval resume | `planned` for successor attempt |
+
+- alternatives considered: executor choosing decisions; controller-specific
+  failure branches.
+- accepted trade-offs: controller integration must submit explicit decisions.
+- affected owners and boundaries: controller adapter, state policy, run writer,
+  verifier, and CLI/API response contract.
+
+### Decision: Dispatch adapter capability contract
+
+- context: Python harness code cannot assume every host runtime can spawn an
+  agent, create isolated workspaces, cancel work, or enforce selected tools.
+- selected approach: host provides one dispatch adapter with stable operations:
+  `capabilities`, `prepare_workspace`, `dispatch_lane`, `cancel_lane`, and
+  `collect_claim`. Capabilities declare supported execution modes, workspace
+  modes, tool-control level (`enforced`, `advisory`, or `unavailable`), timeout,
+  and cancellation support.
+- rationale: route policy remains provider-neutral while preflight truthfully
+  intersects policy with executable host capability.
+- alternatives considered: Python directly invoking provider-specific tools;
+  treating prompt wording as hard tool enforcement.
+- accepted trade-offs: first release requires a concrete host adapter or a
+  deterministic block; fake adapter remains test-only.
+- affected owners and boundaries: host controller integration, executor,
+  capability registry, packet, and run evidence.
+
+### Decision: Change-set and approval records are controller-owned evidence
+
+- context: agent claims and tracked Git diff alone cannot safely prove protected
+  scope or complete changed paths.
+- selected approach: controller resolves base commit before dispatch, writes one
+  immutable change-set snapshot after execution, and writes approvals outside
+  agent claims. Approval record contains gate, approver identity, path scope,
+  attempt ID, issuance time, and optional expiry.
+- rationale: prevents untracked-file scope escape and agent-forged approval.
+- alternatives considered: trusting `changed_files` or `approved_gates` from
+  claim payload.
+- accepted trade-offs: controller performs extra Git inspection and approval
+  records contain audit metadata.
+- affected owners and boundaries: change-set collector, gate engine, controller,
+  run record, and verifier.
+
+### Decision: Lane plan and retry policy are explicit policy data
+
+- context: later modes need lane topology and bounded recovery without new
+  lifecycle branches.
+- selected approach: managed request names a lane plan and route names one retry
+  policy. Lane plan owns lane IDs, roles, dependencies, and intended writable
+  scope; retry policy owns attempt limit, retryable reasons, and exhaustion
+  outcome.
+- rationale: parallelism and recovery differ by data, not duplicated runner
+  logic.
+- alternatives considered: inferring lanes from agent output; hard-coding retry
+  limits in controller prompts.
+- accepted trade-offs: managed requests carry more structured metadata.
+- affected owners and boundaries: task schema, harness policy, preflight,
+  controller, and tests.
+
+### Decision: Static policy, role contract, and run state have separate SSOTs
+
+- context: routing policy, role requirements, and one execution's mutable state
+  change at different rates and must not be duplicated.
+- selected approach: `repo_config/harness.yaml` owns static route policy;
+  `agents/roles.yaml` owns role contract; `.harness/runs/<run-id>/run.json`
+  owns one run's mutable record.
+- rationale: one owner per fact preserves reproducibility without placing
+  mutable state in policy or repeating route details in roles.
+- alternatives considered: one giant configuration file; packet, claim, and
+  evidence files with independent authority.
+- accepted trade-offs: run record is a larger structured document and requires
+  atomic controller-only writes.
+- affected owners and boundaries: harness policy, role catalog, executor, and
+  local ignored `.harness/` artifacts.
+
+### Decision: Attempt packets are immutable; run contains attempts
+
+- context: retries and escalations may need new template, role, mode, scope, or
+  review policy while prior authorization must remain auditable.
+- selected approach: every attempt stores its own immutable packet snapshot;
+  top-level run stores request, state history, and ordered attempts.
+- rationale: preserves original authorization and enables mode escalation
+  without mutating history.
+- alternatives considered: one mutable packet per run; one independent file per
+  attempt stage.
+- accepted trade-offs: run consumers read the active attempt rather than a
+  top-level packet field.
+- affected owners and boundaries: controller preflight, executor, verifier, and
+  run-artifact reader.
+
+### Decision: Policy permission and executor capability are distinct
+
+- context: a route can permit a mode before local runtime has its tested handler.
+- selected approach: route policy determines whether a mode is allowed; executor
+  capability registry determines whether it is implemented. A mode runs only at
+  their intersection.
+- rationale: avoids configuration claiming behavior unavailable in current
+  runtime while preserving future route policy.
+- alternatives considered: silently downgrade modes; remove all future modes
+  from policy until implementation.
+- accepted trade-offs: preflight can return `execution_mode_unavailable`.
+- affected owners and boundaries: harness policy, executor capability registry,
+  controller, and tests.
+
+### Decision: Controller is sole run-record writer
+
+- context: parallel lanes cannot safely mutate one shared JSON record.
+- selected approach: agents return claims to controller; controller validates and
+  atomically persists every run update with ordered state history.
+- rationale: preserves one run SSOT and avoids concurrent-write corruption.
+- alternatives considered: agents writing lane JSON files; shared writable
+  `run.json`.
+- accepted trade-offs: controller must collect complete claims before persistence.
+- affected owners and boundaries: dispatch adapter, agent protocol, local run
+  artifact writer.
+
+### Decision: Review and approval are different evidence paths
+
+- context: human permission to touch protected policy differs from a reviewer
+  judging semantic behavior.
+- selected approach: approval gates authorize actions; semantic criteria use
+  reviewer or manual-review evidence. Neither substitutes for the other.
+- rationale: prevents protected-path permission from falsely proving product
+  quality and prevents semantic uncertainty from authorizing protected changes.
+- alternatives considered: treating all semantic uncertainty as approval.
+- accepted trade-offs: some tasks require a review step before acceptance.
+- affected owners and boundaries: criteria schema, review roles, approval gate
+  records, and controller decision.
+
+### Compatibility, Migration, and Risk
+
+- old behavior: controller separately invokes `preflight`, dispatches work, and
+  invokes `verify`; version-1 task criteria are plain strings, approval data is
+  claim-supplied, and verify may auto-prove criteria after no blockers.
+- new behavior: `run` owns orchestration; managed-run requests use typed
+  evidence criteria and planned write paths; standalone commands remain usable.
+- compatibility boundary: existing version-1 `preflight` and `verify` inputs
+  remain supported. Version-1 criteria cannot be auto-accepted by managed run
+  without explicit review evidence, and version-1 claim approvals never satisfy
+  managed-run gates.
+- migration or backfill: Not applicable to repository data. Controllers migrate
+  request producers to typed criteria and `planned_write_paths` before relying
+  on managed execution.
+- rollout and rollback: enable only `single_agent` capability first; retain
+  standalone commands as rollback path until managed-run evidence is stable.
+- deprecation or consumer impact: no immediate removal of existing CLI commands
+  or packet fields.
+- risk:
+  - provider cannot hard-restrict selected tools.
+    - mitigation: dispatch adapter applies available restrictions, packet and
+      prompt state allowed tools, and verifier never claims hard enforcement
+      where platform lacks it.
+  - interrupted write corrupts run history.
+    - mitigation: controller writes atomically and validates record before each
+      transition.
+  - retry loops waste tokens.
+    - mitigation: policy defines bounded retry count and escalation/block
+      decision after exhaustion.
+
+## Invariants and Edge Cases
+
+### Invariants
+
+- every dispatched lane has one validated immutable packet snapshot.
+- controller alone writes run state and performs accept, retry, escalate, and
+  approval-resume transitions.
+- no mode silently changes or falls back after preflight.
+- every changed path is checked against allowed scope and post-execution gates.
+- every automated acceptance claim cites declared evidence.
+- approval authorization never proves semantic review; semantic review never
+  grants protected-path authorization.
+- generated prompts and adapter surfaces never become policy SSOTs.
+- friction recording never mutates harness policy during an active run.
+
+### Edge Cases
+
+- empty or minimal input: missing task type, criteria, base reference, planned
+  write paths for managed write work, or mode produces preflight block.
+- normal and large input: one run may contain multiple attempts and lanes;
+  record size remains bounded by truncated command output and referenced artifact
+  paths rather than unbounded raw logs.
+- duplicate, missing, malformed, or unsupported data: duplicate run ID, invalid
+  decision, invalid claim, forged approval, unknown check, unknown evidence
+  kind, invalid lane graph, retry-policy mismatch, and unknown mode block
+  without dispatch.
+- retry, cancellation, timeout, partial failure, or concurrency: cancellation,
+  timeout, missing lane claim, or partial parallel failure records decision and
+  preserves completed lane evidence; retry creates successor attempt only.
+- migration or mixed-version state: legacy standalone version-1 requests remain
+  valid; managed runs require typed criteria before automatic acceptance.
+- generated-source consistency: canonical policy, roles, skills, and rules are
+  edited at source and adapter synchronization runs before managed execution.
+- security boundary: task-provided criteria can select only configured checks;
+  task input cannot supply arbitrary shell commands or escape workspace paths;
+  claims cannot supply approvals; change-set collection includes untracked
+  nonignored paths.
+
+## Validation Plan
+
+### Backend Verification Claims
+
+- direct boundary: JSON request, packet, run record, claim, evidence, and
+  decision schemas reject malformed and unsafe input.
+- important success and failure behavior: prove single-agent success, failed
+  check, invalid claim, unsupported mode, scope escape, pre-gate approval,
+  post-gate approval, review-required criterion, retry, escalation, and
+  interrupted-run recovery.
+- final state or side effects: verify atomic `run.json`, immutable prior
+  attempts, workspace cleanup or preservation policy, and no dispatch before a
+  blocking preflight or gate decision.
+- rollback, retry, duplicate, or idempotency behavior: rerunning an interrupted
+  operation resumes or blocks from recorded state without duplicating accepted
+  side effects; retry creates one successor attempt.
+- canonical contract and conformance proof: validate harness policy references,
+  role contracts, request/claim/run schemas, and generated adapter drift.
+- real dependencies requiring proof: platform dispatch and workspace worktree
+  behavior require representative integration proof when handlers are added.
+- representative-operation trace mechanism: per-run state history, lane claims,
+  command evidence, decisions, and friction records in `run.json`.
+- performance claim and threshold: Not applicable for first foreground
+  single-agent slice; record timing for future concurrency evaluation.
+
+### Acceptance Criterion: Single lifecycle owner
+
+- setup or precondition: valid managed-run request for supported `single_agent`.
+- action: execute run through an agent claim and verification.
+- expected result: one run record contains packet, one lane, claim, evidence,
+  decision, and ordered transitions through accepted or blocked state.
+- failure condition: controller needs a route-specific runner or separate
+  lifecycle authority to finish task.
+- proof method: direct harness test with fake dispatch and check runners.
+- expected evidence: validated run record and automated test output.
+
+### Acceptance Criterion: Policy and capability intersection
+
+- setup or precondition: route permits a mode without registered executor
+  handler.
+- action: preflight managed run for that mode.
+- expected result: no workspace or agent is created; decision is
+  `block/execution_mode_unavailable`.
+- failure condition: executor silently runs another mode.
+- proof method: direct harness test with dispatch spy.
+- expected evidence: no dispatch call and recorded blocking decision.
+
+### Acceptance Criterion: Immutable escalation
+
+- setup or precondition: first attempt completes with escalation decision.
+- action: controller starts successor attempt with a different permitted mode or
+  template.
+- expected result: attempt one packet and evidence remain unchanged; attempt two
+  has separate packet and lane set.
+- failure condition: original packet is overwritten.
+- proof method: direct run-record transition test.
+- expected evidence: before/after record comparison.
+
+### Acceptance Criterion: Honest criteria and review separation
+
+- setup or precondition: one command criterion, one file or diff criterion,
+  and one semantic review criterion.
+- action: run verification with automated evidence passing and review absent.
+- expected result: automated criteria are proven; semantic criterion is
+  `review_required`; run cannot accept until reviewer evidence exists.
+- failure condition: no blocker marks all criteria proven or approval substitutes
+  for review.
+- proof method: direct verifier tests.
+- expected evidence: criterion-level verification results and decision.
+
+### Acceptance Criterion: Symmetric gates
+
+- setup or precondition: protected path appears in planned write paths or actual
+  Git diff.
+- action: evaluate authorization before dispatch and verification after claim.
+- expected result: shared matcher produces approval decision before dispatch and
+  prevents acceptance after unapproved actual protected change.
+- failure condition: separate path-policy logic yields divergent results.
+- proof method: parameterized gate-engine tests with same patterns and both
+  inputs.
+- expected evidence: matching blocker or approval-decision records.
+
+## Completion Criteria
+
+Specification is complete when:
+
+1. one run lifecycle, run authority, per-attempt packet immutability, criteria
+   evidence, gate semantics, decision protocol, and mode admissibility are
+   explicit
+2. static policy, role contract, and mutable run state have one named owner
+3. approval, review, retry, escalation, and blocked behavior are distinguished
+4. first-slice and later-mode compatibility boundaries are explicit
+5. every required outcome maps to direct validation intent
+6. no unresolved design question requires an implementation-time policy choice
+7. implementation sequencing remains outside this specification

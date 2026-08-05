@@ -13,7 +13,15 @@ This file is repo-wide instruction layer. More specific directory instructions o
 
 ## Subagent Routing
 
-Use only these agent types:
+`repo_config/harness.yaml` owns route selection. For managed execution,
+controller starts version-2 request through host-supplied `run_managed` adapter
+boundary. `run.json` owns mutable run state; each attempt owns immutable packet.
+Packet owns template, role, rules, skills, allowed tools, workspace, checks,
+approval gates, planned write paths, resolved base commit, and orchestration
+mode. Generic CLI has no platform agent adapter and must report unavailable
+mode instead of claiming dispatch.
+
+Use only packet-selected agent types:
 
 - `low`: small, narrow, low-risk work.
 - `normal`: routine implementation, testing, exploration, and focused analysis.
@@ -25,16 +33,16 @@ When spawning a subagent:
 - Use a fresh-context fork when selecting a different agent type.
 - Never override the template's model or reasoning effort.
 - Do not select unnamed or other agent types.
-- Subagents must not spawn other agents unless explicitly requested.
-
-Routing order:
-
-1. Use `low` for clearly bounded work involving one file, one lookup, one localized edit, or one targeted check.
-2. Use `normal` for ordinary delegated work, including focused multi-file implementation.
-3. Use `high` only when work is materially complex, high-risk, architectural, or `normal` could not resolve it.
-4. If scope grows beyond the selected agent, stop and delegate again using the appropriate higher agent type.
-
-Do not use `low` for multi-file implementation, architectural decisions, ambiguous debugging, security-sensitive changes, migrations, or broad refactors.
+- Subagents must not spawn other agents.
+- If task scope or needed capability changes, controller creates successor
+  attempt and regenerates immutable packet.
+- Harness dispatches only mode intersection of route policy and enforced host
+  capability. Controller alone accepts, retries, escalates, requests approval,
+  or blocks through recorded decision.
+- Agents return claimed results; harness records fresh verification evidence and
+  never accepts, retries, escalates, or approves autonomously.
+- Parallel writers need disjoint paths and isolated workspaces.
+- Without validated packet, do not dispatch subagent. Source-first routing still applies to controller work.
 
 ## Project Design Rules
 
@@ -117,7 +125,7 @@ Skip skill for copy-only edits, mechanical selector changes, or isolated nonvisu
 
 ## Code Intelligence
 
-Use native code tools for current files and small local changes, Serena for exact symbols and references, GitNexus for broad flows or impact, and DeepWiki for advisory orientation in unfamiliar external GitHub repositories. Do not query multiple tools for the same fact by default. Source and tests win every conflict; unavailable tools never block safe source-first work.
+Use native code tools for current files and small local changes, optional Semble MCP for broad unknown-location local concepts, `rg` for exact text, Serena for exact symbols and references, GitNexus for broad flows or impact, optional `sg` for structural preview, and DeepWiki for advisory orientation in unfamiliar external GitHub repositories. `apply_patch` remains sole source edit path. Do not query multiple tools for the same fact by default. Source and tests win every conflict; unavailable tools never block safe source-first work.
 
 - Serena runs with `--context codex --project-from-cwd`, `no-memories`, and `no-onboarding`. Never commit `.serena/` state.
 - GitNexus remains optional and private-only. Check freshness before high-trust impact or refactor use; never make refresh a universal completion gate.

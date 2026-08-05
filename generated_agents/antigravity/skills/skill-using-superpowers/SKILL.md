@@ -49,6 +49,12 @@ Skills speak in actions ("dispatch a subagent", "create a todo", "read a file") 
 
 # Using Skills
 
+## Harness Packets
+
+When controller provides validated harness packet, use only its selected skills.
+Rules remain mandatory. A new skill request requires controller reroute and packet regeneration.
+Without packet, keep source-first skill discovery.
+
 ## The Rule
 
 **Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
