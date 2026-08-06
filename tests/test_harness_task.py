@@ -60,6 +60,7 @@ def managed_request(**overrides):
         "run_id": "managed-test",
         "task_type": "local_change",
         "execution_mode": "single_agent",
+        "user_request": "Update managed harness fixture.",
         "acceptance_criteria": [{"id": "diff", "kind": "check", "check": "diff"}],
         "allowed_paths": ["scripts/**", "tests/**"],
         "planned_write_paths": ["scripts/harness_task.py"],
@@ -70,9 +71,10 @@ def managed_request(**overrides):
 
 
 class FakeAdapter:
-    def __init__(self, capabilities, claim_payload=None, dispatch_error=None):
+    def __init__(self, capabilities, claim_payload=None, validator_claim=None, dispatch_error=None):
         self.capabilities_value = capabilities
         self.claim_payload = claim_payload
+        self.validator_claim = validator_claim
         self.dispatch_error = dispatch_error
         self.calls = []
 
@@ -84,23 +86,79 @@ class FakeAdapter:
         self.calls.append("prepare_workspace")
         return {"kind": "current", "path": str(ROOT)}
 
+    def verify_tool_bindings(self, lane, packet, workspace):
+        self.calls.append("verify_tool_bindings")
+        access_key = "validator_access" if lane["kind"] == "validate" else "writer_access"
+        return [{
+            "tool": binding["tool"],
+            "host_kind": binding["host_kind"],
+            "access": binding[access_key],
+            "root_probe": binding["root_probe"],
+            "workspace_root": workspace["path"],
+            "verified": True,
+        } for binding in packet["tool_bindings"]]
+
+    def run_checks(self, packet, workspace):
+        self.calls.append("run_checks")
+        return {
+            name: {
+                "command": command,
+                "workspace_root": workspace["path"],
+                "tool": "shell",
+                "binding_verified": True,
+                "exit_code": 0,
+                "stdout": "ok",
+                "stderr": "",
+            }
+            for name, command in packet["checks"].items()
+        }
+
     def dispatch_lane(self, lane, packet, workspace, cancellation_token):
         self.calls.append("dispatch_lane")
         if self.dispatch_error is not None:
             raise self.dispatch_error
         return {"lane_id": lane["lane_id"]}
 
+    def materialize_final_state(self, lane, packet, workspaces):
+        self.calls.append("materialize_final_state")
+        return {"kind": "isolated", "path": str(ROOT)}
+
     def cancel_lane(self, handle):
         self.calls.append("cancel_lane")
 
     def collect_claim(self, handle):
         self.calls.append("collect_claim")
+        if handle["lane_id"] == "validate":
+            if self.validator_claim is not None:
+                return self.validator_claim
+            return {
+                "kind": "claimed_result",
+                "summary": "validated",
+                "findings": ["ok"],
+                "verdict": "pass",
+            }
         if self.claim_payload is not None:
             return self.claim_payload
         return {
             "kind": "claimed_result",
             "summary": "done",
             "changed_files": ["scripts/harness_task.py"],
+        }
+
+    def collect_lane_evidence(self, handle, lane, packet, workspace):
+        self.calls.append("collect_lane_evidence")
+        return {
+            "lane_id": lane["lane_id"],
+            "workspace_root": workspace["path"],
+            "thread_id": "thread",
+            "turn_id": f"turn-{lane['lane_id']}",
+            "sandbox": "read-only" if lane["kind"] == "validate" else "workspace-write",
+            "selected_tools_used": ["shell"],
+            "tool_calls": ["shell"],
+            "command_results": [{"cwd": workspace["path"], "exit_code": 0}],
+            "ambient_mcp": False,
+            "workspace_status_before": "",
+            "workspace_status_after": "",
         }
 
 
@@ -112,7 +170,7 @@ def test_resolve_task_returns_route_packet() -> None:
     assert packet["template"] == "normal"
     assert packet["role"] == "implement"
     assert packet["checks"] == {"diff": ["git", "diff", "--check"]}
-    assert packet["orchestration"]["name"] == "single_agent"
+    assert packet["orchestration"]["name"] == "single_work_lane"
 
 
 def test_resolve_task_selects_validated_sequential_orchestration() -> None:
@@ -121,12 +179,72 @@ def test_resolve_task_selects_validated_sequential_orchestration() -> None:
     packet = harness.resolve_task(ROOT, task(execution_mode="sequential_agents"))
 
     assert packet["orchestration"] == {
-        "name": "sequential_agents",
+        "name": "sequential_work_lanes",
+        "work_scheduling": "sequential",
         "max_parallel_writers": 1,
-        "workspace_mode": "current",
+        "workspace_mode": "isolated",
+        "validator_role": "validate",
         "review_required": True,
     }
     assert "multi-agent-orchestration-rule" in packet["rules"]
+
+
+def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
+
+    assert packet["version"] == 3
+    assert packet["user_request"] == "Update managed harness fixture."
+    assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
+    assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
+    assert packet["orchestration"]["name"] == "single_work_lane"
+    assert [(lane["lane_id"], lane["kind"], lane["dependencies"]) for lane in packet["lanes"]] == [
+        ("primary", "work", []),
+        ("integrate", "integrate", ["primary"]),
+        ("validate", "validate", ["integrate"]),
+    ]
+    assert packet["lanes"][2]["role"] == "validate"
+    assert packet["lanes"][2]["write_capable"] is False
+    assert packet["tool_bindings"] == [
+        {"tool": "shell", "host_kind": "app_server_shell", "writer_access": "workspace_write", "validator_access": "read_only", "root_probe": "shell_root_probe"},
+        {"tool": "serena", "host_kind": "local_serena", "writer_access": "workspace_write", "validator_access": "read_only", "root_probe": "serena_root_probe"},
+        {"tool": "ast_grep_preview", "host_kind": "local_ast_grep", "writer_access": "read_only", "validator_access": "read_only", "root_probe": "ast_grep_root_probe"},
+    ]
+
+
+def test_resolve_managed_packet_rejects_v3_legacy_mode_alias() -> None:
+    harness = load_module()
+
+    with pytest.raises(harness.HarnessError, match="canonical execution mode"):
+        harness.resolve_managed_packet(ROOT, managed_request(version=3), attempt_id="attempt-1")
+
+
+def test_resolve_managed_packet_adds_system_lanes_after_v3_work_lane() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(
+            version=3,
+            execution_mode="sequential_work_lanes",
+            lanes=[{
+                "lane_id": "work",
+                "role": "implement",
+                "allowed_paths": ["scripts/**"],
+                "dependencies": [],
+                "workspace_mode": "isolated",
+                "write_capable": True,
+            }],
+        ),
+        attempt_id="attempt-1",
+    )
+
+    assert [(lane["lane_id"], lane["kind"], lane["dependencies"]) for lane in packet["lanes"]] == [
+        ("work", "work", []),
+        ("integrate", "integrate", ["work"]),
+        ("validate", "validate", ["integrate"]),
+    ]
 
 
 def test_preflight_cli_prints_only_packet_json(tmp_path: Path) -> None:
@@ -228,7 +346,7 @@ def test_verify_rejects_failed_check_and_invalid_transition() -> None:
 
 def test_run_managed_blocks_unavailable_mode_without_dispatch(tmp_path: Path) -> None:
     harness = load_module()
-    adapter = FakeAdapter({"single_agent": "enforced"})
+    adapter = FakeAdapter({"single_work_lane": "enforced"})
     run_dir = ROOT / ".harness" / "runs" / tmp_path.name
     try:
         result = harness.run_managed(
@@ -241,7 +359,7 @@ def test_run_managed_blocks_unavailable_mode_without_dispatch(tmp_path: Path) ->
                     "role": "implement",
                     "allowed_paths": ["scripts/**", "tests/**"],
                     "dependencies": [],
-                    "workspace_mode": "current",
+                    "workspace_mode": "isolated",
                     "write_capable": True,
                 }],
             ),
@@ -256,9 +374,58 @@ def test_run_managed_blocks_unavailable_mode_without_dispatch(tmp_path: Path) ->
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_unavailable_managed_run_requires_explicit_unvalidated_waiver(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=run_id), FakeAdapter({}))
+
+        assert result["outcome"]["reason"] == "execution_mode_unavailable"
+        assert result["outcome"]["allowed_decisions"] == ["waive", "block"]
+        with pytest.raises(harness.HarnessError, match="waiver reason"):
+            harness.apply_controller_decision(ROOT, run_id, {"kind": "waive"})
+
+        waived = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "waive", "reason": "host adapter unavailable"},
+        )
+
+        assert waived["state"] == "unvalidated"
+        run = json.loads((run_dir / "run.json").read_text())
+        assert run["attempts"][0]["decision"]["reason"] == "host adapter unavailable"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_generic_cli_records_unvalidated_waiver(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    task_path = tmp_path / "task.json"
+    decision_path = tmp_path / "decision.json"
+    task_path.write_text(json.dumps(managed_request(run_id=run_id)), encoding="utf-8")
+    decision_path.write_text(
+        json.dumps({"kind": "waive", "reason": "generic CLI has no host adapter"}),
+        encoding="utf-8",
+    )
+    try:
+        assert harness.main(["--repo-root", str(ROOT), "run", "--task", str(task_path)]) == 1
+        assert harness.main(
+            ["--repo-root", str(ROOT), "decision", "--run-id", run_id, "--decision", str(decision_path)]
+        ) == 1
+
+        run = json.loads((run_dir / "run.json").read_text())
+        assert run["state"] == "unvalidated"
+        assert run["attempts"][0]["outcome"]["reason"] == "execution_mode_unavailable"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) -> None:
     harness = load_module()
-    adapter = FakeAdapter({"single_agent": "enforced"})
+    adapter = FakeAdapter({"single_work_lane": "enforced"})
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     try:
@@ -272,7 +439,19 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
 
         assert result["state"] == "awaiting_decision"
         assert result["outcome"]["reason"] == "verification_passed"
-        assert adapter.calls == ["capabilities", "prepare_workspace", "dispatch_lane", "collect_claim"]
+        assert adapter.calls == [
+            "capabilities",
+            "prepare_workspace",
+            "verify_tool_bindings",
+            "dispatch_lane",
+            "collect_claim",
+            "collect_lane_evidence",
+            "materialize_final_state",
+            "verify_tool_bindings",
+            "dispatch_lane",
+            "collect_claim",
+            "collect_lane_evidence",
+        ]
 
         accepted = harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
 
@@ -280,6 +459,190 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
         run = json.loads((run_dir / "run.json").read_text())
         assert [item["state"] for item in run["state_history"]] == [
             "classified", "planned", "running", "observed", "verifying", "awaiting_decision", "accepted"
+        ]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_unverified_packet_tool_blocks_before_writer_dispatch(tmp_path: Path) -> None:
+    class UnboundToolAdapter(FakeAdapter):
+        def verify_tool_bindings(self, lane, packet, workspace):
+            self.calls.append("verify_tool_bindings")
+            raise RuntimeError("packet-scoped native tool roots unavailable: serena")
+
+    harness = load_module()
+    adapter = UnboundToolAdapter({"single_work_lane": "enforced"})
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=run_id), adapter)
+
+        assert result["state"] == "awaiting_decision"
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert adapter.calls == ["capabilities", "prepare_workspace", "verify_tool_bindings"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_managed_run_uses_host_check_evidence(tmp_path: Path) -> None:
+    harness = load_module()
+    adapter = FakeAdapter({"single_work_lane": "enforced"})
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            adapter,
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        assert result["outcome"]["reason"] == "verification_passed"
+        run = json.loads((run_dir / "run.json").read_text())
+        assert len(run["attempts"][0]["tool_binding_evidence"]) == 2
+        assert [record["lane_id"] for record in run["attempts"][0]["execution_evidence"]] == ["primary", "validate"]
+        assert run["attempts"][0]["evidence"]["checks"][0]["workspace_root"] == str(ROOT)
+        assert "run_checks" in adapter.calls
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_managed_validator_fail_blocks_acceptance(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter(
+                {"single_work_lane": "enforced"},
+                validator_claim={
+                    "kind": "claimed_result",
+                    "summary": "validation failed",
+                    "findings": ["failure"],
+                    "verdict": "fail",
+                },
+            ),
+            run_check=lambda command: (0, "ok", ""),
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        assert result["outcome"]["reason"] == "verification_failed"
+        evidence = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]
+        assert evidence["criteria"][-1] == {
+            "id": "validator",
+            "kind": "validator",
+            "status": "failed",
+            "evidence_ref": "validator_claim",
+        }
+        with pytest.raises(harness.HarnessError, match="not allowed for current outcome"):
+            harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_managed_validator_rejects_invalid_verdict(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter(
+                {"single_work_lane": "enforced"},
+                validator_claim={
+                    "kind": "claimed_result",
+                    "summary": "invalid validation",
+                    "findings": ["invalid"],
+                    "verdict": "unknown",
+                },
+            ),
+        )
+
+        assert result["outcome"]["reason"] == "claim_invalid"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    ("execution_mode", "lanes", "work_lane_ids"),
+    [
+        ("single_work_lane", None, ["primary"]),
+        (
+            "sequential_work_lanes",
+            [
+                {
+                    "lane_id": "first",
+                    "role": "implement",
+                    "allowed_paths": ["scripts/**"],
+                    "dependencies": [],
+                    "workspace_mode": "isolated",
+                    "write_capable": True,
+                },
+                {
+                    "lane_id": "second",
+                    "role": "implement",
+                    "allowed_paths": ["tests/**"],
+                    "dependencies": ["first"],
+                    "workspace_mode": "isolated",
+                    "write_capable": True,
+                },
+            ],
+            ["first", "second"],
+        ),
+        (
+            "parallel_work_lanes",
+            [
+                {
+                    "lane_id": "scripts",
+                    "role": "implement",
+                    "allowed_paths": ["scripts/**"],
+                    "dependencies": [],
+                    "workspace_mode": "isolated",
+                    "write_capable": True,
+                },
+                {
+                    "lane_id": "tests",
+                    "role": "implement",
+                    "allowed_paths": ["tests/**"],
+                    "dependencies": [],
+                    "workspace_mode": "isolated",
+                    "write_capable": True,
+                },
+            ],
+            ["scripts", "tests"],
+        ),
+    ],
+)
+def test_generic_scheduler_proves_every_canonical_topology(
+    tmp_path: Path,
+    execution_mode: str,
+    lanes: list[dict[str, object]] | None,
+    work_lane_ids: list[str],
+) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    request = managed_request(version=3, run_id=run_id, execution_mode=execution_mode)
+    if lanes is not None:
+        request["lanes"] = lanes
+    try:
+        result = harness.run_managed(
+            ROOT,
+            request,
+            FakeAdapter({execution_mode: "enforced"}),
+            run_check=lambda command: (0, "ok", ""),
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        assert result["outcome"]["reason"] == "verification_passed"
+        attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+        assert [record["lane_id"] for record in attempt["claims"]] == [
+            *work_lane_ids,
+            "integrate",
+            "validate",
         ]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -302,7 +665,7 @@ def test_managed_verification_rejects_forged_claim_approval(tmp_path: Path) -> N
                 run_id=run_id,
                 allowed_paths=["scripts/**", "repo_config/**"],
             ),
-            FakeAdapter({"single_agent": "enforced"}, claim_payload),
+            FakeAdapter({"single_work_lane": "enforced"}, claim_payload),
             run_check=lambda command: (0, "ok", ""),
             collect_changes=lambda root, base_commit: [{"path": "repo_config/harness.yaml", "kind": "modified"}],
         )
@@ -328,14 +691,18 @@ def test_managed_review_criterion_never_auto_proves(tmp_path: Path) -> None:
                     {"id": "review", "kind": "review"},
                 ],
             ),
-            FakeAdapter({"single_agent": "enforced"}),
+            FakeAdapter({"single_work_lane": "enforced"}),
             run_check=lambda command: (0, "ok", ""),
             collect_changes=lambda root, base_commit: [],
         )
 
         assert result["outcome"]["reason"] == "review_required"
         evidence = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]
-        assert [criterion["status"] for criterion in evidence["criteria"]] == ["proven", "review_required"]
+        assert [criterion["status"] for criterion in evidence["criteria"]] == [
+            "proven",
+            "review_required",
+            "proven",
+        ]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -348,7 +715,7 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         first = harness.run_managed(
             ROOT,
             managed_request(run_id=run_id),
-            FakeAdapter({"single_agent": "enforced"}),
+            FakeAdapter({"single_work_lane": "enforced"}),
             run_check=lambda command: (1, "", "failed"),
             collect_changes=lambda root, base_commit: [],
         )
@@ -361,7 +728,7 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         second = harness.run_managed(
             ROOT,
             None,
-            FakeAdapter({"single_agent": "enforced"}),
+            FakeAdapter({"single_work_lane": "enforced"}),
             run_id=run_id,
             run_check=lambda command: (1, "", "failed"),
             collect_changes=lambda root, base_commit: [],
@@ -406,7 +773,7 @@ def test_managed_planned_gate_blocks_before_dispatch_and_accepts_controller_appr
         "planned_write_paths": ["repo_config/harness.yaml"],
     }
     try:
-        blocked_adapter = FakeAdapter({"single_agent": "enforced"})
+        blocked_adapter = FakeAdapter({"single_work_lane": "enforced"})
         blocked = harness.run_managed(
             ROOT,
             managed_request(run_id=blocked_id, **request),
@@ -429,7 +796,7 @@ def test_managed_planned_gate_blocks_before_dispatch_and_accepts_controller_appr
                     "issued_at": now.isoformat(),
                 }],
             ),
-            FakeAdapter({"single_agent": "enforced"}),
+            FakeAdapter({"single_work_lane": "enforced"}),
             run_check=lambda command: (0, "ok", ""),
             collect_changes=lambda root, base_commit: [],
             now=now,
@@ -448,7 +815,7 @@ def test_managed_dispatch_failure_becomes_retryable_outcome(tmp_path: Path) -> N
         result = harness.run_managed(
             ROOT,
             managed_request(run_id=run_id),
-            FakeAdapter({"single_agent": "enforced"}, dispatch_error=RuntimeError("offline")),
+            FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=RuntimeError("offline")),
         )
 
         assert result["state"] == "awaiting_decision"
@@ -471,7 +838,7 @@ def test_approval_resume_creates_successor_attempt(tmp_path: Path) -> None:
         first = harness.run_managed(
             ROOT,
             managed_request(run_id=run_id, **request),
-            FakeAdapter({"single_agent": "enforced"}),
+            FakeAdapter({"single_work_lane": "enforced"}),
             now=now,
         )
         assert first["outcome"]["reason"] == "approval_required"

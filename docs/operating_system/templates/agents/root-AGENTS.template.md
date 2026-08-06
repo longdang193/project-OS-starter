@@ -41,6 +41,14 @@ When spawning a subagent:
   or blocks through recorded decision.
 - Agents return claimed results; harness records fresh verification evidence and
   never accepts, retries, escalates, or approves autonomously.
+- Work is managed only after host adapter creates a packet and `run.json`.
+  Never call unpacketed work managed, validated, or accepted.
+- When selected managed mode returns `execution_mode_unavailable`, block it or
+  record controller `waive` decision with a reason. A waived run is terminal
+  `unvalidated`; local proof cannot become managed acceptance.
+- Independent validator claims exist only when host advertises and dispatches
+  an enforced read-only validator lane. Do not infer validator evidence from
+  local checks or an implementer claim.
 - Parallel writers need disjoint paths and isolated workspaces.
 - Without validated packet, do not dispatch subagent. Source-first routing still applies to controller work.
 

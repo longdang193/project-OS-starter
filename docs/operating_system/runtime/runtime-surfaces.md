@@ -14,7 +14,7 @@ This document records provider-native deployment for rules, skills, root instruc
 
 | Provider | Root instructions | Rules | Native skills | Hooks/settings |
 | --- | --- | --- | --- | --- |
-| Codex | `generated_agents/codex/AGENTS.md` | `generated_agents/codex/rules/*.rules` | `generated_agents/codex/skills/<skill>/SKILL.md` | `generated_agents/codex/hooks.json` |
+| Codex | `generated_agents/codex/AGENTS.md` | — | `generated_agents/codex/skills/<skill>/SKILL.md` | — (host adapter required) |
 | Claude | `generated_agents/claude/CLAUDE.md` | `generated_agents/claude/rules/*.md` | `generated_agents/claude/skills/<skill>/SKILL.md` | `generated_agents/claude/settings.json` |
 | Antigravity/Gemini | `generated_agents/antigravity/GEMINI.md` | `generated_agents/antigravity/rules/*.md` | `generated_agents/antigravity/skills/<skill>/SKILL.md` | `generated_agents/antigravity/settings.json` |
 

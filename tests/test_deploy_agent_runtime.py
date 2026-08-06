@@ -288,6 +288,29 @@ def test_runtime_stale_generated_files_marks_excluded_codex_skills(tmp_path: Pat
     assert runtime_skill in stale
 
 
+def test_runtime_stale_generated_files_marks_retired_codex_rule(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    target_root = tmp_path / "runtime"
+    generated_root.mkdir(parents=True)
+    target_root.mkdir(parents=True, exist_ok=True)
+    (generated_root / "AGENTS.md").write_text("generated root", encoding="utf-8")
+
+    retired_rule = target_root / "rules" / "global-baseline-contract.rules"
+    retired_rule.parent.mkdir(parents=True, exist_ok=True)
+    retired_rule.write_text(
+        "<!-- GENERATED FILE - DO NOT EDIT -->\nlegacy rule\n",
+        encoding="utf-8",
+    )
+
+    stale = DEPLOY._runtime_stale_generated_files(
+        generated_root,
+        target_root,
+        platform="codex",
+    )
+
+    assert retired_rule in stale
+
+
 def test_shared_skill_deploy_preserves_unrelated_installed_skills(tmp_path: Path) -> None:
     skills_root = tmp_path / "repo-skills"
     target_root = tmp_path / "user-skills"

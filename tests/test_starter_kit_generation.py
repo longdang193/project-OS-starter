@@ -143,6 +143,7 @@ def test_production_manifest_includes_harness_and_excludes_run_state(tmp_path: P
     assert (kit_root / "scripts" / "harness_task.py").is_file()
     assert (kit_root / "scripts" / "validate_harness_config.py").is_file()
     assert (kit_root / "docs" / "operating_system" / "tooling" / "harness-routing.generated.md").is_file()
+    assert (kit_root / "docs" / "operating_system" / "procedures" / "managed-execution-adapter-contract.md").is_file()
     assert not (kit_root / ".harness").exists()
 
 

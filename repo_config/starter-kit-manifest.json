@@ -50,6 +50,7 @@
     ".agents/skills/skill-using-superpowers/SKILL.md",
     "agents/roles.yaml",
     "docs/operating_system/governance/repo-governance.md",
+    "docs/operating_system/procedures/managed-execution-adapter-contract.md",
     "docs/superpowers/plans",
     "docs/superpowers/specs",
     "repo_config/planning_artifact_schema.yaml",

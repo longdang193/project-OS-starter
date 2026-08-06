@@ -35,6 +35,10 @@ ordinary direct execution.
   escalate, request approval, or block. Commit policy remains separate.
 - Generic CLI has no platform agent adapter. It must return
   `execution_mode_unavailable`, not claim dispatch occurred.
+- Controller may record `waive` only with reason. Waived work is terminal
+  `unvalidated`; local proof remains local and cannot become managed acceptance.
+- Independent validator evidence requires host dispatch of a separate enforced,
+  read-only validator lane. Implementer claims and local checks do not count.
 
 ## Per Task
 
@@ -53,4 +57,5 @@ ordinary direct execution.
 
 Stop with managed `block` when host capability is unavailable, lane scope
 overlaps another active writer, proof cannot run, or approval gate triggers.
-Do not use manual controller glue to bypass recorded outcome or decision.
+Use explicit `waive` only to record local-only `unvalidated` work. Do not use
+manual controller glue to bypass recorded outcome or decision.

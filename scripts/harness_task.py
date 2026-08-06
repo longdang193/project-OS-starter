@@ -43,13 +43,18 @@ class HarnessError(ValueError):
     pass
 
 
+class ClaimError(HarnessError):
+    pass
+
+
 CheckRunner = Callable[[list[str]], tuple[int, str, str]]
 ChangeCollector = Callable[[Path, str], list[dict[str, str]]]
 
-MANAGED_VERSION = 2
+MANAGED_VERSION = 3
+LEGACY_MANAGED_VERSION = 2
 CAPABILITY_LEVELS = {"enforced", "advisory", "unavailable"}
-CRITERION_KINDS = {"check", "change_set", "review", "manual"}
-DECISION_KINDS = {"accept", "retry", "escalate", "request_approval", "block"}
+CRITERION_KINDS = {"check", "change_set", "review", "manual", "validator"}
+DECISION_KINDS = {"accept", "retry", "escalate", "request_approval", "waive", "block"}
 RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+\Z")
 
 
@@ -70,6 +75,23 @@ def _load_policy(root: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HarnessError("harness policy must be an object")
     return payload
+
+
+def _canonical_execution_mode(
+    policy: dict[str, Any], value: Any, *, allow_alias: bool, default: str
+) -> str:
+    execution_mode = _required_string(value if value is not None else default, "execution_mode")
+    orchestration = policy["orchestration"]
+    if execution_mode in orchestration:
+        return execution_mode
+    for name, topology in orchestration.items():
+        if execution_mode in topology["aliases"]:
+            if allow_alias:
+                return name
+            raise HarnessError(
+                f"legacy execution mode `{execution_mode}`; use canonical execution mode `{name}`"
+            )
+    raise HarnessError(f"unknown execution mode `{execution_mode}`")
 
 
 def _validate_policy(root: Path) -> None:
@@ -114,8 +136,13 @@ def resolve_task(root: Path, task: dict[str, Any]) -> dict[str, Any]:
     route = policy["routes"].get(task_type)
     if route is None:
         raise HarnessError(f"unknown task type `{task_type}`")
-    execution_mode = task.get("execution_mode", "single_agent")
-    if not isinstance(execution_mode, str) or execution_mode not in route["execution_modes"]:
+    execution_mode = _canonical_execution_mode(
+        policy,
+        task.get("execution_mode"),
+        allow_alias=True,
+        default="single_agent",
+    )
+    if execution_mode not in route["execution_modes"]:
         raise HarnessError(f"unsupported execution mode `{execution_mode}` for task type `{task_type}`")
     orchestration = policy["orchestration"][execution_mode]
     checks = {name: policy["checks"][name]["command"] for name in route["checks"]}
@@ -134,8 +161,10 @@ def resolve_task(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         "workspace": route["workspace"],
         "orchestration": {
             "name": execution_mode,
+            "work_scheduling": orchestration["work_scheduling"],
             "max_parallel_writers": orchestration["max_parallel_writers"],
             "workspace_mode": orchestration["workspace_mode"],
+            "validator_role": orchestration["validator_role"],
             "review_required": orchestration["review_required"],
         },
         "checks": checks,
@@ -268,6 +297,16 @@ def _route_packet(policy: dict[str, Any], task_type: str, execution_mode: str) -
     if execution_mode not in route["execution_modes"]:
         raise HarnessError(f"unsupported execution mode `{execution_mode}` for task type `{task_type}`")
     orchestration = policy["orchestration"][execution_mode]
+    tool_bindings = [
+        {
+            "tool": name,
+            "host_kind": policy["tools"][name]["host_kind"],
+            "writer_access": policy["tools"][name]["writer_access"],
+            "validator_access": policy["tools"][name]["validator_access"],
+            "root_probe": policy["tools"][name]["root_probe"],
+        }
+        for name in route["tools"]
+    ]
     return {
         "task_type": task_type,
         "template": route["template"],
@@ -275,11 +314,14 @@ def _route_packet(policy: dict[str, Any], task_type: str, execution_mode: str) -
         "rules": list(dict.fromkeys([*route["rules"], *orchestration["rules"]])),
         "skills": route["skills"],
         "tools": route["tools"],
+        "tool_bindings": tool_bindings,
         "workspace": route["workspace"],
         "orchestration": {
             "name": execution_mode,
+            "work_scheduling": orchestration["work_scheduling"],
             "max_parallel_writers": orchestration["max_parallel_writers"],
             "workspace_mode": orchestration["workspace_mode"],
+            "validator_role": orchestration["validator_role"],
             "review_required": orchestration["review_required"],
         },
         "checks": {name: policy["checks"][name]["command"] for name in route["checks"]},
@@ -341,6 +383,7 @@ def _validate_criteria(value: Any, checks: dict[str, list[str]]) -> list[dict[st
         raise HarnessError("acceptance_criteria must be a non-empty list")
     criteria: list[dict[str, Any]] = []
     seen: set[str] = set()
+    validator_count = 0
     for raw in value:
         if not isinstance(raw, dict):
             raise HarnessError("managed acceptance criterion must be an object")
@@ -358,7 +401,15 @@ def _validate_criteria(value: Any, checks: dict[str, list[str]]) -> list[dict[st
                 raise HarnessError(f"unknown criterion check `{check}`")
         if kind == "change_set":
             criterion["paths"] = _safe_paths(raw.get("paths"), "criterion paths", required=True)
+        if kind == "validator":
+            if criterion_id != "validator" or set(raw) != {"id", "kind"}:
+                raise HarnessError("validator criterion must be exactly `{id: validator, kind: validator}`")
+            validator_count += 1
         criteria.append(criterion)
+    if validator_count > 1:
+        raise HarnessError("duplicate validator criterion")
+    if not validator_count:
+        criteria.append({"id": "validator", "kind": "validator"})
     return criteria
 
 
@@ -394,52 +445,74 @@ def _patterns_overlap(left: str, right: str) -> bool:
 
 def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str], value: Any) -> list[dict[str, Any]]:
     roles = _load_roles(root)
-    if packet["orchestration"]["name"] == "single_agent":
+    if packet["orchestration"]["work_scheduling"] == "single":
         role = packet["role"]
-        return [{
+        work_lanes = [{
             "lane_id": "primary",
+            "kind": "work",
             "role": role,
             "allowed_paths": allowed_paths,
             "dependencies": [],
             "workspace_mode": packet["orchestration"]["workspace_mode"],
             "write_capable": bool(roles[role]["writes"]),
+            "required_claim_kind": roles[role]["result_kind"],
+            "claim_schema": {
+                "required_fields": copy.deepcopy(roles[role]["required_fields"]),
+                "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
+            },
+            "claim_schema": {
+                "required_fields": copy.deepcopy(roles[role]["required_fields"]),
+                "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
+            },
         }]
-    if not isinstance(value, list) or not value:
-        raise HarnessError("lanes must be a non-empty list for non-single-agent mode")
-    lanes: list[dict[str, Any]] = []
-    lane_ids: set[str] = set()
-    for raw in value:
-        if not isinstance(raw, dict):
-            raise HarnessError("lane must be an object")
-        lane_id = _required_string(raw.get("lane_id"), "lane_id")
-        if lane_id in lane_ids:
-            raise HarnessError(f"duplicate lane_id `{lane_id}`")
-        lane_ids.add(lane_id)
-        role = _required_string(raw.get("role"), "lane role")
-        if role not in roles:
-            raise HarnessError(f"unknown lane role `{role}`")
-        write_capable = raw.get("write_capable")
-        if not isinstance(write_capable, bool) or write_capable != bool(roles[role]["writes"]):
-            raise HarnessError(f"lane `{lane_id}` has invalid write_capable")
-        dependencies = _safe_paths(raw.get("dependencies", []), "lane dependencies", required=False)
-        workspace_mode = _required_string(raw.get("workspace_mode"), "lane workspace_mode")
-        if workspace_mode != packet["orchestration"]["workspace_mode"]:
-            raise HarnessError(f"lane `{lane_id}` workspace_mode conflicts with execution mode")
-        lanes.append({
-            "lane_id": lane_id,
-            "role": role,
-            "allowed_paths": _safe_paths(raw.get("allowed_paths"), "lane allowed_paths", required=True),
-            "dependencies": dependencies,
-            "workspace_mode": workspace_mode,
-            "write_capable": write_capable,
-        })
-    for lane in lanes:
+    else:
+        if not isinstance(value, list) or not value:
+            raise HarnessError("lanes must be a non-empty list for non-single topology")
+        work_lanes = []
+        lane_ids: set[str] = set()
+        for raw in value:
+            if not isinstance(raw, dict):
+                raise HarnessError("lane must be an object")
+            lane_id = _required_string(raw.get("lane_id"), "lane_id")
+            if lane_id in {"integrate", "validate"} or lane_id in lane_ids:
+                raise HarnessError(f"duplicate or reserved lane_id `{lane_id}`")
+            lane_ids.add(lane_id)
+            role = _required_string(raw.get("role"), "lane role")
+            if role not in roles:
+                raise HarnessError(f"unknown lane role `{role}`")
+            write_capable = raw.get("write_capable")
+            if not isinstance(write_capable, bool) or write_capable != bool(roles[role]["writes"]):
+                raise HarnessError(f"lane `{lane_id}` has invalid write_capable")
+            dependencies = _safe_paths(raw.get("dependencies", []), "lane dependencies", required=False)
+            workspace_mode = _required_string(raw.get("workspace_mode"), "lane workspace_mode")
+            if workspace_mode != packet["orchestration"]["workspace_mode"]:
+                raise HarnessError(f"lane `{lane_id}` workspace_mode conflicts with execution mode")
+            work_lanes.append({
+                "lane_id": lane_id,
+                "kind": "work",
+                "role": role,
+                "allowed_paths": _safe_paths(raw.get("allowed_paths"), "lane allowed_paths", required=True),
+                "dependencies": dependencies,
+                "workspace_mode": workspace_mode,
+                "write_capable": write_capable,
+                "required_claim_kind": roles[role]["result_kind"],
+                "claim_schema": {
+                    "required_fields": copy.deepcopy(roles[role]["required_fields"]),
+                    "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
+                },
+                "claim_schema": {
+                    "required_fields": copy.deepcopy(roles[role]["required_fields"]),
+                    "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
+                },
+            })
+    lane_ids = {lane["lane_id"] for lane in work_lanes}
+    for lane in work_lanes:
         for dependency in lane["dependencies"]:
             if dependency == lane["lane_id"] or dependency not in lane_ids:
                 raise HarnessError(f"lane `{lane['lane_id']}` has invalid dependency `{dependency}`")
     visiting: set[str] = set()
     visited: set[str] = set()
-    dependencies = {lane["lane_id"]: lane["dependencies"] for lane in lanes}
+    dependencies = {lane["lane_id"]: lane["dependencies"] for lane in work_lanes}
 
     def visit(lane_id: str) -> None:
         if lane_id in visiting:
@@ -454,32 +527,84 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
 
     for lane_id in lane_ids:
         visit(lane_id)
-    writable = [lane for lane in lanes if lane["write_capable"]]
+    writable = [lane for lane in work_lanes if lane["write_capable"]]
     for index, lane in enumerate(writable):
         for other in writable[index + 1:]:
             if any(_patterns_overlap(path, other_path) for path in lane["allowed_paths"] for other_path in other["allowed_paths"]):
                 raise HarnessError(f"writable lanes `{lane['lane_id']}` and `{other['lane_id']}` overlap")
-    return lanes
+    validator_role = packet["orchestration"]["validator_role"]
+    validator = roles.get(validator_role)
+    if not isinstance(validator, dict) or validator["writes"]:
+        raise HarnessError(f"invalid validator role `{validator_role}`")
+    workspace_mode = packet["orchestration"]["workspace_mode"]
+    return [
+        *work_lanes,
+        {
+            "lane_id": "integrate",
+            "kind": "integrate",
+            "role": None,
+            "allowed_paths": allowed_paths,
+            "dependencies": [lane["lane_id"] for lane in work_lanes],
+            "workspace_mode": workspace_mode,
+            "write_capable": False,
+            "required_claim_kind": "integration_result",
+        },
+        {
+            "lane_id": "validate",
+            "kind": "validate",
+            "role": validator_role,
+            "allowed_paths": allowed_paths,
+            "dependencies": ["integrate"],
+            "workspace_mode": workspace_mode,
+            "write_capable": False,
+            "required_claim_kind": validator["result_kind"],
+            "claim_schema": {
+                "required_fields": copy.deepcopy(validator["required_fields"]),
+                "field_constraints": copy.deepcopy(validator.get("field_constraints", {})),
+            },
+            "claim_schema": {
+                "required_fields": copy.deepcopy(validator["required_fields"]),
+                "field_constraints": copy.deepcopy(validator.get("field_constraints", {})),
+            },
+        },
+    ]
+
+
+def _normalize_managed_request(policy: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
+    version = request.get("version")
+    if version not in {LEGACY_MANAGED_VERSION, MANAGED_VERSION}:
+        raise HarnessError(f"managed request version must be {LEGACY_MANAGED_VERSION} or {MANAGED_VERSION}")
+    normalized = copy.deepcopy(request)
+    normalized["version"] = MANAGED_VERSION
+    normalized["execution_mode"] = _canonical_execution_mode(
+        policy,
+        normalized.get("execution_mode"),
+        allow_alias=version == LEGACY_MANAGED_VERSION,
+        default="single_agent" if version == LEGACY_MANAGED_VERSION else "single_work_lane",
+    )
+    return normalized
 
 
 def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: str) -> dict[str, Any]:
     _validate_policy(root)
-    if request.get("version") != MANAGED_VERSION:
-        raise HarnessError(f"managed request version must be {MANAGED_VERSION}")
+    policy = _load_policy(root)
+    request = _normalize_managed_request(policy, request)
     task_type = _required_string(request.get("task_type"), "task_type")
-    execution_mode = _required_string(request.get("execution_mode", "single_agent"), "execution_mode")
-    packet = _route_packet(_load_policy(root), task_type, execution_mode)
+    execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
+    packet = _route_packet(policy, task_type, execution_mode)
     role = _load_roles(root).get(packet["role"])
     if not isinstance(role, dict):
         raise HarnessError(f"unknown route role `{packet['role']}`")
     allowed_paths = _safe_paths(request.get("allowed_paths"), "allowed_paths", required=True)
     planned_write_paths = _safe_paths(request.get("planned_write_paths"), "planned_write_paths", required=bool(role["writes"]))
     base_ref = _required_string(request.get("base_ref"), "base_ref")
+    user_request = _required_string(request.get("user_request"), "user_request")
     packet.update({
         "version": MANAGED_VERSION,
         "attempt_id": attempt_id,
         "base_ref": base_ref,
         "base_commit": _resolve_commit(root, base_ref),
+        "user_request": user_request,
         "allowed_paths": allowed_paths,
         "planned_write_paths": planned_write_paths,
         "acceptance_criteria": _validate_criteria(request.get("acceptance_criteria"), packet["checks"]),
@@ -550,14 +675,108 @@ def _adapter_call(adapter: Any, name: str, *args: Any) -> Any:
     return method(*args)
 
 
-def _adapter_capabilities(adapter: Any) -> dict[str, str]:
+def _adapter_capabilities(adapter: Any, canonical_modes: set[str]) -> dict[str, str]:
     capabilities = _adapter_call(adapter, "capabilities")
     if not isinstance(capabilities, dict):
         raise HarnessError("host adapter capabilities must be a mapping")
     for mode, level in capabilities.items():
-        if not isinstance(mode, str) or level not in CAPABILITY_LEVELS:
+        if not isinstance(mode, str) or mode not in canonical_modes or level not in CAPABILITY_LEVELS:
             raise HarnessError("host adapter capabilities contain invalid entry")
     return capabilities
+
+
+def _record_tool_binding_evidence(
+    attempt: dict[str, Any],
+    lane: dict[str, Any],
+    packet: dict[str, Any],
+    workspace: dict[str, Any],
+    evidence: Any,
+) -> None:
+    if not isinstance(workspace.get("path"), str) or not workspace["path"]:
+        raise HarnessError("host adapter workspace must include path")
+    if not isinstance(evidence, list):
+        raise HarnessError("host adapter tool binding evidence must be a list")
+    expected_access_key = "validator_access" if lane["kind"] == "validate" else "writer_access"
+    expected = {binding["tool"]: binding for binding in packet["tool_bindings"]}
+    observed: dict[str, dict[str, Any]] = {}
+    for binding in evidence:
+        if not isinstance(binding, dict) or not isinstance(binding.get("tool"), str):
+            raise HarnessError("host adapter tool binding evidence contains invalid entry")
+        tool = binding["tool"]
+        if tool in observed or tool not in expected:
+            raise HarnessError("host adapter tool binding evidence conflicts with packet")
+        required = expected[tool]
+        if (
+            binding.get("host_kind") != required["host_kind"]
+            or binding.get("access") != required[expected_access_key]
+            or binding.get("root_probe") != required["root_probe"]
+            or binding.get("workspace_root") != workspace["path"]
+            or binding.get("verified") is not True
+        ):
+            raise HarnessError(f"host adapter tool binding `{tool}` is not verified for packet workspace")
+        observed[tool] = binding
+    if set(observed) != set(expected):
+        raise HarnessError("host adapter did not verify every packet-selected tool")
+    attempt.setdefault("tool_binding_evidence", []).append({
+        "lane_id": lane["lane_id"],
+        "workspace": copy.deepcopy(workspace),
+        "bindings": copy.deepcopy(evidence),
+    })
+
+
+def _record_lane_execution_evidence(
+    attempt: dict[str, Any],
+    lane: dict[str, Any],
+    packet: dict[str, Any],
+    workspace: dict[str, Any],
+    evidence: Any,
+) -> None:
+    workspace_root = workspace.get("path")
+    if not isinstance(workspace_root, str) or not workspace_root:
+        raise HarnessError("host adapter workspace must include path")
+    if not isinstance(evidence, dict):
+        raise HarnessError("host adapter lane execution evidence must be an object")
+    expected_sandbox = "read-only" if lane["kind"] == "validate" else "workspace-write"
+    if (
+        evidence.get("lane_id") != lane["lane_id"]
+        or evidence.get("workspace_root") != workspace_root
+        or evidence.get("sandbox") != expected_sandbox
+        or evidence.get("ambient_mcp") is not False
+        or not isinstance(evidence.get("thread_id"), str)
+        or not evidence["thread_id"]
+        or not isinstance(evidence.get("turn_id"), str)
+        or not evidence["turn_id"]
+        or not isinstance(evidence.get("workspace_status_before"), str)
+        or not isinstance(evidence.get("workspace_status_after"), str)
+    ):
+        raise HarnessError("host adapter lane execution evidence conflicts with packet")
+    selected_tools = evidence.get("selected_tools_used")
+    tool_calls = evidence.get("tool_calls")
+    command_results = evidence.get("command_results")
+    if (
+        not isinstance(selected_tools, list)
+        or not selected_tools
+        or not all(isinstance(tool, str) and tool for tool in selected_tools)
+        or len(set(selected_tools)) != len(selected_tools)
+        or not isinstance(tool_calls, list)
+        or not all(isinstance(call, str) and call for call in tool_calls)
+        or not isinstance(command_results, list)
+        or not all(isinstance(result, dict) and result.get("cwd") == workspace_root for result in command_results)
+    ):
+        raise HarnessError("host adapter lane execution evidence lacks packet tool proof")
+    access_key = "validator_access" if lane["kind"] == "validate" else "writer_access"
+    required_access = "read_only" if lane["kind"] == "validate" else "workspace_write"
+    bindings = {binding["tool"]: binding for binding in packet["tool_bindings"]}
+    if any(tool not in bindings for tool in selected_tools) or not any(
+        bindings[tool][access_key] == required_access for tool in selected_tools
+    ):
+        raise HarnessError("host adapter lane did not use a packet-selected tool with required access")
+    if lane["kind"] == "validate" and evidence["workspace_status_before"] != evidence["workspace_status_after"]:
+        raise HarnessError("read-only validator changed final packet workspace")
+    records = attempt.setdefault("execution_evidence", [])
+    if any(record.get("lane_id") == lane["lane_id"] for record in records):
+        raise HarnessError("host adapter produced duplicate lane execution evidence")
+    records.append(copy.deepcopy(evidence))
 
 
 def _approval_matches(approval: dict[str, Any], gate: str, path: str, attempt_id: str, ttl_seconds: int, now: datetime) -> bool:
@@ -632,6 +851,9 @@ def _validate_managed_claim(claim: Any, role: dict[str, Any]) -> dict[str, Any]:
             _string_list(value, f"managed claim {field}")
         elif not isinstance(value, str) or not value:
             raise HarnessError(f"managed claim missing required field `{field}`")
+    for field, allowed_values in role.get("field_constraints", {}).items():
+        if claim.get(field) not in allowed_values:
+            raise HarnessError(f"managed claim field `{field}` has unsupported value")
     frictions = claim.get("frictions", [])
     if not isinstance(frictions, list):
         raise HarnessError("managed claim frictions must be a list")
@@ -641,15 +863,86 @@ def _validate_managed_claim(claim: Any, role: dict[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(claim)
 
 
+def _validator_criterion(root: Path, attempt: dict[str, Any]) -> dict[str, str]:
+    lanes = {lane.get("lane_id"): lane for lane in attempt["lanes"] if isinstance(lane, dict)}
+    validator_lane = lanes.get("validate")
+    integration_lane = lanes.get("integrate")
+    claims = {
+        record.get("lane_id"): record.get("claim")
+        for record in attempt["claims"]
+        if isinstance(record, dict)
+    }
+    integration_claim = claims.get("integrate")
+    validator_claim = claims.get("validate")
+    if (
+        not isinstance(validator_lane, dict)
+        or not isinstance(integration_lane, dict)
+        or not isinstance(integration_claim, dict)
+        or integration_claim.get("kind") != integration_lane.get("required_claim_kind")
+        or not isinstance(integration_claim.get("workspace"), dict)
+        or not isinstance(validator_claim, dict)
+    ):
+        return {"status": "failed", "evidence_ref": "validator_claim"}
+    try:
+        role = _load_roles(root)[validator_lane["role"]]
+        claim = _validate_managed_claim(validator_claim, role)
+    except (HarnessError, KeyError, TypeError):
+        return {"status": "failed", "evidence_ref": "validator_claim"}
+    if (
+        claim.get("kind") != validator_lane.get("required_claim_kind")
+        or claim.get("verdict") != "pass"
+        or validator_lane.get("workspace") != integration_claim["workspace"]
+    ):
+        return {"status": "failed", "evidence_ref": "validator_claim"}
+    return {"status": "proven", "evidence_ref": "validator_claim"}
+
+
+def _verification_workspace(attempt: dict[str, Any]) -> Path:
+    integration_claim = next(
+        (
+            record.get("claim")
+            for record in attempt["claims"]
+            if isinstance(record, dict) and record.get("lane_id") == "integrate"
+        ),
+        None,
+    )
+    if not isinstance(integration_claim, dict) or not isinstance(integration_claim.get("workspace"), dict):
+        raise HarnessError("verification requires integrated workspace")
+    path = integration_claim["workspace"].get("path")
+    if not isinstance(path, str) or not Path(path).is_dir():
+        raise HarnessError("verification workspace is unavailable")
+    return Path(path).resolve()
+
+
+def _require_lane_execution_evidence(attempt: dict[str, Any]) -> None:
+    lanes = {
+        lane["lane_id"]: lane
+        for lane in attempt["lanes"]
+        if isinstance(lane, dict) and lane.get("kind") in {"work", "validate"}
+    }
+    records = attempt.get("execution_evidence")
+    if not isinstance(records, list) or {record.get("lane_id") for record in records if isinstance(record, dict)} != set(lanes):
+        raise HarnessError("verification requires host execution evidence for every dispatched lane")
+    for record in records:
+        lane = lanes[record["lane_id"]]
+        workspace = lane.get("workspace")
+        if not isinstance(workspace, dict) or record.get("workspace_root") != workspace.get("path"):
+            raise HarnessError("host execution evidence workspace conflicts with lane")
+
+
 def _verify_managed(
     root: Path,
     packet: dict[str, Any],
+    attempt: dict[str, Any],
     *,
-    run_check: CheckRunner,
+    adapter: Any,
+    run_check: CheckRunner | None,
     collect_changes: ChangeCollector,
     now: datetime,
 ) -> dict[str, Any]:
-    changes = collect_changes(root, packet["base_commit"])
+    _require_lane_execution_evidence(attempt)
+    verification_root = _verification_workspace(attempt)
+    changes = collect_changes(verification_root, packet["base_commit"])
     normalized_changes: list[dict[str, str]] = []
     blockers: list[dict[str, str]] = []
     for change in changes:
@@ -661,10 +954,29 @@ def _verify_managed(
             blockers.append({"kind": "scope", "path": path})
     blockers.extend(_gate_blockers(packet, [change["path"] for change in normalized_changes], now))
 
+    host_checks = None if run_check else _adapter_call(adapter, "run_checks", packet, {"path": str(verification_root)})
+    if host_checks is not None and not isinstance(host_checks, dict):
+        raise HarnessError("host adapter checks must be a mapping")
     checks: dict[str, dict[str, Any]] = {}
     for name, command in packet["checks"].items():
-        code, stdout, stderr = run_check(command)
-        checks[name] = {"name": name, "command": command, "exit_code": code, "stdout": stdout[:1000], "stderr": stderr[:1000]}
+        if run_check:
+            code, stdout, stderr = run_check(command)
+            checks[name] = {"name": name, "command": command, "exit_code": code, "stdout": stdout[:1000], "stderr": stderr[:1000]}
+        else:
+            check = host_checks.get(name)
+            if (
+                not isinstance(check, dict)
+                or check.get("command") != command
+                or check.get("workspace_root") != str(verification_root)
+                or check.get("tool") != "shell"
+                or check.get("binding_verified") is not True
+                or not isinstance(check.get("exit_code"), int)
+                or not isinstance(check.get("stdout"), str)
+                or not isinstance(check.get("stderr"), str)
+            ):
+                raise HarnessError(f"host adapter check `{name}` lacks packet workspace evidence")
+            checks[name] = {"name": name, **check}
+        code = checks[name]["exit_code"]
         if code:
             blockers.append({"kind": "check", "name": name})
 
@@ -678,6 +990,8 @@ def _verify_managed(
         elif kind == "change_set":
             proven = all(any(_path_matches(change["path"], [pattern]) for change in normalized_changes) for pattern in criterion["paths"])
             result.update({"status": "proven" if proven else "failed", "evidence_ref": "change_set"})
+        elif kind == "validator":
+            result.update(_validator_criterion(root, attempt))
         else:
             evidence = packet["review_evidence"] if kind == "review" else packet["manual_evidence"]
             result.update({"status": "proven" if isinstance(evidence, dict) else "review_required", "evidence_ref": kind})
@@ -717,13 +1031,34 @@ def _record_failure(root: Path, run: dict[str, Any], policy: dict[str, Any], att
     return _managed_result(run)
 
 
+def _record_lane_claim(root: Path, attempt: dict[str, Any], lane: dict[str, Any], claim: Any) -> None:
+    try:
+        role_name = lane.get("role")
+        if not isinstance(role_name, str):
+            raise HarnessError(f"lane `{lane['lane_id']}` cannot collect an agent claim")
+        role = _load_roles(root).get(role_name)
+        if not isinstance(role, dict):
+            raise HarnessError(f"lane `{lane['lane_id']}` has unknown role `{role_name}`")
+        normalized_claim = _validate_managed_claim(claim, role)
+        if normalized_claim["kind"] != lane["required_claim_kind"]:
+            raise HarnessError(f"lane `{lane['lane_id']}` claim kind conflicts with packet")
+    except HarnessError as exc:
+        raise ClaimError(str(exc)) from exc
+    attempt["claims"].append({"lane_id": lane["lane_id"], "claim": normalized_claim})
+    for friction in normalized_claim.get("frictions", []):
+        record = {"category": friction["category"], "lane_id": lane["lane_id"]}
+        if isinstance(friction.get("detail"), str) and friction["detail"]:
+            record["detail"] = friction["detail"]
+        attempt["frictions"].append(record)
+
+
 def _execute_attempt(
     root: Path,
     run: dict[str, Any],
     policy: dict[str, Any],
     adapter: Any,
     *,
-    run_check: CheckRunner,
+    run_check: CheckRunner | None,
     collect_changes: ChangeCollector,
     now: datetime,
 ) -> dict[str, Any]:
@@ -737,48 +1072,123 @@ def _execute_attempt(
         _write_run(root, run)
         return _managed_result(run)
     try:
-        capabilities = _adapter_capabilities(adapter)
+        capabilities = _adapter_capabilities(adapter, set(policy["orchestration"]))
     except Exception as exc:
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc))
     mode = packet["orchestration"]["name"]
-    if mode != "single_agent" or capabilities.get(mode) != "enforced":
-        _set_outcome(attempt, "execution_mode_unavailable", ["block"], ["capabilities"])
+    if capabilities.get(mode) != "enforced":
+        _set_outcome(attempt, "execution_mode_unavailable", ["waive", "block"], ["capabilities"])
         _transition(run, policy["states"], "awaiting_decision", "execution_mode_unavailable")
         _write_run(root, run)
         return _managed_result(run)
 
     _transition(run, policy["states"], "running", "dispatch")
-    lane = attempt["lanes"][0]
-    handle = None
+    pending = {lane["lane_id"]: lane for lane in attempt["lanes"]}
+    workspaces: dict[str, dict[str, Any]] = {}
+    active_handles: list[tuple[dict[str, Any], Any]] = []
     try:
-        workspace = _adapter_call(adapter, "prepare_workspace", lane, packet)
-        if not isinstance(workspace, dict):
-            raise HarnessError("host adapter workspace must be an object")
-        lane["workspace"] = copy.deepcopy(workspace)
-        handle = _adapter_call(adapter, "dispatch_lane", lane, packet, workspace, None)
-        claim = _adapter_call(adapter, "collect_claim", handle)
+        while pending:
+            completed = {
+                lane["lane_id"]
+                for lane in attempt["lanes"]
+                if lane.get("status") == "succeeded"
+            }
+            ready = [
+                lane for lane in pending.values()
+                if all(dependency in completed for dependency in lane["dependencies"])
+            ]
+            if not ready:
+                raise HarnessError("lane scheduler found unresolved dependencies")
+
+            work_lanes = [lane for lane in ready if lane["kind"] == "work"]
+            if work_lanes:
+                writer_slots = packet["orchestration"]["max_parallel_writers"]
+                scheduled: list[dict[str, Any]] = []
+                for lane in work_lanes:
+                    if lane["write_capable"]:
+                        if not writer_slots:
+                            continue
+                        writer_slots -= 1
+                    scheduled.append(lane)
+                for lane in scheduled:
+                    workspace = _adapter_call(adapter, "prepare_workspace", lane, packet)
+                    if not isinstance(workspace, dict):
+                        raise HarnessError("host adapter workspace must be an object")
+                    lane["workspace"] = copy.deepcopy(workspace)
+                    bindings = _adapter_call(adapter, "verify_tool_bindings", lane, packet, workspace)
+                    _record_tool_binding_evidence(attempt, lane, packet, workspace, bindings)
+                    handle = _adapter_call(adapter, "dispatch_lane", lane, packet, workspace, None)
+                    active_handles.append((lane, handle))
+                for lane, handle in active_handles[:]:
+                    claim = _adapter_call(adapter, "collect_claim", handle)
+                    _record_lane_claim(root, attempt, lane, claim)
+                    evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
+                    _record_lane_execution_evidence(attempt, lane, packet, lane["workspace"], evidence)
+                    lane["status"] = "succeeded"
+                    workspaces[lane["lane_id"]] = copy.deepcopy(lane["workspace"])
+                    pending.pop(lane["lane_id"])
+                    active_handles.remove((lane, handle))
+                continue
+
+            integration = next((lane for lane in ready if lane["kind"] == "integrate"), None)
+            if integration is not None:
+                workspace = _adapter_call(adapter, "materialize_final_state", integration, packet, workspaces)
+                if not isinstance(workspace, dict):
+                    raise HarnessError("host adapter final workspace must be an object")
+                integration["workspace"] = copy.deepcopy(workspace)
+                integration["status"] = "succeeded"
+                attempt["claims"].append({
+                    "lane_id": integration["lane_id"],
+                    "claim": {"kind": integration["required_claim_kind"], "workspace": copy.deepcopy(workspace)},
+                })
+                pending.pop(integration["lane_id"])
+                continue
+
+            validator = next((lane for lane in ready if lane["kind"] == "validate"), None)
+            if validator is None:
+                raise HarnessError("lane scheduler found unsupported lane kind")
+            integration = next(lane for lane in attempt["lanes"] if lane["lane_id"] == "integrate")
+            workspace = integration.get("workspace")
+            if not isinstance(workspace, dict):
+                raise HarnessError("validator requires final workspace")
+            validator["workspace"] = copy.deepcopy(workspace)
+            bindings = _adapter_call(adapter, "verify_tool_bindings", validator, packet, workspace)
+            _record_tool_binding_evidence(attempt, validator, packet, workspace, bindings)
+            handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, None)
+            active_handles.append((validator, handle))
+            claim = _adapter_call(adapter, "collect_claim", handle)
+            _record_lane_claim(root, attempt, validator, claim)
+            evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
+            _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
+            validator["status"] = "succeeded"
+            pending.pop(validator["lane_id"])
+            active_handles.remove((validator, handle))
+    except ClaimError as exc:
+        for _, handle in active_handles:
+            try:
+                _adapter_call(adapter, "cancel_lane", handle)
+            except Exception:
+                pass
+        return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc))
     except Exception as exc:
-        if handle is not None:
+        for _, handle in active_handles:
             try:
                 _adapter_call(adapter, "cancel_lane", handle)
             except Exception:
                 pass
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc))
-    try:
-        role = _load_roles(root)[lane["role"]]
-        normalized_claim = _validate_managed_claim(claim, role)
-    except (HarnessError, KeyError) as exc:
-        return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc))
-    attempt["claims"].append({"lane_id": lane["lane_id"], "claim": normalized_claim})
-    for friction in normalized_claim.get("frictions", []):
-        record = {"category": friction["category"], "lane_id": lane["lane_id"]}
-        if isinstance(friction.get("detail"), str) and friction["detail"]:
-            record["detail"] = friction["detail"]
-        attempt["frictions"].append(record)
     _transition(run, policy["states"], "observed", "claim_collected")
     _transition(run, policy["states"], "verifying", "verify")
     try:
-        verification = _verify_managed(root, packet, run_check=run_check, collect_changes=collect_changes, now=now)
+        verification = _verify_managed(
+            root,
+            packet,
+            attempt,
+            adapter=adapter,
+            run_check=run_check,
+            collect_changes=collect_changes,
+            now=now,
+        )
     except Exception as exc:
         return _record_failure(root, run, policy, attempt, "verification_failed", str(exc))
     attempt["evidence"] = verification
@@ -819,9 +1229,8 @@ def run_managed(
             raise HarnessError("managed continuation request does not match run record")
         if run["state"] != "planned":
             raise HarnessError(f"run `{run_id}` is not ready to execute")
-    runner = run_check or (lambda command: _run_command(root, command))
     collector = collect_changes or _collect_changes
-    return _execute_attempt(root, run, policy, adapter, run_check=runner, collect_changes=collector, now=now or datetime.now(UTC))
+    return _execute_attempt(root, run, policy, adapter, run_check=run_check, collect_changes=collector, now=now or datetime.now(UTC))
 
 
 def _successor_request(run: dict[str, Any], successor: Any) -> dict[str, Any]:
@@ -830,7 +1239,7 @@ def _successor_request(run: dict[str, Any], successor: Any) -> dict[str, Any]:
         return request
     if not isinstance(successor, dict):
         raise HarnessError("decision successor must be an object")
-    allowed = {"execution_mode", "allowed_paths", "planned_write_paths", "acceptance_criteria", "base_ref", "approvals", "review_evidence", "manual_evidence", "lanes"}
+    allowed = {"execution_mode", "user_request", "allowed_paths", "planned_write_paths", "acceptance_criteria", "base_ref", "approvals", "review_evidence", "manual_evidence", "lanes"}
     unknown = set(successor) - allowed
     if unknown:
         raise HarnessError(f"decision successor has unsupported fields: {', '.join(sorted(unknown))}")
@@ -861,6 +1270,9 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
         if not criteria or any(criterion.get("status") != "proven" for criterion in criteria):
             raise HarnessError("cannot accept run without proven criteria")
         _transition(run, policy["states"], "accepted", "controller_accept")
+    elif kind == "waive":
+        _required_string(decision.get("reason"), "waiver reason")
+        _transition(run, policy["states"], "unvalidated", "controller_waive")
     elif kind == "block":
         _transition(run, policy["states"], "blocked", "controller_block")
     elif kind == "request_approval":

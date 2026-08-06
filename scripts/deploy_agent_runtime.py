@@ -39,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--check", action="store_true", help="Check drift only.")
     parser.add_argument("--dry-run", action="store_true", help="Show planned deploy changes without writing.")
+    parser.add_argument(
+        "--skip-shared-skills",
+        action="store_true",
+        help="Deploy platform runtime files without changing shared skills.",
+    )
     parser.add_argument("--backup", action="store_true", help="Backup overwritten files before deploy.")
     parser.add_argument("--force", action="store_true", help="Allow overwriting runtime files without generated headers.")
     parser.add_argument(
@@ -337,6 +342,10 @@ RUNTIME_DEPLOY_EXCLUDE_PREFIXES = {
     "codex": ("skills/",),
 }
 
+RUNTIME_RETIRED_GENERATED_PATHS = {
+    "codex": ("rules/global-baseline-contract.rules",),
+}
+
 
 def _runtime_deploy_exclude_prefixes(platform: str) -> tuple[str, ...]:
     return RUNTIME_DEPLOY_EXCLUDE_PREFIXES.get(platform, ())
@@ -349,6 +358,13 @@ def _runtime_path_is_excluded(platform: str, relative_path: PurePosixPath) -> bo
         if relative_text == normalized_prefix or relative_text.startswith(f"{normalized_prefix}/"):
             return True
     return False
+
+
+def _runtime_retired_generated_paths(platform: str, target_root: Path) -> tuple[Path, ...]:
+    return tuple(
+        target_root / relative_path
+        for relative_path in RUNTIME_RETIRED_GENERATED_PATHS.get(platform, ())
+    )
 
 
 def _iter_generated_runtime_files(platform: str, generated_root: Path) -> list[Path]:
@@ -447,6 +463,9 @@ def _runtime_stale_generated_files(
                 continue
             if not _looks_generated(candidate):
                 stale.append(candidate)
+    for retired_path in _runtime_retired_generated_paths(platform, target_root):
+        if retired_path.exists() and _looks_generated(retired_path):
+            stale.append(retired_path)
     return stale
 def _check_platform(
     generated_root: Path,
@@ -613,9 +632,9 @@ def run() -> int:
     targets = _resolved_targets(args.target)
     issues: list[str] = []
     shared_skills_root = root / ".agents" / "skills"
-    if args.check:
+    if not args.skip_shared_skills and args.check:
         issues.extend(_check_shared_skills(shared_skills_root, SHARED_SKILLS_TARGET))
-    else:
+    elif not args.skip_shared_skills:
         changes, plan_issues, pairs = _plan_shared_skill_deploy(
             shared_skills_root,
             SHARED_SKILLS_TARGET,

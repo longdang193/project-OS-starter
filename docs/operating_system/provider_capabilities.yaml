@@ -3,14 +3,8 @@ providers:
     entrypoint: AGENTS.md
     runtime_root: ~/.codex
     rules_format: codex-rules
-    lifecycle_hooks: true
-    settings_output: hooks.json
-    supported_events:
-      - PreToolUse
-      - PostToolUse
-      - Stop
-      - UserPromptSubmit
-      - PermissionRequest
+    lifecycle_hooks: false
+    fallback: root_instructions_and_host_adapter
   claude:
     entrypoint: CLAUDE.md
     runtime_root: ~/.claude

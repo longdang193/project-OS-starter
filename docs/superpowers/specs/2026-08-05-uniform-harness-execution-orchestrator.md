@@ -133,8 +133,9 @@ layer: change
 - failure behavior: invalid route, unsafe paths, unavailable mode, missing role,
   or unavailable required capability returns a machine-readable block decision
   and performs no dispatch.
-- observable acceptance: packet records template, role, rules, skills, tools,
-  workspace, checks, gates, mode, allowed paths, and base reference.
+- observable acceptance: packet records immutable `user_request`, template,
+  role, rules, skills, tools, workspace, checks, gates, mode, allowed paths,
+  and base reference.
 
 #### Requirement: One lifecycle for every execution mode
 
@@ -184,15 +185,19 @@ layer: change
 
 - trigger or actor: executor begins an authorized attempt.
 - preconditions: mode capability is available.
-- required behavior: current-workspace mode records current repository identity;
-  isolated mode provisions one workspace per writable lane. Parallel writable
-  lanes require disjoint allowed paths.
+- required behavior: every host-managed writable lane provisions an
+  adapter-owned isolated workspace. The adapter dispatches writers only in that
+  workspace and must prove their sandbox cannot write outside it. Parallel
+  writable lanes require disjoint allowed paths and isolated workspaces.
+  Ambient desktop or CLI threads outside the adapter are source-first,
+  unvalidated work; they are never part of a managed run.
 - output or state change: each lane records workspace kind, stable path or
   worktree identity, role, allowed paths, and attempts.
 - failure behavior: unavailable workspace capability, dirty-conflict policy, or
   overlapping writable paths blocks before dispatch.
-- observable acceptance: shared-workspace parallel work is rejected unless all
-  lanes are read-only.
+- observable acceptance: any managed writer using controller source workspace,
+  or escaping its adapter-owned workspace, blocks the run. Validators use the
+  final isolated state with a host-enforced read-only sandbox.
 
 #### Requirement: Agent dispatch and claim collection
 
@@ -448,6 +453,26 @@ layer: change
 - affected owners and boundaries: harness policy, executor capability registry,
   controller, and tests.
 
+### Decision: Managed enforcement is adapter-owned workspace containment
+
+- context: current Codex runtime can enforce per-thread sandboxes and relay
+  approvals, but exposes no repository-owned global hook that can intercept
+  unrelated desktop or CLI threads.
+- selected approach: managed authority covers only lanes created by the host
+  adapter. Every managed writer receives an adapter-owned isolated workspace
+  with host `workspace-write` sandbox; every validator receives the materialized
+  final workspace with host `read-only` sandbox. Ambient threads remain outside
+  the managed lifecycle and are source-first, unvalidated work.
+- rationale: native, directly testable containment is enforceable now; a global
+  hook claim is not.
+- alternatives considered: require `UserPromptSubmit`/`PreToolUse` global
+  session binding; accept unmanaged ambient work as managed; prompt-only write
+  restrictions.
+- accepted trade-offs: harness cannot stop a user from running an unrelated
+  desktop or CLI agent. It can never accept that work as part of a managed run.
+- affected owners and boundaries: host adapter, workspace preparation,
+  integration, packet evidence, and feasibility tests.
+
 ### Decision: Controller is sole run-record writer
 
 - context: parallel lanes cannot safely mutate one shared JSON record.
@@ -493,9 +518,9 @@ layer: change
   or packet fields.
 - risk:
   - provider cannot hard-restrict selected tools.
-    - mitigation: dispatch adapter applies available restrictions, packet and
-      prompt state allowed tools, and verifier never claims hard enforcement
-      where platform lacks it.
+    - mitigation: dispatch adapter applies host sandbox containment to its own
+      workspace, records direct write/escape evidence, and verifier never
+      claims global desktop enforcement.
   - interrupted write corrupts run history.
     - mitigation: controller writes atomically and validates record before each
       transition.
@@ -508,6 +533,8 @@ layer: change
 ### Invariants
 
 - every dispatched lane has one validated immutable packet snapshot.
+- every managed writable lane runs only in its adapter-owned isolated workspace;
+  ambient threads have no managed run authority.
 - controller alone writes run state and performs accept, retry, escalate, and
   approval-resume transitions.
 - no mode silently changes or falls back after preflight.
