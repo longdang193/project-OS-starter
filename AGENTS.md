@@ -22,7 +22,7 @@ This file is repo-wide instruction layer. More specific directory instructions o
 ## Subagent Routing
 
 `repo_config/harness.yaml` owns route selection. For managed execution,
-controller starts version-2 request through host-supplied `run_managed` adapter
+controller starts version-3 request through host-supplied `run_managed` adapter
 boundary. `run.json` owns mutable run state; each attempt owns immutable packet.
 Packet owns template, role, rules, skills, allowed tools, workspace, checks,
 approval gates, planned write paths, resolved base commit, and orchestration

@@ -1,7 +1,7 @@
 ---
 artifact_type: plan
 template_id: implementation-plan
-status: proposed
+status: completed
 layer: change
 parent_spec: docs/superpowers/specs/2026-08-05-uniform-harness-execution-orchestrator.md
 targets:
@@ -35,9 +35,12 @@ packet and gates validate, and whose host adapter reports that topology
 - Host reports one verified execution record for each writer and validator lane;
   core persists it and rejects missing, ambient, mismatched, or validator-write
   evidence.
-- `single_work_lane` uses one isolated writer workspace, same-workspace checks,
-  fresh read-only validation, then explicit controller decision. Sequential and
-  parallel topologies remain unavailable until separately proven.
+- Each enabled topology uses isolated writers, one materialized final workspace,
+  same-workspace checks, fresh read-only validation, then explicit controller
+  decision. Sequential and parallel remain unavailable until separately proven.
+- Every managed request resolves `runtime_provider_id` once. Its immutable
+  packet object contains canonical provider ID and contract version; adapter
+  identity and every host evidence record match that object.
 
 ## Scope And Boundaries
 
@@ -68,7 +71,7 @@ packet and gates validate, and whose host adapter reports that topology
 | Route, canonical topology, gates, retry policy | `repo_config/harness.yaml` | harness core, routing renderer, docs |
 | Role claim shape and field constraints | `agents/roles.yaml` | harness core, host prompts |
 | Request normalization, packets, lane DAG, transitions, evidence | `scripts/harness_task.py` | generic CLI, host adapter |
-| Allowed runtime-provider IDs and route compatibility | `repo_config/harness.yaml` | packet resolver, controller, host adapter |
+| Provider IDs, contract versions, and route compatibility | `repo_config/harness.yaml` | packet resolver, controller, host adapter |
 | Runtime capability and Codex process state | private host adapter | harness core through `capabilities()` |
 | Mutable run truth | `.harness/runs/<run-id>/run.json` | controller and verifier |
 | Human guidance | canonical rules, skills, and generated adapters | people and agents |
@@ -249,6 +252,7 @@ controller-created successor attempt, preserving the original packet.
 **Files And Symbols:**
 - Modify: `repo_config/harness.yaml:runtime_providers`
 - Modify: `repo_config/harness.yaml:routes.*.runtime_providers`
+- Modify: `repo_config/harness.yaml:routes.*.default_runtime_provider`
 - Modify: `scripts/validate_harness_config.py:validate`
 - Modify: `scripts/harness_task.py:resolve_managed_packet`
 - Modify: `scripts/harness_task.py:_adapter_capabilities`
@@ -261,27 +265,33 @@ controller-created successor attempt, preserving the original packet.
 - Task 1 packet normalization remains the only request-to-packet path.
 
 **Steps:**
-- [ ] Add one static `runtime_providers` registry to `harness.yaml`. Each row
-  has only stable ID and adapter-contract version. Do not copy dynamic mode,
+- [x] Add one static `runtime_providers` registry to `harness.yaml`, keyed by
+  provider ID. Each row has only `contract_version`. Do not copy dynamic mode,
   sandbox, workspace, tool, credential, or deployment facts from a host.
-- [ ] Require every managed route to name its allowed provider IDs. Controller
-  chooses one permitted provider before packet creation; route default applies
-  only when controller leaves provider unspecified. Reject unknown,
-  duplicate, or disallowed IDs deterministically.
-- [ ] Store exactly one selected `runtime_provider` object in each immutable
+- [x] Require every managed route to name its allowed provider IDs and exactly
+  one `default_runtime_provider` from that list. Controller chooses one
+  permitted provider before packet creation; route default applies only when
+  controller leaves provider unspecified. Reject unknown, duplicate, missing,
+  or disallowed IDs deterministically.
+- [x] Accept optional request `runtime_provider_id`; resolve route default only
+  when it is absent. Store exactly one selected
+  `runtime_provider: {provider_id, contract_version}` object in each immutable
   packet and successor attempt. A provider change requires controller-created
   successor attempt; never auto-fallback during dispatch or retry.
-- [ ] Require adapter identity `{provider_id, contract_version}` before
-  capability evaluation. Reject identity mismatch before workspace preparation
-  or lane dispatch.
-- [ ] Keep `capabilities()` runtime-only. It reports present enforcement for
+- [x] Require adapter `identity()` to return exactly
+  `{provider_id, contract_version}` after the selected mode is `enforced` and
+  before workspace preparation or lane dispatch. Reject identity mismatch
+  before workspace preparation or lane dispatch. Carry exact selected provider object in tool-binding,
+  execution, and check evidence; core rejects mismatch before acceptance.
+- [x] Keep `capabilities()` runtime-only. It reports present enforcement for
   the selected provider; static registry never marks a mode enforced.
-- [ ] Add shared contract tests: default selection, explicit allowed selection,
-  unknown/disallowed selection, adapter mismatch, unavailable capability, and
-  successor-provider immutability. Reuse `FakeAdapter`; add no plugin loader.
+- [x] Add shared contract tests: default selection, explicit allowed selection,
+  unknown/disallowed selection, adapter mismatch, evidence mismatch,
+  unavailable capability, and successor-provider immutability. Reuse
+  `FakeAdapter`; add no plugin loader.
 
 **Verification:**
-- [ ] `python -m pytest tests/test_harness_task.py tests/test_validate_harness_config.py -q`
+- [x] `python -m pytest tests/test_harness_task.py tests/test_validate_harness_config.py -q`
 - Expected: every accepted packet names one permitted provider; invalid or
   mismatched provider blocks before workspace creation; all provider paths use
   same lane, evidence, verifier, and controller-decision shape.
@@ -398,11 +408,11 @@ controller-created successor attempt, preserving the original packet.
 - No orchestration-specific dispatch or final-state branch remains outside
   topology data and generic dependency scheduling.
 
-### Task 4: Create Private Codex Host Adapter
+### Task 4: Implement Codex App Server Provider Adapter
 
 **Purpose:**
-- Connect immutable packet effects to real Codex work without copying harness
-  policy or lifecycle code.
+- Connect immutable packet effects to real Codex work as provider
+  `codex_app_server`, without copying harness policy or lifecycle code.
 
 **Specification Coverage:**
 - Host adapter capability contract.
@@ -429,43 +439,47 @@ controller-created successor attempt, preserving the original packet.
 - Task 3 generic scheduler complete.
 
 **Steps:**
-- [ ] Create private repository. Keep it out of starter-kit manifest and public
+- [x] Create private repository. Keep it out of starter-kit manifest and public
   export configuration.
-- [ ] Implement stdlib-only JSON-RPC App Server client with `asyncio`,
+- [x] Implement stdlib-only JSON-RPC App Server client with `asyncio`,
   `subprocess`, and `json`. Keep protocol framing isolated in `app_server.py`.
-- [ ] Implement adapter methods from canonical contract. Adapter imports and
+- [x] Implement adapter methods from canonical contract. Adapter imports and
   calls `scripts/harness_task.py:run_managed`; it never reimplements packet
   resolution, transition, verification, or decisions.
-- [ ] Implement `materialize_final_state`. It returns identity current state for
+- [x] Implement `identity()` and report the canonical runtime identity
+  `{provider_id: "codex_app_server", contract_version: 1}`. Every host
+  workspace, tool-binding, lane, command, check, and validator evidence record
+  carries that same provider identity.
+- [x] Implement `materialize_final_state`. It returns identity current state for
   one-workspace runs; it materializes one merge-checked final state for isolated
   work lanes; it returns common failure on integration conflict.
-- [ ] Implement `capabilities()` conservatively: report only
+- [x] Implement `capabilities()` conservatively: report only
   `single_work_lane: enforced` after all feasibility checks pass. Report every
   other topology unavailable.
-- [ ] Prepare writer in requested workspace. Run validator in same final state
+- [x] Prepare writer in requested workspace. Run validator in same final state
   with host-enforced read-only sandbox. If host cannot enforce that boundary,
   report topology unavailable; prompt wording alone is insufficient.
-- [ ] Render agent prompts only from packet and role contract. Require one JSON
+- [x] Render agent prompts only from packet and role contract. Require one JSON
   `claimed_result`; validate and normalize it in `claims.py` before returning.
-- [ ] Forward user approval and cancellation events. Never auto-accept,
+- [x] Forward user approval and cancellation events. Never auto-accept,
   retry, waive, or alter `run.json`.
-- [ ] Require adapter-owned isolated workspaces for every managed writer. Prove
+- [x] Require adapter-owned isolated workspaces for every managed writer. Prove
   host `workspace-write` allows in-root writes and rejects workspace escape;
   never claim global desktop/CLI write interception.
 
 **Verification:**
-- [ ] `python -m pytest ../codex-harness-host/tests/test_adapter.py ../codex-harness-host/tests/test_claims.py -q`
+- [x] `python -m pytest ../codex-harness-host/tests/test_adapter.py ../codex-harness-host/tests/test_claims.py -q`
 - Expected: fake App Server proves effect translation, final-state
   materialization, JSON claim parsing, cancellation, workspace-containment
   decision, and unavailable capability fallback.
-- [ ] Manual local App Server smoke in a disposable Git repository.
+- [x] Manual local App Server smoke in a disposable Git repository.
 - Expected: one writer, one final-state materialization, and one fresh
   validator thread run; validator cannot modify source; run record contains
   both claims and no policy duplication.
 
 **Exit Criteria:**
-- Private adapter runs one real `single_work_lane` attempt through canonical
-  harness core and reports no unsupported capability as enforced.
+- Private Codex provider runs one real `single_work_lane` attempt through
+  canonical harness core and reports no unsupported capability as enforced.
 
 ### Task 5: Add Controller Entry Point, Guard, And Live Acceptance Proof
 
@@ -496,25 +510,25 @@ controller-created successor attempt, preserving the original packet.
 - Task 4 real host adapter proof passes.
 
 **Steps:**
-- [ ] Add one host CLI command accepting harness root and version-3 request.
+- [x] Add one host CLI command accepting harness root and version-3 request.
   It prints only managed result JSON and preserves controller decision as a
   separate explicit command.
-- [ ] Run only adapter-owned isolated workspaces. Ambient desktop or CLI threads
+- [x] Run only adapter-owned isolated workspaces. Ambient desktop or CLI threads
   remain source-first and unvalidated; never claim global write interception.
-- [ ] Add environment-gated live test. It creates temporary Git repo, supplies
+- [x] Add environment-gated live test. It creates temporary Git repo, supplies
   bounded request, runs host CLI, asserts writer and validator claims, then
   calls controller `accept` only after check plus validator evidence.
-- [ ] Add negative live scenarios: unavailable read-only validator capability;
+- [x] Add negative live scenarios: unavailable read-only validator capability;
   validator `fail`; final-state integration conflict; workspace escape;
   cancellation; explicit waiver. Each must not become accepted.
-- [ ] Update root instructions and subagent skill only after live proof. They
+- [x] Update root instructions and subagent skill only after live proof. They
   must name actual host command/tool, not a future adapter.
 
 **Verification:**
-- [ ] `CODEX_HARNESS_LIVE=1 python -m pytest ../codex-harness-host/tests/test_live_single_work_lane.py -q`
+- [x] `CODEX_HARNESS_LIVE=1 python -m pytest ../codex-harness-host/tests/test_live_single_work_lane.py -q`
 - Expected: real host lifecycle reaches `awaiting_decision`, then controller
   accepts only validated work.
-- [ ] `python -m pytest tests/test_harness_task.py -q`
+- [x] `python -m pytest tests/test_harness_task.py -q`
 - Expected: generic CLI remains unavailable and explicit waiver remains
   terminal `unvalidated`.
 
@@ -553,26 +567,87 @@ controller-created successor attempt, preserving the original packet.
 - Task 5 live single-work-lane proof passes.
 
 **Steps:**
-- [ ] Enable `sequential_work_lanes` after host can dispatch dependency-ordered
-  fresh work threads and one validator thread. Reuse existing lane scheduler.
-- [ ] Enable `parallel_work_lanes` only after host creates isolated workspaces,
-  proves writer path disjointness, materializes one final integrated state, and
-  gives validator read-only access to that state through generic integration
-  effect.
-- [ ] Add one adversarial test per topology: dependency cycle, overlapping
-  writer paths, failed merge/integration, validator source write attempt.
-- [ ] Keep capability unavailable when any invariant cannot be host-enforced.
+- [x] Enable `sequential_work_lanes` only for linear dependency chains: one
+  root, one successor per writer, one terminal. Prepare each successor as a
+  fresh base clone materialized from its direct predecessor. Reject branches,
+  joins, multiple roots, and missing predecessor state before dispatch.
+- [x] Enable `parallel_work_lanes` only after host creates isolated base clones,
+  materializes one fresh final base clone in deterministic lane-ID order, and
+  rejects two actual writer changes to same path before validator dispatch.
+- [x] Initially materialize only regular-file adds, modifications, deletions,
+  and untracked files. Reject renames, copies, unmerged states, type changes,
+  submodules, and symlinks; expand only with direct merge proof.
+- [x] Add adversarial proof for invalid sequential chain, parallel same-path
+  conflict, unsupported file state, failed integration with no validator
+  dispatch, and validator source write attempt.
+- [x] Run live accepted sequential then parallel topology smoke. Each proves
+  writer isolation, packet-native tools, final-workspace checks, fresh
+  read-only validator, exact provider identity, and explicit controller accept.
+- [x] Keep capability unavailable when any invariant cannot be host-enforced.
 
 **Verification:**
-- [ ] Fake-adapter matrix test over every canonical topology.
+- [x] Fake-adapter matrix test over every canonical topology.
 - Expected: same packet, evidence, outcome, and decision schema across modes.
-- [ ] Environment-gated live smoke for each newly enabled topology.
+- [x] Environment-gated live smoke for each newly enabled topology.
 - Expected: mode-specific workspace behavior differs; lifecycle and acceptance
   protocol do not.
 
 **Exit Criteria:**
 - Adding a topology required no new controller state, run schema, evidence
   format, or acceptance path.
+
+### Task 6A: Add Provider-Conformance Gate
+
+**Purpose:**
+- Make future runtime-provider admission a repeated proof operation, not a
+  second controller integration or provider-specific exception.
+
+**Specification Coverage:**
+- One protocol for many providers.
+- Packet-root tool enforcement, final-workspace checks, and fresh validator
+  symmetry across provider implementations.
+
+**Required Skills:**
+- `skill-code-standards`
+- `skill-test-driven-development`
+- `skill-backend-verification`
+
+**Files And Symbols:**
+- Modify: `scripts/harness_task.py` only for provider-neutral contract checks
+- Modify: `tests/test_harness_task.py`
+- Modify: `docs/operating_system/procedures/managed-execution-adapter-contract.md`
+- Modify: `docs/operating_system/provider_capabilities.yaml` only to label it
+  generated-surface metadata, never managed-runtime capability truth
+
+**Dependencies:**
+- Task 1A provider selection and Task 5 live Codex provider proof pass.
+
+**Steps:**
+- [x] Add one reusable core adapter-conformance fixture. It accepts an adapter
+  implementation and checks identity match, isolated writer root, all selected
+  tool bindings rooted in packet workspace, final-workspace checks, separate
+  read-only validator, host event evidence, cancellation, and unavailable-mode
+  fail-closed behavior.
+- [x] Keep test vectors provider-neutral. `codex_app_server` supplies first
+  live implementation; a future OpenHands provider must run same vectors with
+  no controller or verifier conditional.
+- [x] Require candidate providers to prove a fresh final workspace validator
+  and denied validator write. Docker mount semantics, UI history, prompt text,
+  or implementer claims alone never satisfy conformance.
+- [x] Keep provider absent from route policy until conformance passes. A failed
+  candidate remains unavailable with friction evidence; no waiver upgrades it
+  to managed acceptance.
+
+**Verification:**
+- [x] `python -m pytest tests/test_harness_task.py -q`
+- [x] Environment-gated conformance smoke for every provider admitted to a
+  managed route.
+- Expected: provider differences appear only in host evidence values; packet,
+  run state, criteria, verifier result, and controller decision remain equal.
+
+**Exit Criteria:**
+- Adding a conforming provider needs one adapter, one policy row, and the same
+  conformance evidence; it needs no new core execution branch.
 
 ### Task 7: Reconcile Generated Surfaces And Starter Kit
 
@@ -601,25 +676,95 @@ controller-created successor attempt, preserving the original packet.
 - Tasks 1 through 6 completed or explicitly unavailable with recorded reason.
 
 **Steps:**
-- [ ] Replace legacy names in human guidance with canonical names and document
+- [x] Replace legacy names in human guidance with canonical names and document
   aliases only in compatibility section.
-- [ ] State exact live host command/tool only after Task 5. Do not claim
+- [x] State exact live host command/tool only after Task 5. Do not claim
   automatic controller enforcement before it exists.
-- [ ] Run adapter sync. Do not hand-edit generated output.
-- [ ] Build starter kit. Confirm harness core and contract ship; confirm private
+- [x] Document provider IDs, static-policy ownership, dynamic-capability
+  ownership, and conformance admission in canonical contract guidance. Keep
+  `provider_capabilities.yaml` out of runtime capability decisions.
+- [x] Run adapter sync. Do not hand-edit generated output.
+- [x] Build starter kit. Confirm harness core and contract ship; confirm private
   host source, credentials, runtime state, and provider-specific deployment
   artifacts do not ship.
 
 **Verification:**
-- [ ] `python scripts/sync_agent_adapters.py --check`
-- [ ] `python scripts/validate_agent_runtime_drift.py --skip-deploy-check`
-- [ ] `python scripts/build_starter_kit.py`
-- [ ] `python scripts/validate_starter_kit.py`
+- [x] `python scripts/sync_agent_adapters.py --check`
+- [x] `python scripts/validate_agent_runtime_drift.py --skip-deploy-check`
+- [x] `python scripts/build_starter_kit.py`
+- [x] `python scripts/validate_starter_kit.py`
 - Expected: generated surfaces match canonical sources; kit contains no private
   host adapter or `.harness` state.
 
 **Exit Criteria:**
 - Starter users receive one truthful contract and no private runtime dependency.
+
+### Task 8: Add SSOT Friction Learning Loop
+
+**Purpose:**
+- Turn repeated verified execution friction into controller-owned improvement
+  candidates without autonomous policy, tool, skill, provider, or route mutation.
+
+**Specification Coverage:**
+- One friction fact store, symmetric evidence across every lane and topology,
+  controller-owned improvement selection, and fresh-rerun-only learning.
+
+**Required Skills:**
+- `skill-improve-harness`
+- `skill-test-driven-development`
+- `skill-backend-verification`
+- `skill-verification-before-completion`
+
+**Files And Symbols:**
+- Modify: `repo_config/harness.yaml:friction_policy`
+- Modify: `scripts/validate_harness_config.py:validate`
+- Modify: `scripts/harness_task.py` friction recording, report, resolution,
+  and CLI commands
+- Modify: `tests/test_harness_task.py`
+- Modify: `tests/test_validate_harness_config.py`
+- Modify: `docs/operating_system/procedures/managed-execution-adapter-contract.md`
+- Modify: `.agents/skills/skill-improve-harness/SKILL.md`
+- Modify: `docs/operating_system/templates/harness-improvement-template.md`
+
+**Dependencies:**
+- Tasks 1 through 7 completed.
+
+**Steps:**
+- [x] Add one static `friction_policy` registry. It owns event schema version,
+  distinct-run threshold, and rolling window only; it never stores observed
+  runtime state or remediation decisions.
+- [x] Write every new observed friction once to append-only
+  `.harness/friction-events.jsonl`. Run attempts store event IDs only. Each
+  event records run, attempt, route, provider, mode, lane kind, phase, source,
+  code, evidence reference, timestamp, and deterministic fingerprint. Do not
+  copy prompts, secrets, or raw command logs.
+- [x] Route agent claim friction, adapter failure, failed check, integration,
+  validator, cancellation, and decision friction through one normalizer. Lane
+  and topology differences become event fields, never separate ledgers.
+- [x] Add read-only `friction-report` command. It derives unresolved candidates
+  only from canonical events, requires configured distinct runs inside rolling
+  window, and emits no state change.
+- [x] Add controller-only `friction-resolve` command. It accepts only an
+  accepted `harness_improvement` run and appends immutable `resolution` event
+  with `keep`, `revise`, `remove`, or `pending`. It never changes harness
+  configuration or upgrades failed work.
+- [x] Update contract, improvement skill, and artifact template. A candidate
+  must name fingerprint, baseline event IDs, smallest change, and fresh
+  representative rerun before controller records resolution.
+
+**Verification:**
+- [x] `python -m pytest tests/test_harness_task.py tests/test_validate_harness_config.py -q`
+- [x] `python scripts/harness_task.py --repo-root . friction-report`
+- [x] `python scripts/validate_harness_config.py --repo-root .`
+- [x] `python scripts/validate_repo_contracts.py`
+- Expected: one same-schema event stream covers every source; repeated events
+  yield a candidate only at threshold; resolution requires accepted improvement
+  evidence; no report or resolution mutates policy.
+
+**Exit Criteria:**
+- Repeated verified friction can trigger one controller-selected,
+  independently-verified improvement experiment. Harness learning remains
+  traceable, reversible, and policy-safe.
 
 ## Verification
 
@@ -637,8 +782,8 @@ controller-created successor attempt, preserving the original packet.
 
 Plan is ready for completion verification when:
 
-1. canonical topology and alias normalization produce one version-3 packet
-   shape for every admissible request
+1. canonical topology, alias normalization, and one immutable selected runtime
+   provider produce one version-3 packet shape for every admissible request
 2. every managed topology contains final-state integration plus a fresh
    non-writing validator lane, and validator `pass` evidence is required for
    acceptance
@@ -652,7 +797,10 @@ Plan is ready for completion verification when:
    their run record, evidence, decisions, and retries stay identical
 7. generated instructions and starter kit are synchronized and exclude private
    host runtime
-8. live single-work-lane proof and all final checks pass from fresh evidence
+8. every route-admitted provider passes same conformance gate; live proof for
+   every admitted topology and all final checks pass from fresh evidence
+9. friction observations, derived candidates, and controller resolutions use
+   one immutable event schema; no automatic harness mutation exists
 
 The plan may be marked `completed` only when
 `skill-verification-before-completion` returns `verified` from fresh evidence.
@@ -682,3 +830,35 @@ The plan may be marked `completed` only when
   scope. Writer containment remains unproven. See private
   `../codex-harness-host/docs/feasibility-report.md`. All managed topologies
   remain `unavailable` until that proof exists.
+- 2026-08-06 — Provider-neutral runtime proof passed against loopback App
+  Server. Run `provider-smoke-eba3306be3e540a1890a00de3413e188` selected
+  immutable `codex_app_server:1`, completed writer, same-final-workspace
+  checks, fresh read-only validator, and explicit controller acceptance.
+  Adapter identity plus tool-binding, lane, command, and check evidence all
+  matched packet provider. Core full suite (131), host suite (5), sync, drift,
+  starter build, starter validation, and `git diff --check` passed. Sequential
+  and parallel remain explicitly unavailable.
+- 2026-08-06 — Host topology proof enabled all canonical modes. Host unit tests
+  prove linear sequential inheritance, parallel isolated merge, same-path and
+  rename rejection, bounded packet-tool evidence retry, and concurrent-ready
+  dispatch. Accepted `sequential-smoke-4cc3ce1a819c40fc9e5417f04e1d7166`
+  showed successor inheritance and shared final validation. Accepted
+  `parallel-smoke-155836041f16413cb2f9d6dc21af17af` showed isolated writers,
+  fresh integrated final state, check, read-only validator, and controller
+  acceptance. No core topology branch or run-schema change was added.
+- 2026-08-06 — Completion proof passed. `tests/test_live_single_work_lane.py`
+  creates a temporary Git harness fixture, runs host CLI with one version-3
+  request, requires writer and fresh read-only validator claims plus direct
+  final-workspace checks, then records controller `accept`. Negative lifecycle
+  coverage remains split by boundary: core tests reject unavailable validators,
+  validator failure, integration conflict, cancellation, and waiver; live host
+  probes prove validator read-only, writer containment, and approval relay.
+  Fresh core suite (74), host suite (14 passed, 1 gated skip), live proof,
+  config, generated-surface sync, runtime drift, contracts, starter build,
+  starter validation, and `git diff --check` passed.
+- 2026-08-06 — Task 8 completed. `repo_config/harness.yaml` now owns the
+  friction event version, threshold, and window; `.harness/friction-events.jsonl`
+  holds append-only observations and controller resolutions; attempts retain
+  event IDs only. Fresh focused and full harness/config tests, read-only report,
+  config, contracts, generated adapter drift, starter build, and starter
+  validation passed. No command changes harness policy automatically.

@@ -21,10 +21,13 @@ This file is repo-wide instruction layer. More specific directory instructions o
 
 ## Subagent Routing
 
-`repo_config/harness.yaml` owns route selection. Before controller dispatches a
-subagent, run `scripts/harness_task.py preflight` and give agent resulting
-validated packet. Packet owns template, role, rules, skills, allowed tools,
-workspace, checks, approval gates, and orchestration mode.
+`repo_config/harness.yaml` owns route selection. For managed execution,
+controller starts version-3 request through host-supplied `run_managed` adapter
+boundary. `run.json` owns mutable run state; each attempt owns immutable packet.
+Packet owns template, role, rules, skills, allowed tools, workspace, checks,
+approval gates, planned write paths, resolved base commit, and orchestration
+mode. Generic CLI has no platform agent adapter and must report unavailable
+mode instead of claiming dispatch.
 
 Use only packet-selected agent types:
 
@@ -39,9 +42,21 @@ When spawning a subagent:
 - Never override the template's model or reasoning effort.
 - Do not select unnamed or other agent types.
 - Subagents must not spawn other agents.
-- If task scope or needed capability changes, controller reroutes and regenerates packet.
-- Controller alone dispatches, retries, escalates, or requests approval.
-- Agents return claimed results; harness alone returns verification evidence.
+- If task scope or needed capability changes, controller creates successor
+  attempt and regenerates immutable packet.
+- Harness dispatches only mode intersection of route policy and enforced host
+  capability. Controller alone accepts, retries, escalates, requests approval,
+  or blocks through recorded decision.
+- Agents return claimed results; harness records fresh verification evidence and
+  never accepts, retries, escalates, or approves autonomously.
+- Work is managed only after host adapter creates a packet and `run.json`.
+  Never call unpacketed work managed, validated, or accepted.
+- When selected managed mode returns `execution_mode_unavailable`, block it or
+  record controller `waive` decision with a reason. A waived run is terminal
+  `unvalidated`; local proof cannot become managed acceptance.
+- Independent validator claims exist only when host advertises and dispatches
+  an enforced read-only validator lane. Do not infer validator evidence from
+  local checks or an implementer claim.
 - Parallel writers need disjoint paths and isolated workspaces.
 - Without validated packet, do not dispatch subagent. Source-first routing still applies to controller work.
 

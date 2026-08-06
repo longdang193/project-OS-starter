@@ -21,6 +21,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "harness_task.py"
+FRICTION_EVENTS_ROOT: Path | None = None
+
+
+@pytest.fixture(autouse=True)
+def isolate_root_friction_events(tmp_path: Path) -> None:
+    global FRICTION_EVENTS_ROOT
+    FRICTION_EVENTS_ROOT = tmp_path / "friction-events.jsonl"
 
 
 def load_module():
@@ -28,6 +35,9 @@ def load_module():
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    original_friction_events_path = module._friction_events_path
+    if FRICTION_EVENTS_ROOT is not None:
+        module._friction_events_path = lambda root: FRICTION_EVENTS_ROOT if root == ROOT else original_friction_events_path(root)
     return module
 
 
@@ -71,12 +81,17 @@ def managed_request(**overrides):
 
 
 class FakeAdapter:
-    def __init__(self, capabilities, claim_payload=None, validator_claim=None, dispatch_error=None):
+    def __init__(self, capabilities, claim_payload=None, validator_claim=None, dispatch_error=None, identity=None, workspace_root=None):
         self.capabilities_value = capabilities
         self.claim_payload = claim_payload
         self.validator_claim = validator_claim
         self.dispatch_error = dispatch_error
+        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 1}
+        self.workspace_root = str(workspace_root or ROOT)
         self.calls = []
+
+    def identity(self):
+        return self.identity_value
 
     def capabilities(self):
         self.calls.append("capabilities")
@@ -84,7 +99,7 @@ class FakeAdapter:
 
     def prepare_workspace(self, lane, packet):
         self.calls.append("prepare_workspace")
-        return {"kind": "current", "path": str(ROOT)}
+        return {"kind": "current", "path": self.workspace_root}
 
     def verify_tool_bindings(self, lane, packet, workspace):
         self.calls.append("verify_tool_bindings")
@@ -96,6 +111,7 @@ class FakeAdapter:
             "root_probe": binding["root_probe"],
             "workspace_root": workspace["path"],
             "verified": True,
+            "runtime_provider": packet["runtime_provider"],
         } for binding in packet["tool_bindings"]]
 
     def run_checks(self, packet, workspace):
@@ -106,6 +122,7 @@ class FakeAdapter:
                 "workspace_root": workspace["path"],
                 "tool": "shell",
                 "binding_verified": True,
+                "runtime_provider": packet["runtime_provider"],
                 "exit_code": 0,
                 "stdout": "ok",
                 "stderr": "",
@@ -121,7 +138,7 @@ class FakeAdapter:
 
     def materialize_final_state(self, lane, packet, workspaces):
         self.calls.append("materialize_final_state")
-        return {"kind": "isolated", "path": str(ROOT)}
+        return {"kind": "isolated", "path": self.workspace_root}
 
     def cancel_lane(self, handle):
         self.calls.append("cancel_lane")
@@ -155,11 +172,52 @@ class FakeAdapter:
             "sandbox": "read-only" if lane["kind"] == "validate" else "workspace-write",
             "selected_tools_used": ["shell"],
             "tool_calls": ["shell"],
-            "command_results": [{"cwd": workspace["path"], "exit_code": 0}],
+            "command_results": [{
+                "cwd": workspace["path"],
+                "exit_code": 0,
+                "runtime_provider": packet["runtime_provider"],
+            }],
             "ambient_mcp": False,
+            "runtime_provider": packet["runtime_provider"],
             "workspace_status_before": "",
             "workspace_status_after": "",
         }
+
+
+def assert_provider_conformance(harness, adapter, run_id, workspace_root):
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    Path(workspace_root).mkdir(parents=True, exist_ok=True)
+    result = harness.run_managed(
+        ROOT,
+        managed_request(run_id=run_id),
+        adapter,
+        collect_changes=lambda root, base_commit: [],
+    )
+
+    assert result["outcome"]["reason"] == "verification_passed"
+    run = json.loads((run_dir / "run.json").read_text())
+    attempt = run["attempts"][0]
+    provider = attempt["packet"]["runtime_provider"]
+    assert provider == adapter.identity()
+    assert attempt["adapter_identity"] == provider
+    assert [record["sandbox"] for record in attempt["execution_evidence"]] == ["workspace-write", "read-only"]
+    assert {record["workspace_root"] for record in attempt["execution_evidence"]} == {str(workspace_root)}
+    assert all(record["runtime_provider"] == provider for record in attempt["execution_evidence"])
+    assert all(
+        command["runtime_provider"] == provider
+        for record in attempt["execution_evidence"]
+        for command in record["command_results"]
+    )
+    assert all(
+        binding["workspace_root"] == str(workspace_root) and binding["runtime_provider"] == provider
+        for record in attempt["tool_binding_evidence"]
+        for binding in record["bindings"]
+    )
+    assert all(
+        check["workspace_root"] == str(workspace_root) and check["runtime_provider"] == provider
+        for check in attempt["evidence"]["checks"]
+    )
+    return run
 
 
 def test_resolve_task_returns_route_packet() -> None:
@@ -196,6 +254,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
 
     assert packet["version"] == 3
     assert packet["user_request"] == "Update managed harness fixture."
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 1}
     assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
     assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
     assert packet["orchestration"]["name"] == "single_work_lane"
@@ -211,6 +270,29 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
         {"tool": "serena", "host_kind": "local_serena", "writer_access": "workspace_write", "validator_access": "read_only", "root_probe": "serena_root_probe"},
         {"tool": "ast_grep_preview", "host_kind": "local_ast_grep", "writer_access": "read_only", "validator_access": "read_only", "root_probe": "ast_grep_root_probe"},
     ]
+
+
+def test_resolve_managed_packet_rejects_disallowed_runtime_provider() -> None:
+    harness = load_module()
+
+    with pytest.raises(harness.HarnessError, match="runtime provider `missing` is not allowed"):
+        harness.resolve_managed_packet(
+            ROOT,
+            managed_request(runtime_provider_id="missing"),
+            attempt_id="attempt-1",
+        )
+
+
+def test_resolve_managed_packet_accepts_allowed_runtime_provider() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(runtime_provider_id="codex_app_server"),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 1}
 
 
 def test_resolve_managed_packet_rejects_v3_legacy_mode_alias() -> None:
@@ -374,6 +456,22 @@ def test_run_managed_blocks_unavailable_mode_without_dispatch(tmp_path: Path) ->
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_adapter_identity_mismatch_blocks_before_workspace_preparation(tmp_path: Path) -> None:
+    harness = load_module()
+    adapter = FakeAdapter(
+        {"single_work_lane": "enforced"},
+        identity={"provider_id": "other", "contract_version": 1},
+    )
+    run_dir = ROOT / ".harness" / "runs" / tmp_path.name
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=tmp_path.name), adapter)
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert adapter.calls == ["capabilities"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_unavailable_managed_run_requires_explicit_unvalidated_waiver(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
@@ -464,6 +562,23 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_provider_conformance_vector_accepts_adapter_implementation(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    workspace = tmp_path / "adapter-workspace"
+    adapter = FakeAdapter({"single_work_lane": "enforced"}, workspace_root=workspace)
+    try:
+        run = assert_provider_conformance(harness, adapter, run_id, workspace)
+
+        accepted = harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
+
+        assert accepted["state"] == "accepted"
+        assert run["state"] == "awaiting_decision"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_unverified_packet_tool_blocks_before_writer_dispatch(tmp_path: Path) -> None:
     class UnboundToolAdapter(FakeAdapter):
         def verify_tool_bindings(self, lane, packet, workspace):
@@ -480,6 +595,77 @@ def test_unverified_packet_tool_blocks_before_writer_dispatch(tmp_path: Path) ->
         assert result["state"] == "awaiting_decision"
         assert result["outcome"]["reason"] == "dispatch_failed"
         assert adapter.calls == ["capabilities", "prepare_workspace", "verify_tool_bindings"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_mismatched_tool_binding_provider_blocks_before_writer_dispatch(tmp_path: Path) -> None:
+    class MismatchedProviderAdapter(FakeAdapter):
+        def verify_tool_bindings(self, lane, packet, workspace):
+            bindings = super().verify_tool_bindings(lane, packet, workspace)
+            bindings[0]["runtime_provider"] = {"provider_id": "other", "contract_version": 1}
+            return bindings
+
+    harness = load_module()
+    adapter = MismatchedProviderAdapter({"single_work_lane": "enforced"})
+    run_dir = ROOT / ".harness" / "runs" / tmp_path.name
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=tmp_path.name), adapter)
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert adapter.calls == ["capabilities", "prepare_workspace", "verify_tool_bindings"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_missing_command_result_provider_blocks_before_verification(tmp_path: Path) -> None:
+    class MissingCommandProviderAdapter(FakeAdapter):
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            del evidence["command_results"][0]["runtime_provider"]
+            return evidence
+
+    harness = load_module()
+    adapter = MissingCommandProviderAdapter({"single_work_lane": "enforced"})
+    run_dir = ROOT / ".harness" / "runs" / tmp_path.name
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=tmp_path.name), adapter)
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert adapter.calls == [
+            "capabilities",
+            "prepare_workspace",
+            "verify_tool_bindings",
+            "dispatch_lane",
+            "collect_claim",
+            "collect_lane_evidence",
+            "cancel_lane",
+        ]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_cancellation_failure_records_normalized_friction(tmp_path: Path) -> None:
+    class CancellationFailureAdapter(FakeAdapter):
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            raise RuntimeError("evidence unavailable")
+
+        def cancel_lane(self, handle):
+            super().cancel_lane(handle)
+            raise RuntimeError("cancellation unavailable")
+
+    harness = load_module()
+    run_dir = ROOT / ".harness" / "runs" / tmp_path.name
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=tmp_path.name),
+            CancellationFailureAdapter({"single_work_lane": "enforced"}),
+        )
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        events = [json.loads(line) for line in FRICTION_EVENTS_ROOT.read_text().splitlines()]
+        assert [event["code"] for event in events] == ["cancellation_failed", "dispatch_failed"]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -739,6 +925,11 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         run = json.loads((run_dir / "run.json").read_text())
         assert exhausted["state"] == "blocked"
         assert len(run["attempts"]) == 2
+        assert run["attempts"][0]["packet"]["runtime_provider"] == {
+            "provider_id": "codex_app_server",
+            "contract_version": 1,
+        }
+        assert run["attempts"][1]["packet"]["runtime_provider"] == run["attempts"][0]["packet"]["runtime_provider"]
         assert run["attempts"][0]["packet"] == before
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -825,6 +1016,43 @@ def test_managed_dispatch_failure_becomes_retryable_outcome(tmp_path: Path) -> N
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_failed_integration_skips_validator_dispatch(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class IntegrationFailureAdapter(FakeAdapter):
+        def __init__(self):
+            super().__init__({"sequential_work_lanes": "enforced"})
+            self.dispatched_lanes = []
+
+        def dispatch_lane(self, lane, packet, workspace, cancellation_token):
+            self.dispatched_lanes.append(lane["lane_id"])
+            return super().dispatch_lane(lane, packet, workspace, cancellation_token)
+
+        def materialize_final_state(self, lane, packet, workspaces):
+            self.calls.append("materialize_final_state")
+            raise RuntimeError("integration conflict")
+
+    lanes = [
+        {"lane_id": "first", "role": "implement", "allowed_paths": ["scripts/**"], "dependencies": [], "workspace_mode": "isolated", "write_capable": True},
+        {"lane_id": "second", "role": "implement", "allowed_paths": ["tests/**"], "dependencies": ["first"], "workspace_mode": "isolated", "write_capable": True},
+    ]
+    adapter = IntegrationFailureAdapter()
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id, execution_mode="sequential_work_lanes", lanes=lanes),
+            adapter,
+        )
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert adapter.dispatched_lanes == ["first", "second"]
+        assert "run_checks" not in adapter.calls
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_approval_resume_creates_successor_attempt(tmp_path: Path) -> None:
     harness = load_module()
     now = datetime.now(UTC)
@@ -863,3 +1091,157 @@ def test_approval_resume_creates_successor_attempt(tmp_path: Path) -> None:
         assert run["attempts"][1]["packet"]["approvals"][0]["attempt_id"] == "attempt-2"
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_friction_report_uses_distinct_runs_and_accepted_resolution(tmp_path: Path) -> None:
+    harness = load_module()
+    root = tmp_path / "harness"
+    (root / "repo_config").mkdir(parents=True)
+    shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
+    packet = {
+        "task_type": "local_change",
+        "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 1},
+        "orchestration": {"name": "single_work_lane"},
+    }
+    now = datetime(2026, 8, 6, tzinfo=UTC)
+
+    first = harness.record_friction_event(
+        root,
+        run_id="run-1",
+        attempt_id="attempt-1",
+        packet=packet,
+        lane={"kind": "work"},
+        source="host",
+        phase="dispatch",
+        code="tool_unavailable",
+        evidence_ref="attempt.execution_evidence[0]",
+        occurred_at=now,
+    )
+    harness.record_friction_event(
+        root,
+        run_id="run-1",
+        attempt_id="attempt-1",
+        packet=packet,
+        lane={"kind": "work"},
+        source="host",
+        phase="dispatch",
+        code="tool_unavailable",
+        evidence_ref="attempt.execution_evidence[1]",
+        occurred_at=now,
+    )
+    harness.record_friction_event(
+        root,
+        run_id="run-2",
+        attempt_id="attempt-1",
+        packet=packet,
+        lane={"kind": "work"},
+        source="host",
+        phase="dispatch",
+        code="tool_unavailable",
+        evidence_ref="attempt.execution_evidence[0]",
+        occurred_at=now,
+    )
+    assert harness.friction_report(root, now=now)["candidates"] == []
+    for run_id in ("run-3",):
+        harness.record_friction_event(
+            root,
+            run_id=run_id,
+            attempt_id="attempt-1",
+            packet=packet,
+            lane={"kind": "work"},
+            source="host",
+            phase="dispatch",
+            code="tool_unavailable",
+            evidence_ref="attempt.execution_evidence[0]",
+            occurred_at=now,
+        )
+
+    report = harness.friction_report(root, now=now)
+
+    assert [candidate["fingerprint"] for candidate in report["candidates"]] == [first["fingerprint"]]
+    assert report["candidates"][0]["distinct_run_count"] == 3
+    assert report["candidates"][0]["event_count"] == 4
+    resolution_run = root / ".harness" / "runs" / "improvement"
+    resolution_run.mkdir(parents=True)
+    (resolution_run / "run.json").write_text(json.dumps({
+        "version": 1,
+        "run_id": "improvement",
+        "request": {"task_type": "local_change"},
+        "state": "accepted",
+        "attempts": [{}],
+    }), encoding="utf-8")
+    with pytest.raises(harness.HarnessError, match="accepted harness_improvement"):
+        harness.resolve_friction(root, "improvement", first["fingerprint"], "keep", now=now)
+    (resolution_run / "run.json").write_text(json.dumps({
+        "version": 1,
+        "run_id": "improvement",
+        "request": {"task_type": "harness_improvement"},
+        "state": "planned",
+        "attempts": [{}],
+    }), encoding="utf-8")
+    with pytest.raises(harness.HarnessError, match="accepted harness_improvement"):
+        harness.resolve_friction(root, "improvement", first["fingerprint"], "keep", now=now)
+    (resolution_run / "run.json").write_text(json.dumps({
+        "version": 1,
+        "run_id": "improvement",
+        "request": {"task_type": "harness_improvement"},
+        "state": "accepted",
+        "attempts": [{}],
+    }), encoding="utf-8")
+
+    resolution = harness.resolve_friction(
+        root,
+        "improvement",
+        first["fingerprint"],
+        "keep",
+        now=now,
+    )
+
+    assert resolution["kind"] == "resolution"
+    assert harness.friction_report(root, now=now)["candidates"] == []
+
+
+def test_friction_report_cli_is_read_only(tmp_path: Path) -> None:
+    root = tmp_path / "harness"
+    (root / "repo_config").mkdir(parents=True)
+    shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--repo-root", str(root), "friction-report"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["candidates"] == []
+    assert not (root / ".harness").exists()
+
+
+def test_friction_report_rejects_malformed_event(tmp_path: Path) -> None:
+    harness = load_module()
+    root = tmp_path / "harness"
+    (root / "repo_config").mkdir(parents=True)
+    shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
+    events_path = root / ".harness" / "friction-events.jsonl"
+    events_path.parent.mkdir()
+    events_path.write_text(json.dumps({
+        "version": 1,
+        "kind": "observed",
+        "event_id": "friction-malformed",
+        "run_id": "run-1",
+        "attempt_id": "attempt-1",
+        "route": "local_change",
+        "provider": "codex_app_server:1",
+        "mode": "single_work_lane",
+        "lane_kind": "work",
+        "phase": "dispatch",
+        "source": [],
+        "code": "tool_unavailable",
+        "evidence_ref": "evidence",
+        "fingerprint": "fingerprint",
+        "occurred_at": "2026-08-06T00:00:00+00:00",
+    }) + "\n", encoding="utf-8")
+
+    with pytest.raises(harness.HarnessError, match="invalid friction event at line 1"):
+        harness.friction_report(root)

@@ -66,6 +66,16 @@ layer: change
 - success condition: unsupported modes block before dispatch and never silently
   downgrade to `single_agent`.
 
+### Outcome: Provider-neutral managed execution
+
+- affected actor or system: controller, harness core, and runtime providers.
+- required result: static route policy selects one provider ID and contract
+  version into immutable packet state; adapter identity and host evidence must
+  match it before managed work or acceptance.
+- success condition: adding a conforming provider changes static policy and one
+  adapter only; no provider fallback, route-specific lifecycle, verifier, or
+  controller path exists.
+
 ## Design Analysis
 
 ### Current State and Evidence
@@ -195,6 +205,21 @@ layer: change
   worktree identity, role, allowed paths, and attempts.
 - failure behavior: unavailable workspace capability, dirty-conflict policy, or
   overlapping writable paths blocks before dispatch.
+
+### Outcome: Uniform multi-lane final state
+
+- affected actor or system: host adapter final-state effects.
+- required result: `sequential_work_lanes` permits only one linear work-lane
+  dependency chain. Each successor receives a fresh base clone with direct
+  predecessor changes materialized. `parallel_work_lanes` materializes isolated
+  writer changes into one fresh base clone in lane-ID order, rejecting same
+  actual changed paths.
+- success condition: all successful modes run checks and one fresh read-only
+  validator against the same final workspace. Unsupported file states or failed
+  integration stop before checks or validator dispatch.
+- initial support: regular-file adds, modifications, deletions, and untracked
+  regular files. Renames, copies, unmerged entries, type changes, submodules,
+  and symlinks fail closed until direct proof expands support.
 - observable acceptance: any managed writer using controller source workspace,
   or escaping its adapter-owned workspace, blocks the run. Validators use the
   final isolated state with a host-enforced read-only sandbox.

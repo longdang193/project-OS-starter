@@ -6,7 +6,7 @@ distribution_tier: starter_kit
 ---
 # Subagent-Driven Development
 
-Use only when controller selects `sequential_agents` in a managed harness run
+Use only when controller selects `sequential_work_lanes` in a managed harness run
 and host adapter capability is `enforced`. `skill-executing-plans` owns
 ordinary direct execution.
 
@@ -19,7 +19,7 @@ ordinary direct execution.
 - Packet owns allowed paths, planned write paths, resolved base commit,
   workspace, tools, checks, approval gates, required rules, and orchestration
   mode.
-- One implementer runs at once in current workspace. No child-agent spawning.
+- One implementer lane runs at once in an adapter-owned isolated workspace. No child-agent spawning.
 - Implementer returns `claimed_result`, never `verified`.
 - Harness records outcome after dispatch, claim collection, and verification.
   Controller alone calls `apply_controller_decision` to accept, retry,
@@ -33,7 +33,7 @@ ordinary direct execution.
 
 ## Per Task
 
-1. Controller builds version-2 request with typed criteria and planned write
+1. Controller builds version-3 request with typed criteria and planned write
    paths, then starts run through enforced host adapter.
 2. Harness authorizes planned protected paths, prepares workspace, dispatches,
    collects claim, snapshots actual changes, and records criterion evidence.

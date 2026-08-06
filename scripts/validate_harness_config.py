@@ -40,6 +40,8 @@ ROUTE_FIELDS = {
     "checks",
     "retry_policy",
     "execution_modes",
+    "runtime_providers",
+    "default_runtime_provider",
 }
 ROLE_FIELDS = {"writes", "accepts", "result_kind", "required_fields"}
 ORCHESTRATION_FIELDS = {
@@ -54,6 +56,8 @@ ORCHESTRATION_FIELDS = {
 RETRY_POLICY_FIELDS = {"max_attempts", "retryable_reasons", "exhaustion", "approval_resume", "approval_ttl_seconds"}
 TOOL_FIELDS = {"optional", "fallback", "host_kind", "writer_access", "validator_access", "root_probe"}
 REQUIRED_STATES = {"classified", "planned", "running", "observed", "verifying", "awaiting_decision", "accepted", "unvalidated", "blocked"}
+RUNTIME_PROVIDER_FIELDS = {"contract_version"}
+FRICTION_POLICY_FIELDS = {"event_version", "minimum_distinct_runs", "window_days"}
 
 
 def load_yaml(path: Path) -> Any:
@@ -173,6 +177,41 @@ def validate(root: Path) -> list[str]:
             errors.append(f"tool `{name}` validator_access must be `read_only`")
         if not isinstance(tool.get("root_probe"), str) or not tool["root_probe"]:
             errors.append(f"tool `{name}` root_probe must be a non-empty string")
+
+    runtime_providers = policy.get("runtime_providers")
+    if not isinstance(runtime_providers, dict) or not runtime_providers:
+        errors.append("runtime_providers must be a non-empty mapping")
+        runtime_providers = {}
+    for provider_id, provider in runtime_providers.items():
+        if not isinstance(provider_id, str) or not provider_id or not isinstance(provider, dict):
+            errors.append("runtime_providers must map non-empty IDs to mappings")
+            continue
+        missing = RUNTIME_PROVIDER_FIELDS - provider.keys()
+        unknown = set(provider) - RUNTIME_PROVIDER_FIELDS
+        if missing:
+            errors.append(f"runtime provider `{provider_id}` missing fields: {', '.join(sorted(missing))}")
+        if unknown:
+            errors.append(f"runtime provider `{provider_id}` has unknown fields: {', '.join(sorted(unknown))}")
+        version = provider.get("contract_version")
+        if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            errors.append(f"runtime provider `{provider_id}` contract_version must be a positive integer")
+
+    friction_policy = policy.get("friction_policy")
+    if not isinstance(friction_policy, dict):
+        errors.append("friction_policy must be a mapping")
+    else:
+        missing = FRICTION_POLICY_FIELDS - friction_policy.keys()
+        unknown = set(friction_policy) - FRICTION_POLICY_FIELDS
+        if missing:
+            errors.append(f"friction policy missing fields: {', '.join(sorted(missing))}")
+        if unknown:
+            errors.append(f"friction policy has unknown fields: {', '.join(sorted(unknown))}")
+        if friction_policy.get("event_version") != 1:
+            errors.append("friction policy `event_version` must be 1")
+        for name in ("minimum_distinct_runs", "window_days"):
+            value = friction_policy.get(name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                errors.append(f"friction policy `{name}` must be a positive integer")
 
     gates = policy.get("approval_gates", {})
     if not isinstance(gates, dict):
@@ -297,9 +336,19 @@ def validate(root: Path) -> list[str]:
         for mode in route["execution_modes"]:
             if mode not in orchestration:
                 errors.append(f"unknown execution mode `{mode}`")
-        for field in ("rules", "skills", "tools", "checks", "execution_modes"):
+        for field in ("rules", "skills", "tools", "checks", "execution_modes", "runtime_providers"):
             if not valid_string_list(route[field]):
                 errors.append(f"route `{name}` {field} must be a non-empty list of strings")
+            elif len(set(route[field])) != len(route[field]):
+                errors.append(f"route `{name}` {field} must not contain duplicates")
+        for provider_id in route["runtime_providers"]:
+            if provider_id not in runtime_providers:
+                errors.append(f"route `{name}` has unknown runtime provider `{provider_id}`")
+        default_provider = route["default_runtime_provider"]
+        if not isinstance(default_provider, str) or not default_provider:
+            errors.append(f"route `{name}` default_runtime_provider must be a non-empty string")
+        elif default_provider not in route["runtime_providers"]:
+            errors.append(f"route `{name}` default_runtime_provider must be allowed")
         if not isinstance(route["workspace"], str) or not route["workspace"]:
             errors.append(f"route `{name}` workspace must be a non-empty string")
     return errors

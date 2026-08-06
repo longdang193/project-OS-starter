@@ -1,3 +1,5 @@
+# Generated-agent metadata only. Not managed-runtime provider policy or
+# capability truth; `repo_config/harness.yaml` and host evidence own those.
 providers:
   codex:
     entrypoint: AGENTS.md

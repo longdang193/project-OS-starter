@@ -15,32 +15,47 @@ To update: edit canonical source, then run sync.
 
 # Subagent-Driven Development
 
-Use only when controller selects `sequential_agents` in a validated harness
-packet. `skill-executing-plans` owns ordinary direct execution.
+Use only when controller selects `sequential_work_lanes` in a managed harness run
+and host adapter capability is `enforced`. `skill-executing-plans` owns
+ordinary direct execution.
 
 ## Controller Contract
 
-- Controller preflights every task, selects only `low`, `normal`, or `high`,
-  and gives agent one packet plus bounded task brief.
-- Packet owns allowed paths, base ref, workspace, tools, checks, approval gates,
-  required rules, and orchestration mode.
-- One implementer runs at once in current workspace. No child-agent spawning.
+- Controller classifies request, selects only `low`, `normal`, or `high`, and
+  starts managed run through host-supplied `run_managed` adapter boundary.
+- Run record owns immutable attempt packet, lanes, claims, change-set evidence,
+  friction, outcomes, decisions, and state history under `.harness/runs/`.
+- Packet owns allowed paths, planned write paths, resolved base commit,
+  workspace, tools, checks, approval gates, required rules, and orchestration
+  mode.
+- One implementer lane runs at once in an adapter-owned isolated workspace. No child-agent spawning.
 - Implementer returns `claimed_result`, never `verified`.
-- Harness runs `verify`; controller alone accepts, retries, escalates, or asks
-  for approval. Commit policy remains separate and never gates this workflow.
+- Harness records outcome after dispatch, claim collection, and verification.
+  Controller alone calls `apply_controller_decision` to accept, retry,
+  escalate, request approval, or block. Commit policy remains separate.
+- Generic CLI has no platform agent adapter. It must return
+  `execution_mode_unavailable`, not claim dispatch occurred.
+- Controller may record `waive` only with reason. Waived work is terminal
+  `unvalidated`; local proof remains local and cannot become managed acceptance.
+- Independent validator evidence requires host dispatch of a separate enforced,
+  read-only validator lane. Implementer claims and local checks do not count.
 
 ## Per Task
 
-1. Controller sends `implementer-prompt.md` with packet and task brief.
-2. Implementer changes only allowed paths, runs task-local proof, and reports
-   changed files, command output, concerns, and reusable friction.
-3. Harness verifies claim against fresh diff, gates, state transition, and
-   configured checks.
-4. If packet requires review, controller sends `task-reviewer-prompt.md`.
-   Reviewer is read-only and returns findings as `claimed_result`.
-5. Controller closes lane or dispatches a new bounded repair task.
+1. Controller builds version-3 request with typed criteria and planned write
+   paths, then starts run through enforced host adapter.
+2. Harness authorizes planned protected paths, prepares workspace, dispatches,
+   collects claim, snapshots actual changes, and records criterion evidence.
+3. Implementer changes only lane paths, runs task-local proof, and reports
+   claim, changed files, concerns, and normalized friction.
+4. If review is required, controller obtains read-only reviewer evidence. Review
+   cannot authorize protected paths; approval cannot prove semantic criteria.
+5. Controller records one allowed decision. Retry, escalation, and approval
+   resume create successor attempts; prior packets and evidence stay unchanged.
 
 ## Stop
 
-Stop and return `blocked` when task packet is missing, scope overlaps another
-active writer, proof cannot run, or approval gate triggers.
+Stop with managed `block` when host capability is unavailable, lane scope
+overlaps another active writer, proof cannot run, or approval gate triggers.
+Use explicit `waive` only to record local-only `unvalidated` work. Do not use
+manual controller glue to bypass recorded outcome or decision.

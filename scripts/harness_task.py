@@ -26,6 +26,7 @@ import argparse
 import copy
 from datetime import UTC, datetime, timedelta
 import fnmatch
+import hashlib
 import importlib.util
 import json
 import os
@@ -56,6 +57,11 @@ CAPABILITY_LEVELS = {"enforced", "advisory", "unavailable"}
 CRITERION_KINDS = {"check", "change_set", "review", "manual", "validator"}
 DECISION_KINDS = {"accept", "retry", "escalate", "request_approval", "waive", "block"}
 RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+\Z")
+FRICTION_EVENT_VERSION = 1
+FRICTION_EVENT_KINDS = {"observed", "resolution"}
+FRICTION_SOURCES = {"agent", "host", "validator", "check", "controller"}
+FRICTION_PHASES = {"claim", "dispatch", "integration", "check", "validator", "decision"}
+FRICTION_RESOLUTIONS = {"keep", "revise", "remove", "pending"}
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -75,6 +81,26 @@ def _load_policy(root: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HarnessError("harness policy must be an object")
     return payload
+
+
+def _friction_policy(root: Path) -> dict[str, int]:
+    policy = _load_policy(root)
+    friction_policy = policy.get("friction_policy")
+    if not isinstance(friction_policy, dict):
+        raise HarnessError("missing friction policy")
+    expected = {"event_version", "minimum_distinct_runs", "window_days"}
+    if set(friction_policy) != expected:
+        raise HarnessError("invalid friction policy")
+    if friction_policy["event_version"] != FRICTION_EVENT_VERSION:
+        raise HarnessError("unsupported friction event version")
+    if any(
+        not isinstance(friction_policy[name], int)
+        or isinstance(friction_policy[name], bool)
+        or friction_policy[name] < 1
+        for name in ("minimum_distinct_runs", "window_days")
+    ):
+        raise HarnessError("invalid friction policy")
+    return friction_policy
 
 
 def _canonical_execution_mode(
@@ -334,6 +360,19 @@ def _route_packet(policy: dict[str, Any], task_type: str, execution_mode: str) -
     }
 
 
+def _resolve_runtime_provider(policy: dict[str, Any], task_type: str, value: Any) -> dict[str, Any]:
+    route = policy["routes"].get(task_type)
+    if not isinstance(route, dict):
+        raise HarnessError(f"unknown task type `{task_type}`")
+    provider_id = route["default_runtime_provider"] if value is None else _required_string(value, "runtime_provider_id")
+    if provider_id not in route["runtime_providers"]:
+        raise HarnessError(f"runtime provider `{provider_id}` is not allowed for task type `{task_type}`")
+    provider = policy["runtime_providers"].get(provider_id)
+    if not isinstance(provider, dict) or not isinstance(provider.get("contract_version"), int):
+        raise HarnessError(f"unknown runtime provider `{provider_id}`")
+    return {"provider_id": provider_id, "contract_version": provider["contract_version"]}
+
+
 def _resolve_commit(root: Path, base_ref: str) -> str:
     status, stdout, stderr = _run_command(root, ["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"])
     if status:
@@ -376,6 +415,228 @@ def _parse_timestamp(value: str) -> datetime:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise HarnessError("approval issued_at must be an ISO-8601 timestamp") from exc
+
+
+def _friction_events_path(root: Path) -> Path:
+    return root / ".harness" / "friction-events.jsonl"
+
+
+def _friction_time(value: str) -> datetime:
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HarnessError("friction event timestamp must be an ISO-8601 timestamp") from exc
+    if timestamp.tzinfo is None:
+        raise HarnessError("friction event timestamp must include timezone")
+    return timestamp.astimezone(UTC)
+
+
+def _friction_fingerprint(
+    *,
+    route: str,
+    provider: str,
+    mode: str,
+    lane_kind: str,
+    phase: str,
+    source: str,
+    code: str,
+) -> str:
+    payload = {
+        "version": FRICTION_EVENT_VERSION,
+        "route": route,
+        "provider": provider,
+        "mode": mode,
+        "lane_kind": lane_kind,
+        "phase": phase,
+        "source": source,
+        "code": code,
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return f"v{FRICTION_EVENT_VERSION}:{digest}"
+
+
+def _append_friction_event(root: Path, event: dict[str, Any]) -> dict[str, Any]:
+    path = _friction_events_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    return event
+
+
+def _read_friction_events(root: Path) -> list[dict[str, Any]]:
+    path = _friction_events_path(root)
+    if not path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise HarnessError(f"invalid friction event at line {line_number}") from exc
+        if not isinstance(event, dict) or event.get("version") != FRICTION_EVENT_VERSION:
+            raise HarnessError(f"invalid friction event at line {line_number}")
+        if event.get("kind") not in FRICTION_EVENT_KINDS or not isinstance(event.get("event_id"), str) or not event["event_id"]:
+            raise HarnessError(f"invalid friction event at line {line_number}")
+        _friction_time(_required_string(event.get("occurred_at"), "friction event occurred_at"))
+        if event["kind"] == "observed":
+            required = {
+                "run_id", "attempt_id", "route", "provider", "mode", "lane_kind",
+                "phase", "source", "code", "evidence_ref", "fingerprint",
+            }
+            if (
+                not required.issubset(event)
+                or not all(isinstance(event[name], str) and event[name] for name in required)
+                or event["source"] not in FRICTION_SOURCES
+                or event["phase"] not in FRICTION_PHASES
+            ):
+                raise HarnessError(f"invalid friction event at line {line_number}")
+        else:
+            required = {"run_id", "fingerprint", "decision", "observed_event_ids"}
+            observed_event_ids = event.get("observed_event_ids")
+            if (
+                not required.issubset(event)
+                or not all(isinstance(event[name], str) and event[name] for name in required - {"observed_event_ids"})
+                or not isinstance(observed_event_ids, list)
+                or not observed_event_ids
+                or not all(isinstance(event_id, str) and event_id for event_id in observed_event_ids)
+                or event["decision"] not in FRICTION_RESOLUTIONS
+            ):
+                raise HarnessError(f"invalid friction event at line {line_number}")
+        events.append(event)
+    return events
+
+
+def record_friction_event(
+    root: Path,
+    *,
+    run_id: str,
+    attempt_id: str,
+    packet: dict[str, Any],
+    lane: dict[str, Any] | None,
+    source: str,
+    phase: str,
+    code: str,
+    evidence_ref: str,
+    occurred_at: datetime | None = None,
+) -> dict[str, Any]:
+    _friction_policy(root)
+    if source not in FRICTION_SOURCES:
+        raise HarnessError("unsupported friction source")
+    if phase not in FRICTION_PHASES:
+        raise HarnessError("unsupported friction phase")
+    route = _required_string(packet.get("task_type"), "friction route")
+    provider = packet.get("runtime_provider")
+    if not isinstance(provider, dict):
+        raise HarnessError("friction packet lacks runtime provider")
+    provider_id = _required_string(provider.get("provider_id"), "friction provider")
+    contract_version = provider.get("contract_version")
+    if not isinstance(contract_version, int):
+        raise HarnessError("friction packet has invalid runtime provider")
+    orchestration = packet.get("orchestration")
+    if not isinstance(orchestration, dict):
+        raise HarnessError("friction packet lacks orchestration")
+    mode = _required_string(orchestration.get("name"), "friction mode")
+    lane_kind = "system" if lane is None else _required_string(lane.get("kind"), "friction lane kind")
+    timestamp = (occurred_at or datetime.now(UTC)).astimezone(UTC).isoformat()
+    event = {
+        "version": FRICTION_EVENT_VERSION,
+        "kind": "observed",
+        "event_id": f"friction-{uuid.uuid4().hex}",
+        "run_id": _safe_run_id(run_id),
+        "attempt_id": _required_string(attempt_id, "friction attempt_id"),
+        "route": route,
+        "provider": f"{provider_id}:{contract_version}",
+        "mode": mode,
+        "lane_kind": lane_kind,
+        "phase": phase,
+        "source": source,
+        "code": _required_string(code, "friction code"),
+        "evidence_ref": _required_string(evidence_ref, "friction evidence_ref"),
+        "occurred_at": timestamp,
+    }
+    event["fingerprint"] = _friction_fingerprint(
+        route=event["route"],
+        provider=event["provider"],
+        mode=event["mode"],
+        lane_kind=event["lane_kind"],
+        phase=event["phase"],
+        source=event["source"],
+        code=event["code"],
+    )
+    return _append_friction_event(root, event)
+
+
+def friction_report(root: Path, *, now: datetime | None = None) -> dict[str, Any]:
+    policy = _friction_policy(root)
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    cutoff = current - timedelta(days=policy["window_days"])
+    events = _read_friction_events(root)
+    resolved_at: dict[str, datetime] = {}
+    for event in events:
+        if event["kind"] != "resolution":
+            continue
+        resolved = _friction_time(event["occurred_at"])
+        if resolved <= current:
+            resolved_at[event["fingerprint"]] = max(resolved_at.get(event["fingerprint"], resolved), resolved)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        if event["kind"] != "observed":
+            continue
+        occurred_at = _friction_time(event["occurred_at"])
+        if not cutoff <= occurred_at <= current or occurred_at <= resolved_at.get(event["fingerprint"], datetime.min.replace(tzinfo=UTC)):
+            continue
+        grouped.setdefault(event["fingerprint"], []).append(event)
+    candidates = []
+    for fingerprint, observed in sorted(grouped.items()):
+        run_ids = sorted({event["run_id"] for event in observed})
+        if len(run_ids) < policy["minimum_distinct_runs"]:
+            continue
+        candidates.append({
+            "fingerprint": fingerprint,
+            "event_ids": sorted(event["event_id"] for event in observed),
+            "run_ids": run_ids,
+            "event_count": len(observed),
+            "distinct_run_count": len(run_ids),
+            "first_observed_at": min(event["occurred_at"] for event in observed),
+            "last_observed_at": max(event["occurred_at"] for event in observed),
+        })
+    return {
+        "version": FRICTION_EVENT_VERSION,
+        "minimum_distinct_runs": policy["minimum_distinct_runs"],
+        "window_days": policy["window_days"],
+        "candidates": candidates,
+    }
+
+
+def resolve_friction(
+    root: Path,
+    run_id: str,
+    fingerprint: str,
+    decision: str,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    if decision not in FRICTION_RESOLUTIONS:
+        raise HarnessError("unsupported friction resolution")
+    run = _load_run(root, _safe_run_id(run_id))
+    if run.get("state") != "accepted" or run.get("request", {}).get("task_type") != "harness_improvement":
+        raise HarnessError("friction resolution requires accepted harness_improvement run")
+    candidate = next((item for item in friction_report(root, now=now)["candidates"] if item["fingerprint"] == fingerprint), None)
+    if candidate is None:
+        raise HarnessError("friction resolution requires current candidate")
+    event = {
+        "version": FRICTION_EVENT_VERSION,
+        "kind": "resolution",
+        "event_id": f"friction-resolution-{uuid.uuid4().hex}",
+        "run_id": run["run_id"],
+        "fingerprint": fingerprint,
+        "decision": decision,
+        "observed_event_ids": candidate["event_ids"],
+        "occurred_at": ((now or datetime.now(UTC)).astimezone(UTC).isoformat()),
+    }
+    return _append_friction_event(root, event)
 
 
 def _validate_criteria(value: Any, checks: dict[str, list[str]]) -> list[dict[str, Any]]:
@@ -592,6 +853,7 @@ def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: s
     task_type = _required_string(request.get("task_type"), "task_type")
     execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
     packet = _route_packet(policy, task_type, execution_mode)
+    runtime_provider = _resolve_runtime_provider(policy, task_type, request.get("runtime_provider_id"))
     role = _load_roles(root).get(packet["role"])
     if not isinstance(role, dict):
         raise HarnessError(f"unknown route role `{packet['role']}`")
@@ -605,6 +867,7 @@ def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: s
         "base_ref": base_ref,
         "base_commit": _resolve_commit(root, base_ref),
         "user_request": user_request,
+        "runtime_provider": runtime_provider,
         "allowed_paths": allowed_paths,
         "planned_write_paths": planned_write_paths,
         "acceptance_criteria": _validate_criteria(request.get("acceptance_criteria"), packet["checks"]),
@@ -642,7 +905,7 @@ def _append_attempt(run: dict[str, Any], packet: dict[str, Any]) -> dict[str, An
         "lanes": copy.deepcopy(packet["lanes"]),
         "claims": [],
         "evidence": {},
-        "frictions": [],
+        "friction_event_ids": [],
         "outcome": None,
         "decision": None,
         "decision_history": [],
@@ -685,6 +948,23 @@ def _adapter_capabilities(adapter: Any, canonical_modes: set[str]) -> dict[str, 
     return capabilities
 
 
+def _adapter_identity(adapter: Any, runtime_provider: dict[str, Any]) -> dict[str, Any]:
+    identity = _adapter_call(adapter, "identity")
+    if (
+        not isinstance(identity, dict)
+        or set(identity) != {"provider_id", "contract_version"}
+        or not isinstance(identity.get("provider_id"), str)
+        or not identity["provider_id"]
+        or not isinstance(identity.get("contract_version"), int)
+        or isinstance(identity["contract_version"], bool)
+        or identity["contract_version"] < 1
+    ):
+        raise HarnessError("host adapter identity must contain provider_id and contract_version")
+    if identity != runtime_provider:
+        raise HarnessError("host adapter identity conflicts with packet runtime provider")
+    return copy.deepcopy(identity)
+
+
 def _record_tool_binding_evidence(
     attempt: dict[str, Any],
     lane: dict[str, Any],
@@ -712,6 +992,7 @@ def _record_tool_binding_evidence(
             or binding.get("root_probe") != required["root_probe"]
             or binding.get("workspace_root") != workspace["path"]
             or binding.get("verified") is not True
+            or binding.get("runtime_provider") != packet["runtime_provider"]
         ):
             raise HarnessError(f"host adapter tool binding `{tool}` is not verified for packet workspace")
         observed[tool] = binding
@@ -742,6 +1023,7 @@ def _record_lane_execution_evidence(
         or evidence.get("workspace_root") != workspace_root
         or evidence.get("sandbox") != expected_sandbox
         or evidence.get("ambient_mcp") is not False
+        or evidence.get("runtime_provider") != packet["runtime_provider"]
         or not isinstance(evidence.get("thread_id"), str)
         or not evidence["thread_id"]
         or not isinstance(evidence.get("turn_id"), str)
@@ -761,7 +1043,12 @@ def _record_lane_execution_evidence(
         or not isinstance(tool_calls, list)
         or not all(isinstance(call, str) and call for call in tool_calls)
         or not isinstance(command_results, list)
-        or not all(isinstance(result, dict) and result.get("cwd") == workspace_root for result in command_results)
+        or not all(
+            isinstance(result, dict)
+            and result.get("cwd") == workspace_root
+            and result.get("runtime_provider") == packet["runtime_provider"]
+            for result in command_results
+        )
     ):
         raise HarnessError("host adapter lane execution evidence lacks packet tool proof")
     access_key = "validator_access" if lane["kind"] == "validate" else "writer_access"
@@ -970,6 +1257,7 @@ def _verify_managed(
                 or check.get("workspace_root") != str(verification_root)
                 or check.get("tool") != "shell"
                 or check.get("binding_verified") is not True
+                or check.get("runtime_provider") != packet["runtime_provider"]
                 or not isinstance(check.get("exit_code"), int)
                 or not isinstance(check.get("stdout"), str)
                 or not isinstance(check.get("stderr"), str)
@@ -1020,18 +1308,87 @@ def _outcome_for_verification(verification: dict[str, Any], retry_policy: dict[s
     return "verification_passed", ["accept", "block"]
 
 
-def _record_failure(root: Path, run: dict[str, Any], policy: dict[str, Any], attempt: dict[str, Any], reason: str, detail: str) -> dict[str, Any]:
-    attempt["frictions"].append({"category": "adapter", "detail": detail})
+def _record_attempt_friction(
+    root: Path,
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    *,
+    lane: dict[str, Any] | None,
+    source: str,
+    phase: str,
+    code: str,
+    evidence_ref: str,
+) -> dict[str, Any]:
+    event = record_friction_event(
+        root,
+        run_id=run["run_id"],
+        attempt_id=attempt["attempt_id"],
+        packet=attempt["packet"],
+        lane=lane,
+        source=source,
+        phase=phase,
+        code=code,
+        evidence_ref=evidence_ref,
+    )
+    attempt["friction_event_ids"].append(event["event_id"])
+    return event
+
+
+def _record_failure(
+    root: Path,
+    run: dict[str, Any],
+    policy: dict[str, Any],
+    attempt: dict[str, Any],
+    reason: str,
+    detail: str,
+    *,
+    phase: str,
+) -> dict[str, Any]:
+    _record_attempt_friction(
+        root,
+        run,
+        attempt,
+        lane=None,
+        source="host",
+        phase=phase,
+        code=reason,
+        evidence_ref=f"outcome.{reason}",
+    )
     decisions = ["block"]
     if reason in attempt["packet"]["retry_policy"]["retryable_reasons"]:
         decisions = ["retry", "escalate", "block"]
-    _set_outcome(attempt, reason, decisions, ["frictions"])
+    _set_outcome(attempt, reason, decisions, ["friction_event_ids"])
     _transition(run, policy["states"], "awaiting_decision", reason)
     _write_run(root, run)
     return _managed_result(run)
 
 
-def _record_lane_claim(root: Path, attempt: dict[str, Any], lane: dict[str, Any], claim: Any) -> None:
+def _cancel_active_lanes(
+    root: Path,
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    adapter: Any,
+    active_handles: list[tuple[dict[str, Any], Any]],
+    *,
+    phase: str,
+) -> None:
+    for lane, handle in active_handles:
+        try:
+            _adapter_call(adapter, "cancel_lane", handle)
+        except Exception:
+            _record_attempt_friction(
+                root,
+                run,
+                attempt,
+                lane=lane,
+                source="host",
+                phase=phase,
+                code="cancellation_failed",
+                evidence_ref=f"lanes.{lane['lane_id']}.cancellation",
+            )
+
+
+def _record_lane_claim(root: Path, run: dict[str, Any], attempt: dict[str, Any], lane: dict[str, Any], claim: Any) -> None:
     try:
         role_name = lane.get("role")
         if not isinstance(role_name, str):
@@ -1046,10 +1403,39 @@ def _record_lane_claim(root: Path, attempt: dict[str, Any], lane: dict[str, Any]
         raise ClaimError(str(exc)) from exc
     attempt["claims"].append({"lane_id": lane["lane_id"], "claim": normalized_claim})
     for friction in normalized_claim.get("frictions", []):
-        record = {"category": friction["category"], "lane_id": lane["lane_id"]}
-        if isinstance(friction.get("detail"), str) and friction["detail"]:
-            record["detail"] = friction["detail"]
-        attempt["frictions"].append(record)
+        _record_attempt_friction(
+            root,
+            run,
+            attempt,
+            lane=lane,
+            source="validator" if lane["kind"] == "validate" else "agent",
+            phase="validator" if lane["kind"] == "validate" else "claim",
+            code=friction["category"],
+            evidence_ref=f"claims.{lane['lane_id']}",
+        )
+
+
+def _record_verification_frictions(root: Path, run: dict[str, Any], attempt: dict[str, Any], verification: dict[str, Any]) -> None:
+    for blocker in verification["blockers"]:
+        kind = blocker["kind"]
+        if kind == "check":
+            source, phase, code = "check", "check", "check_failed"
+        elif kind == "criterion" and blocker.get("id") == "validator":
+            source, phase, code = "validator", "validator", "validator_failed"
+        elif kind in {"scope", "approval"}:
+            source, phase, code = "controller", "decision", f"{kind}_blocked"
+        else:
+            source, phase, code = "host", "integration", "verification_failed"
+        _record_attempt_friction(
+            root,
+            run,
+            attempt,
+            lane=None,
+            source=source,
+            phase=phase,
+            code=code,
+            evidence_ref="evidence.blockers",
+        )
 
 
 def _execute_attempt(
@@ -1067,6 +1453,16 @@ def _execute_attempt(
     planned_blockers = _gate_blockers(packet, packet["planned_write_paths"], now)
     attempt["authorization"] = {"planned_write_paths": packet["planned_write_paths"], "blockers": planned_blockers}
     if planned_blockers:
+        _record_attempt_friction(
+            root,
+            run,
+            attempt,
+            lane=None,
+            source="controller",
+            phase="decision",
+            code="approval_required",
+            evidence_ref="authorization.blockers",
+        )
         _set_outcome(attempt, "approval_required", ["request_approval", "retry", "block"], ["authorization"])
         _transition(run, policy["states"], "awaiting_decision", "approval_required")
         _write_run(root, run)
@@ -1074,18 +1470,33 @@ def _execute_attempt(
     try:
         capabilities = _adapter_capabilities(adapter, set(policy["orchestration"]))
     except Exception as exc:
-        return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc))
+        return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
     mode = packet["orchestration"]["name"]
     if capabilities.get(mode) != "enforced":
+        _record_attempt_friction(
+            root,
+            run,
+            attempt,
+            lane=None,
+            source="host",
+            phase="dispatch",
+            code="execution_mode_unavailable",
+            evidence_ref="capabilities",
+        )
         _set_outcome(attempt, "execution_mode_unavailable", ["waive", "block"], ["capabilities"])
         _transition(run, policy["states"], "awaiting_decision", "execution_mode_unavailable")
         _write_run(root, run)
         return _managed_result(run)
+    try:
+        attempt["adapter_identity"] = _adapter_identity(adapter, packet["runtime_provider"])
+    except Exception as exc:
+        return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
 
     _transition(run, policy["states"], "running", "dispatch")
     pending = {lane["lane_id"]: lane for lane in attempt["lanes"]}
     workspaces: dict[str, dict[str, Any]] = {}
     active_handles: list[tuple[dict[str, Any], Any]] = []
+    failure_phase = "dispatch"
     try:
         while pending:
             completed = {
@@ -1121,7 +1532,7 @@ def _execute_attempt(
                     active_handles.append((lane, handle))
                 for lane, handle in active_handles[:]:
                     claim = _adapter_call(adapter, "collect_claim", handle)
-                    _record_lane_claim(root, attempt, lane, claim)
+                    _record_lane_claim(root, run, attempt, lane, claim)
                     evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
                     _record_lane_execution_evidence(attempt, lane, packet, lane["workspace"], evidence)
                     lane["status"] = "succeeded"
@@ -1132,6 +1543,7 @@ def _execute_attempt(
 
             integration = next((lane for lane in ready if lane["kind"] == "integrate"), None)
             if integration is not None:
+                failure_phase = "integration"
                 workspace = _adapter_call(adapter, "materialize_final_state", integration, packet, workspaces)
                 if not isinstance(workspace, dict):
                     raise HarnessError("host adapter final workspace must be an object")
@@ -1147,6 +1559,7 @@ def _execute_attempt(
             validator = next((lane for lane in ready if lane["kind"] == "validate"), None)
             if validator is None:
                 raise HarnessError("lane scheduler found unsupported lane kind")
+            failure_phase = "validator"
             integration = next(lane for lane in attempt["lanes"] if lane["lane_id"] == "integrate")
             workspace = integration.get("workspace")
             if not isinstance(workspace, dict):
@@ -1157,26 +1570,18 @@ def _execute_attempt(
             handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, None)
             active_handles.append((validator, handle))
             claim = _adapter_call(adapter, "collect_claim", handle)
-            _record_lane_claim(root, attempt, validator, claim)
+            _record_lane_claim(root, run, attempt, validator, claim)
             evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
             _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
             validator["status"] = "succeeded"
             pending.pop(validator["lane_id"])
             active_handles.remove((validator, handle))
     except ClaimError as exc:
-        for _, handle in active_handles:
-            try:
-                _adapter_call(adapter, "cancel_lane", handle)
-            except Exception:
-                pass
-        return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc))
+        _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="claim")
+        return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc), phase="claim")
     except Exception as exc:
-        for _, handle in active_handles:
-            try:
-                _adapter_call(adapter, "cancel_lane", handle)
-            except Exception:
-                pass
-        return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc))
+        _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase=failure_phase)
+        return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase=failure_phase)
     _transition(run, policy["states"], "observed", "claim_collected")
     _transition(run, policy["states"], "verifying", "verify")
     try:
@@ -1190,8 +1595,9 @@ def _execute_attempt(
             now=now,
         )
     except Exception as exc:
-        return _record_failure(root, run, policy, attempt, "verification_failed", str(exc))
+        return _record_failure(root, run, policy, attempt, "verification_failed", str(exc), phase="check")
     attempt["evidence"] = verification
+    _record_verification_frictions(root, run, attempt, verification)
     reason, decisions = _outcome_for_verification(verification, packet["retry_policy"])
     _set_outcome(attempt, reason, decisions, ["evidence"])
     _transition(run, policy["states"], "awaiting_decision", reason)
@@ -1239,7 +1645,7 @@ def _successor_request(run: dict[str, Any], successor: Any) -> dict[str, Any]:
         return request
     if not isinstance(successor, dict):
         raise HarnessError("decision successor must be an object")
-    allowed = {"execution_mode", "user_request", "allowed_paths", "planned_write_paths", "acceptance_criteria", "base_ref", "approvals", "review_evidence", "manual_evidence", "lanes"}
+    allowed = {"execution_mode", "runtime_provider_id", "user_request", "allowed_paths", "planned_write_paths", "acceptance_criteria", "base_ref", "approvals", "review_evidence", "manual_evidence", "lanes"}
     unknown = set(successor) - allowed
     if unknown:
         raise HarnessError(f"decision successor has unsupported fields: {', '.join(sorted(unknown))}")
@@ -1311,6 +1717,11 @@ def main(argv: list[str] | None = None) -> int:
     decision_command = subparsers.add_parser("decision")
     decision_command.add_argument("--run-id", required=True)
     decision_command.add_argument("--decision", required=True)
+    subparsers.add_parser("friction-report")
+    friction_resolve_command = subparsers.add_parser("friction-resolve")
+    friction_resolve_command.add_argument("--run-id", required=True)
+    friction_resolve_command.add_argument("--fingerprint", required=True)
+    friction_resolve_command.add_argument("--decision", required=True, choices=sorted(FRICTION_RESOLUTIONS))
     args = parser.parse_args(argv)
     try:
         root = Path(args.repo_root).resolve()
@@ -1323,13 +1734,17 @@ def main(argv: list[str] | None = None) -> int:
                 raise HarnessError("run requires --task or --run-id")
             task = _load_json(Path(args.task)) if args.task else None
             result = run_managed(root, task, {"capabilities": lambda: {}}, run_id=args.run_id)
+        elif args.command == "friction-report":
+            result = friction_report(root)
+        elif args.command == "friction-resolve":
+            result = resolve_friction(root, args.run_id, args.fingerprint, args.decision)
         else:
             result = apply_controller_decision(root, args.run_id, _load_json(Path(args.decision)))
     except HarnessError as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}), file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True))
-    return 0 if args.command == "preflight" or result.get("status") == "verified" or result.get("state") == "accepted" else 1
+    return 0 if args.command in {"preflight", "friction-report", "friction-resolve"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
 
 
 if __name__ == "__main__":

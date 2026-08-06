@@ -8,15 +8,18 @@ distribution_tier: starter_kit
 
 Use only after user or authorized controller requests harness improvement.
 
-1. Choose one representative job and record baseline retries, human help,
+1. Run `friction-report`. Select one unresolved fingerprint with baseline event
+   IDs from configured distinct runs; never create separate ledger.
+2. Choose one representative job and record baseline retries, human help,
    proof quality, and maintenance cost.
-2. Find earliest gap. Assign owner: harness, consumer repository, agent
+3. Find earliest gap. Assign owner: harness, consumer repository, agent
    runtime, CI or environment, external service, or human decision.
-3. Propose smallest authorized change. Do not install tools, collect telemetry,
+4. Propose smallest authorized change. Do not install tools, collect telemetry,
    or mutate policy during ordinary task execution.
-4. Prove change with native check. Re-run representative job from equivalent
+5. Prove change with native check. Re-run representative job from equivalent
    start using fresh agent context.
-5. Compare result with baseline. End as `keep`, `revise`, `remove`, or
-   `pending fresh rerun`.
+6. Compare result with baseline. Controller records `keep`, `revise`, `remove`,
+   or `pending` through `friction-resolve` only after accepted
+   `harness_improvement` evidence.
 
 Do not treat merged code as confirmed improvement without fresh rerun proof.

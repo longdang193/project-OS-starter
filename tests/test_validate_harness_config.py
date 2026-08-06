@@ -110,6 +110,14 @@ def write_harness_root(root: Path) -> None:
                         "root_probe": "shell_root_probe",
                     }
                 },
+                "runtime_providers": {
+                    "codex_app_server": {"contract_version": 1},
+                },
+                "friction_policy": {
+                    "event_version": 1,
+                    "minimum_distinct_runs": 3,
+                    "window_days": 14,
+                },
                 "orchestration": {
                     "single_work_lane": {
                         "aliases": ["single_agent"],
@@ -141,6 +149,8 @@ def write_harness_root(root: Path) -> None:
                         "checks": ["diff"],
                         "retry_policy": "bounded",
                         "execution_modes": ["single_work_lane", "sequential_work_lanes"],
+                        "runtime_providers": ["codex_app_server"],
+                        "default_runtime_provider": "codex_app_server",
                     }
                 },
             },
@@ -154,6 +164,27 @@ def test_valid_harness_config_passes(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
 
     assert validator.validate(tmp_path) == []
+
+
+def test_unknown_route_runtime_provider_fails(tmp_path: Path) -> None:
+    validator = load_validator()
+    write_harness_root(tmp_path)
+    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
+    config["routes"]["local_change"]["runtime_providers"] = ["missing"]
+    config["routes"]["local_change"]["default_runtime_provider"] = "missing"
+    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert "route `local_change` has unknown runtime provider `missing`" in validator.validate(tmp_path)
+
+
+def test_route_runtime_provider_default_must_be_allowed(tmp_path: Path) -> None:
+    validator = load_validator()
+    write_harness_root(tmp_path)
+    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
+    config["routes"]["local_change"]["default_runtime_provider"] = "missing"
+    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert "route `local_change` default_runtime_provider must be allowed" in validator.validate(tmp_path)
 
 
 def test_missing_template_fails(tmp_path: Path) -> None:
@@ -308,3 +339,13 @@ def test_invalid_retry_policy_approval_ttl_fails(tmp_path: Path) -> None:
     (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
 
     assert "retry policy `bounded` approval_ttl_seconds must be a positive integer" in validator.validate(tmp_path)
+
+
+def test_invalid_friction_policy_fails(tmp_path: Path) -> None:
+    validator = load_validator()
+    write_harness_root(tmp_path)
+    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
+    config["friction_policy"]["window_days"] = 0
+    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert "friction policy `window_days` must be a positive integer" in validator.validate(tmp_path)

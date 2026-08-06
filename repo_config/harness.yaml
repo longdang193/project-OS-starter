@@ -49,6 +49,13 @@ tools:
     writer_access: read_only
     validator_access: read_only
     root_probe: ast_grep_root_probe
+runtime_providers:
+  codex_app_server:
+    contract_version: 1
+friction_policy:
+  event_version: 1
+  minimum_distinct_runs: 3
+  window_days: 14
 approval_gates:
   protected_policy:
     paths: [agents/**, repo_config/harness.yaml, docs/operating_system/rules/**]
@@ -89,6 +96,8 @@ routes:
     approval_gates: [protected_policy]
     retry_policy: bounded
     execution_modes: [single_work_lane, sequential_work_lanes, parallel_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
   debugging:
     template: normal
     role: investigate
@@ -99,6 +108,8 @@ routes:
     checks: [diff]
     retry_policy: bounded
     execution_modes: [single_work_lane, sequential_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
   research:
     template: low
     role: investigate
@@ -109,6 +120,8 @@ routes:
     checks: [diff]
     retry_policy: bounded
     execution_modes: [single_work_lane, parallel_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
   plan_review:
     template: high
     role: review
@@ -119,6 +132,8 @@ routes:
     checks: [diff]
     retry_policy: bounded
     execution_modes: [single_work_lane, sequential_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
   harness_improvement:
     template: high
     role: improve
@@ -130,3 +145,5 @@ routes:
     approval_gates: [protected_policy]
     retry_policy: bounded
     execution_modes: [single_work_lane, sequential_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
