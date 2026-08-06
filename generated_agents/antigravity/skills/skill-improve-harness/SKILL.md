@@ -22,7 +22,9 @@ Use only after user or authorized controller requests harness improvement.
 2. Choose one representative job and record baseline retries, human help,
    proof quality, and maintenance cost.
 3. Find earliest gap. Assign owner: harness, consumer repository, agent
-   runtime, CI or environment, external service, or human decision.
+   runtime, CI or environment, external service, or human decision. Route a
+   proven skill-instruction gap to `skill-writing-skills`; do not edit skills
+   for one isolated event.
 4. Propose smallest authorized change. Do not install tools, collect telemetry,
    or mutate policy during ordinary task execution.
 5. Prove change with native check. Re-run representative job from equivalent

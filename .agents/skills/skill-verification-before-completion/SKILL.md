@@ -27,6 +27,10 @@ Receive from `skill-executing-plans`:
 
 If required implementation remains, return to `skill-executing-plans`.
 
+For managed terminal failure, report exact evidence without editing routes,
+skills, or policy. Core owns friction capture; controller considers improvement
+only after `friction-report` identifies a recurring candidate.
+
 ## Conditional References
 
 Read only what supports current claims:

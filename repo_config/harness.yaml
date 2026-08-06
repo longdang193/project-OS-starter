@@ -58,7 +58,7 @@ friction_policy:
   window_days: 14
 approval_gates:
   protected_policy:
-    paths: [agents/**, repo_config/harness.yaml, docs/operating_system/rules/**]
+    paths: [agents/**, .agents/skills/**, repo_config/harness.yaml, docs/operating_system/rules/**]
 orchestration:
   single_work_lane:
     aliases: [single_agent]
@@ -114,7 +114,7 @@ routes:
     template: low
     role: investigate
     rules: [command-execution-rule]
-    skills: [skill-brainstorming]
+    skills: [skill-repository-research]
     tools: [shell, semble_codebase_search]
     workspace: current
     checks: [diff]
@@ -134,11 +134,48 @@ routes:
     execution_modes: [single_work_lane, sequential_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
+  design_exploration:
+    template: high
+    role: investigate
+    rules: [command-execution-rule]
+    skills: [skill-brainstorming]
+    tools: [shell, semble_codebase_search]
+    workspace: current
+    checks: [diff]
+    retry_policy: bounded
+    execution_modes: [single_work_lane, sequential_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
+  plan_writing:
+    template: high
+    role: implement
+    rules: [doc-contracts-rule]
+    skills: [skill-writing-plans]
+    tools: [shell, serena]
+    workspace: current
+    checks: [diff]
+    retry_policy: bounded
+    execution_modes: [single_work_lane, sequential_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
+  skill_authoring:
+    template: high
+    role: implement
+    rules: [command-execution-rule, doc-contracts-rule]
+    skills: [skill-writing-skills, skill-test-driven-development, skill-verification-before-completion]
+    tools: [shell, serena]
+    workspace: current
+    checks: [diff]
+    approval_gates: [protected_policy]
+    retry_policy: bounded
+    execution_modes: [single_work_lane, sequential_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
   harness_improvement:
     template: high
     role: improve
     rules: [command-execution-rule, doc-contracts-rule]
-    skills: [skill-improve-harness, skill-writing-skills]
+    skills: [skill-improve-harness, skill-code-standards, skill-test-driven-development, skill-verification-before-completion]
     tools: [shell, serena]
     workspace: current
     checks: [diff]

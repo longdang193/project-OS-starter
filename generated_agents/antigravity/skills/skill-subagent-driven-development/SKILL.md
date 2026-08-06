@@ -64,3 +64,6 @@ Stop with managed `block` when host capability is unavailable, lane scope
 overlaps another active writer, proof cannot run, or approval gate triggers.
 Use explicit `waive` only to record local-only `unvalidated` work. Do not use
 manual controller glue to bypass recorded outcome or decision.
+
+For managed terminal failure, return packet evidence only. Core records
+friction; controller alone routes recurring candidates to `skill-improve-harness`.

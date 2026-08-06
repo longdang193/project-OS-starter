@@ -56,6 +56,12 @@ Read only what the current task needs:
 
 Do not load every linked document or skill by default.
 
+## Managed Friction Handoff
+
+For a managed terminal failure, return exact evidence and leave routes, skills,
+and policy unchanged. Core records friction; controller considers
+`skill-improve-harness` only after `friction-report` finds a recurring candidate.
+
 ## Code Intelligence
 
 Use native tools for direct file inspection and local search. Use Serena for exact symbols and references. Use GitNexus for broad flows or impact when fresh and materially useful. Do not query both by default. Source and tests remain authoritative.

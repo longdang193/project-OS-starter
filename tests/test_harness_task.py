@@ -302,6 +302,38 @@ def test_resolve_task_selects_validated_sequential_orchestration() -> None:
     assert "multi-agent-orchestration-rule" in packet["rules"]
 
 
+@pytest.mark.parametrize(("task_type", "skills"), [
+    ("research", ["skill-repository-research"]),
+    ("design_exploration", ["skill-brainstorming"]),
+    ("plan_writing", ["skill-writing-plans"]),
+    ("skill_authoring", [
+        "skill-writing-skills",
+        "skill-test-driven-development",
+        "skill-verification-before-completion",
+    ]),
+    ("harness_improvement", [
+        "skill-improve-harness",
+        "skill-code-standards",
+        "skill-test-driven-development",
+        "skill-verification-before-completion",
+    ]),
+])
+def test_route_packet_selects_owned_skill_set(task_type, skills) -> None:
+    harness = load_module()
+
+    packet = harness.resolve_task(ROOT, task(task_type=task_type))
+
+    assert packet["skills"] == skills
+
+
+def test_protected_policy_includes_canonical_skill_sources() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_task(ROOT, task())
+
+    assert ".agents/skills/**" in packet["approval_gates"]["protected_policy"]
+
+
 def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     harness = load_module()
 

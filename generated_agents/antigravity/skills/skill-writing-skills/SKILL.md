@@ -25,6 +25,13 @@ You write test cases (pressure scenarios with subagents), watch them fail (basel
 
 **Core principle:** If you didn't watch an agent fail without the skill, you don't know if the skill teaches the right thing.
 
+## Managed Friction
+
+Create or change a skill for managed work only after `skill-improve-harness`
+assigns a recurring friction candidate to instructions. Use its representative
+job as RED/GREEN pressure scenario, then let controller record
+`friction-resolve`; never add a skill for one isolated event.
+
 **REQUIRED BACKGROUND:** You MUST understand superpowers:skill-test-driven-development before using this skill. That skill defines the fundamental RED-GREEN-REFACTOR cycle. This skill adapts TDD to documentation.
 
 **Official guidance:** Follow the Codex Skills model first: one focused workflow per skill, `SKILL.md` as the entrypoint, and optional `scripts/`, `references/`, `assets/`, or `agents/openai.yaml` only when they materially help. The bundled `anthropic-best-practices.md` remains a supplemental historical reference, not the primary contract.
