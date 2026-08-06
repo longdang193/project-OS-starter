@@ -31,6 +31,12 @@ Before editing, confirm:
 - staged, unstaged, untracked, and unrelated user changes are understood and preserved
 - required credentials, dependencies, and external services for the next task are available, or the plan identifies a safe fallback
 
+For active plan-linked coordination, read `coordination-status` before run.
+Dispatch only a `ready` task through its immutable packet. Resume matching
+packet only when plan digest and base commit still match; otherwise record
+handoff and create successor attempt. Never infer host-thread resume or write
+run state into plan.
+
 If the plan has a blocking design gap, stop and return it to `skill-spec-drafting` or `skill-writing-plans`. Do not invent design during execution.
 
 ## Conditional References

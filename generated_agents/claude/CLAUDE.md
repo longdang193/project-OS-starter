@@ -29,6 +29,14 @@ approval gates, planned write paths, resolved base commit, and orchestration
 mode. Generic CLI has no platform agent adapter and must report unavailable
 mode instead of claiming dispatch.
 
+For Git-tracked active coordination plans, frontmatter owns static target
+branch, base ref, task dependencies, canonical mode, and planned paths. Packet
+adds immutable `plan_ref`, `plan_task_id`, and normalized digest; `run.json`
+owns derived task state, handoff, evidence, and decisions. Use
+`coordination-status` for recovery. Manifest or base change requires successor
+attempt. No simultaneous-controller guarantee, lock, queue, scheduler, or host
+thread resume exists.
+
 Use only packet-selected agent types:
 
 - `low`: small, narrow, low-risk work.
@@ -40,6 +48,8 @@ When spawning a subagent:
 - Select the template through the platform's agent-type selector; task names only label work.
 - Use a fresh-context fork when selecting a different agent type.
 - Never override the template's model or reasoning effort.
+- Managed host must dispatch packet `agent_identity` without model fallback and
+  record app-server-confirmed model provider, model, and reasoning effort.
 - Do not select unnamed or other agent types.
 - Subagents must not spawn other agents.
 - If task scope or needed capability changes, controller creates successor

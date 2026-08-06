@@ -34,10 +34,17 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import tomllib
 from typing import Any, Callable
 import uuid
 
 import yaml
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from plan_coordination import PlanCoordination, PlanCoordinationError, PlanTask, load_plan_coordination
 
 
 class HarnessError(ValueError):
@@ -180,6 +187,7 @@ def resolve_task(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         "version": 1,
         "task_type": task_type,
         "template": route["template"],
+        "agent_identity": _load_agent_identity(root, route["template"]),
         "role": route["role"],
         "rules": list(dict.fromkeys([*route["rules"], *orchestration["rules"]])),
         "skills": route["skills"],
@@ -316,6 +324,25 @@ def _load_roles(root: Path) -> dict[str, dict[str, Any]]:
     return roles
 
 
+def _load_agent_identity(root: Path, template: str) -> dict[str, str]:
+    path = root / "agents" / f"{template}.toml"
+    try:
+        with path.open("rb") as handle:
+            payload = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise HarnessError(f"invalid agent template `{template}`") from exc
+    if payload.get("name") != template:
+        raise HarnessError(f"agent template `{template}` has mismatched name")
+    fields = {
+        "model_provider": payload.get("model_provider"),
+        "model": payload.get("model"),
+        "reasoning_effort": payload.get("model_reasoning_effort"),
+    }
+    if not all(isinstance(value, str) and value for value in fields.values()):
+        raise HarnessError(f"agent template `{template}` has invalid model identity")
+    return {"template": template, **fields}
+
+
 def _route_packet(policy: dict[str, Any], task_type: str, execution_mode: str) -> dict[str, Any]:
     route = policy["routes"].get(task_type)
     if not isinstance(route, dict):
@@ -404,6 +431,150 @@ def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     if run.get("version") != 1 or run.get("run_id") != run_id or not isinstance(run.get("attempts"), list):
         raise HarnessError(f"invalid run record `{run_id}`")
     return run
+
+
+ACTIVE_RUN_STATES = {"planned", "running", "observed", "verifying", "awaiting_decision"}
+TERMINAL_RUN_STATES = {"accepted", "unvalidated", "blocked"}
+HANDOFF_FIELDS = {"last_verified_fact", "next_action", "blocker_or_decision"}
+
+
+def _all_runs(root: Path) -> list[dict[str, Any]]:
+    runs_root = root / ".harness" / "runs"
+    if not runs_root.is_dir():
+        return []
+    runs: list[dict[str, Any]] = []
+    for path in sorted(runs_root.glob("*/run.json")):
+        payload = _load_json(path)
+        run_id = payload.get("run_id")
+        if not isinstance(run_id, str):
+            raise HarnessError(f"invalid run record `{path}`")
+        runs.append(_load_run(root, run_id))
+    return runs
+
+
+def _run_sort_key(run: dict[str, Any]) -> tuple[str, str]:
+    history = run.get("state_history")
+    if isinstance(history, list) and history and isinstance(history[-1], dict):
+        timestamp = history[-1].get("at")
+        if isinstance(timestamp, str):
+            return timestamp, run["run_id"]
+    return "", run["run_id"]
+
+
+def _matching_plan_runs(root: Path, plan_ref: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for run in _all_runs(root):
+        if not run["attempts"] or not isinstance(run["attempts"][-1], dict):
+            continue
+        attempt = run["attempts"][-1]
+        packet = attempt.get("packet")
+        if isinstance(packet, dict) and packet.get("plan_ref") == plan_ref:
+            matches.append((run, attempt))
+    return matches
+
+
+def coordination_status(root: Path, plan_ref: str) -> dict[str, Any]:
+    try:
+        coordination = load_plan_coordination(root, plan_ref, require_active=True)
+    except PlanCoordinationError as exc:
+        raise HarnessError(str(exc)) from exc
+    if coordination is None:
+        raise HarnessError(f"plan `{plan_ref}` has no coordination manifest")
+    runs_by_task: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {
+        task.task_id: [] for task in coordination.tasks
+    }
+    for run, attempt in _matching_plan_runs(root, coordination.plan_ref):
+        packet = attempt.get("packet", {})
+        task_id = packet.get("plan_task_id") if isinstance(packet, dict) else None
+        if task_id in runs_by_task:
+            runs_by_task[task_id].append((run, attempt))
+
+    statuses: dict[str, dict[str, Any]] = {}
+
+    def derive(task: PlanTask) -> dict[str, Any]:
+        if task.task_id in statuses:
+            return statuses[task.task_id]
+        matching = sorted(runs_by_task[task.task_id], key=lambda item: _run_sort_key(item[0]))
+        if matching:
+            run, attempt = matching[-1]
+            state = run["state"]
+            if state in ACTIVE_RUN_STATES:
+                status = {"id": task.task_id, "state": "active", "run_id": run["run_id"], "reason": state}
+            elif state == "accepted":
+                status = {"id": task.task_id, "state": "done", "run_id": run["run_id"], "reason": state}
+            elif state in TERMINAL_RUN_STATES:
+                status = {"id": task.task_id, "state": "blocked", "run_id": run["run_id"], "reason": state}
+            else:
+                raise HarnessError(f"run `{run['run_id']}` has unsupported coordination state `{state}`")
+            handoff = attempt.get("handoff")
+            if isinstance(handoff, dict):
+                status["handoff"] = copy.deepcopy(handoff)
+            statuses[task.task_id] = status
+            return status
+        dependency_states = [derive(coordination.task(task_id))["state"] for task_id in task.depends_on]
+        status = {
+            "id": task.task_id,
+            "state": "ready" if all(state == "done" for state in dependency_states) else "blocked",
+            "reason": "ready" if all(state == "done" for state in dependency_states) else "waiting_dependencies",
+        }
+        statuses[task.task_id] = status
+        return status
+
+    return {
+        "plan_ref": coordination.plan_ref,
+        "target_branch": coordination.target_branch,
+        "base_ref": coordination.base_ref,
+        "plan_digest": coordination.digest,
+        "tasks": [derive(task) for task in coordination.tasks],
+    }
+
+
+def record_controller_handoff(root: Path, run_id: str, handoff: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(handoff, dict) or set(handoff) != HANDOFF_FIELDS:
+        raise HarnessError(f"handoff must contain only: {', '.join(sorted(HANDOFF_FIELDS))}")
+    normalized = {field: _required_string(handoff.get(field), f"handoff {field}") for field in HANDOFF_FIELDS}
+    run = _load_run(root, _safe_run_id(run_id))
+    if run["state"] in TERMINAL_RUN_STATES:
+        raise HarnessError("cannot record handoff for terminal run")
+    attempt = _active_attempt(run)
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict) or "plan_ref" not in packet or "plan_task_id" not in packet:
+        raise HarnessError("controller handoff requires a coordinated run")
+    attempt["handoff"] = {**normalized, "timestamp": _timestamp()}
+    _write_run(root, run)
+    return {"run_id": run["run_id"], "handoff": copy.deepcopy(attempt["handoff"])}
+
+
+def _planned_paths_overlap(left: list[str], right: list[str]) -> bool:
+    return any(_path_matches(left_path, [right_path]) or _path_matches(right_path, [left_path]) for left_path in left for right_path in right)
+
+
+def _admit_coordinated_packet(root: Path, packet: dict[str, Any]) -> None:
+    if "plan_ref" not in packet:
+        return
+    plan_ref = _required_string(packet.get("plan_ref"), "packet plan_ref")
+    task_id = _required_string(packet.get("plan_task_id"), "packet plan_task_id")
+    status = coordination_status(root, plan_ref)
+    task_status = next((task for task in status["tasks"] if task["id"] == task_id), None)
+    if not isinstance(task_status, dict) or task_status["state"] != "ready":
+        reason = task_status.get("reason", "missing") if isinstance(task_status, dict) else "missing"
+        raise HarnessError(f"coordinated task `{task_id}` is not ready: {reason}")
+    for run in _all_runs(root):
+        if run["state"] not in ACTIVE_RUN_STATES or not run["attempts"]:
+            continue
+        active_packet = run["attempts"][-1].get("packet")
+        if not isinstance(active_packet, dict) or "plan_ref" not in active_packet:
+            continue
+        if active_packet["plan_ref"] == plan_ref:
+            raise HarnessError(f"coordinated task activation blocked by active run `{run['run_id']}`")
+        try:
+            active_coordination = load_plan_coordination(root, active_packet["plan_ref"], require_active=False)
+        except PlanCoordinationError as exc:
+            raise HarnessError(f"cannot evaluate active coordinated run `{run['run_id']}`: {exc}") from exc
+        if active_coordination is None or active_coordination.target_branch != status["target_branch"]:
+            continue
+        if _planned_paths_overlap(packet["planned_write_paths"], active_packet.get("planned_write_paths", [])):
+            raise HarnessError(f"coordinated task paths conflict with active run `{run['run_id']}`")
 
 
 def _timestamp() -> str:
@@ -831,7 +1002,11 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
     ]
 
 
-def _normalize_managed_request(policy: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
+def _normalize_managed_request(
+    root: Path,
+    policy: dict[str, Any],
+    request: dict[str, Any],
+) -> tuple[dict[str, Any], PlanCoordination | None, PlanTask | None]:
     version = request.get("version")
     if version not in {LEGACY_MANAGED_VERSION, MANAGED_VERSION}:
         raise HarnessError(f"managed request version must be {LEGACY_MANAGED_VERSION} or {MANAGED_VERSION}")
@@ -843,13 +1018,39 @@ def _normalize_managed_request(policy: dict[str, Any], request: dict[str, Any]) 
         allow_alias=version == LEGACY_MANAGED_VERSION,
         default="single_agent" if version == LEGACY_MANAGED_VERSION else "single_work_lane",
     )
-    return normalized
+    has_plan_ref = "plan_ref" in normalized
+    has_plan_task_id = "plan_task_id" in normalized
+    if has_plan_ref != has_plan_task_id:
+        raise HarnessError("managed request requires both `plan_ref` and `plan_task_id`")
+    if not has_plan_ref:
+        return normalized, None, None
+    plan_ref = _required_string(normalized["plan_ref"], "plan_ref")
+    plan_task_id = _required_string(normalized["plan_task_id"], "plan_task_id")
+    try:
+        coordination = load_plan_coordination(root, plan_ref, require_active=True)
+        if coordination is None:
+            raise HarnessError(f"plan `{plan_ref}` has no coordination manifest")
+        plan_task = coordination.task(plan_task_id)
+    except PlanCoordinationError as exc:
+        raise HarnessError(str(exc)) from exc
+    derived = {
+        "execution_mode": plan_task.execution_mode,
+        "base_ref": coordination.base_ref,
+        "planned_write_paths": list(plan_task.planned_write_paths),
+    }
+    for field, value in derived.items():
+        if field in request and normalized.get(field) != value:
+            raise HarnessError(f"managed request `{field}` conflicts with plan coordination")
+        normalized[field] = value
+    normalized["plan_ref"] = coordination.plan_ref
+    normalized["plan_task_id"] = plan_task.task_id
+    return normalized, coordination, plan_task
 
 
 def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: str) -> dict[str, Any]:
     _validate_policy(root)
     policy = _load_policy(root)
-    request = _normalize_managed_request(policy, request)
+    request, coordination, plan_task = _normalize_managed_request(root, policy, request)
     task_type = _required_string(request.get("task_type"), "task_type")
     execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
     packet = _route_packet(policy, task_type, execution_mode)
@@ -859,6 +1060,8 @@ def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: s
         raise HarnessError(f"unknown route role `{packet['role']}`")
     allowed_paths = _safe_paths(request.get("allowed_paths"), "allowed_paths", required=True)
     planned_write_paths = _safe_paths(request.get("planned_write_paths"), "planned_write_paths", required=bool(role["writes"]))
+    if coordination is not None and any(not _path_matches(path, allowed_paths) for path in planned_write_paths):
+        raise HarnessError("plan planned_write_paths must stay within managed allowed_paths")
     base_ref = _required_string(request.get("base_ref"), "base_ref")
     user_request = _required_string(request.get("user_request"), "user_request")
     packet.update({
@@ -868,6 +1071,7 @@ def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: s
         "base_commit": _resolve_commit(root, base_ref),
         "user_request": user_request,
         "runtime_provider": runtime_provider,
+        "agent_identity": _load_agent_identity(root, packet["template"]),
         "allowed_paths": allowed_paths,
         "planned_write_paths": planned_write_paths,
         "acceptance_criteria": _validate_criteria(request.get("acceptance_criteria"), packet["checks"]),
@@ -875,6 +1079,12 @@ def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: s
         "review_evidence": copy.deepcopy(request.get("review_evidence")),
         "manual_evidence": copy.deepcopy(request.get("manual_evidence")),
     })
+    if coordination is not None and plan_task is not None:
+        packet.update({
+            "plan_ref": coordination.plan_ref,
+            "plan_task_id": plan_task.task_id,
+            "plan_digest": coordination.digest,
+        })
     packet["lanes"] = _normalize_lanes(root, packet, allowed_paths, request.get("lanes"))
     return packet
 
@@ -1024,6 +1234,7 @@ def _record_lane_execution_evidence(
         or evidence.get("sandbox") != expected_sandbox
         or evidence.get("ambient_mcp") is not False
         or evidence.get("runtime_provider") != packet["runtime_provider"]
+        or evidence.get("agent_identity") != packet["agent_identity"]
         or not isinstance(evidence.get("thread_id"), str)
         or not evidence["thread_id"]
         or not isinstance(evidence.get("turn_id"), str)
@@ -1624,6 +1835,7 @@ def run_managed(
         if _run_path(root, run_id).exists():
             raise HarnessError(f"run `{run_id}` already exists")
         packet = resolve_managed_packet(root, request, attempt_id="attempt-1")
+        _admit_coordinated_packet(root, packet)
         run = _new_run(request, run_id)
         _transition(run, policy["states"], "planned", "preflight")
         _append_attempt(run, packet)
@@ -1635,17 +1847,39 @@ def run_managed(
             raise HarnessError("managed continuation request does not match run record")
         if run["state"] != "planned":
             raise HarnessError(f"run `{run_id}` is not ready to execute")
+        attempt = _active_attempt(run)
+        packet = attempt["packet"]
+        if "plan_ref" in packet:
+            try:
+                plan_ref = _required_string(packet.get("plan_ref"), "packet plan_ref")
+                plan_task_id = _required_string(packet.get("plan_task_id"), "packet plan_task_id")
+                plan_digest = _required_string(packet.get("plan_digest"), "packet plan_digest")
+                coordination = load_plan_coordination(root, plan_ref, require_active=True)
+                if coordination is None or coordination.task(plan_task_id).task_id != plan_task_id:
+                    raise HarnessError("coordinated packet no longer resolves to its plan task")
+                if plan_digest != coordination.digest:
+                    raise HarnessError("coordinated packet plan digest changed")
+                if packet["base_commit"] != _resolve_commit(root, coordination.base_ref):
+                    raise HarnessError("coordinated packet base commit changed")
+            except (PlanCoordinationError, HarnessError):
+                _set_outcome(attempt, "plan_binding_changed", ["retry", "block"], ["packet"])
+                _transition(run, policy["states"], "awaiting_decision", "plan_binding_changed")
+                _write_run(root, run)
+                return _managed_result(run)
     collector = collect_changes or _collect_changes
     return _execute_attempt(root, run, policy, adapter, run_check=run_check, collect_changes=collector, now=now or datetime.now(UTC))
 
 
 def _successor_request(run: dict[str, Any], successor: Any) -> dict[str, Any]:
     request = copy.deepcopy(run["request"])
+    if "plan_ref" in _active_attempt(run)["packet"]:
+        for field in ("execution_mode", "base_ref", "planned_write_paths"):
+            request.pop(field, None)
     if successor is None:
         return request
     if not isinstance(successor, dict):
         raise HarnessError("decision successor must be an object")
-    allowed = {"execution_mode", "runtime_provider_id", "user_request", "allowed_paths", "planned_write_paths", "acceptance_criteria", "base_ref", "approvals", "review_evidence", "manual_evidence", "lanes"}
+    allowed = {"execution_mode", "runtime_provider_id", "user_request", "allowed_paths", "planned_write_paths", "acceptance_criteria", "base_ref", "approvals", "review_evidence", "manual_evidence", "lanes", "plan_ref", "plan_task_id"}
     unknown = set(successor) - allowed
     if unknown:
         raise HarnessError(f"decision successor has unsupported fields: {', '.join(sorted(unknown))}")
@@ -1685,7 +1919,7 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
         _transition(run, policy["states"], "awaiting_decision", "controller_request_approval")
     else:
         retry_policy = attempt["packet"]["retry_policy"]
-        if outcome["reason"] not in retry_policy["retryable_reasons"] and outcome["reason"] != "approval_required":
+        if outcome["reason"] not in retry_policy["retryable_reasons"] and outcome["reason"] not in {"approval_required", "plan_binding_changed"}:
             raise HarnessError(f"outcome `{outcome['reason']}` is not retryable")
         if len(run["attempts"]) >= retry_policy["max_attempts"]:
             _set_outcome(attempt, "retry_exhausted", ["block"], ["decision"])
@@ -1717,6 +1951,11 @@ def main(argv: list[str] | None = None) -> int:
     decision_command = subparsers.add_parser("decision")
     decision_command.add_argument("--run-id", required=True)
     decision_command.add_argument("--decision", required=True)
+    coordination_status_command = subparsers.add_parser("coordination-status")
+    coordination_status_command.add_argument("--plan", required=True)
+    handoff_command = subparsers.add_parser("handoff")
+    handoff_command.add_argument("--run-id", required=True)
+    handoff_command.add_argument("--handoff", required=True)
     subparsers.add_parser("friction-report")
     friction_resolve_command = subparsers.add_parser("friction-resolve")
     friction_resolve_command.add_argument("--run-id", required=True)
@@ -1738,13 +1977,21 @@ def main(argv: list[str] | None = None) -> int:
             result = friction_report(root)
         elif args.command == "friction-resolve":
             result = resolve_friction(root, args.run_id, args.fingerprint, args.decision)
+        elif args.command == "coordination-status":
+            result = coordination_status(root, args.plan)
+        elif args.command == "handoff":
+            try:
+                handoff = json.loads(args.handoff)
+            except json.JSONDecodeError as exc:
+                raise HarnessError("handoff must be JSON") from exc
+            result = record_controller_handoff(root, args.run_id, handoff)
         else:
             result = apply_controller_decision(root, args.run_id, _load_json(Path(args.decision)))
     except HarnessError as exc:
         print(json.dumps({"status": "blocked", "error": str(exc)}), file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True))
-    return 0 if args.command in {"preflight", "friction-report", "friction-resolve"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
+    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
 
 
 if __name__ == "__main__":

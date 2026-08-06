@@ -72,6 +72,19 @@ Source and tests remain authoritative when documents or optional tools disagree.
 
 No artifact is required merely to connect two other artifacts.
 
+## Coordinated Plans
+
+For Git-tracked coordination-heavy plans, add optional `coordination`
+frontmatter only after approved scope is stable. Manifest owns static target
+branch, base ref, task IDs, dependencies, canonical topology, and planned write
+paths. Every prose task has exactly one `Coordination ID` matching manifest.
+
+Do not store run status, run IDs, evidence, controller handoff, or decisions in
+plan. Packet binds immutable plan reference, task ID, and normalized digest;
+`run.json` owns runtime truth. Use one of `single_work_lane`,
+`sequential_work_lanes`, or `parallel_work_lanes`; parallelism stays inside a
+packet. Simultaneous controllers are unsupported.
+
 ## Planning Process
 
 ### 1. Confirm Approved Scope

@@ -15,6 +15,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -78,6 +79,58 @@ def managed_request(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def plan_coordination(*, digest="plan-digest", execution_mode="single_work_lane", paths=("scripts/harness_task.py",)):
+    task = SimpleNamespace(
+        task_id="task-1",
+        execution_mode=execution_mode,
+        planned_write_paths=paths,
+    )
+    return SimpleNamespace(
+        plan_ref="docs/superpowers/plans/fixture.md",
+        base_ref="HEAD",
+        digest=digest,
+        task=lambda task_id: task if task_id == "task-1" else (_ for _ in ()).throw(ValueError(task_id)),
+    )
+
+
+def plan_coordination_with_tasks(*tasks, plan_ref="docs/superpowers/plans/fixture.md", target_branch="main"):
+    by_id = {task.task_id: task for task in tasks}
+    return SimpleNamespace(
+        plan_ref=plan_ref,
+        base_ref="HEAD",
+        digest=f"digest-{plan_ref}",
+        target_branch=target_branch,
+        tasks=tuple(tasks),
+        task=lambda task_id: by_id[task_id],
+    )
+
+
+def coordinated_task(task_id, *, depends_on=(), execution_mode="single_work_lane", paths=("scripts/harness_task.py",)):
+    return SimpleNamespace(
+        task_id=task_id,
+        depends_on=depends_on,
+        execution_mode=execution_mode,
+        planned_write_paths=paths,
+    )
+
+
+def write_coordinated_run(harness, root, run_id, *, state, plan_ref, task_id, paths=("scripts/harness_task.py",)):
+    harness._write_run(root, {
+        "version": 1,
+        "run_id": run_id,
+        "request": {},
+        "state": state,
+        "state_history": [{"state": state, "reason": "fixture", "at": f"2026-08-06T00:00:0{len(run_id)}+00:00"}],
+        "attempts": [{
+            "packet": {
+                "plan_ref": plan_ref,
+                "plan_task_id": task_id,
+                "planned_write_paths": list(paths),
+            },
+        }],
+    })
 
 
 class FakeAdapter:
@@ -179,6 +232,7 @@ class FakeAdapter:
             }],
             "ambient_mcp": False,
             "runtime_provider": packet["runtime_provider"],
+            "agent_identity": packet["agent_identity"],
             "workspace_status_before": "",
             "workspace_status_after": "",
         }
@@ -226,6 +280,7 @@ def test_resolve_task_returns_route_packet() -> None:
     packet = harness.resolve_task(ROOT, task())
 
     assert packet["template"] == "normal"
+    assert packet["agent_identity"]["model"] == "combo-normal"
     assert packet["role"] == "implement"
     assert packet["checks"] == {"diff": ["git", "diff", "--check"]}
     assert packet["orchestration"]["name"] == "single_work_lane"
@@ -255,6 +310,12 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["version"] == 3
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 1}
+    assert packet["agent_identity"] == {
+        "template": "normal",
+        "model_provider": "9router",
+        "model": "combo-normal",
+        "reasoning_effort": "medium",
+    }
     assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
     assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
     assert packet["orchestration"]["name"] == "single_work_lane"
@@ -270,6 +331,297 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
         {"tool": "serena", "host_kind": "local_serena", "writer_access": "workspace_write", "validator_access": "read_only", "root_probe": "serena_root_probe"},
         {"tool": "ast_grep_preview", "host_kind": "local_ast_grep", "writer_access": "read_only", "validator_access": "read_only", "root_probe": "ast_grep_root_probe"},
     ]
+
+
+def test_resolve_managed_packet_derives_immutable_plan_binding(monkeypatch) -> None:
+    harness = load_module()
+    coordination = plan_coordination(execution_mode="sequential_work_lanes")
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    request = managed_request(
+        version=3,
+        plan_ref=coordination.plan_ref,
+        plan_task_id="task-1",
+        lanes=[{
+            "lane_id": "work",
+            "role": "implement",
+            "allowed_paths": ["scripts/**"],
+            "dependencies": [],
+            "workspace_mode": "isolated",
+            "write_capable": True,
+        }],
+    )
+    for field in ("execution_mode", "base_ref", "planned_write_paths"):
+        request.pop(field)
+
+    packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+
+    assert packet["orchestration"]["name"] == "sequential_work_lanes"
+    assert packet["base_ref"] == "HEAD"
+    assert packet["planned_write_paths"] == ["scripts/harness_task.py"]
+    assert {key: packet[key] for key in ("plan_ref", "plan_task_id", "plan_digest")} == {
+        "plan_ref": coordination.plan_ref,
+        "plan_task_id": "task-1",
+        "plan_digest": "plan-digest",
+    }
+
+
+@pytest.mark.parametrize(
+    ("execution_mode", "lanes"),
+    [
+        ("single_work_lane", None),
+        (
+            "sequential_work_lanes",
+            [
+                {"lane_id": "first", "role": "implement", "allowed_paths": ["scripts/**"], "dependencies": [], "workspace_mode": "isolated", "write_capable": True},
+                {"lane_id": "second", "role": "implement", "allowed_paths": ["tests/**"], "dependencies": ["first"], "workspace_mode": "isolated", "write_capable": True},
+            ],
+        ),
+        (
+            "parallel_work_lanes",
+            [
+                {"lane_id": "scripts", "role": "implement", "allowed_paths": ["scripts/**"], "dependencies": [], "workspace_mode": "isolated", "write_capable": True},
+                {"lane_id": "tests", "role": "implement", "allowed_paths": ["tests/**"], "dependencies": [], "workspace_mode": "isolated", "write_capable": True},
+            ],
+        ),
+    ],
+)
+def test_plan_bound_packet_uses_same_binding_for_every_canonical_topology(monkeypatch, execution_mode, lanes) -> None:
+    harness = load_module()
+    coordination = plan_coordination(execution_mode=execution_mode)
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    request = managed_request(version=3, plan_ref=coordination.plan_ref, plan_task_id="task-1")
+    for field in ("execution_mode", "base_ref", "planned_write_paths"):
+        request.pop(field)
+    if lanes is not None:
+        request["lanes"] = lanes
+
+    packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+
+    assert packet["orchestration"]["name"] == execution_mode
+    assert packet["plan_ref"] == coordination.plan_ref
+    assert packet["plan_task_id"] == "task-1"
+    assert packet["plan_digest"] == coordination.digest
+
+
+def test_resolve_managed_packet_rejects_conflicting_plan_field(monkeypatch) -> None:
+    harness = load_module()
+    coordination = plan_coordination(execution_mode="sequential_work_lanes")
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+
+    with pytest.raises(harness.HarnessError, match="execution_mode.*conflicts"):
+        harness.resolve_managed_packet(
+            ROOT,
+            managed_request(version=3, plan_ref=coordination.plan_ref, plan_task_id="task-1", execution_mode="single_work_lane"),
+            attempt_id="attempt-1",
+        )
+
+
+def test_resolve_managed_packet_rejects_plan_path_outside_allowed_scope(monkeypatch) -> None:
+    harness = load_module()
+    coordination = plan_coordination(paths=("repo_config/harness.yaml",))
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    request = managed_request(version=3, plan_ref=coordination.plan_ref, plan_task_id="task-1")
+    for field in ("execution_mode", "base_ref", "planned_write_paths"):
+        request.pop(field)
+
+    with pytest.raises(harness.HarnessError, match="planned_write_paths.*allowed_paths"):
+        harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+
+
+def test_successor_re_resolves_coordinated_manifest_fields() -> None:
+    harness = load_module()
+    request = managed_request(version=3, plan_ref="docs/superpowers/plans/fixture.md", plan_task_id="task-1")
+    run = {"run_id": "run-1", "request": request, "attempts": [{"packet": {"plan_ref": request["plan_ref"]}}]}
+
+    successor = harness._successor_request(run, {"plan_task_id": "task-2"})
+
+    assert successor["plan_task_id"] == "task-2"
+    assert {"execution_mode", "base_ref", "planned_write_paths"}.isdisjoint(successor)
+
+
+def test_managed_continuation_blocks_changed_plan_digest_before_dispatch(monkeypatch, tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    original = plan_coordination(digest="original")
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: original)
+    request = managed_request(
+        version=3,
+        run_id=run_id,
+        execution_mode="single_work_lane",
+        plan_ref=original.plan_ref,
+        plan_task_id="task-1",
+    )
+    packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+    policy = harness._load_policy(ROOT)
+    run = harness._new_run(request, run_id)
+    harness._transition(run, policy["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._write_run(ROOT, run)
+    adapter = FakeAdapter({"single_work_lane": "enforced"})
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: plan_coordination(digest="changed"))
+    try:
+        result = harness.run_managed(ROOT, None, adapter, run_id=run_id)
+
+        assert result["state"] == "awaiting_decision"
+        assert result["outcome"]["reason"] == "plan_binding_changed"
+        assert adapter.calls == []
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+def test_managed_continuation_blocks_changed_plan_base_commit_before_dispatch(monkeypatch, tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    coordination = plan_coordination(digest="stable")
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    request = managed_request(
+        version=3,
+        run_id=run_id,
+        execution_mode="single_work_lane",
+        plan_ref=coordination.plan_ref,
+        plan_task_id="task-1",
+    )
+    packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+    policy = harness._load_policy(ROOT)
+    run = harness._new_run(request, run_id)
+    harness._transition(run, policy["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._write_run(ROOT, run)
+    adapter = FakeAdapter({"single_work_lane": "enforced"})
+    monkeypatch.setattr(harness, "_resolve_commit", lambda *_args: "different-base")
+    try:
+        result = harness.run_managed(ROOT, None, adapter, run_id=run_id)
+
+        assert result["state"] == "awaiting_decision"
+        assert result["outcome"]["reason"] == "plan_binding_changed"
+        assert adapter.calls == []
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+def test_coordination_status_derives_dependency_and_active_states(monkeypatch, tmp_path: Path) -> None:
+    harness = load_module()
+    first = coordinated_task("task-1")
+    second = coordinated_task("task-2", depends_on=("task-1",))
+    coordination = plan_coordination_with_tasks(first, second)
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    write_coordinated_run(harness, tmp_path, "done", state="accepted", plan_ref=coordination.plan_ref, task_id="task-1")
+
+    status = harness.coordination_status(tmp_path, coordination.plan_ref)
+
+    assert [(task["id"], task["state"]) for task in status["tasks"]] == [("task-1", "done"), ("task-2", "ready")]
+    write_coordinated_run(harness, tmp_path, "active", state="planned", plan_ref=coordination.plan_ref, task_id="task-2")
+    status = harness.coordination_status(tmp_path, coordination.plan_ref)
+    assert status["tasks"][1]["state"] == "active"
+
+
+def test_controller_handoff_is_run_owned_and_rejects_terminal_run(monkeypatch, tmp_path: Path) -> None:
+    harness = load_module()
+    coordination = plan_coordination_with_tasks(coordinated_task("task-1"))
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    write_coordinated_run(harness, tmp_path, "handoff", state="planned", plan_ref=coordination.plan_ref, task_id="task-1")
+
+    result = harness.record_controller_handoff(tmp_path, "handoff", {
+        "last_verified_fact": "packet is valid",
+        "next_action": "dispatch",
+        "blocker_or_decision": "none",
+    })
+
+    assert result["handoff"]["next_action"] == "dispatch"
+    assert result["handoff"]["timestamp"]
+    write_coordinated_run(harness, tmp_path, "terminal", state="accepted", plan_ref=coordination.plan_ref, task_id="task-1")
+    with pytest.raises(harness.HarnessError, match="terminal"):
+        harness.record_controller_handoff(tmp_path, "terminal", {
+            "last_verified_fact": "complete",
+            "next_action": "none",
+            "blocker_or_decision": "accepted",
+        })
+
+
+def test_coordination_status_and_handoff_cli_use_run_owned_state(tmp_path: Path) -> None:
+    root = tmp_path / "harness"
+    (root / "repo_config").mkdir(parents=True)
+    shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
+    shutil.copy2(ROOT / "repo_config" / "planning_artifact_schema.yaml", root / "repo_config" / "planning_artifact_schema.yaml")
+    plan_ref = "docs/superpowers/plans/fixture.md"
+    plan_path = root / plan_ref
+    plan_path.parent.mkdir(parents=True)
+    plan_path.write_text(
+        "---\nartifact_type: plan\nstatus: active\nlayer: change\ncoordination:\n"
+        "  target_branch: main\n  base_ref: HEAD\n  tasks:\n"
+        "    - id: task-1\n      depends_on: []\n"
+        "      execution_mode: single_work_lane\n      planned_write_paths: [scripts/**]\n"
+        "---\n# Fixture\n\n### Task 1: Fixture\n\n**Coordination ID:** `task-1`\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", plan_ref], cwd=root, check=True)
+    run_path = root / ".harness" / "runs" / "run-1" / "run.json"
+    run_path.parent.mkdir(parents=True)
+    run_path.write_text(json.dumps({
+        "version": 1,
+        "run_id": "run-1",
+        "request": {},
+        "state": "planned",
+        "state_history": [{"state": "planned", "reason": "fixture", "at": "2026-08-06T00:00:00+00:00"}],
+        "attempts": [{"packet": {"plan_ref": plan_ref, "plan_task_id": "task-1", "planned_write_paths": ["scripts/**"]}}],
+    }), encoding="utf-8")
+
+    status = subprocess.run(
+        [sys.executable, str(SCRIPT), "--repo-root", str(root), "coordination-status", "--plan", plan_ref],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    handoff = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--repo-root",
+            str(root),
+            "handoff",
+            "--run-id",
+            "run-1",
+            "--handoff",
+            json.dumps({"last_verified_fact": "packet valid", "next_action": "dispatch", "blocker_or_decision": "none"}),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert status.returncode == 0
+    assert json.loads(status.stdout)["tasks"][0]["state"] == "active"
+    assert handoff.returncode == 0
+    assert json.loads(handoff.stdout)["handoff"]["next_action"] == "dispatch"
+    assert json.loads(run_path.read_text(encoding="utf-8"))["attempts"][0]["handoff"]["timestamp"]
+
+
+def test_coordinated_admission_blocks_unmet_dependencies_and_path_conflicts(monkeypatch, tmp_path: Path) -> None:
+    harness = load_module()
+    first = coordinated_task("task-1")
+    second = coordinated_task("task-2", depends_on=("task-1",))
+    current = plan_coordination_with_tasks(first, second)
+    other = plan_coordination_with_tasks(
+        coordinated_task("other-task"),
+        plan_ref="docs/superpowers/plans/other.md",
+    )
+    manifests = {current.plan_ref: current, other.plan_ref: other}
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda _root, plan_ref, **_kwargs: manifests[plan_ref])
+    packet = {
+        "plan_ref": current.plan_ref,
+        "plan_task_id": "task-2",
+        "planned_write_paths": ["scripts/harness_task.py"],
+    }
+
+    with pytest.raises(harness.HarnessError, match="waiting_dependencies"):
+        harness._admit_coordinated_packet(tmp_path, packet)
+
+    write_coordinated_run(harness, tmp_path, "done", state="accepted", plan_ref=current.plan_ref, task_id="task-1")
+    harness._admit_coordinated_packet(tmp_path, packet)
+    write_coordinated_run(harness, tmp_path, "other", state="planned", plan_ref=other.plan_ref, task_id="other-task")
+    with pytest.raises(harness.HarnessError, match="paths conflict"):
+        harness._admit_coordinated_packet(tmp_path, packet)
 
 
 def test_resolve_managed_packet_rejects_disallowed_runtime_provider() -> None:
@@ -293,6 +645,28 @@ def test_resolve_managed_packet_accepts_allowed_runtime_provider() -> None:
     )
 
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 1}
+
+
+@pytest.mark.parametrize(("task_type", "template", "model"), [
+    ("research", "low", "combo-low"),
+    ("local_change", "normal", "combo-normal"),
+    ("plan_review", "high", "combo-high"),
+])
+def test_managed_packet_copies_template_model_identity(task_type, template, model) -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(task_type=task_type),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["agent_identity"] == {
+        "template": template,
+        "model_provider": "9router",
+        "model": model,
+        "reasoning_effort": "medium",
+    }
 
 
 def test_resolve_managed_packet_rejects_v3_legacy_mode_alias() -> None:
@@ -645,6 +1019,32 @@ def test_missing_command_result_provider_blocks_before_verification(tmp_path: Pa
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+@pytest.mark.parametrize("field", ["agent_identity", "model", "reasoning_effort"])
+def test_missing_or_mismatched_agent_identity_blocks_before_verification(tmp_path: Path, field: str) -> None:
+    class MismatchedAgentAdapter(FakeAdapter):
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            if field == "agent_identity":
+                del evidence[field]
+            else:
+                evidence["agent_identity"] = dict(evidence["agent_identity"])
+                evidence["agent_identity"][field] = "wrong"
+            return evidence
+
+    harness = load_module()
+    run_dir = ROOT / ".harness" / "runs" / tmp_path.name
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=tmp_path.name),
+            MismatchedAgentAdapter({"single_work_lane": "enforced"}),
+        )
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_cancellation_failure_records_normalized_friction(tmp_path: Path) -> None:
     class CancellationFailureAdapter(FakeAdapter):
         def collect_lane_evidence(self, handle, lane, packet, workspace):
@@ -802,8 +1202,9 @@ def test_managed_validator_rejects_invalid_verdict(tmp_path: Path) -> None:
         ),
     ],
 )
-def test_generic_scheduler_proves_every_canonical_topology(
+def test_plan_bound_managed_scheduler_proves_every_canonical_topology(
     tmp_path: Path,
+    monkeypatch,
     execution_mode: str,
     lanes: list[dict[str, object]] | None,
     work_lane_ids: list[str],
@@ -811,7 +1212,13 @@ def test_generic_scheduler_proves_every_canonical_topology(
     harness = load_module()
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
-    request = managed_request(version=3, run_id=run_id, execution_mode=execution_mode)
+    coordination = plan_coordination_with_tasks(
+        coordinated_task("task-1", execution_mode=execution_mode),
+    )
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    request = managed_request(version=3, run_id=run_id, plan_ref=coordination.plan_ref, plan_task_id="task-1")
+    for field in ("execution_mode", "base_ref", "planned_write_paths"):
+        request.pop(field)
     if lanes is not None:
         request["lanes"] = lanes
     try:
@@ -825,6 +1232,11 @@ def test_generic_scheduler_proves_every_canonical_topology(
 
         assert result["outcome"]["reason"] == "verification_passed"
         attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+        assert {key: attempt["packet"][key] for key in ("plan_ref", "plan_task_id", "plan_digest")} == {
+            "plan_ref": coordination.plan_ref,
+            "plan_task_id": "task-1",
+            "plan_digest": coordination.digest,
+        }
         assert [record["lane_id"] for record in attempt["claims"]] == [
             *work_lane_ids,
             "integrate",

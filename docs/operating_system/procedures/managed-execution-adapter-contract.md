@@ -13,6 +13,35 @@ not harness-managed work.
 Packet owns role-derived claim schema for every executable lane. Host prompts
 and core claim validation consume that same immutable schema.
 
+Packet `agent_identity` is immutable copy of selected `agents/<template>.toml`:
+`{template, model_provider, model, reasoning_effort}`. Template TOML remains
+sole static source. Host starts every dispatched lane with exact provider and
+model, disables provider fallback, starts turn with exact reasoning effort,
+then requires app-server response to confirm `{model_provider, model,
+reasoning_effort}`. App-server has no template field; confirmed runtime model
+selection plus immutable template copy proves selected template contract.
+Missing or mismatched confirmation blocks lane evidence and acceptance.
+
+## Plan-Linked Coordination
+
+Optional `coordination` frontmatter on Git-tracked active implementation plan
+is static coordination SSOT. It owns `target_branch`, `base_ref`, task IDs,
+dependencies, canonical topology, and planned write paths. Every manifest task
+maps exactly once to prose `Coordination ID`.
+
+For a plan-linked request, core derives topology, base ref, and planned paths
+from manifest task, rejects conflicting request values, and copies only
+`plan_ref`, `plan_task_id`, and normalized `plan_digest` into immutable packet.
+Existing `base_commit` remains sole resolved code-base identity.
+
+`run.json` owns task-state derivation, handoff, evidence, and decisions.
+`coordination-status` is read-only; `handoff` writes only current non-terminal
+coordinated run. Controller activates one ready task at a time for one plan and
+checks active same-branch path overlap. Same logic applies to every canonical
+topology; parallelism remains packet-internal. No cross-controller lock, lease,
+queue, scheduler, or host-turn resume is provided. Changed digest or base
+commit blocks continuation; controller creates successor attempt.
+
 ## Provider Admission
 
 `repo_config/harness.yaml` is sole registry for static managed-provider IDs,
@@ -106,8 +135,8 @@ After each lane claim, host returns immutable execution evidence from its own
 dispatch handle. Agent JSON claims cannot provide this evidence. Each record
 must include exact lane ID, workspace root, host thread ID, host turn ID,
 enforced sandbox, selected packet tools used, raw tool-call names, command
-results, exact packet `runtime_provider`, `ambient_mcp: false`, and workspace
-status before and after turn.
+results, exact packet `runtime_provider`, exact packet `agent_identity`,
+`ambient_mcp: false`, and workspace status before and after turn.
 
 Writer evidence must show use of at least one packet-selected tool with
 `workspace_write` access. Each command result must use exact packet workspace.
