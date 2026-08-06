@@ -25,6 +25,9 @@ Use only after user or authorized controller requests harness improvement.
    runtime, CI or environment, external service, or human decision. Route a
    proven skill-instruction gap to `skill-writing-skills`; do not edit skills
    for one isolated event.
+   For timeout friction, compare immutable packet budget with normalized timeout
+   evidence and separate transport preflight failure from lane timeout. Do not
+   classify timeout as retryable or let experiments add caller-selected budget.
 4. Propose smallest authorized change. Do not install tools, collect telemetry,
    or mutate policy during ordinary task execution.
 5. Prove change with native check. Re-run representative job from equivalent

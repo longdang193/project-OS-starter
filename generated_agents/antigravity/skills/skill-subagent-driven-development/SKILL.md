@@ -37,8 +37,8 @@ ordinary direct execution.
 - Harness records outcome after dispatch, claim collection, and verification.
   Controller alone calls `apply_controller_decision` to accept, retry,
   escalate, request approval, or block. Commit policy remains separate.
-- Generic CLI has no platform agent adapter. It must return
-  `execution_mode_unavailable`, not claim dispatch occurred.
+- Generic CLI has no managed `run` command. `run-unavailable` records explicit
+  `execution_mode_unavailable` proof; it never claims dispatch occurred.
 - Controller may record `waive` only with reason. Waived work is terminal
   `unvalidated`; local proof remains local and cannot become managed acceptance.
 - Independent validator evidence requires host dispatch of a separate enforced,

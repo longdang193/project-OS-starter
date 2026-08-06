@@ -2,6 +2,16 @@ version: 3
 defaults:
   workspace: current
   approval_gates: []
+execution_budgets:
+  max_turn_timeout_seconds: 900
+  profiles:
+    default:
+      turn_timeout_seconds: 300
+      timeout_decisions: [escalate, block]
+      escalation_profile: extended
+    extended:
+      turn_timeout_seconds: 900
+      timeout_decisions: [block]
 states:
   classified: [planned, blocked]
   planned: [running, awaiting_decision, blocked]
@@ -51,7 +61,7 @@ tools:
     root_probe: ast_grep_root_probe
 runtime_providers:
   codex_app_server:
-    contract_version: 1
+    contract_version: 2
 friction_policy:
   event_version: 1
   minimum_distinct_runs: 3
@@ -95,6 +105,7 @@ routes:
     checks: [diff]
     approval_gates: [protected_policy]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes, parallel_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
@@ -107,6 +118,7 @@ routes:
     workspace: current
     checks: [diff]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
@@ -119,6 +131,7 @@ routes:
     workspace: current
     checks: [diff]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, parallel_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
@@ -131,6 +144,7 @@ routes:
     workspace: current
     checks: [diff]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
@@ -143,6 +157,7 @@ routes:
     workspace: current
     checks: [diff]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
@@ -155,6 +170,7 @@ routes:
     workspace: current
     checks: [diff]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
@@ -168,6 +184,7 @@ routes:
     checks: [diff]
     approval_gates: [protected_policy]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server
@@ -181,6 +198,7 @@ routes:
     checks: [diff]
     approval_gates: [protected_policy]
     retry_policy: bounded
+    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
     runtime_providers: [codex_app_server]
     default_runtime_provider: codex_app_server

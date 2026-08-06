@@ -26,8 +26,8 @@ controller starts version-3 request through host-supplied `run_managed` adapter
 boundary. `run.json` owns mutable run state; each attempt owns immutable packet.
 Packet owns template, role, rules, skills, allowed tools, workspace, checks,
 approval gates, planned write paths, resolved base commit, and orchestration
-mode. Generic CLI has no platform agent adapter and must report unavailable
-mode instead of claiming dispatch.
+mode. Generic CLI has no managed `run` command. Its `run-unavailable` proof
+command reports unavailable mode instead of claiming dispatch.
 
 For Git-tracked active coordination plans, frontmatter owns static target
 branch, base ref, task dependencies, canonical mode, and planned paths. Packet

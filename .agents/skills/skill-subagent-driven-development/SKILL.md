@@ -17,8 +17,8 @@ ordinary direct execution.
 - Run record owns immutable attempt packet, lanes, claims, change-set evidence,
   friction, outcomes, decisions, and state history under `.harness/runs/`.
 - Packet owns allowed paths, planned write paths, resolved base commit,
-  workspace, tools, checks, approval gates, required rules, and orchestration
-  mode.
+  workspace, tools, checks, approval gates, required rules, orchestration
+  mode, and resolved `execution_budget`.
 - For active plan-linked coordination, manifest owns static task dependencies,
   topology, and planned paths. Packet owns immutable `plan_ref`, task ID, and
   digest; `run.json` owns state and handoff. Controller selects only `ready`
@@ -28,8 +28,14 @@ ordinary direct execution.
 - Harness records outcome after dispatch, claim collection, and verification.
   Controller alone calls `apply_controller_decision` to accept, retry,
   escalate, request approval, or block. Commit policy remains separate.
-- Generic CLI has no platform agent adapter. It must return
-  `execution_mode_unavailable`, not claim dispatch occurred.
+- Generic CLI has no managed `run` command. `run-unavailable` records explicit
+  `execution_mode_unavailable` proof; it never claims dispatch occurred.
+- For `runtime_provider_id: codex_app_server`, controller runs provider host
+  from its installed source root: `uv run codex-harness-host run --harness-root
+  <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>`.
+  Use exclusive `--run-id <run-id>` only to resume an existing planned attempt.
+  Check `uv run codex-harness-host capabilities` first. Do not retry through
+  `run-unavailable`; preserve that terminal proof and create successor request.
 - Controller may record `waive` only with reason. Waived work is terminal
   `unvalidated`; local proof remains local and cannot become managed acceptance.
 - Independent validator evidence requires host dispatch of a separate enforced,
@@ -47,7 +53,9 @@ ordinary direct execution.
 4. If review is required, controller obtains read-only reviewer evidence. Review
    cannot authorize protected paths; approval cannot prove semantic criteria.
 5. Controller records one allowed decision. Retry, escalation, and approval
-   resume create successor attempts; prior packets and evidence stay unchanged.
+   create successor attempts only when outcome permits. For `dispatch_timeout`,
+   controller may only escalate through packet `escalation_profile` or block;
+   never retry timeout. Prior packets and evidence stay unchanged.
 
 ## Stop
 

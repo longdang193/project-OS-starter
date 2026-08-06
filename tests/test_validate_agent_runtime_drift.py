@@ -65,6 +65,10 @@ def test_normalize_deploy_targets_alias_and_invalid() -> None:
 
 
 def test_main_fails_on_invalid_platform(monkeypatch, tmp_path: Path, capsys) -> None:
+    (tmp_path / "adapters").mkdir()
+    deploy_script = tmp_path / "scripts" / "deploy_agent_runtime.py"
+    deploy_script.parent.mkdir()
+    deploy_script.write_text("", encoding="utf-8")
     monkeypatch.setattr(
         VALIDATOR,
         "parse_args",
@@ -75,6 +79,10 @@ def test_main_fails_on_invalid_platform(monkeypatch, tmp_path: Path, capsys) -> 
 
 
 def test_main_runs_default_codex_deploy_target(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "adapters").mkdir()
+    deploy_script = tmp_path / "scripts" / "deploy_agent_runtime.py"
+    deploy_script.parent.mkdir()
+    deploy_script.write_text("", encoding="utf-8")
     monkeypatch.setattr(
         VALIDATOR,
         "parse_args",
@@ -85,3 +93,17 @@ def test_main_runs_default_codex_deploy_target(monkeypatch, tmp_path: Path) -> N
     assert VALIDATOR.main() == 0
     assert len(commands) == 2
     assert commands[1][-3:] == ["--target", "codex", "--check"]
+
+
+def test_main_skips_consume_only_kit_runtime_checks(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.setattr(
+        VALIDATOR,
+        "parse_args",
+        lambda: type("Args", (), {"repo_root": str(tmp_path), "skip_deploy_check": False, "all_platforms": False, "platform": []})(),
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(VALIDATOR, "_run", lambda command, cwd: commands.append(command) or 0)
+
+    assert VALIDATOR.main() == 0
+    assert commands == []
+    assert "consume-only kit" in capsys.readouterr().out

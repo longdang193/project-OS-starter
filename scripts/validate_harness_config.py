@@ -39,6 +39,7 @@ ROUTE_FIELDS = {
     "workspace",
     "checks",
     "retry_policy",
+    "execution_budget_profile",
     "execution_modes",
     "runtime_providers",
     "default_runtime_provider",
@@ -58,6 +59,10 @@ TOOL_FIELDS = {"optional", "fallback", "host_kind", "writer_access", "validator_
 REQUIRED_STATES = {"classified", "planned", "running", "observed", "verifying", "awaiting_decision", "accepted", "unvalidated", "blocked"}
 RUNTIME_PROVIDER_FIELDS = {"contract_version"}
 FRICTION_POLICY_FIELDS = {"event_version", "minimum_distinct_runs", "window_days"}
+EXECUTION_BUDGET_FIELDS = {"max_turn_timeout_seconds", "profiles"}
+EXECUTION_BUDGET_PROFILE_FIELDS = {"turn_timeout_seconds", "timeout_decisions"}
+EXECUTION_BUDGET_PROFILE_OPTIONAL_FIELDS = {"escalation_profile"}
+TIMEOUT_DECISIONS = {"escalate", "block"}
 
 
 def load_yaml(path: Path) -> Any:
@@ -247,6 +252,64 @@ def validate(root: Path) -> list[str]:
         if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or ttl_seconds < 1:
             errors.append(f"retry policy `{name}` approval_ttl_seconds must be a positive integer")
 
+    execution_budgets = policy.get("execution_budgets")
+    profiles: dict[str, dict[str, Any]] = {}
+    if not isinstance(execution_budgets, dict):
+        errors.append("execution_budgets must be a mapping")
+    else:
+        missing = EXECUTION_BUDGET_FIELDS - execution_budgets.keys()
+        unknown = set(execution_budgets) - EXECUTION_BUDGET_FIELDS
+        if missing:
+            errors.append(f"execution_budgets missing fields: {', '.join(sorted(missing))}")
+        if unknown:
+            errors.append(f"execution_budgets has unknown fields: {', '.join(sorted(unknown))}")
+        maximum = execution_budgets.get("max_turn_timeout_seconds")
+        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1:
+            errors.append("execution_budgets max_turn_timeout_seconds must be a positive integer")
+        raw_profiles = execution_budgets.get("profiles")
+        if not isinstance(raw_profiles, dict) or not raw_profiles:
+            errors.append("execution_budgets profiles must be a non-empty mapping")
+        else:
+            for name, profile in raw_profiles.items():
+                if not isinstance(name, str) or not name or not isinstance(profile, dict):
+                    errors.append("execution budget profiles must map names to mappings")
+                    continue
+                profiles[name] = profile
+                missing = EXECUTION_BUDGET_PROFILE_FIELDS - profile.keys()
+                unknown = set(profile) - EXECUTION_BUDGET_PROFILE_FIELDS - EXECUTION_BUDGET_PROFILE_OPTIONAL_FIELDS
+                if missing:
+                    errors.append(f"execution budget profile `{name}` missing fields: {', '.join(sorted(missing))}")
+                if unknown:
+                    errors.append(f"execution budget profile `{name}` has unknown fields: {', '.join(sorted(unknown))}")
+                timeout = profile.get("turn_timeout_seconds")
+                if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1:
+                    errors.append(f"execution budget profile `{name}` turn_timeout_seconds must be a positive integer")
+                elif isinstance(maximum, int) and not isinstance(maximum, bool) and timeout > maximum:
+                    errors.append(f"execution budget profile `{name}` turn_timeout_seconds exceeds maximum")
+                decisions = profile.get("timeout_decisions")
+                if not valid_string_list(decisions) or len(set(decisions)) != len(decisions):
+                    errors.append(f"execution budget profile `{name}` timeout_decisions must be a unique non-empty list of strings")
+                elif set(decisions) - TIMEOUT_DECISIONS or "block" not in decisions:
+                    errors.append(f"execution budget profile `{name}` has invalid timeout decisions")
+        for name, profile in profiles.items():
+            decisions = profile.get("timeout_decisions")
+            successor = profile.get("escalation_profile")
+            if successor is not None and (not isinstance(successor, str) or successor not in profiles):
+                errors.append(f"execution budget profile `{name}` has unknown escalation_profile")
+            if isinstance(decisions, list) and "escalate" in decisions and successor is None:
+                errors.append(f"execution budget profile `{name}` escalation requires escalation_profile")
+            if successor is not None and (not isinstance(decisions, list) or "escalate" not in decisions):
+                errors.append(f"execution budget profile `{name}` escalation_profile requires escalate decision")
+        for name in profiles:
+            seen: set[str] = set()
+            current = name
+            while current in profiles and profiles[current].get("escalation_profile") is not None:
+                if current in seen:
+                    errors.append(f"execution budget profiles contain escalation cycle at `{current}`")
+                    break
+                seen.add(current)
+                current = profiles[current]["escalation_profile"]
+
     orchestration = policy.get("orchestration")
     if not isinstance(orchestration, dict) or not orchestration:
         errors.append("orchestration must be a non-empty mapping")
@@ -333,6 +396,9 @@ def validate(root: Path) -> list[str]:
                 errors.append(f"unknown approval gate `{gate}`")
         if route["retry_policy"] not in retry_policies:
             errors.append(f"unknown retry policy `{route['retry_policy']}`")
+        profile = route["execution_budget_profile"]
+        if not isinstance(profile, str) or profile not in profiles:
+            errors.append(f"route `{name}` has unknown execution budget profile `{profile}`")
         for mode in route["execution_modes"]:
             if mode not in orchestration:
                 errors.append(f"unknown execution mode `{mode}`")

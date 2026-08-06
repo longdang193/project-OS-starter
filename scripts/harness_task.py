@@ -69,6 +69,15 @@ FRICTION_EVENT_KINDS = {"observed", "resolution"}
 FRICTION_SOURCES = {"agent", "host", "validator", "check", "controller"}
 FRICTION_PHASES = {"claim", "dispatch", "integration", "check", "validator", "decision"}
 FRICTION_RESOLUTIONS = {"keep", "revise", "remove", "pending"}
+TIMEOUT_EVIDENCE_FIELDS = {
+    "lane_id",
+    "turn_timeout_seconds",
+    "elapsed_seconds",
+    "terminal_status",
+    "event_summary",
+    "last_tool_call",
+    "completed_command_count",
+}
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -203,6 +212,7 @@ def resolve_task(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         },
         "checks": checks,
         "approval_gates": gates,
+        "execution_budget": _resolve_execution_budget(policy, route),
         "allowed_next_states": policy["states"],
         "acceptance_criteria": criteria,
         "allowed_paths": allowed_paths,
@@ -343,7 +353,34 @@ def _load_agent_identity(root: Path, template: str) -> dict[str, str]:
     return {"template": template, **fields}
 
 
-def _route_packet(policy: dict[str, Any], task_type: str, execution_mode: str) -> dict[str, Any]:
+def _resolve_execution_budget(
+    policy: dict[str, Any],
+    route: dict[str, Any],
+    *,
+    profile_name: str | None = None,
+) -> dict[str, Any]:
+    selected = profile_name if profile_name is not None else route["execution_budget_profile"]
+    budgets = policy["execution_budgets"]
+    profile = budgets["profiles"].get(selected)
+    if not isinstance(profile, dict):
+        raise HarnessError(f"unknown execution budget profile `{selected}`")
+    budget = {
+        "profile": selected,
+        "turn_timeout_seconds": profile["turn_timeout_seconds"],
+        "timeout_decisions": list(profile["timeout_decisions"]),
+    }
+    if "escalation_profile" in profile:
+        budget["escalation_profile"] = profile["escalation_profile"]
+    return budget
+
+
+def _route_packet(
+    policy: dict[str, Any],
+    task_type: str,
+    execution_mode: str,
+    *,
+    execution_budget_profile: str | None = None,
+) -> dict[str, Any]:
     route = policy["routes"].get(task_type)
     if not isinstance(route, dict):
         raise HarnessError(f"unknown task type `{task_type}`")
@@ -383,6 +420,11 @@ def _route_packet(policy: dict[str, Any], task_type: str, execution_mode: str) -
             for name in route.get("approval_gates", policy.get("defaults", {}).get("approval_gates", []))
         },
         "retry_policy": copy.deepcopy(policy["retry_policies"][route["retry_policy"]]),
+        "execution_budget": _resolve_execution_budget(
+            policy,
+            route,
+            profile_name=execution_budget_profile,
+        ),
         "allowed_next_states": copy.deepcopy(policy["states"]),
     }
 
@@ -1047,13 +1089,26 @@ def _normalize_managed_request(
     return normalized, coordination, plan_task
 
 
-def resolve_managed_packet(root: Path, request: dict[str, Any], *, attempt_id: str) -> dict[str, Any]:
+def resolve_managed_packet(
+    root: Path,
+    request: dict[str, Any],
+    *,
+    attempt_id: str,
+    execution_budget_profile: str | None = None,
+) -> dict[str, Any]:
     _validate_policy(root)
     policy = _load_policy(root)
     request, coordination, plan_task = _normalize_managed_request(root, policy, request)
     task_type = _required_string(request.get("task_type"), "task_type")
     execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
-    packet = _route_packet(policy, task_type, execution_mode)
+    if "execution_budget_profile" in request:
+        raise HarnessError("managed request cannot select execution budget profile")
+    packet = _route_packet(
+        policy,
+        task_type,
+        execution_mode,
+        execution_budget_profile=execution_budget_profile,
+    )
     runtime_provider = _resolve_runtime_provider(policy, task_type, request.get("runtime_provider_id"))
     role = _load_roles(root).get(packet["role"])
     if not isinstance(role, dict):
@@ -1130,8 +1185,17 @@ def _active_attempt(run: dict[str, Any]) -> dict[str, Any]:
     return run["attempts"][-1]
 
 
-def _set_outcome(attempt: dict[str, Any], reason: str, allowed_decisions: list[str], evidence_refs: list[str]) -> dict[str, Any]:
+def _set_outcome(
+    attempt: dict[str, Any],
+    reason: str,
+    allowed_decisions: list[str],
+    evidence_refs: list[str],
+    *,
+    detail: str | None = None,
+) -> dict[str, Any]:
     outcome = {"reason": reason, "allowed_decisions": allowed_decisions, "evidence_refs": evidence_refs}
+    if detail:
+        outcome["detail"] = detail
     attempt["outcome"] = outcome
     return outcome
 
@@ -1158,6 +1222,11 @@ def _adapter_capabilities(adapter: Any, canonical_modes: set[str]) -> dict[str, 
     return capabilities
 
 
+def _adapter_unavailable_detail(adapter: Any) -> str | None:
+    detail = adapter.get("unavailable_detail") if isinstance(adapter, dict) else getattr(adapter, "unavailable_detail", None)
+    return detail if isinstance(detail, str) and detail else None
+
+
 def _adapter_identity(adapter: Any, runtime_provider: dict[str, Any]) -> dict[str, Any]:
     identity = _adapter_call(adapter, "identity")
     if (
@@ -1173,6 +1242,20 @@ def _adapter_identity(adapter: Any, runtime_provider: dict[str, Any]) -> dict[st
     if identity != runtime_provider:
         raise HarnessError("host adapter identity conflicts with packet runtime provider")
     return copy.deepcopy(identity)
+
+
+def _record_host_preflight(attempt: dict[str, Any], adapter: Any) -> None:
+    method = adapter.get("preflight_evidence") if isinstance(adapter, dict) else getattr(adapter, "preflight_evidence", None)
+    if method is None:
+        return
+    if not callable(method):
+        raise HarnessError("host adapter preflight evidence must be callable")
+    evidence = method()
+    if not isinstance(evidence, dict):
+        raise HarnessError("host adapter preflight evidence must be an object")
+    protocol = _required_string(evidence.get("protocol"), "host adapter preflight protocol")
+    server_uri = _required_string(evidence.get("server_uri"), "host adapter preflight server_uri")
+    attempt["host_preflight"] = {"protocol": protocol, "server_uri": server_uri}
 
 
 def _record_tool_binding_evidence(
@@ -1565,13 +1648,110 @@ def _record_failure(
         code=reason,
         evidence_ref=f"outcome.{reason}",
     )
+    failure = {"reason": reason, "phase": phase, "detail": detail}
+    attempt.setdefault("evidence", {})["failure"] = failure
     decisions = ["block"]
     if reason in attempt["packet"]["retry_policy"]["retryable_reasons"]:
         decisions = ["retry", "escalate", "block"]
-    _set_outcome(attempt, reason, decisions, ["friction_event_ids"])
+    _set_outcome(attempt, reason, decisions, ["friction_event_ids", "evidence.failure"], detail=detail)
     _transition(run, policy["states"], "awaiting_decision", reason)
     _write_run(root, run)
     return _managed_result(run)
+
+
+def _normalize_timeout_evidence(exc: Exception, packet: dict[str, Any]) -> dict[str, Any] | None:
+    raw = getattr(exc, "timeout_evidence", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return {"invalid": True, "error": "timeout evidence must be an object"}
+    evidence = {field: raw.get(field) for field in TIMEOUT_EVIDENCE_FIELDS}
+    if not isinstance(evidence["lane_id"], str) or not evidence["lane_id"]:
+        return {"invalid": True, "error": "timeout evidence has invalid lane_id"}
+    timeout = evidence["turn_timeout_seconds"]
+    if not isinstance(timeout, int) or isinstance(timeout, bool):
+        return {"invalid": True, "error": "timeout evidence has invalid turn_timeout_seconds"}
+    if timeout != packet["execution_budget"]["turn_timeout_seconds"]:
+        return {"invalid": True, "error": "timeout evidence conflicts with packet execution budget"}
+    elapsed = evidence["elapsed_seconds"]
+    if not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool) or elapsed < 0:
+        return {"invalid": True, "error": "timeout evidence has invalid elapsed_seconds"}
+    if not isinstance(evidence["terminal_status"], str) or not evidence["terminal_status"]:
+        return {"invalid": True, "error": "timeout evidence lacks terminal interruption proof"}
+    summary = evidence["event_summary"]
+    if not isinstance(summary, list) or len(summary) > 16 or not all(isinstance(item, str) and item for item in summary):
+        return {"invalid": True, "error": "timeout evidence has invalid event_summary"}
+    last_tool_call = evidence["last_tool_call"]
+    if last_tool_call is not None and (not isinstance(last_tool_call, str) or not last_tool_call):
+        return {"invalid": True, "error": "timeout evidence has invalid last_tool_call"}
+    commands = evidence["completed_command_count"]
+    if not isinstance(commands, int) or isinstance(commands, bool) or commands < 0:
+        return {"invalid": True, "error": "timeout evidence has invalid completed_command_count"}
+    return evidence
+
+
+def _record_timeout_failure(
+    root: Path,
+    run: dict[str, Any],
+    policy: dict[str, Any],
+    attempt: dict[str, Any],
+    detail: str,
+    *,
+    phase: str,
+    timeout_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    _record_attempt_friction(
+        root,
+        run,
+        attempt,
+        lane=None,
+        source="host",
+        phase=phase,
+        code="dispatch_timeout",
+        evidence_ref="outcome.dispatch_timeout",
+    )
+    attempt.setdefault("evidence", {})["failure"] = {
+        "reason": "dispatch_timeout",
+        "phase": phase,
+        "detail": detail,
+    }
+    attempt["evidence"]["timeout"] = timeout_evidence
+    decisions = ["block"]
+    if not timeout_evidence.get("invalid"):
+        decisions = list(attempt["packet"]["execution_budget"]["timeout_decisions"])
+    _set_outcome(
+        attempt,
+        "dispatch_timeout",
+        decisions,
+        ["friction_event_ids", "evidence.failure", "evidence.timeout"],
+        detail=detail,
+    )
+    _transition(run, policy["states"], "awaiting_decision", "dispatch_timeout")
+    _write_run(root, run)
+    return _managed_result(run)
+
+
+def _record_dispatch_exception(
+    root: Path,
+    run: dict[str, Any],
+    policy: dict[str, Any],
+    attempt: dict[str, Any],
+    exc: Exception,
+    *,
+    phase: str,
+) -> dict[str, Any]:
+    timeout_evidence = _normalize_timeout_evidence(exc, attempt["packet"])
+    if timeout_evidence is not None:
+        return _record_timeout_failure(
+            root,
+            run,
+            policy,
+            attempt,
+            str(exc),
+            phase=phase,
+            timeout_evidence=timeout_evidence,
+        )
+    return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase=phase)
 
 
 def _cancel_active_lanes(
@@ -1684,6 +1864,7 @@ def _execute_attempt(
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
     mode = packet["orchestration"]["name"]
     if capabilities.get(mode) != "enforced":
+        detail = _adapter_unavailable_detail(adapter)
         _record_attempt_friction(
             root,
             run,
@@ -1694,7 +1875,13 @@ def _execute_attempt(
             code="execution_mode_unavailable",
             evidence_ref="capabilities",
         )
-        _set_outcome(attempt, "execution_mode_unavailable", ["waive", "block"], ["capabilities"])
+        _set_outcome(
+            attempt,
+            "execution_mode_unavailable",
+            ["waive", "block"],
+            ["capabilities"],
+            detail=detail,
+        )
         _transition(run, policy["states"], "awaiting_decision", "execution_mode_unavailable")
         _write_run(root, run)
         return _managed_result(run)
@@ -1792,7 +1979,7 @@ def _execute_attempt(
         return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc), phase="claim")
     except Exception as exc:
         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase=failure_phase)
-        return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase=failure_phase)
+        return _record_dispatch_exception(root, run, policy, attempt, exc, phase=failure_phase)
     _transition(run, policy["states"], "observed", "claim_collected")
     _transition(run, policy["states"], "verifying", "verify")
     try:
@@ -1866,6 +2053,11 @@ def run_managed(
                 _transition(run, policy["states"], "awaiting_decision", "plan_binding_changed")
                 _write_run(root, run)
                 return _managed_result(run)
+    try:
+        _record_host_preflight(_active_attempt(run), adapter)
+    except Exception as exc:
+        return _record_failure(root, run, policy, _active_attempt(run), "dispatch_failed", str(exc), phase="dispatch")
+    _write_run(root, run)
     collector = collect_changes or _collect_changes
     return _execute_attempt(root, run, policy, adapter, run_check=run_check, collect_changes=collector, now=now or datetime.now(UTC))
 
@@ -1919,7 +2111,14 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
         _transition(run, policy["states"], "awaiting_decision", "controller_request_approval")
     else:
         retry_policy = attempt["packet"]["retry_policy"]
-        if outcome["reason"] not in retry_policy["retryable_reasons"] and outcome["reason"] not in {"approval_required", "plan_binding_changed"}:
+        execution_budget_profile = None
+        if outcome["reason"] == "dispatch_timeout":
+            if kind != "escalate":
+                raise HarnessError("timeout outcome requires escalation or block")
+            execution_budget_profile = attempt["packet"]["execution_budget"].get("escalation_profile")
+            if not isinstance(execution_budget_profile, str) or not execution_budget_profile:
+                raise HarnessError("timeout outcome lacks escalation budget profile")
+        elif outcome["reason"] not in retry_policy["retryable_reasons"] and outcome["reason"] not in {"approval_required", "plan_binding_changed"}:
             raise HarnessError(f"outcome `{outcome['reason']}` is not retryable")
         if len(run["attempts"]) >= retry_policy["max_attempts"]:
             _set_outcome(attempt, "retry_exhausted", ["block"], ["decision"])
@@ -1929,6 +2128,7 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
                 root,
                 _successor_request(run, decision.get("successor")),
                 attempt_id=f"attempt-{len(run['attempts']) + 1}",
+                execution_budget_profile=execution_budget_profile,
             )
             _append_attempt(run, packet)
             _transition(run, policy["states"], "planned", f"controller_{kind}")
@@ -1945,7 +2145,7 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--task", required=True)
         if name == "verify":
             command.add_argument("--claim", required=True)
-    run_command = subparsers.add_parser("run")
+    run_command = subparsers.add_parser("run-unavailable")
     run_command.add_argument("--task")
     run_command.add_argument("--run-id")
     decision_command = subparsers.add_parser("decision")
@@ -1968,11 +2168,19 @@ def main(argv: list[str] | None = None) -> int:
             result = resolve_task(root, _load_json(Path(args.task)))
         elif args.command == "verify":
             result = verify_task(root, _load_json(Path(args.task)), _load_json(Path(args.claim)))
-        elif args.command == "run":
+        elif args.command == "run-unavailable":
             if not args.task and not args.run_id:
-                raise HarnessError("run requires --task or --run-id")
+                raise HarnessError("run-unavailable requires --task or --run-id")
             task = _load_json(Path(args.task)) if args.task else None
-            result = run_managed(root, task, {"capabilities": lambda: {}}, run_id=args.run_id)
+            result = run_managed(
+                root,
+                task,
+                {
+                    "capabilities": lambda: {},
+                    "unavailable_detail": "Generic harness CLI has no injected host adapter; use a provider host entrypoint.",
+                },
+                run_id=args.run_id,
+            )
         elif args.command == "friction-report":
             result = friction_report(root)
         elif args.command == "friction-resolve":

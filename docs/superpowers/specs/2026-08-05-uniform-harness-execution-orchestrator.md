@@ -76,6 +76,18 @@ layer: change
   adapter only; no provider fallback, route-specific lifecycle, verifier, or
   controller path exists.
 
+### Outcome: Bounded runtime and actionable timeout recovery
+
+- affected actor or system: controller, harness core, runtime providers, and
+  maintainers.
+- required result: static route policy resolves one immutable execution budget
+  into each packet; every lane in every topology consumes that same packet
+  budget and records structured timeout evidence before controller decides the
+  next action.
+- success condition: no host CLI flag, hidden provider default, or route-local
+  branch can change a packet timeout; a timeout never silently resubmits a
+  request or consumes a retry without a recorded controller decision.
+
 ## Design Analysis
 
 ### Current State and Evidence
@@ -175,6 +187,62 @@ layer: change
 - observable acceptance: escalation from `single_agent` to `parallel_lanes`,
   when parallel support exists, creates a later attempt rather than mutating
   attempt one.
+
+#### Requirement: New-run and continuation symmetry
+
+- trigger or actor: controller starts a managed run or resumes a `planned`
+  attempt.
+- preconditions: a new request has no existing run record, or an existing run
+  ID resolves to exactly one `planned` active attempt.
+- required behavior: one provider entrypoint accepts exactly one input form:
+  request creates a new run; run ID continues the existing packet with no
+  request resubmission. Continuation reuses the active immutable packet and
+  never creates a duplicate initial attempt.
+- output or state change: continuation dispatches the already planned attempt;
+  new-run creation records attempt one before any host dispatch.
+- failure behavior: a request for an existing run ID, a continuation request
+  that differs from stored request, or a non-`planned` run blocks without
+  workspace preparation.
+- observable acceptance: `--request` and `--run-id` are mutually exclusive;
+  a controller can resume a retry-created planned attempt without creating a
+  successor run.
+
+#### Requirement: Immutable execution budget
+
+- trigger or actor: harness core resolves a managed packet.
+- preconditions: route and selected orchestration mode are valid.
+- required behavior: `repo_config/harness.yaml` owns named bounded execution-
+  budget profiles, each route's initial profile, and each profile's permitted
+  timeout decisions plus optional named escalation target. Core validates them
+  and writes one normalized `execution_budget` object into packet state,
+  including profile identity, `turn_timeout_seconds`, permitted timeout
+  decisions, and only one policy-named successor profile. Host consumes this
+  resolved value for every work, integration, validation, and check operation.
+- output or state change: packet and host evidence identify the exact timeout
+  budget used by each lane.
+- failure behavior: missing, malformed, out-of-policy, or host-unenforceable
+  budget blocks before dispatch. No provider CLI timeout override, fallback
+  default, or in-place packet mutation is permitted.
+- observable acceptance: `single_work_lane`, `sequential_work_lanes`, and
+  `parallel_work_lanes` use identical budget resolution and evidence shape.
+
+#### Requirement: Timeout evidence and controller recovery
+
+- trigger or actor: provider reaches a packet turn timeout or terminally
+  interrupts a timed-out turn.
+- preconditions: host has a dispatched packet lane.
+- required behavior: host returns normalized timeout evidence containing lane
+  ID, configured timeout, elapsed time, terminal status, event-trace summary,
+  last observed tool call, and completed command count. Core records it under
+  the active attempt and exposes an explicit timeout outcome to controller.
+- output or state change: run remains decision-pending; controller records
+  `block`, or `escalate` only through packet-named successor budget profile.
+  Timeout never causes automatic retry or acceptance.
+- failure behavior: missing terminal-interrupt proof or incomplete timeout
+  evidence blocks the run and remains distinguishable from a generic dispatch
+  failure.
+- observable acceptance: maintainers can classify a timeout as prompt stall,
+  productive budget exhaustion, or hung command from one run record.
 
 #### Requirement: Explicit lane plan
 
@@ -433,6 +501,43 @@ layer: change
 - affected owners and boundaries: task schema, harness policy, preflight,
   controller, and tests.
 
+### Decision: Runtime budget is policy-resolved packet data
+
+- context: a fixed host timeout can hide prompt stalls, productive long-running
+  work, and hung commands behind one generic dispatch failure.
+- selected approach: `repo_config/harness.yaml` owns named bounded execution-
+  budget profiles, each route's initial profile, and each profile's permitted
+  timeout decisions and optional named escalation target. Packet resolution
+  freezes one resolved `execution_budget`, including profile identity and its
+  optional successor profile; every host lane consumes it and returns
+  normalized timeout evidence.
+- rationale: timeout behavior differs by configured data, not provider CLI
+  flags, topology branches, or undocumented deployment defaults.
+- alternatives considered: one host-wide hard-coded timeout; arbitrary CLI
+  timeout override; automatic retry after timeout.
+- accepted trade-offs: policy and packet schema gain one small object and
+  profile transition; hosts must reject a budget they cannot enforce. A
+  controller cannot invent an arbitrary larger timeout.
+- affected owners and boundaries: harness policy, packet resolver, host
+  adapter, run evidence, controller, and conformance tests.
+
+### Decision: Continuation reuses planned packet identity
+
+- context: retry decisions create a planned successor attempt, but resubmitting
+  its original request creates a duplicate-run conflict instead of dispatching
+  that attempt.
+- selected approach: provider CLI has mutually exclusive new-run request and
+  continuation run-ID inputs. Continuation calls the core with `request=None`
+  and the existing run ID; core alone validates active planned state.
+- rationale: new work and continuation remain one symmetric boundary while run
+  authority and immutable packet identity stay in core.
+- alternatives considered: host recreating request from `run.json`; a separate
+  resume runner; silently creating a new run ID.
+- accepted trade-offs: controllers must retain run IDs and choose an explicit
+  decision before a later attempt exists.
+- affected owners and boundaries: provider CLI, harness core, controller,
+  run record, and deployment procedure.
+
 ### Decision: Static policy, role contract, and run state have separate SSOTs
 
 - context: routing policy, role requirements, and one execution's mutable state
@@ -569,6 +674,15 @@ layer: change
   grants protected-path authorization.
 - generated prompts and adapter surfaces never become policy SSOTs.
 - friction recording never mutates harness policy during an active run.
+- every packet-selected lane receives the same immutable execution budget;
+  providers cannot add a hidden timeout override or fallback default.
+- timeout evidence distinguishes terminal timeout from generic dispatch failure;
+  controller records the next decision before any successor attempt exists.
+- a timeout permits `escalate` only when current packet names one valid
+  successor budget profile. `retry` never substitutes for timeout escalation;
+  controller creates one successor packet only after explicit escalation.
+- continuation dispatches only an existing `planned` attempt and never
+  resubmits its stored request.
 
 ### Edge Cases
 
@@ -583,7 +697,10 @@ layer: change
   without dispatch.
 - retry, cancellation, timeout, partial failure, or concurrency: cancellation,
   timeout, missing lane claim, or partial parallel failure records decision and
-  preserves completed lane evidence; retry creates successor attempt only.
+  preserves completed lane evidence. Timeout records configured budget and
+  terminal trace summary. An explicit escalation can create one successor only
+  through the packet-named budget profile; retry creates successor attempt only
+  after explicit retry-policy-permitted controller decision.
 - migration or mixed-version state: legacy standalone version-1 requests remain
   valid; managed runs require typed criteria before automatic acceptance.
 - generated-source consistency: canonical policy, roles, skills, and rules are
@@ -602,7 +719,8 @@ layer: change
 - important success and failure behavior: prove single-agent success, failed
   check, invalid claim, unsupported mode, scope escape, pre-gate approval,
   post-gate approval, review-required criterion, retry, escalation, and
-  interrupted-run recovery.
+  interrupted-run recovery, continuation of a planned attempt, and timeout
+  evidence with terminal interruption.
 - final state or side effects: verify atomic `run.json`, immutable prior
   attempts, workspace cleanup or preservation policy, and no dispatch before a
   blocking preflight or gate decision.
@@ -614,9 +732,11 @@ layer: change
 - real dependencies requiring proof: platform dispatch and workspace worktree
   behavior require representative integration proof when handlers are added.
 - representative-operation trace mechanism: per-run state history, lane claims,
-  command evidence, decisions, and friction records in `run.json`.
-- performance claim and threshold: Not applicable for first foreground
-  single-agent slice; record timing for future concurrency evaluation.
+  command evidence, decisions, friction records, and timeout trace summary in
+  `run.json`.
+- performance claim and threshold: packet budget bounds each foreground turn;
+  timeouts require evidence-based classification before a controller selects a
+  packet-named higher permitted budget or a smaller task slice.
 
 ### Acceptance Criterion: Single lifecycle owner
 
@@ -650,6 +770,38 @@ layer: change
 - failure condition: original packet is overwritten.
 - proof method: direct run-record transition test.
 - expected evidence: before/after record comparison.
+
+### Acceptance Criterion: Symmetric budget and continuation
+
+- setup or precondition: routes permitting each supported topology and a run
+  with a controller-escalated `planned` attempt using packet-named successor
+  budget profile.
+- action: resolve packets, dispatch through conforming host test adapter, then
+  continue the planned run by ID.
+- expected result: every lane receives the packet budget; continuation uses the
+  existing attempt without request resubmission or duplicate run creation.
+  Prior packet remains unchanged; successor receives only the static,
+  packet-named profile.
+- failure condition: host changes the budget, CLI accepts both inputs, or core
+  creates another attempt before controller decision.
+- proof method: parameterized core tests, host adapter conformance tests, and
+  one live App Server continuation proof.
+- expected evidence: immutable packet comparison, host lane evidence, and one
+  `run.json` continuation record.
+
+### Acceptance Criterion: Actionable timeout evidence
+
+- setup or precondition: host turn reaches configured packet timeout and
+  terminal interruption completes.
+- action: collect timeout failure through core lifecycle.
+- expected result: active attempt remains decision-pending with configured
+  budget, elapsed time, terminal status, event summary, last tool call, and
+  completed command count.
+- failure condition: timeout is recorded as opaque generic failure, silently
+  retries, or accepts work.
+- proof method: deterministic host timeout test plus core transition test.
+- expected evidence: normalized timeout object in `run.json` and controller
+  decision options constrained by packet policy.
 
 ### Acceptance Criterion: Honest criteria and review separation
 
@@ -687,4 +839,6 @@ Specification is complete when:
 4. first-slice and later-mode compatibility boundaries are explicit
 5. every required outcome maps to direct validation intent
 6. no unresolved design question requires an implementation-time policy choice
-7. implementation sequencing remains outside this specification
+7. timeout, continuation, and deployment-freshness behavior have one named
+   owner and direct proof intent
+8. implementation sequencing remains outside this specification

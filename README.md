@@ -72,11 +72,20 @@ Semble MCP and ast-grep CLI remain optional discovery tools. See `docs/operating
 First layer: `agents/*.toml`, `agents/roles.yaml`, and
 `repo_config/harness.yaml`. Run `scripts/harness_task.py preflight` to resolve
 controller task metadata; run `verify` for fresh evidence. Managed execution
-needs host-supplied `run_managed` adapter. Generic CLI returns
-`execution_mode_unavailable`; controller must block or record explicit
+needs host-supplied `run_managed` adapter. Generic CLI exposes
+`run-unavailable` only for explicit no-host-adapter proof; controller must block or record explicit
 `waive`, which leaves run terminal `unvalidated`. `.harness/` stores optional
 ignored local run artifacts. No scheduler, daemon, or job manager ships with
-starter kit. Host contract:
+starter kit. For `runtime_provider_id: codex_app_server`, use provider-host
+execution, never generic `run-unavailable`:
+
+```powershell
+Set-Location <codex-harness-host-root>
+uv run codex-harness-host capabilities
+uv run codex-harness-host run --harness-root <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>
+```
+
+Host contract:
 `docs/operating_system/procedures/managed-execution-adapter-contract.md`.
 
 ## Customize First

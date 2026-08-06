@@ -4,11 +4,62 @@
 
 `scripts/harness_task.py` owns packet resolution, run records, authorization,
 verification, outcomes, and controller decisions. Host owns actual agent and
-workspace operations. Generic CLI has no host adapter.
+workspace operations. Generic CLI has no host adapter and exposes
+`run-unavailable` only for explicit unavailable-adapter proof.
+
+Host runtime dependencies must cover every non-stdlib import in core scripts it
+loads. Target virtual environments, dev groups, and `requirements.txt` do not
+satisfy host `uv run` resolution. Provider admission requires bare host-process
+core-load proof before capability claims may authorize dispatch.
 
 Managed work starts only when host calls `run_managed(root, request, adapter)`.
 No packet or `.harness/runs/<run-id>/run.json` means source-first local work,
 not harness-managed work.
+
+## Generic CLI Retry Boundary
+
+`uv run python scripts/harness_task.py run-unavailable --task <request.json>`
+may create immutable packet and mutable `run.json` only to prove that no host
+adapter is available. It cannot prepare a workspace, dispatch writer or
+validator lanes, run packet checks, or retry managed work.
+
+## Codex Provider Invocation
+
+`runtime_provider_id: codex_app_server` selects provider identity; it does not
+make generic core CLI a provider host. From installed `codex-harness-host`
+source root, verify capability and dispatch same request through provider host:
+
+```powershell
+uv run codex-harness-host capabilities
+uv run codex-harness-host preflight --server-uri ws://127.0.0.1:4500
+uv run codex-harness-host run --harness-root <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>
+uv run codex-harness-host run --harness-root <repo-root> --server-uri ws://127.0.0.1:4500 --run-id <run-id>
+```
+
+After committed host-source update, refresh installed provider before dispatch:
+
+```powershell
+uv tool install --force --reinstall --refresh .
+codex-harness-host run --help
+```
+
+`run --help` must expose both exclusive inputs: `--request` and `--run-id`.
+
+`preflight` opens configured App Server WebSocket and completes `initialize`.
+`run` repeats this liveness proof before it loads core or creates packet,
+workspace, or `run.json`. Failure returns `preflight_failed`; recover endpoint,
+then resubmit same request. `--request` starts one run; `--run-id` resumes one
+existing planned attempt without request resubmission. Inputs are exclusive.
+Successful managed attempt records `host_preflight` protocol and server URI in
+`run.json`.
+
+Start endpoint with `codex app-server --listen ws://127.0.0.1:4500`. It runs in
+foreground; keep terminal open. Windows has no supported `codex app-server
+daemon`; restart listener after reboot or process exit, then rerun `preflight`.
+
+Do not use `run-unavailable` for retry. It proves generic CLI lacks injected
+adapter and is terminal evidence for that invocation only. Preserve that
+blocked run; create successor request with new `run_id` for provider-host retry.
 
 Packet owns role-derived claim schema for every executable lane. Host prompts
 and core claim validation consume that same immutable schema.
@@ -21,6 +72,30 @@ then requires app-server response to confirm `{model_provider, model,
 reasoning_effort}`. App-server has no template field; confirmed runtime model
 selection plus immutable template copy proves selected template contract.
 Missing or mismatched confirmation blocks lane evidence and acceptance.
+
+## Runtime Budget And Timeout Recovery
+
+`repo_config/harness.yaml:execution_budgets` owns named profiles, their maximum
+turn timeout, and each route's initial profile. Core copies one resolved
+`execution_budget` into every immutable packet. Request and controller decision
+cannot choose an arbitrary profile.
+
+Host uses packet `turn_timeout_seconds` for every App Server turn, packet-native
+tool probe, and check. The short `preflight` bound is transport-only and never
+substitutes for packet budget. Host returns normalized timeout evidence:
+lane ID, packet timeout, elapsed time, terminal status, event summary, final
+tool call, and completed-command count.
+
+Core records valid host timeout evidence as `dispatch_timeout`. Controller may
+only `escalate` through packet `escalation_profile` or `block`; timeout never
+permits `retry`. Escalation creates fresh successor packet with core-selected
+profile. Preserve older packet and evidence unchanged. If an attempt is already
+`planned`, resume it with provider `--run-id`; do not submit its request again.
+
+Triage before controller decision: no tool call indicates prompt or context
+stall; completed commands indicate productive budget pressure and require
+policy-approved escalation or a smaller task; an incomplete command indicates
+tool or command repair. Evidence informs decision; it never selects one.
 
 ## Plan-Linked Coordination
 
@@ -54,6 +129,8 @@ agent surfaces only and never participates in runtime selection or acceptance.
 A candidate stays absent from route policy until it passes same packet,
 workspace, tool-binding, check, read-only validator, and controller-acceptance
 proof as every admitted provider. No automatic provider fallback exists.
+`codex_app_server` contract version 2 requires exact version-2 host identity;
+version-1 identity fails before workspace preparation or lane dispatch.
 
 ## Required Adapter Methods
 
@@ -77,6 +154,11 @@ or malformed capability produces `execution_mode_unavailable` before workspace
 preparation or dispatch. For an enforced mode, core compares `identity()` with
 immutable packet `runtime_provider` before workspace preparation or dispatch.
 Core never substitutes a different provider after identity or capability failure.
+An unavailable adapter may expose a non-empty `unavailable_detail` string. Core
+persists it in the outcome so generic CLI fallback cannot be misreported as a
+provider capability failure. Every host failure stores exact `{reason, phase,
+detail}` at `attempt.evidence.failure` and mirrors `detail` in outcome. Friction
+records retain only normalized fingerprint and metadata.
 
 ## Adapter-Owned Workspace Boundary
 

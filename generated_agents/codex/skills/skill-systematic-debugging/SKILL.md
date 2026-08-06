@@ -65,6 +65,11 @@ Use for ANY technical issue:
 - Use `skill-dispatching-parallel-agents` only after evidence separates failures into independent problem domains.
 - Each dispatched investigator follows this debugging method inside its assigned domain.
 - Keep possibly shared-cause failures together until root-cause evidence proves independence.
+- For managed timeout, inspect packet `execution_budget`, normalized
+  `attempt.evidence.timeout`, and host lane evidence before changing policy.
+  Distinguish short transport preflight from packet turn timeout. Resume a
+  planned attempt through provider `--run-id`; only controller escalation may
+  create budget-profile successor. Timeout never means retry.
 
 ## Code Intelligence
 
