@@ -1231,6 +1231,7 @@ def resolve_managed_packet(
         "agent_identity": _load_agent_identity(root, packet["template"]),
         "allowed_paths": allowed_paths,
         "planned_write_paths": planned_write_paths,
+        "workspace_write_access": "workspace_write" if "repo.write" in packet["capabilities"] else "read_only",
         "acceptance_criteria": _validate_criteria(request.get("acceptance_criteria"), packet["checks"]),
         "approvals": _validate_approvals(request.get("approvals")),
         "review_evidence": copy.deepcopy(request.get("review_evidence")),

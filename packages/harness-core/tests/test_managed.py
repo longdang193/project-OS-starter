@@ -362,7 +362,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
-        "package_release": "0.1.6",
+        "package_release": harness.package_release(),
         "request_api": 3,
         "packet_api": 3,
         "host_api": None,
@@ -419,22 +419,23 @@ def test_api4_packet_requires_immutable_invocation_fields() -> None:
 
 
 @pytest.mark.parametrize(
-    ("task_type", "capabilities", "delegation_profile"),
+    ("task_type", "capabilities", "delegation_profile", "workspace_write_access"),
     [
-        ("local_change", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
-        ("debugging", ["repo.read", "code.search", "docs.query"], "disabled"),
-        ("research", ["repo.read", "code.search", "docs.query", "harness.delegate"], "read_only_research"),
-        ("plan_review", ["repo.read", "code.search", "docs.query"], "disabled"),
-        ("design_exploration", ["repo.read", "code.search", "docs.query"], "disabled"),
-        ("plan_writing", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
-        ("skill_authoring", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
-        ("harness_improvement", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
+        ("local_change", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
+        ("debugging", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
+        ("research", ["repo.read", "code.search", "docs.query", "harness.delegate"], "read_only_research", "read_only"),
+        ("plan_review", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
+        ("design_exploration", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
+        ("plan_writing", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
+        ("skill_authoring", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
+        ("harness_improvement", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
     ],
 )
 def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
     task_type: str,
     capabilities: list[str],
     delegation_profile: str,
+    workspace_write_access: str,
 ) -> None:
     harness = load_module()
     packet = harness.resolve_managed_packet(
@@ -450,6 +451,7 @@ def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
 
     assert packet["capabilities"] == capabilities
     assert packet["delegation_profile"] == delegation_profile
+    assert packet["workspace_write_access"] == workspace_write_access
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 3}
 
 def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
