@@ -362,7 +362,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
-        "package_release": "0.1.5",
+        "package_release": "0.1.6",
         "request_api": 3,
         "packet_api": 3,
         "host_api": None,
@@ -498,6 +498,39 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
         assert attempt["children"][0]["status"] == "succeeded"
         assert attempt["nodes"][0]["status"] == "running"
         assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": True}]
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    attempt = harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+        bridge = harness._delegation_bridge(ROOT, run, attempt, attempt["nodes"][0])
+        child = bridge["delegate"]({
+            "idempotency_key": "child-1",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+
+        assert {key: bridge[key] for key in ("run_id", "attempt_id", "parent_node_id")} == {
+            "run_id": run_id,
+            "attempt_id": "attempt-1",
+            "parent_node_id": "primary",
+        }
+        child_packet = bridge["child_packet"](child["invocation_id"])
+        assert child_packet["parent_invocation_id"] == packet["invocation_id"]
+        assert child_packet["agent_identity"] == packet["agent_identity"]
     finally:
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 

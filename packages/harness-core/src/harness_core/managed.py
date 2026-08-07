@@ -1350,18 +1350,20 @@ def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[s
         return {"ok": False, "code": "delegation_budget_exceeded"}
 
     child_id = f"{parent_invocation_id}/child-{len(children) + 1}"
-    child_packet = {
+    child_packet = copy.deepcopy(packet)
+    child_packet.update({
         "invocation_id": child_id,
         "parent_invocation_id": parent_invocation_id,
         "delegation_depth": parent_depth + 1,
         "role": role,
         "capabilities": list(capabilities),
         "allowed_paths": allowed_paths,
+        "planned_write_paths": [],
         "timeout_seconds": timeout_seconds,
         "delegation_profile": profile_name,
         "workspace_write_access": profile["workspace_write_access"],
         "verification": profile["verification"],
-    }
+    })
     result = {"ok": True, "invocation_id": child_id, "status": "planned"}
     children.append({"idempotency_key": idempotency_key, "status": "planned", "packet": child_packet})
     ledger.append({"idempotency_key": idempotency_key, "timeout_seconds": timeout_seconds, "released": False})
@@ -1376,6 +1378,30 @@ def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[s
     parent["status"] = "waiting_for_child"
     _write_run(root, run)
     return copy.deepcopy(result)
+
+
+def _delegated_child_packet(root: Path, run_id: str, child_invocation_id: str) -> dict[str, Any]:
+    attempt = _active_attempt(_load_run(root, _safe_run_id(run_id)))
+    for child in attempt.get("children", []):
+        if isinstance(child, dict) and isinstance(child.get("packet"), dict) and child["packet"].get("invocation_id") == child_invocation_id:
+            return copy.deepcopy(child["packet"])
+    raise HarnessError("delegated child packet was not found")
+
+
+def _delegation_bridge(root: Path, run: dict[str, Any], attempt: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any] | None:
+    packet = attempt["packet"]
+    if lane.get("node_kind") != "agent" or "harness.delegate" not in packet.get("capabilities", []):
+        return None
+    parent_node_id = _required_string(lane.get("lane_id"), "parent node id")
+    parent_invocation_id = _required_string(packet.get("invocation_id"), "parent invocation id")
+    return {
+        "run_id": run["run_id"],
+        "attempt_id": attempt["attempt_id"],
+        "parent_node_id": parent_node_id,
+        "delegate": lambda request: delegate(root, run["run_id"], parent_invocation_id, request),
+        "child_packet": lambda child_id: _delegated_child_packet(root, run["run_id"], child_id),
+        "complete": lambda child_id, status, claim: complete_delegated_child(root, run["run_id"], child_id, status, claim),
+    }
 
 
 def complete_delegated_child(
@@ -2180,7 +2206,7 @@ def _execute_attempt(
                     lane["workspace"] = copy.deepcopy(workspace)
                     bindings = _adapter_call(adapter, "verify_tool_bindings", lane, packet, workspace)
                     _record_tool_binding_evidence(attempt, lane, packet, workspace, bindings)
-                    handle = _adapter_call(adapter, "dispatch_lane", lane, packet, workspace, None)
+                    handle = _adapter_call(adapter, "dispatch_lane", lane, packet, workspace, _delegation_bridge(root, run, attempt, lane))
                     active_handles.append((lane, handle))
                 for lane, handle in active_handles[:]:
                     claim = _adapter_call(adapter, "collect_claim", handle)
@@ -2215,7 +2241,7 @@ def _execute_attempt(
                 validator["workspace"] = copy.deepcopy(workspace)
                 bindings = _adapter_call(adapter, "verify_tool_bindings", validator, packet, workspace)
                 _record_tool_binding_evidence(attempt, validator, packet, workspace, bindings)
-                handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, None)
+                handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, _delegation_bridge(root, run, attempt, validator))
                 active_handles.append((validator, handle))
                 claim = _adapter_call(adapter, "collect_claim", handle)
                 _record_lane_claim(root, run, attempt, validator, claim)
