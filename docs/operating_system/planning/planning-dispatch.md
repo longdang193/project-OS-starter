@@ -33,7 +33,7 @@ configuration, and validators remain executable truth.
 
 Use optional `coordination` only for Git-tracked active plans. Its manifest is
 static coordination SSOT: target branch, base ref, task IDs, dependencies,
-canonical topology, and planned write paths. Each prose task names one
+canonical topology, allowed paths, and planned write paths. Each prose task names one
 `Coordination ID`.
 
 Packet binds immutable `plan_ref`, `plan_task_id`, and normalized manifest

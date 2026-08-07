@@ -30,6 +30,13 @@ run state into plan.
 
 If the plan has a blocking design gap, stop and return it to `skill-spec-drafting` or `skill-writing-plans`. Do not invent design during execution.
 
+## Package Harness Runtime
+
+For package-backed harnesses, use installed `harness-core` commands or a
+provider host, never copied consumer logic. Confirm `harness_core.request_api`
+and adapter `host_api` before packet work. Package, release tag, or provider
+absence is a blocker, not a local fallback.
+
 ## Conditional References
 
 Read only what the current task needs:

@@ -3,26 +3,22 @@
 name: test_validate_harness_config
 type: test
 domain: harness
-distribution_tier: starter_kit
 """
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
+import pytest
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "scripts" / "validate_harness_config.py"
+from harness_core import config_validation
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def load_validator():
-    spec = importlib.util.spec_from_file_location("validate_harness_config", SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return config_validation
 
 
 def write_text(root: Path, relative_path: str, content: str) -> None:
@@ -80,6 +76,7 @@ def write_harness_root(root: Path) -> None:
         yaml.safe_dump(
             {
                 "version": 3,
+                "harness_core": {"request_api": 3},
                 "states": {
                     "classified": ["planned", "blocked"],
                     "planned": ["running", "awaiting_decision", "blocked"],
@@ -385,3 +382,28 @@ def test_invalid_friction_policy_fails(tmp_path: Path) -> None:
     (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
 
     assert "friction policy `window_days` must be a positive integer" in validator.validate(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, "harness_core_request_api_invalid"),
+        ("3", "harness_core_request_api_invalid"),
+        (1, "harness_core_request_api_incompatible"),
+    ],
+)
+def test_harness_core_request_api_requires_supported_integer(
+    tmp_path: Path,
+    value: object,
+    expected: str,
+) -> None:
+    validator = load_validator()
+    write_harness_root(tmp_path)
+    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
+    if value is None:
+        del config["harness_core"]
+    else:
+        config["harness_core"]["request_api"] = value
+    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    assert expected in validator.validate(tmp_path)

@@ -21,13 +21,18 @@ This file is repo-wide instruction layer. More specific directory instructions o
 
 ## Subagent Routing
 
-`repo_config/harness.yaml` owns route selection. For managed execution,
-controller starts version-3 request through host-supplied `run_managed` adapter
-boundary. `run.json` owns mutable run state; each attempt owns immutable packet.
+`repo_config/harness.yaml` owns route selection and `harness_core.request_api`.
+Installed `harness-core` owns packet resolution and lifecycle; legacy consumer
+scripts are package bridges only. For managed execution, controller starts
+version-3 request through host-supplied `run_managed` adapter boundary. `run.json` owns mutable run state; each attempt owns immutable packet.
 Packet owns template, role, rules, skills, allowed tools, workspace, checks,
 approval gates, planned write paths, resolved base commit, and orchestration
 mode plus resolved `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
+Admission order: launcher package load, request API, adapter host API, provider
+preflight, packet resolution, workspace, dispatch. Unsupported APIs create no
+packet. Unreadable historical packet cannot resume; controller creates a
+successor without changing its evidence.
 For `runtime_provider_id: codex_app_server`, controller invokes provider host
 from its installed source root: `uv run codex-harness-host run --harness-root
 <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>`.
@@ -35,7 +40,7 @@ Use `--run-id <run-id>` instead of `--request` to resume existing planned
 attempt. Never use generic `run-unavailable` to retry a managed packet.
 
 For Git-tracked active coordination plans, frontmatter owns static target
-branch, base ref, task dependencies, canonical mode, and planned paths. Packet
+branch, base ref, task dependencies, canonical mode, allowed scope, and planned paths. Packet
 adds immutable `plan_ref`, `plan_task_id`, and normalized digest; `run.json`
 owns derived task state, handoff, evidence, and decisions. Use
 `coordination-status` for recovery. Manifest or base change requires successor

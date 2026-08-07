@@ -1,4 +1,6 @@
 version: 3
+harness_core:
+  request_api: 3
 defaults:
   workspace: current
   approval_gates: []

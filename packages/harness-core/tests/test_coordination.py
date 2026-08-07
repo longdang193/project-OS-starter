@@ -1,6 +1,5 @@
 """
 @meta
-# distribution_tier: starter_kit
 name: test_plan_coordination
 type: test
 scope: unit
@@ -17,7 +16,6 @@ lifecycle:
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 from shutil import copy2, rmtree
 import subprocess
@@ -26,20 +24,14 @@ import uuid
 
 import pytest
 
+from harness_core import coordination
 
-ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts" / "plan_coordination.py"
-if str(SCRIPT.parent) not in sys.path:
-    sys.path.insert(0, str(SCRIPT.parent))
+
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def load_module():
-    spec = importlib.util.spec_from_file_location("plan_coordination", SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return coordination
 
 
 def make_root() -> Path:
@@ -78,6 +70,7 @@ VALID_COORDINATION = """coordination:
     - id: task-1
       depends_on: []
       execution_mode: single_work_lane
+      allowed_paths: [scripts/**]
       planned_write_paths: [scripts/**]
 """
 
@@ -91,6 +84,7 @@ def test_loads_tracked_proposed_plan_and_normalizes_digest() -> None:
         coordination = module.load_plan_coordination(root, plan_ref)
 
         assert coordination.status == "proposed"
+        assert coordination.task("task-1").allowed_paths == ("scripts/**",)
         assert coordination.task("task-1").planned_write_paths == ("scripts/**",)
         assert coordination.digest == module.coordination_digest(coordination.normalized())
         with pytest.raises(module.PlanCoordinationError, match="active plan"):
@@ -104,7 +98,10 @@ def test_loads_tracked_proposed_plan_and_normalizes_digest() -> None:
     [
         (VALID_COORDINATION.replace("single_work_lane", "single_agent"), ("task-1",), "unknown execution mode"),
         (VALID_COORDINATION.replace("depends_on: []", "depends_on: [missing]"), ("task-1",), "unknown dependencies"),
+        (VALID_COORDINATION.replace("      allowed_paths: [scripts/**]\n", ""), ("task-1",), "tasks.allowed_paths"),
+        (VALID_COORDINATION.replace("allowed_paths: [scripts/**]", "allowed_paths: [../escape]"), ("task-1",), "safe repository-relative"),
         (VALID_COORDINATION.replace("scripts/**", "../escape"), ("task-1",), "safe repository-relative"),
+        (VALID_COORDINATION.replace("planned_write_paths: [scripts/**]", "planned_write_paths: [tests/**]"), ("task-1",), "must stay within"),
         (VALID_COORDINATION.replace("id: task-1", "id: Task_1"), ("Task_1",), "ASCII slug"),
         (VALID_COORDINATION, ("missing",), "do not match manifest"),
     ],
@@ -117,6 +114,23 @@ def test_rejects_invalid_manifest_contract(coordination: str, prose_ids: tuple[s
 
         with pytest.raises(module.PlanCoordinationError, match=message):
             module.load_plan_coordination(root, plan_ref)
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_allows_empty_planned_writes_with_nonempty_authorization_scope() -> None:
+    root = make_root()
+    try:
+        module = load_module()
+        plan_ref = write_plan(
+            root,
+            plan_text(coordination=VALID_COORDINATION.replace("planned_write_paths: [scripts/**]", "planned_write_paths: []")),
+        )
+
+        coordination = module.load_plan_coordination(root, plan_ref)
+
+        assert coordination.task("task-1").allowed_paths == ("scripts/**",)
+        assert coordination.task("task-1").planned_write_paths == ()
     finally:
         rmtree(root, ignore_errors=True)
 
@@ -135,6 +149,7 @@ def test_rejects_untracked_and_cyclic_manifest() -> None:
         ) + """    - id: task-2
       depends_on: [task-1]
       execution_mode: single_work_lane
+      allowed_paths: [tests/**]
       planned_write_paths: [tests/**]
 """
         plan_ref = write_plan(root, plan_text(coordination=cyclic, prose_ids=("task-1", "task-2")))

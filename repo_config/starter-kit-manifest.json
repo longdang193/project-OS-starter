@@ -35,12 +35,9 @@
     "scripts/validate_template_required_sections.py",
     "tests/test_setup_hooks.py",
     "tests/test_validate_agent_metadata_schema.py",
-    "tests/test_harness_task.py",
     "tests/test_render_harness_routing.py",
-    "tests/test_validate_harness_config.py",
     "tests/test_validate_learning_materials_format.py",
     "tests/test_validate_planning_lifecycle.py",
-    "tests/test_plan_coordination.py",
     "tests/test_validate_repo_config.py",
     "tests/test_validate_repo_contracts.py",
     "tests/test_validate_template_required_sections.py"
@@ -63,9 +60,6 @@
     "scripts/harness_task.py",
     "scripts/render_harness_routing.py",
     "scripts/validate_harness_config.py",
-    "tests/test_validate_harness_config.py",
-    "tests/test_harness_task.py",
-    "tests/test_plan_coordination.py",
     "tests/test_render_harness_routing.py",
     "tests/test_validate_repo_contracts.py"
   ],

@@ -2,15 +2,17 @@
 
 ## Boundary
 
-`scripts/harness_task.py` owns packet resolution, run records, authorization,
-verification, outcomes, and controller decisions. Host owns actual agent and
-workspace operations. Generic CLI has no host adapter and exposes
+Installed `harness-core` owns packet resolution, run records, authorization,
+verification, outcomes, and controller decisions. Consumer scripts are bridge
+entrypoints only. Host owns actual agent and workspace operations. Generic CLI
+has no host adapter and exposes
 `run-unavailable` only for explicit unavailable-adapter proof.
 
-Host runtime dependencies must cover every non-stdlib import in core scripts it
-loads. Target virtual environments, dev groups, and `requirements.txt` do not
-satisfy host `uv run` resolution. Provider admission requires bare host-process
-core-load proof before capability claims may authorize dispatch.
+Host runtime dependencies must include compatible `harness-core` and
+`harness-core-launcher` releases. Target virtual environments, dev groups, and
+`requirements.txt` do not satisfy host `uv run` resolution. Launcher owns
+absent/unloadable core result `harness_core_environment_unavailable`; no
+consumer-script fallback exists.
 
 Managed work starts only when host calls `run_managed(root, request, adapter)`.
 No packet or `.harness/runs/<run-id>/run.json` means source-first local work,
@@ -18,7 +20,7 @@ not harness-managed work.
 
 ## Generic CLI Retry Boundary
 
-`uv run python scripts/harness_task.py run-unavailable --task <request.json>`
+`harness-core run-unavailable --task <request.json>`
 may create immutable packet and mutable `run.json` only to prove that no host
 adapter is available. It cannot prepare a workspace, dispatch writer or
 validator lanes, run packet checks, or retry managed work.
@@ -101,10 +103,10 @@ tool or command repair. Evidence informs decision; it never selects one.
 
 Optional `coordination` frontmatter on Git-tracked active implementation plan
 is static coordination SSOT. It owns `target_branch`, `base_ref`, task IDs,
-dependencies, canonical topology, and planned write paths. Every manifest task
+dependencies, canonical topology, allowed paths, and planned write paths. Every manifest task
 maps exactly once to prose `Coordination ID`.
 
-For a plan-linked request, core derives topology, base ref, and planned paths
+For a plan-linked request, core derives topology, base ref, allowed paths, and planned paths
 from manifest task, rejects conflicting request values, and copies only
 `plan_ref`, `plan_task_id`, and normalized `plan_digest` into immutable packet.
 Existing `base_commit` remains sole resolved code-base identity.
@@ -118,6 +120,13 @@ queue, scheduler, or host-turn resume is provided. Changed digest or base
 commit blocks continuation; controller creates successor attempt.
 
 ## Provider Admission
+
+Admission order: launcher load, consumer `harness_core.request_api`, adapter
+`host_api`, provider preflight, packet resolution, workspace, then dispatch.
+Unsupported request or host API blocks before packet creation. New packet
+`core_identity` records package release, request API, packet API, and host API.
+Unversioned or unreadable planned packet cannot resume; preserve it and create
+controller successor.
 
 `repo_config/harness.yaml` is sole registry for static managed-provider IDs,
 contract versions, route allowlists, and route defaults. Request resolution

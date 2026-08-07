@@ -70,9 +70,12 @@ Semble MCP and ast-grep CLI remain optional discovery tools. See `docs/operating
 ## Harness
 
 First layer: `agents/*.toml`, `agents/roles.yaml`, and
-`repo_config/harness.yaml`. Run `scripts/harness_task.py preflight` to resolve
-controller task metadata; run `verify` for fresh evidence. Managed execution
-needs host-supplied `run_managed` adapter. Generic CLI exposes
+`repo_config/harness.yaml`. `harness_core.request_api` selects supported core
+request protocol. Install compatible `harness-core` and
+`harness-core-launcher` releases, then run `harness-core validate --repo-root
+<repo-root>` for consumer policy. Legacy `scripts/harness_task.py` and
+`scripts/validate_harness_config.py` are package bridges only. Managed execution
+needs host-supplied `run_managed` adapter. Generic package CLI exposes
 `run-unavailable` only for explicit no-host-adapter proof; controller must block or record explicit
 `waive`, which leaves run terminal `unvalidated`. `.harness/` stores optional
 ignored local run artifacts. No scheduler, daemon, or job manager ships with

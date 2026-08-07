@@ -29,13 +29,14 @@ ordinary direct execution.
   workspace, tools, checks, approval gates, required rules, orchestration
   mode, and resolved `execution_budget`.
 - For active plan-linked coordination, manifest owns static task dependencies,
-  topology, and planned paths. Packet owns immutable `plan_ref`, task ID, and
+  topology, allowed paths, and planned paths. Packet owns immutable `plan_ref`, task ID, and
   digest; `run.json` owns state and handoff. Controller selects only `ready`
   task through `coordination-status`; changed plan or base requires successor.
 - One implementer lane runs at once in an adapter-owned isolated workspace. No child-agent spawning.
 - Implementer returns `claimed_result`, never `verified`.
 - Harness records outcome after dispatch, claim collection, and verification.
-  Controller alone calls `apply_controller_decision` to accept, retry,
+  Installed `harness-core` owns packet lifecycle. Consumer scripts only bridge
+  to package commands. Controller alone calls `apply_controller_decision` to accept, retry,
   escalate, request approval, or block. Commit policy remains separate.
 - Generic CLI has no managed `run` command. `run-unavailable` records explicit
   `execution_mode_unavailable` proof; it never claims dispatch occurred.
@@ -53,8 +54,8 @@ ordinary direct execution.
 ## Per Task
 
 1. Controller builds version-3 request with typed criteria. For plan-linked
-   work it sends `plan_ref` and `plan_task_id` only; core derives mode, base,
-   and planned paths before enforced host dispatch.
+  work it sends `plan_ref` and `plan_task_id` only; core derives mode, base,
+  allowed paths, and planned paths before enforced host dispatch.
 2. Harness authorizes planned protected paths, prepares workspace, dispatches,
    collects claim, snapshots actual changes, and records criterion evidence.
 3. Implementer changes only lane paths, runs task-local proof, and reports
