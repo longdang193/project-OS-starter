@@ -124,6 +124,11 @@ def _core_identity(policy: dict[str, Any], adapter: Any | None = None) -> dict[s
     }
 
 
+def admit_managed_operation(root: Path, adapter: Any) -> dict[str, Any]:
+    """Admit consumer and host protocol versions before provider I/O."""
+    return _core_identity(_load_policy(root), adapter)
+
+
 def _friction_policy(root: Path) -> dict[str, int]:
     policy = _load_policy(root)
     friction_policy = policy.get("friction_policy")
@@ -2035,7 +2040,7 @@ def run_managed(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     policy = _load_policy(root)
-    core_identity = _core_identity(policy, adapter)
+    core_identity = admit_managed_operation(root, adapter)
     _validate_policy(root)
     if run_id is None:
         if request is None:

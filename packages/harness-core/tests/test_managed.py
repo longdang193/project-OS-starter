@@ -361,7 +361,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
-        "package_release": "0.1.0",
+        "package_release": "0.1.1",
         "request_api": 3,
         "packet_api": 3,
         "host_api": None,
@@ -1668,6 +1668,20 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         assert run["attempts"][1]["packet"]["execution_budget"]["profile"] == "extended"
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_admit_managed_operation_returns_core_identity_before_packet_work() -> None:
+    harness = load_module()
+
+    identity = harness.admit_managed_operation(
+        ROOT,
+        FakeAdapter({"single_work_lane": "enforced"}),
+    )
+
+    assert identity["request_api"] == 3
+    assert identity["packet_api"] == 3
+    assert identity["host_api"] == 2
+    assert isinstance(identity["package_release"], str)
 
 
 def test_failed_integration_skips_validator_dispatch(tmp_path: Path) -> None:

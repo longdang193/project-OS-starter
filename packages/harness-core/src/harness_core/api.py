@@ -3,6 +3,7 @@ from __future__ import annotations
 from .config_validation import validate as validate_config
 from .coordination import load_plan_coordination
 from .managed import (
+    admit_managed_operation,
     apply_controller_decision,
     coordination_status,
     friction_report,
@@ -15,6 +16,7 @@ from .managed import (
 )
 
 __all__ = [
+    "admit_managed_operation",
     "apply_controller_decision",
     "coordination_status",
     "friction_report",
