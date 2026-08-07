@@ -8,6 +8,7 @@ SUPPORTED_REQUEST_APIS = frozenset({2, 3})
 SUPPORTED_PACKET_READ_APIS = frozenset({3})
 CURRENT_PACKET_API = 3
 SUPPORTED_HOST_APIS = frozenset({2})
+TIMEOUT_OBSERVATION_VERSION = 1
 
 
 def package_release() -> str:

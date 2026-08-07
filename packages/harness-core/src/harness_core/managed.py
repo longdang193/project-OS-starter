@@ -45,6 +45,7 @@ from .compatibility import (
     can_read_packet_api,
     package_release,
 )
+from .timeout_observation import TimeoutObservationError, normalize_timeout_observation
 from .coordination import PlanCoordination, PlanCoordinationError, PlanTask, load_plan_coordination, path_matches as _path_matches
 
 
@@ -70,17 +71,6 @@ FRICTION_EVENT_KINDS = {"observed", "resolution"}
 FRICTION_SOURCES = {"agent", "host", "validator", "check", "controller"}
 FRICTION_PHASES = {"claim", "dispatch", "integration", "check", "validator", "decision"}
 FRICTION_RESOLUTIONS = {"keep", "revise", "remove", "pending"}
-TIMEOUT_EVIDENCE_FIELDS = {
-    "lane_id",
-    "turn_timeout_seconds",
-    "elapsed_seconds",
-    "terminal_status",
-    "event_summary",
-    "last_tool_call",
-    "completed_command_count",
-}
-
-
 def _load_json(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -1686,34 +1676,13 @@ def _record_failure(
 
 
 def _normalize_timeout_evidence(exc: Exception, packet: dict[str, Any]) -> dict[str, Any] | None:
-    raw = getattr(exc, "timeout_evidence", None)
+    raw = getattr(exc, "timeout_observation", None)
     if raw is None:
         return None
-    if not isinstance(raw, dict):
-        return {"invalid": True, "error": "timeout evidence must be an object"}
-    evidence = {field: raw.get(field) for field in TIMEOUT_EVIDENCE_FIELDS}
-    if not isinstance(evidence["lane_id"], str) or not evidence["lane_id"]:
-        return {"invalid": True, "error": "timeout evidence has invalid lane_id"}
-    timeout = evidence["turn_timeout_seconds"]
-    if not isinstance(timeout, int) or isinstance(timeout, bool):
-        return {"invalid": True, "error": "timeout evidence has invalid turn_timeout_seconds"}
-    if timeout != packet["execution_budget"]["turn_timeout_seconds"]:
-        return {"invalid": True, "error": "timeout evidence conflicts with packet execution budget"}
-    elapsed = evidence["elapsed_seconds"]
-    if not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool) or elapsed < 0:
-        return {"invalid": True, "error": "timeout evidence has invalid elapsed_seconds"}
-    if not isinstance(evidence["terminal_status"], str) or not evidence["terminal_status"]:
-        return {"invalid": True, "error": "timeout evidence lacks terminal interruption proof"}
-    summary = evidence["event_summary"]
-    if not isinstance(summary, list) or len(summary) > 16 or not all(isinstance(item, str) and item for item in summary):
-        return {"invalid": True, "error": "timeout evidence has invalid event_summary"}
-    last_tool_call = evidence["last_tool_call"]
-    if last_tool_call is not None and (not isinstance(last_tool_call, str) or not last_tool_call):
-        return {"invalid": True, "error": "timeout evidence has invalid last_tool_call"}
-    commands = evidence["completed_command_count"]
-    if not isinstance(commands, int) or isinstance(commands, bool) or commands < 0:
-        return {"invalid": True, "error": "timeout evidence has invalid completed_command_count"}
-    return evidence
+    try:
+        return normalize_timeout_observation(raw, packet)
+    except TimeoutObservationError as error:
+        return {"version": 1, "invalid": True, "error": str(error)}
 
 
 def _record_timeout_failure(

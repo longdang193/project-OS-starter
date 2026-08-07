@@ -361,7 +361,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
-        "package_release": "0.1.1",
+        "package_release": "0.1.2",
         "request_api": 3,
         "packet_api": 3,
         "host_api": None,
@@ -1634,14 +1634,18 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
     run_dir = ROOT / ".harness" / "runs" / run_id
 
     class TimedOutTurn(RuntimeError):
-        timeout_evidence = {
+        timeout_observation = {
+            "version": 1,
             "lane_id": "primary",
+            "session_id": "thread-1",
+            "turn_id": "turn-1",
             "turn_timeout_seconds": 300,
             "elapsed_seconds": 300.0,
             "terminal_status": "interrupted",
-            "event_summary": ["turn/completed"],
-            "last_tool_call": "shell",
-            "completed_command_count": 1,
+            "interrupt_status": "terminal_confirmed",
+            "item_states": [],
+            "command_states": [],
+            "final_claim_state": {"state": "missing"},
         }
 
     try:
