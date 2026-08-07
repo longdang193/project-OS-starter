@@ -504,7 +504,7 @@ def test_delegate_derives_one_idempotent_read_only_child(tmp_path: Path) -> None
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
 
-def test_dispatch_persists_running_state_before_delegation(tmp_path: Path) -> None:
+def test_dispatch_preserves_failed_child_decision(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
@@ -532,8 +532,8 @@ def test_dispatch_persists_running_state_before_delegation(tmp_path: Path) -> No
                 assert self.delegation_result["ok"] is True
                 delegation_bridge["complete"](
                     self.delegation_result["invocation_id"],
-                    "succeeded",
-                    {"kind": "claimed_result", "summary": "child", "findings": ["ok"]},
+                    "failed",
+                    None,
                 )
             return {"lane_id": lane["lane_id"]}
 
@@ -564,11 +564,26 @@ def test_dispatch_persists_running_state_before_delegation(tmp_path: Path) -> No
             collect_changes=lambda root, base_commit: [],
         )
 
-        assert result["outcome"]["reason"] == "verification_passed"
+        assert result["state"] == "awaiting_decision"
+        assert result["outcome"] == {
+            "reason": "child_failed",
+            "allowed_decisions": ["block"],
+            "evidence_refs": ["children", "reservation_ledger"],
+        }
         assert adapter.delegation_result == {
             "ok": True,
             "invocation_id": "attempt-1:primary/child-1",
             "status": "planned",
+        }
+        run = json.loads((run_dir / "run.json").read_text())
+        children = run["attempts"][0]["children"]
+        assert len(children) == 1
+        assert children[0]["idempotency_key"] == "child-1"
+        assert children[0]["status"] == "failed"
+        assert children[0]["terminal_result"] == {
+            "ok": True,
+            "invocation_id": "attempt-1:primary/child-1",
+            "status": "failed",
         }
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)

@@ -1429,6 +1429,20 @@ def _delegation_bridge(root: Path, run: dict[str, Any], attempt: dict[str, Any],
     }
 
 
+def _sync_delegation_state(root: Path, run: dict[str, Any], attempt: dict[str, Any]) -> bool:
+    persisted_run = _load_run(root, run["run_id"])
+    persisted_attempt = _active_attempt(persisted_run)
+    for field in ("children", "reservation_ledger", "delegation_idempotency"):
+        if field in persisted_attempt:
+            attempt[field] = copy.deepcopy(persisted_attempt[field])
+    if persisted_run["state"] == "running":
+        return False
+    run["state"] = persisted_run["state"]
+    run["state_history"] = copy.deepcopy(persisted_run["state_history"])
+    attempt["outcome"] = copy.deepcopy(persisted_attempt["outcome"])
+    return True
+
+
 def complete_delegated_child(
     root: Path,
     run_id: str,
@@ -2237,6 +2251,10 @@ def _execute_attempt(
                     active_handles.append((lane, handle))
                 for lane, handle in active_handles[:]:
                     claim = _adapter_call(adapter, "collect_claim", handle)
+                    if _sync_delegation_state(root, run, attempt):
+                        _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="delegation")
+                        _write_run(root, run)
+                        return _managed_result(run)
                     _record_lane_claim(root, run, attempt, lane, claim)
                     evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
                     _record_lane_execution_evidence(attempt, lane, packet, lane["workspace"], evidence)
