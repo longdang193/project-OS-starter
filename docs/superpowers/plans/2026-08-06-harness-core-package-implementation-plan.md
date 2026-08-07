@@ -26,7 +26,7 @@ Move executable harness behavior from copied consumer scripts into one
 versioned `harness-core` package. Keep `harness-core-launcher` separate so an
 absent core returns typed environment evidence. Move `codex-harness-host` to
 package imports, integer host API admission, packet-first preflight, and one
-bounded provider-neutral timeout-observation contract.
+bounded provider-neutral terminal-observation contract.
 
 ## Implementation Outcomes
 
@@ -38,7 +38,7 @@ and controller semantics. Consumer scripts remain non-executable bridges only.
 ### Uniform Provider Evidence
 
 All admitted host lanes use one package-owned compatibility identity and one
-bounded timeout-observation contract before controller decision.
+bounded terminal-observation contract before controller decision.
 
 ## Execution Boundary
 
@@ -68,7 +68,7 @@ bounded timeout-observation contract before controller decision.
 | Missing or unloadable core failure | `harness-core-launcher` | direct CLI, provider hosts |
 | Route policy and required request API | consumer `repo_config/harness.yaml` | `harness-core` |
 | Provider transport, workspace, tools, App Server connection | `codex-harness-host` adapter | `harness-core` through adapter protocol |
-| Timeout observation schema, bounds, normalization, and persistence | `harness_core.timeout_observation` | provider hosts, controller, verifier |
+| Terminal observation schema, bounds, normalization, and persistence | `harness_core.terminal_observation` | provider hosts, controller, verifier |
 | Mutable run evidence | consumer `.harness/runs/<run-id>/run.json` | controller and verifier |
 
 ## Release Contract
@@ -94,11 +94,12 @@ bounded timeout-observation contract before controller decision.
   Existing unversioned packets are historical-only. A planned old packet cannot
   resume; controller records a block then creates successor attempt from stored
   request/plan binding.
-- `harness_core.timeout_observation` owns schema version, hard bounds, and
-  normalization for every provider timeout. It records opaque session/turn
-  identifiers, terminal status, bounded item/command state timeline, and final
-  claim state. It never persists raw shell output, environment values, or raw
-  assistant text in `run.json`.
+- `harness_core.terminal_observation` owns schema version, hard bounds, and
+  normalization for every abnormal provider terminal outcome. It records opaque
+  session/turn identifiers, terminal status, bounded item/command state
+  timeline, final claim state, and sanitized error metadata. It never persists
+  raw shell output, prompts, environment values, or assistant text in
+  `run.json`.
 
 ## Task Breakdown
 
@@ -334,11 +335,11 @@ Tasks execute serially across starter, provider host, and consumer boundaries.
 - Host consumes one tagged package release through launcher and advertises static
   host API `2`. App Server connectivity cannot mask a core protocol failure.
 
-## Task 4A: Preserve Timeout Observation Across Every Managed Lane
+## Task 4A: Preserve Terminal Observation Across Every Managed Lane
 
 **Purpose:**
-- Make a terminal managed timeout diagnosable without retrying a packet or
-  retaining provider transcript state.
+- Make every abnormal terminal managed outcome diagnosable without retrying a
+  packet or retaining provider transcript state.
 
 **Specification Coverage:**
 - One executable core
@@ -353,11 +354,11 @@ Tasks execute serially across starter, provider host, and consumer boundaries.
 - `skill-backend-verification`
 
 **Files And Symbols:**
-- Create: `packages/harness-core/src/harness_core/timeout_observation.py`,
-  `packages/harness-core/tests/test_timeout_observation.py`
+- Create: `packages/harness-core/src/harness_core/terminal_observation.py`,
+  `packages/harness-core/tests/test_terminal_observation.py`
 - Modify: `packages/harness-core/src/harness_core/api.py`,
   `packages/harness-core/src/harness_core/compatibility.py`, and moved
-  `harness_task` timeout normalization/dispatch-failure symbols
+  `harness_task` terminal normalization/dispatch-failure symbols
 - Modify: `C:\Users\HOANG PHI LONG DANG\repos\codex-harness-host\src\codex_harness_host\app_server.py:InterruptedTurnError`, `AppServerClient._complete_turn`, `AppServerClient._interrupt_and_await_terminal`
 - Modify: `C:\Users\HOANG PHI LONG DANG\repos\codex-harness-host\src\codex_harness_host\adapter.py:PacketTurnTimeoutError`, `CodexAdapter._complete_lane_turn`
 - Modify: `C:\Users\HOANG PHI LONG DANG\repos\codex-harness-host\tests\test_app_server.py`, `C:\Users\HOANG PHI LONG DANG\repos\codex-harness-host\tests\test_adapter.py`, `C:\Users\HOANG PHI LONG DANG\repos\codex-harness-host\tests\test_live_single_work_lane.py`
@@ -367,58 +368,78 @@ Tasks execute serially across starter, provider host, and consumer boundaries.
 - Tasks 1, 2, and 4 complete.
 
 **Steps:**
-- [ ] Start RED tests from the observed failure modes: completed shell commands
+- [ ] Preserve package API continuity first: keep the released
+  `timeout_observation` import as a thin delegating compatibility adapter with
+  no independent schema. Add the new core API, run package tests, release
+  immutable `harness-core-v0.1.4`, then update host `pyproject.toml` and
+  `uv.lock` to that tag before host imports the new API. Do not use an
+  untagged Git revision or source-path fallback.
+- [ ] Start RED tests from observed terminal failures: completed shell commands
   followed by timeout, an active shell command at interruption, an assistant
-  message without a valid final claim, and terminal interrupt confirmation.
-- [ ] Define `timeout_observation` version `1` in `harness-core`. The one
-  normalizer owns schema, cardinality/size bounds, packet lane and budget
-  checks, and stable serialization into `attempt.evidence.timeout`.
-- [ ] Require only provider-neutral fields: `lane_id`, opaque runtime
-  `session_id`/`turn_id`, packet timeout budget, elapsed time, terminal and
-  interrupt status, bounded ordered item state, bounded command state, and
-  final-claim state. Record command/response hashes, lengths, type, exit code,
-  and state; never raw command output, environment values, or assistant text.
+  message without a valid final claim, terminal interrupt confirmation, and a
+  provider `turn/completed` event with `status: failed` plus structured error.
+- [ ] Define `terminal_observation` version `1` in `harness-core`. Its one
+  normalizer owns allowed `kind` values, schema, cardinality/size bounds,
+  packet lane and budget checks, and stable serialization into
+  `attempt.evidence.terminal_observation`. Preserve prior
+  `attempt.evidence.timeout` as historical read-only evidence only.
+- [ ] Require only provider-neutral fields: `kind`, `lane_id`, opaque runtime
+  `session_id`/`turn_id`, source, packet timeout budget when relevant, elapsed
+  time, terminal and interrupt status, bounded ordered item state, bounded
+  command state, final-claim state, and sanitized provider error metadata. Use
+  exact schema from parent spec: `error` is null or sorted bounded field names
+  plus optional code/message SHA-256 hashes and byte lengths. Session/turn and
+  terminal status may be null only before provider allocation. Record hashes,
+  lengths, type, exit code, and state; never raw command output, prompts,
+  environment values, or assistant text.
 - [ ] Make `AppServerClient` construct this observation while events arrive.
-  Track started and completed item IDs so timeout distinguishes an active shell
-  command from completed command exploration. Carry the completed-message
-  claim parse state into `InterruptedTurnError` before interrupt closes the
-  transport.
+  One shared abnormal-outcome mapper accepts provider terminal events, approval
+  requests, transport exceptions, and host timeout interrupts. It maps
+  `timeout`, `provider_failure`, `approval_required`, and `protocol_failure`
+  for every lane. Track started and completed item IDs so timeout distinguishes
+  active shell command from completed command exploration. Carry claim parse
+  state before transport cleanup.
 - [ ] Keep Codex threads `ephemeral`. Do not make durable provider transcripts
   a recovery dependency; the bounded observation is required before exception
   propagation and survives adapter cleanup.
-- [ ] Make `PacketTurnTimeoutError` forward the normalized observation to core.
+- [ ] Make host terminal exceptions forward raw bounded observation to core.
   Delete duplicated timeout-field allowlists or host-only shaping. Core records
   valid observations; malformed or over-bound provider evidence becomes typed
-  invalid timeout evidence and cannot unlock retry/acceptance.
+  invalid terminal evidence and cannot unlock retry/acceptance. Only
+  `kind: timeout` can follow timeout escalation policy.
 - [ ] Apply same contract to every work, integration, check, and read-only
   validator lane. Provider conformance must reject a host that advertises a
-  managed topology but cannot supply valid timeout observation for its lanes.
+  managed topology but cannot supply valid terminal observation for its lanes.
 - [ ] Update managed-execution guidance: terminal timeout means block or use
-  immutable escalation only; inspect `attempt.evidence.timeout` before any
-  successor. Local output never substitutes for host observation.
+  immutable escalation only; provider failure remains `dispatch_failed` until
+  controller decision. Inspect `attempt.evidence.terminal_observation` before
+  any successor. Local output never substitutes for host observation.
 
 **Verification:**
 - [ ] Package tests prove normalization accepts bounded valid evidence and
   rejects wrong lane, wrong budget, malformed IDs, raw sensitive fields, and
-  over-bound timelines.
-- [ ] Host fake-App-Server tests prove each RED timeout shape reaches
+  over-bound timelines. Prove exact `error` shape, null runtime IDs before
+  allocation, provider `failed` as `provider_failure`, approval request as
+  `approval_required`, and protocol exception as `protocol_failure`.
+- [ ] Host fake-App-Server tests prove each RED terminal shape reaches
   `run.json` with correct active/completed state and no raw output/text.
 - [ ] Parameterized host tests cover writer, sequential work, parallel work,
-  integration, checks, and read-only validator lanes through shared timeout
-  path; no lane-specific timeout serializer is permitted.
+  integration, checks, and read-only validator lanes through shared terminal
+  path; no lane-specific serializer is permitted.
 - [ ] `uv run --package harness-core pytest packages/harness-core/tests -q`
 - [ ] `uv run pytest tests/test_app_server.py tests/test_adapter.py tests/test_cli.py -q` in `C:\Users\HOANG PHI LONG DANG\repos\codex-harness-host`
-- [ ] With App Server running, force one bounded managed timeout fixture and
-  verify controller records observation, terminal interruption, and no writer
-  claim or acceptance.
-- Expected: an interrupted turn is diagnosable from immutable run evidence even
+- [ ] Use fake App Server protocol fixtures to force timeout, provider failure,
+  approval, and protocol failure. Verify each reaches `run.json` with distinct
+  normalized kind, no raw text, and no writer claim or acceptance. With App
+  Server running, run ordinary managed success proof only; if it fails, capture
+  its bounded observation without requiring live failure injection.
+- Expected: abnormal turns are diagnosable from immutable run evidence even
   when provider threads are ephemeral; no automatic retry or acceptance occurs.
 
 **Exit Criteria:**
-- Every admitted managed lane emits the same core-owned, bounded timeout
-  observation. A future timeout can distinguish active-command, completed-work,
-  final-claim, and provider-completion failure classes without transcript
-  recovery.
+- Every admitted managed lane emits the same core-owned, bounded terminal
+  observation. Timeout, active-command, completed-work, final-claim, and
+  provider-failure classes stay distinct without transcript recovery.
 
 ## Task 5: Migrate Supported Consumer And Historical Runs
 
@@ -559,8 +580,10 @@ Tasks execute serially across starter, provider host, and consumer boundaries.
   deployed agent runtime drift checks when canonical guidance changed.
 - [ ] Run fresh live provider proof. Validator must be read-only and inspect the
   final workspace used by checks; controller acceptance must cite host evidence.
-- [ ] Run one forced provider timeout. Compare direct/core and provider-host
-  normalization; only provider transport locator values may differ.
+- [ ] Compare forced fake-protocol timeout, provider failure, approval, and
+  protocol-failure observations through direct core normalization and provider
+  host mapping; only opaque provider locator values may differ. Run live
+  provider success separately; do not require unsupported failure injection.
 
 **Verification:**
 - [ ] `uv lock --check`
@@ -602,8 +625,8 @@ The plan is ready for completion verification when:
 6. old packets remain immutable and unreadable continuation creates a successor
 7. direct, host, all three topologies, checks, and read-only validator produce
    fresh matching package identity evidence
-8. every admitted lane records one bounded, core-normalized timeout observation
-   on forced terminal timeout, without raw sensitive output or transcript
-   recovery
+8. every admitted lane records one bounded, core-normalized terminal observation
+   for forced timeout and provider failure, without raw sensitive output or
+   transcript recovery
 9. final verification runs all listed package, kit, host, consumer, generated,
    runtime-drift, lock, and diff checks

@@ -14,6 +14,7 @@ from .managed import (
     run_managed,
     verify_task,
 )
+from .terminal_observation import TerminalObservationError, normalize_terminal_observation
 from .timeout_observation import TimeoutObservationError, normalize_timeout_observation
 
 __all__ = [
@@ -30,5 +31,7 @@ __all__ = [
     "validate_config",
     "verify_task",
     "TimeoutObservationError",
+    "TerminalObservationError",
+    "normalize_terminal_observation",
     "normalize_timeout_observation",
 ]

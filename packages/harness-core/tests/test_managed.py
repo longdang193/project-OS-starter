@@ -361,7 +361,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
-        "package_release": "0.1.3",
+        "package_release": "0.1.4",
         "request_api": 3,
         "packet_api": 3,
         "host_api": None,
@@ -1658,7 +1658,7 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         assert result["outcome"] == {
             "reason": "dispatch_timeout",
             "allowed_decisions": ["escalate", "block"],
-            "evidence_refs": ["friction_event_ids", "evidence.failure", "evidence.timeout"],
+            "evidence_refs": ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"],
             "detail": "turn timed out",
         }
         with pytest.raises(harness.HarnessError, match="decision `retry` is not allowed"):
@@ -1670,6 +1670,55 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         assert resumed["state"] == "planned"
         assert run["attempts"][0]["packet"]["execution_budget"]["profile"] == "default"
         assert run["attempts"][1]["packet"]["execution_budget"]["profile"] == "extended"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_provider_failure_records_terminal_observation_without_timeout_escalation(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class FailedTurn(RuntimeError):
+        terminal_observation = {
+            "version": 1,
+            "kind": "provider_failure",
+            "source": "provider_terminal",
+            "lane_id": "primary",
+            "session_id": "thread-1",
+            "turn_id": "turn-1",
+            "turn_timeout_seconds": None,
+            "elapsed_seconds": 3.0,
+            "terminal_status": "failed",
+            "interrupt_status": None,
+            "item_states": [],
+            "command_states": [],
+            "final_claim_state": {"state": "missing"},
+            "error": {
+                "field_names": ["message"],
+                "code_hash": None,
+                "code_length": None,
+                "message_hash": "a" * 64,
+                "message_length": 15,
+            },
+        }
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=FailedTurn("provider failed")),
+        )
+        run = json.loads((run_dir / "run.json").read_text())
+
+        assert result["outcome"] == {
+            "reason": "dispatch_failed",
+            "allowed_decisions": ["retry", "escalate", "block"],
+            "evidence_refs": ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"],
+            "detail": "provider failed",
+        }
+        assert run["attempts"][0]["evidence"]["terminal_observation"]["kind"] == "provider_failure"
+        assert "timeout" not in run["attempts"][0]["evidence"]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 

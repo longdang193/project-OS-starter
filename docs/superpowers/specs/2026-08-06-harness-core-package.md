@@ -58,6 +58,20 @@ related_specs:
   from a consumer repository, and no provider reimplements route selection,
   plan parsing, scope derivation, run transitions, or controller decisions.
 
+### Outcome: One bounded terminal-observation contract
+
+- affected actor or system: controller, core package, and every conforming
+  provider host.
+- required result: core owns one versioned, bounded, sanitized
+  `terminal_observation` record whenever an admitted lane enters an abnormal
+  terminal condition. Its `kind` is one of `timeout`, `provider_failure`,
+  `approval_required`, or `protocol_failure`; its source is a provider terminal
+  event, approval request, transport exception, or host timeout interrupt.
+- success condition: hosts map provider events and transport exceptions into raw
+  transport evidence only; core normalizes, persists, and interprets terminal
+  evidence identically for every admitted lane. A timeout remains distinct from
+  provider failure.
+
 ### Outcome: Consumer data ownership
 
 - affected actor or system: each harness consumer repository.
@@ -244,6 +258,37 @@ related_specs:
 - observable acceptance: two conforming hosts receive same core packet for
   same consumer request; only provider evidence differs.
 
+#### Requirement: Provider terminal observation
+
+- trigger or actor: a provider turn ends abnormally during work, integration,
+  check, or validation.
+- preconditions: packet and lane are admitted; provider host has received a
+  terminal event, an approval request, a transport exception, or has confirmed
+  its own timeout interrupt.
+- required behavior: host supplies a raw record with exact fields: `version`,
+  `kind`, `source`, `lane_id`, `session_id`, `turn_id`,
+  `turn_timeout_seconds`, `elapsed_seconds`, `terminal_status`,
+  `interrupt_status`, `item_states`, `command_states`, `final_claim_state`,
+  and `error`. `session_id`, `turn_id`, and `terminal_status` may be `null`
+  only when the provider never allocated a turn. `turn_timeout_seconds` is the
+  packet value only for `timeout`, otherwise `null`. `error` is either `null`
+  or exactly `field_names`, `code_hash`, `code_length`, `message_hash`, and
+  `message_length`; field names are sorted identifiers, at most eight, while
+  text is stored only as SHA-256 plus byte length. Core alone normalizes and
+  persists this under `attempt.evidence.terminal_observation`.
+- output or state change: `kind: timeout` is emitted only after the host's
+  packet-budget timeout path and terminal interrupt handling. A provider
+  `failed` terminal status emits `kind: provider_failure`; it never becomes a
+  timeout or unlocks timeout escalation.
+- failure behavior: malformed, over-bound, lane-conflicting, or sensitive
+  provider evidence persists as typed invalid terminal evidence and blocks
+  acceptance. Raw prompts, assistant text, command text/output, and
+  environment values are never persisted.
+- observable acceptance: equal abnormal events in every admitted lane produce
+  equal normalized evidence and controller decisions, except opaque provider
+  locator values. Historical `attempt.evidence.timeout` remains read-only
+  legacy evidence; new records have one canonical field.
+
 #### Requirement: Deterministic admission order
 
 - trigger or actor: direct launcher or provider host receives an operation.
@@ -369,6 +414,26 @@ related_specs:
   contract and must be tested.
 - affected owners and boundaries: host owns transport/workspace/tool adapter;
   package owns lifecycle and policy interpretation.
+
+### Decision: Core owns one abnormal-terminal evidence schema
+
+- context: a provider `turn/completed` event with `status: failed` was reduced
+  to a generic string before core could persist safe diagnostic evidence.
+- selected approach: `harness_core.terminal_observation` owns version,
+  allowed kinds, field bounds, redaction, packet/lane validation, and decision
+  classification. Provider hosts use one shared event mapper for every lane;
+  they do not create timeout-only and failure-only serializers.
+- rationale: one discriminated record prevents a provider failure from being
+  mislabeled as timeout and avoids separate controller, persistence, and test
+  paths for equivalent terminal failures.
+- alternatives considered: raw transcript retention, host-specific error
+  objects, treating every failed turn as timeout, and separate timeout/failure
+  schemas.
+- accepted trade-offs: providers must expose enough bounded metadata for
+  diagnosis. Unknown terminal fields are rejected; known code/message values
+  are hashed rather than copied into run records.
+- affected owners and boundaries: core owns schema and policy matrix; host owns
+  transport mapping; controller consumes normalized evidence only.
 
 ### Decision: Legacy scripts are one-way migration shims only
 
@@ -566,5 +631,7 @@ Specification is complete when:
    defined
 5. explicit plan authorization remains separate from planned writes
 6. early failure behavior preserves no-side-effect managed execution semantics
-7. every required outcome maps to observable package, host, and consumer proof
-8. implementation sequencing remains outside this specification
+7. abnormal terminal outcomes use one core-owned sanitized evidence contract
+   without relabeling provider failures as timeouts
+8. every required outcome maps to observable package, host, and consumer proof
+9. implementation sequencing remains outside this specification

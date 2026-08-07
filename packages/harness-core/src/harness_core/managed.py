@@ -45,6 +45,7 @@ from .compatibility import (
     can_read_packet_api,
     package_release,
 )
+from .terminal_observation import TerminalObservationError, normalize_terminal_observation
 from .timeout_observation import TimeoutObservationError, normalize_timeout_observation
 from .coordination import PlanCoordination, PlanCoordinationError, PlanTask, load_plan_coordination, path_matches as _path_matches
 
@@ -1675,17 +1676,29 @@ def _record_failure(
     return _managed_result(run)
 
 
-def _normalize_timeout_evidence(exc: Exception, packet: dict[str, Any]) -> dict[str, Any] | None:
-    raw = getattr(exc, "timeout_observation", None)
+def _normalize_terminal_evidence(exc: Exception, packet: dict[str, Any]) -> dict[str, Any] | None:
+    raw = getattr(exc, "terminal_observation", None)
     if raw is None:
-        return None
+        legacy = getattr(exc, "timeout_observation", None)
+        if legacy is None:
+            return None
+        try:
+            normalized_legacy = normalize_timeout_observation(legacy, packet)
+        except TimeoutObservationError as error:
+            return {"version": 1, "invalid": True, "error": str(error)}
+        raw = {
+            **normalized_legacy,
+            "kind": "timeout",
+            "source": "host_timeout_interrupt",
+            "error": None,
+        }
     try:
-        return normalize_timeout_observation(raw, packet)
-    except TimeoutObservationError as error:
+        return normalize_terminal_observation(raw, packet)
+    except TerminalObservationError as error:
         return {"version": 1, "invalid": True, "error": str(error)}
 
 
-def _record_timeout_failure(
+def _record_terminal_failure(
     root: Path,
     run: dict[str, Any],
     policy: dict[str, Any],
@@ -1693,8 +1706,10 @@ def _record_timeout_failure(
     detail: str,
     *,
     phase: str,
-    timeout_evidence: dict[str, Any],
+    terminal_evidence: dict[str, Any],
 ) -> dict[str, Any]:
+    is_timeout = not terminal_evidence.get("invalid") and terminal_evidence.get("kind") == "timeout"
+    reason = "dispatch_timeout" if is_timeout else "dispatch_failed"
     _record_attempt_friction(
         root,
         run,
@@ -1702,26 +1717,28 @@ def _record_timeout_failure(
         lane=None,
         source="host",
         phase=phase,
-        code="dispatch_timeout",
-        evidence_ref="outcome.dispatch_timeout",
+        code=reason,
+        evidence_ref=f"outcome.{reason}",
     )
     attempt.setdefault("evidence", {})["failure"] = {
-        "reason": "dispatch_timeout",
+        "reason": reason,
         "phase": phase,
         "detail": detail,
     }
-    attempt["evidence"]["timeout"] = timeout_evidence
+    attempt["evidence"]["terminal_observation"] = terminal_evidence
     decisions = ["block"]
-    if not timeout_evidence.get("invalid"):
+    if is_timeout:
         decisions = list(attempt["packet"]["execution_budget"]["timeout_decisions"])
+    elif not terminal_evidence.get("invalid") and reason in attempt["packet"]["retry_policy"]["retryable_reasons"]:
+        decisions = ["retry", "escalate", "block"]
     _set_outcome(
         attempt,
-        "dispatch_timeout",
+        reason,
         decisions,
-        ["friction_event_ids", "evidence.failure", "evidence.timeout"],
+        ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"],
         detail=detail,
     )
-    _transition(run, policy["states"], "awaiting_decision", "dispatch_timeout")
+    _transition(run, policy["states"], "awaiting_decision", reason)
     _write_run(root, run)
     return _managed_result(run)
 
@@ -1735,16 +1752,16 @@ def _record_dispatch_exception(
     *,
     phase: str,
 ) -> dict[str, Any]:
-    timeout_evidence = _normalize_timeout_evidence(exc, attempt["packet"])
-    if timeout_evidence is not None:
-        return _record_timeout_failure(
+    terminal_evidence = _normalize_terminal_evidence(exc, attempt["packet"])
+    if terminal_evidence is not None:
+        return _record_terminal_failure(
             root,
             run,
             policy,
             attempt,
             str(exc),
             phase=phase,
-            timeout_evidence=timeout_evidence,
+            terminal_evidence=terminal_evidence,
         )
     return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase=phase)
 
@@ -1988,16 +2005,16 @@ def _execute_attempt(
             now=now,
         )
     except Exception as exc:
-        timeout_evidence = _normalize_timeout_evidence(exc, packet)
-        if timeout_evidence is not None:
-            return _record_timeout_failure(
+        terminal_evidence = _normalize_terminal_evidence(exc, packet)
+        if terminal_evidence is not None:
+            return _record_terminal_failure(
                 root,
                 run,
                 policy,
                 attempt,
                 str(exc),
                 phase="check",
-                timeout_evidence=timeout_evidence,
+                terminal_evidence=terminal_evidence,
             )
         return _record_failure(root, run, policy, attempt, "verification_failed", str(exc), phase="check")
     attempt["evidence"] = verification
