@@ -10,6 +10,7 @@ from harness_core.terminal_observation import TerminalObservationError, normaliz
 PACKET = {
     "execution_budget": {"turn_timeout_seconds": 300},
     "lanes": [{"lane_id": "work"}, {"lane_id": "validate"}],
+    "checks": {"diff": ["git", "diff", "--check"]},
 }
 
 
@@ -66,6 +67,22 @@ def test_normalize_terminal_observation_accepts_preallocation_protocol_failure()
 
     assert result["kind"] == "protocol_failure"
     assert result["session_id"] is None
+
+
+def test_normalize_terminal_observation_accepts_approval_request() -> None:
+    result = normalize_terminal_observation(observation(
+        kind="approval_required",
+        source="approval_request",
+        terminal_status=None,
+        error=None,
+    ), PACKET)
+
+    assert result["kind"] == "approval_required"
+    assert result["terminal_status"] is None
+
+
+def test_normalize_terminal_observation_accepts_packet_check_lane() -> None:
+    assert normalize_terminal_observation(observation(lane_id="check:diff"), PACKET)["lane_id"] == "check:diff"
 
 
 @pytest.mark.parametrize("raw", [

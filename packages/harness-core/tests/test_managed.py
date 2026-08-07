@@ -1723,6 +1723,62 @@ def test_provider_failure_records_terminal_observation_without_timeout_escalatio
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+@pytest.mark.parametrize(("kind", "source", "session_id", "turn_id", "error"), [
+    ("approval_required", "approval_request", "thread-1", "turn-1", None),
+    ("protocol_failure", "transport_exception", None, None, {
+        "field_names": ["message"],
+        "code_hash": None,
+        "code_length": None,
+        "message_hash": "b" * 64,
+        "message_length": 14,
+    }),
+])
+def test_non_timeout_terminal_observation_stays_dispatch_failed(
+    tmp_path: Path,
+    kind: str,
+    source: str,
+    session_id: str | None,
+    turn_id: str | None,
+    error: dict[str, object] | None,
+) -> None:
+    harness = load_module()
+    run_id = f"{tmp_path.name}-{kind}"
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class AbnormalTurn(RuntimeError):
+        terminal_observation = {
+            "version": 1,
+            "kind": kind,
+            "source": source,
+            "lane_id": "primary",
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "turn_timeout_seconds": None,
+            "elapsed_seconds": 1.0,
+            "terminal_status": None,
+            "interrupt_status": None,
+            "item_states": [],
+            "command_states": [],
+            "final_claim_state": {"state": "missing"},
+            "error": error,
+        }
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=AbnormalTurn(kind)),
+        )
+        run = json.loads((run_dir / "run.json").read_text())
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert result["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+        assert run["attempts"][0]["evidence"]["terminal_observation"]["kind"] == kind
+        assert "timeout" not in run["attempts"][0]["evidence"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_admit_managed_operation_returns_core_identity_before_packet_work() -> None:
     harness = load_module()
 

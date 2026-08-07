@@ -260,8 +260,9 @@ related_specs:
 
 #### Requirement: Provider terminal observation
 
-- trigger or actor: a provider turn ends abnormally during work, integration,
-  check, or validation.
+- trigger or actor: a provider-backed work, check, or validation turn ends
+  abnormally. A host-only integration operation has no provider turn and keeps
+  existing phase-specific failure evidence.
 - preconditions: packet and lane are admitted; provider host has received a
   terminal event, an approval request, a transport exception, or has confirmed
   its own timeout interrupt.

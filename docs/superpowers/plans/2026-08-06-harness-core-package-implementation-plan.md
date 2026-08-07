@@ -407,9 +407,11 @@ Tasks execute serially across starter, provider host, and consumer boundaries.
   valid observations; malformed or over-bound provider evidence becomes typed
   invalid terminal evidence and cannot unlock retry/acceptance. Only
   `kind: timeout` can follow timeout escalation policy.
-- [ ] Apply same contract to every work, integration, check, and read-only
-  validator lane. Provider conformance must reject a host that advertises a
-  managed topology but cannot supply valid terminal observation for its lanes.
+- [ ] Apply same contract to every provider-backed work, check, and read-only
+  validator turn. Host-only integration has no provider turn and keeps existing
+  phase-specific failure evidence. Provider conformance must reject a host that
+  advertises a managed topology but cannot supply valid terminal observation
+  for its provider-backed operations.
 - [ ] Update managed-execution guidance: terminal timeout means block or use
   immutable escalation only; provider failure remains `dispatch_failed` until
   controller decision. Inspect `attempt.evidence.terminal_observation` before
@@ -424,8 +426,9 @@ Tasks execute serially across starter, provider host, and consumer boundaries.
 - [ ] Host fake-App-Server tests prove each RED terminal shape reaches
   `run.json` with correct active/completed state and no raw output/text.
 - [ ] Parameterized host tests cover writer, sequential work, parallel work,
-  integration, checks, and read-only validator lanes through shared terminal
-  path; no lane-specific serializer is permitted.
+  checks, and read-only validator turns through shared terminal path. Prove
+  host-only integration keeps phase-specific failure evidence; no lane-specific
+  terminal serializer is permitted.
 - [ ] `uv run --package harness-core pytest packages/harness-core/tests -q`
 - [ ] `uv run pytest tests/test_app_server.py tests/test_adapter.py tests/test_cli.py -q` in `C:\Users\HOANG PHI LONG DANG\repos\codex-harness-host`
 - [ ] Use fake App Server protocol fixtures to force timeout, provider failure,

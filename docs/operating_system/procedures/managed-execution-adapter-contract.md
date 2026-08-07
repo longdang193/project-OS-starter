@@ -75,7 +75,7 @@ reasoning_effort}`. App-server has no template field; confirmed runtime model
 selection plus immutable template copy proves selected template contract.
 Missing or mismatched confirmation blocks lane evidence and acceptance.
 
-## Runtime Budget And Timeout Recovery
+## Runtime Budget And Abnormal Turn Recovery
 
 `repo_config/harness.yaml:execution_budgets` owns named profiles, their maximum
 turn timeout, and each route's initial profile. Core copies one resolved
@@ -84,17 +84,23 @@ cannot choose an arbitrary profile.
 
 Host uses packet `turn_timeout_seconds` for every App Server turn, packet-native
 tool probe, and check. The short `preflight` bound is transport-only and never
-substitutes for packet budget. Host returns provider-neutral timeout observation.
-Core owns version `1`, bounds, packet lane/budget validation, and persisted
-shape. Observation includes lane, opaque session/turn IDs, terminal and
-interrupt status, bounded item/command states, hashes and lengths, exit codes,
-and final-claim state. It never stores raw command output, environment values,
-or assistant text.
+substitutes for packet budget. Host returns one provider-neutral
+`attempt.evidence.terminal_observation`; core owns version `1`, bounds, packet
+lane/budget validation, and persisted shape.
 
-Core records valid host timeout evidence as `dispatch_timeout`. Controller may
-only `escalate` through packet `escalation_profile` or `block`; timeout never
-permits `retry`. Escalation creates fresh successor packet with core-selected
-profile. Preserve older packet and evidence unchanged. If an attempt is already
+Observation `kind` is `timeout`, `provider_failure`, `approval_required`, or
+`protocol_failure`; source distinguishes provider terminal event, approval
+request, transport exception, and host timeout interrupt. It records only lane,
+opaque runtime IDs when available, terminal/interrupt state, bounded
+item/command state, final-claim state, and error field names plus SHA-256 hashes
+and byte lengths. It never stores raw command output, prompts, environment
+values, provider error text, or assistant text.
+
+Core records only `kind: timeout` as `dispatch_timeout`. Controller may only
+`escalate` through packet `escalation_profile` or `block`; timeout never permits
+`retry`. `provider_failure`, `approval_required`, and `protocol_failure` remain
+`dispatch_failed` until controller decision. Escalation creates fresh successor
+packet with core-selected profile. Preserve older packet and evidence unchanged. If an attempt is already
 `planned`, resume it with provider `--run-id`; do not submit its request again.
 
 Inspect `attempt.evidence.timeout` before controller decision. It distinguishes
