@@ -1511,6 +1511,55 @@ def test_unverified_packet_tool_blocks_before_writer_dispatch(tmp_path: Path) ->
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_read_only_work_evidence_uses_effective_packet_access() -> None:
+    harness = load_module()
+    runtime_provider = {"provider_id": "codex_app_server", "contract_version": 3}
+    workspace = {"path": "C:\\workspace"}
+    packet = {
+        "workspace_write_access": "read_only",
+        "runtime_provider": runtime_provider,
+        "agent_identity": {"template": "low"},
+        "tool_bindings": [{
+            "tool": "shell",
+            "host_kind": "app_server_shell",
+            "writer_access": "workspace_write",
+            "validator_access": "read_only",
+            "root_probe": "shell_root_probe",
+        }],
+    }
+    lane = {"lane_id": "primary", "kind": "work"}
+    bindings = [{
+        "tool": "shell",
+        "host_kind": "app_server_shell",
+        "access": "read_only",
+        "root_probe": "shell_root_probe",
+        "workspace_root": workspace["path"],
+        "verified": True,
+        "runtime_provider": runtime_provider,
+    }]
+    evidence = {
+        "lane_id": "primary",
+        "workspace_root": workspace["path"],
+        "sandbox": "read-only",
+        "ambient_mcp": False,
+        "runtime_provider": runtime_provider,
+        "agent_identity": packet["agent_identity"],
+        "thread_id": "thread",
+        "turn_id": "turn",
+        "workspace_status_before": "",
+        "workspace_status_after": "",
+        "selected_tools_used": ["shell"],
+        "tool_calls": ["shell"],
+        "command_results": [{"cwd": workspace["path"], "runtime_provider": runtime_provider}],
+    }
+    attempt: dict[str, object] = {}
+
+    harness._record_tool_binding_evidence(attempt, lane, packet, workspace, bindings)
+    harness._record_lane_execution_evidence(attempt, lane, packet, workspace, evidence)
+
+    assert attempt["tool_binding_evidence"][0]["bindings"] == bindings
+    assert attempt["execution_evidence"] == [evidence]
+
 def test_mismatched_tool_binding_provider_blocks_before_writer_dispatch(tmp_path: Path) -> None:
     class MismatchedProviderAdapter(FakeAdapter):
         def verify_tool_bindings(self, lane, packet, workspace):

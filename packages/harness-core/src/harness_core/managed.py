@@ -1586,7 +1586,7 @@ def _record_tool_binding_evidence(
         raise HarnessError("host adapter workspace must include path")
     if not isinstance(evidence, list):
         raise HarnessError("host adapter tool binding evidence must be a list")
-    expected_access_key = "validator_access" if lane["kind"] == "validate" else "writer_access"
+    expected_access_key = "validator_access" if lane["kind"] == "validate" or packet.get("workspace_write_access") == "read_only" else "writer_access"
     expected = {binding["tool"]: binding for binding in packet["tool_bindings"]}
     observed: dict[str, dict[str, Any]] = {}
     for binding in evidence:
@@ -1627,7 +1627,8 @@ def _record_lane_execution_evidence(
         raise HarnessError("host adapter workspace must include path")
     if not isinstance(evidence, dict):
         raise HarnessError("host adapter lane execution evidence must be an object")
-    expected_sandbox = "read-only" if lane["kind"] == "validate" else "workspace-write"
+    read_only = lane["kind"] == "validate" or packet.get("workspace_write_access") == "read_only"
+    expected_sandbox = "read-only" if read_only else "workspace-write"
     if (
         evidence.get("lane_id") != lane["lane_id"]
         or evidence.get("workspace_root") != workspace_root
@@ -1662,15 +1663,15 @@ def _record_lane_execution_evidence(
         )
     ):
         raise HarnessError("host adapter lane execution evidence lacks packet tool proof")
-    access_key = "validator_access" if lane["kind"] == "validate" else "writer_access"
-    required_access = "read_only" if lane["kind"] == "validate" else "workspace_write"
+    access_key = "validator_access" if read_only else "writer_access"
+    required_access = "read_only" if read_only else "workspace_write"
     bindings = {binding["tool"]: binding for binding in packet["tool_bindings"]}
     if any(tool not in bindings for tool in selected_tools) or not any(
         bindings[tool][access_key] == required_access for tool in selected_tools
     ):
         raise HarnessError("host adapter lane did not use a packet-selected tool with required access")
-    if lane["kind"] == "validate" and evidence["workspace_status_before"] != evidence["workspace_status_after"]:
-        raise HarnessError("read-only validator changed final packet workspace")
+    if read_only and evidence["workspace_status_before"] != evidence["workspace_status_after"]:
+        raise HarnessError("read-only packet lane changed workspace")
     records = attempt.setdefault("execution_evidence", [])
     if any(record.get("lane_id") == lane["lane_id"] for record in records):
         raise HarnessError("host adapter produced duplicate lane execution evidence")
