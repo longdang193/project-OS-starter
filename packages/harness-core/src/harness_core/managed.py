@@ -104,9 +104,15 @@ def _load_policy(root: Path) -> dict[str, Any]:
     return payload
 
 
-def _core_identity(policy: dict[str, Any], adapter: Any | None = None) -> dict[str, Any]:
+def _core_identity(
+    policy: dict[str, Any],
+    adapter: Any | None = None,
+    *,
+    request_api: Any | None = None,
+) -> dict[str, Any]:
     core_policy = policy.get("harness_core")
-    request_api = core_policy.get("request_api") if isinstance(core_policy, dict) else None
+    if request_api is None:
+        request_api = core_policy.get("request_api") if isinstance(core_policy, dict) else None
     request_admission = admit_request_api(request_api)
     if not request_admission["ok"]:
         raise HarnessError(request_admission["code"])
@@ -131,9 +137,9 @@ def _core_identity(policy: dict[str, Any], adapter: Any | None = None) -> dict[s
     }
 
 
-def admit_managed_operation(root: Path, adapter: Any) -> dict[str, Any]:
+def admit_managed_operation(root: Path, adapter: Any, *, request_api: Any | None = None) -> dict[str, Any]:
     """Admit consumer and host protocol versions before provider I/O."""
-    return _core_identity(_load_policy(root), adapter)
+    return _core_identity(_load_policy(root), adapter, request_api=request_api)
 
 
 def _friction_policy(root: Path) -> dict[str, int]:
@@ -428,6 +434,7 @@ def _route_packet(
         "rules": list(dict.fromkeys([*route["rules"], *orchestration["rules"]])),
         "skills": route["skills"],
         "capabilities": list(route.get("capabilities", [])),
+        "delegation_profile": route.get("delegation_profile"),
         "tools": route["tools"],
         "tool_bindings": tool_bindings,
         "workspace": route["workspace"],
@@ -454,7 +461,13 @@ def _route_packet(
     }
 
 
-def _resolve_runtime_provider(policy: dict[str, Any], task_type: str, value: Any) -> dict[str, Any]:
+def _resolve_runtime_provider(
+    policy: dict[str, Any],
+    task_type: str,
+    value: Any,
+    *,
+    packet_api: int,
+) -> dict[str, Any]:
     route = policy["routes"].get(task_type)
     if not isinstance(route, dict):
         raise HarnessError(f"unknown task type `{task_type}`")
@@ -464,7 +477,8 @@ def _resolve_runtime_provider(policy: dict[str, Any], task_type: str, value: Any
     provider = policy["runtime_providers"].get(provider_id)
     if not isinstance(provider, dict) or not isinstance(provider.get("contract_version"), int):
         raise HarnessError(f"unknown runtime provider `{provider_id}`")
-    return {"provider_id": provider_id, "contract_version": provider["contract_version"]}
+    contract_version = 2 if provider_id == "codex_app_server" and packet_api == 3 else provider["contract_version"]
+    return {"provider_id": provider_id, "contract_version": contract_version}
 
 
 def _resolve_commit(root: Path, base_ref: str) -> str:
@@ -1068,7 +1082,7 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
                 raise HarnessError(f"writable lanes `{lane['lane_id']}` and `{other['lane_id']}` overlap")
     validator_role = packet["orchestration"]["validator_role"]
     validator = roles.get(validator_role)
-    if not isinstance(validator, dict) or role_writes(validator_role):
+    if not isinstance(validator, dict) or (packet["version"] != 4 and role_writes(validator_role)):
         raise HarnessError(f"invalid validator role `{validator_role}`")
     workspace_mode = packet["orchestration"]["workspace_mode"]
     return [
@@ -1172,9 +1186,9 @@ def resolve_managed_packet(
     core_identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     policy = _load_policy(root)
-    resolved_core_identity = core_identity or _core_identity(policy)
     _validate_policy(root)
     request, coordination, plan_task = _normalize_managed_request(root, policy, request)
+    resolved_core_identity = core_identity or _core_identity(policy, request_api=request["version"])
     task_type = _required_string(request.get("task_type"), "task_type")
     execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
     if "execution_budget_profile" in request:
@@ -1187,7 +1201,12 @@ def resolve_managed_packet(
     )
     if request["version"] == 3:
         packet["capabilities"] = list(legacy_role_capabilities(packet["role"]))
-    runtime_provider = _resolve_runtime_provider(policy, task_type, request.get("runtime_provider_id"))
+    runtime_provider = _resolve_runtime_provider(
+        policy,
+        task_type,
+        request.get("runtime_provider_id"),
+        packet_api=request["version"],
+    )
     role = _load_roles(root).get(packet["role"])
     if not isinstance(role, dict):
         raise HarnessError(f"unknown route role `{packet['role']}`")
@@ -1356,6 +1375,11 @@ def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[s
         "parent_invocation_id": parent_invocation_id,
         "delegation_depth": parent_depth + 1,
         "role": role,
+        "required_claim_kind": roles[role]["result_kind"],
+        "claim_schema": {
+            "required_fields": copy.deepcopy(roles[role]["required_fields"]),
+            "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
+        },
         "capabilities": list(capabilities),
         "allowed_paths": allowed_paths,
         "planned_write_paths": [],
@@ -2338,7 +2362,6 @@ def run_managed(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     policy = _load_policy(root)
-    core_identity = admit_managed_operation(root, adapter)
     _validate_policy(root)
     if run_id is None:
         if request is None:
@@ -2346,6 +2369,7 @@ def run_managed(
         run_id = _safe_run_id(request.get("run_id") or uuid.uuid4().hex)
         if _run_path(root, run_id).exists():
             raise HarnessError(f"run `{run_id}` already exists")
+        core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
         packet = resolve_managed_packet(
             root,
             request,
@@ -2369,6 +2393,7 @@ def run_managed(
         packet_identity = packet.get("core_identity")
         if not isinstance(packet_identity, dict) or not can_read_packet_api(packet_identity.get("packet_api")):
             raise HarnessError("harness_core_packet_api_unreadable")
+        admit_managed_operation(root, adapter, request_api=packet_identity.get("request_api"))
         if "plan_ref" in packet:
             try:
                 plan_ref = _required_string(packet.get("plan_ref"), "packet plan_ref")

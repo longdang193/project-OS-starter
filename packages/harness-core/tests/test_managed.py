@@ -418,6 +418,40 @@ def test_api4_packet_requires_immutable_invocation_fields() -> None:
     assert packet["parent_invocation_id"] is None
 
 
+@pytest.mark.parametrize(
+    ("task_type", "capabilities", "delegation_profile"),
+    [
+        ("local_change", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
+        ("debugging", ["repo.read", "code.search", "docs.query"], "disabled"),
+        ("research", ["repo.read", "code.search", "docs.query", "harness.delegate"], "read_only_research"),
+        ("plan_review", ["repo.read", "code.search", "docs.query"], "disabled"),
+        ("design_exploration", ["repo.read", "code.search", "docs.query"], "disabled"),
+        ("plan_writing", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
+        ("skill_authoring", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
+        ("harness_improvement", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled"),
+    ],
+)
+def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
+    task_type: str,
+    capabilities: list[str],
+    delegation_profile: str,
+) -> None:
+    harness = load_module()
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(
+            version=4,
+            task_type=task_type,
+            execution_mode="single_work_lane",
+            planned_write_paths=["scripts/harness_task.py"] if "repo.write" in capabilities else [],
+        ),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["capabilities"] == capabilities
+    assert packet["delegation_profile"] == delegation_profile
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 3}
+
 def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
@@ -531,6 +565,11 @@ def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_p
         child_packet = bridge["child_packet"](child["invocation_id"])
         assert child_packet["parent_invocation_id"] == packet["invocation_id"]
         assert child_packet["agent_identity"] == packet["agent_identity"]
+        assert child_packet["required_claim_kind"] == "claimed_result"
+        assert child_packet["claim_schema"] == {
+            "required_fields": ["summary", "findings"],
+            "field_constraints": {},
+        }
     finally:
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
@@ -666,6 +705,59 @@ def test_run_managed_records_adapter_host_api_in_packet(tmp_path: Path) -> None:
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
+
+def test_run_managed_admits_v3_request_with_host2_when_policy_api4(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    policy = harness._load_policy(ROOT)
+    policy["harness_core"] = {"request_api": 4}
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(version=3, run_id=run_id),
+            FakeAdapter({"single_work_lane": "unavailable"}, host_api=2),
+        )
+
+        assert result["outcome"]["reason"] == "execution_mode_unavailable"
+        packet = json.loads((run_dir / "run.json").read_text())["attempts"][0]["packet"]
+        assert packet["core_identity"]["request_api"] == 3
+        assert packet["core_identity"]["packet_api"] == 3
+        assert packet["core_identity"]["host_api"] == 2
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+def test_run_managed_resumes_v3_packet_with_host2_when_policy_api4(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    policy = harness._load_policy(ROOT)
+    policy["harness_core"] = {"request_api": 4}
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    request = managed_request(version=3, run_id=run_id)
+    try:
+        packet = harness.resolve_managed_packet(
+            ROOT,
+            request,
+            attempt_id="attempt-1",
+            core_identity={"package_release": "fixture", "request_api": 3, "packet_api": 3, "host_api": 2},
+        )
+        run = harness._new_run(request, run_id)
+        harness._transition(run, policy["states"], "planned", "fixture")
+        harness._append_attempt(run, packet)
+        harness._write_run(ROOT, run)
+
+        result = harness.run_managed(
+            ROOT,
+            None,
+            FakeAdapter({"single_work_lane": "unavailable"}, host_api=2),
+            run_id=run_id,
+        )
+
+        assert result["outcome"]["reason"] == "execution_mode_unavailable"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 def test_run_managed_rejects_unreadable_packet_without_mutation(tmp_path: Path) -> None:
     harness = load_module()
@@ -2071,12 +2163,12 @@ def test_admit_managed_operation_returns_core_identity_before_packet_work() -> N
 
     identity = harness.admit_managed_operation(
         ROOT,
-        FakeAdapter({"single_work_lane": "enforced"}),
+        FakeAdapter({"single_work_lane": "enforced"}, host_api=3),
     )
 
-    assert identity["request_api"] == 3
-    assert identity["packet_api"] == 3
-    assert identity["host_api"] == 2
+    assert identity["request_api"] == 4
+    assert identity["packet_api"] == 4
+    assert identity["host_api"] == 3
     assert isinstance(identity["package_release"], str)
 
 

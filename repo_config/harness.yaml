@@ -1,6 +1,38 @@
 version: 3
 harness_core:
-  request_api: 3
+  request_api: 4
+capabilities:
+  catalog: [repo.read, repo.write, checks.run, code.search, docs.query, harness.delegate]
+  sets:
+    read_only: [repo.read, code.search, docs.query]
+    workspace_write: [repo.read, repo.write, checks.run, code.search]
+context_limits:
+  objective_max_bytes: 4096
+  fact_max_bytes: 16384
+  max_facts: 16
+  max_artifacts: 16
+  outcome_summary_max_bytes: 4096
+delegation_profiles:
+  disabled:
+    max_depth: 0
+    max_children: 0
+    max_concurrent_children: 0
+    per_child_timeout_seconds: 0
+    total_child_timeout_seconds: 0
+    allowed_roles: []
+    capability_ceiling: []
+    workspace_write_access: read_only
+    verification: none
+  read_only_research:
+    max_depth: 1
+    max_children: 2
+    max_concurrent_children: 1
+    per_child_timeout_seconds: 120
+    total_child_timeout_seconds: 240
+    allowed_roles: [investigate, review]
+    capability_ceiling: [repo.read, code.search, docs.query]
+    workspace_write_access: read_only
+    verification: schema
 defaults:
   workspace: current
   approval_gates: []
@@ -63,7 +95,7 @@ tools:
     root_probe: ast_grep_root_probe
 runtime_providers:
   codex_app_server:
-    contract_version: 2
+    contract_version: 3
 friction_policy:
   event_version: 1
   minimum_distinct_runs: 3
@@ -103,6 +135,8 @@ routes:
     rules: [command-execution-rule, python-contracts-rule]
     skills: [skill-code-standards, skill-test-driven-development]
     tools: [shell, serena, ast_grep_preview]
+    capabilities: [repo.read, repo.write, checks.run, code.search]
+    delegation_profile: disabled
     workspace: current
     checks: [diff]
     approval_gates: [protected_policy]
@@ -117,6 +151,8 @@ routes:
     rules: [command-execution-rule]
     skills: [skill-systematic-debugging]
     tools: [shell, serena, ast_grep_preview]
+    capabilities: [repo.read, code.search, docs.query]
+    delegation_profile: disabled
     workspace: current
     checks: [diff]
     retry_policy: bounded
@@ -130,6 +166,8 @@ routes:
     rules: [command-execution-rule]
     skills: [skill-repository-research]
     tools: [shell, semble_codebase_search]
+    capabilities: [repo.read, code.search, docs.query, harness.delegate]
+    delegation_profile: read_only_research
     workspace: current
     checks: [diff]
     retry_policy: bounded
@@ -143,6 +181,8 @@ routes:
     rules: [doc-contracts-rule]
     skills: [skill-plan-document-reviewer]
     tools: [shell, serena]
+    capabilities: [repo.read, code.search, docs.query]
+    delegation_profile: disabled
     workspace: current
     checks: [diff]
     retry_policy: bounded
@@ -156,6 +196,8 @@ routes:
     rules: [command-execution-rule]
     skills: [skill-brainstorming]
     tools: [shell, semble_codebase_search]
+    capabilities: [repo.read, code.search, docs.query]
+    delegation_profile: disabled
     workspace: current
     checks: [diff]
     retry_policy: bounded
@@ -169,6 +211,8 @@ routes:
     rules: [doc-contracts-rule]
     skills: [skill-writing-plans]
     tools: [shell, serena]
+    capabilities: [repo.read, repo.write, checks.run, code.search]
+    delegation_profile: disabled
     workspace: current
     checks: [diff]
     retry_policy: bounded
@@ -182,6 +226,8 @@ routes:
     rules: [command-execution-rule, doc-contracts-rule]
     skills: [skill-writing-skills, skill-test-driven-development, skill-verification-before-completion]
     tools: [shell, serena]
+    capabilities: [repo.read, repo.write, checks.run, code.search]
+    delegation_profile: disabled
     workspace: current
     checks: [diff]
     approval_gates: [protected_policy]
@@ -196,6 +242,8 @@ routes:
     rules: [command-execution-rule, doc-contracts-rule]
     skills: [skill-improve-harness, skill-code-standards, skill-test-driven-development, skill-verification-before-completion]
     tools: [shell, serena]
+    capabilities: [repo.read, repo.write, checks.run, code.search]
+    delegation_profile: disabled
     workspace: current
     checks: [diff]
     approval_gates: [protected_policy]
