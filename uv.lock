@@ -22,7 +22,7 @@ wheels = [
 
 [[package]]
 name = "harness-core"
-version = "0.1.6"
+version = "0.1.10"
 source = { editable = "packages/harness-core" }
 dependencies = [
     { name = "pyyaml" },

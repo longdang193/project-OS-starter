@@ -2197,6 +2197,7 @@ def _execute_attempt(
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
 
     _transition(run, policy["states"], "running", "dispatch")
+    _write_run(root, run)
     pending = {node["lane_id"]: node for node in attempt["nodes"]}
     workspaces: dict[str, dict[str, Any]] = {}
     active_handles: list[tuple[dict[str, Any], Any]] = []

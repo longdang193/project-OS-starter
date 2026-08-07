@@ -504,6 +504,76 @@ def test_delegate_derives_one_idempotent_read_only_child(tmp_path: Path) -> None
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
 
+def test_dispatch_persists_running_state_before_delegation(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class DelegatingAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__(
+                {"single_work_lane": "enforced"},
+                claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
+                host_api=3,
+                identity={"provider_id": "codex_app_server", "contract_version": 3},
+            )
+            self.delegation_result = None
+
+        def dispatch_lane(self, lane, packet, workspace, delegation_bridge):
+            self.calls.append("dispatch_lane")
+            if lane["lane_id"] == "primary":
+                self.delegation_result = delegation_bridge["delegate"]({
+                    "idempotency_key": "child-1",
+                    "role": "investigate",
+                    "capabilities": ["repo.read", "code.search"],
+                    "allowed_paths": ["docs/**"],
+                    "timeout_seconds": 60,
+                })
+                assert self.delegation_result["ok"] is True
+                delegation_bridge["complete"](
+                    self.delegation_result["invocation_id"],
+                    "succeeded",
+                    {"kind": "claimed_result", "summary": "child", "findings": ["ok"]},
+                )
+            return {"lane_id": lane["lane_id"]}
+
+        def verify_tool_bindings(self, lane, packet, workspace):
+            bindings = super().verify_tool_bindings(lane, packet, workspace)
+            for binding in bindings:
+                binding["access"] = "read_only"
+            return bindings
+
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            evidence["sandbox"] = "read-only"
+            return evidence
+
+    adapter = DelegatingAdapter()
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(
+                version=4,
+                run_id=run_id,
+                task_type="research",
+                execution_mode="single_work_lane",
+                allowed_paths=["docs/**"],
+                planned_write_paths=[],
+            ),
+            adapter,
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        assert result["outcome"]["reason"] == "verification_passed"
+        assert adapter.delegation_result == {
+            "ok": True,
+            "invocation_id": "attempt-1:primary/child-1",
+            "status": "planned",
+        }
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
