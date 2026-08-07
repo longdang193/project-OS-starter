@@ -66,8 +66,10 @@ Do not use `run-unavailable` for retry. It proves generic CLI lacks injected
 adapter and is terminal evidence for that invocation only. Preserve that
 blocked run; create successor request with new `run_id` for provider-host retry.
 
-Packet owns role-derived claim schema for every executable lane. Host prompts
-and core claim validation consume that same immutable schema.
+Packet owns role-derived claim schema only for agent-invocation lanes. Host
+prompts and core claim validation consume that immutable schema. Deterministic
+integration and check nodes record normalized observations, not agent roles or
+claims.
 
 Packet `agent_identity` is immutable copy of selected `agents/<template>.toml`:
 `{template, model_provider, model, reasoning_effort}`. Template TOML remains
@@ -149,8 +151,10 @@ agent surfaces only and never participates in runtime selection or acceptance.
 A candidate stays absent from route policy until it passes same packet,
 workspace, tool-binding, check, read-only validator, and controller-acceptance
 proof as every admitted provider. No automatic provider fallback exists.
-`codex_app_server` contract version 2 requires exact version-2 host identity;
-version-1 identity fails before workspace preparation or lane dispatch.
+Current `codex_app_server` policy uses contract version 3 with request and
+packet API 4. Host API 3 can read historical packet API 3 evidence but rejects
+its dispatch; legacy packet API 3 dispatch requires matching host API 2.
+Version-1 identity fails before workspace preparation or lane dispatch.
 
 ## Required Adapter Methods
 
@@ -161,7 +165,7 @@ Host adapter provides these methods:
 | `capabilities()` | none | map of mode to `enforced`, `advisory`, or `unavailable` |
 | `identity()` | none | exact packet `runtime_provider` object: `{provider_id, contract_version}` |
 | `prepare_workspace(lane, packet)` | immutable lane and packet | workspace identity object |
-| `dispatch_lane(lane, packet, workspace, cancellation_token)` | immutable lane, packet, workspace | opaque dispatch handle |
+| `dispatch_lane(lane, packet, workspace, delegation_bridge)` | immutable lane, packet, workspace, optional core-owned delegation bridge | opaque dispatch handle |
 | `collect_claim(handle)` | dispatch handle | role-valid `claimed_result` |
 | `collect_lane_evidence(handle, lane, packet, workspace)` | dispatch handle, immutable lane and packet, workspace | host execution evidence for exactly one dispatched lane |
 | `cancel_lane(handle)` | dispatch handle | cancellation attempt |

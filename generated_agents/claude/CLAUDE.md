@@ -21,16 +21,28 @@ This file is repo-wide instruction layer. More specific directory instructions o
 
 ## Subagent Routing
 
-`repo_config/harness.yaml` owns route selection. For managed execution,
-controller starts version-3 request through host-supplied `run_managed` adapter
-boundary. `run.json` owns mutable run state; each attempt owns immutable packet.
+`repo_config/harness.yaml` owns route selection and `harness_core.request_api`.
+Installed `harness-core` owns packet resolution and lifecycle; legacy consumer
+scripts are package bridges only. For managed execution, controller submits a
+typed request through host-supplied `run_managed` adapter boundary. Core resolves a dispatchable request, packet, and host compatibility profile from current policy; never force a legacy API version. `run.json` owns mutable run state; each attempt owns immutable packet.
 Packet owns template, role, rules, skills, allowed tools, workspace, checks,
 approval gates, planned write paths, resolved base commit, and orchestration
-mode. Generic CLI has no managed `run` command. Its `run-unavailable` proof
+mode plus resolved `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
+Admission order: launcher package load, request API, adapter host API, provider
+preflight, packet resolution, workspace, dispatch. Unsupported APIs create no
+packet. Unreadable historical packet cannot resume; controller creates a
+successor without changing its evidence.
+For `runtime_provider_id: codex_app_server`, controller invokes provider host
+from its installed source root: `uv run codex-harness-host run --harness-root
+<repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>`.
+Use `--run-id <run-id>` instead of `--request` only to resume an existing
+dispatchable planned attempt. Historical packet API 3 remains readable through
+host API 3 but cannot dispatch; preserve it and create successor. Never use
+generic `run-unavailable` to retry a managed packet.
 
 For Git-tracked active coordination plans, frontmatter owns static target
-branch, base ref, task dependencies, canonical mode, and planned paths. Packet
+branch, base ref, task dependencies, canonical mode, allowed scope, and planned paths. Packet
 adds immutable `plan_ref`, `plan_task_id`, and normalized digest; `run.json`
 owns derived task state, handoff, evidence, and decisions. Use
 `coordination-status` for recovery. Manifest or base change requires successor
@@ -54,6 +66,8 @@ When spawning a subagent:
 - Subagents must not spawn other agents.
 - If task scope or needed capability changes, controller creates successor
   attempt and regenerates immutable packet.
+- Host consumes only packet `execution_budget` for App Server turns, native
+  tool probes, and checks. Transport preflight has separate short bound.
 - Harness dispatches only mode intersection of route policy and enforced host
   capability. Controller alone accepts, retries, escalates, requests approval,
   or blocks through recorded decision.
@@ -64,6 +78,9 @@ When spawning a subagent:
 - When selected managed mode returns `execution_mode_unavailable`, block it or
   record controller `waive` decision with a reason. A waived run is terminal
   `unvalidated`; local proof cannot become managed acceptance.
+- For `dispatch_timeout`, controller may only escalate through immutable packet
+  `escalation_profile` or block. Never retry timeout or accept caller-selected
+  budget. Resume an already planned attempt with provider `--run-id`.
 - Independent validator claims exist only when host advertises and dispatches
   an enforced read-only validator lane. Do not infer validator evidence from
   local checks or an implementer claim.

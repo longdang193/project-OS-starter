@@ -44,9 +44,11 @@ ordinary direct execution.
 
 ## Per Task
 
-1. Controller builds version-3 request with typed criteria. For plan-linked
-  work it sends `plan_ref` and `plan_task_id` only; core derives mode, base,
-  allowed paths, and planned paths before enforced host dispatch.
+1. Controller submits typed criteria through current route policy. Core resolves
+  a dispatchable request, packet, and host compatibility profile; do not force
+  legacy API versions. For plan-linked work it sends `plan_ref` and
+  `plan_task_id` only; core derives mode, base, allowed paths, and planned
+  paths before enforced host dispatch.
 2. Harness authorizes planned protected paths, prepares workspace, dispatches,
    collects claim, snapshots actual changes, and records criterion evidence.
 3. Implementer changes only lane paths, runs task-local proof, and reports
