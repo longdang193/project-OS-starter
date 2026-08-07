@@ -14,6 +14,9 @@ Host runtime dependencies must include compatible `harness-core` and
 absent/unloadable core result `harness_core_environment_unavailable`; no
 consumer-script fallback exists.
 
+Consumer installation, pinning, and preflight procedure:
+[`harness-core-consumer-setup.md`](./harness-core-consumer-setup.md).
+
 Managed work starts only when host calls `run_managed(root, request, adapter)`.
 No packet or `.harness/runs/<run-id>/run.json` means source-first local work,
 not harness-managed work.

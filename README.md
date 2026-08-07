@@ -90,6 +90,8 @@ uv run codex-harness-host run --harness-root <repo-root> --server-uri ws://127.0
 
 Host contract:
 `docs/operating_system/procedures/managed-execution-adapter-contract.md`.
+Consumer install and compatibility preflight:
+`docs/operating_system/procedures/harness-core-consumer-setup.md`.
 
 ## Customize First
 

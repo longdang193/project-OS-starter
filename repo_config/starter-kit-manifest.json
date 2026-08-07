@@ -49,6 +49,7 @@
     ".agents/skills/skill-using-superpowers/SKILL.md",
     "agents/roles.yaml",
     "docs/operating_system/governance/repo-governance.md",
+    "docs/operating_system/procedures/harness-core-consumer-setup.md",
     "docs/operating_system/procedures/managed-execution-adapter-contract.md",
     "docs/superpowers/plans",
     "docs/superpowers/specs",

@@ -61,6 +61,12 @@ Use for ANY technical issue:
   Distinguish short transport preflight from packet turn timeout. Resume a
   planned attempt through provider `--run-id`; only controller escalation may
   create budget-profile successor. Timeout never means retry.
+- For package-backed managed failures, inspect in admission order:
+  `harness-core --identity`, `harness-core validate --repo-root <repo-root>`,
+  then provider-host capabilities. Classify package loader failure as
+  environment, unsupported request or host API as release compatibility, and
+  only later failures as provider admission or dispatch. Never patch legacy
+  consumer bridges to repair package or host compatibility.
 
 ## Code Intelligence
 
