@@ -5,7 +5,10 @@ from .coordination import load_plan_coordination
 from .managed import (
     admit_managed_operation,
     apply_controller_decision,
+    complete_delegated_child,
     coordination_status,
+    delegate,
+    DelegationResult,
     friction_report,
     record_controller_handoff,
     resolve_friction,
@@ -20,7 +23,10 @@ from .timeout_observation import TimeoutObservationError, normalize_timeout_obse
 __all__ = [
     "admit_managed_operation",
     "apply_controller_decision",
+    "complete_delegated_child",
     "coordination_status",
+    "delegate",
+    "DelegationResult",
     "friction_report",
     "load_plan_coordination",
     "record_controller_handoff",

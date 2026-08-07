@@ -44,8 +44,10 @@ ROUTE_FIELDS = {
     "execution_modes",
     "runtime_providers",
     "default_runtime_provider",
+    "capabilities",
+    "delegation_profile",
 }
-ROLE_FIELDS = {"writes", "accepts", "result_kind", "required_fields"}
+ROLE_FIELDS = {"accepts", "result_kind", "required_fields"}
 ORCHESTRATION_FIELDS = {
     "aliases",
     "work_scheduling",
@@ -59,6 +61,9 @@ RETRY_POLICY_FIELDS = {"max_attempts", "retryable_reasons", "exhaustion", "appro
 TOOL_FIELDS = {"optional", "fallback", "host_kind", "writer_access", "validator_access", "root_probe"}
 REQUIRED_STATES = {"classified", "planned", "running", "observed", "verifying", "awaiting_decision", "accepted", "unvalidated", "blocked"}
 RUNTIME_PROVIDER_FIELDS = {"contract_version"}
+CAPABILITY_POLICY_FIELDS = {"catalog", "sets"}
+CONTEXT_LIMIT_FIELDS = {"objective_max_bytes", "fact_max_bytes", "max_facts", "max_artifacts", "outcome_summary_max_bytes"}
+DELEGATION_PROFILE_FIELDS = {"max_depth", "max_children", "max_concurrent_children", "per_child_timeout_seconds", "total_child_timeout_seconds", "allowed_roles", "capability_ceiling", "workspace_write_access", "verification"}
 FRICTION_POLICY_FIELDS = {"event_version", "minimum_distinct_runs", "window_days"}
 EXECUTION_BUDGET_FIELDS = {"max_turn_timeout_seconds", "profiles"}
 EXECUTION_BUDGET_PROFILE_FIELDS = {"turn_timeout_seconds", "timeout_decisions"}
@@ -103,6 +108,9 @@ def validate(root: Path) -> list[str]:
     rules = {path.stem for path in (root / "docs" / "operating_system" / "rules").glob("*.md")}
     skills = {path.parent.name for path in (root / ".agents" / "skills").glob("*/SKILL.md")}
 
+    roles_version = roles_payload.get("version") if isinstance(roles_payload, dict) else None
+    if roles_version not in {1, 2}:
+        return ["roles version must be 1 or 2"]
     roles = roles_payload.get("roles") if isinstance(roles_payload, dict) else None
     if not isinstance(roles, dict):
         return ["roles must be a mapping"]
@@ -110,11 +118,14 @@ def validate(root: Path) -> list[str]:
         if not isinstance(name, str) or not isinstance(role, dict):
             errors.append("roles must map names to mappings")
             continue
-        missing = ROLE_FIELDS - role.keys()
+        required_fields = ROLE_FIELDS | ({"writes"} if roles_version == 1 else set())
+        missing = required_fields - role.keys()
         if missing:
             errors.append(f"role `{name}` missing fields: {', '.join(sorted(missing))}")
-        if not isinstance(role.get("writes"), bool):
+        if roles_version == 1 and not isinstance(role.get("writes"), bool):
             errors.append(f"role `{name}` writes must be a boolean")
+        if roles_version == 2 and "writes" in role:
+            errors.append(f"role `{name}` must not define writes in role schema v2")
         if not valid_string_list(role.get("accepts")):
             errors.append(f"role `{name}` accepts must be a list of strings")
         if not isinstance(role.get("result_kind"), str) or not role["result_kind"]:
@@ -140,6 +151,38 @@ def validate(root: Path) -> list[str]:
     request_admission = admit_request_api(request_api)
     if not request_admission["ok"]:
         errors.append(request_admission["code"])
+
+    capability_catalog: set[str] = set()
+    delegation_profiles: set[str] = set()
+    if request_api == 4:
+        capability_policy = policy.get("capabilities")
+        if not isinstance(capability_policy, dict) or set(capability_policy) != CAPABILITY_POLICY_FIELDS:
+            errors.append("capabilities must define catalog and sets")
+        else:
+            catalog = capability_policy["catalog"]
+            if not valid_string_list(catalog) or len(set(catalog)) != len(catalog):
+                errors.append("capabilities catalog must be unique non-empty strings")
+            else:
+                capability_catalog = set(catalog)
+            sets = capability_policy["sets"]
+            if not isinstance(sets, dict) or not sets or any(not isinstance(name, str) or not valid_string_list(values) or not set(values) <= capability_catalog for name, values in sets.items()):
+                errors.append("capabilities sets must reference catalog values")
+        context_limits = policy.get("context_limits")
+        if not isinstance(context_limits, dict) or set(context_limits) != CONTEXT_LIMIT_FIELDS or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in context_limits.values()):
+            errors.append("context_limits must define positive integer limits")
+        profiles = policy.get("delegation_profiles")
+        if not isinstance(profiles, dict) or not profiles:
+            errors.append("delegation_profiles must be a non-empty mapping")
+        else:
+            delegation_profiles = set(profiles)
+            for name, profile in profiles.items():
+                if not isinstance(name, str) or not isinstance(profile, dict) or set(profile) != DELEGATION_PROFILE_FIELDS:
+                    errors.append(f"delegation profile `{name}` is invalid")
+                    continue
+                if not isinstance(profile["capability_ceiling"], list) or not set(profile["capability_ceiling"]) <= capability_catalog:
+                    errors.append(f"delegation profile `{name}` capability_ceiling is invalid")
+                if profile["verification"] not in {"none", "schema", "checks", "validator"} or profile["workspace_write_access"] not in {"read_only", "workspace_write"}:
+                    errors.append(f"delegation profile `{name}` has invalid workspace or verification")
 
     states = policy.get("states")
     if not isinstance(states, dict):
@@ -355,7 +398,7 @@ def validate(root: Path) -> list[str]:
         validator_role = mode["validator_role"]
         if validator_role not in roles:
             errors.append(f"orchestration `{name}` has unknown validator role `{validator_role}`")
-        elif roles[validator_role].get("writes") is not False:
+        elif roles_version == 1 and roles[validator_role].get("writes") is not False:
             errors.append(f"orchestration `{name}` validator role `{validator_role}` must not write")
         if not isinstance(mode["review_required"], bool):
             errors.append(f"orchestration `{name}` review_required must be a boolean")
@@ -374,10 +417,27 @@ def validate(root: Path) -> list[str]:
         if not isinstance(route, dict):
             errors.append(f"route `{name}` must be a mapping")
             continue
-        missing = ROUTE_FIELDS - route.keys()
+        missing = (ROUTE_FIELDS - {"capabilities", "delegation_profile"}) - route.keys()
         if missing:
             errors.append(f"route `{name}` missing fields: {', '.join(sorted(missing))}")
             continue
+        if request_api == 4 and "capabilities" not in route:
+            errors.append(f"route `{name}` missing capabilities")
+            continue
+        if request_api == 4:
+            for capability in route["capabilities"] if isinstance(route["capabilities"], list) else []:
+                if capability not in capability_catalog:
+                    errors.append(f"route `{name}` capability `{capability}` is unknown")
+            if route["delegation_profile"] not in delegation_profiles:
+                errors.append(f"route `{name}` has unknown delegation profile `{route['delegation_profile']}`")
+        capabilities = route.get("capabilities", [])
+        if "capabilities" in route and (
+            not isinstance(capabilities, list)
+            or not capabilities
+            or not all(isinstance(capability, str) and capability for capability in capabilities)
+            or len(set(capabilities)) != len(capabilities)
+        ):
+            errors.append(f"route `{name}` capabilities must be a non-empty list of unique strings")
         template = route["template"]
         role_name = route["role"]
         if template not in templates:

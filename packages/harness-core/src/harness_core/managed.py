@@ -32,7 +32,7 @@ import re
 import subprocess
 import sys
 import tomllib
-from typing import Any, Callable
+from typing import Any, Callable, NotRequired, TypedDict
 import uuid
 
 import yaml
@@ -40,9 +40,12 @@ import yaml
 from .config_validation import validate as validate_harness_config
 from .compatibility import (
     CURRENT_PACKET_API,
+    CURRENT_RUN_API,
     admit_host_api,
+    admit_packet_dispatch,
     admit_request_api,
     can_read_packet_api,
+    legacy_role_capabilities,
     package_release,
 )
 from .terminal_observation import TerminalObservationError, normalize_terminal_observation
@@ -72,6 +75,16 @@ FRICTION_EVENT_KINDS = {"observed", "resolution"}
 FRICTION_SOURCES = {"agent", "host", "validator", "check", "controller"}
 FRICTION_PHASES = {"claim", "dispatch", "integration", "check", "validator", "decision"}
 FRICTION_RESOLUTIONS = {"keep", "revise", "remove", "pending"}
+DELEGATED_CHILD_TERMINAL_STATES = {"succeeded", "failed", "cancelled", "timed_out", "awaiting_decision"}
+
+
+class DelegationResult(TypedDict):
+    ok: bool
+    code: NotRequired[str]
+    invocation_id: NotRequired[str]
+    status: NotRequired[str]
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -103,6 +116,9 @@ def _core_identity(policy: dict[str, Any], adapter: Any | None = None) -> dict[s
         if not host_admission["ok"]:
             raise HarnessError(host_admission["code"])
         host_api = host_admission["host_api"]
+        dispatch_admission = admit_packet_dispatch(host_api, request_admission["packet_api"])
+        if not dispatch_admission["ok"]:
+            raise HarnessError(dispatch_admission["code"])
     try:
         release = package_release()
     except RuntimeError as exc:
@@ -411,6 +427,7 @@ def _route_packet(
         "role": route["role"],
         "rules": list(dict.fromkeys([*route["rules"], *orchestration["rules"]])),
         "skills": route["skills"],
+        "capabilities": list(route.get("capabilities", [])),
         "tools": route["tools"],
         "tool_bindings": tool_bindings,
         "workspace": route["workspace"],
@@ -478,8 +495,38 @@ def _write_run(root: Path, run: dict[str, Any]) -> None:
 
 def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     run = _load_json(_run_path(root, run_id))
-    if run.get("version") != 1 or run.get("run_id") != run_id or not isinstance(run.get("attempts"), list):
+    if run.get("version") not in {1, CURRENT_RUN_API} or run.get("run_id") != run_id or not isinstance(run.get("attempts"), list):
         raise HarnessError(f"invalid run record `{run_id}`")
+    if run.get("state") == "planned" and run["attempts"]:
+        attempt = run["attempts"][-1]
+        if not isinstance(attempt, dict):
+            raise HarnessError(f"invalid run record `{run_id}`")
+        if "nodes" not in attempt:
+            lanes = attempt.get("lanes")
+            if not isinstance(lanes, list):
+                return run
+            nodes = copy.deepcopy(lanes)
+            for node in nodes:
+                if not isinstance(node, dict):
+                    raise HarnessError(f"planned run `{run_id}` has invalid execution node")
+                if "node_kind" not in node:
+                    node["node_kind"] = "agent" if node.get("kind") in {"work", "validate"} else "integration"
+            validator = next((node for node in nodes if node.get("lane_id") == "validate"), None)
+            if not isinstance(validator, dict):
+                raise HarnessError(f"planned run `{run_id}` has no validator node")
+            if not any(node.get("lane_id") == "check" for node in nodes):
+                nodes.append({
+                    "lane_id": "check",
+                    "node_kind": "check",
+                    "kind": "check",
+                    "role": None,
+                    "allowed_paths": copy.deepcopy(validator["allowed_paths"]),
+                    "dependencies": ["validate"],
+                    "workspace_mode": validator["workspace_mode"],
+                    "write_capable": False,
+                })
+            attempt["nodes"] = nodes
+            attempt["node_observations"] = []
     return run
 
 
@@ -927,16 +974,20 @@ def _patterns_overlap(left: str, right: str) -> bool:
 
 def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str], value: Any) -> list[dict[str, Any]]:
     roles = _load_roles(root)
+    role_writes = lambda role: "repo.write" in (
+        packet["capabilities"] if packet["version"] == 4 else legacy_role_capabilities(role)
+    )
     if packet["orchestration"]["work_scheduling"] == "single":
         role = packet["role"]
         work_lanes = [{
             "lane_id": "primary",
+            "node_kind": "agent",
             "kind": "work",
             "role": role,
             "allowed_paths": allowed_paths,
             "dependencies": [],
             "workspace_mode": packet["orchestration"]["workspace_mode"],
-            "write_capable": bool(roles[role]["writes"]),
+            "write_capable": role_writes(role),
             "required_claim_kind": roles[role]["result_kind"],
             "claim_schema": {
                 "required_fields": copy.deepcopy(roles[role]["required_fields"]),
@@ -956,14 +1007,14 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
             if not isinstance(raw, dict):
                 raise HarnessError("lane must be an object")
             lane_id = _required_string(raw.get("lane_id"), "lane_id")
-            if lane_id in {"integrate", "validate"} or lane_id in lane_ids:
+            if lane_id in {"integrate", "validate", "check"} or lane_id in lane_ids:
                 raise HarnessError(f"duplicate or reserved lane_id `{lane_id}`")
             lane_ids.add(lane_id)
             role = _required_string(raw.get("role"), "lane role")
             if role not in roles:
                 raise HarnessError(f"unknown lane role `{role}`")
             write_capable = raw.get("write_capable")
-            if not isinstance(write_capable, bool) or write_capable != bool(roles[role]["writes"]):
+            if not isinstance(write_capable, bool) or write_capable != role_writes(role):
                 raise HarnessError(f"lane `{lane_id}` has invalid write_capable")
             dependencies = _safe_paths(raw.get("dependencies", []), "lane dependencies", required=False)
             workspace_mode = _required_string(raw.get("workspace_mode"), "lane workspace_mode")
@@ -971,6 +1022,7 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
                 raise HarnessError(f"lane `{lane_id}` workspace_mode conflicts with execution mode")
             work_lanes.append({
                 "lane_id": lane_id,
+                "node_kind": "agent",
                 "kind": "work",
                 "role": role,
                 "allowed_paths": _safe_paths(raw.get("allowed_paths"), "lane allowed_paths", required=True),
@@ -1016,13 +1068,14 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
                 raise HarnessError(f"writable lanes `{lane['lane_id']}` and `{other['lane_id']}` overlap")
     validator_role = packet["orchestration"]["validator_role"]
     validator = roles.get(validator_role)
-    if not isinstance(validator, dict) or validator["writes"]:
+    if not isinstance(validator, dict) or role_writes(validator_role):
         raise HarnessError(f"invalid validator role `{validator_role}`")
     workspace_mode = packet["orchestration"]["workspace_mode"]
     return [
         *work_lanes,
         {
             "lane_id": "integrate",
+            "node_kind": "integration",
             "kind": "integrate",
             "role": None,
             "allowed_paths": allowed_paths,
@@ -1033,6 +1086,7 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
         },
         {
             "lane_id": "validate",
+            "node_kind": "agent",
             "kind": "validate",
             "role": validator_role,
             "allowed_paths": allowed_paths,
@@ -1049,6 +1103,16 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
                 "field_constraints": copy.deepcopy(validator.get("field_constraints", {})),
             },
         },
+        {
+            "lane_id": "check",
+            "node_kind": "check",
+            "kind": "check",
+            "role": None,
+            "allowed_paths": allowed_paths,
+            "dependencies": ["validate"],
+            "workspace_mode": workspace_mode,
+            "write_capable": False,
+        },
     ]
 
 
@@ -1058,15 +1122,16 @@ def _normalize_managed_request(
     request: dict[str, Any],
 ) -> tuple[dict[str, Any], PlanCoordination | None, PlanTask | None]:
     version = request.get("version")
-    if version not in {LEGACY_MANAGED_VERSION, MANAGED_VERSION}:
-        raise HarnessError(f"managed request version must be {LEGACY_MANAGED_VERSION} or {MANAGED_VERSION}")
+    admission = admit_request_api(version)
+    if not admission["ok"]:
+        raise HarnessError(admission["code"])
     normalized = copy.deepcopy(request)
-    normalized["version"] = MANAGED_VERSION
+    normalized["version"] = admission["packet_api"]
     normalized["execution_mode"] = _canonical_execution_mode(
         policy,
         normalized.get("execution_mode"),
-        allow_alias=version == LEGACY_MANAGED_VERSION,
-        default="single_agent" if version == LEGACY_MANAGED_VERSION else "single_work_lane",
+        allow_alias=admission["packet_api"] == 3,
+        default="single_agent" if admission["packet_api"] == 3 else "single_work_lane",
     )
     has_plan_ref = "plan_ref" in normalized
     has_plan_task_id = "plan_task_id" in normalized
@@ -1120,18 +1185,24 @@ def resolve_managed_packet(
         execution_mode,
         execution_budget_profile=execution_budget_profile,
     )
+    if request["version"] == 3:
+        packet["capabilities"] = list(legacy_role_capabilities(packet["role"]))
     runtime_provider = _resolve_runtime_provider(policy, task_type, request.get("runtime_provider_id"))
     role = _load_roles(root).get(packet["role"])
     if not isinstance(role, dict):
         raise HarnessError(f"unknown route role `{packet['role']}`")
     allowed_paths = _safe_paths(request.get("allowed_paths"), "allowed_paths", required=True)
-    planned_write_paths = _safe_paths(request.get("planned_write_paths"), "planned_write_paths", required=bool(role["writes"]))
+    planned_write_paths = _safe_paths(
+        request.get("planned_write_paths"),
+        "planned_write_paths",
+        required="repo.write" in packet["capabilities"],
+    )
     if coordination is not None and any(not _path_matches(path, allowed_paths) for path in planned_write_paths):
         raise HarnessError("plan planned_write_paths must stay within managed allowed_paths")
     base_ref = _required_string(request.get("base_ref"), "base_ref")
     user_request = _required_string(request.get("user_request"), "user_request")
     packet.update({
-        "version": MANAGED_VERSION,
+        "version": request["version"],
         "core_identity": copy.deepcopy(resolved_core_identity),
         "attempt_id": attempt_id,
         "base_ref": base_ref,
@@ -1153,6 +1224,9 @@ def resolve_managed_packet(
             "plan_digest": coordination.digest,
         })
     packet["lanes"] = _normalize_lanes(root, packet, allowed_paths, request.get("lanes"))
+    if packet["version"] == 4:
+        packet["invocation_id"] = f"{attempt_id}:primary"
+        packet["parent_invocation_id"] = None
     return packet
 
 
@@ -1166,7 +1240,7 @@ def _transition(run: dict[str, Any], states: dict[str, list[str]], next_state: s
 
 def _new_run(request: dict[str, Any], run_id: str) -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": CURRENT_RUN_API if request.get("version") == CURRENT_PACKET_API else 1,
         "run_id": run_id,
         "request": copy.deepcopy(request),
         "state": "classified",
@@ -1179,8 +1253,9 @@ def _append_attempt(run: dict[str, Any], packet: dict[str, Any]) -> dict[str, An
     attempt = {
         "attempt_id": packet["attempt_id"],
         "packet": copy.deepcopy(packet),
-        "lanes": copy.deepcopy(packet["lanes"]),
+        "nodes": copy.deepcopy(packet["lanes"]),
         "claims": [],
+        "node_observations": [],
         "evidence": {},
         "friction_event_ids": [],
         "outcome": None,
@@ -1195,6 +1270,180 @@ def _active_attempt(run: dict[str, Any]) -> dict[str, Any]:
     if not run["attempts"] or not isinstance(run["attempts"][-1], dict):
         raise HarnessError("run has no active attempt")
     return run["attempts"][-1]
+
+
+def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[str, Any]) -> DelegationResult:
+    run = _load_run(root, _safe_run_id(run_id))
+    attempt = _active_attempt(run)
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict) or packet.get("invocation_id") != parent_invocation_id:
+        return {"ok": False, "code": "delegation_parent_not_found"}
+    if "harness.delegate" not in packet.get("capabilities", []):
+        return {"ok": False, "code": "delegation_not_permitted"}
+    if run["state"] != "running" or not isinstance(request, dict):
+        return {"ok": False, "code": "delegation_not_permitted"}
+
+    policy = _load_policy(root)
+    profiles = policy.get("delegation_profiles")
+    profile_name = packet.get("delegation_profile")
+    profile = profiles.get(profile_name) if isinstance(profiles, dict) and isinstance(profile_name, str) else None
+    if not isinstance(profile, dict):
+        return {"ok": False, "code": "delegation_not_permitted"}
+
+    idempotency_key = request.get("idempotency_key")
+    if not isinstance(idempotency_key, str) or not idempotency_key:
+        return {"ok": False, "code": "delegation_not_permitted"}
+    idempotency = attempt.get("delegation_idempotency", {})
+    if not isinstance(idempotency, dict):
+        raise HarnessError("invalid delegation idempotency state")
+    if idempotency_key in idempotency:
+        result = idempotency[idempotency_key]
+        if not isinstance(result, dict):
+            raise HarnessError("invalid delegation idempotency result")
+        return copy.deepcopy(result)
+
+    role = request.get("role")
+    roles = _load_roles(root)
+    if not isinstance(role, str) or role not in profile.get("allowed_roles", []) or not isinstance(roles.get(role), dict):
+        return {"ok": False, "code": "delegation_not_permitted"}
+    capabilities = request.get("capabilities")
+    parent_capabilities = packet.get("capabilities")
+    if (
+        not isinstance(capabilities, list)
+        or not all(isinstance(capability, str) and capability for capability in capabilities)
+        or not isinstance(parent_capabilities, list)
+        or not all(isinstance(capability, str) for capability in parent_capabilities)
+        or not set(capabilities).issubset(parent_capabilities)
+        or not set(capabilities).issubset(profile.get("capability_ceiling", []))
+    ):
+        return {"ok": False, "code": "delegation_capability_exceeded"}
+    try:
+        allowed_paths = _safe_paths(request.get("allowed_paths"), "child allowed_paths", required=True)
+    except HarnessError:
+        return {"ok": False, "code": "delegation_path_exceeded"}
+    parent_paths = packet.get("allowed_paths")
+    if not isinstance(parent_paths, list) or any(not _path_matches(path, parent_paths) for path in allowed_paths):
+        return {"ok": False, "code": "delegation_path_exceeded"}
+    timeout_seconds = request.get("timeout_seconds")
+    if (
+        not isinstance(timeout_seconds, int)
+        or isinstance(timeout_seconds, bool)
+        or timeout_seconds < 1
+        or timeout_seconds > profile.get("per_child_timeout_seconds", 0)
+    ):
+        return {"ok": False, "code": "delegation_budget_exceeded"}
+
+    children = attempt.get("children", [])
+    ledger = attempt.get("reservation_ledger", [])
+    if not isinstance(children, list) or not isinstance(ledger, list):
+        raise HarnessError("invalid delegation state")
+    parent_depth = packet.get("delegation_depth", 0)
+    if not isinstance(parent_depth, int) or isinstance(parent_depth, bool) or parent_depth + 1 > profile.get("max_depth", 0):
+        return {"ok": False, "code": "delegation_depth_exceeded"}
+    if len(children) >= profile.get("max_children", 0):
+        return {"ok": False, "code": "delegation_budget_exceeded"}
+    active_children = [child for child in children if isinstance(child, dict) and child.get("status") not in {"cancelled", "failed", "succeeded", "timed_out"}]
+    if len(active_children) >= profile.get("max_concurrent_children", 0):
+        return {"ok": False, "code": "delegation_budget_exceeded"}
+    reserved_seconds = sum(entry.get("timeout_seconds", 0) for entry in ledger if isinstance(entry, dict) and not entry.get("released"))
+    if reserved_seconds + timeout_seconds > profile.get("total_child_timeout_seconds", 0):
+        return {"ok": False, "code": "delegation_budget_exceeded"}
+
+    child_id = f"{parent_invocation_id}/child-{len(children) + 1}"
+    child_packet = {
+        "invocation_id": child_id,
+        "parent_invocation_id": parent_invocation_id,
+        "delegation_depth": parent_depth + 1,
+        "role": role,
+        "capabilities": list(capabilities),
+        "allowed_paths": allowed_paths,
+        "timeout_seconds": timeout_seconds,
+        "delegation_profile": profile_name,
+        "workspace_write_access": profile["workspace_write_access"],
+        "verification": profile["verification"],
+    }
+    result = {"ok": True, "invocation_id": child_id, "status": "planned"}
+    children.append({"idempotency_key": idempotency_key, "status": "planned", "packet": child_packet})
+    ledger.append({"idempotency_key": idempotency_key, "timeout_seconds": timeout_seconds, "released": False})
+    idempotency[idempotency_key] = result
+    attempt["children"] = children
+    attempt["reservation_ledger"] = ledger
+    attempt["delegation_idempotency"] = idempotency
+    parent_node_id = parent_invocation_id.rpartition(":")[2]
+    parent = next((node for node in attempt.get("nodes", []) if isinstance(node, dict) and node.get("lane_id") == parent_node_id), None)
+    if not isinstance(parent, dict):
+        raise HarnessError("delegation parent node is missing")
+    parent["status"] = "waiting_for_child"
+    _write_run(root, run)
+    return copy.deepcopy(result)
+
+
+def complete_delegated_child(
+    root: Path,
+    run_id: str,
+    child_invocation_id: str,
+    status: str,
+    claim: dict[str, Any] | None,
+) -> DelegationResult:
+    run = _load_run(root, _safe_run_id(run_id))
+    attempt = _active_attempt(run)
+    children = attempt.get("children")
+    if not isinstance(children, list):
+        return {"ok": False, "code": "delegation_child_not_found"}
+    child = next(
+        (
+            item for item in children
+            if isinstance(item, dict)
+            and isinstance(item.get("packet"), dict)
+            and item["packet"].get("invocation_id") == child_invocation_id
+        ),
+        None,
+    )
+    if not isinstance(child, dict):
+        return {"ok": False, "code": "delegation_child_not_found"}
+    if child.get("status") in DELEGATED_CHILD_TERMINAL_STATES:
+        result = child.get("terminal_result")
+        if not isinstance(result, dict):
+            raise HarnessError("terminal delegated child lacks result")
+        return copy.deepcopy(result)
+    if status not in DELEGATED_CHILD_TERMINAL_STATES:
+        return {"ok": False, "code": "delegation_not_permitted"}
+
+    child_packet = child["packet"]
+    if status == "succeeded" and child_packet.get("verification") == "schema":
+        try:
+            role = _load_roles(root).get(child_packet.get("role"))
+            if not isinstance(role, dict) or claim is None:
+                raise HarnessError("delegated child claim is required")
+            claim = _validate_managed_claim(claim, role)
+        except HarnessError:
+            return {"ok": False, "code": "delegation_result_invalid"}
+
+    child["status"] = status
+    if claim is not None:
+        child["claim"] = copy.deepcopy(claim)
+    result: DelegationResult = {"ok": True, "invocation_id": child_invocation_id, "status": status}
+    child["terminal_result"] = copy.deepcopy(result)
+    ledger = attempt.get("reservation_ledger")
+    if not isinstance(ledger, list):
+        raise HarnessError("delegated child lacks reservation ledger")
+    for reservation in ledger:
+        if isinstance(reservation, dict) and reservation.get("idempotency_key") == child.get("idempotency_key"):
+            reservation["released"] = True
+            break
+    else:
+        raise HarnessError("delegated child lacks reservation")
+
+    parent_id = child_packet.get("parent_invocation_id")
+    parent_node_id = parent_id.rpartition(":")[2] if isinstance(parent_id, str) else ""
+    parent = next((node for node in attempt.get("nodes", []) if isinstance(node, dict) and node.get("lane_id") == parent_node_id), None)
+    if isinstance(parent, dict):
+        parent["status"] = "running" if status == "succeeded" else "waiting_for_child"
+    if status != "succeeded" and run["state"] == "running":
+        _set_outcome(attempt, f"child_{status}", ["block"], ["children", "reservation_ledger"])
+        _transition(run, _load_policy(root)["states"], "awaiting_decision", f"child_{status}")
+    _write_run(root, run)
+    return result
 
 
 def _set_outcome(
@@ -1377,6 +1626,15 @@ def _record_lane_execution_evidence(
     records.append(copy.deepcopy(evidence))
 
 
+def _record_node_observation(attempt: dict[str, Any], node: dict[str, Any], observation: dict[str, Any]) -> None:
+    record = {"node_id": node["lane_id"], "node_kind": node["node_kind"], **copy.deepcopy(observation)}
+    observations = attempt["node_observations"]
+    if any(item.get("node_id") == node["lane_id"] for item in observations):
+        raise HarnessError("execution node produced duplicate observation")
+    node["observation"] = copy.deepcopy(record)
+    observations.append(record)
+
+
 def _approval_matches(approval: dict[str, Any], gate: str, path: str, attempt_id: str, ttl_seconds: int, now: datetime) -> bool:
     if approval["gate"] != gate or approval["attempt_id"] != attempt_id:
         return False
@@ -1462,22 +1720,19 @@ def _validate_managed_claim(claim: Any, role: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validator_criterion(root: Path, attempt: dict[str, Any]) -> dict[str, str]:
-    lanes = {lane.get("lane_id"): lane for lane in attempt["lanes"] if isinstance(lane, dict)}
-    validator_lane = lanes.get("validate")
-    integration_lane = lanes.get("integrate")
+    nodes = {node.get("lane_id"): node for node in attempt["nodes"] if isinstance(node, dict)}
+    validator_lane = nodes.get("validate")
+    integration_node = nodes.get("integrate")
     claims = {
         record.get("lane_id"): record.get("claim")
         for record in attempt["claims"]
         if isinstance(record, dict)
     }
-    integration_claim = claims.get("integrate")
     validator_claim = claims.get("validate")
     if (
         not isinstance(validator_lane, dict)
-        or not isinstance(integration_lane, dict)
-        or not isinstance(integration_claim, dict)
-        or integration_claim.get("kind") != integration_lane.get("required_claim_kind")
-        or not isinstance(integration_claim.get("workspace"), dict)
+        or not isinstance(integration_node, dict)
+        or not isinstance(integration_node.get("workspace"), dict)
         or not isinstance(validator_claim, dict)
     ):
         return {"status": "failed", "evidence_ref": "validator_claim"}
@@ -1489,41 +1744,37 @@ def _validator_criterion(root: Path, attempt: dict[str, Any]) -> dict[str, str]:
     if (
         claim.get("kind") != validator_lane.get("required_claim_kind")
         or claim.get("verdict") != "pass"
-        or validator_lane.get("workspace") != integration_claim["workspace"]
+        or validator_lane.get("workspace") != integration_node["workspace"]
     ):
         return {"status": "failed", "evidence_ref": "validator_claim"}
     return {"status": "proven", "evidence_ref": "validator_claim"}
 
 
 def _verification_workspace(attempt: dict[str, Any]) -> Path:
-    integration_claim = next(
-        (
-            record.get("claim")
-            for record in attempt["claims"]
-            if isinstance(record, dict) and record.get("lane_id") == "integrate"
-        ),
+    integration_node = next(
+        (node for node in attempt["nodes"] if isinstance(node, dict) and node.get("lane_id") == "integrate"),
         None,
     )
-    if not isinstance(integration_claim, dict) or not isinstance(integration_claim.get("workspace"), dict):
+    if not isinstance(integration_node, dict) or not isinstance(integration_node.get("workspace"), dict):
         raise HarnessError("verification requires integrated workspace")
-    path = integration_claim["workspace"].get("path")
+    path = integration_node["workspace"].get("path")
     if not isinstance(path, str) or not Path(path).is_dir():
         raise HarnessError("verification workspace is unavailable")
     return Path(path).resolve()
 
 
 def _require_lane_execution_evidence(attempt: dict[str, Any]) -> None:
-    lanes = {
-        lane["lane_id"]: lane
-        for lane in attempt["lanes"]
-        if isinstance(lane, dict) and lane.get("kind") in {"work", "validate"}
+    nodes = {
+        node["lane_id"]: node
+        for node in attempt["nodes"]
+        if isinstance(node, dict) and node.get("node_kind") == "agent"
     }
     records = attempt.get("execution_evidence")
-    if not isinstance(records, list) or {record.get("lane_id") for record in records if isinstance(record, dict)} != set(lanes):
+    if not isinstance(records, list) or {record.get("lane_id") for record in records if isinstance(record, dict)} != set(nodes):
         raise HarnessError("verification requires host execution evidence for every dispatched lane")
     for record in records:
-        lane = lanes[record["lane_id"]]
-        workspace = lane.get("workspace")
+        node = nodes[record["lane_id"]]
+        workspace = node.get("workspace")
         if not isinstance(workspace, dict) or record.get("workspace_root") != workspace.get("path"):
             raise HarnessError("host execution evidence workspace conflicts with lane")
 
@@ -1533,8 +1784,6 @@ def _verify_managed(
     packet: dict[str, Any],
     attempt: dict[str, Any],
     *,
-    adapter: Any,
-    run_check: CheckRunner | None,
     collect_changes: ChangeCollector,
     now: datetime,
 ) -> dict[str, Any]:
@@ -1552,30 +1801,23 @@ def _verify_managed(
             blockers.append({"kind": "scope", "path": path})
     blockers.extend(_gate_blockers(packet, [change["path"] for change in normalized_changes], now))
 
-    host_checks = None if run_check else _adapter_call(adapter, "run_checks", packet, {"path": str(verification_root)})
-    if host_checks is not None and not isinstance(host_checks, dict):
-        raise HarnessError("host adapter checks must be a mapping")
-    checks: dict[str, dict[str, Any]] = {}
+    check_node = next(
+        (node for node in attempt["nodes"] if isinstance(node, dict) and node.get("node_kind") == "check"),
+        None,
+    )
+    if not isinstance(check_node, dict) or not isinstance(check_node.get("observation"), dict):
+        raise HarnessError("verification requires check-node observation")
+    checks = check_node["observation"].get("checks")
+    if not isinstance(checks, list) or any(not isinstance(check, dict) for check in checks):
+        raise HarnessError("check-node observation lacks checks")
+    checks_by_name = {check.get("name"): check for check in checks}
+    if set(checks_by_name) != set(packet["checks"]):
+        raise HarnessError("check-node observation conflicts with packet checks")
     for name, command in packet["checks"].items():
-        if run_check:
-            code, stdout, stderr = run_check(command)
-            checks[name] = {"name": name, "command": command, "exit_code": code, "stdout": stdout[:1000], "stderr": stderr[:1000]}
-        else:
-            check = host_checks.get(name)
-            if (
-                not isinstance(check, dict)
-                or check.get("command") != command
-                or check.get("workspace_root") != str(verification_root)
-                or check.get("tool") != "shell"
-                or check.get("binding_verified") is not True
-                or check.get("runtime_provider") != packet["runtime_provider"]
-                or not isinstance(check.get("exit_code"), int)
-                or not isinstance(check.get("stdout"), str)
-                or not isinstance(check.get("stderr"), str)
-            ):
-                raise HarnessError(f"host adapter check `{name}` lacks packet workspace evidence")
-            checks[name] = {"name": name, **check}
-        code = checks[name]["exit_code"]
+        check = checks_by_name[name]
+        if check.get("command") != command or not isinstance(check.get("exit_code"), int):
+            raise HarnessError(f"check-node observation for `{name}` conflicts with packet")
+        code = check["exit_code"]
         if code:
             blockers.append({"kind": "check", "name": name})
 
@@ -1584,7 +1826,7 @@ def _verify_managed(
         kind = criterion["kind"]
         result: dict[str, Any] = {"id": criterion["id"], "kind": kind}
         if kind == "check":
-            check = checks[criterion["check"]]
+            check = checks_by_name[criterion["check"]]
             result.update({"status": "proven" if check["exit_code"] == 0 else "failed", "evidence_ref": f"checks.{criterion['check']}"})
         elif kind == "change_set":
             proven = all(any(_path_matches(change["path"], [pattern]) for change in normalized_changes) for pattern in criterion["paths"])
@@ -1597,7 +1839,7 @@ def _verify_managed(
         if result["status"] == "failed":
             blockers.append({"kind": "criterion", "id": criterion["id"]})
         criteria.append(result)
-    return {"change_set": normalized_changes, "checks": list(checks.values()), "criteria": criteria, "blockers": blockers}
+    return {"change_set": normalized_changes, "checks": checks, "criteria": criteria, "blockers": blockers}
 
 
 def _outcome_for_verification(verification: dict[str, Any], retry_policy: dict[str, Any]) -> tuple[str, list[str]]:
@@ -1903,7 +2145,7 @@ def _execute_attempt(
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
 
     _transition(run, policy["states"], "running", "dispatch")
-    pending = {lane["lane_id"]: lane for lane in attempt["lanes"]}
+    pending = {node["lane_id"]: node for node in attempt["nodes"]}
     workspaces: dict[str, dict[str, Any]] = {}
     active_handles: list[tuple[dict[str, Any], Any]] = []
     failure_phase = "dispatch"
@@ -1911,7 +2153,7 @@ def _execute_attempt(
         while pending:
             completed = {
                 lane["lane_id"]
-                for lane in attempt["lanes"]
+                for lane in attempt["nodes"]
                 if lane.get("status") == "succeeded"
             }
             ready = [
@@ -1959,33 +2201,68 @@ def _execute_attempt(
                     raise HarnessError("host adapter final workspace must be an object")
                 integration["workspace"] = copy.deepcopy(workspace)
                 integration["status"] = "succeeded"
-                attempt["claims"].append({
-                    "lane_id": integration["lane_id"],
-                    "claim": {"kind": integration["required_claim_kind"], "workspace": copy.deepcopy(workspace)},
-                })
+                _record_node_observation(attempt, integration, {"workspace": workspace})
                 pending.pop(integration["lane_id"])
                 continue
 
             validator = next((lane for lane in ready if lane["kind"] == "validate"), None)
-            if validator is None:
+            if validator is not None:
+                failure_phase = "validator"
+                integration = next(lane for lane in attempt["nodes"] if lane["lane_id"] == "integrate")
+                workspace = integration.get("workspace")
+                if not isinstance(workspace, dict):
+                    raise HarnessError("validator requires final workspace")
+                validator["workspace"] = copy.deepcopy(workspace)
+                bindings = _adapter_call(adapter, "verify_tool_bindings", validator, packet, workspace)
+                _record_tool_binding_evidence(attempt, validator, packet, workspace, bindings)
+                handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, None)
+                active_handles.append((validator, handle))
+                claim = _adapter_call(adapter, "collect_claim", handle)
+                _record_lane_claim(root, run, attempt, validator, claim)
+                evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
+                _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
+                validator["status"] = "succeeded"
+                pending.pop(validator["lane_id"])
+                active_handles.remove((validator, handle))
+                continue
+
+            check_node = next((lane for lane in ready if lane["kind"] == "check"), None)
+            if check_node is None:
                 raise HarnessError("lane scheduler found unsupported lane kind")
-            failure_phase = "validator"
-            integration = next(lane for lane in attempt["lanes"] if lane["lane_id"] == "integrate")
+            failure_phase = "check"
+            integration = next(lane for lane in attempt["nodes"] if lane["lane_id"] == "integrate")
             workspace = integration.get("workspace")
             if not isinstance(workspace, dict):
-                raise HarnessError("validator requires final workspace")
-            validator["workspace"] = copy.deepcopy(workspace)
-            bindings = _adapter_call(adapter, "verify_tool_bindings", validator, packet, workspace)
-            _record_tool_binding_evidence(attempt, validator, packet, workspace, bindings)
-            handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, None)
-            active_handles.append((validator, handle))
-            claim = _adapter_call(adapter, "collect_claim", handle)
-            _record_lane_claim(root, run, attempt, validator, claim)
-            evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
-            _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
-            validator["status"] = "succeeded"
-            pending.pop(validator["lane_id"])
-            active_handles.remove((validator, handle))
+                raise HarnessError("check requires final workspace")
+            host_checks: dict[str, Any] = {}
+            if not run_check:
+                host_checks = _adapter_call(adapter, "run_checks", packet, workspace)
+                if not isinstance(host_checks, dict):
+                    raise HarnessError("host adapter checks must be a mapping")
+            checks: list[dict[str, Any]] = []
+            for name, command in packet["checks"].items():
+                if run_check:
+                    code, stdout, stderr = run_check(command)
+                    checks.append({"name": name, "command": command, "exit_code": code, "stdout": stdout[:1000], "stderr": stderr[:1000]})
+                    continue
+                check = host_checks.get(name)
+                if (
+                    not isinstance(check, dict)
+                    or check.get("command") != command
+                    or check.get("workspace_root") != workspace.get("path")
+                    or check.get("tool") != "shell"
+                    or check.get("binding_verified") is not True
+                    or check.get("runtime_provider") != packet["runtime_provider"]
+                    or not isinstance(check.get("exit_code"), int)
+                    or not isinstance(check.get("stdout"), str)
+                    or not isinstance(check.get("stderr"), str)
+                ):
+                    raise HarnessError(f"host adapter check `{name}` lacks packet workspace evidence")
+                checks.append({"name": name, **check})
+            check_node["workspace"] = copy.deepcopy(workspace)
+            check_node["status"] = "succeeded"
+            _record_node_observation(attempt, check_node, {"workspace": workspace, "checks": checks})
+            pending.pop(check_node["lane_id"])
     except ClaimError as exc:
         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="claim")
         return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc), phase="claim")
@@ -1999,8 +2276,6 @@ def _execute_attempt(
             root,
             packet,
             attempt,
-            adapter=adapter,
-            run_check=run_check,
             collect_changes=collect_changes,
             now=now,
         )

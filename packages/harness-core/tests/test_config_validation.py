@@ -178,6 +178,103 @@ def test_valid_harness_config_passes(tmp_path: Path) -> None:
     assert validator.validate(tmp_path) == []
 
 
+def test_request_api4_accepts_role_schema_v2_without_writes(tmp_path: Path) -> None:
+    validator = load_validator()
+    write_harness_root(tmp_path)
+    config_path = tmp_path / "repo_config/harness.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["harness_core"]["request_api"] = 4
+    config["capabilities"] = {
+        "catalog": ["repo.read"],
+        "sets": {"read_only": ["repo.read"]},
+    }
+    config["context_limits"] = {
+        "objective_max_bytes": 1024,
+        "fact_max_bytes": 4096,
+        "max_facts": 8,
+        "max_artifacts": 8,
+        "outcome_summary_max_bytes": 2048,
+    }
+    config["delegation_profiles"] = {
+        "disabled": {
+            "max_depth": 0,
+            "max_children": 0,
+            "max_concurrent_children": 0,
+            "per_child_timeout_seconds": 0,
+            "total_child_timeout_seconds": 0,
+            "allowed_roles": [],
+            "capability_ceiling": [],
+            "workspace_write_access": "read_only",
+            "verification": "none",
+        }
+    }
+    config["routes"]["local_change"]["capabilities"] = ["repo.read"]
+    config["routes"]["local_change"]["delegation_profile"] = "disabled"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    roles_path = tmp_path / "agents/roles.yaml"
+    roles = yaml.safe_load(roles_path.read_text())
+    roles["version"] = 2
+    for role in roles["roles"].values():
+        role.pop("writes")
+    roles_path.write_text(yaml.safe_dump(roles, sort_keys=False), encoding="utf-8")
+
+    assert validator.validate(tmp_path) == []
+
+
+def test_request_api4_requires_route_capabilities(tmp_path: Path) -> None:
+    validator = load_validator()
+    write_harness_root(tmp_path)
+    config_path = tmp_path / "repo_config/harness.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["harness_core"]["request_api"] = 4
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    assert "route `local_change` missing capabilities" in validator.validate(tmp_path)
+
+
+def test_request_api4_rejects_capability_outside_catalog(tmp_path: Path) -> None:
+    validator = load_validator()
+    write_harness_root(tmp_path)
+    config_path = tmp_path / "repo_config/harness.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["harness_core"]["request_api"] = 4
+    config["capabilities"] = {
+        "catalog": ["repo.read"],
+        "sets": {"read_only": ["repo.read"]},
+    }
+    config["context_limits"] = {
+        "objective_max_bytes": 1024,
+        "fact_max_bytes": 4096,
+        "max_facts": 8,
+        "max_artifacts": 8,
+        "outcome_summary_max_bytes": 2048,
+    }
+    config["delegation_profiles"] = {
+        "disabled": {
+            "max_depth": 0,
+            "max_children": 0,
+            "max_concurrent_children": 0,
+            "per_child_timeout_seconds": 0,
+            "total_child_timeout_seconds": 0,
+            "allowed_roles": [],
+            "capability_ceiling": [],
+            "workspace_write_access": "read_only",
+            "verification": "none",
+        }
+    }
+    config["routes"]["local_change"]["capabilities"] = ["repo.write"]
+    config["routes"]["local_change"]["delegation_profile"] = "disabled"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    roles_path = tmp_path / "agents/roles.yaml"
+    roles = yaml.safe_load(roles_path.read_text())
+    roles["version"] = 2
+    for role in roles["roles"].values():
+        role.pop("writes")
+    roles_path.write_text(yaml.safe_dump(roles, sort_keys=False), encoding="utf-8")
+
+    assert "route `local_change` capability `repo.write` is unknown" in validator.validate(tmp_path)
+
+
 def test_unknown_route_runtime_provider_fails(tmp_path: Path) -> None:
     validator = load_validator()
     write_harness_root(tmp_path)

@@ -16,6 +16,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from harness_core import managed
 
@@ -361,7 +362,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
-        "package_release": "0.1.4",
+        "package_release": "0.1.5",
         "request_api": 3,
         "packet_api": 3,
         "host_api": None,
@@ -385,9 +386,217 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
         ("primary", "work", []),
         ("integrate", "integrate", ["primary"]),
         ("validate", "validate", ["integrate"]),
+        ("check", "check", ["validate"]),
     ]
     assert packet["lanes"][2]["role"] == "validate"
     assert packet["lanes"][2]["write_capable"] is False
+
+
+def test_legacy_packet_derives_write_capability_without_role_writes(monkeypatch) -> None:
+    harness = load_module()
+    roles = yaml.safe_load((ROOT / "agents" / "roles.yaml").read_text())
+    roles["version"] = 2
+    for role in roles["roles"].values():
+        role.pop("writes", None)
+    monkeypatch.setattr(harness, "_load_roles", lambda root: roles["roles"])
+
+    packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
+
+    assert packet["capabilities"] == ["repo.write"]
+    assert packet["lanes"][0]["write_capable"] is True
+
+
+def test_api4_packet_requires_immutable_invocation_fields() -> None:
+    harness = load_module()
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(version=4, execution_mode="single_work_lane"),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["invocation_id"] == "attempt-1:primary"
+    assert packet["parent_invocation_id"] is None
+
+
+def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    try:
+        harness._write_run(ROOT, run)
+
+        result = harness.delegate(ROOT, run_id, packet["invocation_id"], {"idempotency_key": "child-1"})
+
+        assert result == {"ok": False, "code": "delegation_not_permitted"}
+        assert len(harness._load_run(ROOT, run_id)["attempts"]) == 1
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+def test_delegate_derives_one_idempotent_read_only_child(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+        request = {
+            "idempotency_key": "child-1",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        }
+
+        first = harness.delegate(ROOT, run_id, packet["invocation_id"], request)
+        second = harness.delegate(ROOT, run_id, packet["invocation_id"], request)
+
+        assert first == second
+        assert first["ok"] is True
+        attempt = harness._load_run(ROOT, run_id)["attempts"][0]
+        assert len(attempt["children"]) == 1
+        assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": False}]
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+        child = harness.delegate(ROOT, run_id, packet["invocation_id"], {
+            "idempotency_key": "child-1",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+        assert harness._load_run(ROOT, run_id)["attempts"][0]["nodes"][0]["status"] == "waiting_for_child"
+        claim = {"kind": "claimed_result", "summary": "found", "findings": ["ok"]}
+
+        first = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "succeeded", claim)
+        second = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "succeeded", claim)
+
+        assert first == second == {"ok": True, "invocation_id": child["invocation_id"], "status": "succeeded"}
+        attempt = harness._load_run(ROOT, run_id)["attempts"][0]
+        assert attempt["children"][0]["status"] == "succeeded"
+        assert attempt["nodes"][0]["status"] == "running"
+        assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": True}]
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+def test_delegate_cancellation_waits_for_controller_decision(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+        child = harness.delegate(ROOT, run_id, packet["invocation_id"], {
+            "idempotency_key": "child-1",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+
+        result = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "cancelled", None)
+
+        assert result == {"ok": True, "invocation_id": child["invocation_id"], "status": "cancelled"}
+        resumed = harness._load_run(ROOT, run_id)
+        assert resumed["state"] == "awaiting_decision"
+        assert resumed["attempts"][0]["outcome"] == {
+            "reason": "child_cancelled",
+            "allowed_decisions": ["block"],
+            "evidence_refs": ["children", "reservation_ledger"],
+        }
+        assert resumed["attempts"][0]["reservation_ledger"][0]["released"] is True
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    ("child_request", "code"),
+    [
+        ({"idempotency_key": "child-1", "role": "investigate", "capabilities": ["repo.write"], "allowed_paths": ["scripts/**"], "timeout_seconds": 60}, "delegation_capability_exceeded"),
+        ({"idempotency_key": "child-1", "role": "investigate", "capabilities": ["repo.read"], "allowed_paths": ["agents/**"], "timeout_seconds": 60}, "delegation_path_exceeded"),
+        ({"idempotency_key": "child-1", "role": "investigate", "capabilities": ["repo.read"], "allowed_paths": ["scripts/**"], "timeout_seconds": 121}, "delegation_budget_exceeded"),
+    ],
+)
+def test_delegate_denies_authority_expansion_before_child_creation(tmp_path: Path, child_request: dict[str, object], code: str) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+
+        result = harness.delegate(ROOT, run_id, packet["invocation_id"], child_request)
+
+        assert result == {"ok": False, "code": code}
+        attempt = harness._load_run(ROOT, run_id)["attempts"][0]
+        assert "children" not in attempt
+        assert "reservation_ledger" not in attempt
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    ("child_request", "code"),
+    [
+        ({"idempotency_key": "child-1", "role": "investigate", "capabilities": ["repo.write"], "allowed_paths": ["scripts/**"], "timeout_seconds": 60}, "delegation_capability_exceeded"),
+        ({"idempotency_key": "child-1", "role": "investigate", "capabilities": ["repo.read"], "allowed_paths": ["agents/**"], "timeout_seconds": 60}, "delegation_path_exceeded"),
+        ({"idempotency_key": "child-1", "role": "investigate", "capabilities": ["repo.read"], "allowed_paths": ["scripts/**"], "timeout_seconds": 121}, "delegation_budget_exceeded"),
+    ],
+)
+def test_delegate_denies_authority_expansion_before_child_creation_legacy(tmp_path: Path, child_request: dict[str, object], code: str) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+
+        result = harness.delegate(ROOT, run_id, packet["invocation_id"], child_request)
+
+        assert result == {"ok": False, "code": code}
+        attempt = harness._load_run(ROOT, run_id)["attempts"][0]
+        assert "children" not in attempt
+        assert "reservation_ledger" not in attempt
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
 
 def test_run_managed_blocks_unsupported_host_api_before_packet_creation(tmp_path: Path) -> None:
@@ -812,11 +1021,12 @@ def test_managed_packet_copies_template_model_identity(task_type, template, mode
     }
 
 
-def test_resolve_managed_packet_rejects_v3_legacy_mode_alias() -> None:
+def test_resolve_managed_packet_normalizes_v3_legacy_mode_alias() -> None:
     harness = load_module()
 
-    with pytest.raises(harness.HarnessError, match="canonical execution mode"):
-        harness.resolve_managed_packet(ROOT, managed_request(version=3), attempt_id="attempt-1")
+    packet = harness.resolve_managed_packet(ROOT, managed_request(version=3), attempt_id="attempt-1")
+
+    assert packet["version"] == 3
 
 
 def test_resolve_managed_packet_adds_system_lanes_after_v3_work_lane() -> None:
@@ -843,6 +1053,7 @@ def test_resolve_managed_packet_adds_system_lanes_after_v3_work_lane() -> None:
         ("work", "work", []),
         ("integrate", "integrate", ["work"]),
         ("validate", "validate", ["integrate"]),
+        ("check", "check", ["validate"]),
     ]
 
 
@@ -1287,7 +1498,11 @@ def test_managed_run_uses_host_check_evidence(tmp_path: Path) -> None:
         run = json.loads((run_dir / "run.json").read_text())
         assert len(run["attempts"][0]["tool_binding_evidence"]) == 2
         assert [record["lane_id"] for record in run["attempts"][0]["execution_evidence"]] == ["primary", "validate"]
+        assert [record["lane_id"] for record in run["attempts"][0]["claims"]] == ["primary", "validate"]
+        assert [record["node_id"] for record in run["attempts"][0]["node_observations"]] == ["integrate", "check"]
         assert run["attempts"][0]["evidence"]["checks"][0]["workspace_root"] == str(ROOT)
+        assert adapter.calls.count("dispatch_lane") == 2
+        assert adapter.calls.count("collect_claim") == 2
         assert "run_checks" in adapter.calls
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -1437,10 +1652,19 @@ def test_plan_bound_managed_scheduler_proves_every_canonical_topology(
             "plan_task_id": "task-1",
             "plan_digest": coordination.digest,
         }
-        assert [record["lane_id"] for record in attempt["claims"]] == [
+        assert [node["lane_id"] for node in attempt["nodes"]] == [
             *work_lane_ids,
             "integrate",
             "validate",
+            "check",
+        ]
+        assert [record["lane_id"] for record in attempt["claims"]] == [
+            *work_lane_ids,
+            "validate",
+        ]
+        assert [record["node_id"] for record in attempt["node_observations"]] == [
+            "integrate",
+            "check",
         ]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -1624,6 +1848,36 @@ def test_managed_dispatch_failure_becomes_retryable_outcome(tmp_path: Path) -> N
         assert result["state"] == "awaiting_decision"
         assert result["outcome"]["reason"] == "dispatch_failed"
         assert result["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_managed_continuation_migrates_planned_lane_record(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    request = managed_request(run_id=run_id)
+    packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+    run = harness._new_run(request, run_id)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    attempt = harness._append_attempt(run, packet)
+    attempt["lanes"] = [node for node in attempt.pop("nodes") if node["lane_id"] != "check"]
+    attempt.pop("node_observations")
+    try:
+        harness._write_run(ROOT, run)
+
+        result = harness.run_managed(
+            ROOT,
+            None,
+            FakeAdapter({"single_work_lane": "enforced"}),
+            run_id=run_id,
+            run_check=lambda command: (0, "ok", ""),
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        assert result["outcome"]["reason"] == "verification_passed"
+        resumed = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+        assert [node["lane_id"] for node in resumed["nodes"]] == ["primary", "integrate", "validate", "check"]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
