@@ -84,9 +84,12 @@ cannot choose an arbitrary profile.
 
 Host uses packet `turn_timeout_seconds` for every App Server turn, packet-native
 tool probe, and check. The short `preflight` bound is transport-only and never
-substitutes for packet budget. Host returns normalized timeout evidence:
-lane ID, packet timeout, elapsed time, terminal status, event summary, final
-tool call, and completed-command count.
+substitutes for packet budget. Host returns provider-neutral timeout observation.
+Core owns version `1`, bounds, packet lane/budget validation, and persisted
+shape. Observation includes lane, opaque session/turn IDs, terminal and
+interrupt status, bounded item/command states, hashes and lengths, exit codes,
+and final-claim state. It never stores raw command output, environment values,
+or assistant text.
 
 Core records valid host timeout evidence as `dispatch_timeout`. Controller may
 only `escalate` through packet `escalation_profile` or `block`; timeout never
@@ -94,10 +97,9 @@ permits `retry`. Escalation creates fresh successor packet with core-selected
 profile. Preserve older packet and evidence unchanged. If an attempt is already
 `planned`, resume it with provider `--run-id`; do not submit its request again.
 
-Triage before controller decision: no tool call indicates prompt or context
-stall; completed commands indicate productive budget pressure and require
-policy-approved escalation or a smaller task; an incomplete command indicates
-tool or command repair. Evidence informs decision; it never selects one.
+Inspect `attempt.evidence.timeout` before controller decision. It distinguishes
+missing, active, and completed command state without provider transcript
+recovery. Evidence informs decision; it never selects one.
 
 ## Plan-Linked Coordination
 

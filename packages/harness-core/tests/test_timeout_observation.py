@@ -8,6 +8,7 @@ from harness_core.timeout_observation import TimeoutObservationError, normalize_
 PACKET = {
     "execution_budget": {"turn_timeout_seconds": 300},
     "lanes": [{"lane_id": "work"}, {"lane_id": "validate"}],
+    "checks": {"diff": ["git", "diff", "--check"]},
 }
 
 
@@ -39,6 +40,13 @@ def observation(**overrides: object) -> dict[str, object]:
 
 def test_normalize_timeout_observation_persists_bounded_safe_fields() -> None:
     assert normalize_timeout_observation(observation(), PACKET) == observation()
+
+
+def test_normalize_timeout_observation_accepts_packet_check_lane() -> None:
+    assert normalize_timeout_observation(
+        observation(lane_id="check:diff"),
+        PACKET,
+    )["lane_id"] == "check:diff"
 
 
 @pytest.mark.parametrize(("field", "value", "message"), [

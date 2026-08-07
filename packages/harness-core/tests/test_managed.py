@@ -361,7 +361,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["user_request"] == "Update managed harness fixture."
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
-        "package_release": "0.1.2",
+        "package_release": "0.1.3",
         "request_api": 3,
         "packet_api": 3,
         "host_api": None,

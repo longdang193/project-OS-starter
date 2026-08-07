@@ -1988,6 +1988,17 @@ def _execute_attempt(
             now=now,
         )
     except Exception as exc:
+        timeout_evidence = _normalize_timeout_evidence(exc, packet)
+        if timeout_evidence is not None:
+            return _record_timeout_failure(
+                root,
+                run,
+                policy,
+                attempt,
+                str(exc),
+                phase="check",
+                timeout_evidence=timeout_evidence,
+            )
         return _record_failure(root, run, policy, attempt, "verification_failed", str(exc), phase="check")
     attempt["evidence"] = verification
     _record_verification_frictions(root, run, attempt, verification)

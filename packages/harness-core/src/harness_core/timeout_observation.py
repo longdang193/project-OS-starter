@@ -128,7 +128,10 @@ def normalize_timeout_observation(raw: Any, packet: dict[str, Any]) -> dict[str,
         raise TimeoutObservationError("timeout observation has unsupported version")
     lane_id = _identifier(raw.get("lane_id"), "lane_id")
     lanes = packet.get("lanes")
-    if not isinstance(lanes, list) or lane_id not in {lane.get("lane_id") for lane in lanes if isinstance(lane, dict)}:
+    lane_ids = {lane.get("lane_id") for lane in lanes if isinstance(lane, dict)} if isinstance(lanes, list) else set()
+    checks = packet.get("checks")
+    check_lane = lane_id.startswith("check:") and isinstance(checks, dict) and lane_id[6:] in checks
+    if lane_id not in lane_ids and not check_lane:
         raise TimeoutObservationError("timeout observation lane_id conflicts with packet")
     budget = packet.get("execution_budget")
     if not isinstance(budget, dict) or not isinstance(budget.get("turn_timeout_seconds"), int):
