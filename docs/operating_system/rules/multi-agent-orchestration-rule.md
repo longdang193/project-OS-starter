@@ -24,15 +24,34 @@ distribution_tier: starter_kit
 - Controller alone dispatches, retries, escalates, or requests approval.
 - Each lane gets one validated harness packet with exact allowed paths, base
   ref, tools, checks, and approval gates.
+- Host returns normalized baseline evidence before lane dispatch. Root and
+  parallel lanes use `packet_base` at exact packet base with a clean checkout;
+  sequential dependents use `predecessor` only for direct materialized
+  predecessor state. Core validates this evidence; mismatch is
+  `workspace_baseline_invalid`, a host/environment failure, never product
+  `scope_escape`.
 - Work without a host-created packet and `run.json` is source-first local work,
   never managed or accepted harness work.
+- `--run-id` resumes only when run state is `planned`. A terminal coordinated
+  task failure is `blocked`; preserve evidence and require approved successor
+  plan/task identity before a fresh request.
 - Agents do not spawn child agents. They return `claimed_result`; harness
   records verification evidence and controller records final decision.
 - Missing enforced host capability returns `execution_mode_unavailable` before
   dispatch. Controller either blocks or records `waive` with reason; waiver is
   terminal `unvalidated`, never acceptance.
+- `writer_completion_missing` means a write-capable lane completed commands
+  without a final claim before terminal timeout. Controller blocks that product
+  run without retry, escalation, or resume. When `friction-report` returns its
+  policy-owned follow-up with route-required immutable `readonly_artifacts`,
+  controller dispatches fresh read-only `harness_diagnosis` without an owner
+  decision. Missing required artifacts blocks diagnosis before dispatch; never
+  mount ambient `.harness` state into a packet workspace.
 - Independent validation requires an enforced read-only validator lane and its
   own claim. Implementer claims and local checks never substitute.
+- Controller must not dispatch a write-capable lane to discover an unknown
+  product fact. Use bounded read-only research when source can resolve it;
+  otherwise block for a requirements or specification decision.
 - Parallel writers require disjoint allowed paths and isolated workspaces.
 - Shared-workspace parallel work is read-only only.
 - Commit policy remains external. Per-task commits are never required for

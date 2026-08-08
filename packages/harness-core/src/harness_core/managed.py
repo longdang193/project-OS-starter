@@ -37,7 +37,7 @@ import uuid
 
 import yaml
 
-from .config_validation import validate as validate_harness_config
+from .config_validation import READONLY_ARTIFACT_KINDS, validate as validate_harness_config
 from .compatibility import (
     CURRENT_PACKET_API,
     CURRENT_RUN_API,
@@ -58,6 +58,10 @@ class HarnessError(ValueError):
 
 
 class ClaimError(HarnessError):
+    pass
+
+
+class WorkspaceBaselineError(HarnessError):
     pass
 
 
@@ -142,13 +146,14 @@ def admit_managed_operation(root: Path, adapter: Any, *, request_api: Any | None
     return _core_identity(_load_policy(root), adapter, request_api=request_api)
 
 
-def _friction_policy(root: Path) -> dict[str, int]:
+def _friction_policy(root: Path) -> dict[str, Any]:
     policy = _load_policy(root)
     friction_policy = policy.get("friction_policy")
     if not isinstance(friction_policy, dict):
         raise HarnessError("missing friction policy")
-    expected = {"event_version", "minimum_distinct_runs", "window_days"}
-    if set(friction_policy) != expected:
+    required = {"event_version", "minimum_distinct_runs", "window_days"}
+    allowed = required | {"follow_up_routes"}
+    if set(friction_policy) - allowed or required - set(friction_policy):
         raise HarnessError("invalid friction policy")
     if friction_policy["event_version"] != FRICTION_EVENT_VERSION:
         raise HarnessError("unsupported friction event version")
@@ -159,7 +164,135 @@ def _friction_policy(root: Path) -> dict[str, int]:
         for name in ("minimum_distinct_runs", "window_days")
     ):
         raise HarnessError("invalid friction policy")
+    follow_up_routes = friction_policy.get("follow_up_routes", {})
+    if not isinstance(follow_up_routes, dict) or not all(
+        isinstance(code, str) and code and isinstance(task_type, str) and task_type
+        for code, task_type in follow_up_routes.items()
+    ):
+        raise HarnessError("invalid friction follow-up routes")
+    for task_type in follow_up_routes.values():
+        route = policy["routes"].get(task_type)
+        if not isinstance(route, dict):
+            raise HarnessError(f"friction follow-up route `{task_type}` is unknown")
+        if "repo.write" in route.get("capabilities", []) or "single_work_lane" not in route.get("execution_modes", []):
+            raise HarnessError(f"friction follow-up route `{task_type}` must be single-lane read-only")
     return friction_policy
+
+
+def _evidence_artifact_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    raw = policy.get("evidence_artifacts", {})
+    if raw == {}:
+        return {"writer_retained_kinds": [], "sanitized_command_trace_max_bytes": 1}
+    if not isinstance(raw, dict):
+        raise HarnessError("invalid evidence artifact policy")
+    retained_kinds = raw.get("writer_retained_kinds")
+    max_bytes = raw.get("sanitized_command_trace_max_bytes")
+    if (
+        not isinstance(retained_kinds, list)
+        or len(set(retained_kinds)) != len(retained_kinds)
+        or not set(retained_kinds) <= READONLY_ARTIFACT_KINDS
+        or not isinstance(max_bytes, int)
+        or isinstance(max_bytes, bool)
+        or max_bytes < 1
+    ):
+        raise HarnessError("invalid evidence artifact policy")
+    return {"writer_retained_kinds": list(retained_kinds), "sanitized_command_trace_max_bytes": max_bytes}
+
+
+def _readonly_artifact_policy(route: dict[str, Any]) -> dict[str, list[str]]:
+    raw = route.get("readonly_artifacts", {})
+    if not isinstance(raw, dict):
+        raise HarnessError("invalid readonly artifact policy")
+    allowed_kinds = raw.get("allowed_kinds", [])
+    required_kinds = raw.get("required_kinds", [])
+    if (
+        not isinstance(allowed_kinds, list)
+        or len(set(allowed_kinds)) != len(allowed_kinds)
+        or not set(allowed_kinds) <= READONLY_ARTIFACT_KINDS
+        or not isinstance(required_kinds, list)
+        or len(set(required_kinds)) != len(required_kinds)
+        or not set(required_kinds) <= set(allowed_kinds)
+    ):
+        raise HarnessError("invalid readonly artifact policy")
+    return {"allowed_kinds": list(allowed_kinds), "required_kinds": list(required_kinds)}
+
+
+def _artifact_content_bytes(content: Any) -> bytes:
+    try:
+        return json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise HarnessError("evidence artifact content must be JSON") from exc
+
+
+def _artifact_descriptor(kind: str, source_run_id: str, source_attempt_id: str, content: Any) -> dict[str, Any]:
+    encoded = _artifact_content_bytes(content)
+    return {
+        "kind": kind,
+        "source_run_id": source_run_id,
+        "source_attempt_id": source_attempt_id,
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "byte_length": len(encoded),
+        "content": copy.deepcopy(content),
+    }
+
+
+def _source_attempt(run: dict[str, Any], attempt_id: str) -> dict[str, Any]:
+    if run.get("state") not in TERMINAL_RUN_STATES:
+        raise HarnessError("readonly artifact source run is not terminal")
+    attempts = run.get("attempts")
+    if not isinstance(attempts, list):
+        raise HarnessError("readonly artifact source run has invalid attempts")
+    attempt = next((item for item in attempts if isinstance(item, dict) and item.get("attempt_id") == attempt_id), None)
+    if not isinstance(attempt, dict):
+        raise HarnessError("readonly artifact source attempt is unavailable")
+    return attempt
+
+
+def _stored_artifact_content(attempt: dict[str, Any], kind: str) -> Any:
+    evidence = attempt.get("evidence")
+    if not isinstance(evidence, dict):
+        raise HarnessError("readonly artifact source attempt lacks evidence")
+    if kind == "terminal_observation":
+        content = evidence.get("terminal_observation")
+        if isinstance(content, dict):
+            return content
+    artifacts = evidence.get("artifacts", [])
+    if isinstance(artifacts, list):
+        artifact = next((item for item in artifacts if isinstance(item, dict) and item.get("kind") == kind), None)
+        if isinstance(artifact, dict) and "content" in artifact:
+            return artifact["content"]
+    raise HarnessError(f"readonly artifact `{kind}` is unavailable")
+
+
+def _resolve_readonly_artifacts(root: Path, packet: dict[str, Any], value: Any) -> list[dict[str, Any]]:
+    policy = packet["readonly_artifact_policy"]
+    if value is None:
+        value = []
+    if not isinstance(value, list):
+        raise HarnessError("readonly_artifacts must be a list")
+    if packet["workspace_write_access"] != "read_only" and value:
+        raise HarnessError("readonly_artifacts require read-only packet access")
+    resolved: list[dict[str, Any]] = []
+    for raw in value:
+        if not isinstance(raw, dict) or set(raw) != {"kind", "source_run_id", "source_attempt_id"}:
+            raise HarnessError("readonly_artifact has invalid fields")
+        kind = _required_string(raw.get("kind"), "readonly artifact kind")
+        if kind not in policy["allowed_kinds"]:
+            raise HarnessError(f"readonly artifact `{kind}` is not allowed by route")
+        source_run_id = _safe_run_id(raw.get("source_run_id"))
+        source_attempt_id = _required_string(raw.get("source_attempt_id"), "readonly artifact source_attempt_id")
+        source_attempt = _source_attempt(_load_run(root, source_run_id), source_attempt_id)
+        resolved.append(_artifact_descriptor(
+            kind,
+            source_run_id,
+            source_attempt_id,
+            _stored_artifact_content(source_attempt, kind),
+        ))
+    if len({(item["kind"], item["source_run_id"], item["source_attempt_id"]) for item in resolved}) != len(resolved):
+        raise HarnessError("readonly_artifacts must not contain duplicates")
+    if not set(policy["required_kinds"]) <= {item["kind"] for item in resolved}:
+        raise HarnessError("readonly_artifacts missing route-required kinds")
+    return resolved
 
 
 def _canonical_execution_mode(
@@ -417,6 +550,8 @@ def _route_packet(
     if execution_mode not in route["execution_modes"]:
         raise HarnessError(f"unsupported execution mode `{execution_mode}` for task type `{task_type}`")
     orchestration = policy["orchestration"][execution_mode]
+    evidence_artifacts = _evidence_artifact_policy(policy)
+    readonly_artifact_policy = _readonly_artifact_policy(route)
     tool_bindings = [
         {
             "tool": name,
@@ -438,6 +573,12 @@ def _route_packet(
         "tools": route["tools"],
         "tool_bindings": tool_bindings,
         "workspace": route["workspace"],
+        "retained_artifacts": [
+            {"kind": kind, "max_bytes": evidence_artifacts["sanitized_command_trace_max_bytes"]}
+            for kind in evidence_artifacts["writer_retained_kinds"]
+            if "repo.write" in route.get("capabilities", [])
+        ],
+        "readonly_artifact_policy": readonly_artifact_policy,
         "orchestration": {
             "name": execution_mode,
             "work_scheduling": orchestration["work_scheduling"],
@@ -850,8 +991,39 @@ def record_friction_event(
     return _append_friction_event(root, event)
 
 
+def _friction_readonly_artifact_requests(
+    root: Path,
+    observed: list[dict[str, Any]],
+    route: dict[str, Any],
+) -> list[dict[str, str]]:
+    policy = _readonly_artifact_policy(route)
+    if not policy["allowed_kinds"]:
+        return []
+    requests: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for event in sorted(observed, key=lambda item: (item["occurred_at"], item["event_id"]), reverse=True):
+        try:
+            source_run_id = _safe_run_id(event["run_id"])
+            source_attempt_id = _required_string(event["attempt_id"], "friction source attempt_id")
+            source_attempt = _source_attempt(_load_run(root, source_run_id), source_attempt_id)
+        except HarnessError:
+            continue
+        for kind in policy["allowed_kinds"]:
+            key = (kind, source_run_id, source_attempt_id)
+            if key in seen:
+                continue
+            try:
+                _stored_artifact_content(source_attempt, kind)
+            except HarnessError:
+                continue
+            requests.append({"kind": kind, "source_run_id": source_run_id, "source_attempt_id": source_attempt_id})
+            seen.add(key)
+    return requests
+
+
 def friction_report(root: Path, *, now: datetime | None = None) -> dict[str, Any]:
     policy = _friction_policy(root)
+    routes = _load_policy(root)["routes"]
     current = (now or datetime.now(UTC)).astimezone(UTC)
     cutoff = current - timedelta(days=policy["window_days"])
     events = _read_friction_events(root)
@@ -875,7 +1047,7 @@ def friction_report(root: Path, *, now: datetime | None = None) -> dict[str, Any
         run_ids = sorted({event["run_id"] for event in observed})
         if len(run_ids) < policy["minimum_distinct_runs"]:
             continue
-        candidates.append({
+        candidate = {
             "fingerprint": fingerprint,
             "event_ids": sorted(event["event_id"] for event in observed),
             "run_ids": run_ids,
@@ -883,7 +1055,22 @@ def friction_report(root: Path, *, now: datetime | None = None) -> dict[str, Any
             "distinct_run_count": len(run_ids),
             "first_observed_at": min(event["occurred_at"] for event in observed),
             "last_observed_at": max(event["occurred_at"] for event in observed),
-        })
+        }
+        task_type = policy["follow_up_routes"].get(observed[0]["code"])
+        if task_type is not None:
+            route = routes[task_type]
+            readonly_artifacts = _friction_readonly_artifact_requests(root, observed, route)
+            readonly_policy = _readonly_artifact_policy(route)
+            if set(readonly_policy["required_kinds"]) <= {item["kind"] for item in readonly_artifacts}:
+                candidate["follow_up"] = {
+                    "task_type": task_type,
+                    "execution_mode": "single_work_lane",
+                    "workspace_write_access": "read_only" if "repo.write" not in route["capabilities"] else "workspace_write",
+                    "readonly_artifacts": readonly_artifacts,
+                }
+            else:
+                candidate["follow_up_blocked"] = "missing_required_readonly_artifacts"
+        candidates.append(candidate)
     return {
         "version": FRICTION_EVENT_VERSION,
         "minimum_distinct_runs": policy["minimum_distinct_runs"],
@@ -1237,6 +1424,7 @@ def resolve_managed_packet(
         "review_evidence": copy.deepcopy(request.get("review_evidence")),
         "manual_evidence": copy.deepcopy(request.get("manual_evidence")),
     })
+    packet["readonly_artifacts"] = _resolve_readonly_artifacts(root, packet, request.get("readonly_artifacts"))
     if coordination is not None and plan_task is not None:
         packet.update({
             "plan_ref": coordination.plan_ref,
@@ -1764,6 +1952,70 @@ def _collect_changes(root: Path, base_commit: str) -> list[dict[str, str]]:
     return changes
 
 
+def _assert_workspace_baseline(
+    lane: dict[str, Any],
+    workspace: dict[str, Any],
+    base_commit: str,
+) -> None:
+    path = workspace.get("path")
+    if not isinstance(path, str) or not Path(path).is_dir():
+        raise WorkspaceBaselineError("host adapter workspace path is unavailable")
+    baseline = workspace.get("baseline")
+    if not isinstance(baseline, dict):
+        raise WorkspaceBaselineError("host adapter workspace lacks baseline evidence")
+    dependencies = lane.get("dependencies")
+    if not isinstance(dependencies, list) or not all(isinstance(item, str) and item for item in dependencies):
+        raise WorkspaceBaselineError("packet lane has invalid dependencies")
+    if not dependencies:
+        if baseline.get("kind") == "packet_base" and baseline.get("base_commit") == base_commit and baseline.get("clean") is True:
+            return
+        raise WorkspaceBaselineError("workspace baseline does not match clean packet base")
+    if baseline.get("kind") == "predecessor" and baseline.get("lane_id") in dependencies:
+        return
+    raise WorkspaceBaselineError("workspace baseline does not match packet predecessor")
+
+
+def _assert_workspace_readonly_artifacts(packet: dict[str, Any], workspace: dict[str, Any]) -> None:
+    expected = packet.get("readonly_artifacts", [])
+    if not isinstance(expected, list):
+        raise WorkspaceBaselineError("packet readonly_artifacts is invalid")
+    observed = workspace.get("readonly_artifacts", [])
+    artifact_root = workspace.get("readonly_artifact_root")
+    if not expected:
+        if observed not in (None, []) or artifact_root is not None:
+            raise WorkspaceBaselineError("host adapter materialized unexpected readonly artifacts")
+        return
+    if not isinstance(observed, list) or not isinstance(artifact_root, str) or not Path(artifact_root).is_dir():
+        raise WorkspaceBaselineError("host adapter readonly artifacts are unavailable")
+    if len(observed) != len(expected):
+        raise WorkspaceBaselineError("host adapter readonly artifact count conflicts with packet")
+    expected_by_key = {
+        (item["kind"], item["source_run_id"], item["source_attempt_id"]): item
+        for item in expected
+    }
+    observed_keys: set[tuple[str, str, str]] = set()
+    for artifact in observed:
+        if not isinstance(artifact, dict):
+            raise WorkspaceBaselineError("host adapter readonly artifact is invalid")
+        key = (artifact.get("kind"), artifact.get("source_run_id"), artifact.get("source_attempt_id"))
+        expected_artifact = expected_by_key.get(key)
+        path = artifact.get("path")
+        if (
+            expected_artifact is None
+            or key in observed_keys
+            or artifact.get("sha256") != expected_artifact["sha256"]
+            or artifact.get("byte_length") != expected_artifact["byte_length"]
+            or not isinstance(path, str)
+            or not Path(path).is_file()
+            or Path(path).parent != Path(artifact_root)
+        ):
+            raise WorkspaceBaselineError("host adapter readonly artifact conflicts with packet")
+        payload = Path(path).read_bytes()
+        if len(payload) != expected_artifact["byte_length"] or hashlib.sha256(payload).hexdigest() != expected_artifact["sha256"]:
+            raise WorkspaceBaselineError("host adapter readonly artifact content conflicts with packet")
+        observed_keys.add(key)
+
+
 def _validate_managed_claim(claim: Any, role: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(claim, dict) or claim.get("kind") != role["result_kind"]:
         raise HarnessError("managed claim has invalid result kind")
@@ -2006,6 +2258,69 @@ def _normalize_terminal_evidence(exc: Exception, packet: dict[str, Any]) -> dict
         return {"version": 1, "invalid": True, "error": str(error)}
 
 
+def _terminal_failure_reason(packet: dict[str, Any], terminal_evidence: dict[str, Any]) -> str:
+    if terminal_evidence.get("invalid") or terminal_evidence.get("kind") != "timeout":
+        return "dispatch_failed"
+    if terminal_evidence["final_claim_state"]["state"] != "missing":
+        return "dispatch_timeout"
+    if not any(command["state"] == "completed" for command in terminal_evidence["command_states"]):
+        return "dispatch_timeout"
+    lane_id = terminal_evidence["lane_id"]
+    lane = next((item for item in packet["lanes"] if item["lane_id"] == lane_id), None)
+    if isinstance(lane, dict) and lane["kind"] == "work" and lane["write_capable"] is True:
+        return "writer_completion_missing"
+    return "dispatch_timeout"
+
+
+def _normalize_retained_artifacts(exc: Exception, packet: dict[str, Any]) -> list[dict[str, Any]]:
+    retained = packet.get("retained_artifacts", [])
+    if not isinstance(retained, list):
+        raise HarnessError("packet retained_artifacts is invalid")
+    limits = {
+        item["kind"]: item["max_bytes"]
+        for item in retained
+        if isinstance(item, dict)
+        and item.get("kind") in READONLY_ARTIFACT_KINDS
+        and isinstance(item.get("max_bytes"), int)
+        and item["max_bytes"] > 0
+    }
+    raw = getattr(exc, "evidence_artifacts", [])
+    if raw is None:
+        raw = []
+    if not isinstance(raw, list):
+        raise HarnessError("host retained artifacts are invalid")
+    normalized: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict) or set(item) != {"kind", "content"}:
+            raise HarnessError("host retained artifact has invalid fields")
+        kind = item["kind"]
+        if kind not in limits:
+            raise HarnessError(f"host retained artifact `{kind}` was not packet-approved")
+        content = item["content"]
+        if kind == "sanitized_command_trace":
+            if not isinstance(content, dict) or set(content) != {"version", "commands"} or content.get("version") != 1:
+                raise HarnessError("sanitized command trace is invalid")
+            commands = content.get("commands")
+            if not isinstance(commands, list) or len(commands) > 16:
+                raise HarnessError("sanitized command trace commands are invalid")
+            for command in commands:
+                if (
+                    not isinstance(command, dict)
+                    or set(command) != {"item_id", "command", "output", "exit_code"}
+                    or not isinstance(command["item_id"], str)
+                    or not isinstance(command["command"], str)
+                    or not isinstance(command["output"], str)
+                    or len(command["command"].encode("utf-8")) > limits[kind]
+                    or len(command["output"].encode("utf-8")) > limits[kind]
+                    or (command["exit_code"] is not None and (not isinstance(command["exit_code"], int) or isinstance(command["exit_code"], bool)))
+                ):
+                    raise HarnessError("sanitized command trace command is invalid")
+        normalized.append({"kind": kind, "content": copy.deepcopy(content)})
+    if len({item["kind"] for item in normalized}) != len(normalized):
+        raise HarnessError("host retained artifacts must not contain duplicate kinds")
+    return normalized
+
+
 def _record_terminal_failure(
     root: Path,
     run: dict[str, Any],
@@ -2015,9 +2330,10 @@ def _record_terminal_failure(
     *,
     phase: str,
     terminal_evidence: dict[str, Any],
+    artifacts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    is_timeout = not terminal_evidence.get("invalid") and terminal_evidence.get("kind") == "timeout"
-    reason = "dispatch_timeout" if is_timeout else "dispatch_failed"
+    reason = _terminal_failure_reason(attempt["packet"], terminal_evidence)
+    is_timeout = reason == "dispatch_timeout"
     _record_attempt_friction(
         root,
         run,
@@ -2034,16 +2350,21 @@ def _record_terminal_failure(
         "detail": detail,
     }
     attempt["evidence"]["terminal_observation"] = terminal_evidence
+    if artifacts:
+        attempt["evidence"]["artifacts"] = artifacts
     decisions = ["block"]
     if is_timeout:
         decisions = list(attempt["packet"]["execution_budget"]["timeout_decisions"])
     elif not terminal_evidence.get("invalid") and reason in attempt["packet"]["retry_policy"]["retryable_reasons"]:
         decisions = ["retry", "escalate", "block"]
+    evidence_refs = ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"]
+    if artifacts:
+        evidence_refs.append("evidence.artifacts")
     _set_outcome(
         attempt,
         reason,
         decisions,
-        ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"],
+        evidence_refs,
         detail=detail,
     )
     _transition(run, policy["states"], "awaiting_decision", reason)
@@ -2060,8 +2381,11 @@ def _record_dispatch_exception(
     *,
     phase: str,
 ) -> dict[str, Any]:
+    if isinstance(exc, WorkspaceBaselineError):
+        return _record_failure(root, run, policy, attempt, "workspace_baseline_invalid", str(exc), phase=phase)
     terminal_evidence = _normalize_terminal_evidence(exc, attempt["packet"])
     if terminal_evidence is not None:
+        artifacts = _normalize_retained_artifacts(exc, attempt["packet"])
         return _record_terminal_failure(
             root,
             run,
@@ -2070,6 +2394,7 @@ def _record_dispatch_exception(
             str(exc),
             phase=phase,
             terminal_evidence=terminal_evidence,
+            artifacts=artifacts,
         )
     return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase=phase)
 
@@ -2244,6 +2569,8 @@ def _execute_attempt(
                     workspace = _adapter_call(adapter, "prepare_workspace", lane, packet)
                     if not isinstance(workspace, dict):
                         raise HarnessError("host adapter workspace must be an object")
+                    _assert_workspace_baseline(lane, workspace, packet["base_commit"])
+                    _assert_workspace_readonly_artifacts(packet, workspace)
                     lane["workspace"] = copy.deepcopy(workspace)
                     bindings = _adapter_call(adapter, "verify_tool_bindings", lane, packet, workspace)
                     _record_tool_binding_evidence(attempt, lane, packet, workspace, bindings)

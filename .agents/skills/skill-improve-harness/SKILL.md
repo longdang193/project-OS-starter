@@ -16,9 +16,17 @@ Use only after user or authorized controller requests harness improvement.
    runtime, CI or environment, external service, or human decision. Route a
    proven skill-instruction gap to `skill-writing-skills`; do not edit skills
    for one isolated event.
-   For timeout friction, compare immutable packet budget with normalized timeout
-   evidence and separate transport preflight failure from lane timeout. Do not
+   For timeout friction, compare immutable packet budget with normalized terminal
+   observation and separate transport preflight failure from lane timeout. Do not
    classify timeout as retryable or let experiments add caller-selected budget.
+   `writer_completion_missing` requires completed command state plus missing
+   final claim in terminal evidence. It blocks product work without retry,
+   escalation, or resume. When `friction-report` returns its policy-owned
+   follow-up with route-required `readonly_artifacts`, controller dispatches
+   fresh read-only `harness_diagnosis` before asking an owner. Never mount an
+   ambient `.harness` tree. Missing required artifacts blocks diagnosis before
+   dispatch; only a proven code or contract fault proceeds to separate
+   write-capable `harness_improvement`.
    For package-backed friction, record `harness-core --identity`, consumer
    request API, and host API before assigning ownership. Package loader failure
    belongs to environment; unsupported APIs belong to release compatibility.

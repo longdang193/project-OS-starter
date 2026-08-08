@@ -21,6 +21,16 @@ Packet owns template, role, rules, skills, allowed tools, workspace, checks,
 approval gates, planned write paths, resolved base commit, and orchestration
 mode plus resolved `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
+Host returns baseline evidence before lane dispatch: root and parallel lanes use
+`packet_base` at exact packet base with a clean checkout; sequential dependents
+use `predecessor` only for direct materialized predecessor state. Core validates
+this evidence. `workspace_baseline_invalid` is host/environment failure, not
+product scope evidence; preserve run proof and repair workspace materialization.
+Before creating a write-capable packet, controller must establish every product
+fact needed to implement and verify behavior. If source can resolve a missing
+fact, dispatch bounded read-only research first; otherwise block for a
+requirements or specification decision. Never send unknown behavior into an
+unbounded writer discovery loop.
 Admission order: launcher package load, request API, adapter host API, provider
 preflight, packet resolution, workspace, dispatch. Unsupported APIs create no
 packet. Unreadable historical packet cannot resume; controller creates a
@@ -28,10 +38,12 @@ successor without changing its evidence.
 For `runtime_provider_id: codex_app_server`, controller invokes provider host
 from its installed source root: `uv run codex-harness-host run --harness-root
 <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>`.
-Use `--run-id <run-id>` instead of `--request` only to resume an existing
-dispatchable planned attempt. Historical packet API 3 remains readable through
-host API 3 but cannot dispatch; preserve it and create successor. Never use
-generic `run-unavailable` to retry a managed packet.
+Use `--run-id <run-id>` instead of `--request` only when run state is `planned`
+for an existing dispatchable attempt. A terminal coordinated task failure is
+`blocked`; preserve its evidence and require approved successor plan/task
+identity before a fresh request. Historical packet API 3 remains readable
+through host API 3 but cannot dispatch; preserve it and create successor.
+Never use generic `run-unavailable` to retry a managed packet.
 
 For Git-tracked active coordination plans, frontmatter owns static target
 branch, base ref, task dependencies, canonical mode, allowed scope, and planned paths. Packet
@@ -73,6 +85,13 @@ When spawning a subagent:
 - For `dispatch_timeout`, controller may only escalate through immutable packet
   `escalation_profile` or block. Never retry timeout or accept caller-selected
   budget. Resume an already planned attempt with provider `--run-id`.
+- `writer_completion_missing` means a write-capable lane completed commands
+  without a final claim before terminal timeout. Block it without retry,
+  escalation, or resume. When `friction-report` returns its policy-owned
+  follow-up with route-required immutable `readonly_artifacts`, dispatch fresh
+  read-only `harness_diagnosis` without an owner decision. Missing required
+  artifacts blocks diagnosis before dispatch; never mount ambient `.harness`
+  state into packet workspace.
 - Independent validator claims exist only when host advertises and dispatches
   an enforced read-only validator lane. Do not infer validator evidence from
   local checks or an implementer claim.

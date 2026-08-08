@@ -46,10 +46,16 @@ ordinary direct execution.
   Use exclusive `--run-id <run-id>` only to resume an existing planned attempt.
   Check `uv run codex-harness-host capabilities` first. Do not retry through
   `run-unavailable`; preserve that terminal proof and create successor request.
+- A terminal coordinated task failure derives `blocked` status. Preserve its
+  run evidence; require approved successor plan/task identity instead of a
+  fresh request against same task.
 - Controller may record `waive` only with reason. Waived work is terminal
   `unvalidated`; local proof remains local and cannot become managed acceptance.
 - Independent validator evidence requires host dispatch of a separate enforced,
   read-only validator lane. Implementer claims and local checks do not count.
+- Controller must not dispatch a write-capable implementer lane to discover an
+  unknown product fact. Dispatch bounded read-only research first when source
+  can resolve it; otherwise block for a requirements or specification decision.
 
 ## Per Task
 

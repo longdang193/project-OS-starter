@@ -171,7 +171,10 @@ class FakeAdapter:
 
     def prepare_workspace(self, lane, packet):
         self.calls.append("prepare_workspace")
-        return {"kind": "current", "path": self.workspace_root}
+        baseline = {"kind": "packet_base", "base_commit": packet["base_commit"], "clean": True}
+        if lane["dependencies"]:
+            baseline = {"kind": "predecessor", "lane_id": lane["dependencies"][0]}
+        return {"kind": "current", "path": self.workspace_root, "baseline": baseline}
 
     def verify_tool_bindings(self, lane, packet, workspace):
         self.calls.append("verify_tool_bindings")
@@ -418,12 +421,72 @@ def test_api4_packet_requires_immutable_invocation_fields() -> None:
     assert packet["parent_invocation_id"] is None
 
 
+def test_harness_diagnosis_packet_resolves_declared_readonly_artifacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    terminal_observation = {
+        "version": 1,
+        "kind": "timeout",
+        "source": "host_timeout_interrupt",
+        "lane_id": "primary",
+        "session_id": "thread-1",
+        "turn_id": "turn-1",
+        "turn_timeout_seconds": 300,
+        "elapsed_seconds": 300.0,
+        "terminal_status": "interrupted",
+        "interrupt_status": "terminal_confirmed",
+        "item_states": [],
+        "command_states": [],
+        "final_claim_state": {"state": "missing"},
+        "error": None,
+    }
+    monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
+        "run_id": run_id,
+        "state": "blocked",
+        "attempts": [{
+            "attempt_id": "writer-attempt",
+            "evidence": {
+                "terminal_observation": terminal_observation,
+                "artifacts": [{
+                    "kind": "sanitized_command_trace",
+                    "content": {"version": 1, "commands": [{"command": "pytest", "output": "failed"}]},
+                }],
+            },
+        }],
+    })
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(
+            version=4,
+            task_type="harness_diagnosis",
+            execution_mode="single_work_lane",
+            planned_write_paths=[],
+            readonly_artifacts=[
+                {"kind": "terminal_observation", "source_run_id": "writer-run", "source_attempt_id": "writer-attempt"},
+                {"kind": "sanitized_command_trace", "source_run_id": "writer-run", "source_attempt_id": "writer-attempt"},
+            ],
+        ),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["readonly_artifact_policy"] == {
+        "allowed_kinds": ["terminal_observation", "sanitized_command_trace"],
+        "required_kinds": ["terminal_observation"],
+    }
+    assert [(artifact["kind"], artifact["source_run_id"], artifact["source_attempt_id"]) for artifact in packet["readonly_artifacts"]] == [
+        ("terminal_observation", "writer-run", "writer-attempt"),
+        ("sanitized_command_trace", "writer-run", "writer-attempt"),
+    ]
+    assert packet["readonly_artifacts"][0]["content"] == terminal_observation
+
+
 @pytest.mark.parametrize(
     ("task_type", "capabilities", "delegation_profile", "workspace_write_access"),
     [
         ("local_change", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
         ("debugging", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
         ("research", ["repo.read", "code.search", "docs.query", "harness.delegate"], "read_only_research", "read_only"),
+        ("harness_diagnosis", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
         ("plan_review", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
         ("design_exploration", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
         ("plan_writing", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
@@ -436,16 +499,32 @@ def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
     capabilities: list[str],
     delegation_profile: str,
     workspace_write_access: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     harness = load_module()
+    request = managed_request(
+        version=4,
+        task_type=task_type,
+        execution_mode="single_work_lane",
+        planned_write_paths=["scripts/harness_task.py"] if "repo.write" in capabilities else [],
+    )
+    if task_type == "harness_diagnosis":
+        monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
+            "run_id": run_id,
+            "state": "blocked",
+            "attempts": [{
+                "attempt_id": "source-attempt",
+                "evidence": {"terminal_observation": {"version": 1, "kind": "timeout"}},
+            }],
+        })
+        request["readonly_artifacts"] = [{
+            "kind": "terminal_observation",
+            "source_run_id": "source-run",
+            "source_attempt_id": "source-attempt",
+        }]
     packet = harness.resolve_managed_packet(
         ROOT,
-        managed_request(
-            version=4,
-            task_type=task_type,
-            execution_mode="single_work_lane",
-            planned_write_paths=["scripts/harness_task.py"] if "repo.write" in capabilities else [],
-        ),
+        request,
         attempt_id="attempt-1",
     )
 
@@ -1552,6 +1631,32 @@ def test_run_managed_records_host_preflight_evidence(tmp_path: Path) -> None:
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_run_managed_blocks_dirty_workspace_before_writer_dispatch(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class DirtyWorkspaceAdapter(FakeAdapter):
+        def prepare_workspace(self, lane, packet):
+            workspace = super().prepare_workspace(lane, packet)
+            workspace["baseline"]["clean"] = False
+            return workspace
+
+    adapter = DirtyWorkspaceAdapter({"single_work_lane": "enforced"})
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            adapter,
+        )
+
+        assert result["state"] == "awaiting_decision"
+        assert result["outcome"]["reason"] == "workspace_baseline_invalid"
+        assert adapter.calls == ["capabilities", "prepare_workspace"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_provider_conformance_vector_accepts_adapter_implementation(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
@@ -2189,6 +2294,66 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_writer_completion_missing_blocks_without_timeout_escalation(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class MissingWriterCompletion(RuntimeError):
+        timeout_observation = {
+            "version": 1,
+            "lane_id": "primary",
+            "session_id": "thread-1",
+            "turn_id": "turn-1",
+            "turn_timeout_seconds": 300,
+            "elapsed_seconds": 300.0,
+            "terminal_status": "interrupted",
+            "interrupt_status": "terminal_confirmed",
+            "item_states": [{"item_id": "command-1", "type": "commandExecution", "state": "completed"}],
+            "command_states": [{
+                "item_id": "command-1",
+                "state": "completed",
+                "command_hash": "a" * 64,
+                "command_length": 12,
+                "response_hash": "b" * 64,
+                "response_length": 7,
+                "exit_code": 1,
+            }],
+            "final_claim_state": {"state": "missing"},
+        }
+        evidence_artifacts = [{
+            "kind": "sanitized_command_trace",
+            "content": {
+                "version": 1,
+                "commands": [{
+                    "item_id": "command-1",
+                    "command": "pytest -q",
+                    "output": "failed",
+                    "exit_code": 1,
+                }],
+            },
+        }]
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=MissingWriterCompletion("writer turn incomplete")),
+        )
+
+        assert result["outcome"] == {
+            "reason": "writer_completion_missing",
+            "allowed_decisions": ["block"],
+            "evidence_refs": ["friction_event_ids", "evidence.failure", "evidence.terminal_observation", "evidence.artifacts"],
+            "detail": "writer turn incomplete",
+        }
+        run = json.loads((run_dir / "run.json").read_text())
+        assert run["attempts"][0]["evidence"]["terminal_observation"]["command_states"][-1]["exit_code"] == 1
+        assert run["attempts"][0]["evidence"]["artifacts"][0]["kind"] == "sanitized_command_trace"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_provider_failure_records_terminal_observation_without_timeout_escalation(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
@@ -2491,6 +2656,91 @@ def test_friction_report_uses_distinct_runs_and_accepted_resolution(tmp_path: Pa
 
     assert resolution["kind"] == "resolution"
     assert harness.friction_report(root, now=now)["candidates"] == []
+
+
+def test_friction_report_recommends_read_only_diagnosis_for_writer_completion_missing(tmp_path: Path) -> None:
+    harness = load_module()
+    root = tmp_path / "harness"
+    (root / "repo_config").mkdir(parents=True)
+    shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
+    packet = {
+        "task_type": "local_change",
+        "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 3},
+        "orchestration": {"name": "single_work_lane"},
+    }
+    now = datetime(2026, 8, 7, tzinfo=UTC)
+    for run_id in ("run-1", "run-2", "run-3"):
+        run_dir = root / ".harness" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "run.json").write_text(json.dumps({
+            "version": 1,
+            "run_id": run_id,
+            "state": "blocked",
+            "attempts": [{
+                "attempt_id": "attempt-1",
+                "evidence": {
+                    "terminal_observation": {"version": 1, "kind": "timeout"},
+                    "artifacts": [{
+                        "kind": "sanitized_command_trace",
+                        "content": {"version": 1, "commands": []},
+                    }],
+                },
+            }],
+        }), encoding="utf-8")
+        harness.record_friction_event(
+            root,
+            run_id=run_id,
+            attempt_id="attempt-1",
+            packet=packet,
+            lane={"kind": "work"},
+            source="host",
+            phase="dispatch",
+            code="writer_completion_missing",
+            evidence_ref="evidence.terminal_observation",
+            occurred_at=now,
+        )
+
+    report = harness.friction_report(root, now=now)
+
+    follow_up = report["candidates"][0]["follow_up"]
+    assert follow_up["task_type"] == "harness_diagnosis"
+    assert follow_up["execution_mode"] == "single_work_lane"
+    assert follow_up["workspace_write_access"] == "read_only"
+    assert {artifact["kind"] for artifact in follow_up["readonly_artifacts"]} == {
+        "terminal_observation",
+        "sanitized_command_trace",
+    }
+
+
+def test_friction_report_blocks_diagnosis_without_required_artifacts(tmp_path: Path) -> None:
+    harness = load_module()
+    root = tmp_path / "harness"
+    (root / "repo_config").mkdir(parents=True)
+    shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
+    packet = {
+        "task_type": "local_change",
+        "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 3},
+        "orchestration": {"name": "single_work_lane"},
+    }
+    now = datetime(2026, 8, 7, tzinfo=UTC)
+    for run_id in ("run-1", "run-2", "run-3"):
+        harness.record_friction_event(
+            root,
+            run_id=run_id,
+            attempt_id="attempt-1",
+            packet=packet,
+            lane={"kind": "work"},
+            source="host",
+            phase="dispatch",
+            code="writer_completion_missing",
+            evidence_ref="evidence.terminal_observation",
+            occurred_at=now,
+        )
+
+    candidate = harness.friction_report(root, now=now)["candidates"][0]
+
+    assert candidate["follow_up_blocked"] == "missing_required_readonly_artifacts"
+    assert "follow_up" not in candidate
 
 
 def test_friction_report_cli_is_read_only(tmp_path: Path) -> None:

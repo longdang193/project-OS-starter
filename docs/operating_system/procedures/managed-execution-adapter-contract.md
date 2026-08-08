@@ -101,16 +101,36 @@ item/command state, final-claim state, and error field names plus SHA-256 hashes
 and byte lengths. It never stores raw command output, prompts, environment
 values, provider error text, or assistant text.
 
-Core records only `kind: timeout` as `dispatch_timeout`. Controller may only
+Core records `kind: timeout` as `dispatch_timeout` unless terminal evidence
+shows a write-capable work lane completed one or more commands but emitted no
+final claim. That condition is `writer_completion_missing`; it permits only
+`block`, never retry, escalation, or resume. Other timeouts may only
 `escalate` through packet `escalation_profile` or `block`; timeout never permits
 `retry`. `provider_failure`, `approval_required`, and `protocol_failure` remain
 `dispatch_failed` until controller decision. Escalation creates fresh successor
-packet with core-selected profile. Preserve older packet and evidence unchanged. If an attempt is already
-`planned`, resume it with provider `--run-id`; do not submit its request again.
+packet with core-selected profile. Preserve older packet and evidence unchanged.
+If an attempt is already `planned`, resume it with provider `--run-id`; do not
+submit its request again.
 
-Inspect `attempt.evidence.timeout` before controller decision. It distinguishes
-missing, active, and completed command state without provider transcript
-recovery. Evidence informs decision; it never selects one.
+Inspect `attempt.evidence.terminal_observation` before controller decision. It
+distinguishes missing, active, and completed command state without provider
+transcript recovery. Evidence informs decision; it never selects one.
+
+## Read-Only Evidence Artifacts
+
+Core owns artifact kinds, route admission, immutable content hash, and packet
+records. `repo_config/harness.yaml:evidence_artifacts` selects bounded retained
+artifacts for every write-capable packet; a read-only route's
+`readonly_artifacts` policy selects allowed and required kinds. Request names a
+terminal source run and attempt. Core copies only packet-approved content into
+immutable `readonly_artifacts` records with SHA-256 and byte length.
+
+Host materializes those records as separate read-only sidecar files, proves each
+path, size, and hash, and never clones or mounts ambient `.harness`. A route
+with missing required evidence rejects before dispatch. Current
+`sanitized_command_trace` retains at most policy-configured bytes per command
+and aggregate output after host redaction. It is separate from terminal
+observation, which never contains raw transcript material.
 
 ## Plan-Linked Coordination
 
@@ -164,7 +184,7 @@ Host adapter provides these methods:
 | --- | --- | --- |
 | `capabilities()` | none | map of mode to `enforced`, `advisory`, or `unavailable` |
 | `identity()` | none | exact packet `runtime_provider` object: `{provider_id, contract_version}` |
-| `prepare_workspace(lane, packet)` | immutable lane and packet | workspace identity object |
+| `prepare_workspace(lane, packet)` | immutable lane and packet | workspace identity plus normalized baseline evidence |
 | `dispatch_lane(lane, packet, workspace, delegation_bridge)` | immutable lane, packet, workspace, optional core-owned delegation bridge | opaque dispatch handle |
 | `collect_claim(handle)` | dispatch handle | role-valid `claimed_result` |
 | `collect_lane_evidence(handle, lane, packet, workspace)` | dispatch handle, immutable lane and packet, workspace | host execution evidence for exactly one dispatched lane |
@@ -172,6 +192,17 @@ Host adapter provides these methods:
 | `materialize_final_state(lane, packet, workspaces)` | immutable integration lane, packet, workspaces | final workspace identity object |
 | `verify_tool_bindings(lane, packet, workspace)` | immutable lane, packet, workspace | one verified root binding per selected packet tool |
 | `run_checks(packet, workspace)` | immutable packet, final workspace | host check evidence from selected packet-scoped shell binding |
+
+`prepare_workspace` returns baseline evidence that core validates before lane
+dispatch. A root lane, including every parallel lane, returns
+`{"kind":"packet_base","base_commit":<packet base>,"clean":true}` after
+materializing exact packet `base_commit` with no tracked or untracked changes.
+A dependent sequential lane returns
+`{"kind":"predecessor","lane_id":<direct dependency>}` only after host
+materializes that direct predecessor state. Core still collects actual final
+changes after lane execution. Invalid or missing evidence is
+`workspace_baseline_invalid`; no lane runs. Hosts choose a platform-safe
+workspace root and fail with this condition when tracked paths cannot fit there.
 
 Only `enforced` capability permits dispatch. `advisory`, `unavailable`, absent,
 or malformed capability produces `execution_mode_unavailable` before workspace
@@ -294,7 +325,11 @@ adapter, integration, check, validator, cancellation, and decision friction
 into this schema.
 
 `friction-report` is read-only and derives unresolved candidates from distinct
-runs inside configured window. `friction-resolve` requires accepted
+runs inside configured window. A policy-owned `follow_up` for recurring
+`writer_completion_missing` selects fresh read-only `harness_diagnosis`.
+Controller dispatches that diagnostic without an owner decision, preserves the
+blocked product run, and creates a separate write-capable `harness_improvement`
+only after diagnosis proves an owning code or contract change. `friction-resolve` requires accepted
 `harness_improvement` run, names candidate event IDs, and appends controller
 decision: `keep`, `revise`, `remove`, or `pending`. Neither command mutates
 routes, policy, skills, tools, or providers. Fresh representative rerun proof

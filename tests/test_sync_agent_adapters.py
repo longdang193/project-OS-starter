@@ -43,6 +43,137 @@ def load_module(name: str, path: Path):
 SYNC = load_module("sync_agent_adapters", SYNC_PATH)
 
 
+def test_harness_guidance_requires_research_before_write_dispatch() -> None:
+    required_phrases = {
+        REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md": (
+            "write-capable packet",
+            "read-only research",
+        ),
+        REPO_ROOT / ".agents/skills/skill-executing-plans/SKILL.md": (
+            "write-capable packet",
+            "read-only research",
+        ),
+        REPO_ROOT / ".agents/skills/skill-subagent-driven-development/SKILL.md": (
+            "write-capable implementer lane",
+            "read-only research",
+        ),
+        REPO_ROOT / "docs/operating_system/rules/multi-agent-orchestration-rule.md": (
+            "write-capable lane",
+            "read-only research",
+        ),
+    }
+
+    for path, phrases in required_phrases.items():
+        content = " ".join(path.read_text(encoding="utf-8").split())
+        for phrase in phrases:
+            assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
+
+
+def test_harness_guidance_uses_canonical_modes_and_terminal_recovery() -> None:
+    required_phrases = {
+        REPO_ROOT / ".agents/skills/skill-dispatching-parallel-agents/SKILL.md": (
+            "parallel_work_lanes",
+            "one immutable packet",
+        ),
+        REPO_ROOT / ".agents/skills/skill-executing-plans/SKILL.md": (
+            "run state is `planned`",
+            "approved successor plan/task identity",
+        ),
+        REPO_ROOT / ".agents/skills/skill-systematic-debugging/SKILL.md": (
+            "run state `planned`",
+            "approved successor plan/task identity",
+        ),
+        REPO_ROOT / ".agents/skills/skill-subagent-driven-development/SKILL.md": (
+            "terminal coordinated task",
+            "approved successor plan/task identity",
+        ),
+        REPO_ROOT / "docs/operating_system/rules/multi-agent-orchestration-rule.md": (
+            "run state is `planned`",
+            "approved successor plan/task identity",
+        ),
+        REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md": (
+            "run state is `planned`",
+            "approved successor plan/task identity",
+        ),
+        REPO_ROOT / "docs/operating_system/tooling/frontend-backend-integration-tools.md": (
+            "sequential_work_lanes",
+        ),
+    }
+
+    for path, phrases in required_phrases.items():
+        content = " ".join(path.read_text(encoding="utf-8").split())
+        for phrase in phrases:
+            assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
+
+    tooling = (REPO_ROOT / "docs/operating_system/tooling/frontend-backend-integration-tools.md").read_text(encoding="utf-8")
+    assert "sequential_agents" not in tooling
+
+
+def test_harness_guidance_requires_clean_workspace_baseline() -> None:
+    required_phrases = {
+        REPO_ROOT / "docs/operating_system/procedures/managed-execution-adapter-contract.md": (
+            "workspace_baseline_invalid",
+            "before lane dispatch",
+            "packet_base",
+            "predecessor",
+            "baseline evidence",
+        ),
+        REPO_ROOT / "docs/operating_system/rules/multi-agent-orchestration-rule.md": (
+            "workspace_baseline_invalid",
+            "packet base",
+            "packet_base",
+            "predecessor",
+        ),
+        REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md": (
+            "workspace_baseline_invalid",
+            "before lane dispatch",
+            "packet_base",
+            "predecessor",
+        ),
+        REPO_ROOT / ".agents/skills/skill-executing-plans/SKILL.md": (
+            "workspace_baseline_invalid",
+            "host/environment",
+            "packet_base",
+            "predecessor",
+        ),
+    }
+
+    for path, phrases in required_phrases.items():
+        content = " ".join(path.read_text(encoding="utf-8").split())
+        for phrase in phrases:
+            assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
+
+
+def test_harness_guidance_handles_missing_writer_completion() -> None:
+    required_phrases = {
+        REPO_ROOT / "docs/operating_system/procedures/managed-execution-adapter-contract.md": (
+            "writer_completion_missing",
+            "harness_diagnosis",
+        ),
+        REPO_ROOT / "docs/operating_system/rules/multi-agent-orchestration-rule.md": (
+            "writer_completion_missing",
+            "harness_diagnosis",
+        ),
+        REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md": (
+            "writer_completion_missing",
+            "harness_diagnosis",
+        ),
+        REPO_ROOT / ".agents/skills/skill-improve-harness/SKILL.md": (
+            "writer_completion_missing",
+            "harness_diagnosis",
+        ),
+        REPO_ROOT / ".agents/skills/skill-executing-plans/SKILL.md": (
+            "Git staging directive",
+            "blocked or unaccepted",
+        ),
+    }
+
+    for path, phrases in required_phrases.items():
+        content = " ".join(path.read_text(encoding="utf-8").split())
+        for phrase in phrases:
+            assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
+
+
 def _mapping(source: str, destination: str, mode: str = "copy_tree") -> object:
     return SYNC.Mapping(
         source=source,

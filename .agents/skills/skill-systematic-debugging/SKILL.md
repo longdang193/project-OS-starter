@@ -57,7 +57,11 @@ Use for ANY technical issue:
 - Each dispatched investigator follows this debugging method inside its assigned domain.
 - Keep possibly shared-cause failures together until root-cause evidence proves independence.
 - For managed timeout, inspect packet `execution_budget`, normalized
-  `attempt.evidence.timeout`, and host lane evidence before changing policy.
+  `attempt.evidence.terminal_observation`, retained-artifact evidence, and host
+  lane evidence before changing policy. A read-only diagnosis may consume only
+  immutable packet `readonly_artifacts`; never inspect an ambient `.harness`
+  directory from a clean clone. Missing route-required artifacts blocks
+  diagnosis before dispatch.
   Distinguish short transport preflight from packet turn timeout. Resume a
   planned attempt through provider `--run-id`; only controller escalation may
   create budget-profile successor. Timeout never means retry.
@@ -65,7 +69,9 @@ Use for ANY technical issue:
   `harness-core --identity`, `harness-core validate --repo-root <repo-root>`,
   then provider-host capabilities. Classify package loader failure as
   environment, unsupported request or host API as release compatibility, and
-  only later failures as provider admission or dispatch. Never patch legacy
+  only later failures as provider admission or dispatch. `--run-id` resumes
+  only run state `planned`; terminal coordinated failure needs approved
+  successor plan/task identity before fresh request. Never patch legacy
   consumer bridges to repair package or host compatibility.
 
 ## Code Intelligence

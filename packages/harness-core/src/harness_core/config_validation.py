@@ -47,6 +47,9 @@ ROUTE_FIELDS = {
     "capabilities",
     "delegation_profile",
 }
+READONLY_ARTIFACT_KINDS = {"terminal_observation", "sanitized_command_trace"}
+READONLY_ARTIFACT_POLICY_FIELDS = {"allowed_kinds", "required_kinds"}
+EVIDENCE_ARTIFACT_POLICY_FIELDS = {"writer_retained_kinds", "sanitized_command_trace_max_bytes"}
 ROLE_FIELDS = {"accepts", "result_kind", "required_fields"}
 ORCHESTRATION_FIELDS = {
     "aliases",
@@ -65,6 +68,7 @@ CAPABILITY_POLICY_FIELDS = {"catalog", "sets"}
 CONTEXT_LIMIT_FIELDS = {"objective_max_bytes", "fact_max_bytes", "max_facts", "max_artifacts", "outcome_summary_max_bytes"}
 DELEGATION_PROFILE_FIELDS = {"max_depth", "max_children", "max_concurrent_children", "per_child_timeout_seconds", "total_child_timeout_seconds", "allowed_roles", "capability_ceiling", "workspace_write_access", "verification"}
 FRICTION_POLICY_FIELDS = {"event_version", "minimum_distinct_runs", "window_days"}
+FRICTION_POLICY_OPTIONAL_FIELDS = {"follow_up_routes"}
 EXECUTION_BUDGET_FIELDS = {"max_turn_timeout_seconds", "profiles"}
 EXECUTION_BUDGET_PROFILE_FIELDS = {"turn_timeout_seconds", "timeout_decisions"}
 EXECUTION_BUDGET_PROFILE_OPTIONAL_FIELDS = {"escalation_profile"}
@@ -170,6 +174,23 @@ def validate(root: Path) -> list[str]:
         context_limits = policy.get("context_limits")
         if not isinstance(context_limits, dict) or set(context_limits) != CONTEXT_LIMIT_FIELDS or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in context_limits.values()):
             errors.append("context_limits must define positive integer limits")
+        evidence_artifacts = policy.get("evidence_artifacts", {})
+        if evidence_artifacts and (
+            not isinstance(evidence_artifacts, dict)
+            or set(evidence_artifacts) != EVIDENCE_ARTIFACT_POLICY_FIELDS
+        ):
+            errors.append("evidence_artifacts has invalid fields")
+        elif evidence_artifacts:
+            retained_kinds = evidence_artifacts["writer_retained_kinds"]
+            if (
+                not isinstance(retained_kinds, list)
+                or len(set(retained_kinds)) != len(retained_kinds)
+                or not set(retained_kinds) <= READONLY_ARTIFACT_KINDS
+            ):
+                errors.append("evidence_artifacts writer_retained_kinds is invalid")
+            max_bytes = evidence_artifacts["sanitized_command_trace_max_bytes"]
+            if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1:
+                errors.append("evidence_artifacts sanitized_command_trace_max_bytes must be positive")
         profiles = policy.get("delegation_profiles")
         if not isinstance(profiles, dict) or not profiles:
             errors.append("delegation_profiles must be a non-empty mapping")
@@ -251,12 +272,13 @@ def validate(root: Path) -> list[str]:
         if not isinstance(version, int) or isinstance(version, bool) or version < 1:
             errors.append(f"runtime provider `{provider_id}` contract_version must be a positive integer")
 
+    follow_up_routes: dict[str, str] = {}
     friction_policy = policy.get("friction_policy")
     if not isinstance(friction_policy, dict):
         errors.append("friction_policy must be a mapping")
     else:
         missing = FRICTION_POLICY_FIELDS - friction_policy.keys()
-        unknown = set(friction_policy) - FRICTION_POLICY_FIELDS
+        unknown = set(friction_policy) - FRICTION_POLICY_FIELDS - FRICTION_POLICY_OPTIONAL_FIELDS
         if missing:
             errors.append(f"friction policy missing fields: {', '.join(sorted(missing))}")
         if unknown:
@@ -267,6 +289,14 @@ def validate(root: Path) -> list[str]:
             value = friction_policy.get(name)
             if not isinstance(value, int) or isinstance(value, bool) or value < 1:
                 errors.append(f"friction policy `{name}` must be a positive integer")
+        raw_follow_up_routes = friction_policy.get("follow_up_routes", {})
+        if not isinstance(raw_follow_up_routes, dict) or not all(
+            isinstance(code, str) and code and isinstance(task_type, str) and task_type
+            for code, task_type in raw_follow_up_routes.items()
+        ):
+            errors.append("friction policy `follow_up_routes` must map codes to task types")
+        else:
+            follow_up_routes = raw_follow_up_routes
 
     gates = policy.get("approval_gates", {})
     if not isinstance(gates, dict):
@@ -484,6 +514,34 @@ def validate(root: Path) -> list[str]:
             errors.append(f"route `{name}` default_runtime_provider must be allowed")
         if not isinstance(route["workspace"], str) or not route["workspace"]:
             errors.append(f"route `{name}` workspace must be a non-empty string")
+        readonly_artifacts = route.get("readonly_artifacts")
+        if readonly_artifacts is None:
+            continue
+        if not isinstance(readonly_artifacts, dict) or set(readonly_artifacts) != READONLY_ARTIFACT_POLICY_FIELDS:
+            errors.append(f"route `{name}` readonly_artifacts must define allowed_kinds and required_kinds")
+            continue
+        allowed_kinds = readonly_artifacts["allowed_kinds"]
+        required_kinds = readonly_artifacts["required_kinds"]
+        if (
+            not isinstance(allowed_kinds, list)
+            or len(set(allowed_kinds)) != len(allowed_kinds)
+            or not set(allowed_kinds) <= READONLY_ARTIFACT_KINDS
+            or not isinstance(required_kinds, list)
+            or len(set(required_kinds)) != len(required_kinds)
+            or not set(required_kinds) <= set(allowed_kinds)
+        ):
+            errors.append(f"route `{name}` readonly_artifacts is invalid")
+        if "repo.write" in capabilities and (allowed_kinds or required_kinds):
+            errors.append(f"route `{name}` readonly_artifacts requires read-only capabilities")
+    for code, task_type in follow_up_routes.items():
+        route = routes.get(task_type)
+        if not isinstance(route, dict):
+            errors.append(f"friction follow-up route `{task_type}` for `{code}` is unknown")
+            continue
+        capabilities = route.get("capabilities")
+        execution_modes = route.get("execution_modes")
+        if not isinstance(capabilities, list) or "repo.write" in capabilities or not isinstance(execution_modes, list) or "single_work_lane" not in execution_modes:
+            errors.append(f"friction follow-up route `{task_type}` for `{code}` must be single-lane read-only")
     return errors
 
 

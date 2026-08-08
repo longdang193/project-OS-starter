@@ -12,6 +12,9 @@ context_limits:
   max_facts: 16
   max_artifacts: 16
   outcome_summary_max_bytes: 4096
+evidence_artifacts:
+  writer_retained_kinds: [sanitized_command_trace]
+  sanitized_command_trace_max_bytes: 4096
 delegation_profiles:
   disabled:
     max_depth: 0
@@ -100,6 +103,8 @@ friction_policy:
   event_version: 1
   minimum_distinct_runs: 3
   window_days: 14
+  follow_up_routes:
+    writer_completion_missing: harness_diagnosis
 approval_gates:
   protected_policy:
     paths: [agents/**, .agents/skills/**, repo_config/harness.yaml, docs/operating_system/rules/**]
@@ -154,6 +159,24 @@ routes:
     capabilities: [repo.read, code.search, docs.query]
     delegation_profile: disabled
     workspace: current
+    checks: [diff]
+    retry_policy: bounded
+    execution_budget_profile: default
+    execution_modes: [single_work_lane, sequential_work_lanes]
+    runtime_providers: [codex_app_server]
+    default_runtime_provider: codex_app_server
+  harness_diagnosis:
+    template: high
+    role: investigate
+    rules: [command-execution-rule]
+    skills: [skill-improve-harness, skill-systematic-debugging, skill-repository-research, skill-verification-before-completion]
+    tools: [shell, serena]
+    capabilities: [repo.read, code.search, docs.query]
+    delegation_profile: disabled
+    workspace: current
+    readonly_artifacts:
+      allowed_kinds: [terminal_observation, sanitized_command_trace]
+      required_kinds: [terminal_observation]
     checks: [diff]
     retry_policy: bounded
     execution_budget_profile: default

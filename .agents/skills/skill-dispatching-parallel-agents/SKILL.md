@@ -6,8 +6,9 @@ distribution_tier: starter_kit
 ---
 # Dispatching Parallel Agents
 
-Use only when controller selects `parallel_lanes` in validated harness packets.
-Do not use parallelism to investigate likely shared root cause.
+Use only when controller selects canonical `parallel_work_lanes` in one
+resolved harness packet. Do not use legacy aliases in new managed requests or
+parallelism to investigate likely shared root cause.
 
 ## Preconditions
 
@@ -19,13 +20,15 @@ Do not use parallelism to investigate likely shared root cause.
 
 ## Process
 
-1. Controller records lane ownership and preflights one packet per lane.
+1. Controller resolves one immutable packet with exact lane ownership; host
+   preflights packet-selected bindings and isolated workspaces for every lane.
 2. Dispatch all independent lanes before waiting.
 3. Each agent returns `claimed_result` with changed files, proof, concerns, and
    reusable friction. No agent returns `verified`.
-4. Harness verifies each lane against its own packet.
-5. Controller reconciles results, resolves conflicts source-first, then runs
-   combined verification before acceptance.
+4. Harness materializes lane changes, then runs packet integration, validator,
+   and checks in final packet workspace.
+5. Controller reconciles verified evidence, resolves conflicts source-first,
+   then records final decision.
 
 ## Stop
 

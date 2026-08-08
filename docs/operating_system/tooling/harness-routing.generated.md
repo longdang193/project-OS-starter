@@ -13,6 +13,7 @@ Controller task packet selects one route. Rules stay mandatory. Agents return cl
 | --- | --- | --- | --- | --- | --- |
 | `local_change` | `normal` | `implement` | `skill-code-standards`, `skill-test-driven-development` | `shell`, `serena`, `ast_grep_preview` | `diff` |
 | `debugging` | `normal` | `investigate` | `skill-systematic-debugging` | `shell`, `serena`, `ast_grep_preview` | `diff` |
+| `harness_diagnosis` | `high` | `investigate` | `skill-improve-harness`, `skill-systematic-debugging`, `skill-repository-research`, `skill-verification-before-completion` | `shell`, `serena` | `diff` |
 | `research` | `low` | `investigate` | `skill-repository-research` | `shell`, `semble_codebase_search` | `diff` |
 | `plan_review` | `high` | `review` | `skill-plan-document-reviewer` | `shell`, `serena` | `diff` |
 | `design_exploration` | `high` | `investigate` | `skill-brainstorming` | `shell`, `semble_codebase_search` | `diff` |
