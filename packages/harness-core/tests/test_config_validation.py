@@ -65,7 +65,6 @@ def write_harness_root(root: Path) -> None:
                 },
                 "evidence_artifacts": {
                     "writer_retained_kinds": ["sanitized_command_trace"],
-                    "sanitized_command_trace_max_bytes": 1024,
                 },
                 "delegation_profiles": {
                     "disabled": {
@@ -286,13 +285,18 @@ def test_defaults_cannot_grant_approval_bypass(tmp_path: Path) -> None:
     assert "defaults must contain only safe route defaults" in config_validation.validate(tmp_path)
 
 
-def test_context_and_trace_limits_must_bound_artifacts(tmp_path: Path) -> None:
+def test_legacy_trace_limit_must_match_context_limit(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
     path, policy = load_policy(tmp_path)
+    policy["evidence_artifacts"]["sanitized_command_trace_max_bytes"] = 4096
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == []
+
     policy["evidence_artifacts"]["sanitized_command_trace_max_bytes"] = 8192
     write_policy(path, policy)
 
-    assert "evidence_artifacts sanitized_command_trace_max_bytes exceeds artifact_max_bytes" in config_validation.validate(tmp_path)
+    assert "evidence_artifacts legacy sanitized_command_trace_max_bytes must match artifact_max_bytes" in config_validation.validate(tmp_path)
 
 
 def test_readonly_artifacts_require_readonly_authority(tmp_path: Path) -> None:

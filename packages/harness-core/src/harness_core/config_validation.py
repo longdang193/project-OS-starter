@@ -65,7 +65,8 @@ OPERATING_PROFILE_FIELDS = {
 OPERATING_PROFILE_OPTIONAL_FIELDS = {"extends"}
 READONLY_ARTIFACT_KINDS = {"terminal_observation", "sanitized_command_trace"}
 READONLY_ARTIFACT_POLICY_FIELDS = {"allowed_kinds", "required_kinds"}
-EVIDENCE_ARTIFACT_POLICY_FIELDS = {"writer_retained_kinds", "sanitized_command_trace_max_bytes"}
+EVIDENCE_ARTIFACT_POLICY_FIELDS = {"writer_retained_kinds"}
+EVIDENCE_ARTIFACT_POLICY_OPTIONAL_FIELDS = {"sanitized_command_trace_max_bytes"}
 ROLE_FIELDS = {"accepts", "result_kind", "required_fields"}
 ORCHESTRATION_FIELDS = {
     "aliases",
@@ -384,17 +385,23 @@ def validate(root: Path) -> list[str]:
         errors.append("context_limits must define positive integer limits")
 
     evidence_artifacts = policy.get("evidence_artifacts")
-    if not isinstance(evidence_artifacts, dict) or set(evidence_artifacts) != EVIDENCE_ARTIFACT_POLICY_FIELDS:
+    if (
+        not isinstance(evidence_artifacts, dict)
+        or not EVIDENCE_ARTIFACT_POLICY_FIELDS <= set(evidence_artifacts)
+        or not set(evidence_artifacts) <= EVIDENCE_ARTIFACT_POLICY_FIELDS | EVIDENCE_ARTIFACT_POLICY_OPTIONAL_FIELDS
+    ):
         errors.append("evidence_artifacts has invalid fields")
     else:
         retained = evidence_artifacts["writer_retained_kinds"]
-        max_bytes = evidence_artifacts["sanitized_command_trace_max_bytes"]
         if not isinstance(retained, list) or len(set(retained)) != len(retained) or not set(retained) <= READONLY_ARTIFACT_KINDS:
             errors.append("evidence_artifacts writer_retained_kinds is invalid")
-        if not positive_integer(max_bytes):
-            errors.append("evidence_artifacts sanitized_command_trace_max_bytes must be positive")
-        elif isinstance(context_limits, dict) and positive_integer(context_limits.get("artifact_max_bytes")) and max_bytes > context_limits["artifact_max_bytes"]:
-            errors.append("evidence_artifacts sanitized_command_trace_max_bytes exceeds artifact_max_bytes")
+        legacy_max_bytes = evidence_artifacts.get("sanitized_command_trace_max_bytes")
+        if legacy_max_bytes is not None and (
+            not positive_integer(legacy_max_bytes)
+            or not isinstance(context_limits, dict)
+            or legacy_max_bytes != context_limits.get("artifact_max_bytes")
+        ):
+            errors.append("evidence_artifacts legacy sanitized_command_trace_max_bytes must match artifact_max_bytes")
 
     checks = _validate_named_commands(policy, errors)
     tools = policy.get("tools")

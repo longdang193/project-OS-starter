@@ -142,6 +142,7 @@ def test_production_manifest_includes_harness_and_excludes_run_state(tmp_path: P
     assert (kit_root / "repo_config" / "harness.yaml").is_file()
     assert (kit_root / "scripts" / "harness_task.py").is_file()
     assert (kit_root / "scripts" / "plan_coordination.py").is_file()
+    assert (kit_root / "scripts" / "deploy_harness_core_to_host.ps1").is_file()
     assert (kit_root / "scripts" / "validate_harness_config.py").is_file()
     assert "harness_core_launcher" in (kit_root / "scripts" / "harness_task.py").read_text(encoding="utf-8")
     assert "def run_managed" not in (kit_root / "scripts" / "harness_task.py").read_text(encoding="utf-8")

@@ -36,13 +36,13 @@ source root, verify capability and dispatch same request through provider host:
 
 ```powershell
 $providerConfig = Join-Path $HOME ".codex\harness-providers.toml"
-uv run codex-harness-host config init --config $providerConfig
-uv run codex-harness-host config validate --config $providerConfig
-uv run codex-harness-host config show --redacted --config $providerConfig
-uv run codex-harness-host capabilities
-uv run codex-harness-host preflight
-uv run codex-harness-host run --harness-root <repo-root> --request <request.json>
-uv run codex-harness-host run --harness-root <repo-root> --run-id <run-id>
+uv run --locked codex-harness-host config init --config $providerConfig
+uv run --locked codex-harness-host config validate --config $providerConfig
+uv run --locked codex-harness-host config show --redacted --config $providerConfig
+uv run --locked codex-harness-host capabilities
+uv run --locked codex-harness-host preflight
+uv run --locked codex-harness-host run --harness-root <repo-root> --request <request.json>
+uv run --locked codex-harness-host run --harness-root <repo-root> --run-id <run-id>
 ```
 
 Run `config init` only when user configuration is absent; it creates default
@@ -176,9 +176,12 @@ immutable `readonly_artifacts` records with SHA-256 and byte length.
 Host materializes those records as separate read-only sidecar files, proves each
 path, size, and hash, and never clones or mounts ambient `.harness`. A route
 with missing required evidence rejects before dispatch. Current
-`sanitized_command_trace` retains at most policy-configured bytes per command
-and aggregate output after host redaction. It is separate from terminal
-observation, which never contains raw transcript material.
+`sanitized_command_trace` uses `context_limits.artifact_max_bytes` as one cap
+for whole canonical UTF-8 JSON artifact after host redaction. Host drops older
+records and truncates retained fields until trace fits. Invalid optional trace
+retention never blocks terminal observation recording; core stores bounded
+artifact rejection evidence instead. Terminal observation never contains raw
+transcript material.
 
 ## Plan-Linked Coordination
 

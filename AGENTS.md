@@ -47,8 +47,8 @@ successor without changing its evidence.
 For `runtime_provider_id: codex_app_server`, controller invokes provider host
 from its installed source root. Host reads transport only from trusted user
 configuration at `~/.codex/harness-providers.toml`: run
-`uv run codex-harness-host capabilities`, then `uv run codex-harness-host
-preflight`, then `uv run codex-harness-host run --harness-root <repo-root>
+`uv run --locked codex-harness-host capabilities`, then `uv run --locked codex-harness-host
+preflight`, then `uv run --locked codex-harness-host run --harness-root <repo-root>
 --request <request.json>`.
 Do not put endpoint, launch-command, or credential values in repository policy,
 requests, packets, or generated guidance. Host configuration admits only a

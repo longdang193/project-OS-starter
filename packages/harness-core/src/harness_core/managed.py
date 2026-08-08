@@ -202,21 +202,17 @@ def _friction_policy(root: Path) -> dict[str, Any]:
 def _evidence_artifact_policy(policy: dict[str, Any]) -> dict[str, Any]:
     raw = policy.get("evidence_artifacts", {})
     if raw == {}:
-        return {"writer_retained_kinds": [], "sanitized_command_trace_max_bytes": 1}
+        return {"writer_retained_kinds": []}
     if not isinstance(raw, dict):
         raise HarnessError("invalid evidence artifact policy")
     retained_kinds = raw.get("writer_retained_kinds")
-    max_bytes = raw.get("sanitized_command_trace_max_bytes")
     if (
         not isinstance(retained_kinds, list)
         or len(set(retained_kinds)) != len(retained_kinds)
         or not set(retained_kinds) <= READONLY_ARTIFACT_KINDS
-        or not isinstance(max_bytes, int)
-        or isinstance(max_bytes, bool)
-        or max_bytes < 1
     ):
         raise HarnessError("invalid evidence artifact policy")
-    return {"writer_retained_kinds": list(retained_kinds), "sanitized_command_trace_max_bytes": max_bytes}
+    return {"writer_retained_kinds": list(retained_kinds)}
 
 
 def _readonly_artifact_policy(route: dict[str, Any], artifact_max_bytes: int) -> dict[str, Any]:
@@ -747,7 +743,7 @@ def _route_packet(
         "workspace": policy["defaults"]["source_workspace"],
         "context_limits": copy.deepcopy(policy["context_limits"]),
         "retained_artifacts": [
-            {"kind": kind, "max_bytes": evidence_artifacts["sanitized_command_trace_max_bytes"]}
+            {"kind": kind, "max_bytes": policy["context_limits"]["artifact_max_bytes"]}
             for kind in evidence_artifacts["writer_retained_kinds"]
             if authority["workspace_write_access"] == "workspace_write"
         ],
@@ -2642,6 +2638,7 @@ def _record_terminal_failure(
     phase: str,
     terminal_evidence: dict[str, Any],
     artifacts: list[dict[str, Any]] | None = None,
+    artifact_rejections: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     reason = _terminal_failure_reason(attempt["packet"], terminal_evidence)
     is_timeout = reason == "dispatch_timeout"
@@ -2663,6 +2660,8 @@ def _record_terminal_failure(
     attempt["evidence"]["terminal_observation"] = terminal_evidence
     if artifacts:
         attempt["evidence"]["artifacts"] = artifacts
+    if artifact_rejections:
+        attempt["evidence"]["artifact_rejections"] = artifact_rejections
     decisions = ["block"]
     if is_timeout:
         decisions = list(attempt["packet"]["execution_budget"]["timeout_decisions"])
@@ -2671,6 +2670,8 @@ def _record_terminal_failure(
     evidence_refs = ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"]
     if artifacts:
         evidence_refs.append("evidence.artifacts")
+    if artifact_rejections:
+        evidence_refs.append("evidence.artifact_rejections")
     _set_outcome(
         attempt,
         reason,
@@ -2696,7 +2697,12 @@ def _record_dispatch_exception(
         return _record_failure(root, run, policy, attempt, "workspace_baseline_invalid", str(exc), phase=phase)
     terminal_evidence = _normalize_terminal_evidence(exc, attempt["packet"])
     if terminal_evidence is not None:
-        artifacts = _normalize_retained_artifacts(exc, attempt["packet"])
+        try:
+            artifacts = _normalize_retained_artifacts(exc, attempt["packet"])
+            artifact_rejections: list[dict[str, str]] = []
+        except HarnessError as error:
+            artifacts = []
+            artifact_rejections = [{"reason": str(error)[:256]}]
         return _record_terminal_failure(
             root,
             run,
@@ -2706,6 +2712,7 @@ def _record_dispatch_exception(
             phase=phase,
             terminal_evidence=terminal_evidence,
             artifacts=artifacts,
+            artifact_rejections=artifact_rejections,
         )
     return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase=phase)
 

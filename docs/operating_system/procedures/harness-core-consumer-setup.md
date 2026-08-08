@@ -47,19 +47,21 @@ host API 3 / provider contract 3; packet API 3 remains historical evidence.
 Upgrade policy, provider pin, and core pin together; preserve old runs and
 create successors after migration.
 
-For local `codex-harness-host` development, policy/schema changes require an
-explicit runtime deployment. Starter-kit synchronization does not update host
-virtual environments. From `project-OS-starter`, run:
+For local `codex-harness-host` development, policy/schema changes require a
+published core release plus matching host `pyproject.toml` and `uv.lock` pins.
+Starter-kit synchronization does not update host virtual environments. From
+`project-OS-starter`, run:
 
 ```powershell
 pwsh -NoProfile -File .\scripts\deploy_harness_core_to_host.ps1
 ```
 
-The command installs only editable `harness-core` into the host environment,
-proves its import origin and runtime identity, then runs host capabilities and
-preflight. A host run rejects a present `repo_config/harness.yaml` when its
-`version` differs from loaded `policy_schema_version`, before full policy
-admission or packet creation.
+The command runs host through `uv run --locked`, proves locked runtime identity,
+rejects an editable `harness-core`, then runs host capabilities and preflight.
+Do not install starter source editable into host for managed work: next `uv run`
+will restore host lock source. A host run rejects a present
+`repo_config/harness.yaml` when its `version` differs from loaded
+`policy_schema_version`, before full policy admission or packet creation.
 
 ## Failure Routing
 

@@ -36,8 +36,8 @@ ordinary direct execution.
 - Generic CLI has no managed `run` command. `run-unavailable` records explicit
   `execution_mode_unavailable` proof; it never claims dispatch occurred.
 - For `runtime_provider_id: codex_app_server`, controller runs provider host
-  from its installed source root. Check `uv run codex-harness-host capabilities`
-  then `uv run codex-harness-host preflight`, then run `uv run
+  from its installed source root. Check `uv run --locked codex-harness-host capabilities`
+  then `uv run --locked codex-harness-host preflight`, then run `uv run --locked
   codex-harness-host run --harness-root <repo-root> --request <request.json>`.
   Host-owned trusted user configuration selects transport; do not copy endpoint,
   launch-command, or credential values into repository inputs. Use exclusive

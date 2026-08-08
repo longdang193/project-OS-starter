@@ -10,7 +10,6 @@ context_limits:
   outcome_summary_max_bytes: 4096
 evidence_artifacts:
   writer_retained_kinds: [sanitized_command_trace]
-  sanitized_command_trace_max_bytes: 4096
 delegation_profiles:
   disabled:
     max_depth: 0

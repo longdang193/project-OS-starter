@@ -2669,6 +2669,65 @@ def test_writer_completion_missing_blocks_without_timeout_escalation(tmp_path: P
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_writer_completion_missing_records_terminal_evidence_when_trace_is_oversized(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class MissingWriterCompletion(RuntimeError):
+        timeout_observation = {
+            "version": 1,
+            "lane_id": "primary",
+            "session_id": "thread-1",
+            "turn_id": "turn-1",
+            "turn_timeout_seconds": 300,
+            "elapsed_seconds": 300.0,
+            "terminal_status": "interrupted",
+            "interrupt_status": "terminal_confirmed",
+            "item_states": [{"item_id": "command-1", "type": "commandExecution", "state": "completed"}],
+            "command_states": [{
+                "item_id": "command-1",
+                "state": "completed",
+                "command_hash": "a" * 64,
+                "command_length": 12,
+                "response_hash": "b" * 64,
+                "response_length": 4090,
+                "exit_code": 1,
+            }],
+            "final_claim_state": {"state": "missing"},
+        }
+        evidence_artifacts = [{
+            "kind": "sanitized_command_trace",
+            "content": {
+                "version": 1,
+                "commands": [{
+                    "item_id": "command-1",
+                    "command": "pytest -q",
+                    "output": "x" * 4090,
+                    "exit_code": 1,
+                }],
+            },
+        }]
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=MissingWriterCompletion("writer turn incomplete")),
+        )
+
+        assert result["outcome"]["reason"] == "writer_completion_missing"
+        run = json.loads((run_dir / "run.json").read_text())
+        assert run["state"] == "awaiting_decision"
+        assert run["attempts"][0]["evidence"]["terminal_observation"]["kind"] == "timeout"
+        assert run["attempts"][0]["evidence"]["artifact_rejections"] == [{
+            "reason": "sanitized command trace exceeds artifact_max_bytes",
+        }]
+        assert "artifacts" not in run["attempts"][0]["evidence"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_provider_failure_records_terminal_observation_without_timeout_escalation(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
