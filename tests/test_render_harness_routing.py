@@ -29,8 +29,10 @@ def test_rendered_routing_matches_policy() -> None:
 
     rendered = renderer.render(ROOT)
 
-    assert "| Task Type | Template | Role | Skills | Authority | Toolset | Verification |" in rendered
-    assert "`workspace_write` | `code` | `write` |" in rendered
+    assert "| Task Type | Template | Role | Required Skills | Allowed Skill Sets | Operating Profiles |" in rendered
+    assert "`local_change_base`" in rendered
+    assert "`local_change_standard`" in rendered
+    assert "| `debugging` | `normal` | `investigate` | `skill-systematic-debugging` |  |  |" in rendered
     assert "DO NOT EDIT" in rendered
 
 

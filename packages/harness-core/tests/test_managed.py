@@ -378,6 +378,66 @@ def test_v4_packet_resolves_selected_profiles() -> None:
     assert packet["postconditions"] == []
 
 
+def test_composed_packet_resolves_selected_backend_facet_and_operating_profile() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(
+            version=4,
+            execution_mode="single_work_lane",
+            skill_set_selections=[{"id": "backend_verification", "reason": "route contract changes"}],
+            operating_profile_selection={"id": "local_change_extended", "reason": "approved extended range"},
+        ),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["skills"] == [
+        "skill-code-standards",
+        "skill-executing-plans",
+        "skill-test-driven-development",
+        "skill-backend-verification",
+    ]
+    assert packet["skill_sets"] == {
+        "required": ["local_change_base"],
+        "selected": [{"id": "backend_verification", "reason": "route contract changes"}],
+        "resolved": ["local_change_base", "backend_verification"],
+    }
+    assert packet["operating_profile"]["resolved"] == "local_change_extended"
+    assert packet["execution_budget"]["profile"] == "extended"
+
+
+@pytest.mark.parametrize(
+    ("request_overrides", "message"),
+    [
+        (
+            {"skill_set_selections": [{"id": "missing", "reason": "unknown"}]},
+            "skill set `missing` is not allowed for task type",
+        ),
+        (
+            {"skill_set_selections": [
+                {"id": "backend_verification", "reason": "first"},
+                {"id": "backend_verification", "reason": "duplicate"},
+            ]},
+            "skill set `backend_verification` is not allowed for task type",
+        ),
+        (
+            {"operating_profile_selection": {"id": "missing", "reason": "unknown"}},
+            "operating profile `missing` is not allowed for task type",
+        ),
+    ],
+)
+def test_composed_packet_rejects_invalid_controller_selection(request_overrides, message) -> None:
+    harness = load_module()
+
+    with pytest.raises(harness.HarnessError, match=message):
+        harness.resolve_managed_packet(
+            ROOT,
+            managed_request(version=4, execution_mode="single_work_lane", **request_overrides),
+            attempt_id="attempt-1",
+        )
+
+
 def test_v4_packet_rejects_oversized_work_context_before_dispatch() -> None:
     harness = load_module()
 
@@ -2498,6 +2558,53 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         assert resumed["state"] == "planned"
         assert run["attempts"][0]["packet"]["execution_budget"]["profile"] == "default"
         assert run["attempts"][1]["packet"]["execution_budget"]["profile"] == "extended"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_api5_timeout_escalation_preserves_provider_runtime_binding(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class TimedOutTurn(RuntimeError):
+        timeout_observation = {
+            "version": 1,
+            "lane_id": "primary",
+            "session_id": "thread-1",
+            "turn_id": "turn-1",
+            "turn_timeout_seconds": 300,
+            "elapsed_seconds": 300.0,
+            "terminal_status": "interrupted",
+            "interrupt_status": "terminal_confirmed",
+            "item_states": [],
+            "command_states": [],
+            "final_claim_state": {"state": "missing"},
+        }
+
+    class BoundTimeoutAdapter(FakeAdapter):
+        def preflight_evidence(self):
+            return copy.deepcopy(API5_BINDING)
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id, version=4, execution_mode="single_work_lane"),
+            BoundTimeoutAdapter(
+                {"single_work_lane": "enforced"},
+                dispatch_error=TimedOutTurn("turn timed out"),
+                host_api=4,
+                identity={"provider_id": "codex_app_server", "contract_version": 4},
+            ),
+        )
+
+        assert result["outcome"]["reason"] == "dispatch_timeout"
+        harness.apply_controller_decision(ROOT, run_id, {"kind": "escalate"})
+        attempts = json.loads((run_dir / "run.json").read_text())["attempts"]
+
+        assert [attempt["packet"]["version"] for attempt in attempts] == [harness.CURRENT_PACKET_API] * 2
+        assert attempts[1]["packet"]["operating_profile"]["resolved"] == "local_change_extended"
+        assert attempts[1]["packet"]["provider_runtime_binding"] == attempts[0]["packet"]["provider_runtime_binding"]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 

@@ -44,18 +44,31 @@ def render(root: Path) -> str:
         "",
         "Controller task packet selects one route. Core resolves authority, toolset, and verification profiles. Agents return claimed results; harness returns verification evidence.",
         "",
-        "| Task Type | Template | Role | Skills | Authority | Toolset | Verification |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Task Type | Template | Role | Required Skills | Allowed Skill Sets | Operating Profiles |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for name, route in policy["routes"].items():
+        if "required_skill_sets" in route:
+            required_sets = route["required_skill_sets"]
+            required_skill_cell = ", ".join(
+                f"`{set_name}`: {', '.join(f'`{skill}`' for skill in policy['skill_sets'][set_name]['skills'])}"
+                for set_name in required_sets
+            )
+            allowed_sets = route["allowed_skill_sets"]
+            profiles = route["allowed_operating_profiles"]
+            template = policy["operating_profiles"][route["default_operating_profile"]].get("template", "inherited")
+        else:
+            required_skill_cell = ", ".join(f"`{skill}`" for skill in route["skills"])
+            allowed_sets = []
+            profiles = []
+            template = route["template"]
         cells = [
             f"`{name}`",
-            f"`{route['template']}`",
+            f"`{template}`",
             f"`{route['role']}`",
-            ", ".join(f"`{skill}`" for skill in route["skills"]),
-            f"`{route['authority']}`",
-            f"`{route['toolset']}`",
-            f"`{route['verification_profile']}`",
+            required_skill_cell,
+            ", ".join(f"`{skill_set}`" for skill_set in allowed_sets),
+            ", ".join(f"`{profile}`" for profile in profiles),
         ]
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"

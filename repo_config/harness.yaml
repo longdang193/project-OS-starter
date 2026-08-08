@@ -76,6 +76,24 @@ execution_budgets:
     extended:
       turn_timeout_seconds: 900
       timeout_decisions: [block]
+skill_sets:
+  local_change_base:
+    skills: [skill-code-standards, skill-executing-plans, skill-test-driven-development]
+    selection_guidance: Use for every approved planned code change.
+  backend_verification:
+    skills: [skill-backend-verification]
+    selection_guidance: Select for material backend behavior or contract changes.
+operating_profiles:
+  local_change_standard:
+    template: normal
+    authority: workspace_write
+    toolset: code
+    verification_profile: write
+    runtime_provider: codex_app_server
+    execution_budget_profile: default
+  local_change_extended:
+    extends: local_change_standard
+    execution_budget_profile: extended
 checks:
   diff:
     command: [git, diff, --check]
@@ -140,13 +158,16 @@ orchestration:
     rules: [multi-agent-orchestration-rule]
 routes:
   local_change:
-    template: normal
     role: implement
     rules: [command-execution-rule, python-contracts-rule]
-    skills: [skill-code-standards, skill-test-driven-development]
-    authority: workspace_write
-    toolset: code
-    verification_profile: write
+    required_skill_sets: [local_change_base]
+    allowed_skill_sets: [backend_verification]
+    default_operating_profile: local_change_standard
+    allowed_operating_profiles: [local_change_standard, local_change_extended]
+    escalation_transitions:
+      - from: local_change_standard
+        "on": dispatch_timeout
+        to: local_change_extended
     delegation_profile: disabled
     approval_gates: [protected_policy]
     execution_modes: [single_work_lane, sequential_work_lanes, parallel_work_lanes]

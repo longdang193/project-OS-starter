@@ -167,10 +167,84 @@ def write_policy(path: Path, policy: dict[str, object]) -> None:
     path.write_text(yaml.safe_dump(policy, sort_keys=False), encoding="utf-8")
 
 
+def composed_policy(root: Path) -> tuple[Path, dict[str, object]]:
+    write_harness_root(root)
+    for skill_name in ("skill-executing-plans", "skill-test-driven-development", "skill-backend-verification"):
+        skill_dir = root / ".agents" / "skills" / skill_name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+    path, policy = load_policy(root)
+    policy["execution_budgets"]["profiles"]["extended"] = {
+        "turn_timeout_seconds": 600,
+        "timeout_decisions": ["block"],
+    }
+    policy["skill_sets"] = {
+        "local_change_base": {
+            "skills": ["skill-code-standards", "skill-executing-plans", "skill-test-driven-development"],
+            "selection_guidance": "Use for every planned code change.",
+        },
+        "backend_verification": {
+            "skills": ["skill-backend-verification"],
+            "selection_guidance": "Use for material backend behavior.",
+        },
+    }
+    policy["operating_profiles"] = {
+        "local_change_standard": {
+            "template": "normal",
+            "authority": "workspace_write",
+            "toolset": "code",
+            "verification_profile": "write",
+            "runtime_provider": "codex_app_server",
+            "execution_budget_profile": "default",
+        },
+        "local_change_extended": {
+            "extends": "local_change_standard",
+            "execution_budget_profile": "extended",
+        },
+    }
+    policy["routes"]["local_change"] = {
+        "role": "implement",
+        "rules": ["command-execution-rule"],
+        "required_skill_sets": ["local_change_base"],
+        "allowed_skill_sets": ["backend_verification"],
+        "default_operating_profile": "local_change_standard",
+        "allowed_operating_profiles": ["local_change_standard", "local_change_extended"],
+        "escalation_transitions": [{"from": "local_change_standard", "on": "dispatch_timeout", "to": "local_change_extended"}],
+        "delegation_profile": "disabled",
+        "approval_gates": ["protected"],
+        "execution_modes": ["single_work_lane"],
+    }
+    write_policy(path, policy)
+    return path, policy
+
+
 def test_v4_policy_profiles_validate(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
 
     assert config_validation.validate(tmp_path) == []
+
+
+def test_composed_route_uses_shared_profile_resolver(tmp_path: Path) -> None:
+    _, policy = composed_policy(tmp_path)
+
+    assert config_validation.validate(tmp_path) == []
+    assert config_validation.resolve_operating_profile(policy, "local_change", "local_change_extended") == {
+        "template": "normal",
+        "authority": "workspace_write",
+        "toolset": "code",
+        "verification_profile": "write",
+        "runtime_provider": "codex_app_server",
+        "execution_budget_profile": "extended",
+    }
+
+
+def test_composed_route_rejects_cross_provider_profiles(tmp_path: Path) -> None:
+    path, policy = composed_policy(tmp_path)
+    policy["runtime_providers"]["other"] = {"contract_version": 4}
+    policy["operating_profiles"]["local_change_extended"]["runtime_provider"] = "other"
+    write_policy(path, policy)
+
+    assert "route `local_change` operating profiles must resolve default runtime provider" in config_validation.validate(tmp_path)
 
 
 def test_duplicate_profile_key_fails_before_validation(tmp_path: Path) -> None:

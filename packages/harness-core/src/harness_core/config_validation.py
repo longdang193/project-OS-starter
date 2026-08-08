@@ -43,6 +43,26 @@ ROUTE_FIELDS = {
     "execution_modes",
 }
 ROUTE_OPTIONAL_FIELDS = {"approval_gates", "readonly_artifacts"}
+COMPOSED_ROUTE_FIELDS = {
+    "role",
+    "rules",
+    "required_skill_sets",
+    "allowed_skill_sets",
+    "default_operating_profile",
+    "allowed_operating_profiles",
+    "delegation_profile",
+    "execution_modes",
+}
+COMPOSED_ROUTE_OPTIONAL_FIELDS = ROUTE_OPTIONAL_FIELDS | {"escalation_transitions"}
+OPERATING_PROFILE_FIELDS = {
+    "template",
+    "authority",
+    "toolset",
+    "verification_profile",
+    "runtime_provider",
+    "execution_budget_profile",
+}
+OPERATING_PROFILE_OPTIONAL_FIELDS = {"extends"}
 READONLY_ARTIFACT_KINDS = {"terminal_observation", "sanitized_command_trace"}
 READONLY_ARTIFACT_POLICY_FIELDS = {"allowed_kinds", "required_kinds"}
 EVIDENCE_ARTIFACT_POLICY_FIELDS = {"writer_retained_kinds", "sanitized_command_trace_max_bytes"}
@@ -114,6 +134,7 @@ POLICY_FIELDS = {
     "orchestration",
     "routes",
 }
+POLICY_OPTIONAL_FIELDS = {"skill_sets", "operating_profiles"}
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -162,6 +183,41 @@ def valid_string_list(value: Any, *, allow_empty: bool = False) -> bool:
 
 def positive_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def resolve_operating_profile(policy: dict[str, Any], route_name: str, profile_name: str) -> dict[str, Any]:
+    routes = policy.get("routes")
+    profiles = policy.get("operating_profiles")
+    if not isinstance(routes, dict) or not isinstance(profiles, dict):
+        raise ValueError("operating profiles are unavailable")
+    route = routes.get(route_name)
+    if not isinstance(route, dict):
+        raise ValueError(f"unknown route `{route_name}`")
+    allowed = route.get("allowed_operating_profiles")
+    if not isinstance(allowed, list) or profile_name not in allowed:
+        raise ValueError(f"route `{route_name}` disallows operating profile `{profile_name}`")
+
+    resolving: set[str] = set()
+
+    def resolve(name: str) -> dict[str, Any]:
+        if name in resolving:
+            raise ValueError(f"operating profile `{name}` inheritance cycle")
+        profile = profiles.get(name)
+        if not isinstance(profile, dict):
+            raise ValueError(f"unknown operating profile `{name}`")
+        unknown = set(profile) - OPERATING_PROFILE_FIELDS - OPERATING_PROFILE_OPTIONAL_FIELDS
+        if unknown:
+            raise ValueError(f"operating profile `{name}` has unknown fields")
+        resolving.add(name)
+        parent_name = profile.get("extends")
+        parent = {} if parent_name is None else resolve(parent_name) if isinstance(parent_name, str) and parent_name else (_ for _ in ()).throw(ValueError(f"operating profile `{name}` has invalid extends"))
+        resolving.remove(name)
+        resolved = {**parent, **{key: value for key, value in profile.items() if key != "extends"}}
+        if set(resolved) != OPERATING_PROFILE_FIELDS:
+            raise ValueError(f"operating profile `{name}` is incomplete")
+        return resolved
+
+    return resolve(profile_name)
 
 
 def _validate_roles(roles_payload: Any, errors: list[str]) -> dict[str, dict[str, Any]]:
@@ -303,7 +359,7 @@ def validate(root: Path) -> list[str]:
         return [*errors, "harness policy must be a mapping"]
     if policy.get("version") != 4:
         errors.append("harness policy version must be 4")
-    unknown_policy_fields = set(policy) - POLICY_FIELDS
+    unknown_policy_fields = set(policy) - POLICY_FIELDS - POLICY_OPTIONAL_FIELDS
     missing_policy_fields = POLICY_FIELDS - policy.keys()
     if missing_policy_fields:
         errors.append(f"harness policy missing fields: {', '.join(sorted(missing_policy_fields))}")
@@ -473,6 +529,25 @@ def validate(root: Path) -> list[str]:
         if not isinstance(name, str) or not name or not isinstance(gate, dict) or set(gate) != {"paths"} or not valid_string_list(gate.get("paths")):
             errors.append(f"approval gate `{name}` is invalid")
 
+    skill_sets = policy.get("skill_sets", {})
+    if not isinstance(skill_sets, dict):
+        errors.append("skill_sets must be a mapping")
+        skill_sets = {}
+    for set_name, skill_set in skill_sets.items():
+        if not isinstance(set_name, str) or not set_name or not isinstance(skill_set, dict) or set(skill_set) != {"skills", "selection_guidance"}:
+            errors.append(f"skill set `{set_name}` is invalid")
+            continue
+        selected_skills = skill_set["skills"]
+        if not valid_string_list(selected_skills) or len(set(selected_skills)) != len(selected_skills) or not set(selected_skills) <= skills:
+            errors.append(f"skill set `{set_name}` has invalid skills")
+        if not isinstance(skill_set["selection_guidance"], str) or not skill_set["selection_guidance"].strip():
+            errors.append(f"skill set `{set_name}` has invalid selection_guidance")
+
+    operating_profiles = policy.get("operating_profiles", {})
+    if not isinstance(operating_profiles, dict):
+        errors.append("operating_profiles must be a mapping")
+        operating_profiles = {}
+
     routes = policy.get("routes")
     if not isinstance(routes, dict) or not routes:
         errors.append("routes must be a non-empty mapping")
@@ -480,6 +555,68 @@ def validate(root: Path) -> list[str]:
     for name, route in routes.items():
         if not isinstance(name, str) or not name or not isinstance(route, dict):
             errors.append("routes must map names to mappings")
+            continue
+        composed = any(field in route for field in {"required_skill_sets", "allowed_skill_sets", "default_operating_profile", "allowed_operating_profiles"})
+        if composed:
+            missing = COMPOSED_ROUTE_FIELDS - route.keys()
+            unknown = set(route) - COMPOSED_ROUTE_FIELDS - COMPOSED_ROUTE_OPTIONAL_FIELDS
+            if missing:
+                errors.append(f"route `{name}` missing fields: {', '.join(sorted(missing))}")
+            if unknown:
+                errors.append(f"route `{name}` has unknown fields: {', '.join(sorted(unknown))}")
+            role_name = route.get("role")
+            if role_name not in roles:
+                errors.append(f"unknown role `{role_name}`")
+            for field, available in (("rules", rules),):
+                values = route.get(field)
+                if not valid_string_list(values) or len(set(values)) != len(values):
+                    errors.append(f"route `{name}` {field} must be a unique non-empty list of strings")
+                elif not set(values) <= available:
+                    errors.append(f"route `{name}` has unknown {field}")
+            for field in ("required_skill_sets", "allowed_skill_sets", "allowed_operating_profiles"):
+                values = route.get(field)
+                if not valid_string_list(values) or len(set(values)) != len(values):
+                    errors.append(f"route `{name}` {field} must be a unique non-empty list of strings")
+            required_sets = route.get("required_skill_sets", [])
+            allowed_sets = route.get("allowed_skill_sets", [])
+            if isinstance(required_sets, list) and isinstance(allowed_sets, list):
+                if set(required_sets).intersection(allowed_sets) or not set(required_sets).union(allowed_sets) <= set(skill_sets):
+                    errors.append(f"route `{name}` has invalid skill sets")
+            default_profile = route.get("default_operating_profile")
+            allowed_profiles = route.get("allowed_operating_profiles", [])
+            if not isinstance(default_profile, str) or default_profile not in allowed_profiles:
+                errors.append(f"route `{name}` has invalid default_operating_profile")
+            if isinstance(allowed_profiles, list):
+                for profile_name in allowed_profiles:
+                    try:
+                        profile = resolve_operating_profile(policy, name, profile_name)
+                    except ValueError as exc:
+                        errors.append(str(exc))
+                        continue
+                    if profile["template"] not in templates or role_name not in roles or profile["template"] not in roles[role_name].get("accepts", []):
+                        errors.append(f"route `{name}` has invalid operating profile `{profile_name}`")
+                    if profile["authority"] not in authorities or profile["toolset"] not in toolsets or profile["verification_profile"] not in verification_profiles or profile["runtime_provider"] not in runtime_providers or profile["execution_budget_profile"] not in budget_profiles:
+                        errors.append(f"route `{name}` has invalid operating profile `{profile_name}`")
+                    if profile["runtime_provider"] != defaults.get("runtime_provider"):
+                        errors.append(f"route `{name}` operating profiles must resolve default runtime provider")
+            transitions = route.get("escalation_transitions", [])
+            seen_transitions: set[tuple[str, str]] = set()
+            if not isinstance(transitions, list):
+                errors.append(f"route `{name}` escalation_transitions must be a list")
+            else:
+                for transition in transitions:
+                    if not isinstance(transition, dict) or set(transition) != {"from", "on", "to"} or transition.get("on") != "dispatch_timeout" or transition.get("from") not in allowed_profiles or transition.get("to") not in allowed_profiles or (transition.get("from"), transition.get("on")) in seen_transitions:
+                        errors.append(f"route `{name}` has invalid escalation_transitions")
+                        continue
+                    seen_transitions.add((transition["from"], transition["on"]))
+            for field, available in (("delegation_profile", delegation_profiles),):
+                if route.get(field) not in available:
+                    errors.append(f"route `{name}` has unknown {field} `{route.get(field)}`")
+            modes = route.get("execution_modes")
+            if not valid_string_list(modes) or len(set(modes)) != len(modes):
+                errors.append(f"route `{name}` execution_modes must be a unique non-empty list of strings")
+            elif not set(modes) <= set(orchestration):
+                errors.append(f"route `{name}` has unknown execution mode")
             continue
         missing = ROUTE_FIELDS - route.keys()
         unknown = set(route) - ROUTE_FIELDS - ROUTE_OPTIONAL_FIELDS

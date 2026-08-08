@@ -40,6 +40,7 @@ import yaml
 from .config_validation import (
     READONLY_ARTIFACT_KINDS,
     load_yaml,
+    resolve_operating_profile,
     validate as validate_harness_config,
 )
 from .compatibility import (
@@ -631,12 +632,59 @@ def _resolve_execution_budget(
     return budget
 
 
+def _normalize_skill_set_selections(request: dict[str, Any], route: dict[str, Any]) -> list[dict[str, str]]:
+    value = request.get("skill_set_selections", [])
+    if not isinstance(value, list):
+        raise HarnessError("skill_set_selections must be a list")
+    allowed = route.get("allowed_skill_sets", [])
+    selected: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"id", "reason"}:
+            raise HarnessError("skill_set_selections entries must define id and reason")
+        identifier = _required_string(item.get("id"), "skill set id")
+        reason = _required_string(item.get("reason"), "skill set reason")
+        if identifier in seen or identifier not in allowed:
+            raise HarnessError(f"skill set `{identifier}` is not allowed for task type")
+        seen.add(identifier)
+        selected.append({"id": identifier, "reason": reason})
+    return selected
+
+
+def _normalize_operating_profile_selection(request: dict[str, Any], route: dict[str, Any]) -> dict[str, str] | None:
+    value = request.get("operating_profile_selection")
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"id", "reason"}:
+        raise HarnessError("operating_profile_selection must define id and reason")
+    identifier = _required_string(value.get("id"), "operating profile id")
+    if identifier not in route.get("allowed_operating_profiles", []):
+        raise HarnessError(f"operating profile `{identifier}` is not allowed for task type")
+    return {"id": identifier, "reason": _required_string(value.get("reason"), "operating profile reason")}
+
+
+def _resolve_skill_sets(policy: dict[str, Any], route: dict[str, Any], selected: list[dict[str, str]]) -> tuple[list[str], dict[str, Any] | None]:
+    if "required_skill_sets" not in route:
+        return list(route["skills"]), None
+    required = list(route["required_skill_sets"])
+    selected_ids = [item["id"] for item in selected]
+    resolved_ids = [*required, *selected_ids]
+    resolved_skills: list[str] = []
+    for set_id in resolved_ids:
+        for skill in policy["skill_sets"][set_id]["skills"]:
+            if skill not in resolved_skills:
+                resolved_skills.append(skill)
+    return resolved_skills, {"required": required, "selected": selected, "resolved": resolved_ids}
+
+
 def _route_packet(
     policy: dict[str, Any],
     task_type: str,
     execution_mode: str,
     *,
     execution_budget_profile: str | None = None,
+    skill_set_selections: list[dict[str, str]] | None = None,
+    operating_profile_selection: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     route = policy["routes"].get(task_type)
     if not isinstance(route, dict):
@@ -644,9 +692,26 @@ def _route_packet(
     if execution_mode not in route["execution_modes"]:
         raise HarnessError(f"unsupported execution mode `{execution_mode}` for task type `{task_type}`")
     orchestration = policy["orchestration"][execution_mode]
-    authority_name = route["authority"]
-    toolset_name = route["toolset"]
-    verification_profile_name = route["verification_profile"]
+    profile_metadata: dict[str, Any] | None = None
+    if "default_operating_profile" in route:
+        selected_profile = operating_profile_selection or {"id": route["default_operating_profile"], "reason": "route_default"}
+        try:
+            profile = resolve_operating_profile(policy, task_type, selected_profile["id"])
+        except ValueError as exc:
+            raise HarnessError(str(exc)) from exc
+        authority_name = profile["authority"]
+        toolset_name = profile["toolset"]
+        verification_profile_name = profile["verification_profile"]
+        template = profile["template"]
+        runtime_provider_id = profile["runtime_provider"]
+        execution_budget_profile = profile["execution_budget_profile"]
+        profile_metadata = {"default": route["default_operating_profile"], "selected": operating_profile_selection, "resolved": selected_profile["id"], "reason": selected_profile["reason"], "values": profile}
+    else:
+        authority_name = route["authority"]
+        toolset_name = route["toolset"]
+        verification_profile_name = route["verification_profile"]
+        template = route["template"]
+        runtime_provider_id = None
     authority = policy["authorities"].get(authority_name)
     tools = policy["toolsets"].get(toolset_name)
     verification_profile = policy["verification_profiles"].get(verification_profile_name)
@@ -664,12 +729,13 @@ def _route_packet(
         }
         for name in tools
     ]
-    return {
+    skills, skill_sets = _resolve_skill_sets(policy, route, skill_set_selections or [])
+    packet = {
         "task_type": task_type,
-        "template": route["template"],
+        "template": template,
         "role": route["role"],
         "rules": list(dict.fromkeys([*route["rules"], *orchestration["rules"]])),
-        "skills": route["skills"],
+        "skills": skills,
         "authority": authority_name,
         "toolset": toolset_name,
         "verification_profile": verification_profile_name,
@@ -706,6 +772,12 @@ def _route_packet(
         ),
         "allowed_next_states": copy.deepcopy(CORE_STATE_TRANSITIONS),
     }
+    if skill_sets is not None:
+        packet["skill_sets"] = skill_sets
+    if profile_metadata is not None:
+        packet["operating_profile"] = profile_metadata
+        packet["runtime_provider_id"] = runtime_provider_id
+    return packet
 
 
 def _resolve_runtime_provider(
@@ -1490,20 +1562,37 @@ def resolve_managed_packet(
     resolved_core_identity = core_identity or _core_identity(policy, request_api=request["version"])
     task_type = _required_string(request.get("task_type"), "task_type")
     execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
+    route = policy["routes"].get(task_type)
+    if not isinstance(route, dict):
+        raise HarnessError(f"unknown task type `{task_type}`")
     if "execution_budget_profile" in request:
         raise HarnessError("managed request cannot select execution budget profile")
+    skill_set_selections = _normalize_skill_set_selections(request, route)
+    operating_profile_selection = _normalize_operating_profile_selection(request, route)
     packet = _route_packet(
         policy,
         task_type,
         execution_mode,
         execution_budget_profile=execution_budget_profile,
+        skill_set_selections=skill_set_selections,
+        operating_profile_selection=operating_profile_selection,
     )
     if packet_api == 3:
         packet["capabilities"] = list(legacy_role_capabilities(packet["role"]))
+    resolved_provider_id = packet.get("runtime_provider_id")
+    requested_provider_id = request.get("runtime_provider_id")
+    if resolved_provider_id is not None and requested_provider_id not in {None, resolved_provider_id}:
+        _resolve_runtime_provider(
+            policy,
+            task_type,
+            requested_provider_id,
+            packet_api=packet_api,
+        )
+        raise HarnessError("runtime_provider_id conflicts with operating profile")
     runtime_provider = _resolve_runtime_provider(
         policy,
         task_type,
-        request.get("runtime_provider_id"),
+        resolved_provider_id if resolved_provider_id is not None else requested_provider_id,
         packet_api=packet_api,
     )
     if packet_api == CURRENT_PACKET_API:
@@ -3062,23 +3151,41 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
     else:
         retry_policy = attempt["packet"]["retry_policy"]
         execution_budget_profile = None
+        provider_runtime_binding = None
         if outcome["reason"] == "dispatch_timeout":
             if kind != "escalate":
                 raise HarnessError("timeout outcome requires escalation or block")
-            execution_budget_profile = attempt["packet"]["execution_budget"].get("escalation_profile")
-            if not isinstance(execution_budget_profile, str) or not execution_budget_profile:
-                raise HarnessError("timeout outcome lacks escalation budget profile")
+            profile_metadata = attempt["packet"].get("operating_profile")
+            if isinstance(profile_metadata, dict):
+                route = policy["routes"][attempt["packet"]["task_type"]]
+                transition = next((item for item in route.get("escalation_transitions", []) if item["from"] == profile_metadata["resolved"] and item["on"] == "dispatch_timeout"), None)
+                if not isinstance(transition, dict):
+                    raise HarnessError("timeout outcome lacks operating profile transition")
+                successor_request = _successor_request(run, decision.get("successor"))
+                successor_request["operating_profile_selection"] = {"id": transition["to"], "reason": "dispatch_timeout"}
+                if attempt["packet"].get("version") == CURRENT_PACKET_API:
+                    provider_runtime_binding = attempt["packet"].get("provider_runtime_binding")
+                    if not isinstance(provider_runtime_binding, dict):
+                        raise HarnessError("timeout outcome lacks provider runtime binding")
+            else:
+                execution_budget_profile = attempt["packet"]["execution_budget"].get("escalation_profile")
+                if not isinstance(execution_budget_profile, str) or not execution_budget_profile:
+                    raise HarnessError("timeout outcome lacks escalation budget profile")
+                successor_request = _successor_request(run, decision.get("successor"))
         elif outcome["reason"] not in retry_policy["retryable_reasons"] and outcome["reason"] not in {"approval_required", "plan_binding_changed"}:
             raise HarnessError(f"outcome `{outcome['reason']}` is not retryable")
+        else:
+            successor_request = _successor_request(run, decision.get("successor"))
         if len(run["attempts"]) >= retry_policy["max_attempts"]:
             _set_outcome(attempt, "retry_exhausted", ["block"], ["decision"])
             _transition(run, policy["states"], "blocked", "retry_exhausted")
         else:
             packet = resolve_managed_packet(
                 root,
-                _successor_request(run, decision.get("successor")),
+                successor_request,
                 attempt_id=f"attempt-{len(run['attempts']) + 1}",
                 execution_budget_profile=execution_budget_profile,
+                provider_runtime_binding=provider_runtime_binding,
             )
             _append_attempt(run, packet)
             _transition(run, policy["states"], "planned", f"controller_{kind}")
