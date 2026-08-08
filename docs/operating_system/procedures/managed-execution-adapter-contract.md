@@ -114,11 +114,14 @@ one immutable packet. Host uses only resolved packet tools. Controller runs
 only packet-declared checks through `run_checks`; worker authority never grants
 check execution.
 
-For packet API 5, host renders `packet["work_context"]` exactly once per turn.
-It must not separately render `user_request`, parent transcript, or a second
-instruction channel. Core validates the context digest, fact/reference identity,
-UTF-8/count limits, and readonly-artifact SHA-256/byte length before dispatch.
-Host materializes only those packet artifacts.
+Core owns `work_context` normalization and validation. Host renders one context
+object exactly once per turn: supplied `packet["work_context"]`, or legacy
+`{"version": 0, "objective": packet["user_request"]}` when an already
+admitted packet omits it. Host must not separately render `user_request`, parent
+transcript, or a second instruction channel, and must not duplicate core context
+schema validation. Core validates supplied context digest, fact/reference
+identity, UTF-8/count limits, and readonly-artifact SHA-256/byte length before
+dispatch. Host materializes only those packet artifacts.
 
 Core evaluates packet postconditions against final change collection. A
 `workspace_unchanged` postcondition fails on every change from packet base;
