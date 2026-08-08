@@ -8,6 +8,7 @@ domain: harness
 from __future__ import annotations
 
 import json
+import copy
 from datetime import UTC, datetime
 from pathlib import Path
 import shutil
@@ -38,8 +39,47 @@ def isolate_root_friction_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     )
 
 
+API5_BINDING = {
+    "provider_id": "codex_app_server",
+    "host_api": 4,
+    "contract_version": 4,
+    "transport": "stdio",
+    "lifecycle": "host_spawn",
+    "protocol": "app-server-v1",
+    "configuration_digest": "a" * 64,
+    "readiness": "ready",
+}
+
+
+class HarnessModule:
+    def __init__(self, module):
+        object.__setattr__(self, "_module", module)
+
+    def __getattr__(self, name):
+        return getattr(self._module, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._module, name, value)
+
+    def __delattr__(self, name):
+        delattr(self._module, name)
+
+    def resolve_managed_packet(self, root, request, **kwargs):
+        if request.get("version") != 4:
+            return self._module.resolve_managed_packet(root, request, **kwargs)
+        policy = copy.deepcopy(self._module._load_policy(root))
+        policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
+        original = self._module._load_policy
+        self._module._load_policy = lambda _root: policy
+        kwargs.setdefault("provider_runtime_binding", copy.deepcopy(API5_BINDING))
+        try:
+            return self._module.resolve_managed_packet(root, request, **kwargs)
+        finally:
+            self._module._load_policy = original
+
+
 def load_module():
-    return managed
+    return HarnessModule(managed)
 
 
 def task(**overrides):
@@ -366,7 +406,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
     assert packet["core_identity"] == {
         "package_release": harness.package_release(),
-        "request_api": 3,
+        "request_api": 2,
         "packet_api": 3,
         "host_api": None,
     }
@@ -409,16 +449,23 @@ def test_legacy_packet_derives_write_capability_without_role_writes(monkeypatch)
     assert packet["lanes"][0]["write_capable"] is True
 
 
-def test_api4_packet_requires_immutable_invocation_fields() -> None:
+def test_api5_packet_requires_immutable_provider_runtime_binding(monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
+    policy = harness._load_policy(ROOT)
+    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+    binding = copy.deepcopy(API5_BINDING)
     packet = harness.resolve_managed_packet(
         ROOT,
         managed_request(version=4, execution_mode="single_work_lane"),
         attempt_id="attempt-1",
+        provider_runtime_binding=binding,
     )
 
+    assert packet["version"] == 5
     assert packet["invocation_id"] == "attempt-1:primary"
     assert packet["parent_invocation_id"] is None
+    assert packet["provider_runtime_binding"] == binding
 
 
 def test_harness_diagnosis_packet_resolves_declared_readonly_artifacts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -531,7 +578,7 @@ def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
     assert packet["capabilities"] == capabilities
     assert packet["delegation_profile"] == delegation_profile
     assert packet["workspace_write_access"] == workspace_write_access
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 3}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 4}
 
 def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
     harness = load_module()
@@ -583,8 +630,11 @@ def test_delegate_derives_one_idempotent_read_only_child(tmp_path: Path) -> None
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
 
-def test_dispatch_preserves_failed_child_decision(tmp_path: Path) -> None:
+def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
+    policy = harness._load_policy(ROOT)
+    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
 
@@ -593,10 +643,13 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path) -> None:
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=3,
-                identity={"provider_id": "codex_app_server", "contract_version": 3},
+                host_api=4,
+                identity={"provider_id": "codex_app_server", "contract_version": 4},
             )
             self.delegation_result = None
+
+        def preflight_evidence(self):
+            return copy.deepcopy(API5_BINDING)
 
         def dispatch_lane(self, lane, packet, workspace, delegation_bridge):
             self.calls.append("dispatch_lane")
@@ -1600,33 +1653,27 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_run_managed_records_host_preflight_evidence(tmp_path: Path) -> None:
+def test_run_managed_requires_ready_provider_binding_before_packet_creation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
-
-    class PreflightAdapter(FakeAdapter):
-        def preflight_evidence(self):
-            return {
-                "protocol": "initialize",
-                "server_uri": "ws://127.0.0.1:4500",
-            }
+    policy = harness._load_policy(ROOT)
+    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
 
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     try:
-        result = harness.run_managed(
-            ROOT,
-            managed_request(run_id=run_id),
-            PreflightAdapter({"single_work_lane": "enforced"}),
-            run_check=lambda command: (0, "ok", ""),
-            collect_changes=lambda root, base_commit: [],
-        )
+        with pytest.raises(harness.HarnessError, match="provider preflight evidence is required"):
+            harness.run_managed(
+                ROOT,
+                managed_request(version=4, run_id=run_id),
+                FakeAdapter(
+                    {"single_work_lane": "enforced"},
+                    host_api=4,
+                    identity={"provider_id": "codex_app_server", "contract_version": 4},
+                ),
+            )
 
-        assert result["state"] == "awaiting_decision"
-        run = json.loads((run_dir / "run.json").read_text())
-        assert run["attempts"][0]["host_preflight"] == {
-            "protocol": "initialize",
-            "server_uri": "ws://127.0.0.1:4500",
-        }
+        assert not run_dir.exists()
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -2464,13 +2511,56 @@ def test_admit_managed_operation_returns_core_identity_before_packet_work() -> N
 
     identity = harness.admit_managed_operation(
         ROOT,
-        FakeAdapter({"single_work_lane": "enforced"}, host_api=3),
+        FakeAdapter({"single_work_lane": "enforced"}, host_api=4),
     )
 
     assert identity["request_api"] == 4
-    assert identity["packet_api"] == 4
-    assert identity["host_api"] == 3
+    assert identity["packet_api"] == 5
+    assert identity["host_api"] == 4
     assert isinstance(identity["package_release"], str)
+
+
+def test_run_managed_resumes_planned_api4_packet_with_host3_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    policy = harness._load_policy(ROOT)
+    policy["harness_core"] = {"request_api": 4}
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    request = managed_request(version=3, run_id=run_id)
+    try:
+        packet = harness.resolve_managed_packet(
+            ROOT,
+            request,
+            attempt_id="attempt-1",
+            core_identity={"package_release": "fixture", "request_api": 3, "packet_api": 3, "host_api": 2},
+        )
+        packet.update({
+            "version": 4,
+            "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 3},
+            "core_identity": {"package_release": "fixture", "request_api": 4, "packet_api": 4, "host_api": 3},
+            "invocation_id": "attempt-1:primary",
+            "parent_invocation_id": None,
+        })
+        run = harness._new_run(request, run_id)
+        harness._transition(run, policy["states"], "planned", "fixture")
+        harness._append_attempt(run, packet)
+        harness._write_run(ROOT, run)
+
+        result = harness.run_managed(
+            ROOT,
+            None,
+            FakeAdapter(
+                {"single_work_lane": "unavailable"},
+                host_api=3,
+                identity={"provider_id": "codex_app_server", "contract_version": 3},
+            ),
+            run_id=run_id,
+        )
+
+        assert result["outcome"]["reason"] == "execution_mode_unavailable"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def test_failed_integration_skips_validator_dispatch(tmp_path: Path) -> None:

@@ -1176,7 +1176,7 @@ def _patterns_overlap(left: str, right: str) -> bool:
 def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str], value: Any) -> list[dict[str, Any]]:
     roles = _load_roles(root)
     role_writes = lambda role: "repo.write" in (
-        packet["capabilities"] if packet["version"] == 4 else legacy_role_capabilities(role)
+        packet["capabilities"] if packet["version"] != 3 else legacy_role_capabilities(role)
     )
     if packet["orchestration"]["work_scheduling"] == "single":
         role = packet["role"]
@@ -1269,7 +1269,7 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
                 raise HarnessError(f"writable lanes `{lane['lane_id']}` and `{other['lane_id']}` overlap")
     validator_role = packet["orchestration"]["validator_role"]
     validator = roles.get(validator_role)
-    if not isinstance(validator, dict) or (packet["version"] != 4 and role_writes(validator_role)):
+    if not isinstance(validator, dict) or (packet["version"] == 3 and role_writes(validator_role)):
         raise HarnessError(f"invalid validator role `{validator_role}`")
     workspace_mode = packet["orchestration"]["workspace_mode"]
     return [
@@ -1327,7 +1327,6 @@ def _normalize_managed_request(
     if not admission["ok"]:
         raise HarnessError(admission["code"])
     normalized = copy.deepcopy(request)
-    normalized["version"] = admission["packet_api"]
     normalized["execution_mode"] = _canonical_execution_mode(
         policy,
         normalized.get("execution_mode"),
@@ -1371,10 +1370,15 @@ def resolve_managed_packet(
     attempt_id: str,
     execution_budget_profile: str | None = None,
     core_identity: dict[str, Any] | None = None,
+    provider_runtime_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     policy = _load_policy(root)
     _validate_policy(root)
     request, coordination, plan_task = _normalize_managed_request(root, policy, request)
+    request_admission = admit_request_api(request["version"])
+    if not request_admission["ok"]:
+        raise HarnessError(request_admission["code"])
+    packet_api = request_admission["packet_api"]
     resolved_core_identity = core_identity or _core_identity(policy, request_api=request["version"])
     task_type = _required_string(request.get("task_type"), "task_type")
     execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
@@ -1386,14 +1390,21 @@ def resolve_managed_packet(
         execution_mode,
         execution_budget_profile=execution_budget_profile,
     )
-    if request["version"] == 3:
+    if packet_api == 3:
         packet["capabilities"] = list(legacy_role_capabilities(packet["role"]))
     runtime_provider = _resolve_runtime_provider(
         policy,
         task_type,
         request.get("runtime_provider_id"),
-        packet_api=request["version"],
+        packet_api=packet_api,
     )
+    if packet_api == CURRENT_PACKET_API:
+        provider_runtime_binding = _validate_provider_runtime_binding(
+            provider_runtime_binding,
+            runtime_provider,
+            packet_api=packet_api,
+            host_api=resolved_core_identity.get("host_api"),
+        )
     role = _load_roles(root).get(packet["role"])
     if not isinstance(role, dict):
         raise HarnessError(f"unknown route role `{packet['role']}`")
@@ -1408,7 +1419,7 @@ def resolve_managed_packet(
     base_ref = _required_string(request.get("base_ref"), "base_ref")
     user_request = _required_string(request.get("user_request"), "user_request")
     packet.update({
-        "version": request["version"],
+        "version": packet_api,
         "core_identity": copy.deepcopy(resolved_core_identity),
         "attempt_id": attempt_id,
         "base_ref": base_ref,
@@ -1424,6 +1435,8 @@ def resolve_managed_packet(
         "review_evidence": copy.deepcopy(request.get("review_evidence")),
         "manual_evidence": copy.deepcopy(request.get("manual_evidence")),
     })
+    if provider_runtime_binding is not None:
+        packet["provider_runtime_binding"] = provider_runtime_binding
     packet["readonly_artifacts"] = _resolve_readonly_artifacts(root, packet, request.get("readonly_artifacts"))
     if coordination is not None and plan_task is not None:
         packet.update({
@@ -1432,7 +1445,7 @@ def resolve_managed_packet(
             "plan_digest": coordination.digest,
         })
     packet["lanes"] = _normalize_lanes(root, packet, allowed_paths, request.get("lanes"))
-    if packet["version"] == 4:
+    if packet["version"] in {4, CURRENT_PACKET_API}:
         packet["invocation_id"] = f"{attempt_id}:primary"
         packet["parent_invocation_id"] = None
     return packet
@@ -1448,7 +1461,7 @@ def _transition(run: dict[str, Any], states: dict[str, list[str]], next_state: s
 
 def _new_run(request: dict[str, Any], run_id: str) -> dict[str, Any]:
     return {
-        "version": CURRENT_RUN_API if request.get("version") == CURRENT_PACKET_API else 1,
+        "version": CURRENT_RUN_API if admit_request_api(request.get("version")).get("packet_api") == CURRENT_PACKET_API else 1,
         "run_id": run_id,
         "request": copy.deepcopy(request),
         "state": "classified",
@@ -1775,6 +1788,69 @@ def _record_host_preflight(attempt: dict[str, Any], adapter: Any) -> None:
     protocol = _required_string(evidence.get("protocol"), "host adapter preflight protocol")
     server_uri = _required_string(evidence.get("server_uri"), "host adapter preflight server_uri")
     attempt["host_preflight"] = {"protocol": protocol, "server_uri": server_uri}
+
+
+def _provider_runtime_binding(adapter: Any, *, required: bool) -> dict[str, Any] | None:
+    method = adapter.get("preflight_evidence") if isinstance(adapter, dict) else getattr(adapter, "preflight_evidence", None)
+    if method is None:
+        if required:
+            raise HarnessError("provider preflight evidence is required")
+        return None
+    if not callable(method):
+        raise HarnessError("host adapter preflight evidence must be callable")
+    evidence = method()
+    required_fields = {
+        "provider_id",
+        "host_api",
+        "contract_version",
+        "transport",
+        "lifecycle",
+        "protocol",
+        "configuration_digest",
+        "readiness",
+    }
+    if not isinstance(evidence, dict) or set(evidence) != required_fields:
+        raise HarnessError("host adapter preflight evidence has invalid shape")
+    if (
+        not isinstance(evidence["provider_id"], str)
+        or not evidence["provider_id"]
+        or not isinstance(evidence["host_api"], int)
+        or isinstance(evidence["host_api"], bool)
+        or evidence["host_api"] < 1
+        or not isinstance(evidence["contract_version"], int)
+        or isinstance(evidence["contract_version"], bool)
+        or evidence["contract_version"] < 1
+        or evidence["transport"] not in {"stdio", "websocket"}
+        or evidence["lifecycle"] not in {"host_spawn", "external"}
+        or not isinstance(evidence["protocol"], str)
+        or not evidence["protocol"]
+        or not isinstance(evidence["configuration_digest"], str)
+        or not re.fullmatch(r"[0-9a-f]{64}", evidence["configuration_digest"])
+        or evidence["readiness"] != "ready"
+    ):
+        raise HarnessError("host adapter preflight evidence has invalid values")
+    if any(re.search(r"(?i)(api[_-]?key|token|password|secret|authorization|cookie)", value) for value in evidence.values() if isinstance(value, str)):
+        raise HarnessError("host adapter preflight evidence contains secret-bearing value")
+    return copy.deepcopy(evidence)
+
+
+def _validate_provider_runtime_binding(
+    binding: Any,
+    runtime_provider: dict[str, Any],
+    *,
+    packet_api: int,
+    host_api: Any,
+) -> dict[str, Any]:
+    if not isinstance(binding, dict):
+        raise HarnessError("provider runtime binding is required")
+    if binding.get("provider_id") != runtime_provider["provider_id"] or binding.get("contract_version") != runtime_provider["contract_version"]:
+        raise HarnessError("provider runtime binding conflicts with packet runtime provider")
+    if host_api is not None and binding.get("host_api") != host_api:
+        raise HarnessError("provider runtime binding conflicts with host API")
+    dispatch = admit_packet_dispatch(binding.get("host_api"), packet_api, binding.get("contract_version"))
+    if not dispatch["ok"]:
+        raise HarnessError(dispatch["code"])
+    return copy.deepcopy(binding)
 
 
 def _record_tool_binding_evidence(
@@ -2718,11 +2794,13 @@ def run_managed(
         if _run_path(root, run_id).exists():
             raise HarnessError(f"run `{run_id}` already exists")
         core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
+        binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
         packet = resolve_managed_packet(
             root,
             request,
             attempt_id="attempt-1",
             core_identity=core_identity,
+            provider_runtime_binding=binding,
         )
         _admit_coordinated_packet(root, packet)
         run = _new_run(request, run_id)
@@ -2741,7 +2819,29 @@ def run_managed(
         packet_identity = packet.get("core_identity")
         if not isinstance(packet_identity, dict) or not can_read_packet_api(packet_identity.get("packet_api")):
             raise HarnessError("harness_core_packet_api_unreadable")
-        admit_managed_operation(root, adapter, request_api=packet_identity.get("request_api"))
+        packet_api = packet_identity.get("packet_api")
+        runtime_provider = packet.get("runtime_provider")
+        if packet.get("version") != packet_api or not isinstance(runtime_provider, dict):
+            raise HarnessError("harness_core_packet_api_unreadable")
+        host_admission = admit_host_api(_adapter_host_api(adapter))
+        if not host_admission["ok"]:
+            raise HarnessError(host_admission["code"])
+        dispatch_admission = admit_packet_dispatch(
+            host_admission["host_api"],
+            packet_api,
+            runtime_provider.get("contract_version"),
+        )
+        if not dispatch_admission["ok"]:
+            raise HarnessError(dispatch_admission["code"])
+        if packet_api == CURRENT_PACKET_API:
+            binding = _provider_runtime_binding(adapter, required=True)
+            if _validate_provider_runtime_binding(
+                binding,
+                runtime_provider,
+                packet_api=packet_api,
+                host_api=host_admission["host_api"],
+            ) != packet.get("provider_runtime_binding"):
+                raise HarnessError("provider runtime binding changed")
         if "plan_ref" in packet:
             try:
                 plan_ref = _required_string(packet.get("plan_ref"), "packet plan_ref")
@@ -2759,10 +2859,8 @@ def run_managed(
                 _transition(run, policy["states"], "awaiting_decision", "plan_binding_changed")
                 _write_run(root, run)
                 return _managed_result(run)
-    try:
-        _record_host_preflight(_active_attempt(run), adapter)
-    except Exception as exc:
-        return _record_failure(root, run, policy, _active_attempt(run), "dispatch_failed", str(exc), phase="dispatch")
+    if packet.get("provider_runtime_binding") is not None:
+        _active_attempt(run)["host_preflight"] = copy.deepcopy(packet["provider_runtime_binding"])
     _write_run(root, run)
     collector = collect_changes or _collect_changes
     return _execute_attempt(root, run, policy, adapter, run_check=run_check, collect_changes=collector, now=now or datetime.now(UTC))

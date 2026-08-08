@@ -10,19 +10,29 @@ COMPATIBILITY_PROFILES = (
         "request_apis": frozenset({2, 3}),
         "packet_api": 3,
         "dispatch_host_api": 2,
+        "provider_contract": 2,
         "read_host_apis": frozenset({2, 3}),
     },
     {
         "name": "invocation",
-        "request_apis": frozenset({4}),
+        "request_apis": frozenset(),
         "packet_api": 4,
         "dispatch_host_api": 3,
+        "provider_contract": 3,
         "read_host_apis": frozenset({3}),
+    },
+    {
+        "name": "provider_transport",
+        "request_apis": frozenset({4}),
+        "packet_api": 5,
+        "dispatch_host_api": 4,
+        "provider_contract": 4,
+        "read_host_apis": frozenset({4}),
     },
 )
 SUPPORTED_REQUEST_APIS = frozenset().union(*(profile["request_apis"] for profile in COMPATIBILITY_PROFILES))
 SUPPORTED_PACKET_READ_APIS = frozenset(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)
-CURRENT_PACKET_API = 4
+CURRENT_PACKET_API = 5
 CURRENT_RUN_API = 2
 SUPPORTED_HOST_APIS = frozenset({profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES})
 TERMINAL_OBSERVATION_VERSION = 1
@@ -91,8 +101,14 @@ def legacy_role_capabilities(role: str) -> tuple[str, ...]:
         raise ValueError(f"legacy role `{role}` has no compatibility authority") from exc
 
 
-def admit_packet_dispatch(host_api: Any, packet_api: Any) -> dict[str, Any]:
-    if not isinstance(host_api, int) or isinstance(host_api, bool) or not isinstance(packet_api, int) or isinstance(packet_api, bool):
+def admit_packet_dispatch(host_api: Any, packet_api: Any, provider_contract: Any | None = None) -> dict[str, Any]:
+    if (
+        not isinstance(host_api, int)
+        or isinstance(host_api, bool)
+        or not isinstance(packet_api, int)
+        or isinstance(packet_api, bool)
+        or provider_contract is not None and (not isinstance(provider_contract, int) or isinstance(provider_contract, bool))
+    ):
         return {
             "ok": False,
             "code": "harness_core_packet_dispatch_incompatible",
@@ -103,7 +119,11 @@ def admit_packet_dispatch(host_api: Any, packet_api: Any) -> dict[str, Any]:
         (
             candidate
             for candidate in COMPATIBILITY_PROFILES
-            if candidate["dispatch_host_api"] == host_api and candidate["packet_api"] == packet_api
+            if (
+                candidate["dispatch_host_api"] == host_api
+                and candidate["packet_api"] == packet_api
+                and (provider_contract is None or candidate["provider_contract"] == provider_contract)
+            )
         ),
         None,
     )
