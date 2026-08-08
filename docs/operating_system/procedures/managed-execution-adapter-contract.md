@@ -183,6 +183,18 @@ retention never blocks terminal observation recording; core stores bounded
 artifact rejection evidence instead. Terminal observation never contains raw
 transcript material.
 
+## Stranded Run Recovery
+
+`recover-stranded` is controller-only non-replay recovery for a `running`
+attempt stranded before host terminal evidence was written. It requires exact
+run and attempt IDs, a bounded reason, and JSON external host evidence with
+source `host` and code `terminal_recording_failed`. Core rejects product
+evidence, mismatch, prior claims or evidence, and ordinary running work. It
+records immutable packet identity plus external failure evidence, creates a
+block-only outcome, and transitions to `awaiting_decision`; controller then
+uses normal `decision --decision <block.json>`. It never dispatches, resumes,
+retries, or runs checks.
+
 ## Plan-Linked Coordination
 
 Optional `coordination` frontmatter on Git-tracked active implementation plan

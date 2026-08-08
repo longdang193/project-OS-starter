@@ -129,6 +129,29 @@ def managed_request(**overrides):
     return payload
 
 
+def write_stranded_run(harness, run_id: str) -> None:
+    policy = harness._load_policy(ROOT)
+    request = managed_request(run_id=run_id)
+    packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+    run = harness._new_run(request, run_id)
+    harness._append_attempt(run, packet)
+    harness._transition(run, policy["states"], "planned", "test")
+    harness._transition(run, policy["states"], "running", "dispatch")
+    harness._write_run(ROOT, run)
+
+
+def recovery_evidence(run_id: str, attempt_id: str = "attempt-1") -> dict[str, str | int]:
+    return {
+        "version": 1,
+        "source": "host",
+        "code": "terminal_recording_failed",
+        "run_id": run_id,
+        "attempt_id": attempt_id,
+        "detail": "sanitized command trace exceeds artifact_max_bytes",
+        "observed_at": "2026-08-08T19:54:03+00:00",
+    }
+
+
 def plan_coordination(
     *,
     digest="plan-digest",
@@ -1483,6 +1506,72 @@ def test_coordinated_admission_blocks_unmet_dependencies_and_path_conflicts(monk
     write_coordinated_run(harness, tmp_path, "other", state="planned", plan_ref=other.plan_ref, task_id="other-task")
     with pytest.raises(harness.HarnessError, match="paths conflict"):
         harness._admit_coordinated_packet(tmp_path, packet)
+
+
+def test_recover_stranded_running_run_records_external_failure_then_allows_block(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    write_stranded_run(harness, run_id)
+
+    try:
+        result = harness.recover_stranded_run(
+            ROOT,
+            run_id,
+            "attempt-1",
+            "host terminal evidence could not be recorded",
+            recovery_evidence(run_id),
+        )
+
+        assert result["state"] == "awaiting_decision"
+        run = json.loads((run_dir / "run.json").read_text())
+        attempt = run["attempts"][0]
+        assert attempt["outcome"] == {
+            "reason": "stranded_running_recovered",
+            "allowed_decisions": ["block"],
+            "evidence_refs": ["evidence.failure", "evidence.external_failure", "evidence.recovery"],
+            "detail": "host terminal evidence could not be recorded",
+        }
+        assert attempt["evidence"]["external_failure"] == recovery_evidence(run_id)
+        assert attempt["evidence"]["recovery"]["run_id"] == run_id
+        assert attempt["evidence"]["recovery"]["attempt_id"] == "attempt-1"
+        assert len(attempt["evidence"]["recovery"]["packet_sha256"]) == 64
+
+        blocked = harness.apply_controller_decision(ROOT, run_id, {"kind": "block"})
+        assert blocked["state"] == "blocked"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_recover_stranded_running_run_rejects_invalid_or_product_evidence(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    write_stranded_run(harness, run_id)
+
+    try:
+        with pytest.raises(harness.HarnessError, match="external recovery evidence is invalid"):
+            harness.recover_stranded_run(ROOT, run_id, "attempt-1", "host record failure", None)
+
+        with pytest.raises(harness.HarnessError, match="recovery attempt identity does not match run"):
+            harness.recover_stranded_run(ROOT, run_id, "attempt-2", "host record failure", recovery_evidence(run_id))
+
+        mismatched_evidence = recovery_evidence("other-run")
+        with pytest.raises(harness.HarnessError, match="external recovery evidence identity does not match run"):
+            harness.recover_stranded_run(ROOT, run_id, "attempt-1", "host record failure", mismatched_evidence)
+
+        product_evidence = recovery_evidence(run_id)
+        product_evidence["source"] = "product"
+        with pytest.raises(harness.HarnessError, match="external recovery evidence source is invalid"):
+            harness.recover_stranded_run(ROOT, run_id, "attempt-1", "host record failure", product_evidence)
+
+        run = json.loads((run_dir / "run.json").read_text())
+        run["attempts"][0]["claims"] = [{"kind": "claimed_result"}]
+        (run_dir / "run.json").write_text(json.dumps(run), encoding="utf-8")
+        with pytest.raises(harness.HarnessError, match="run is not stranded"):
+            harness.recover_stranded_run(ROOT, run_id, "attempt-1", "host record failure", recovery_evidence(run_id))
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def test_resolve_managed_packet_rejects_disallowed_runtime_provider() -> None:

@@ -78,6 +78,7 @@ LEGACY_MANAGED_VERSION = 2
 CAPABILITY_LEVELS = {"enforced", "advisory", "unavailable"}
 CRITERION_KINDS = {"check", "change_set", "review", "manual", "validator"}
 DECISION_KINDS = {"accept", "retry", "escalate", "request_approval", "waive", "block"}
+RECOVERY_EVIDENCE_FIELDS = {"version", "source", "code", "run_id", "attempt_id", "detail", "observed_at"}
 RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]+\Z")
 FRICTION_EVENT_VERSION = 1
 FRICTION_EVENT_KINDS = {"observed", "resolution"}
@@ -1695,6 +1696,86 @@ def _active_attempt(run: dict[str, Any]) -> dict[str, Any]:
     return run["attempts"][-1]
 
 
+def _normalize_recovery_evidence(run_id: str, attempt_id: str, value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != RECOVERY_EVIDENCE_FIELDS:
+        raise HarnessError("external recovery evidence is invalid")
+    if value.get("version") != 1:
+        raise HarnessError("external recovery evidence version is invalid")
+    if value.get("source") != "host":
+        raise HarnessError("external recovery evidence source is invalid")
+    if value.get("code") != "terminal_recording_failed":
+        raise HarnessError("external recovery evidence code is invalid")
+    if value.get("run_id") != run_id or value.get("attempt_id") != attempt_id:
+        raise HarnessError("external recovery evidence identity does not match run")
+    detail = value.get("detail")
+    if not isinstance(detail, str) or not detail or len(detail) > 2048:
+        raise HarnessError("external recovery evidence detail is invalid")
+    observed_at = value.get("observed_at")
+    if not isinstance(observed_at, str):
+        raise HarnessError("external recovery evidence observed_at is invalid")
+    _parse_timestamp(observed_at)
+    return copy.deepcopy(value)
+
+
+def recover_stranded_run(
+    root: Path,
+    run_id: str,
+    attempt_id: str,
+    reason: str,
+    external_failure: Any,
+) -> dict[str, Any]:
+    _validate_policy(root)
+    policy = _load_policy(root)
+    run_id = _safe_run_id(run_id)
+    run = _load_run(root, run_id)
+    if run["state"] != "running":
+        raise HarnessError(f"run `{run_id}` is not running")
+    attempt = _active_attempt(run)
+    if attempt.get("attempt_id") != attempt_id:
+        raise HarnessError("recovery attempt identity does not match run")
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict) or packet.get("attempt_id") != attempt_id:
+        raise HarnessError("recovery packet identity does not match attempt")
+    if (
+        attempt.get("claims") != []
+        or attempt.get("node_observations") != []
+        or attempt.get("evidence") != {}
+        or attempt.get("outcome") is not None
+        or attempt.get("decision") is not None
+        or attempt.get("decision_history") != []
+    ):
+        raise HarnessError("run is not stranded")
+    if not isinstance(reason, str) or not reason or len(reason) > 512:
+        raise HarnessError("recovery reason is invalid")
+    evidence = _normalize_recovery_evidence(run_id, attempt_id, external_failure)
+    base_commit = _required_string(packet.get("base_commit"), "recovery packet base_commit")
+    attempt["evidence"] = {
+        "failure": {
+            "reason": "stranded_running_recovered",
+            "phase": "recovery",
+            "detail": reason,
+        },
+        "external_failure": evidence,
+        "recovery": {
+            "version": 1,
+            "run_id": run_id,
+            "attempt_id": attempt_id,
+            "base_commit": base_commit,
+            "packet_sha256": hashlib.sha256(_artifact_content_bytes(packet)).hexdigest(),
+        },
+    }
+    _set_outcome(
+        attempt,
+        "stranded_running_recovered",
+        ["block"],
+        ["evidence.failure", "evidence.external_failure", "evidence.recovery"],
+        detail=reason,
+    )
+    _transition(run, policy["states"], "awaiting_decision", "stranded_running_recovered")
+    _write_run(root, run)
+    return _managed_result(run)
+
+
 def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[str, Any]) -> DelegationResult:
     run = _load_run(root, _safe_run_id(run_id))
     attempt = _active_attempt(run)
@@ -3225,6 +3306,11 @@ def main(argv: list[str] | None = None) -> int:
     friction_resolve_command.add_argument("--run-id", required=True)
     friction_resolve_command.add_argument("--fingerprint", required=True)
     friction_resolve_command.add_argument("--decision", required=True, choices=sorted(FRICTION_RESOLUTIONS))
+    recover_command = subparsers.add_parser("recover-stranded")
+    recover_command.add_argument("--run-id", required=True)
+    recover_command.add_argument("--attempt-id", required=True)
+    recover_command.add_argument("--reason", required=True)
+    recover_command.add_argument("--evidence", required=True)
     args = parser.parse_args(argv)
     try:
         root = Path(args.repo_root).resolve()
@@ -3250,6 +3336,8 @@ def main(argv: list[str] | None = None) -> int:
             result = friction_report(root)
         elif args.command == "friction-resolve":
             result = resolve_friction(root, args.run_id, args.fingerprint, args.decision)
+        elif args.command == "recover-stranded":
+            result = recover_stranded_run(root, args.run_id, args.attempt_id, args.reason, _load_json(Path(args.evidence)))
         elif args.command == "coordination-status":
             result = coordination_status(root, args.plan)
         elif args.command == "handoff":
@@ -3264,7 +3352,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "blocked", "error": str(exc)}), file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True))
-    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
+    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff", "recover-stranded"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
 
 
 if __name__ == "__main__":

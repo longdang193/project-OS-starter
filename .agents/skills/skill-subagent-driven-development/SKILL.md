@@ -72,6 +72,11 @@ ordinary direct execution.
    create successor attempts only when outcome permits. For `dispatch_timeout`,
    controller may only escalate through packet `escalation_profile` or block;
    never retry timeout. Prior packets and evidence stay unchanged.
+   `recover-stranded` is controller-only non-replay recovery for a `running` attempt
+   with no claim, node observation, evidence, outcome, or decision after host
+   terminal recording failed. It requires exact run/attempt identity plus bounded
+   external host evidence. It creates block-only recovery evidence; never use it
+   for product failure or ordinary running work.
 
 ## Stop
 

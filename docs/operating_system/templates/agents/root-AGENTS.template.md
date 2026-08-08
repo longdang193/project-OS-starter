@@ -96,6 +96,12 @@ When spawning a subagent:
 - For `dispatch_timeout`, controller may only escalate through immutable packet
   `escalation_profile` or block. Never retry timeout or accept caller-selected
   budget. Resume an already planned attempt with provider `--run-id`.
+- `recover-stranded` is controller-only non-replay recovery for a `running` attempt
+  with no claim, node observation, evidence, outcome, or decision after host
+  terminal recording failed. It requires exact run/attempt identity and bounded
+  external host evidence with code `terminal_recording_failed`; it records a
+  block-only outcome and never dispatches. Product evidence, missing evidence,
+  mismatched identity, or ordinary running work must be rejected.
 - `writer_completion_missing` means a write-capable lane completed commands
   without a final claim before terminal timeout. Block it without retry,
   escalation, or resume. When `friction-report` returns its policy-owned
