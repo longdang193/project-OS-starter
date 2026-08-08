@@ -35,11 +35,39 @@ make generic core CLI a provider host. From installed `codex-harness-host`
 source root, verify capability and dispatch same request through provider host:
 
 ```powershell
+$providerConfig = Join-Path $HOME ".codex\harness-providers.toml"
+uv run codex-harness-host config init --config $providerConfig
+uv run codex-harness-host config validate --config $providerConfig
+uv run codex-harness-host config show --redacted --config $providerConfig
 uv run codex-harness-host capabilities
-uv run codex-harness-host preflight --server-uri ws://127.0.0.1:4500
-uv run codex-harness-host run --harness-root <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>
-uv run codex-harness-host run --harness-root <repo-root> --server-uri ws://127.0.0.1:4500 --run-id <run-id>
+uv run codex-harness-host preflight
+uv run codex-harness-host run --harness-root <repo-root> --request <request.json>
+uv run codex-harness-host run --harness-root <repo-root> --run-id <run-id>
 ```
+
+Run `config init` only when user configuration is absent; it creates default
+stdio configuration with registered launcher ID `installed_codex_app_server`.
+The host reads no provider setting from repository policy, request, packet,
+environment, or current directory. Configuration accepts a registered launcher
+ID for host-spawned stdio or an explicit external WebSocket endpoint. It rejects
+arbitrary command fields and secret-bearing fields.
+
+### Committed Runtime Provenance
+
+After a host-source fix, require this gate before product packet dispatch:
+
+1. Commit changed host runtime module and its regression test. Preserve unrelated
+   host work; clean repository state is not required.
+2. Resolve actual imported module path used by configured host executable.
+3. Record host `HEAD` SHA and prove changed imported module matches that committed
+   file at `HEAD`.
+4. Refresh installed provider, then run fresh `capabilities` and `preflight`.
+5. Create fresh product successor request only after this proof passes. Never
+   resume terminal-blocked run.
+
+Passing `preflight` proves transport readiness, not committed runtime
+provenance. A dirty imported changed module blocks product dispatch even when
+preflight passes.
 
 After committed host-source update, refresh installed provider before dispatch:
 
@@ -50,17 +78,16 @@ codex-harness-host run --help
 
 `run --help` must expose both exclusive inputs: `--request` and `--run-id`.
 
-`preflight` opens configured App Server WebSocket and completes `initialize`.
-`run` repeats this liveness proof before it loads core or creates packet,
-workspace, or `run.json`. Failure returns `preflight_failed`; recover endpoint,
-then resubmit same request. `--request` starts one run; `--run-id` resumes one
-existing planned attempt without request resubmission. Inputs are exclusive.
-Successful managed attempt records `host_preflight` protocol and server URI in
-`run.json`.
-
-Start endpoint with `codex app-server --listen ws://127.0.0.1:4500`. It runs in
-foreground; keep terminal open. Windows has no supported `codex app-server
-daemon`; restart listener after reboot or process exit, then rerun `preflight`.
+`preflight` opens configured stdio or explicit external WebSocket transport and
+completes `initialize`. `run` admits core and host API, then repeats liveness
+proof before packet, workspace, or `run.json` creation. Missing or invalid
+trusted configuration returns `provider_runtime_unavailable`; configured
+transport or authentication failure returns `preflight_failed`. `--request`
+starts one run; `--run-id` resumes one existing planned attempt without request
+resubmission. Inputs are exclusive. Packet API 5 stores a non-secret runtime
+binding; host re-reads configuration before every lane and returns
+`provider_configuration_changed` before provider or product work if binding
+drifts. No automatic transport fallback exists.
 
 Do not use `run-unavailable` for retry. It proves generic CLI lacks injected
 adapter and is terminal evidence for that invocation only. Preserve that
@@ -80,10 +107,28 @@ reasoning_effort}`. App-server has no template field; confirmed runtime model
 selection plus immutable template copy proves selected template contract.
 Missing or mismatched confirmation blocks lane evidence and acceptance.
 
+## Packet Context And Verification
+
+Core resolves the selected authority, toolset, and verification profile into
+one immutable packet. Host uses only resolved packet tools. Controller runs
+only packet-declared checks through `run_checks`; worker authority never grants
+check execution.
+
+For packet API 5, host renders `packet["work_context"]` exactly once per turn.
+It must not separately render `user_request`, parent transcript, or a second
+instruction channel. Core validates the context digest, fact/reference identity,
+UTF-8/count limits, and readonly-artifact SHA-256/byte length before dispatch.
+Host materializes only those packet artifacts.
+
+Core evaluates packet postconditions against final change collection. A
+`workspace_unchanged` postcondition fails on every change from packet base;
+write verification records only configured controller checks. No profile,
+artifact, or context fallback is permitted.
+
 ## Runtime Budget And Abnormal Turn Recovery
 
-`repo_config/harness.yaml:execution_budgets` owns named profiles, their maximum
-turn timeout, and each route's initial profile. Core copies one resolved
+`repo_config/harness.yaml:execution_budgets` owns named profiles and their maximum
+turn timeout. `defaults.execution_budget_profile` selects initial profile. Core copies one resolved
 `execution_budget` into every immutable packet. Request and controller decision
 cannot choose an arbitrary profile.
 
@@ -171,10 +216,12 @@ agent surfaces only and never participates in runtime selection or acceptance.
 A candidate stays absent from route policy until it passes same packet,
 workspace, tool-binding, check, read-only validator, and controller-acceptance
 proof as every admitted provider. No automatic provider fallback exists.
-Current `codex_app_server` policy uses contract version 3 with request and
-packet API 4. Host API 3 can read historical packet API 3 evidence but rejects
-its dispatch; legacy packet API 3 dispatch requires matching host API 2.
-Version-1 identity fails before workspace preparation or lane dispatch.
+Current `codex_app_server` policy uses contract version 4 with request API 4,
+packet API 5, and host API 4. Host API 3 / provider contract 3 dispatches
+historical packet API 4. Packet APIs 3 and 4 remain readable evidence under
+declared compatibility profiles; legacy packet API 3 dispatch requires host API
+2 / provider contract 2. Mismatched identity fails before workspace preparation
+or lane dispatch.
 
 ## Required Adapter Methods
 

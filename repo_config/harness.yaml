@@ -1,16 +1,12 @@
-version: 3
+version: 4
 harness_core:
   request_api: 4
-capabilities:
-  catalog: [repo.read, repo.write, checks.run, code.search, docs.query, harness.delegate]
-  sets:
-    read_only: [repo.read, code.search, docs.query]
-    workspace_write: [repo.read, repo.write, checks.run, code.search]
 context_limits:
   objective_max_bytes: 4096
   fact_max_bytes: 16384
   max_facts: 16
   max_artifacts: 16
+  artifact_max_bytes: 4096
   outcome_summary_max_bytes: 4096
 evidence_artifacts:
   writer_retained_kinds: [sanitized_command_trace]
@@ -37,8 +33,39 @@ delegation_profiles:
     workspace_write_access: read_only
     verification: schema
 defaults:
-  workspace: current
+  source_workspace: current_repo
+  runtime_provider: codex_app_server
+  retry_policy: bounded
+  execution_budget_profile: default
   approval_gates: []
+authorities:
+  read_only:
+    capabilities: [repo.read, code.search, docs.query]
+    workspace_write_access: read_only
+  read_only_delegation:
+    capabilities: [repo.read, code.search, docs.query, harness.delegate]
+    workspace_write_access: read_only
+  workspace_write:
+    capabilities: [repo.read, repo.write, code.search]
+    workspace_write_access: workspace_write
+toolsets:
+  code: [shell, serena, ast_grep_preview]
+  shell_serena: [shell, serena]
+  research: [shell, semble_codebase_search]
+verification_profiles:
+  read_only:
+    postconditions: [workspace_unchanged]
+    checks: []
+  write:
+    postconditions: []
+    checks: [diff]
+retry_policies:
+  bounded:
+    max_attempts: 2
+    retryable_reasons: [check_failed, dispatch_failed, claim_invalid, verification_failed, review_required]
+    exhaustion: block
+    approval_resume: successor_attempt
+    approval_ttl_seconds: 3600
 execution_budgets:
   max_turn_timeout_seconds: 900
   profiles:
@@ -49,23 +76,6 @@ execution_budgets:
     extended:
       turn_timeout_seconds: 900
       timeout_decisions: [block]
-states:
-  classified: [planned, blocked]
-  planned: [running, awaiting_decision, blocked]
-  running: [observed, awaiting_decision, blocked]
-  observed: [verifying, running, blocked]
-  verifying: [awaiting_decision, accepted, blocked]
-  awaiting_decision: [awaiting_decision, planned, accepted, unvalidated, blocked]
-  accepted: []
-  unvalidated: []
-  blocked: []
-retry_policies:
-  bounded:
-    max_attempts: 2
-    retryable_reasons: [check_failed, dispatch_failed, claim_invalid, verification_failed, review_required]
-    exhaustion: block
-    approval_resume: successor_attempt
-    approval_ttl_seconds: 3600
 checks:
   diff:
     command: [git, diff, --check]
@@ -84,21 +94,19 @@ tools:
     root_probe: serena_root_probe
   semble_codebase_search:
     optional: true
-    fallback: [shell, serena]
     host_kind: local_semble
     writer_access: read_only
     validator_access: read_only
     root_probe: semble_root_probe
   ast_grep_preview:
     optional: true
-    fallback: [shell]
     host_kind: local_ast_grep
     writer_access: read_only
     validator_access: read_only
     root_probe: ast_grep_root_probe
 runtime_providers:
   codex_app_server:
-    contract_version: 3
+    contract_version: 4
 friction_policy:
   event_version: 1
   minimum_distinct_runs: 3
@@ -115,7 +123,6 @@ orchestration:
     max_parallel_writers: 1
     workspace_mode: isolated
     validator_role: validate
-    review_required: false
     rules: []
   sequential_work_lanes:
     aliases: [sequential_agents]
@@ -123,7 +130,6 @@ orchestration:
     max_parallel_writers: 1
     workspace_mode: isolated
     validator_role: validate
-    review_required: true
     rules: [multi-agent-orchestration-rule]
   parallel_work_lanes:
     aliases: [parallel_lanes]
@@ -131,7 +137,6 @@ orchestration:
     max_parallel_writers: 4
     workspace_mode: isolated
     validator_role: validate
-    review_required: true
     rules: [multi-agent-orchestration-rule]
 routes:
   local_change:
@@ -139,139 +144,94 @@ routes:
     role: implement
     rules: [command-execution-rule, python-contracts-rule]
     skills: [skill-code-standards, skill-test-driven-development]
-    tools: [shell, serena, ast_grep_preview]
-    capabilities: [repo.read, repo.write, checks.run, code.search]
+    authority: workspace_write
+    toolset: code
+    verification_profile: write
     delegation_profile: disabled
-    workspace: current
-    checks: [diff]
     approval_gates: [protected_policy]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes, parallel_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   debugging:
     template: normal
     role: investigate
     rules: [command-execution-rule]
     skills: [skill-systematic-debugging]
-    tools: [shell, serena, ast_grep_preview]
-    capabilities: [repo.read, code.search, docs.query]
+    authority: read_only
+    toolset: code
+    verification_profile: read_only
     delegation_profile: disabled
-    workspace: current
-    checks: [diff]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   harness_diagnosis:
     template: high
     role: investigate
     rules: [command-execution-rule]
     skills: [skill-improve-harness, skill-systematic-debugging, skill-repository-research, skill-verification-before-completion]
-    tools: [shell, serena]
-    capabilities: [repo.read, code.search, docs.query]
+    authority: read_only
+    toolset: shell_serena
+    verification_profile: read_only
     delegation_profile: disabled
-    workspace: current
     readonly_artifacts:
       allowed_kinds: [terminal_observation, sanitized_command_trace]
       required_kinds: [terminal_observation]
-    checks: [diff]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   research:
     template: low
     role: investigate
     rules: [command-execution-rule]
     skills: [skill-repository-research]
-    tools: [shell, semble_codebase_search]
-    capabilities: [repo.read, code.search, docs.query, harness.delegate]
+    authority: read_only_delegation
+    toolset: research
+    verification_profile: read_only
     delegation_profile: read_only_research
-    workspace: current
-    checks: [diff]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, parallel_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   plan_review:
     template: high
     role: review
     rules: [doc-contracts-rule]
     skills: [skill-plan-document-reviewer]
-    tools: [shell, serena]
-    capabilities: [repo.read, code.search, docs.query]
+    authority: read_only
+    toolset: shell_serena
+    verification_profile: read_only
     delegation_profile: disabled
-    workspace: current
-    checks: [diff]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   design_exploration:
     template: high
     role: investigate
     rules: [command-execution-rule]
     skills: [skill-brainstorming]
-    tools: [shell, semble_codebase_search]
-    capabilities: [repo.read, code.search, docs.query]
+    authority: read_only
+    toolset: research
+    verification_profile: read_only
     delegation_profile: disabled
-    workspace: current
-    checks: [diff]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   plan_writing:
     template: high
     role: implement
     rules: [doc-contracts-rule]
     skills: [skill-writing-plans]
-    tools: [shell, serena]
-    capabilities: [repo.read, repo.write, checks.run, code.search]
+    authority: workspace_write
+    toolset: shell_serena
+    verification_profile: write
     delegation_profile: disabled
-    workspace: current
-    checks: [diff]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   skill_authoring:
     template: high
     role: implement
     rules: [command-execution-rule, doc-contracts-rule]
     skills: [skill-writing-skills, skill-test-driven-development, skill-verification-before-completion]
-    tools: [shell, serena]
-    capabilities: [repo.read, repo.write, checks.run, code.search]
+    authority: workspace_write
+    toolset: shell_serena
+    verification_profile: write
     delegation_profile: disabled
-    workspace: current
-    checks: [diff]
     approval_gates: [protected_policy]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server
   harness_improvement:
     template: high
     role: improve
     rules: [command-execution-rule, doc-contracts-rule]
     skills: [skill-improve-harness, skill-code-standards, skill-test-driven-development, skill-verification-before-completion]
-    tools: [shell, serena]
-    capabilities: [repo.read, repo.write, checks.run, code.search]
+    authority: workspace_write
+    toolset: shell_serena
+    verification_profile: write
     delegation_profile: disabled
-    workspace: current
-    checks: [diff]
     approval_gates: [protected_policy]
-    retry_policy: bounded
-    execution_budget_profile: default
     execution_modes: [single_work_lane, sequential_work_lanes]
-    runtime_providers: [codex_app_server]
-    default_runtime_provider: codex_app_server

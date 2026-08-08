@@ -17,9 +17,10 @@ This file is repo-wide instruction layer. More specific directory instructions o
 Installed `harness-core` owns packet resolution and lifecycle; legacy consumer
 scripts are package bridges only. For managed execution, controller submits a
 typed request through host-supplied `run_managed` adapter boundary. Core resolves a dispatchable request, packet, and host compatibility profile from current policy; never force a legacy API version. `run.json` owns mutable run state; each attempt owns immutable packet.
-Packet owns template, role, rules, skills, allowed tools, workspace, checks,
-approval gates, planned write paths, resolved base commit, and orchestration
-mode plus resolved `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
+Packet owns template, role, rules, skills, selected authority, toolset,
+verification profile, resolved tools/checks, workspace, approval gates, planned
+write paths, resolved base commit, and orchestration mode plus resolved
+`execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
 Host returns baseline evidence before lane dispatch: root and parallel lanes use
 `packet_base` at exact packet base with a clean checkout; sequential dependents
@@ -36,8 +37,15 @@ preflight, packet resolution, workspace, dispatch. Unsupported APIs create no
 packet. Unreadable historical packet cannot resume; controller creates a
 successor without changing its evidence.
 For `runtime_provider_id: codex_app_server`, controller invokes provider host
-from its installed source root: `uv run codex-harness-host run --harness-root
-<repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>`.
+from its installed source root. Host reads transport only from trusted user
+configuration at `~/.codex/harness-providers.toml`: run
+`uv run codex-harness-host capabilities`, then `uv run codex-harness-host
+preflight`, then `uv run codex-harness-host run --harness-root <repo-root>
+--request <request.json>`.
+Do not put endpoint, launch-command, or credential values in repository policy,
+requests, packets, or generated guidance. Host configuration admits only a
+registered launcher ID or an explicit external endpoint; it rejects arbitrary
+commands and secret fields.
 Use `--run-id <run-id>` instead of `--request` only when run state is `planned`
 for an existing dispatchable attempt. A terminal coordinated task failure is
 `blocked`; preserve its evidence and require approved successor plan/task
@@ -67,7 +75,10 @@ When spawning a subagent:
 - Managed host must dispatch packet `agent_identity` without model fallback and
   record app-server-confirmed model provider, model, and reasoning effort.
 - Do not select unnamed or other agent types.
-- Subagents must not spawn other agents.
+- Subagents may create child agents only when immutable packet grants
+  `harness.delegate` and selects `read_only_research`. Core enforces child
+  authority, paths, depth, budget, and read-only workspace.
+- In every other packet, subagents must not spawn child agents.
 - If task scope or needed capability changes, controller creates successor
   attempt and regenerates immutable packet.
 - Host consumes only packet `execution_budget` for App Server turns, native
@@ -92,6 +103,9 @@ When spawning a subagent:
   read-only `harness_diagnosis` without an owner decision. Missing required
   artifacts blocks diagnosis before dispatch; never mount ambient `.harness`
   state into packet workspace.
+- For packet API 5, host re-reads trusted provider configuration before every
+  lane. A changed runtime binding returns `provider_configuration_changed`
+  before provider or product work; no transport fallback is allowed.
 - Independent validator claims exist only when host advertises and dispatches
   an enforced read-only validator lane. Do not infer validator evidence from
   local checks or an implementer claim.

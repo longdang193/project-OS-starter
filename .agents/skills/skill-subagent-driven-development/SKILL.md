@@ -23,7 +23,11 @@ ordinary direct execution.
   topology, allowed paths, and planned paths. Packet owns immutable `plan_ref`, task ID, and
   digest; `run.json` owns state and handoff. Controller selects only `ready`
   task through `coordination-status`; changed plan or base requires successor.
-- One implementer lane runs at once in an adapter-owned isolated workspace. No child-agent spawning.
+- One implementer lane runs at once in an adapter-owned isolated workspace.
+  Agents may create child agents only when immutable packet grants
+  `harness.delegate` and selects `read_only_research`; core enforces child
+  authority, paths, depth, budget, and read-only workspace. This implementer
+  packet does not select that profile, so implementer must not spawn child agents.
 - Implementer returns `claimed_result`, never `verified`.
 - Harness records outcome after dispatch, claim collection, and verification.
   Installed `harness-core` owns packet lifecycle. Consumer scripts only bridge
@@ -32,11 +36,14 @@ ordinary direct execution.
 - Generic CLI has no managed `run` command. `run-unavailable` records explicit
   `execution_mode_unavailable` proof; it never claims dispatch occurred.
 - For `runtime_provider_id: codex_app_server`, controller runs provider host
-  from its installed source root: `uv run codex-harness-host run --harness-root
-  <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>`.
-  Use exclusive `--run-id <run-id>` only to resume an existing planned attempt.
-  Check `uv run codex-harness-host capabilities` first. Do not retry through
-  `run-unavailable`; preserve that terminal proof and create successor request.
+  from its installed source root. Check `uv run codex-harness-host capabilities`
+  then `uv run codex-harness-host preflight`, then run `uv run
+  codex-harness-host run --harness-root <repo-root> --request <request.json>`.
+  Host-owned trusted user configuration selects transport; do not copy endpoint,
+  launch-command, or credential values into repository inputs. Use exclusive
+  `--run-id <run-id>` only to resume an existing planned attempt. Do not retry
+  through `run-unavailable`; preserve that terminal proof and create successor
+  request.
 - A terminal coordinated task failure derives `blocked` status. Preserve its
   run evidence; require approved successor plan/task identity instead of a
   fresh request against same task.

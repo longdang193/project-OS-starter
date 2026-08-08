@@ -23,7 +23,11 @@ distribution_tier: starter_kit
   or waive around them.
 - Controller alone dispatches, retries, escalates, or requests approval.
 - Each lane gets one validated harness packet with exact allowed paths, base
-  ref, tools, checks, and approval gates.
+  ref, selected authority, toolset, verification profile, and approval gates.
+  Core resolves selected profiles into tools and checks once per packet.
+- Packet-context and verification-profile semantics are owned by
+  `docs/operating_system/procedures/managed-execution-adapter-contract.md`.
+  Do not copy profile values, context limits, or fallback behavior into rules.
 - Host returns normalized baseline evidence before lane dispatch. Root and
   parallel lanes use `packet_base` at exact packet base with a clean checkout;
   sequential dependents use `predecessor` only for direct materialized
@@ -35,8 +39,12 @@ distribution_tier: starter_kit
 - `--run-id` resumes only when run state is `planned`. A terminal coordinated
   task failure is `blocked`; preserve evidence and require approved successor
   plan/task identity before a fresh request.
-- Agents do not spawn child agents. They return `claimed_result`; harness
-  records verification evidence and controller records final decision.
+- Agents may create child agents only when immutable packet grants
+  `harness.delegate` and selects `read_only_research`. Core enforces child
+  authority, paths, depth, budget, and read-only workspace.
+- In every other packet, agents must not spawn child agents. They return
+  `claimed_result`; harness records verification evidence and controller
+  records final decision.
 - Missing enforced host capability returns `execution_mode_unavailable` before
   dispatch. Controller either blocks or records `waive` with reason; waiver is
   terminal `unvalidated`, never acceptance.

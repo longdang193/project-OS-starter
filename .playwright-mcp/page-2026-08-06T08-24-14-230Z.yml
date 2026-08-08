@@ -1,0 +1,461 @@
+- generic [active] [ref=e1]:
+  - blockquote [ref=e2]:
+    - heading [level=2] [ref=e3]: Documentation Index
+    - paragraph [ref=e4]:
+      - text: "Fetch the complete documentation index at:"
+      - link [ref=e5] [cursor=pointer]:
+        - /url: /llms.txt
+        - text: /llms.txt
+    - paragraph [ref=e6]: Use this file to discover all available pages before exploring further.
+  - generic [ref=e7]:
+    - link "Skip to main content" [ref=e8] [cursor=pointer]:
+      - /url: "#content-area"
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - banner [ref=e11]:
+          - generic [ref=e14]:
+            - generic [ref=e17]:
+              - link "OpenHands Docs home page light logo" [ref=e19] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e20]: OpenHands Docs home page
+                - img "light logo" [ref=e21]
+              - generic [ref=e22]:
+                - button "Open search" [ref=e23] [cursor=pointer]:
+                  - generic [ref=e24]: Search...
+                  - generic [ref=e29]: ⌘K
+                - button "Toggle assistant panel" [ref=e30] [cursor=pointer]:
+                  - generic [ref=e34]: Ask Assistant
+              - generic [ref=e35]:
+                - navigation "Main" [ref=e36]:
+                  - list [ref=e37]:
+                    - listitem [ref=e38] [cursor=pointer]:
+                      - link "OpenHands/OpenHands" [ref=e39]:
+                        - /url: https://github.com/OpenHands/OpenHands
+                - button "Change theme preference" [ref=e46] [cursor=pointer]
+            - generic [ref=e55]:
+              - link "Home" [ref=e56] [cursor=pointer]:
+                - /url: /overview/introduction
+              - link "Agent Canvas" [ref=e58] [cursor=pointer]:
+                - /url: /openhands/usage/agent-canvas/overview
+              - link "SDK" [ref=e60] [cursor=pointer]:
+                - /url: /sdk
+              - link "Cloud" [ref=e62] [cursor=pointer]:
+                - /url: /openhands/usage/cloud/openhands-cloud
+              - link "Enterprise" [ref=e64] [cursor=pointer]:
+                - /url: /enterprise
+        - generic [ref=e66]:
+          - navigation "Pages" [ref=e67]:
+            - generic [ref=e70]:
+              - generic [ref=e71]:
+                - heading "Get Started" [level=3] [ref=e73]
+                - list [ref=e74]:
+                  - listitem [ref=e75]:
+                    - link "Introduction" [ref=e76] [cursor=pointer]:
+                      - /url: /overview/introduction
+                  - listitem [ref=e80]:
+                    - link "Quick Start" [ref=e81] [cursor=pointer]:
+                      - /url: /overview/quickstart
+                  - listitem [ref=e85]:
+                    - link "Tutorial Library" [ref=e86] [cursor=pointer]:
+                      - /url: /openhands/usage/get-started/tutorials
+              - generic [ref=e90]:
+                - heading "Essential Guidelines" [level=3] [ref=e92]
+                - list [ref=e93]:
+                  - listitem [ref=e94]:
+                    - link "When to Use OpenHands" [ref=e95] [cursor=pointer]:
+                      - /url: /openhands/usage/essential-guidelines/when-to-use-openhands
+                  - listitem [ref=e99]:
+                    - link "Prompting Best Practices" [ref=e100] [cursor=pointer]:
+                      - /url: /openhands/usage/tips/prompting-best-practices
+                  - listitem [ref=e104]:
+                    - link "Good vs. Bad Instructions" [ref=e105] [cursor=pointer]:
+                      - /url: /openhands/usage/essential-guidelines/good-vs-bad-instructions
+                  - listitem [ref=e109]:
+                    - link "OpenHands in Your SDLC" [ref=e110] [cursor=pointer]:
+                      - /url: /openhands/usage/essential-guidelines/sdlc-integration
+              - generic [ref=e114]:
+                - heading "Use Cases" [level=3] [ref=e116]
+                - list [ref=e117]:
+                  - listitem [ref=e118]:
+                    - link "Use Cases Overview" [ref=e119] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/overview
+                  - listitem [ref=e123]:
+                    - link "Vulnerability Remediation" [ref=e124] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/vulnerability-remediation
+                  - listitem [ref=e128]:
+                    - link "Automated Code Review" [ref=e129] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/code-review
+                  - listitem [ref=e133]:
+                    - link "Automated QA Testing" [ref=e134] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/qa-changes
+                  - listitem [ref=e138]:
+                    - link "Incident Triage" [ref=e139] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/incident-triage
+                  - listitem [ref=e143]:
+                    - link "COBOL Modernization" [ref=e144] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/cobol-modernization
+                  - listitem [ref=e148]:
+                    - link "Dependency Upgrades" [ref=e149] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/dependency-upgrades
+                  - listitem [ref=e153]:
+                    - link "Spark Migrations" [ref=e154] [cursor=pointer]:
+                      - /url: /openhands/usage/use-cases/spark-migrations
+              - generic [ref=e158]:
+                - heading "Product Guides" [level=3] [ref=e160]
+                - list [ref=e161]:
+                  - listitem [ref=e162]:
+                    - link "Key Features" [ref=e163] [cursor=pointer]:
+                      - /url: /openhands/usage/key-features
+                  - listitem [ref=e167]:
+                    - link "Hooks" [ref=e168] [cursor=pointer]:
+                      - /url: /openhands/usage/customization/hooks
+                  - listitem [ref=e172]:
+                    - link "Model Context Protocol (MCP)" [ref=e173] [cursor=pointer]:
+                      - /url: /overview/model-context-protocol
+                  - listitem [ref=e177]:
+                    - button "Skills" [ref=e178] [cursor=pointer]
+                  - listitem [ref=e183]:
+                    - link "Plugins" [ref=e184] [cursor=pointer]:
+                      - /url: /overview/plugins
+                  - listitem [ref=e188]:
+                    - button "Automations" [ref=e189] [cursor=pointer]
+                  - listitem [ref=e194]:
+                    - link "Repository Customization" [ref=e195] [cursor=pointer]:
+                      - /url: /openhands/usage/customization/repository
+                  - listitem [ref=e199]:
+                    - button "Settings" [ref=e200] [cursor=pointer]
+              - generic [ref=e205]:
+                - heading "Additional Documentation" [level=3] [ref=e207]
+                - list [ref=e208]:
+                  - listitem [ref=e209]:
+                    - button "V0 Reference" [ref=e210] [cursor=pointer]
+                  - listitem [ref=e215]:
+                    - button "LLM Configuration" [ref=e216] [cursor=pointer]
+                  - listitem [ref=e221]:
+                    - button "Developers" [ref=e222] [cursor=pointer]
+              - generic [ref=e227]:
+                - heading "Deprecated Projects" [level=3] [ref=e229]
+                - list [ref=e230]:
+                  - listitem [ref=e231]:
+                    - button "Local GUI" [expanded] [ref=e232] [cursor=pointer]
+                    - list [ref=e237]:
+                      - listitem [ref=e238]:
+                        - link "Setup" [ref=e239] [cursor=pointer]:
+                          - /url: /openhands/usage/run-openhands/local-setup
+                      - listitem [ref=e243]:
+                        - link "Configure" [ref=e244] [cursor=pointer]:
+                          - /url: /openhands/usage/run-openhands/gui-mode
+                      - listitem [ref=e248]:
+                        - link "Troubleshooting" [ref=e249] [cursor=pointer]:
+                          - /url: /openhands/usage/troubleshooting/troubleshooting
+                      - listitem [ref=e253]:
+                        - button "Sandbox Configuration" [expanded] [ref=e254] [cursor=pointer]
+                        - list [ref=e259]:
+                          - listitem [ref=e260]:
+                            - link "Overview" [ref=e261] [cursor=pointer]:
+                              - /url: /openhands/usage/sandboxes/overview
+                          - listitem [ref=e265]:
+                            - button "Sandbox Providers" [expanded] [ref=e266] [cursor=pointer]
+                            - list [ref=e271]:
+                              - listitem [ref=e272]:
+                                - link "Docker Sandbox" [ref=e273] [cursor=pointer]:
+                                  - /url: /openhands/usage/sandboxes/docker
+                              - listitem [ref=e277]:
+                                - link "Remote Sandbox" [ref=e278] [cursor=pointer]:
+                                  - /url: /openhands/usage/sandboxes/remote
+                              - listitem [ref=e282]:
+                                - link "Process Sandbox" [ref=e283] [cursor=pointer]:
+                                  - /url: /openhands/usage/sandboxes/process
+                      - listitem [ref=e287]:
+                        - button "Advanced" [ref=e288] [cursor=pointer]
+                  - listitem [ref=e293]:
+                    - button "CLI" [ref=e294] [cursor=pointer]
+              - generic [ref=e299]:
+                - heading "OpenHands Community" [level=3] [ref=e301]
+                - list [ref=e302]:
+                  - listitem [ref=e303]:
+                    - link "Community" [ref=e304] [cursor=pointer]:
+                      - /url: /overview/community
+                  - listitem [ref=e308]:
+                    - link "Contributing" [ref=e309] [cursor=pointer]:
+                      - /url: /overview/contributing
+                  - listitem [ref=e313]:
+                    - link "FAQs" [ref=e314] [cursor=pointer]:
+                      - /url: /overview/faqs
+                  - listitem [ref=e318]:
+                    - link "Feedback" [ref=e319] [cursor=pointer]:
+                      - /url: /openhands/usage/troubleshooting/feedback
+          - main [ref=e323]:
+            - generic [ref=e325]:
+              - generic [ref=e326]:
+                - generic [ref=e327]:
+                  - generic [ref=e328]: Sandbox Providers
+                  - generic [ref=e329]:
+                    - heading "Docker Sandbox" [level=1] [ref=e330]
+                    - generic [ref=e331]:
+                      - button "Copy page" [ref=e332] [cursor=pointer]
+                      - button "More actions" [ref=e339] [cursor=pointer]
+                - paragraph [ref=e343]: The recommended sandbox provider for running OpenHands locally.
+              - generic [ref=e344]:
+                - generic [ref=e345]:
+                  - text: The
+                  - strong [ref=e346]: Docker sandbox
+                  - text: runs the agent server inside a Docker container. This is the default and recommended option for most users.
+                - note "Note" [ref=e347]:
+                  - generic [ref=e352]:
+                    - text: In some self-hosted deployments, the sandbox provider is controlled via the legacy
+                    - code [ref=e353]: RUNTIME
+                    - text: environment variable. Docker is the default.
+                - heading "Navigate to header Why Docker?" [level=2] [ref=e354]:
+                  - link "Navigate to header" [ref=e355] [cursor=pointer]:
+                    - /url: "#why-docker"
+                  - generic [ref=e360] [cursor=pointer]: Why Docker?
+                - list [ref=e361]:
+                  - listitem [ref=e362]: "Isolation: reduces risk when the agent runs commands."
+                  - listitem [ref=e363]: "Reproducibility: consistent environment across machines."
+                - heading "Navigate to header Mounting your code into the sandbox" [level=2] [ref=e364]:
+                  - link "Navigate to header" [ref=e365] [cursor=pointer]:
+                    - /url: "#mounting-your-code-into-the-sandbox"
+                  - generic [ref=e370] [cursor=pointer]: Mounting your code into the sandbox
+                - generic [ref=e371]: If you want OpenHands to work directly on a local repository, mount it into the sandbox.
+                - 'heading "Navigate to header Recommended: CLI launcher" [level=3] [ref=e372]':
+                  - link "Navigate to header" [ref=e373] [cursor=pointer]:
+                    - /url: "#recommended-cli-launcher"
+                  - generic [ref=e378] [cursor=pointer]: "Recommended: CLI launcher"
+                - generic [ref=e379]: "If you start OpenHands via:"
+                - generic [ref=e380]:
+                  - generic [ref=e381]:
+                    - generic [ref=e382]:
+                      - button "Copy the contents from the code block" [ref=e383] [cursor=pointer]
+                      - status [ref=e387]
+                    - button "Ask Assistant" [ref=e389] [cursor=pointer]
+                  - code [ref=e396]:
+                    - generic [ref=e397]: openhands serve --mount-cwd
+                - generic [ref=e398]: your current directory will be mounted into the sandbox workspace.
+                - heading "Navigate to header Using SANDBOX_VOLUMES" [level=3] [ref=e399]:
+                  - link "Navigate to header" [ref=e400] [cursor=pointer]:
+                    - /url: "#using-sandbox_volumes"
+                  - generic [ref=e405] [cursor=pointer]: Using SANDBOX_VOLUMES
+                - generic [ref=e406]:
+                  - text: You can also configure mounts via the
+                  - code [ref=e407]: SANDBOX_VOLUMES
+                  - text: "environment variable (format:"
+                  - code [ref=e408]: host_path:container_path[:mode]
+                  - text: "):"
+                - generic [ref=e409]:
+                  - generic [ref=e410]:
+                    - generic [ref=e411]:
+                      - button "Copy the contents from the code block" [ref=e412] [cursor=pointer]
+                      - status [ref=e416]
+                    - button "Ask Assistant" [ref=e418] [cursor=pointer]
+                  - code [ref=e425]:
+                    - generic [ref=e426]: export SANDBOX_VOLUMES=$PWD:/workspace:rw
+                - note "Note" [ref=e427]:
+                  - generic [ref=e432]:
+                    - text: Anything mounted read-write into
+                    - code [ref=e433]: /workspace
+                    - text: can be modified by the agent.
+                - heading "Navigate to header Self-hosting Behind a Reverse Proxy" [level=2] [ref=e434]:
+                  - link "Navigate to header" [ref=e435] [cursor=pointer]:
+                    - /url: "#self-hosting-behind-a-reverse-proxy"
+                  - generic [ref=e440] [cursor=pointer]: Self-hosting Behind a Reverse Proxy
+                - generic [ref=e441]:
+                  - text: When you self-host OpenHands behind a reverse proxy (nginx, Traefik, etc.), each Docker sandbox exposes its agent-server (and VS Code / worker) ports on a
+                  - strong [ref=e442]: randomly assigned host port
+                  - text: . The frontend reaches the sandbox by plugging that random port into the
+                  - code [ref=e443]: container_url_pattern
+                  - text: ", which defaults to"
+                  - code [ref=e444]: "http://localhost:{port}"
+                  - text: ". Two things break for a typical reverse-proxy setup:"
+                - list [ref=e445]:
+                  - listitem [ref=e446]:
+                    - text: The hostname is
+                    - code [ref=e447]: localhost
+                    - text: ", not your public domain."
+                  - listitem [ref=e448]: The port is random, so you cannot add a static proxy route for it.
+                - note "Note" [ref=e449]:
+                  - generic [ref=e454]:
+                    - code [ref=e455]: OH_WEB_URL
+                    - text: does
+                    - strong [ref=e456]: not
+                    - text: control these sandbox URLs. On the OpenHands host it only adds the origin to the sandbox’s CORS allow-list — it is not forwarded into the sandbox container’s environment, so it has no effect on the host/port the browser uses to reach a sandbox.
+                - heading "Navigate to header Pin sandbox ports with host networking" [level=3] [ref=e457]:
+                  - link "Navigate to header" [ref=e458] [cursor=pointer]:
+                    - /url: "#pin-sandbox-ports-with-host-networking"
+                  - generic [ref=e463] [cursor=pointer]: Pin sandbox ports with host networking
+                - generic [ref=e464]:
+                  - text: Set
+                  - code [ref=e465]: AGENT_SERVER_USE_HOST_NETWORK=true
+                  - text: "to run agent-server containers in Docker host-network mode. Instead of random host ports, each container’s ports are reachable directly on fixed host ports:"
+                - region "Scrollable table" [ref=e466]:
+                  - table [ref=e468]:
+                    - rowgroup [ref=e469]:
+                      - row [ref=e470]:
+                        - columnheader "Container port" [ref=e471]
+                        - columnheader "Service" [ref=e472]
+                    - rowgroup [ref=e473]:
+                      - row [ref=e474]:
+                        - cell [ref=e475]:
+                          - code [ref=e476]: "8000"
+                        - cell "Agent server" [ref=e477]
+                      - row [ref=e478]:
+                        - cell [ref=e479]:
+                          - code [ref=e480]: "8001"
+                        - cell "VS Code server" [ref=e481]
+                      - row [ref=e482]:
+                        - cell [ref=e483]:
+                          - code [ref=e484]: "8011"
+                        - cell "Worker 1" [ref=e485]
+                      - row [ref=e486]:
+                        - cell [ref=e487]:
+                          - code [ref=e488]: "8012"
+                        - cell "Worker 2" [ref=e489]
+                - generic [ref=e490]:
+                  - generic [ref=e491]:
+                    - generic [ref=e492]:
+                      - button "Copy the contents from the code block" [ref=e493] [cursor=pointer]
+                      - status [ref=e497]
+                    - button "Ask Assistant" [ref=e499] [cursor=pointer]
+                  - code [ref=e506]:
+                    - generic [ref=e507]: export AGENT_SERVER_USE_HOST_NETWORK=true
+                - generic [ref=e508]: This lets you add a single static reverse-proxy route for each fixed port.
+                - note "Warning" [ref=e509]:
+                  - generic [ref=e514]:
+                    - text: Host-network mode binds every sandbox to the
+                    - strong [ref=e515]: same
+                    - text: fixed host ports. Only one sandbox can run at a time; concurrent conversations will collide on those ports. OpenHands logs a warning if host networking is enabled with
+                    - code [ref=e516]: max_num_sandboxes > 1
+                    - text: .
+                - heading "Navigate to header Fix the sandbox URL hostname" [level=3] [ref=e517]:
+                  - link "Navigate to header" [ref=e518] [cursor=pointer]:
+                    - /url: "#fix-the-sandbox-url-hostname"
+                  - generic [ref=e523] [cursor=pointer]: Fix the sandbox URL hostname
+                - generic [ref=e524]:
+                  - text: To point sandbox URLs at your public domain (keeping the per-sandbox port), set the
+                  - code [ref=e525]: container_url_pattern
+                  - text: to your hostname with the
+                  - code [ref=e526]: "{port}"
+                  - text: "placeholder:"
+                - generic [ref=e527]:
+                  - generic [ref=e528]:
+                    - generic [ref=e529]:
+                      - button "Copy the contents from the code block" [ref=e530] [cursor=pointer]
+                      - status [ref=e534]
+                    - button "Ask Assistant" [ref=e536] [cursor=pointer]
+                  - code [ref=e543]:
+                    - generic [ref=e544]: "# OH_-prefixed form (recommended for V1):"
+                    - generic [ref=e545]: "export OH_SANDBOX_CONTAINER_URL_PATTERN=\"https://my-domain:{port}\""
+                    - generic [ref=e546]: "# Legacy form (also accepted):"
+                    - generic [ref=e547]: "export SANDBOX_CONTAINER_URL_PATTERN=\"https://my-domain:{port}\""
+                - generic [ref=e548]:
+                  - text: This replaces
+                  - code [ref=e549]: localhost
+                  - text: with your domain, but the port is still random per sandbox. Traefik cannot natively route an arbitrary dynamic port; a regex-based proxy (e.g. nginx) is needed to forward each port to the right sandbox.
+                - heading "Navigate to header Summary" [level=3] [ref=e550]:
+                  - link "Navigate to header" [ref=e551] [cursor=pointer]:
+                    - /url: "#summary"
+                  - generic [ref=e556] [cursor=pointer]: Summary
+                - region "Scrollable table" [ref=e557]:
+                  - table [ref=e559]:
+                    - rowgroup [ref=e560]:
+                      - row [ref=e561]:
+                        - columnheader "Goal" [ref=e562]
+                        - columnheader "Variable" [ref=e563]
+                        - columnheader "Effect" [ref=e564]
+                    - rowgroup [ref=e565]:
+                      - row [ref=e566]:
+                        - cell "Fixed, static ports (one sandbox at a time)" [ref=e567]
+                        - cell [ref=e568]:
+                          - code [ref=e569]: AGENT_SERVER_USE_HOST_NETWORK=true
+                        - cell [ref=e570]:
+                          - text: Containers use host networking; ports
+                          - code [ref=e571]: "8000"
+                          - text: /
+                          - code [ref=e572]: "8001"
+                          - text: /
+                          - code [ref=e573]: "8011"
+                          - text: /
+                          - code [ref=e574]: "8012"
+                          - text: are exposed directly on the host.
+                      - row [ref=e575]:
+                        - cell "Public hostname for sandbox URLs" [ref=e576]
+                        - cell [ref=e577]:
+                          - code [ref=e578]: OH_SANDBOX_CONTAINER_URL_PATTERN
+                          - text: /
+                          - code [ref=e579]: SANDBOX_CONTAINER_URL_PATTERN
+                        - cell [ref=e580]:
+                          - text: Replaces
+                          - code [ref=e581]: localhost
+                          - text: with your domain in the URLs the browser uses. Port stays random per sandbox.
+                - heading "Navigate to header Custom sandbox images" [level=2] [ref=e582]:
+                  - link "Navigate to header" [ref=e583] [cursor=pointer]:
+                    - /url: "#custom-sandbox-images"
+                  - generic [ref=e588] [cursor=pointer]: Custom sandbox images
+                - generic [ref=e589]:
+                  - text: To customize the container image (extra tools, system deps, etc.), see
+                  - link "Custom Sandbox Guide" [ref=e590] [cursor=pointer]:
+                    - /url: /openhands/usage/advanced/custom-sandbox-guide
+                  - text: .
+              - generic [ref=e592]:
+                - paragraph [ref=e593]: Was this page helpful?
+                - generic [ref=e595]:
+                  - button "Yes" [ref=e596] [cursor=pointer]
+                  - button "No" [ref=e601] [cursor=pointer]
+              - navigation "Pagination" [ref=e606]:
+                - 'link "Previous: Overview" [ref=e607] [cursor=pointer]':
+                  - /url: /openhands/usage/sandboxes/overview
+                  - generic [ref=e610]: Overview
+                - 'link "Next: Remote Sandbox" [ref=e611] [cursor=pointer]':
+                  - /url: /openhands/usage/sandboxes/remote
+                  - generic [ref=e612]: Remote Sandbox
+              - generic [ref=e616]:
+                - textbox "Ask a question..." [ref=e617]
+                - generic: ⌘I
+                - button "Send message" [disabled] [ref=e618]
+        - contentinfo [ref=e622]:
+          - generic [ref=e623]:
+            - generic [ref=e624]:
+              - link "OpenHands Docs home page light logo" [ref=e626] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e627]: OpenHands Docs home page
+                - img "light logo" [ref=e628]
+              - generic [ref=e631]:
+                - link "Company" [ref=e632] [cursor=pointer]:
+                  - /url: https://openhands.dev/
+                - link "Blog" [ref=e633] [cursor=pointer]:
+                  - /url: https://openhands.dev/blog
+                - link "Cloud" [ref=e634] [cursor=pointer]:
+                  - /url: https://app.all-hands.dev
+                - link "Enterprise" [ref=e635] [cursor=pointer]:
+                  - /url: https://openhands.dev/enterprise
+              - generic [ref=e636]:
+                - link "slack" [ref=e637] [cursor=pointer]:
+                  - /url: https://openhands.dev/joinslack
+                - link "github" [ref=e640] [cursor=pointer]:
+                  - /url: https://github.com/OpenHands/OpenHands
+            - generic [ref=e644]:
+              - link "Powered by This documentation is built and hosted on Mintlify, a developer documentation platform" [ref=e646] [cursor=pointer]:
+                - /url: https://www.mintlify.com?utm_campaign=poweredBy&utm_medium=referral&utm_source=allhandsai
+                - generic [ref=e647]: Powered by
+                - generic [ref=e657]: This documentation is built and hosted on Mintlify, a developer documentation platform
+              - generic [ref=e658]:
+                - button "Switch to system theme" [ref=e659] [cursor=pointer]
+                - button "Switch to light theme" [ref=e663] [cursor=pointer]
+                - button "Switch to dark theme" [ref=e670] [cursor=pointer]
+      - generic:
+        - generic [ref=e674]:
+          - generic [ref=e675]: Assistant
+          - generic [ref=e680]:
+            - button [ref=e681] [cursor=pointer]
+            - button [ref=e687] [cursor=pointer]
+        - generic [ref=e691]: Responses are generated using AI and may contain mistakes.
+        - generic [ref=e693]:
+          - generic [ref=e694]:
+            - textbox [ref=e695]:
+              - /placeholder: Ask a question...
+            - generic [ref=e696]:
+              - button [ref=e697] [cursor=pointer]
+              - button [disabled] [ref=e700]
+          - link [ref=e704] [cursor=pointer]:
+            - /url: mailto:contact@openhands.dev
+            - paragraph [ref=e707]: Contact support

@@ -15,8 +15,11 @@ parallelism to investigate likely shared root cause.
 - Each lane has exact, disjoint `allowed_paths` and one bounded deliverable.
 - Every writable lane uses its own isolated workspace or worktree.
 - Shared-workspace lanes are read-only only.
-- Controller selects only `low`, `normal`, or `high`; agents do not spawn
-  child agents.
+- Controller selects only `low`, `normal`, or `high`. Agents may create child
+  agents only when immutable packet grants `harness.delegate` and selects
+  `read_only_research`; core enforces child authority, paths, depth, budget,
+  and read-only workspace. In every other packet, agents must not spawn child
+  agents.
 
 ## Process
 

@@ -7,16 +7,16 @@ Regenerate: python scripts/render_harness_routing.py
 
 # Harness Routing
 
-Controller task packet selects one route. Rules stay mandatory. Agents return claimed results; harness returns verification evidence.
+Controller task packet selects one route. Core resolves authority, toolset, and verification profiles. Agents return claimed results; harness returns verification evidence.
 
-| Task Type | Template | Role | Skills | Tools | Checks |
-| --- | --- | --- | --- | --- | --- |
-| `local_change` | `normal` | `implement` | `skill-code-standards`, `skill-test-driven-development` | `shell`, `serena`, `ast_grep_preview` | `diff` |
-| `debugging` | `normal` | `investigate` | `skill-systematic-debugging` | `shell`, `serena`, `ast_grep_preview` | `diff` |
-| `harness_diagnosis` | `high` | `investigate` | `skill-improve-harness`, `skill-systematic-debugging`, `skill-repository-research`, `skill-verification-before-completion` | `shell`, `serena` | `diff` |
-| `research` | `low` | `investigate` | `skill-repository-research` | `shell`, `semble_codebase_search` | `diff` |
-| `plan_review` | `high` | `review` | `skill-plan-document-reviewer` | `shell`, `serena` | `diff` |
-| `design_exploration` | `high` | `investigate` | `skill-brainstorming` | `shell`, `semble_codebase_search` | `diff` |
-| `plan_writing` | `high` | `implement` | `skill-writing-plans` | `shell`, `serena` | `diff` |
-| `skill_authoring` | `high` | `implement` | `skill-writing-skills`, `skill-test-driven-development`, `skill-verification-before-completion` | `shell`, `serena` | `diff` |
-| `harness_improvement` | `high` | `improve` | `skill-improve-harness`, `skill-code-standards`, `skill-test-driven-development`, `skill-verification-before-completion` | `shell`, `serena` | `diff` |
+| Task Type | Template | Role | Skills | Authority | Toolset | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| `local_change` | `normal` | `implement` | `skill-code-standards`, `skill-test-driven-development` | `workspace_write` | `code` | `write` |
+| `debugging` | `normal` | `investigate` | `skill-systematic-debugging` | `read_only` | `code` | `read_only` |
+| `harness_diagnosis` | `high` | `investigate` | `skill-improve-harness`, `skill-systematic-debugging`, `skill-repository-research`, `skill-verification-before-completion` | `read_only` | `shell_serena` | `read_only` |
+| `research` | `low` | `investigate` | `skill-repository-research` | `read_only_delegation` | `research` | `read_only` |
+| `plan_review` | `high` | `review` | `skill-plan-document-reviewer` | `read_only` | `shell_serena` | `read_only` |
+| `design_exploration` | `high` | `investigate` | `skill-brainstorming` | `read_only` | `research` | `read_only` |
+| `plan_writing` | `high` | `implement` | `skill-writing-plans` | `workspace_write` | `shell_serena` | `write` |
+| `skill_authoring` | `high` | `implement` | `skill-writing-skills`, `skill-test-driven-development`, `skill-verification-before-completion` | `workspace_write` | `shell_serena` | `write` |
+| `harness_improvement` | `high` | `improve` | `skill-improve-harness`, `skill-code-standards`, `skill-test-driven-development`, `skill-verification-before-completion` | `workspace_write` | `shell_serena` | `write` |

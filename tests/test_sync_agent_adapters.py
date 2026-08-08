@@ -174,6 +174,75 @@ def test_harness_guidance_handles_missing_writer_completion() -> None:
             assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
 
 
+def test_harness_guidance_scopes_child_delegation_to_packet_policy() -> None:
+    required_phrases = {
+        REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md": (
+            "harness.delegate",
+            "read_only_research",
+            "must not spawn child agents",
+        ),
+        REPO_ROOT / "docs/operating_system/rules/multi-agent-orchestration-rule.md": (
+            "harness.delegate",
+            "read_only_research",
+            "must not spawn child agents",
+        ),
+        REPO_ROOT / ".agents/skills/skill-subagent-driven-development/SKILL.md": (
+            "harness.delegate",
+            "read_only_research",
+            "must not spawn child agents",
+        ),
+        REPO_ROOT / ".agents/skills/skill-dispatching-parallel-agents/SKILL.md": (
+            "harness.delegate",
+            "read_only_research",
+            "must not spawn child agents",
+        ),
+    }
+
+    for path, phrases in required_phrases.items():
+        content = " ".join(path.read_text(encoding="utf-8").split())
+        for phrase in phrases:
+            assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
+
+
+def test_codex_provider_guidance_uses_host_owned_transport_config() -> None:
+    canonical_paths = [
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md",
+        REPO_ROOT / "docs/operating_system/procedures/managed-execution-adapter-contract.md",
+        REPO_ROOT / "docs/operating_system/procedures/harness-core-consumer-setup.md",
+        REPO_ROOT / ".agents/skills/skill-executing-plans/SKILL.md",
+        REPO_ROOT / ".agents/skills/skill-subagent-driven-development/SKILL.md",
+        REPO_ROOT / ".agents/skills/skill-systematic-debugging/SKILL.md",
+    ]
+    required_phrases = {
+        REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md": (
+            "harness-providers.toml",
+            "codex-harness-host preflight",
+        ),
+        REPO_ROOT / "docs/operating_system/procedures/managed-execution-adapter-contract.md": (
+            "config init",
+            "config validate",
+            "codex-harness-host preflight",
+            "provider_configuration_changed",
+        ),
+        REPO_ROOT / "docs/operating_system/procedures/harness-core-consumer-setup.md": (
+            "harness-core-v0.1.13",
+            "contract_version: 4",
+            "packet API 5",
+        ),
+    }
+
+    for path in canonical_paths:
+        content = path.read_text(encoding="utf-8")
+        assert "ws://127.0.0.1:4500" not in content, f"hardcoded endpoint in {path.relative_to(REPO_ROOT)}"
+        assert "--server-uri" not in content, f"raw endpoint flag in {path.relative_to(REPO_ROOT)}"
+
+    for path, phrases in required_phrases.items():
+        content = " ".join(path.read_text(encoding="utf-8").split())
+        for phrase in phrases:
+            assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
+
+
 def _mapping(source: str, destination: str, mode: str = "copy_tree") -> object:
     return SYNC.Mapping(
         source=source,
@@ -266,9 +335,9 @@ def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "SKILL.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "task-reviewer-prompt.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "helper.sh").exists()
-def test_resolve_platform_selection_defaults_to_codex(tmp_path: Path) -> None:
+def test_resolve_platform_selection_defaults_to_all_platforms(tmp_path: Path) -> None:
     args = type("Args", (), {"all_platforms": False, "platform": []})()
-    assert SYNC._resolve_platform_selection(tmp_path, args) == ({"codex"}, "default")
+    assert SYNC._resolve_platform_selection(tmp_path, args) == (set(), "all-platforms")
 
 
 def test_resolve_platform_selection_respects_explicit_platforms(tmp_path: Path) -> None:

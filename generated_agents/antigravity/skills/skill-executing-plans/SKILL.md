@@ -52,6 +52,14 @@ For package-backed harnesses, use installed `harness-core` commands or a
 provider host, never copied consumer logic. Confirm `harness_core.request_api`
 and adapter `host_api` before packet work. Package, release tag, or provider
 absence is a blocker, not a local fallback.
+For `codex_app_server`, run host `capabilities` and `preflight` from installed
+host source before packet work. Host-owned trusted user configuration selects
+the registered launcher or explicit external endpoint; never copy endpoint,
+launch-command, or credential values into repository guidance or packets.
+After host-source fix, follow
+[`managed-execution-adapter-contract.md`](../../../docs/operating_system/procedures/managed-execution-adapter-contract.md#committed-runtime-provenance)
+before product packet dispatch. `preflight` alone is insufficient; prove only
+changed imported runtime module is committed. Preserve unrelated host changes.
 
 Host returns baseline evidence before lane dispatch: root and parallel lanes use
 `packet_base` at exact packet base with a clean checkout; sequential dependents

@@ -118,6 +118,14 @@ def managed_request(**overrides):
         "base_ref": "HEAD",
     }
     payload.update(overrides)
+    if "acceptance_criteria" not in overrides and payload["task_type"] in {
+        "debugging",
+        "harness_diagnosis",
+        "research",
+        "plan_review",
+        "design_exploration",
+    }:
+        payload["acceptance_criteria"] = [{"id": "validator", "kind": "validator"}]
     return payload
 
 
@@ -348,6 +356,45 @@ def test_resolve_task_returns_route_packet() -> None:
     assert packet["orchestration"]["name"] == "single_work_lane"
 
 
+def test_v4_packet_resolves_selected_profiles() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(
+            version=4,
+            task_type="local_change",
+            execution_mode="single_work_lane",
+            planned_write_paths=["scripts/harness_task.py"],
+        ),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["authority"] == "workspace_write"
+    assert packet["toolset"] == "code"
+    assert packet["verification_profile"] == "write"
+    assert packet["capabilities"] == ["repo.read", "repo.write", "code.search"]
+    assert packet["checks"] == {"diff": ["git", "diff", "--check"]}
+    assert packet["postconditions"] == []
+
+
+def test_v4_packet_rejects_oversized_work_context_before_dispatch() -> None:
+    harness = load_module()
+
+    with pytest.raises(harness.HarnessError, match="user_request exceeds objective_max_bytes"):
+        harness.resolve_managed_packet(
+            ROOT,
+            managed_request(
+                version=4,
+                task_type="local_change",
+                execution_mode="single_work_lane",
+                user_request="x" * 4097,
+                planned_write_paths=["scripts/harness_task.py"],
+            ),
+            attempt_id="attempt-1",
+        )
+
+
 def test_resolve_task_selects_validated_sequential_orchestration() -> None:
     harness = load_module()
 
@@ -359,7 +406,6 @@ def test_resolve_task_selects_validated_sequential_orchestration() -> None:
         "max_parallel_writers": 1,
         "workspace_mode": "isolated",
         "validator_role": "validate",
-        "review_required": True,
     }
     assert "multi-agent-orchestration-rule" in packet["rules"]
 
@@ -519,6 +565,7 @@ def test_harness_diagnosis_packet_resolves_declared_readonly_artifacts(monkeypat
     assert packet["readonly_artifact_policy"] == {
         "allowed_kinds": ["terminal_observation", "sanitized_command_trace"],
         "required_kinds": ["terminal_observation"],
+        "artifact_max_bytes": 4096,
     }
     assert [(artifact["kind"], artifact["source_run_id"], artifact["source_attempt_id"]) for artifact in packet["readonly_artifacts"]] == [
         ("terminal_observation", "writer-run", "writer-attempt"),
@@ -526,19 +573,61 @@ def test_harness_diagnosis_packet_resolves_declared_readonly_artifacts(monkeypat
     ]
     assert packet["readonly_artifacts"][0]["content"] == terminal_observation
 
+def test_readonly_artifact_rejects_oversized_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
+        "run_id": run_id,
+        "state": "blocked",
+        "attempts": [{
+            "attempt_id": "source-attempt",
+            "evidence": {"terminal_observation": {"detail": "x" * 4096}},
+        }],
+    })
+
+    with pytest.raises(harness.HarnessError, match="readonly artifact exceeds artifact_max_bytes"):
+        harness._resolve_readonly_artifacts(ROOT, {
+            "workspace_write_access": "read_only",
+            "readonly_artifact_policy": {
+                "allowed_kinds": ["terminal_observation"],
+                "required_kinds": [],
+                "artifact_max_bytes": 4096,
+            },
+        }, [{
+            "kind": "terminal_observation",
+            "source_run_id": "source-run",
+            "source_attempt_id": "source-attempt",
+        }])
+
+def test_retained_trace_rejects_oversized_serialized_content() -> None:
+    class HostFailure(RuntimeError):
+        evidence_artifacts = [{
+            "kind": "sanitized_command_trace",
+            "content": {"version": 1, "commands": [{
+                "item_id": "command-1",
+                "command": "pytest",
+                "output": "x" * 4090,
+                "exit_code": 1,
+            }]},
+        }]
+
+    with pytest.raises(managed.HarnessError, match="sanitized command trace exceeds artifact_max_bytes"):
+        managed._normalize_retained_artifacts(HostFailure(), {
+            "retained_artifacts": [{"kind": "sanitized_command_trace", "max_bytes": 4096}],
+        })
+
 
 @pytest.mark.parametrize(
     ("task_type", "capabilities", "delegation_profile", "workspace_write_access"),
     [
-        ("local_change", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
+        ("local_change", ["repo.read", "repo.write", "code.search"], "disabled", "workspace_write"),
         ("debugging", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
         ("research", ["repo.read", "code.search", "docs.query", "harness.delegate"], "read_only_research", "read_only"),
         ("harness_diagnosis", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
         ("plan_review", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
         ("design_exploration", ["repo.read", "code.search", "docs.query"], "disabled", "read_only"),
-        ("plan_writing", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
-        ("skill_authoring", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
-        ("harness_improvement", ["repo.read", "repo.write", "checks.run", "code.search"], "disabled", "workspace_write"),
+        ("plan_writing", ["repo.read", "repo.write", "code.search"], "disabled", "workspace_write"),
+        ("skill_authoring", ["repo.read", "repo.write", "code.search"], "disabled", "workspace_write"),
+        ("harness_improvement", ["repo.read", "repo.write", "code.search"], "disabled", "workspace_write"),
     ],
 )
 def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
@@ -716,6 +805,7 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
             "ok": True,
             "invocation_id": "attempt-1:primary/child-1",
             "status": "failed",
+            "summary": "",
         }
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -746,11 +836,26 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
         first = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "succeeded", claim)
         second = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "succeeded", claim)
 
-        assert first == second == {"ok": True, "invocation_id": child["invocation_id"], "status": "succeeded"}
+        assert first == second == {"ok": True, "invocation_id": child["invocation_id"], "status": "succeeded", "summary": "found"}
         attempt = harness._load_run(ROOT, run_id)["attempts"][0]
         assert attempt["children"][0]["status"] == "succeeded"
         assert attempt["nodes"][0]["status"] == "running"
         assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": True}]
+
+        oversized = harness.delegate(ROOT, run_id, packet["invocation_id"], {
+            "idempotency_key": "child-2",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+        assert harness.complete_delegated_child(
+            ROOT,
+            run_id,
+            oversized["invocation_id"],
+            "succeeded",
+            {"kind": "claimed_result", "summary": "x" * 4097, "findings": ["ok"]},
+        ) == {"ok": False, "code": "delegation_result_invalid"}
     finally:
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
@@ -815,7 +920,7 @@ def test_delegate_cancellation_waits_for_controller_decision(tmp_path: Path) -> 
 
         result = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "cancelled", None)
 
-        assert result == {"ok": True, "invocation_id": child["invocation_id"], "status": "cancelled"}
+        assert result == {"ok": True, "invocation_id": child["invocation_id"], "status": "cancelled", "summary": ""}
         resumed = harness._load_run(ROOT, run_id)
         assert resumed["state"] == "awaiting_decision"
         assert resumed["attempts"][0]["outcome"] == {
@@ -2261,6 +2366,62 @@ def test_managed_dispatch_failure_becomes_retryable_outcome(tmp_path: Path) -> N
         assert result["state"] == "awaiting_decision"
         assert result["outcome"]["reason"] == "dispatch_failed"
         assert result["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = load_module()
+    policy = harness._load_policy(ROOT)
+    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class ReadOnlyAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__(
+                {"single_work_lane": "enforced"},
+                claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
+                host_api=4,
+                identity={"provider_id": "codex_app_server", "contract_version": 4},
+            )
+
+        def preflight_evidence(self):
+            return copy.deepcopy(API5_BINDING)
+
+        def verify_tool_bindings(self, lane, packet, workspace):
+            bindings = super().verify_tool_bindings(lane, packet, workspace)
+            for binding in bindings:
+                binding["access"] = "read_only"
+            return bindings
+
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            evidence["sandbox"] = "read-only"
+            return evidence
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(
+                version=4,
+                run_id=run_id,
+                task_type="research",
+                execution_mode="single_work_lane",
+                allowed_paths=["docs/**"],
+                planned_write_paths=[],
+            ),
+            ReadOnlyAdapter(),
+            collect_changes=lambda root, base_commit: [{"path": "docs/mutation.md", "kind": "modified"}],
+        )
+
+        assert result["outcome"]["reason"] == "verification_failed"
+        evidence = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]
+        assert evidence["checks"] == []
+        assert evidence["postconditions"] == [{"name": "workspace_unchanged", "status": "failed"}]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 

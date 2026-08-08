@@ -85,8 +85,13 @@ execution, never generic `run-unavailable`:
 ```powershell
 Set-Location <codex-harness-host-root>
 uv run codex-harness-host capabilities
-uv run codex-harness-host run --harness-root <repo-root> --server-uri ws://127.0.0.1:4500 --request <request.json>
+uv run codex-harness-host preflight
+uv run codex-harness-host run --harness-root <repo-root> --request <request.json>
 ```
+
+Host reads transport only from trusted user configuration. Do not put an
+endpoint, launch command, or credentials in repository policy, requests, or
+packets.
 
 Host contract:
 `docs/operating_system/procedures/managed-execution-adapter-contract.md`.

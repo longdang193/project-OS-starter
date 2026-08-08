@@ -14,12 +14,6 @@ import yaml
 
 from harness_core import config_validation
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-
-
-def load_validator():
-    return config_validation
-
 
 def write_text(root: Path, relative_path: str, content: str) -> None:
     path = root / relative_path
@@ -30,22 +24,19 @@ def write_text(root: Path, relative_path: str, content: str) -> None:
 def write_harness_root(root: Path) -> None:
     for name in ("low", "normal", "high"):
         write_text(root, f"agents/{name}.toml", f'name = "{name}"\n')
-
     write_text(
         root,
         "agents/roles.yaml",
         yaml.safe_dump(
             {
-                "version": 1,
+                "version": 2,
                 "roles": {
                     "implement": {
-                        "writes": True,
                         "accepts": ["low", "normal", "high"],
                         "result_kind": "claimed_result",
                         "required_fields": ["changed_files"],
                     },
                     "validate": {
-                        "writes": False,
                         "accepts": ["low", "normal", "high"],
                         "result_kind": "claimed_result",
                         "required_fields": ["summary", "findings", "verdict"],
@@ -55,61 +46,74 @@ def write_harness_root(root: Path) -> None:
             sort_keys=False,
         ),
     )
-    write_text(
-        root,
-        "docs/operating_system/rules/command-execution-rule.md",
-        "# Command Execution\n",
-    )
-    write_text(
-        root,
-        "docs/operating_system/rules/multi-agent-orchestration-rule.md",
-        "# Multi-Agent Orchestration\n",
-    )
-    write_text(
-        root,
-        ".agents/skills/skill-code-standards/SKILL.md",
-        "---\nname: skill-code-standards\ndescription: Use when standards apply.\n---\n",
-    )
+    write_text(root, "docs/operating_system/rules/command-execution-rule.md", "# Command Execution\n")
+    write_text(root, ".agents/skills/skill-code-standards/SKILL.md", "---\nname: skill-code-standards\ndescription: Use when standards apply.\n---\n")
     write_text(
         root,
         "repo_config/harness.yaml",
         yaml.safe_dump(
             {
-                "version": 3,
-                "harness_core": {"request_api": 3},
-                "states": {
-                    "classified": ["planned", "blocked"],
-                    "planned": ["running", "awaiting_decision", "blocked"],
-                    "running": ["observed", "awaiting_decision", "blocked"],
-                    "observed": ["verifying", "running", "blocked"],
-                    "verifying": ["awaiting_decision", "accepted", "blocked"],
-                    "awaiting_decision": ["awaiting_decision", "planned", "accepted", "unvalidated", "blocked"],
-                    "accepted": [],
-                    "unvalidated": [],
-                    "blocked": [],
+                "version": 4,
+                "harness_core": {"request_api": 4},
+                "context_limits": {
+                    "objective_max_bytes": 1024,
+                    "fact_max_bytes": 4096,
+                    "max_facts": 8,
+                    "max_artifacts": 8,
+                    "artifact_max_bytes": 4096,
+                    "outcome_summary_max_bytes": 2048,
+                },
+                "evidence_artifacts": {
+                    "writer_retained_kinds": ["sanitized_command_trace"],
+                    "sanitized_command_trace_max_bytes": 1024,
+                },
+                "delegation_profiles": {
+                    "disabled": {
+                        "max_depth": 0,
+                        "max_children": 0,
+                        "max_concurrent_children": 0,
+                        "per_child_timeout_seconds": 0,
+                        "total_child_timeout_seconds": 0,
+                        "allowed_roles": [],
+                        "capability_ceiling": [],
+                        "workspace_write_access": "read_only",
+                        "verification": "none",
+                    },
+                },
+                "defaults": {
+                    "source_workspace": "current_repo",
+                    "runtime_provider": "codex_app_server",
+                    "retry_policy": "bounded",
+                    "execution_budget_profile": "default",
+                    "approval_gates": [],
+                },
+                "authorities": {
+                    "workspace_write": {
+                        "capabilities": ["repo.read", "repo.write", "code.search"],
+                        "workspace_write_access": "workspace_write",
+                    },
+                    "read_only": {
+                        "capabilities": ["repo.read", "code.search"],
+                        "workspace_write_access": "read_only",
+                    },
+                },
+                "toolsets": {"code": ["shell"]},
+                "verification_profiles": {
+                    "write": {"postconditions": [], "checks": ["diff"]},
+                    "read_only": {"postconditions": ["workspace_unchanged"], "checks": []},
                 },
                 "retry_policies": {
                     "bounded": {
                         "max_attempts": 2,
-                        "retryable_reasons": ["check_failed", "review_required"],
+                        "retryable_reasons": ["check_failed"],
                         "exhaustion": "block",
                         "approval_resume": "successor_attempt",
                         "approval_ttl_seconds": 3600,
-                    }
+                    },
                 },
                 "execution_budgets": {
                     "max_turn_timeout_seconds": 900,
-                    "profiles": {
-                        "default": {
-                            "turn_timeout_seconds": 300,
-                            "timeout_decisions": ["escalate", "block"],
-                            "escalation_profile": "extended",
-                        },
-                        "extended": {
-                            "turn_timeout_seconds": 900,
-                            "timeout_decisions": ["block"],
-                        },
-                    },
+                    "profiles": {"default": {"turn_timeout_seconds": 300, "timeout_decisions": ["block"]}},
                 },
                 "checks": {"diff": {"command": ["git", "diff", "--check"]}},
                 "tools": {
@@ -119,16 +123,11 @@ def write_harness_root(root: Path) -> None:
                         "writer_access": "workspace_write",
                         "validator_access": "read_only",
                         "root_probe": "shell_root_probe",
-                    }
+                    },
                 },
-                "runtime_providers": {
-                    "codex_app_server": {"contract_version": 2},
-                },
-                "friction_policy": {
-                    "event_version": 1,
-                    "minimum_distinct_runs": 3,
-                    "window_days": 14,
-                },
+                "runtime_providers": {"codex_app_server": {"contract_version": 4}},
+                "friction_policy": {"event_version": 1, "minimum_distinct_runs": 3, "window_days": 14},
+                "approval_gates": {"protected": {"paths": ["repo_config/harness.yaml"]}},
                 "orchestration": {
                     "single_work_lane": {
                         "aliases": ["single_agent"],
@@ -136,34 +135,22 @@ def write_harness_root(root: Path) -> None:
                         "max_parallel_writers": 1,
                         "workspace_mode": "isolated",
                         "validator_role": "validate",
-                        "review_required": False,
                         "rules": [],
-                    },
-                    "sequential_work_lanes": {
-                        "aliases": ["sequential_agents"],
-                        "work_scheduling": "sequential",
-                        "max_parallel_writers": 1,
-                        "workspace_mode": "isolated",
-                        "validator_role": "validate",
-                        "review_required": True,
-                        "rules": ["multi-agent-orchestration-rule"],
                     },
                 },
                 "routes": {
                     "local_change": {
-                        "template": "low",
+                        "template": "normal",
                         "role": "implement",
                         "rules": ["command-execution-rule"],
                         "skills": ["skill-code-standards"],
-                        "tools": ["shell"],
-                        "workspace": "current",
-                        "checks": ["diff"],
-                        "retry_policy": "bounded",
-                        "execution_budget_profile": "default",
-                        "execution_modes": ["single_work_lane", "sequential_work_lanes"],
-                        "runtime_providers": ["codex_app_server"],
-                        "default_runtime_provider": "codex_app_server",
-                    }
+                        "authority": "workspace_write",
+                        "toolset": "code",
+                        "verification_profile": "write",
+                        "delegation_profile": "disabled",
+                        "approval_gates": ["protected"],
+                        "execution_modes": ["single_work_lane"],
+                    },
                 },
             },
             sort_keys=False,
@@ -171,336 +158,111 @@ def write_harness_root(root: Path) -> None:
     )
 
 
-def test_valid_harness_config_passes(tmp_path: Path) -> None:
-    validator = load_validator()
+def load_policy(root: Path) -> tuple[Path, dict[str, object]]:
+    path = root / "repo_config/harness.yaml"
+    return path, yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def write_policy(path: Path, policy: dict[str, object]) -> None:
+    path.write_text(yaml.safe_dump(policy, sort_keys=False), encoding="utf-8")
+
+
+def test_v4_policy_profiles_validate(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
 
-    assert validator.validate(tmp_path) == []
+    assert config_validation.validate(tmp_path) == []
 
 
-def test_request_api4_accepts_role_schema_v2_without_writes(tmp_path: Path) -> None:
-    validator = load_validator()
+def test_duplicate_profile_key_fails_before_validation(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
-    config_path = tmp_path / "repo_config/harness.yaml"
-    config = yaml.safe_load(config_path.read_text())
-    config["harness_core"]["request_api"] = 4
-    config["capabilities"] = {
-        "catalog": ["repo.read"],
-        "sets": {"read_only": ["repo.read"]},
+    path = tmp_path / "repo_config/harness.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("authorities:\n", "authorities:\n  read_only: {}\n  read_only: {}\n"), encoding="utf-8")
+
+    assert config_validation.validate(tmp_path) == ["invalid YAML: duplicate YAML key `read_only`"]
+
+
+def test_v4_rejects_deleted_policy_fields(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["states"] = {}
+    policy["routes"]["local_change"]["tools"] = ["shell"]
+    write_policy(path, policy)
+
+    errors = config_validation.validate(tmp_path)
+
+    assert "harness policy has unknown fields: states" in errors
+    assert "route `local_change` has unknown fields: tools" in errors
+
+
+def test_route_requires_known_one_hop_profiles(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["routes"]["local_change"]["authority"] = "missing"
+    write_policy(path, policy)
+
+    assert "route `local_change` has unknown authority `missing`" in config_validation.validate(tmp_path)
+
+
+def test_defaults_cannot_grant_approval_bypass(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["defaults"]["approval_gates"] = ["protected"]
+    write_policy(path, policy)
+
+    assert "defaults must contain only safe route defaults" in config_validation.validate(tmp_path)
+
+
+def test_context_and_trace_limits_must_bound_artifacts(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["evidence_artifacts"]["sanitized_command_trace_max_bytes"] = 8192
+    write_policy(path, policy)
+
+    assert "evidence_artifacts sanitized_command_trace_max_bytes exceeds artifact_max_bytes" in config_validation.validate(tmp_path)
+
+
+def test_readonly_artifacts_require_readonly_authority(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["routes"]["local_change"]["readonly_artifacts"] = {
+        "allowed_kinds": ["terminal_observation"],
+        "required_kinds": ["terminal_observation"],
     }
-    config["context_limits"] = {
-        "objective_max_bytes": 1024,
-        "fact_max_bytes": 4096,
-        "max_facts": 8,
-        "max_artifacts": 8,
-        "outcome_summary_max_bytes": 2048,
-    }
-    config["delegation_profiles"] = {
-        "disabled": {
-            "max_depth": 0,
-            "max_children": 0,
-            "max_concurrent_children": 0,
-            "per_child_timeout_seconds": 0,
-            "total_child_timeout_seconds": 0,
-            "allowed_roles": [],
-            "capability_ceiling": [],
-            "workspace_write_access": "read_only",
-            "verification": "none",
-        }
-    }
-    config["routes"]["local_change"]["capabilities"] = ["repo.read"]
-    config["routes"]["local_change"]["delegation_profile"] = "disabled"
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
-    roles_path = tmp_path / "agents/roles.yaml"
-    roles = yaml.safe_load(roles_path.read_text())
-    roles["version"] = 2
-    for role in roles["roles"].values():
-        role.pop("writes")
-    roles_path.write_text(yaml.safe_dump(roles, sort_keys=False), encoding="utf-8")
+    write_policy(path, policy)
 
-    assert validator.validate(tmp_path) == []
+    assert "route `local_change` readonly_artifacts requires read-only authority" in config_validation.validate(tmp_path)
 
 
-def test_request_api4_requires_route_capabilities(tmp_path: Path) -> None:
-    validator = load_validator()
+def test_tool_fallback_is_rejected(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
-    config_path = tmp_path / "repo_config/harness.yaml"
-    config = yaml.safe_load(config_path.read_text())
-    config["harness_core"]["request_api"] = 4
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    path, policy = load_policy(tmp_path)
+    policy["tools"]["shell"]["fallback"] = ["other"]
+    write_policy(path, policy)
 
-    assert "route `local_change` missing capabilities" in validator.validate(tmp_path)
+    assert "tool `shell` has invalid fields" in config_validation.validate(tmp_path)
 
 
-def test_request_api4_rejects_capability_outside_catalog(tmp_path: Path) -> None:
-    validator = load_validator()
+def test_unknown_template_skill_and_rule_fail(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
-    config_path = tmp_path / "repo_config/harness.yaml"
-    config = yaml.safe_load(config_path.read_text())
-    config["harness_core"]["request_api"] = 4
-    config["capabilities"] = {
-        "catalog": ["repo.read"],
-        "sets": {"read_only": ["repo.read"]},
-    }
-    config["context_limits"] = {
-        "objective_max_bytes": 1024,
-        "fact_max_bytes": 4096,
-        "max_facts": 8,
-        "max_artifacts": 8,
-        "outcome_summary_max_bytes": 2048,
-    }
-    config["delegation_profiles"] = {
-        "disabled": {
-            "max_depth": 0,
-            "max_children": 0,
-            "max_concurrent_children": 0,
-            "per_child_timeout_seconds": 0,
-            "total_child_timeout_seconds": 0,
-            "allowed_roles": [],
-            "capability_ceiling": [],
-            "workspace_write_access": "read_only",
-            "verification": "none",
-        }
-    }
-    config["routes"]["local_change"]["capabilities"] = ["repo.write"]
-    config["routes"]["local_change"]["delegation_profile"] = "disabled"
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
-    roles_path = tmp_path / "agents/roles.yaml"
-    roles = yaml.safe_load(roles_path.read_text())
-    roles["version"] = 2
-    for role in roles["roles"].values():
-        role.pop("writes")
-    roles_path.write_text(yaml.safe_dump(roles, sort_keys=False), encoding="utf-8")
+    path, policy = load_policy(tmp_path)
+    route = policy["routes"]["local_change"]
+    route["template"] = "missing"
+    route["skills"] = ["missing"]
+    route["rules"] = ["missing"]
+    write_policy(path, policy)
 
-    assert "route `local_change` capability `repo.write` is unknown" in validator.validate(tmp_path)
+    errors = config_validation.validate(tmp_path)
+
+    assert "unknown template `missing`" in errors
+    assert "route `local_change` has unknown skills" in errors
+    assert "route `local_change` has unknown rules" in errors
 
 
-def test_unknown_route_runtime_provider_fails(tmp_path: Path) -> None:
-    validator = load_validator()
+@pytest.mark.parametrize("value", [None, "4", 1])
+def test_harness_core_request_api_requires_current_integer(tmp_path: Path, value: object) -> None:
     write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["runtime_providers"] = ["missing"]
-    config["routes"]["local_change"]["default_runtime_provider"] = "missing"
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+    path, policy = load_policy(tmp_path)
+    policy["harness_core"]["request_api"] = value
+    write_policy(path, policy)
 
-    assert "route `local_change` has unknown runtime provider `missing`" in validator.validate(tmp_path)
-
-
-def test_route_runtime_provider_default_must_be_allowed(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["default_runtime_provider"] = "missing"
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "route `local_change` default_runtime_provider must be allowed" in validator.validate(tmp_path)
-
-
-def test_missing_template_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["template"] = "missing"
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown template `missing`" in validator.validate(tmp_path)
-
-
-def test_missing_skill_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["skills"] = ["skill-missing"]
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown skill `skill-missing`" in validator.validate(tmp_path)
-
-
-def test_missing_role_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["role"] = "missing"
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown role `missing`" in validator.validate(tmp_path)
-
-
-def test_missing_rule_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["rules"] = ["missing-rule"]
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown rule `missing-rule`" in validator.validate(tmp_path)
-
-
-def test_missing_check_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["checks"] = ["missing"]
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown check `missing`" in validator.validate(tmp_path)
-
-
-def test_empty_check_command_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["checks"]["diff"]["command"] = []
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "check `diff` command must be a non-empty list of strings" in validator.validate(tmp_path)
-
-
-def test_unknown_tool_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["tools"] = ["missing"]
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown tool `missing`" in validator.validate(tmp_path)
-
-
-def test_invalid_execution_mode_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["execution_modes"] = ["missing"]
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown execution mode `missing`" in validator.validate(tmp_path)
-
-
-def test_parallel_writers_require_isolated_workspace(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["orchestration"]["sequential_work_lanes"]["max_parallel_writers"] = 2
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "orchestration `sequential_work_lanes` non-parallel scheduling requires one writer" in validator.validate(tmp_path)
-
-
-def test_ambiguous_alias_and_unknown_topology_field_fail(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["orchestration"]["single_work_lane"]["aliases"].append("sequential_agents")
-    config["orchestration"]["single_work_lane"]["unexpected"] = True
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    errors = validator.validate(tmp_path)
-
-    assert "orchestration `single_work_lane` has unknown fields: unexpected" in errors
-    assert "orchestration alias `sequential_agents` is ambiguous" in errors
-
-
-def test_invalid_state_transition_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["states"]["observed"] = ["missing"]
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "state `observed` references unknown state `missing`" in validator.validate(tmp_path)
-
-
-def test_invalid_role_template_pairing_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    roles = yaml.safe_load((tmp_path / "agents/roles.yaml").read_text())
-    roles["roles"]["implement"]["accepts"] = ["normal"]
-    (tmp_path / "agents/roles.yaml").write_text(yaml.safe_dump(roles), encoding="utf-8")
-
-    assert "role `implement` does not accept template `low`" in validator.validate(tmp_path)
-
-
-def test_missing_route_retry_policy_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    del config["routes"]["local_change"]["retry_policy"]
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "route `local_change` missing fields: retry_policy" in validator.validate(tmp_path)
-
-
-def test_unknown_route_retry_policy_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["retry_policy"] = "missing"
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "unknown retry policy `missing`" in validator.validate(tmp_path)
-
-
-def test_invalid_retry_policy_approval_ttl_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["retry_policies"]["bounded"]["approval_ttl_seconds"] = 0
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "retry policy `bounded` approval_ttl_seconds must be a positive integer" in validator.validate(tmp_path)
-
-
-def test_unknown_route_execution_budget_profile_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["routes"]["local_change"]["execution_budget_profile"] = "missing"
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "route `local_change` has unknown execution budget profile `missing`" in validator.validate(tmp_path)
-
-
-def test_execution_budget_escalation_cycle_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["execution_budgets"]["profiles"]["extended"]["timeout_decisions"] = ["escalate", "block"]
-    config["execution_budgets"]["profiles"]["extended"]["escalation_profile"] = "default"
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "execution budget profiles contain escalation cycle at `default`" in validator.validate(tmp_path)
-
-
-def test_invalid_friction_policy_fails(tmp_path: Path) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    config["friction_policy"]["window_days"] = 0
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert "friction policy `window_days` must be a positive integer" in validator.validate(tmp_path)
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (None, "harness_core_request_api_invalid"),
-        ("3", "harness_core_request_api_invalid"),
-        (1, "harness_core_request_api_incompatible"),
-    ],
-)
-def test_harness_core_request_api_requires_supported_integer(
-    tmp_path: Path,
-    value: object,
-    expected: str,
-) -> None:
-    validator = load_validator()
-    write_harness_root(tmp_path)
-    config = yaml.safe_load((tmp_path / "repo_config/harness.yaml").read_text())
-    if value is None:
-        del config["harness_core"]
-    else:
-        config["harness_core"]["request_api"] = value
-    (tmp_path / "repo_config/harness.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
-
-    assert expected in validator.validate(tmp_path)
+    assert config_validation.validate(tmp_path)

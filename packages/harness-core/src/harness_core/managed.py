@@ -37,7 +37,11 @@ import uuid
 
 import yaml
 
-from .config_validation import READONLY_ARTIFACT_KINDS, validate as validate_harness_config
+from .config_validation import (
+    READONLY_ARTIFACT_KINDS,
+    load_yaml,
+    validate as validate_harness_config,
+)
 from .compatibility import (
     CURRENT_PACKET_API,
     CURRENT_RUN_API,
@@ -80,6 +84,17 @@ FRICTION_SOURCES = {"agent", "host", "validator", "check", "controller"}
 FRICTION_PHASES = {"claim", "dispatch", "integration", "check", "validator", "decision"}
 FRICTION_RESOLUTIONS = {"keep", "revise", "remove", "pending"}
 DELEGATED_CHILD_TERMINAL_STATES = {"succeeded", "failed", "cancelled", "timed_out", "awaiting_decision"}
+CORE_STATE_TRANSITIONS = {
+    "classified": ["planned", "blocked"],
+    "planned": ["running", "awaiting_decision", "blocked"],
+    "running": ["observed", "awaiting_decision", "blocked"],
+    "observed": ["verifying", "running", "blocked"],
+    "verifying": ["awaiting_decision", "accepted", "blocked"],
+    "awaiting_decision": ["awaiting_decision", "planned", "accepted", "unvalidated", "blocked"],
+    "accepted": [],
+    "unvalidated": [],
+    "blocked": [],
+}
 
 
 class DelegationResult(TypedDict):
@@ -87,6 +102,7 @@ class DelegationResult(TypedDict):
     code: NotRequired[str]
     invocation_id: NotRequired[str]
     status: NotRequired[str]
+    summary: NotRequired[str]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -101,10 +117,13 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _load_policy(root: Path) -> dict[str, Any]:
     path = root / "repo_config" / "harness.yaml"
-    with path.open(encoding="utf-8") as handle:
-        payload = yaml.safe_load(handle)
+    try:
+        payload = load_yaml(path)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        raise HarnessError(f"invalid harness policy: {exc}") from exc
     if not isinstance(payload, dict):
         raise HarnessError("harness policy must be an object")
+    payload["states"] = copy.deepcopy(CORE_STATE_TRANSITIONS)
     return payload
 
 
@@ -199,7 +218,7 @@ def _evidence_artifact_policy(policy: dict[str, Any]) -> dict[str, Any]:
     return {"writer_retained_kinds": list(retained_kinds), "sanitized_command_trace_max_bytes": max_bytes}
 
 
-def _readonly_artifact_policy(route: dict[str, Any]) -> dict[str, list[str]]:
+def _readonly_artifact_policy(route: dict[str, Any], artifact_max_bytes: int) -> dict[str, Any]:
     raw = route.get("readonly_artifacts", {})
     if not isinstance(raw, dict):
         raise HarnessError("invalid readonly artifact policy")
@@ -214,7 +233,11 @@ def _readonly_artifact_policy(route: dict[str, Any]) -> dict[str, list[str]]:
         or not set(required_kinds) <= set(allowed_kinds)
     ):
         raise HarnessError("invalid readonly artifact policy")
-    return {"allowed_kinds": list(allowed_kinds), "required_kinds": list(required_kinds)}
+    return {
+        "allowed_kinds": list(allowed_kinds),
+        "required_kinds": list(required_kinds),
+        "artifact_max_bytes": artifact_max_bytes,
+    }
 
 
 def _artifact_content_bytes(content: Any) -> bytes:
@@ -282,12 +305,15 @@ def _resolve_readonly_artifacts(root: Path, packet: dict[str, Any], value: Any) 
         source_run_id = _safe_run_id(raw.get("source_run_id"))
         source_attempt_id = _required_string(raw.get("source_attempt_id"), "readonly artifact source_attempt_id")
         source_attempt = _source_attempt(_load_run(root, source_run_id), source_attempt_id)
-        resolved.append(_artifact_descriptor(
+        descriptor = _artifact_descriptor(
             kind,
             source_run_id,
             source_attempt_id,
             _stored_artifact_content(source_attempt, kind),
-        ))
+        )
+        if descriptor["byte_length"] > policy["artifact_max_bytes"]:
+            raise HarnessError("readonly artifact exceeds artifact_max_bytes")
+        resolved.append(descriptor)
     if len({(item["kind"], item["source_run_id"], item["source_attempt_id"]) for item in resolved}) != len(resolved):
         raise HarnessError("readonly_artifacts must not contain duplicates")
     if not set(policy["required_kinds"]) <= {item["kind"] for item in resolved}:
@@ -331,6 +357,92 @@ def _safe_path(value: str) -> str:
     return path.as_posix()
 
 
+def _json_bytes(value: Any) -> int:
+    return len(json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+
+
+def _normalize_work_context(
+    policy: dict[str, Any],
+    *,
+    user_request: str,
+    role: dict[str, Any],
+    base_commit: str,
+    value: Any,
+) -> dict[str, Any]:
+    limits = policy["context_limits"]
+    if len(user_request.encode("utf-8")) > limits["objective_max_bytes"]:
+        raise HarnessError("user_request exceeds objective_max_bytes")
+    if value is None:
+        value = {
+            "version": 1,
+            "objective": user_request,
+            "facts": [],
+            "artifacts": [],
+            "expected_result": {
+                "kind": role["result_kind"],
+                "required_fields": list(role["required_fields"]),
+            },
+        }
+    if not isinstance(value, dict):
+        raise HarnessError("work_context must be an object")
+    required = {"version", "objective", "facts", "artifacts", "expected_result"}
+    if required - value.keys() or set(value) - required - {"digest"}:
+        raise HarnessError("work_context has invalid fields")
+    if value["version"] != 1 or value["objective"] != user_request:
+        raise HarnessError("work_context objective conflicts with user_request")
+    facts = value["facts"]
+    if not isinstance(facts, list) or len(facts) > limits["max_facts"]:
+        raise HarnessError("work_context facts exceed max_facts")
+    seen_fact_ids: set[str] = set()
+    normalized_facts: list[dict[str, str]] = []
+    for fact in facts:
+        if not isinstance(fact, dict) or set(fact) != {"id", "text", "sha256"}:
+            raise HarnessError("work_context fact is invalid")
+        fact_id = _required_string(fact["id"], "work_context fact id")
+        text = _required_string(fact["text"], "work_context fact text")
+        digest = _required_string(fact["sha256"], "work_context fact sha256")
+        if fact_id in seen_fact_ids or hashlib.sha256(text.encode("utf-8")).hexdigest() != digest:
+            raise HarnessError("work_context fact is duplicated or has invalid sha256")
+        seen_fact_ids.add(fact_id)
+        normalized_facts.append({"id": fact_id, "text": text, "sha256": digest})
+    if _json_bytes(normalized_facts) > limits["fact_max_bytes"]:
+        raise HarnessError("work_context facts exceed fact_max_bytes")
+    artifacts = value["artifacts"]
+    if not isinstance(artifacts, list) or len(artifacts) > limits["max_artifacts"]:
+        raise HarnessError("work_context artifacts exceed max_artifacts")
+    seen_artifact_paths: set[str] = set()
+    normalized_artifacts: list[dict[str, str]] = []
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or set(artifact) != {"path", "base_commit", "sha256"}:
+            raise HarnessError("work_context artifact is invalid")
+        path = _safe_path(_required_string(artifact["path"], "work_context artifact path"))
+        artifact_base = _required_string(artifact["base_commit"], "work_context artifact base_commit")
+        digest = _required_string(artifact["sha256"], "work_context artifact sha256")
+        if path in seen_artifact_paths or artifact_base != base_commit or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise HarnessError("work_context artifact is duplicated or has invalid identity")
+        seen_artifact_paths.add(path)
+        normalized_artifacts.append({"path": path, "base_commit": artifact_base, "sha256": digest})
+    expected_result = value["expected_result"]
+    if (
+        not isinstance(expected_result, dict)
+        or set(expected_result) != {"kind", "required_fields"}
+        or expected_result.get("kind") != role["result_kind"]
+        or expected_result.get("required_fields") != role["required_fields"]
+    ):
+        raise HarnessError("work_context expected_result conflicts with role")
+    context = {
+        "version": 1,
+        "objective": user_request,
+        "facts": normalized_facts,
+        "artifacts": normalized_artifacts,
+        "expected_result": copy.deepcopy(expected_result),
+    }
+    digest = hashlib.sha256(json.dumps(context, separators=(",", ":"), sort_keys=True).encode("utf-8")).hexdigest()
+    if value.get("digest") not in (None, digest):
+        raise HarnessError("work_context digest conflicts with content")
+    return {**context, "digest": digest}
+
+
 def resolve_task(root: Path, task: dict[str, Any]) -> dict[str, Any]:
     _validate_policy(root)
     if task.get("version") != 1:
@@ -345,45 +457,28 @@ def resolve_task(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         raise HarnessError("base_ref must be a non-empty string")
 
     policy = _load_policy(root)
-    route = policy["routes"].get(task_type)
-    if route is None:
-        raise HarnessError(f"unknown task type `{task_type}`")
     execution_mode = _canonical_execution_mode(
         policy,
         task.get("execution_mode"),
         allow_alias=True,
         default="single_agent",
     )
-    if execution_mode not in route["execution_modes"]:
-        raise HarnessError(f"unsupported execution mode `{execution_mode}` for task type `{task_type}`")
-    orchestration = policy["orchestration"][execution_mode]
-    checks = {name: policy["checks"][name]["command"] for name in route["checks"]}
-    gates = {
-        name: policy["approval_gates"][name]["paths"]
-        for name in route.get("approval_gates", policy.get("defaults", {}).get("approval_gates", []))
-    }
+    route_packet = _route_packet(policy, task_type, execution_mode)
     return {
         "version": 1,
         "task_type": task_type,
-        "template": route["template"],
-        "agent_identity": _load_agent_identity(root, route["template"]),
-        "role": route["role"],
-        "rules": list(dict.fromkeys([*route["rules"], *orchestration["rules"]])),
-        "skills": route["skills"],
-        "tools": route["tools"],
-        "workspace": route["workspace"],
-        "orchestration": {
-            "name": execution_mode,
-            "work_scheduling": orchestration["work_scheduling"],
-            "max_parallel_writers": orchestration["max_parallel_writers"],
-            "workspace_mode": orchestration["workspace_mode"],
-            "validator_role": orchestration["validator_role"],
-            "review_required": orchestration["review_required"],
-        },
-        "checks": checks,
-        "approval_gates": gates,
-        "execution_budget": _resolve_execution_budget(policy, route),
-        "allowed_next_states": policy["states"],
+        "template": route_packet["template"],
+        "agent_identity": _load_agent_identity(root, route_packet["template"]),
+        "role": route_packet["role"],
+        "rules": route_packet["rules"],
+        "skills": route_packet["skills"],
+        "tools": route_packet["tools"],
+        "workspace": route_packet["workspace"],
+        "orchestration": route_packet["orchestration"],
+        "checks": route_packet["checks"],
+        "approval_gates": route_packet["approval_gates"],
+        "execution_budget": route_packet["execution_budget"],
+        "allowed_next_states": copy.deepcopy(CORE_STATE_TRANSITIONS),
         "acceptance_criteria": criteria,
         "allowed_paths": allowed_paths,
         "base_ref": base_ref,
@@ -518,11 +613,10 @@ def _load_agent_identity(root: Path, template: str) -> dict[str, str]:
 
 def _resolve_execution_budget(
     policy: dict[str, Any],
-    route: dict[str, Any],
     *,
     profile_name: str | None = None,
 ) -> dict[str, Any]:
-    selected = profile_name if profile_name is not None else route["execution_budget_profile"]
+    selected = profile_name if profile_name is not None else policy["defaults"]["execution_budget_profile"]
     budgets = policy["execution_budgets"]
     profile = budgets["profiles"].get(selected)
     if not isinstance(profile, dict):
@@ -550,8 +644,16 @@ def _route_packet(
     if execution_mode not in route["execution_modes"]:
         raise HarnessError(f"unsupported execution mode `{execution_mode}` for task type `{task_type}`")
     orchestration = policy["orchestration"][execution_mode]
+    authority_name = route["authority"]
+    toolset_name = route["toolset"]
+    verification_profile_name = route["verification_profile"]
+    authority = policy["authorities"].get(authority_name)
+    tools = policy["toolsets"].get(toolset_name)
+    verification_profile = policy["verification_profiles"].get(verification_profile_name)
+    if not isinstance(authority, dict) or not isinstance(tools, list) or not isinstance(verification_profile, dict):
+        raise HarnessError(f"task type `{task_type}` has unresolved route profiles")
     evidence_artifacts = _evidence_artifact_policy(policy)
-    readonly_artifact_policy = _readonly_artifact_policy(route)
+    readonly_artifact_policy = _readonly_artifact_policy(route, policy["context_limits"]["artifact_max_bytes"])
     tool_bindings = [
         {
             "tool": name,
@@ -560,7 +662,7 @@ def _route_packet(
             "validator_access": policy["tools"][name]["validator_access"],
             "root_probe": policy["tools"][name]["root_probe"],
         }
-        for name in route["tools"]
+        for name in tools
     ]
     return {
         "task_type": task_type,
@@ -568,15 +670,20 @@ def _route_packet(
         "role": route["role"],
         "rules": list(dict.fromkeys([*route["rules"], *orchestration["rules"]])),
         "skills": route["skills"],
-        "capabilities": list(route.get("capabilities", [])),
-        "delegation_profile": route.get("delegation_profile"),
-        "tools": route["tools"],
+        "authority": authority_name,
+        "toolset": toolset_name,
+        "verification_profile": verification_profile_name,
+        "capabilities": list(authority["capabilities"]),
+        "workspace_write_access": authority["workspace_write_access"],
+        "delegation_profile": route["delegation_profile"],
+        "tools": list(tools),
         "tool_bindings": tool_bindings,
-        "workspace": route["workspace"],
+        "workspace": policy["defaults"]["source_workspace"],
+        "context_limits": copy.deepcopy(policy["context_limits"]),
         "retained_artifacts": [
             {"kind": kind, "max_bytes": evidence_artifacts["sanitized_command_trace_max_bytes"]}
             for kind in evidence_artifacts["writer_retained_kinds"]
-            if "repo.write" in route.get("capabilities", [])
+            if authority["workspace_write_access"] == "workspace_write"
         ],
         "readonly_artifact_policy": readonly_artifact_policy,
         "orchestration": {
@@ -585,20 +692,19 @@ def _route_packet(
             "max_parallel_writers": orchestration["max_parallel_writers"],
             "workspace_mode": orchestration["workspace_mode"],
             "validator_role": orchestration["validator_role"],
-            "review_required": orchestration["review_required"],
         },
-        "checks": {name: policy["checks"][name]["command"] for name in route["checks"]},
+        "checks": {name: policy["checks"][name]["command"] for name in verification_profile["checks"]},
+        "postconditions": list(verification_profile["postconditions"]),
         "approval_gates": {
             name: policy["approval_gates"][name]["paths"]
-            for name in route.get("approval_gates", policy.get("defaults", {}).get("approval_gates", []))
+            for name in route.get("approval_gates", policy["defaults"]["approval_gates"])
         },
-        "retry_policy": copy.deepcopy(policy["retry_policies"][route["retry_policy"]]),
+        "retry_policy": copy.deepcopy(policy["retry_policies"][policy["defaults"]["retry_policy"]]),
         "execution_budget": _resolve_execution_budget(
             policy,
-            route,
             profile_name=execution_budget_profile,
         ),
-        "allowed_next_states": copy.deepcopy(policy["states"]),
+        "allowed_next_states": copy.deepcopy(CORE_STATE_TRANSITIONS),
     }
 
 
@@ -612,8 +718,8 @@ def _resolve_runtime_provider(
     route = policy["routes"].get(task_type)
     if not isinstance(route, dict):
         raise HarnessError(f"unknown task type `{task_type}`")
-    provider_id = route["default_runtime_provider"] if value is None else _required_string(value, "runtime_provider_id")
-    if provider_id not in route["runtime_providers"]:
+    provider_id = policy["defaults"]["runtime_provider"] if value is None else _required_string(value, "runtime_provider_id")
+    if provider_id != policy["defaults"]["runtime_provider"]:
         raise HarnessError(f"runtime provider `{provider_id}` is not allowed for task type `{task_type}`")
     provider = policy["runtime_providers"].get(provider_id)
     if not isinstance(provider, dict) or not isinstance(provider.get("contract_version"), int):
@@ -996,7 +1102,7 @@ def _friction_readonly_artifact_requests(
     observed: list[dict[str, Any]],
     route: dict[str, Any],
 ) -> list[dict[str, str]]:
-    policy = _readonly_artifact_policy(route)
+    policy = _readonly_artifact_policy(route, _load_policy(root)["context_limits"]["artifact_max_bytes"])
     if not policy["allowed_kinds"]:
         return []
     requests: list[dict[str, str]] = []
@@ -1023,7 +1129,8 @@ def _friction_readonly_artifact_requests(
 
 def friction_report(root: Path, *, now: datetime | None = None) -> dict[str, Any]:
     policy = _friction_policy(root)
-    routes = _load_policy(root)["routes"]
+    route_policy = _load_policy(root)
+    routes = route_policy["routes"]
     current = (now or datetime.now(UTC)).astimezone(UTC)
     cutoff = current - timedelta(days=policy["window_days"])
     events = _read_friction_events(root)
@@ -1059,13 +1166,14 @@ def friction_report(root: Path, *, now: datetime | None = None) -> dict[str, Any
         task_type = policy["follow_up_routes"].get(observed[0]["code"])
         if task_type is not None:
             route = routes[task_type]
+            authority = route_policy["authorities"][route["authority"]]
             readonly_artifacts = _friction_readonly_artifact_requests(root, observed, route)
-            readonly_policy = _readonly_artifact_policy(route)
+            readonly_policy = _readonly_artifact_policy(route, route_policy["context_limits"]["artifact_max_bytes"])
             if set(readonly_policy["required_kinds"]) <= {item["kind"] for item in readonly_artifacts}:
                 candidate["follow_up"] = {
                     "task_type": task_type,
                     "execution_mode": "single_work_lane",
-                    "workspace_write_access": "read_only" if "repo.write" not in route["capabilities"] else "workspace_write",
+                    "workspace_write_access": authority["workspace_write_access"],
                     "readonly_artifacts": readonly_artifacts,
                 }
             else:
@@ -1417,14 +1525,23 @@ def resolve_managed_packet(
     if coordination is not None and any(not _path_matches(path, allowed_paths) for path in planned_write_paths):
         raise HarnessError("plan planned_write_paths must stay within managed allowed_paths")
     base_ref = _required_string(request.get("base_ref"), "base_ref")
+    base_commit = _resolve_commit(root, base_ref)
     user_request = _required_string(request.get("user_request"), "user_request")
+    work_context = _normalize_work_context(
+        policy,
+        user_request=user_request,
+        role=role,
+        base_commit=base_commit,
+        value=request.get("work_context"),
+    )
     packet.update({
         "version": packet_api,
         "core_identity": copy.deepcopy(resolved_core_identity),
         "attempt_id": attempt_id,
         "base_ref": base_ref,
-        "base_commit": _resolve_commit(root, base_ref),
+        "base_commit": base_commit,
         "user_request": user_request,
+        "work_context": work_context,
         "runtime_provider": runtime_provider,
         "agent_identity": _load_agent_identity(root, packet["template"]),
         "allowed_paths": allowed_paths,
@@ -1685,10 +1802,17 @@ def complete_delegated_child(
         except HarnessError:
             return {"ok": False, "code": "delegation_result_invalid"}
 
+    summary = "" if claim is None else claim.get("summary", "")
+    if (
+        not isinstance(summary, str)
+        or len(summary.encode("utf-8")) > child_packet["context_limits"]["outcome_summary_max_bytes"]
+    ):
+        return {"ok": False, "code": "delegation_result_invalid"}
+
     child["status"] = status
     if claim is not None:
         child["claim"] = copy.deepcopy(claim)
-    result: DelegationResult = {"ok": True, "invocation_id": child_invocation_id, "status": status}
+    result: DelegationResult = {"ok": True, "invocation_id": child_invocation_id, "status": status, "summary": summary}
     child["terminal_result"] = copy.deepcopy(result)
     ledger = attempt.get("reservation_ledger")
     if not isinstance(ledger, list):
@@ -2061,6 +2185,10 @@ def _assert_workspace_readonly_artifacts(packet: dict[str, Any], workspace: dict
         if observed not in (None, []) or artifact_root is not None:
             raise WorkspaceBaselineError("host adapter materialized unexpected readonly artifacts")
         return
+    policy = packet.get("readonly_artifact_policy")
+    if not isinstance(policy, dict) or not isinstance(policy.get("artifact_max_bytes"), int):
+        raise WorkspaceBaselineError("packet readonly artifact policy is invalid")
+    artifact_max_bytes = policy["artifact_max_bytes"]
     if not isinstance(observed, list) or not isinstance(artifact_root, str) or not Path(artifact_root).is_dir():
         raise WorkspaceBaselineError("host adapter readonly artifacts are unavailable")
     if len(observed) != len(expected):
@@ -2081,6 +2209,7 @@ def _assert_workspace_readonly_artifacts(packet: dict[str, Any], workspace: dict
             or key in observed_keys
             or artifact.get("sha256") != expected_artifact["sha256"]
             or artifact.get("byte_length") != expected_artifact["byte_length"]
+            or expected_artifact["byte_length"] > artifact_max_bytes
             or not isinstance(path, str)
             or not Path(path).is_file()
             or Path(path).parent != Path(artifact_root)
@@ -2215,6 +2344,15 @@ def _verify_managed(
         if code:
             blockers.append({"kind": "check", "name": name})
 
+    postconditions: list[dict[str, str]] = []
+    for name in packet.get("postconditions", []):
+        if name != "workspace_unchanged":
+            raise HarnessError(f"unsupported packet postcondition `{name}`")
+        status = "proven" if not normalized_changes else "failed"
+        postconditions.append({"name": name, "status": status})
+        if status == "failed":
+            blockers.append({"kind": "postcondition", "name": name})
+
     criteria: list[dict[str, Any]] = []
     for criterion in packet["acceptance_criteria"]:
         kind = criterion["kind"]
@@ -2233,7 +2371,13 @@ def _verify_managed(
         if result["status"] == "failed":
             blockers.append({"kind": "criterion", "id": criterion["id"]})
         criteria.append(result)
-    return {"change_set": normalized_changes, "checks": checks, "criteria": criteria, "blockers": blockers}
+    return {
+        "change_set": normalized_changes,
+        "checks": checks,
+        "postconditions": postconditions,
+        "criteria": criteria,
+        "blockers": blockers,
+    }
 
 
 def _outcome_for_verification(verification: dict[str, Any], retry_policy: dict[str, Any]) -> tuple[str, list[str]]:
@@ -2391,6 +2535,8 @@ def _normalize_retained_artifacts(exc: Exception, packet: dict[str, Any]) -> lis
                     or (command["exit_code"] is not None and (not isinstance(command["exit_code"], int) or isinstance(command["exit_code"], bool)))
                 ):
                     raise HarnessError("sanitized command trace command is invalid")
+        if len(_artifact_content_bytes(content)) > limits[kind]:
+            raise HarnessError("sanitized command trace exceeds artifact_max_bytes")
         normalized.append({"kind": kind, "content": copy.deepcopy(content)})
     if len({item["kind"] for item in normalized}) != len(normalized):
         raise HarnessError("host retained artifacts must not contain duplicate kinds")

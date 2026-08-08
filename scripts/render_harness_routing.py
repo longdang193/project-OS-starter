@@ -42,10 +42,10 @@ def render(root: Path) -> str:
         "",
         "# Harness Routing",
         "",
-        "Controller task packet selects one route. Rules stay mandatory. Agents return claimed results; harness returns verification evidence.",
+        "Controller task packet selects one route. Core resolves authority, toolset, and verification profiles. Agents return claimed results; harness returns verification evidence.",
         "",
-        "| Task Type | Template | Role | Skills | Tools | Checks |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Task Type | Template | Role | Skills | Authority | Toolset | Verification |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for name, route in policy["routes"].items():
         cells = [
@@ -53,8 +53,9 @@ def render(root: Path) -> str:
             f"`{route['template']}`",
             f"`{route['role']}`",
             ", ".join(f"`{skill}`" for skill in route["skills"]),
-            ", ".join(f"`{tool}`" for tool in route["tools"]),
-            ", ".join(f"`{check}`" for check in route["checks"]),
+            f"`{route['authority']}`",
+            f"`{route['toolset']}`",
+            f"`{route['verification_profile']}`",
         ]
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"

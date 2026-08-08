@@ -76,7 +76,11 @@ Use for ANY technical issue:
   create budget-profile successor. Timeout never means retry.
 - For package-backed managed failures, inspect in admission order:
   `harness-core --identity`, `harness-core validate --repo-root <repo-root>`,
-  then provider-host capabilities. Classify package loader failure as
+  then provider-host capabilities and preflight. Classify missing or invalid
+  host user configuration as `provider_runtime_unavailable`, configured
+  transport/authentication failure as `preflight_failed`, and packet API 5
+  runtime-config drift as `provider_configuration_changed`; do not add endpoint
+  or launch-command values to repository policy. Classify package loader failure as
   environment, unsupported request or host API as release compatibility, and
   only later failures as provider admission or dispatch. `--run-id` resumes
   only run state `planned`; terminal coordinated failure needs approved

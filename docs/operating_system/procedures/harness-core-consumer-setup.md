@@ -13,10 +13,10 @@ consumer scripts never implement managed execution.
 ## Install
 
 Pin both packages to released source tags compatible with provider host. Current
-tested pins: `harness-core-v0.1.11` and `harness-core-launcher-v0.1.0`.
+tested pins: `harness-core-v0.1.13` and `harness-core-launcher-v0.1.0`.
 
 ```powershell
-uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.11#subdirectory=packages/harness-core"
+uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.13#subdirectory=packages/harness-core"
 uv add "harness-core-launcher @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-launcher-v0.1.0#subdirectory=packages/harness-core-launcher"
 ```
 
@@ -34,15 +34,18 @@ uv run harness-core --identity
 uv run harness-core validate --repo-root .
 ```
 
-For managed provider work, then run provider-host capability preflight. For
-`codex_app_server` use `codex-harness-host capabilities`; provider host owns
-the exact command and endpoint configuration.
+For managed provider work, then run provider-host capability and transport
+preflight. For `codex_app_server`, use `codex-harness-host capabilities` then
+`codex-harness-host preflight`; provider host owns trusted user transport
+configuration. Repository policy never carries endpoint, launch-command, or
+credential values.
 
 Current Codex App Server policy requires `harness_core.request_api: 4` and
-provider `contract_version: 3`. Core resolves packet API 4 for that pair. Do
-not force request API 3 for new work: host API 3 can read historical packet API
-3 evidence but cannot dispatch it. Upgrade policy, provider pin, and core pin
-together; preserve old runs and create successors after migration.
+provider `contract_version: 4`. Core resolves packet API 5 for host API 4 and
+that pair. Packet API 4 remains historical evidence and dispatches only with
+host API 3 / provider contract 3; packet API 3 remains historical evidence.
+Upgrade policy, provider pin, and core pin together; preserve old runs and
+create successors after migration.
 
 ## Failure Routing
 

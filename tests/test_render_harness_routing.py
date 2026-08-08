@@ -29,7 +29,8 @@ def test_rendered_routing_matches_policy() -> None:
 
     rendered = renderer.render(ROOT)
 
-    assert "| `local_change` | `normal` | `implement` |" in rendered
+    assert "| Task Type | Template | Role | Skills | Authority | Toolset | Verification |" in rendered
+    assert "`workspace_write` | `code` | `write` |" in rendered
     assert "DO NOT EDIT" in rendered
 
 
