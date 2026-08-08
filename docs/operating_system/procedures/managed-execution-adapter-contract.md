@@ -84,7 +84,7 @@ proof before packet, workspace, or `run.json` creation. Missing or invalid
 trusted configuration returns `provider_runtime_unavailable`; configured
 transport or authentication failure returns `preflight_failed`. `--request`
 starts one run; `--run-id` resumes one existing planned attempt without request
-resubmission. Inputs are exclusive. Packet API 5 stores a non-secret runtime
+resubmission. Inputs are exclusive. Packet API 6 stores a non-secret runtime
 binding; host re-reads configuration before every lane and returns
 `provider_configuration_changed` before provider or product work if binding
 drifts. No automatic transport fallback exists.
@@ -172,16 +172,19 @@ transcript recovery. Evidence informs decision; it never selects one.
 
 ## Read-Only Evidence Artifacts
 
-Core owns artifact kinds, route admission, immutable content hash, and packet
-records. `repo_config/harness.yaml:evidence_artifacts` selects bounded retained
-artifacts for every write-capable packet; a read-only route's
-`readonly_artifacts` policy selects allowed and required kinds. Request names a
-terminal source run and attempt. Core copies only packet-approved content into
-immutable `readonly_artifacts` records with SHA-256 and byte length.
+Core owns catalog kinds, route profile admission, immutable content hashes, and
+packet records. API 5 direct handoff requests name an exact terminal source run
+and attempt plus an allowed profile; they never name artifact IDs, paths, or
+content. Core resolves bounded descriptors and records packet proof plus target
+attempt audit. Recurring friction supplies its bounded source set only to that
+same resolver.
 
-Host materializes those records as separate read-only sidecar files, proves each
-path, size, and hash, and never clones or mounts ambient `.harness`. A route
-with missing required evidence rejects before dispatch. Current
+Host materializes only API 6 packet descriptors as separate read-only sidecar
+files outside writable workspace access, validates packet proof, descriptor
+size, and SHA-256, and exposes only descriptor metadata plus exact read path in
+prompt context. A read-only packet tool probes and rejects writes to evidence
+paths. Host never clones or mounts ambient `.harness`. A route with missing
+required evidence rejects before dispatch. Current
 `sanitized_command_trace` uses `context_limits.artifact_max_bytes` as one cap
 for whole canonical UTF-8 JSON artifact after host redaction. Host drops older
 records and truncates retained fields until trace fits. Invalid optional trace
@@ -240,12 +243,11 @@ agent surfaces only and never participates in runtime selection or acceptance.
 A candidate stays absent from route policy until it passes same packet,
 workspace, tool-binding, check, read-only validator, and controller-acceptance
 proof as every admitted provider. No automatic provider fallback exists.
-Current `codex_app_server` policy uses contract version 4 with request API 4,
-packet API 5, and host API 4. Host API 3 / provider contract 3 dispatches
-historical packet API 4. Packet APIs 3 and 4 remain readable evidence under
-declared compatibility profiles; legacy packet API 3 dispatch requires host API
-2 / provider contract 2. Mismatched identity fails before workspace preparation
-or lane dispatch.
+Current `codex_app_server` policy uses contract version 5 with request API 5,
+packet API 6, and host API 5. Packet APIs 3, 4, and 5 remain readable evidence
+under declared compatibility profiles; host API 4 rejects packet API 6 before
+workspace preparation or lane dispatch. Mismatched identity fails before
+workspace preparation or lane dispatch.
 
 ## Required Adapter Methods
 

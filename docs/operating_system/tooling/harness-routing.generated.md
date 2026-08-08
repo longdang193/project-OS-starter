@@ -9,14 +9,14 @@ Regenerate: python scripts/render_harness_routing.py
 
 Controller task packet selects one route. Core resolves authority, toolset, and verification profiles. Agents return claimed results; harness returns verification evidence.
 
-| Task Type | Template | Role | Required Skills | Allowed Skill Sets | Operating Profiles |
+| Task Type | Template | Role | Required Skills | Allowed Skill Sets | Operating Profiles | Artifact Handoff Profiles |
 | --- | --- | --- | --- | --- | --- |
-| `local_change` | `normal` | `implement` | `local_change_base`: `skill-code-standards`, `skill-executing-plans`, `skill-test-driven-development` | `backend_verification` | `local_change_standard`, `local_change_extended` |
-| `debugging` | `normal` | `investigate` | `skill-systematic-debugging` |  |  |
-| `harness_diagnosis` | `high` | `investigate` | `skill-improve-harness`, `skill-systematic-debugging`, `skill-repository-research`, `skill-verification-before-completion` |  |  |
-| `research` | `low` | `investigate` | `skill-repository-research` |  |  |
-| `plan_review` | `high` | `review` | `skill-plan-document-reviewer` |  |  |
-| `design_exploration` | `high` | `investigate` | `skill-brainstorming` |  |  |
-| `plan_writing` | `high` | `implement` | `skill-writing-plans` |  |  |
-| `skill_authoring` | `high` | `implement` | `skill-writing-skills`, `skill-test-driven-development`, `skill-verification-before-completion` |  |  |
-| `harness_improvement` | `high` | `improve` | `skill-improve-harness`, `skill-code-standards`, `skill-test-driven-development`, `skill-verification-before-completion` |  |  |
+| `local_change` | `normal` | `implement` | `local_change_base`: `skill-code-standards`, `skill-executing-plans`, `skill-test-driven-development` | `backend_verification` | `local_change_standard`, `local_change_extended` |  |
+| `debugging` | `normal` | `investigate` | `skill-systematic-debugging` |  |  |  |
+| `harness_diagnosis` | `high` | `investigate` | `skill-improve-harness`, `skill-systematic-debugging`, `skill-repository-research`, `skill-verification-before-completion` |  |  | `direct_terminal_diagnosis` (default), `friction_terminal_diagnosis` |
+| `research` | `low` | `investigate` | `skill-repository-research` |  |  |  |
+| `plan_review` | `high` | `review` | `skill-plan-document-reviewer` |  |  |  |
+| `design_exploration` | `high` | `investigate` | `skill-brainstorming` |  |  |  |
+| `plan_writing` | `high` | `implement` | `skill-writing-plans` |  |  |  |
+| `skill_authoring` | `high` | `implement` | `skill-writing-skills`, `skill-test-driven-development`, `skill-verification-before-completion` |  |  |  |
+| `harness_improvement` | `high` | `improve` | `skill-improve-harness`, `skill-code-standards`, `skill-test-driven-development`, `skill-verification-before-completion` |  |  |  |

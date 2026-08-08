@@ -13,10 +13,11 @@ consumer scripts never implement managed execution.
 ## Install
 
 Pin both packages to released source tags compatible with provider host. Current
-tested pins: `harness-core-v0.1.14` and `harness-core-launcher-v0.1.0`.
+tested pins: `harness-core-v0.1.18` and `harness-core-launcher-v0.1.0`.
+Compatible `codex-harness-host` release: `0.1.4`.
 
 ```powershell
-uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.14#subdirectory=packages/harness-core"
+uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.18#subdirectory=packages/harness-core"
 uv add "harness-core-launcher @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-launcher-v0.1.0#subdirectory=packages/harness-core-launcher"
 ```
 
@@ -40,12 +41,12 @@ preflight. For `codex_app_server`, use `codex-harness-host capabilities` then
 configuration. Repository policy never carries endpoint, launch-command, or
 credential values.
 
-Current Codex App Server policy requires `harness_core.request_api: 4` and
-provider `contract_version: 4`. Core resolves packet API 5 for host API 4 and
-that pair. Packet API 4 remains historical evidence and dispatches only with
-host API 3 / provider contract 3; packet API 3 remains historical evidence.
-Upgrade policy, provider pin, and core pin together; preserve old runs and
-create successors after migration.
+Current Codex App Server policy requires `harness_core.request_api: 5` and
+provider `contract_version: 5`. Core resolves packet API 6 for host API 5 and
+that pair. Packet APIs 3, 4, and 5 remain historical evidence under declared
+compatibility profiles. Packet API 6 never dispatches against host API 4.
+Upgrade policy, provider pin, core pin, and host release together; preserve old
+runs and create successors after migration.
 
 For local `codex-harness-host` development, policy/schema changes require a
 published core release plus matching host `pyproject.toml` and `uv.lock` pins.
