@@ -38,6 +38,7 @@ _COMMAND_FIELDS = {
     "response_length",
     "exit_code",
 }
+_COMMAND_OPTIONAL_FIELDS = {"observed_elapsed_seconds"}
 _ERROR_FIELDS = {"field_names", "code_hash", "code_length", "message_hash", "message_length"}
 _FINAL_STATES = {"missing", "unverified", "valid"}
 _SOURCE_BY_KIND = {
@@ -75,6 +76,12 @@ def _length(value: Any, field: str) -> int:
     return value
 
 
+def _elapsed(value: Any, field: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not 0 <= value <= _MAX_LENGTH:
+        raise TerminalObservationError(f"terminal observation has invalid {field}")
+    return float(value)
+
+
 def _optional_identifier(value: Any, field: str) -> str | None:
     return None if value is None else _identifier(value, field)
 
@@ -103,12 +110,12 @@ def _command_states(value: Any) -> list[dict[str, Any]]:
         raise TerminalObservationError("terminal observation has invalid command_states")
     normalized: list[dict[str, Any]] = []
     for item in value:
-        if not isinstance(item, dict) or set(item) != _COMMAND_FIELDS:
+        if not isinstance(item, dict) or not (_COMMAND_FIELDS <= set(item) <= _COMMAND_FIELDS | _COMMAND_OPTIONAL_FIELDS):
             raise TerminalObservationError("terminal observation has invalid command_states")
         exit_code = item.get("exit_code")
         if exit_code is not None and (not isinstance(exit_code, int) or isinstance(exit_code, bool)):
             raise TerminalObservationError("terminal observation has invalid command_states.exit_code")
-        normalized.append({
+        record = {
             "item_id": _identifier(item.get("item_id"), "command_states.item_id"),
             "state": _status(item.get("state"), "command_states.state"),
             "command_hash": _hash(item.get("command_hash"), "command_states.command_hash"),
@@ -116,7 +123,12 @@ def _command_states(value: Any) -> list[dict[str, Any]]:
             "response_hash": _hash(item.get("response_hash"), "command_states.response_hash"),
             "response_length": _length(item.get("response_length"), "command_states.response_length"),
             "exit_code": exit_code,
-        })
+        }
+        if "observed_elapsed_seconds" in item:
+            record["observed_elapsed_seconds"] = _elapsed(
+                item.get("observed_elapsed_seconds"), "command_states.observed_elapsed_seconds"
+            )
+        normalized.append(record)
     return normalized
 
 
@@ -130,13 +142,19 @@ def _final_claim_state(value: Any) -> dict[str, Any]:
         if set(value) != {"state"}:
             raise TerminalObservationError("terminal observation has invalid final_claim_state")
         return {"state": state}
-    if set(value) != {"state", "response_hash", "response_length"}:
+    allowed = {"state", "response_hash", "response_length", "observed_elapsed_seconds"}
+    if not {"state", "response_hash", "response_length"} <= set(value) <= allowed:
         raise TerminalObservationError("terminal observation has invalid final_claim_state")
-    return {
+    normalized = {
         "state": state,
         "response_hash": _hash(value.get("response_hash"), "final_claim_state.response_hash"),
         "response_length": _length(value.get("response_length"), "final_claim_state.response_length"),
     }
+    if "observed_elapsed_seconds" in value:
+        normalized["observed_elapsed_seconds"] = _elapsed(
+            value.get("observed_elapsed_seconds"), "final_claim_state.observed_elapsed_seconds"
+        )
+    return normalized
 
 
 def _error(value: Any) -> dict[str, Any] | None:

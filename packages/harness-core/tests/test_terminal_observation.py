@@ -85,6 +85,29 @@ def test_normalize_terminal_observation_accepts_packet_check_lane() -> None:
     assert normalize_terminal_observation(observation(lane_id="check:diff"), PACKET)["lane_id"] == "check:diff"
 
 
+def test_normalize_terminal_observation_preserves_bounded_command_timing() -> None:
+    raw = observation(
+        command_states=[{
+            "item_id": "command-1",
+            "state": "completed",
+            "command_hash": _digest("pytest"),
+            "command_length": 6,
+            "response_hash": _digest("ok"),
+            "response_length": 2,
+            "exit_code": 0,
+            "observed_elapsed_seconds": 12.5,
+        }],
+        final_claim_state={
+            "state": "unverified",
+            "response_hash": _digest('{"kind":"claimed_result"}'),
+            "response_length": 25,
+            "observed_elapsed_seconds": 13.0,
+        },
+    )
+
+    assert normalize_terminal_observation(raw, PACKET) == raw
+
+
 @pytest.mark.parametrize("raw", [
     observation(kind="timeout"),
     observation(error={"field_names": ["message", "code"], "code_hash": None, "code_length": None, "message_hash": _digest("x"), "message_length": 1}),

@@ -399,6 +399,7 @@ def test_v4_packet_resolves_selected_profiles() -> None:
     assert packet["capabilities"] == ["repo.read", "repo.write", "code.search"]
     assert packet["checks"] == {"diff": ["git", "diff", "--check"]}
     assert packet["postconditions"] == []
+    assert packet["execution_budget"]["finalization_reserve_seconds"] == 60
 
 
 def test_composed_packet_resolves_selected_backend_facet_and_operating_profile() -> None:
@@ -542,6 +543,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["execution_budget"] == {
         "profile": "default",
         "turn_timeout_seconds": 300,
+        "finalization_reserve_seconds": 60,
         "timeout_decisions": ["escalate", "block"],
         "escalation_profile": "extended",
     }

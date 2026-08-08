@@ -130,16 +130,21 @@ artifact, or context fallback is permitted.
 
 ## Runtime Budget And Abnormal Turn Recovery
 
-`repo_config/harness.yaml:execution_budgets` owns named profiles and their maximum
-turn timeout. `defaults.execution_budget_profile` selects initial profile. Core copies one resolved
-`execution_budget` into every immutable packet. Request and controller decision
-cannot choose an arbitrary profile.
+`repo_config/harness.yaml:execution_budgets` owns named profiles, maximum turn
+timeout, and one `finalization_reserve_seconds`. Reserve is positive and less
+than every named profile timeout. `defaults.execution_budget_profile` selects
+initial profile. Core copies one resolved `execution_budget` into every immutable
+packet. Request and controller decision cannot choose an arbitrary profile.
 
-Host uses packet `turn_timeout_seconds` for every App Server turn, packet-native
-tool probe, and check. The short `preflight` bound is transport-only and never
-substitutes for packet budget. Host returns one provider-neutral
-`attempt.evidence.terminal_observation`; core owns version `1`, bounds, packet
-lane/budget validation, and persisted shape.
+Host gives each normal App Server lane turn `turn_timeout_seconds -
+finalization_reserve_seconds`. On interruption or empty final text, host runs one
+separate read-only finalizer for exactly `finalization_reserve_seconds`. Finalizer
+may inspect at most once, never writes or runs diagnostics, and returns only its
+structured claim. It is a completion phase, not a lane, check, retry, or resume.
+Packet-native tool probes and checks use packet `turn_timeout_seconds`. The short
+`preflight` bound is transport-only and never substitutes for packet budget.
+Host returns one provider-neutral `attempt.evidence.terminal_observation`; core
+owns version `1`, bounds, packet lane/budget validation, and persisted shape.
 
 Observation `kind` is `timeout`, `provider_failure`, `approval_required`, or
 `protocol_failure`; source distinguishes provider terminal event, approval
@@ -151,8 +156,9 @@ values, provider error text, or assistant text.
 
 Core records `kind: timeout` as `dispatch_timeout` unless terminal evidence
 shows a write-capable work lane completed one or more commands but emitted no
-final claim. That condition is `writer_completion_missing`; it permits only
-`block`, never retry, escalation, or resume. Other timeouts may only
+final claim after finalization reserve expires. That condition is
+`writer_completion_missing`; it permits only `block`, never retry, escalation,
+or resume. Other timeouts may only
 `escalate` through packet `escalation_profile` or `block`; timeout never permits
 `retry`. `provider_failure`, `approval_required`, and `protocol_failure` remain
 `dispatch_failed` until controller decision. Escalation creates fresh successor
@@ -338,7 +344,11 @@ dispatch handle. Agent JSON claims cannot provide this evidence. Each record
 must include exact lane ID, workspace root, host thread ID, host turn ID,
 enforced sandbox, selected packet tools used, raw tool-call names, command
 results, exact packet `runtime_provider`, exact packet `agent_identity`,
-`ambient_mcp: false`, and workspace status before and after turn.
+`ambient_mcp: false`, and workspace status before and after turn. If host used
+finalization, evidence also records bounded prior terminal observation and
+read-only finalizer thread, turn, and sandbox. Claim-only finalizers do not need
+another packet-tool call; host keeps prior execution evidence separate from the
+finalizer claim.
 
 Writer evidence must show use of at least one packet-selected tool with
 `workspace_write` access. Each command result must use exact packet workspace.

@@ -19,6 +19,10 @@ ordinary direct execution.
 - Packet owns allowed paths, planned write paths, resolved base commit,
   workspace, tools, checks, approval gates, required rules, orchestration
   mode, and resolved `execution_budget`.
+- `execution_budget.finalization_reserve_seconds` is policy-owned. Host uses
+  `turn_timeout_seconds - reserve` for normal App Server work, then one
+  read-only final claim turn for reserve after interruption or empty final text.
+  Finalizer never writes, diagnoses, retries, resumes, or verifies work.
 - For active plan-linked coordination, manifest owns static task dependencies,
   topology, allowed paths, and planned paths. Packet owns immutable `plan_ref`, task ID, and
   digest; `run.json` owns state and handoff. Controller selects only `ready`
@@ -72,6 +76,9 @@ ordinary direct execution.
    create successor attempts only when outcome permits. For `dispatch_timeout`,
    controller may only escalate through packet `escalation_profile` or block;
    never retry timeout. Prior packets and evidence stay unchanged.
+   When finalization runs, lane evidence retains bounded prior terminal state
+   and read-only finalizer identity. A finalizer claim may be claim-only; it
+   does not need a second packet-tool call.
    `recover-stranded` is controller-only non-replay recovery for a `running` attempt
    with no claim, node observation, evidence, outcome, or decision after host
    terminal recording failed. It requires exact run/attempt identity plus bounded

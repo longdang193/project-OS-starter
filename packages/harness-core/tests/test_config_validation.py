@@ -112,6 +112,7 @@ def write_harness_root(root: Path) -> None:
                 },
                 "execution_budgets": {
                     "max_turn_timeout_seconds": 900,
+                    "finalization_reserve_seconds": 60,
                     "profiles": {"default": {"turn_timeout_seconds": 300, "timeout_decisions": ["block"]}},
                 },
                 "checks": {"diff": {"command": ["git", "diff", "--check"]}},
@@ -221,6 +222,16 @@ def test_v4_policy_profiles_validate(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
 
     assert config_validation.validate(tmp_path) == []
+
+
+def test_every_budget_profile_must_exceed_finalization_reserve(tmp_path: Path) -> None:
+    path, policy = composed_policy(tmp_path)
+    policy["execution_budgets"]["profiles"]["extended"]["turn_timeout_seconds"] = 60
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == [
+        "execution budget profile `extended` must exceed finalization_reserve_seconds"
+    ]
 
 
 def test_composed_route_uses_shared_profile_resolver(tmp_path: Path) -> None:

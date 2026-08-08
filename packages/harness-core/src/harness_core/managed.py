@@ -622,6 +622,7 @@ def _resolve_execution_budget(
     budget = {
         "profile": selected,
         "turn_timeout_seconds": profile["turn_timeout_seconds"],
+        "finalization_reserve_seconds": budgets["finalization_reserve_seconds"],
         "timeout_decisions": list(profile["timeout_decisions"]),
     }
     if "escalation_profile" in profile:

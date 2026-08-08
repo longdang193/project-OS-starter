@@ -82,7 +82,10 @@ When spawning a subagent:
 - If task scope or needed capability changes, controller creates successor
   attempt and regenerates immutable packet.
 - Host consumes only packet `execution_budget` for App Server turns, native
-  tool probes, and checks. Transport preflight has separate short bound.
+  tool probes, and checks. `finalization_reserve_seconds` is one policy-owned
+  slice of every App Server turn budget: host runs normal work for the remainder,
+  then uses the reserve only for a read-only final claim turn after interruption
+  or empty final text. Transport preflight has separate short bound.
 - Harness dispatches only mode intersection of route policy and enforced host
   capability. Controller alone accepts, retries, escalates, requests approval,
   or blocks through recorded decision.
@@ -103,8 +106,11 @@ When spawning a subagent:
   block-only outcome and never dispatches. Product evidence, missing evidence,
   mismatched identity, or ordinary running work must be rejected.
 - `writer_completion_missing` means a write-capable lane completed commands
-  without a final claim before terminal timeout. Block it without retry,
-  escalation, or resume. When `friction-report` returns its policy-owned
+  without a final claim after its packet-owned finalization reserve is exhausted.
+  Block it without retry, escalation, or resume. Host records prior bounded
+  terminal observation plus read-only finalizer identity in lane evidence; a
+  finalizer never writes, runs diagnostics, or authorizes product work. When
+  `friction-report` returns its policy-owned
   follow-up with route-required immutable `readonly_artifacts`, dispatch fresh
   read-only `harness_diagnosis` without an owner decision. Missing required
   artifacts blocks diagnosis before dispatch; never mount ambient `.harness`

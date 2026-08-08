@@ -109,7 +109,7 @@ DEFAULT_FIELDS = {
 }
 FRICTION_POLICY_FIELDS = {"event_version", "minimum_distinct_runs", "window_days"}
 FRICTION_POLICY_OPTIONAL_FIELDS = {"follow_up_routes"}
-EXECUTION_BUDGET_FIELDS = {"max_turn_timeout_seconds", "profiles"}
+EXECUTION_BUDGET_FIELDS = {"max_turn_timeout_seconds", "finalization_reserve_seconds", "profiles"}
 EXECUTION_BUDGET_PROFILE_FIELDS = {"turn_timeout_seconds", "timeout_decisions"}
 EXECUTION_BUDGET_PROFILE_OPTIONAL_FIELDS = {"escalation_profile"}
 TIMEOUT_DECISIONS = {"escalate", "block"}
@@ -272,11 +272,14 @@ def _validate_named_commands(policy: dict[str, Any], errors: list[str]) -> dict[
 def _validate_execution_budgets(policy: dict[str, Any], errors: list[str]) -> dict[str, dict[str, Any]]:
     budgets = policy.get("execution_budgets")
     if not isinstance(budgets, dict) or set(budgets) != EXECUTION_BUDGET_FIELDS:
-        errors.append("execution_budgets must define max_turn_timeout_seconds and profiles")
+        errors.append("execution_budgets must define max_turn_timeout_seconds, finalization_reserve_seconds, and profiles")
         return {}
     maximum = budgets.get("max_turn_timeout_seconds")
     if not positive_integer(maximum):
         errors.append("execution_budgets max_turn_timeout_seconds must be a positive integer")
+    reserve = budgets.get("finalization_reserve_seconds")
+    if not positive_integer(reserve):
+        errors.append("execution_budgets finalization_reserve_seconds must be a positive integer")
     profiles = budgets.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         errors.append("execution_budgets profiles must be a non-empty mapping")
@@ -292,6 +295,8 @@ def _validate_execution_budgets(policy: dict[str, Any], errors: list[str]) -> di
         timeout = profile.get("turn_timeout_seconds")
         if not positive_integer(timeout) or (positive_integer(maximum) and timeout > maximum):
             errors.append(f"execution budget profile `{name}` has invalid turn_timeout_seconds")
+        elif positive_integer(reserve) and reserve >= timeout:
+            errors.append(f"execution budget profile `{name}` must exceed finalization_reserve_seconds")
         decisions = profile.get("timeout_decisions")
         if not valid_string_list(decisions) or len(set(decisions)) != len(decisions) or set(decisions) - TIMEOUT_DECISIONS or "block" not in decisions:
             errors.append(f"execution budget profile `{name}` has invalid timeout_decisions")
