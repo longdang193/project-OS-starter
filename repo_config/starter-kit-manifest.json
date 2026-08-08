@@ -73,6 +73,7 @@
     "generated_agents/antigravity",
     "generated_agents/claude",
     "scripts/build_starter_kit.py",
+    "scripts/sync_starter_kit.py",
     "scripts/deploy_agent_runtime.py",
     "tests/test_sync_agent_adapters.py",
     "tests/test_deploy_agent_runtime.py"

@@ -29,6 +29,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BUILD_PATH = REPO_ROOT / "scripts" / "build_starter_kit.py"
 VERIFY_PATH = REPO_ROOT / "scripts" / "validate_starter_kit.py"
+SYNC_PATH = REPO_ROOT / "scripts" / "sync_starter_kit.py"
 SCRIPTS_ROOT = str(REPO_ROOT / "scripts")
 
 if SCRIPTS_ROOT not in sys.path:
@@ -47,6 +48,7 @@ def load_module(name: str, path: Path):
 
 BUILD = load_module("build_starter_kit", BUILD_PATH)
 VERIFY = load_module("validate_starter_kit", VERIFY_PATH)
+SYNC = load_module("sync_starter_kit", SYNC_PATH)
 
 
 def write_text(path: Path, text: str) -> None:
@@ -231,3 +233,25 @@ def test_compare_tree_accepts_matching_generated_and_sibling_roots(tmp_path: Pat
     errors = VERIFY.compare_tree_parity(expected_root=generated_root, actual_root=sibling_root)
 
     assert errors == []
+
+
+def test_sync_starter_kit_rebuilds_deployed_sibling_and_proves_parity(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    write_text(repo_root / "AGENTS.md", "# agents\n")
+    write_text(repo_root / "generated_agents" / "antigravity" / "GEMINI.md", "# gemini\n")
+    write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")
+    write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
+    write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
+    write_text(repo_root / "docs" / "operating_system" / "governance" / "repo-governance.md", "# governance\n")
+    manifest_path = make_manifest(repo_root)
+
+    deployed_root = SYNC.sync_starter_kit(
+        repo_root=repo_root,
+        manifest_path=manifest_path,
+        export_root=repo_root / "generated_exports",
+        deploy_root=tmp_path / "deploy",
+    )
+
+    exported_root = repo_root / "generated_exports" / "project-OS-starter-kit"
+    assert deployed_root == tmp_path / "deploy" / "project-OS-starter-kit"
+    assert VERIFY.compare_tree_parity(expected_root=exported_root, actual_root=deployed_root) == []

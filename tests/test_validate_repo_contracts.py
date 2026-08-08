@@ -116,6 +116,28 @@ def test_package_dependent_validators_run_through_core_workspace() -> None:
     assert all(step[:5] == ["uv", "run", "--package", "harness-core", "python"] for step in package_steps)
 
 
+def test_full_contract_pytest_uses_core_runtime_resolver() -> None:
+    steps = VALIDATOR.build_subprocess_steps(
+        root=REPO_ROOT,
+        python_executable="python",
+        fast=False,
+    )
+    pytest_steps = [step for step in steps if "pytest" in step]
+
+    assert pytest_steps
+    assert pytest_steps == [[
+        *VALIDATOR.harness_core_python(),
+        "-m",
+        "pytest",
+        "--basetemp",
+        VALIDATOR.pytest_basetemp(".tmp-tests/repo-contract-pytest"),
+        "tests/test_validate_repo_config.py",
+        "tests/test_validate_planning_lifecycle.py",
+        "tests/test_validate_repo_contracts.py",
+        "-q",
+    ]]
+
+
 def test_harness_shim_validation_rejects_core_implementation(tmp_path: Path) -> None:
     for relative_path, import_path in VALIDATOR.HARNESS_SHIM_IMPORTS.items():
         write_text(tmp_path / relative_path, f"from {import_path} import thing\n")

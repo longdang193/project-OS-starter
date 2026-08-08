@@ -188,6 +188,10 @@ def run_step(command: list[str], *, cwd: Path) -> int:
     return completed.returncode
 
 
+def harness_core_python() -> list[str]:
+    return ["uv", "run", "--package", "harness-core", "python"]
+
+
 def build_subprocess_steps(
     *,
     root: Path,
@@ -207,7 +211,7 @@ def build_subprocess_steps(
     agent_runtime_drift_script = str(root / "scripts" / "validate_agent_runtime_drift.py")
 
     def package_runtime(script: str) -> list[str]:
-        return ["uv", "run", "--package", "harness-core", "python", script]
+        return [*harness_core_python(), script]
 
     steps: list[list[str]] = [
         package_runtime(planning_lifecycle_script),
@@ -230,7 +234,7 @@ def build_subprocess_steps(
         ]
         steps.append(
             [
-                python_executable,
+                *harness_core_python(),
                 "-m",
                 "pytest",
                 "--basetemp",
