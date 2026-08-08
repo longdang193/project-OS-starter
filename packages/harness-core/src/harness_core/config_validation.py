@@ -42,7 +42,7 @@ ROUTE_FIELDS = {
     "delegation_profile",
     "execution_modes",
 }
-ROUTE_OPTIONAL_FIELDS = {"approval_gates", "readonly_artifacts"}
+ROUTE_OPTIONAL_FIELDS = {"approval_gates", "artifact_handoff_profiles", "default_artifact_handoff_profile"}
 COMPOSED_ROUTE_FIELDS = {
     "role",
     "rules",
@@ -64,9 +64,33 @@ OPERATING_PROFILE_FIELDS = {
 }
 OPERATING_PROFILE_OPTIONAL_FIELDS = {"extends"}
 READONLY_ARTIFACT_KINDS = {"terminal_observation", "sanitized_command_trace"}
-READONLY_ARTIFACT_POLICY_FIELDS = {"allowed_kinds", "required_kinds"}
-EVIDENCE_ARTIFACT_POLICY_FIELDS = {"writer_retained_kinds"}
-EVIDENCE_ARTIFACT_POLICY_OPTIONAL_FIELDS = {"sanitized_command_trace_max_bytes"}
+ARTIFACT_CATALOG_FIELDS = {"schema_id", "producer", "retention", "byte_limit"}
+ARTIFACT_HANDOFF_PROFILE_FIELDS = {
+    "lineage_mode",
+    "allowed_kinds",
+    "required_kinds",
+    "kind_priority",
+    "base_compatibility",
+    "count_limit",
+    "total_byte_limit",
+}
+EVIDENCE_ARTIFACT_POLICY_FIELDS = {"catalog", "profiles"}
+V1_ARTIFACT_CATALOG = {
+    "terminal_observation": {
+        "schema_id": "terminal_observation/v1",
+        "producer": "host",
+        "retention": "terminal",
+    },
+    "sanitized_command_trace": {
+        "schema_id": "sanitized_command_trace/v1",
+        "producer": "writer",
+        "retention": "writer_retained",
+    },
+}
+V1_HANDOFF_PROFILES = {
+    "direct_terminal_diagnosis": {"lineage_mode": "direct", "base_compatibility": "exact_packet_base"},
+    "friction_terminal_diagnosis": {"lineage_mode": "source_set", "base_compatibility": "same_repository"},
+}
 ROLE_FIELDS = {"accepts", "result_kind", "required_fields"}
 ORCHESTRATION_FIELDS = {
     "aliases",
@@ -184,6 +208,88 @@ def valid_string_list(value: Any, *, allow_empty: bool = False) -> bool:
 
 def positive_integer(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _validate_handoff_profiles(
+    route_name: str,
+    route: dict[str, Any],
+    profiles: dict[str, Any],
+    workspace_write_access: Any,
+    errors: list[str],
+) -> None:
+    allowed = route.get("artifact_handoff_profiles")
+    default = route.get("default_artifact_handoff_profile")
+    if allowed is None:
+        if default is not None:
+            errors.append(f"route `{route_name}` default_artifact_handoff_profile requires artifact_handoff_profiles")
+        return
+    if not valid_string_list(allowed) or len(set(allowed)) != len(allowed) or not set(allowed) <= set(profiles):
+        errors.append(f"route `{route_name}` has invalid artifact_handoff_profiles")
+    if default is not None and (not isinstance(default, str) or default not in allowed):
+        errors.append(f"route `{route_name}` has invalid default_artifact_handoff_profile")
+    if workspace_write_access != "read_only":
+        errors.append(f"route `{route_name}` artifact_handoff_profiles require read-only authority")
+
+
+def _validate_evidence_artifacts(value: Any, context_limits: Any, errors: list[str]) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != EVIDENCE_ARTIFACT_POLICY_FIELDS:
+        errors.append("evidence_artifacts has invalid fields")
+        return {}
+    catalog = value.get("catalog")
+    if not isinstance(catalog, dict) or set(catalog) != set(V1_ARTIFACT_CATALOG):
+        errors.append("evidence_artifacts catalog must define V1 artifact kinds")
+        catalog = {}
+    for kind, expected in V1_ARTIFACT_CATALOG.items():
+        entry = catalog.get(kind)
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != ARTIFACT_CATALOG_FIELDS
+            or any(entry.get(field) != required for field, required in expected.items())
+            or not positive_integer(entry.get("byte_limit"))
+            or not isinstance(context_limits, dict)
+            or entry.get("byte_limit", 0) > context_limits.get("artifact_max_bytes", 0)
+        ):
+            errors.append(f"evidence artifact catalog `{kind}` has invalid V1 contract")
+
+    profiles = value.get("profiles")
+    if not isinstance(profiles, dict) or set(profiles) != set(V1_HANDOFF_PROFILES):
+        errors.append("evidence_artifacts profiles must define V1 handoff profiles")
+        return {}
+    artifact_limits = {
+        kind: entry.get("byte_limit", 0)
+        for kind, entry in catalog.items()
+        if isinstance(entry, dict)
+    }
+    for name, expected in V1_HANDOFF_PROFILES.items():
+        profile = profiles.get(name)
+        if not isinstance(profile, dict) or set(profile) != ARTIFACT_HANDOFF_PROFILE_FIELDS:
+            errors.append(f"artifact handoff profile `{name}` has invalid fields")
+            continue
+        allowed = profile.get("allowed_kinds")
+        required = profile.get("required_kinds")
+        priority = profile.get("kind_priority")
+        if (
+            profile.get("lineage_mode") != expected["lineage_mode"]
+            or profile.get("base_compatibility") != expected["base_compatibility"]
+            or not valid_string_list(allowed)
+            or len(set(allowed)) != len(allowed)
+            or not set(allowed) <= set(V1_ARTIFACT_CATALOG)
+            or not valid_string_list(required)
+            or len(set(required)) != len(required)
+            or not set(required) <= set(allowed)
+            or not valid_string_list(priority)
+            or len(set(priority)) != len(priority)
+            or set(priority) != set(allowed)
+            or not positive_integer(profile.get("count_limit"))
+            or profile.get("count_limit", 0) < len(required)
+            or not isinstance(context_limits, dict)
+            or profile.get("count_limit", 0) > context_limits.get("max_artifacts", 0)
+            or not positive_integer(profile.get("total_byte_limit"))
+            or profile.get("total_byte_limit", 0) < sum(artifact_limits.get(kind, 0) for kind in required)
+            or profile.get("total_byte_limit", 0) > context_limits.get("max_artifacts", 0) * context_limits.get("artifact_max_bytes", 0)
+        ):
+            errors.append(f"artifact handoff profile `{name}` is invalid")
+    return profiles
 
 
 def resolve_operating_profile(policy: dict[str, Any], route_name: str, profile_name: str) -> dict[str, Any]:
@@ -363,8 +469,8 @@ def validate(root: Path) -> list[str]:
     roles = _validate_roles(roles_payload, errors)
     if not isinstance(policy, dict):
         return [*errors, "harness policy must be a mapping"]
-    if policy.get("version") != 4:
-        errors.append("harness policy version must be 4")
+    if policy.get("version") != 5:
+        errors.append("harness policy version must be 5")
     unknown_policy_fields = set(policy) - POLICY_FIELDS - POLICY_OPTIONAL_FIELDS
     missing_policy_fields = POLICY_FIELDS - policy.keys()
     if missing_policy_fields:
@@ -379,8 +485,8 @@ def validate(root: Path) -> list[str]:
     request_admission = admit_request_api(request_api)
     if not request_admission["ok"]:
         errors.append(request_admission["code"])
-    elif request_api != 4:
-        errors.append("harness_core request_api must be 4")
+    elif request_api != 5:
+        errors.append("harness_core request_api must be 5")
 
     templates = list_templates(root)
     rules = {path.stem for path in (root / "docs" / "operating_system" / "rules").glob("*.md")}
@@ -389,24 +495,7 @@ def validate(root: Path) -> list[str]:
     if not isinstance(context_limits, dict) or set(context_limits) != CONTEXT_LIMIT_FIELDS or not all(positive_integer(value) for value in context_limits.values()):
         errors.append("context_limits must define positive integer limits")
 
-    evidence_artifacts = policy.get("evidence_artifacts")
-    if (
-        not isinstance(evidence_artifacts, dict)
-        or not EVIDENCE_ARTIFACT_POLICY_FIELDS <= set(evidence_artifacts)
-        or not set(evidence_artifacts) <= EVIDENCE_ARTIFACT_POLICY_FIELDS | EVIDENCE_ARTIFACT_POLICY_OPTIONAL_FIELDS
-    ):
-        errors.append("evidence_artifacts has invalid fields")
-    else:
-        retained = evidence_artifacts["writer_retained_kinds"]
-        if not isinstance(retained, list) or len(set(retained)) != len(retained) or not set(retained) <= READONLY_ARTIFACT_KINDS:
-            errors.append("evidence_artifacts writer_retained_kinds is invalid")
-        legacy_max_bytes = evidence_artifacts.get("sanitized_command_trace_max_bytes")
-        if legacy_max_bytes is not None and (
-            not positive_integer(legacy_max_bytes)
-            or not isinstance(context_limits, dict)
-            or legacy_max_bytes != context_limits.get("artifact_max_bytes")
-        ):
-            errors.append("evidence_artifacts legacy sanitized_command_trace_max_bytes must match artifact_max_bytes")
+    artifact_handoff_profiles = _validate_evidence_artifacts(policy.get("evidence_artifacts"), context_limits, errors)
 
     checks = _validate_named_commands(policy, errors)
     tools = policy.get("tools")
@@ -621,6 +710,19 @@ def validate(root: Path) -> list[str]:
                         errors.append(f"route `{name}` has invalid escalation_transitions")
                         continue
                     seen_transitions.add((transition["from"], transition["on"]))
+            resolved_default = None
+            if isinstance(default_profile, str):
+                try:
+                    resolved_default = resolve_operating_profile(policy, name, default_profile)
+                except ValueError:
+                    pass
+            _validate_handoff_profiles(
+                name,
+                route,
+                artifact_handoff_profiles,
+                resolved_default.get("authority") and authorities.get(resolved_default["authority"], {}).get("workspace_write_access") if resolved_default else None,
+                errors,
+            )
             for field, available in (("delegation_profile", delegation_profiles),):
                 if route.get(field) not in available:
                     errors.append(f"route `{name}` has unknown {field} `{route.get(field)}`")
@@ -661,18 +763,13 @@ def validate(root: Path) -> list[str]:
         route_gates = route.get("approval_gates", defaults.get("approval_gates", []))
         if not valid_string_list(route_gates, allow_empty=True) or len(set(route_gates)) != len(route_gates) or not set(route_gates) <= set(gates):
             errors.append(f"route `{name}` has invalid approval_gates")
-        readonly_artifacts = route.get("readonly_artifacts")
-        if readonly_artifacts is not None:
-            if not isinstance(readonly_artifacts, dict) or set(readonly_artifacts) != READONLY_ARTIFACT_POLICY_FIELDS:
-                errors.append(f"route `{name}` readonly_artifacts must define allowed_kinds and required_kinds")
-            else:
-                allowed = readonly_artifacts["allowed_kinds"]
-                required = readonly_artifacts["required_kinds"]
-                if not isinstance(allowed, list) or len(set(allowed)) != len(allowed) or not set(allowed) <= READONLY_ARTIFACT_KINDS or not isinstance(required, list) or len(set(required)) != len(required) or not set(required) <= set(allowed):
-                    errors.append(f"route `{name}` readonly_artifacts is invalid")
-                authority = authorities.get(route.get("authority"), {})
-                if authority.get("workspace_write_access") != "read_only":
-                    errors.append(f"route `{name}` readonly_artifacts requires read-only authority")
+        _validate_handoff_profiles(
+            name,
+            route,
+            artifact_handoff_profiles,
+            authorities.get(route.get("authority"), {}).get("workspace_write_access"),
+            errors,
+        )
     for code, task_type in follow_up_routes.items():
         route = routes.get(task_type)
         authority = authorities.get(route.get("authority"), {}) if isinstance(route, dict) else {}

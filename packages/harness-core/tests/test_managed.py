@@ -39,10 +39,10 @@ def isolate_root_friction_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     )
 
 
-API5_BINDING = {
+API6_BINDING = {
     "provider_id": "codex_app_server",
-    "host_api": 4,
-    "contract_version": 4,
+    "host_api": 5,
+    "contract_version": 5,
     "transport": "stdio",
     "lifecycle": "host_spawn",
     "protocol": "app-server-v1",
@@ -65,17 +65,9 @@ class HarnessModule:
         delattr(self._module, name)
 
     def resolve_managed_packet(self, root, request, **kwargs):
-        if request.get("version") != 4:
-            return self._module.resolve_managed_packet(root, request, **kwargs)
-        policy = copy.deepcopy(self._module._load_policy(root))
-        policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
-        original = self._module._load_policy
-        self._module._load_policy = lambda _root: policy
-        kwargs.setdefault("provider_runtime_binding", copy.deepcopy(API5_BINDING))
-        try:
-            return self._module.resolve_managed_packet(root, request, **kwargs)
-        finally:
-            self._module._load_policy = original
+        if request.get("version") == 5:
+            kwargs.setdefault("provider_runtime_binding", copy.deepcopy(API6_BINDING))
+        return self._module.resolve_managed_packet(root, request, **kwargs)
 
 
 def load_module():
@@ -107,10 +99,10 @@ def claim(**overrides):
 
 def managed_request(**overrides):
     payload = {
-        "version": 2,
+        "version": 5,
         "run_id": "managed-test",
         "task_type": "local_change",
-        "execution_mode": "single_agent",
+        "execution_mode": "single_work_lane",
         "user_request": "Update managed harness fixture.",
         "acceptance_criteria": [{"id": "diff", "kind": "check", "check": "diff"}],
         "allowed_paths": ["scripts/**", "tests/**"],
@@ -220,12 +212,12 @@ def write_coordinated_run(harness, root, run_id, *, state, plan_ref, task_id, pa
 
 
 class FakeAdapter:
-    def __init__(self, capabilities, claim_payload=None, validator_claim=None, dispatch_error=None, identity=None, host_api=2, workspace_root=None):
+    def __init__(self, capabilities, claim_payload=None, validator_claim=None, dispatch_error=None, identity=None, host_api=5, workspace_root=None):
         self.capabilities_value = capabilities
         self.claim_payload = claim_payload
         self.validator_claim = validator_claim
         self.dispatch_error = dispatch_error
-        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 2}
+        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 5}
         self.host_api_value = host_api
         self.workspace_root = str(workspace_root or ROOT)
         self.calls = []
@@ -235,6 +227,9 @@ class FakeAdapter:
 
     def host_api(self):
         return self.host_api_value
+
+    def preflight_evidence(self):
+        return copy.deepcopy(API6_BINDING)
 
     def capabilities(self):
         self.calls.append("capabilities")
@@ -379,18 +374,19 @@ def test_resolve_task_returns_route_packet() -> None:
     assert packet["orchestration"]["name"] == "single_work_lane"
 
 
-def test_v4_packet_resolves_selected_profiles() -> None:
+def test_v5_packet_resolves_selected_profiles() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(
         ROOT,
         managed_request(
-            version=4,
+            version=5,
             task_type="local_change",
             execution_mode="single_work_lane",
             planned_write_paths=["scripts/harness_task.py"],
         ),
         attempt_id="attempt-1",
+        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 5, "host_api": 5},
     )
 
     assert packet["authority"] == "workspace_write"
@@ -402,13 +398,27 @@ def test_v4_packet_resolves_selected_profiles() -> None:
     assert packet["execution_budget"]["finalization_reserve_seconds"] == 60
 
 
+def test_fresh_request_api_must_match_policy_request_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    policy = harness._load_policy(ROOT)
+    policy["harness_core"] = {"request_api": 5}
+    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+
+    with pytest.raises(harness.HarnessError, match="managed request API must match policy request_api"):
+        harness.resolve_managed_packet(
+            ROOT,
+            managed_request(version=3, execution_mode="single_work_lane"),
+            attempt_id="attempt-1",
+        )
+
+
 def test_composed_packet_resolves_selected_backend_facet_and_operating_profile() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(
         ROOT,
         managed_request(
-            version=4,
+            version=5,
             execution_mode="single_work_lane",
             skill_set_selections=[{"id": "backend_verification", "reason": "route contract changes"}],
             operating_profile_selection={"id": "local_change_extended", "reason": "approved extended range"},
@@ -457,7 +467,7 @@ def test_composed_packet_rejects_invalid_controller_selection(request_overrides,
     with pytest.raises(harness.HarnessError, match=message):
         harness.resolve_managed_packet(
             ROOT,
-            managed_request(version=4, execution_mode="single_work_lane", **request_overrides),
+            managed_request(version=5, execution_mode="single_work_lane", **request_overrides),
             attempt_id="attempt-1",
         )
 
@@ -469,7 +479,7 @@ def test_v4_packet_rejects_oversized_work_context_before_dispatch() -> None:
         harness.resolve_managed_packet(
             ROOT,
             managed_request(
-                version=4,
+                version=5,
                 task_type="local_change",
                 execution_mode="single_work_lane",
                 user_request="x" * 4097,
@@ -526,18 +536,18 @@ def test_protected_policy_includes_canonical_skill_sources() -> None:
     assert ".agents/skills/**" in packet["approval_gates"]["protected_policy"]
 
 
-def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
+def test_resolve_managed_packet_builds_api6_lane_dag() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
 
-    assert packet["version"] == 3
+    assert packet["version"] == 6
     assert packet["user_request"] == "Update managed harness fixture."
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 5}
     assert packet["core_identity"] == {
         **harness.runtime_identity(),
-        "request_api": 2,
-        "packet_api": 3,
+        "request_api": 5,
+        "packet_api": 6,
         "host_api": None,
     }
     assert packet["execution_budget"] == {
@@ -566,7 +576,7 @@ def test_resolve_managed_packet_normalizes_v2_alias_to_v3_lane_dag() -> None:
     assert packet["lanes"][2]["write_capable"] is False
 
 
-def test_legacy_packet_derives_write_capability_without_role_writes(monkeypatch) -> None:
+def test_current_packet_uses_route_capabilities_without_role_writes(monkeypatch) -> None:
     harness = load_module()
     roles = yaml.safe_load((ROOT / "agents" / "roles.yaml").read_text())
     roles["version"] = 2
@@ -576,30 +586,27 @@ def test_legacy_packet_derives_write_capability_without_role_writes(monkeypatch)
 
     packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
 
-    assert packet["capabilities"] == ["repo.write"]
+    assert packet["capabilities"] == ["repo.read", "repo.write", "code.search"]
     assert packet["lanes"][0]["write_capable"] is True
 
 
-def test_api5_packet_requires_immutable_provider_runtime_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api6_packet_requires_immutable_provider_runtime_binding() -> None:
     harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
-    binding = copy.deepcopy(API5_BINDING)
+    binding = copy.deepcopy(API6_BINDING)
     packet = harness.resolve_managed_packet(
         ROOT,
-        managed_request(version=4, execution_mode="single_work_lane"),
+        managed_request(version=5, execution_mode="single_work_lane"),
         attempt_id="attempt-1",
         provider_runtime_binding=binding,
     )
 
-    assert packet["version"] == 5
+    assert packet["version"] == 6
     assert packet["invocation_id"] == "attempt-1:primary"
     assert packet["parent_invocation_id"] is None
     assert packet["provider_runtime_binding"] == binding
 
 
-def test_harness_diagnosis_packet_resolves_declared_readonly_artifacts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_harness_diagnosis_packet_resolves_direct_artifact_handoff(monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
     terminal_observation = {
         "version": 1,
@@ -622,11 +629,22 @@ def test_harness_diagnosis_packet_resolves_declared_readonly_artifacts(monkeypat
         "state": "blocked",
         "attempts": [{
             "attempt_id": "writer-attempt",
+            "packet": {
+                "base_commit": harness._resolve_commit(ROOT, "HEAD"),
+                "lanes": [{"lane_id": "primary"}],
+                "execution_budget": {"turn_timeout_seconds": 300},
+                "retained_artifacts": [{"kind": "sanitized_command_trace", "max_bytes": 4096}],
+            },
             "evidence": {
                 "terminal_observation": terminal_observation,
                 "artifacts": [{
                     "kind": "sanitized_command_trace",
-                    "content": {"version": 1, "commands": [{"command": "pytest", "output": "failed"}]},
+                    "content": {"version": 1, "commands": [{
+                        "item_id": "command-1",
+                        "command": "pytest",
+                        "output": "failed",
+                        "exit_code": 1,
+                    }]},
                 }],
             },
         }],
@@ -635,53 +653,287 @@ def test_harness_diagnosis_packet_resolves_declared_readonly_artifacts(monkeypat
     packet = harness.resolve_managed_packet(
         ROOT,
         managed_request(
-            version=4,
+            version=5,
             task_type="harness_diagnosis",
             execution_mode="single_work_lane",
             planned_write_paths=[],
-            readonly_artifacts=[
-                {"kind": "terminal_observation", "source_run_id": "writer-run", "source_attempt_id": "writer-attempt"},
-                {"kind": "sanitized_command_trace", "source_run_id": "writer-run", "source_attempt_id": "writer-attempt"},
-            ],
+            artifact_handoff={"source_run_id": "writer-run", "source_attempt_id": "writer-attempt"},
         ),
         attempt_id="attempt-1",
+        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 5, "host_api": 5},
     )
 
-    assert packet["readonly_artifact_policy"] == {
-        "allowed_kinds": ["terminal_observation", "sanitized_command_trace"],
-        "required_kinds": ["terminal_observation"],
-        "artifact_max_bytes": 4096,
-    }
     assert [(artifact["kind"], artifact["source_run_id"], artifact["source_attempt_id"]) for artifact in packet["readonly_artifacts"]] == [
         ("terminal_observation", "writer-run", "writer-attempt"),
         ("sanitized_command_trace", "writer-run", "writer-attempt"),
     ]
     assert packet["readonly_artifacts"][0]["content"] == terminal_observation
+    assert packet["artifact_handoff"]["profile"] == "direct_terminal_diagnosis"
+    assert packet["artifact_handoff_audit"]["sources"] == [{"run_id": "writer-run", "attempt_id": "writer-attempt"}]
+    attempt = harness._append_attempt(harness._new_run(managed_request(run_id="target-run"), "target-run"), packet)
+    assert attempt["artifact_handoff_audit"] == packet["artifact_handoff_audit"]
 
-def test_readonly_artifact_rejects_oversized_content(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_artifact_handoff_rejects_oversized_required_content(monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
     monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
         "run_id": run_id,
         "state": "blocked",
         "attempts": [{
             "attempt_id": "source-attempt",
-            "evidence": {"terminal_observation": {"detail": "x" * 4096}},
+            "packet": {
+                "base_commit": "base",
+                "lanes": [{"lane_id": "primary"}],
+                "execution_budget": {"turn_timeout_seconds": 300},
+            },
+            "evidence": {"terminal_observation": {
+                "version": 1,
+                "kind": "timeout",
+                "source": "host_timeout_interrupt",
+                "lane_id": "primary",
+                "session_id": "thread-1",
+                "turn_id": "turn-1",
+                "turn_timeout_seconds": 300,
+                "elapsed_seconds": 300.0,
+                "terminal_status": "interrupted",
+                "interrupt_status": "terminal_confirmed",
+                "item_states": [
+                    {"item_id": f"item-{index}-{'x' * 110}", "type": "y" * 64, "state": "z" * 64}
+                    for index in range(16)
+                ],
+                "command_states": [],
+                "final_claim_state": {"state": "missing"},
+                "error": None,
+            }},
         }],
     })
 
-    with pytest.raises(harness.HarnessError, match="readonly artifact exceeds artifact_max_bytes"):
-        harness._resolve_readonly_artifacts(ROOT, {
+    with pytest.raises(harness.HarnessError, match="artifact_handoff required artifact exceeds byte limit"):
+        harness._resolve_artifact_handoff(ROOT, {
             "workspace_write_access": "read_only",
-            "readonly_artifact_policy": {
-                "allowed_kinds": ["terminal_observation"],
-                "required_kinds": [],
-                "artifact_max_bytes": 4096,
+            "base_commit": "base",
+            "artifact_handoff_policy": {
+                "allowed_profiles": ["direct_terminal_diagnosis"],
+                "default_profile": "direct_terminal_diagnosis",
+                "catalog": {
+                    "terminal_observation": {"byte_limit": 4096},
+                },
+                "profiles": {
+                    "direct_terminal_diagnosis": {
+                        "lineage_mode": "direct",
+                        "required_kinds": ["terminal_observation"],
+                        "kind_priority": ["terminal_observation"],
+                        "count_limit": 1,
+                        "total_byte_limit": 4096,
+                    },
+                },
             },
-        }, [{
-            "kind": "terminal_observation",
+        }, {
             "source_run_id": "source-run",
             "source_attempt_id": "source-attempt",
-        }])
+        })
+
+
+def test_artifact_handoff_rejects_source_set_profile_from_public_request() -> None:
+    harness = load_module()
+
+    with pytest.raises(harness.HarnessError, match="artifact_handoff requires a direct profile"):
+        harness._resolve_artifact_handoff(ROOT, {
+            "workspace_write_access": "read_only",
+            "base_commit": "base",
+            "artifact_handoff_policy": {
+                "allowed_profiles": ["friction_terminal_diagnosis"],
+                "default_profile": "friction_terminal_diagnosis",
+                "catalog": {},
+                "profiles": {
+                    "friction_terminal_diagnosis": {
+                        "lineage_mode": "source_set",
+                        "required_kinds": ["terminal_observation"],
+                        "kind_priority": ["terminal_observation"],
+                        "count_limit": 1,
+                        "total_byte_limit": 4096,
+                    },
+                },
+            },
+        }, {
+            "source_run_id": "source-run",
+            "source_attempt_id": "source-attempt",
+            "profile": "friction_terminal_diagnosis",
+        })
+
+
+def test_artifact_handoff_rejects_invalid_required_terminal_observation(monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
+        "run_id": run_id,
+        "state": "blocked",
+        "attempts": [{
+            "attempt_id": "source-attempt",
+            "packet": {
+                "base_commit": "base",
+                "lanes": [{"lane_id": "primary"}],
+                "execution_budget": {"turn_timeout_seconds": 300},
+            },
+            "evidence": {"terminal_observation": {"version": 1, "kind": "timeout"}},
+        }],
+    })
+
+    with pytest.raises(harness.HarnessError, match="artifact_handoff required `terminal_observation` is invalid"):
+        harness._resolve_artifact_handoff(ROOT, {
+            "workspace_write_access": "read_only",
+            "base_commit": "base",
+            "artifact_handoff_policy": {
+                "allowed_profiles": ["direct_terminal_diagnosis"],
+                "default_profile": "direct_terminal_diagnosis",
+                "catalog": {"terminal_observation": {"byte_limit": 4096}},
+                "profiles": {
+                    "direct_terminal_diagnosis": {
+                        "lineage_mode": "direct",
+                        "required_kinds": ["terminal_observation"],
+                        "kind_priority": ["terminal_observation"],
+                        "count_limit": 1,
+                        "total_byte_limit": 4096,
+                    },
+                },
+            },
+        }, {
+            "source_run_id": "source-run",
+            "source_attempt_id": "source-attempt",
+        })
+
+
+def test_artifact_handoff_excludes_duplicate_optional_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    terminal_observation = {
+        "version": 1,
+        "kind": "timeout",
+        "source": "host_timeout_interrupt",
+        "lane_id": "primary",
+        "session_id": "thread-1",
+        "turn_id": "turn-1",
+        "turn_timeout_seconds": 300,
+        "elapsed_seconds": 300.0,
+        "terminal_status": "interrupted",
+        "interrupt_status": "terminal_confirmed",
+        "item_states": [],
+        "command_states": [],
+        "final_claim_state": {"state": "missing"},
+        "error": None,
+    }
+    monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
+        "run_id": run_id,
+        "state": "blocked",
+        "attempts": [{
+            "attempt_id": "source-attempt",
+            "packet": {
+                "base_commit": "base",
+                "lanes": [{"lane_id": "primary"}],
+                "execution_budget": {"turn_timeout_seconds": 300},
+            },
+            "evidence": {
+                "terminal_observation": terminal_observation,
+                "artifacts": [
+                    {"kind": "sanitized_command_trace", "content": {"version": 1, "commands": []}},
+                    {"kind": "sanitized_command_trace", "content": {"version": 1, "commands": []}},
+                ],
+            },
+        }],
+    })
+
+    artifacts, handoff = harness._resolve_artifact_handoff(ROOT, {
+        "workspace_write_access": "read_only",
+        "base_commit": "base",
+        "artifact_handoff_policy": {
+            "allowed_profiles": ["direct_terminal_diagnosis"],
+            "default_profile": "direct_terminal_diagnosis",
+            "catalog": {
+                "terminal_observation": {"byte_limit": 4096},
+                "sanitized_command_trace": {"byte_limit": 4096},
+            },
+            "profiles": {
+                "direct_terminal_diagnosis": {
+                    "lineage_mode": "direct",
+                    "required_kinds": ["terminal_observation"],
+                    "kind_priority": ["terminal_observation", "sanitized_command_trace"],
+                    "count_limit": 2,
+                    "total_byte_limit": 8192,
+                },
+            },
+        },
+    }, {
+        "source_run_id": "source-run",
+        "source_attempt_id": "source-attempt",
+    })
+
+    assert [artifact["kind"] for artifact in artifacts] == ["terminal_observation"]
+    assert handoff is not None
+    assert handoff["audit"]["optional_rejections"] == [{"kind": "sanitized_command_trace", "reason": "invalid"}]
+
+
+def test_artifact_handoff_excludes_invalid_optional_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    terminal_observation = {
+        "version": 1,
+        "kind": "timeout",
+        "source": "host_timeout_interrupt",
+        "lane_id": "primary",
+        "session_id": "thread-1",
+        "turn_id": "turn-1",
+        "turn_timeout_seconds": 300,
+        "elapsed_seconds": 300.0,
+        "terminal_status": "interrupted",
+        "interrupt_status": "terminal_confirmed",
+        "item_states": [],
+        "command_states": [],
+        "final_claim_state": {"state": "missing"},
+        "error": None,
+    }
+    monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
+        "run_id": run_id,
+        "state": "blocked",
+        "attempts": [{
+            "attempt_id": "source-attempt",
+            "packet": {
+                "base_commit": "base",
+                "lanes": [{"lane_id": "primary"}],
+                "execution_budget": {"turn_timeout_seconds": 300},
+                "retained_artifacts": [{"kind": "sanitized_command_trace", "max_bytes": 4096}],
+            },
+            "evidence": {
+                "terminal_observation": terminal_observation,
+                "artifacts": [{"kind": "sanitized_command_trace", "content": {"version": 1, "commands": "invalid"}}],
+            },
+        }],
+    })
+
+    artifacts, handoff = harness._resolve_artifact_handoff(ROOT, {
+        "workspace_write_access": "read_only",
+        "base_commit": "base",
+        "artifact_handoff_policy": {
+            "allowed_profiles": ["direct_terminal_diagnosis"],
+            "default_profile": "direct_terminal_diagnosis",
+            "catalog": {
+                "terminal_observation": {"byte_limit": 4096},
+                "sanitized_command_trace": {"byte_limit": 4096},
+            },
+            "profiles": {
+                "direct_terminal_diagnosis": {
+                    "lineage_mode": "direct",
+                    "required_kinds": ["terminal_observation"],
+                    "kind_priority": ["terminal_observation", "sanitized_command_trace"],
+                    "count_limit": 2,
+                    "total_byte_limit": 8192,
+                },
+            },
+        },
+    }, {
+        "source_run_id": "source-run",
+        "source_attempt_id": "source-attempt",
+    })
+
+    assert [artifact["kind"] for artifact in artifacts] == ["terminal_observation"]
+    assert handoff is not None
+    assert handoff["audit"]["optional_rejections"] == [{"kind": "sanitized_command_trace", "reason": "invalid"}]
+
 
 def test_retained_trace_rejects_oversized_serialized_content() -> None:
     class HostFailure(RuntimeError):
@@ -715,7 +967,7 @@ def test_retained_trace_rejects_oversized_serialized_content() -> None:
         ("harness_improvement", ["repo.read", "repo.write", "code.search"], "disabled", "workspace_write"),
     ],
 )
-def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
+def test_api6_packet_uses_route_owned_capabilities_and_delegation_profile(
     task_type: str,
     capabilities: list[str],
     delegation_profile: str,
@@ -724,25 +976,11 @@ def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
 ) -> None:
     harness = load_module()
     request = managed_request(
-        version=4,
+        version=5,
         task_type=task_type,
         execution_mode="single_work_lane",
         planned_write_paths=["scripts/harness_task.py"] if "repo.write" in capabilities else [],
     )
-    if task_type == "harness_diagnosis":
-        monkeypatch.setattr(harness, "_load_run", lambda root, run_id: {
-            "run_id": run_id,
-            "state": "blocked",
-            "attempts": [{
-                "attempt_id": "source-attempt",
-                "evidence": {"terminal_observation": {"version": 1, "kind": "timeout"}},
-            }],
-        })
-        request["readonly_artifacts"] = [{
-            "kind": "terminal_observation",
-            "source_run_id": "source-run",
-            "source_attempt_id": "source-attempt",
-        }]
     packet = harness.resolve_managed_packet(
         ROOT,
         request,
@@ -752,12 +990,12 @@ def test_api4_packet_uses_route_owned_capabilities_and_delegation_profile(
     assert packet["capabilities"] == capabilities
     assert packet["delegation_profile"] == delegation_profile
     assert packet["workspace_write_access"] == workspace_write_access
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 4}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 5}
 
 def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
-    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
     packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
     harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
     harness._append_attempt(run, packet)
@@ -775,7 +1013,7 @@ def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> N
 def test_delegate_derives_one_idempotent_read_only_child(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
-    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
     packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
     packet["capabilities"] = ["repo.read", "harness.delegate"]
     packet["delegation_profile"] = "read_only_research"
@@ -806,9 +1044,6 @@ def test_delegate_derives_one_idempotent_read_only_child(tmp_path: Path) -> None
 
 def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
 
@@ -817,13 +1052,13 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=4,
-                identity={"provider_id": "codex_app_server", "contract_version": 4},
+                host_api=5,
+                identity={"provider_id": "codex_app_server", "contract_version": 5},
             )
             self.delegation_result = None
 
         def preflight_evidence(self):
-            return copy.deepcopy(API5_BINDING)
+            return copy.deepcopy(API6_BINDING)
 
         def dispatch_lane(self, lane, packet, workspace, delegation_bridge):
             self.calls.append("dispatch_lane")
@@ -859,7 +1094,7 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
         result = harness.run_managed(
             ROOT,
             managed_request(
-                version=4,
+                version=5,
                 run_id=run_id,
                 task_type="research",
                 execution_mode="single_work_lane",
@@ -899,7 +1134,7 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
 def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
-    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
     packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
     packet["capabilities"] = ["repo.read", "harness.delegate"]
     packet["delegation_profile"] = "read_only_research"
@@ -948,7 +1183,7 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
 def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
-    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
     packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
     packet["capabilities"] = ["repo.read", "harness.delegate"]
     packet["delegation_profile"] = "read_only_research"
@@ -986,7 +1221,7 @@ def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_p
 def test_delegate_cancellation_waits_for_controller_decision(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
-    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
     packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
     packet["capabilities"] = ["repo.read", "harness.delegate"]
     packet["delegation_profile"] = "read_only_research"
@@ -1029,7 +1264,7 @@ def test_delegate_cancellation_waits_for_controller_decision(tmp_path: Path) -> 
 def test_delegate_denies_authority_expansion_before_child_creation(tmp_path: Path, child_request: dict[str, object], code: str) -> None:
     harness = load_module()
     run_id = tmp_path.name
-    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
     packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
     packet["capabilities"] = ["repo.read", "harness.delegate"]
     packet["delegation_profile"] = "read_only_research"
@@ -1057,10 +1292,10 @@ def test_delegate_denies_authority_expansion_before_child_creation(tmp_path: Pat
         ({"idempotency_key": "child-1", "role": "investigate", "capabilities": ["repo.read"], "allowed_paths": ["scripts/**"], "timeout_seconds": 121}, "delegation_budget_exceeded"),
     ],
 )
-def test_delegate_denies_authority_expansion_before_child_creation_legacy(tmp_path: Path, child_request: dict[str, object], code: str) -> None:
+def test_delegate_denies_authority_expansion_before_child_creation_again(tmp_path: Path, child_request: dict[str, object], code: str) -> None:
     harness = load_module()
     run_id = tmp_path.name
-    run = harness._new_run(managed_request(version=4, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
     packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
     packet["capabilities"] = ["repo.read", "harness.delegate"]
     packet["delegation_profile"] = "read_only_research"
@@ -1110,57 +1345,37 @@ def test_run_managed_records_adapter_host_api_in_packet(tmp_path: Path) -> None:
 
         assert result["outcome"]["reason"] == "execution_mode_unavailable"
         packet = json.loads((run_dir / "run.json").read_text())["attempts"][0]["packet"]
-        assert packet["core_identity"]["host_api"] == 2
+        assert packet["core_identity"]["host_api"] == 5
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_run_managed_admits_v3_request_with_host2_when_policy_api4(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_managed_resumes_v3_packet_with_host2(tmp_path: Path) -> None:
     harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["harness_core"] = {"request_api": 4}
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
+    request = managed_request(run_id=run_id)
     try:
-        result = harness.run_managed(
-            ROOT,
-            managed_request(version=3, run_id=run_id),
-            FakeAdapter({"single_work_lane": "unavailable"}, host_api=2),
-        )
-
-        assert result["outcome"]["reason"] == "execution_mode_unavailable"
-        packet = json.loads((run_dir / "run.json").read_text())["attempts"][0]["packet"]
-        assert packet["core_identity"]["request_api"] == 3
-        assert packet["core_identity"]["packet_api"] == 3
-        assert packet["core_identity"]["host_api"] == 2
-    finally:
-        shutil.rmtree(run_dir, ignore_errors=True)
-
-def test_run_managed_resumes_v3_packet_with_host2_when_policy_api4(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["harness_core"] = {"request_api": 4}
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
-    run_id = tmp_path.name
-    run_dir = ROOT / ".harness" / "runs" / run_id
-    request = managed_request(version=3, run_id=run_id)
-    try:
-        packet = harness.resolve_managed_packet(
-            ROOT,
-            request,
-            attempt_id="attempt-1",
-            core_identity={"package_release": "fixture", "request_api": 3, "packet_api": 3, "host_api": 2},
-        )
+        packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+        packet.pop("provider_runtime_binding")
+        packet.update({
+            "version": 3,
+            "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 2},
+            "core_identity": {"package_release": "fixture", "request_api": 2, "packet_api": 3, "host_api": 2},
+        })
         run = harness._new_run(request, run_id)
-        harness._transition(run, policy["states"], "planned", "fixture")
+        harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "fixture")
         harness._append_attempt(run, packet)
         harness._write_run(ROOT, run)
 
         result = harness.run_managed(
             ROOT,
             None,
-            FakeAdapter({"single_work_lane": "unavailable"}, host_api=2),
+            FakeAdapter(
+                {"single_work_lane": "unavailable"},
+                host_api=2,
+                identity={"provider_id": "codex_app_server", "contract_version": 2},
+            ),
             run_id=run_id,
         )
 
@@ -1204,7 +1419,7 @@ def test_resolve_managed_packet_derives_immutable_plan_binding(monkeypatch) -> N
     coordination = plan_coordination(execution_mode="sequential_work_lanes")
     monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
     request = managed_request(
-        version=3,
+        version=5,
         plan_ref=coordination.plan_ref,
         plan_task_id="task-1",
         lanes=[{
@@ -1256,7 +1471,7 @@ def test_plan_bound_packet_uses_same_binding_for_every_canonical_topology(monkey
     harness = load_module()
     coordination = plan_coordination(execution_mode=execution_mode)
     monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
-    request = managed_request(version=3, plan_ref=coordination.plan_ref, plan_task_id="task-1")
+    request = managed_request(version=5, plan_ref=coordination.plan_ref, plan_task_id="task-1")
     for field in ("execution_mode", "base_ref", "allowed_paths", "planned_write_paths"):
         request.pop(field)
     if lanes is not None:
@@ -1279,7 +1494,7 @@ def test_resolve_managed_packet_rejects_conflicting_plan_field(monkeypatch) -> N
     with pytest.raises(harness.HarnessError, match="execution_mode.*conflicts"):
         harness.resolve_managed_packet(
             ROOT,
-            managed_request(version=3, plan_ref=coordination.plan_ref, plan_task_id="task-1", execution_mode="single_work_lane"),
+            managed_request(version=5, plan_ref=coordination.plan_ref, plan_task_id="task-1", execution_mode="single_work_lane"),
             attempt_id="attempt-1",
         )
 
@@ -1293,7 +1508,7 @@ def test_resolve_managed_packet_rejects_conflicting_plan_authorization_scope(mon
         harness.resolve_managed_packet(
             ROOT,
             managed_request(
-                version=3,
+                version=5,
                 plan_ref=coordination.plan_ref,
                 plan_task_id="task-1",
                 execution_mode="single_work_lane",
@@ -1307,7 +1522,7 @@ def test_resolve_managed_packet_rejects_plan_path_outside_allowed_scope(monkeypa
     harness = load_module()
     coordination = plan_coordination(paths=("repo_config/harness.yaml",))
     monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
-    request = managed_request(version=3, plan_ref=coordination.plan_ref, plan_task_id="task-1")
+    request = managed_request(version=5, plan_ref=coordination.plan_ref, plan_task_id="task-1")
     for field in ("execution_mode", "base_ref", "planned_write_paths"):
         request.pop(field)
 
@@ -1317,7 +1532,7 @@ def test_resolve_managed_packet_rejects_plan_path_outside_allowed_scope(monkeypa
 
 def test_successor_re_resolves_coordinated_manifest_fields() -> None:
     harness = load_module()
-    request = managed_request(version=3, plan_ref="docs/superpowers/plans/fixture.md", plan_task_id="task-1")
+    request = managed_request(version=5, plan_ref="docs/superpowers/plans/fixture.md", plan_task_id="task-1")
     run = {"run_id": "run-1", "request": request, "attempts": [{"packet": {"plan_ref": request["plan_ref"]}}]}
 
     successor = harness._successor_request(run, {"plan_task_id": "task-2"})
@@ -1332,7 +1547,7 @@ def test_managed_continuation_blocks_changed_plan_digest_before_dispatch(monkeyp
     original = plan_coordination(digest="original")
     monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: original)
     request = managed_request(
-        version=3,
+        version=5,
         run_id=run_id,
         execution_mode="single_work_lane",
         plan_ref=original.plan_ref,
@@ -1362,7 +1577,7 @@ def test_managed_continuation_blocks_changed_plan_base_commit_before_dispatch(mo
     coordination = plan_coordination(digest="stable")
     monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
     request = managed_request(
-        version=3,
+        version=5,
         run_id=run_id,
         execution_mode="single_work_lane",
         plan_ref=coordination.plan_ref,
@@ -1596,7 +1811,7 @@ def test_resolve_managed_packet_accepts_allowed_runtime_provider() -> None:
         attempt_id="attempt-1",
     )
 
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 2}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 5}
 
 
 @pytest.mark.parametrize(("task_type", "template", "model"), [
@@ -1621,21 +1836,13 @@ def test_managed_packet_copies_template_model_identity(task_type, template, mode
     }
 
 
-def test_resolve_managed_packet_normalizes_v3_legacy_mode_alias() -> None:
-    harness = load_module()
-
-    packet = harness.resolve_managed_packet(ROOT, managed_request(version=3), attempt_id="attempt-1")
-
-    assert packet["version"] == 3
-
-
-def test_resolve_managed_packet_adds_system_lanes_after_v3_work_lane() -> None:
+def test_resolve_managed_packet_adds_system_lanes_after_api6_work_lane() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(
         ROOT,
         managed_request(
-            version=3,
+            version=5,
             execution_mode="sequential_work_lanes",
             lanes=[{
                 "lane_id": "work",
@@ -1762,7 +1969,7 @@ def test_run_managed_blocks_unavailable_mode_without_dispatch(tmp_path: Path) ->
         result = harness.run_managed(
             ROOT,
             managed_request(
-                execution_mode="sequential_agents",
+                    execution_mode="sequential_work_lanes",
                 run_id=tmp_path.name,
                 lanes=[{
                     "lane_id": "primary",
@@ -1911,21 +2118,21 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
 
 def test_run_managed_requires_ready_provider_binding_before_packet_creation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
 
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     try:
+        class MissingBindingAdapter(FakeAdapter):
+            preflight_evidence = None
+
         with pytest.raises(harness.HarnessError, match="provider preflight evidence is required"):
             harness.run_managed(
                 ROOT,
-                managed_request(version=4, run_id=run_id),
-                FakeAdapter(
+                managed_request(version=5, run_id=run_id),
+                MissingBindingAdapter(
                     {"single_work_lane": "enforced"},
-                    host_api=4,
-                    identity={"provider_id": "codex_app_server", "contract_version": 4},
+                    host_api=5,
+                    identity={"provider_id": "codex_app_server", "contract_version": 5},
                 ),
             )
 
@@ -2006,7 +2213,7 @@ def test_unverified_packet_tool_blocks_before_writer_dispatch(tmp_path: Path) ->
 
 def test_read_only_work_evidence_uses_effective_packet_access() -> None:
     harness = load_module()
-    runtime_provider = {"provider_id": "codex_app_server", "contract_version": 3}
+    runtime_provider = {"provider_id": "codex_app_server", "contract_version": 5}
     workspace = {"path": "C:\\workspace"}
     packet = {
         "workspace_write_access": "read_only",
@@ -2300,7 +2507,7 @@ def test_plan_bound_managed_scheduler_proves_every_canonical_topology(
         coordinated_task("task-1", execution_mode=execution_mode),
     )
     monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
-    request = managed_request(version=3, run_id=run_id, plan_ref=coordination.plan_ref, plan_task_id="task-1")
+    request = managed_request(version=5, run_id=run_id, plan_ref=coordination.plan_ref, plan_task_id="task-1")
     for field in ("execution_mode", "base_ref", "allowed_paths", "planned_write_paths"):
         request.pop(field)
     if lanes is not None:
@@ -2432,7 +2639,7 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         assert len(run["attempts"]) == 2
         assert run["attempts"][0]["packet"]["runtime_provider"] == {
             "provider_id": "codex_app_server",
-            "contract_version": 2,
+            "contract_version": 5,
         }
         assert run["attempts"][1]["packet"]["runtime_provider"] == run["attempts"][0]["packet"]["runtime_provider"]
         assert run["attempts"][0]["packet"] == before
@@ -2525,9 +2732,6 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 4
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
 
@@ -2536,12 +2740,12 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=4,
-                identity={"provider_id": "codex_app_server", "contract_version": 4},
+                host_api=5,
+                identity={"provider_id": "codex_app_server", "contract_version": 5},
             )
 
         def preflight_evidence(self):
-            return copy.deepcopy(API5_BINDING)
+            return copy.deepcopy(API6_BINDING)
 
         def verify_tool_bindings(self, lane, packet, workspace):
             bindings = super().verify_tool_bindings(lane, packet, workspace)
@@ -2558,7 +2762,7 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
         result = harness.run_managed(
             ROOT,
             managed_request(
-                version=4,
+                version=5,
                 run_id=run_id,
                 task_type="research",
                 execution_mode="single_work_lane",
@@ -2675,17 +2879,17 @@ def test_api5_timeout_escalation_preserves_provider_runtime_binding(tmp_path: Pa
 
     class BoundTimeoutAdapter(FakeAdapter):
         def preflight_evidence(self):
-            return copy.deepcopy(API5_BINDING)
+            return copy.deepcopy(API6_BINDING)
 
     try:
         result = harness.run_managed(
             ROOT,
-            managed_request(run_id=run_id, version=4, execution_mode="single_work_lane"),
+            managed_request(run_id=run_id, version=5, execution_mode="single_work_lane"),
             BoundTimeoutAdapter(
                 {"single_work_lane": "enforced"},
                 dispatch_error=TimedOutTurn("turn timed out"),
-                host_api=4,
-                identity={"provider_id": "codex_app_server", "contract_version": 4},
+                host_api=5,
+                identity={"provider_id": "codex_app_server", "contract_version": 5},
             ),
         )
 
@@ -2929,30 +3133,23 @@ def test_admit_managed_operation_returns_core_identity_before_packet_work() -> N
 
     identity = harness.admit_managed_operation(
         ROOT,
-        FakeAdapter({"single_work_lane": "enforced"}, host_api=4),
+        FakeAdapter({"single_work_lane": "enforced"}, host_api=5),
     )
 
-    assert identity["request_api"] == 4
-    assert identity["packet_api"] == 5
-    assert identity["host_api"] == 4
+    assert identity["request_api"] == 5
+    assert identity["packet_api"] == 6
+    assert identity["host_api"] == 5
     assert isinstance(identity["package_release"], str)
 
 
-def test_run_managed_resumes_planned_api4_packet_with_host3_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_managed_resumes_planned_api4_packet_with_host3_only(tmp_path: Path) -> None:
     harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["harness_core"] = {"request_api": 4}
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
-    request = managed_request(version=3, run_id=run_id)
+    request = managed_request(run_id=run_id)
     try:
-        packet = harness.resolve_managed_packet(
-            ROOT,
-            request,
-            attempt_id="attempt-1",
-            core_identity={"package_release": "fixture", "request_api": 3, "packet_api": 3, "host_api": 2},
-        )
+        packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+        packet.pop("provider_runtime_binding")
         packet.update({
             "version": 4,
             "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 3},
@@ -2961,7 +3158,7 @@ def test_run_managed_resumes_planned_api4_packet_with_host3_only(tmp_path: Path,
             "parent_invocation_id": None,
         })
         run = harness._new_run(request, run_id)
-        harness._transition(run, policy["states"], "planned", "fixture")
+        harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "fixture")
         harness._append_attempt(run, packet)
         harness._write_run(ROOT, run)
 
@@ -3173,7 +3370,7 @@ def test_friction_report_recommends_read_only_diagnosis_for_writer_completion_mi
     shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
     packet = {
         "task_type": "local_change",
-        "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 3},
+        "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 5},
         "orchestration": {"name": "single_work_lane"},
     }
     now = datetime(2026, 8, 7, tzinfo=UTC)
@@ -3182,12 +3379,33 @@ def test_friction_report_recommends_read_only_diagnosis_for_writer_completion_mi
         run_dir.mkdir(parents=True)
         (run_dir / "run.json").write_text(json.dumps({
             "version": 1,
-            "run_id": run_id,
-            "state": "blocked",
-            "attempts": [{
-                "attempt_id": "attempt-1",
-                "evidence": {
-                    "terminal_observation": {"version": 1, "kind": "timeout"},
+                "run_id": run_id,
+                "state": "blocked",
+                "attempts": [{
+                    "attempt_id": "attempt-1",
+                    "packet": {
+                        "base_commit": "base",
+                        "lanes": [{"lane_id": "primary"}],
+                        "execution_budget": {"turn_timeout_seconds": 300},
+                        "retained_artifacts": [{"kind": "sanitized_command_trace", "max_bytes": 4096}],
+                    },
+                    "evidence": {
+                        "terminal_observation": {
+                            "version": 1,
+                            "kind": "timeout",
+                            "source": "host_timeout_interrupt",
+                            "lane_id": "primary",
+                            "session_id": "thread-1",
+                            "turn_id": "turn-1",
+                            "turn_timeout_seconds": 300,
+                            "elapsed_seconds": 300.0,
+                            "terminal_status": "interrupted",
+                            "interrupt_status": "terminal_confirmed",
+                            "item_states": [],
+                            "command_states": [],
+                            "final_claim_state": {"state": "missing"},
+                            "error": None,
+                        },
                     "artifacts": [{
                         "kind": "sanitized_command_trace",
                         "content": {"version": 1, "commands": []},
@@ -3214,10 +3432,8 @@ def test_friction_report_recommends_read_only_diagnosis_for_writer_completion_mi
     assert follow_up["task_type"] == "harness_diagnosis"
     assert follow_up["execution_mode"] == "single_work_lane"
     assert follow_up["workspace_write_access"] == "read_only"
-    assert {artifact["kind"] for artifact in follow_up["readonly_artifacts"]} == {
-        "terminal_observation",
-        "sanitized_command_trace",
-    }
+    assert follow_up["artifact_handoff"] == {"profile": "friction_terminal_diagnosis"}
+    assert "readonly_artifacts" not in follow_up
 
 
 def test_friction_report_blocks_diagnosis_without_required_artifacts(tmp_path: Path) -> None:
@@ -3227,7 +3443,7 @@ def test_friction_report_blocks_diagnosis_without_required_artifacts(tmp_path: P
     shutil.copy2(ROOT / "repo_config" / "harness.yaml", root / "repo_config" / "harness.yaml")
     packet = {
         "task_type": "local_change",
-        "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 3},
+        "runtime_provider": {"provider_id": "codex_app_server", "contract_version": 5},
         "orchestration": {"name": "single_work_lane"},
     }
     now = datetime(2026, 8, 7, tzinfo=UTC)

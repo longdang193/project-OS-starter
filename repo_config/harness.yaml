@@ -1,6 +1,6 @@
-version: 4
+version: 5
 harness_core:
-  request_api: 4
+  request_api: 5
 context_limits:
   objective_max_bytes: 4096
   fact_max_bytes: 16384
@@ -9,7 +9,34 @@ context_limits:
   artifact_max_bytes: 4096
   outcome_summary_max_bytes: 4096
 evidence_artifacts:
-  writer_retained_kinds: [sanitized_command_trace]
+  catalog:
+    terminal_observation:
+      schema_id: terminal_observation/v1
+      producer: host
+      retention: terminal
+      byte_limit: 4096
+    sanitized_command_trace:
+      schema_id: sanitized_command_trace/v1
+      producer: writer
+      retention: writer_retained
+      byte_limit: 4096
+  profiles:
+    direct_terminal_diagnosis:
+      lineage_mode: direct
+      allowed_kinds: [terminal_observation, sanitized_command_trace]
+      required_kinds: [terminal_observation]
+      kind_priority: [terminal_observation, sanitized_command_trace]
+      base_compatibility: exact_packet_base
+      count_limit: 2
+      total_byte_limit: 8192
+    friction_terminal_diagnosis:
+      lineage_mode: source_set
+      allowed_kinds: [terminal_observation, sanitized_command_trace]
+      required_kinds: [terminal_observation]
+      kind_priority: [terminal_observation, sanitized_command_trace]
+      base_compatibility: same_repository
+      count_limit: 6
+      total_byte_limit: 24576
 delegation_profiles:
   disabled:
     max_depth: 0
@@ -124,7 +151,7 @@ tools:
     root_probe: ast_grep_root_probe
 runtime_providers:
   codex_app_server:
-    contract_version: 4
+    contract_version: 5
 friction_policy:
   event_version: 1
   minimum_distinct_runs: 3
@@ -190,9 +217,8 @@ routes:
     toolset: shell_serena
     verification_profile: read_only
     delegation_profile: disabled
-    readonly_artifacts:
-      allowed_kinds: [terminal_observation, sanitized_command_trace]
-      required_kinds: [terminal_observation]
+    artifact_handoff_profiles: [direct_terminal_diagnosis, friction_terminal_diagnosis]
+    default_artifact_handoff_profile: direct_terminal_diagnosis
     execution_modes: [single_work_lane, sequential_work_lanes]
   research:
     template: low

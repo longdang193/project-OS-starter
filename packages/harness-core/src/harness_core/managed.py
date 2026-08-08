@@ -136,8 +136,11 @@ def _core_identity(
     request_api: Any | None = None,
 ) -> dict[str, Any]:
     core_policy = policy.get("harness_core")
+    policy_request_api = core_policy.get("request_api") if isinstance(core_policy, dict) else None
     if request_api is None:
-        request_api = core_policy.get("request_api") if isinstance(core_policy, dict) else None
+        request_api = policy_request_api
+    elif request_api != policy_request_api:
+        raise HarnessError("managed request API must match policy request_api")
     request_admission = admit_request_api(request_api)
     if not request_admission["ok"]:
         raise HarnessError(request_admission["code"])
@@ -201,40 +204,32 @@ def _friction_policy(root: Path) -> dict[str, Any]:
 
 
 def _evidence_artifact_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    raw = policy.get("evidence_artifacts", {})
-    if raw == {}:
-        return {"writer_retained_kinds": []}
+    raw = policy.get("evidence_artifacts")
     if not isinstance(raw, dict):
         raise HarnessError("invalid evidence artifact policy")
-    retained_kinds = raw.get("writer_retained_kinds")
-    if (
-        not isinstance(retained_kinds, list)
-        or len(set(retained_kinds)) != len(retained_kinds)
-        or not set(retained_kinds) <= READONLY_ARTIFACT_KINDS
-    ):
+    catalog = raw.get("catalog")
+    if not isinstance(catalog, dict):
         raise HarnessError("invalid evidence artifact policy")
-    return {"writer_retained_kinds": list(retained_kinds)}
+    retained_kinds = [
+        kind
+        for kind, entry in catalog.items()
+        if kind in READONLY_ARTIFACT_KINDS and isinstance(entry, dict) and entry.get("retention") == "writer_retained"
+    ]
+    return {"writer_retained_kinds": retained_kinds}
 
 
-def _readonly_artifact_policy(route: dict[str, Any], artifact_max_bytes: int) -> dict[str, Any]:
-    raw = route.get("readonly_artifacts", {})
-    if not isinstance(raw, dict):
-        raise HarnessError("invalid readonly artifact policy")
-    allowed_kinds = raw.get("allowed_kinds", [])
-    required_kinds = raw.get("required_kinds", [])
-    if (
-        not isinstance(allowed_kinds, list)
-        or len(set(allowed_kinds)) != len(allowed_kinds)
-        or not set(allowed_kinds) <= READONLY_ARTIFACT_KINDS
-        or not isinstance(required_kinds, list)
-        or len(set(required_kinds)) != len(required_kinds)
-        or not set(required_kinds) <= set(allowed_kinds)
-    ):
-        raise HarnessError("invalid readonly artifact policy")
+def _artifact_handoff_policy(policy: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:
+    raw = policy.get("evidence_artifacts")
+    if not isinstance(raw, dict) or not isinstance(raw.get("catalog"), dict) or not isinstance(raw.get("profiles"), dict):
+        raise HarnessError("invalid artifact handoff policy")
+    allowed_profiles = route.get("artifact_handoff_profiles", [])
+    if not isinstance(allowed_profiles, list):
+        raise HarnessError("invalid artifact handoff route")
     return {
-        "allowed_kinds": list(allowed_kinds),
-        "required_kinds": list(required_kinds),
-        "artifact_max_bytes": artifact_max_bytes,
+        "catalog": copy.deepcopy(raw["catalog"]),
+        "profiles": {name: copy.deepcopy(raw["profiles"][name]) for name in allowed_profiles},
+        "allowed_profiles": list(allowed_profiles),
+        "default_profile": route.get("default_artifact_handoff_profile"),
     }
 
 
@@ -255,6 +250,46 @@ def _artifact_descriptor(kind: str, source_run_id: str, source_attempt_id: str, 
         "byte_length": len(encoded),
         "content": copy.deepcopy(content),
     }
+
+
+def _validate_sanitized_command_trace(content: Any, max_bytes: int) -> None:
+    if not isinstance(content, dict) or set(content) != {"version", "commands"} or content.get("version") != 1:
+        raise HarnessError("sanitized command trace is invalid")
+    commands = content.get("commands")
+    if not isinstance(commands, list) or len(commands) > 16:
+        raise HarnessError("sanitized command trace commands are invalid")
+    for command in commands:
+        if (
+            not isinstance(command, dict)
+            or set(command) != {"item_id", "command", "output", "exit_code"}
+            or not isinstance(command["item_id"], str)
+            or not isinstance(command["command"], str)
+            or not isinstance(command["output"], str)
+            or len(command["command"].encode("utf-8")) > max_bytes
+            or len(command["output"].encode("utf-8")) > max_bytes
+            or (command["exit_code"] is not None and (not isinstance(command["exit_code"], int) or isinstance(command["exit_code"], bool)))
+        ):
+            raise HarnessError("sanitized command trace command is invalid")
+    if len(_artifact_content_bytes(content)) > max_bytes:
+        raise HarnessError("sanitized command trace exceeds artifact_max_bytes")
+
+
+def _validate_handoff_artifact_content(kind: str, content: Any, source_packet: dict[str, Any]) -> None:
+    if kind == "terminal_observation":
+        try:
+            normalize_terminal_observation(content, source_packet)
+        except TerminalObservationError as exc:
+            raise HarnessError("artifact_handoff terminal_observation is invalid") from exc
+        return
+    if kind != "sanitized_command_trace":
+        raise HarnessError(f"artifact_handoff `{kind}` is unsupported")
+    retained = source_packet.get("retained_artifacts")
+    if not isinstance(retained, list):
+        raise HarnessError("artifact_handoff sanitized_command_trace has invalid producer")
+    matches = [item for item in retained if isinstance(item, dict) and item.get("kind") == kind]
+    if len(matches) != 1 or not isinstance(matches[0].get("max_bytes"), int) or isinstance(matches[0]["max_bytes"], bool) or matches[0]["max_bytes"] <= 0:
+        raise HarnessError("artifact_handoff sanitized_command_trace has invalid producer")
+    _validate_sanitized_command_trace(content, matches[0]["max_bytes"])
 
 
 def _source_attempt(run: dict[str, Any], attempt_id: str) -> dict[str, Any]:
@@ -279,44 +314,154 @@ def _stored_artifact_content(attempt: dict[str, Any], kind: str) -> Any:
             return content
     artifacts = evidence.get("artifacts", [])
     if isinstance(artifacts, list):
-        artifact = next((item for item in artifacts if isinstance(item, dict) and item.get("kind") == kind), None)
-        if isinstance(artifact, dict) and "content" in artifact:
-            return artifact["content"]
+        matches = [item for item in artifacts if isinstance(item, dict) and item.get("kind") == kind]
+        if len(matches) > 1:
+            raise HarnessError(f"readonly artifact `{kind}` is duplicated")
+        if len(matches) == 1 and "content" in matches[0]:
+            return matches[0]["content"]
     raise HarnessError(f"readonly artifact `{kind}` is unavailable")
 
 
-def _resolve_readonly_artifacts(root: Path, packet: dict[str, Any], value: Any) -> list[dict[str, Any]]:
-    policy = packet["readonly_artifact_policy"]
-    if value is None:
-        value = []
-    if not isinstance(value, list):
-        raise HarnessError("readonly_artifacts must be a list")
-    if packet["workspace_write_access"] != "read_only" and value:
-        raise HarnessError("readonly_artifacts require read-only packet access")
-    resolved: list[dict[str, Any]] = []
-    for raw in value:
-        if not isinstance(raw, dict) or set(raw) != {"kind", "source_run_id", "source_attempt_id"}:
-            raise HarnessError("readonly_artifact has invalid fields")
-        kind = _required_string(raw.get("kind"), "readonly artifact kind")
-        if kind not in policy["allowed_kinds"]:
-            raise HarnessError(f"readonly artifact `{kind}` is not allowed by route")
-        source_run_id = _safe_run_id(raw.get("source_run_id"))
-        source_attempt_id = _required_string(raw.get("source_attempt_id"), "readonly artifact source_attempt_id")
+def _handoff_source_records(
+    root: Path,
+    packet: dict[str, Any],
+    profile: dict[str, Any],
+    sources: list[dict[str, str]],
+) -> list[tuple[str, str, dict[str, Any], dict[str, Any]]]:
+    if not sources:
+        raise HarnessError("artifact_handoff requires a source")
+    records: list[tuple[str, str, dict[str, Any], dict[str, Any]]] = []
+    seen: set[tuple[str, str]] = set()
+    for source in sources:
+        if not isinstance(source, dict) or set(source) != {"run_id", "attempt_id"}:
+            raise HarnessError("artifact_handoff source has invalid fields")
+        source_run_id = _safe_run_id(source["run_id"])
+        source_attempt_id = _required_string(source["attempt_id"], "artifact_handoff source attempt_id")
+        if (source_run_id, source_attempt_id) in seen:
+            raise HarnessError("artifact_handoff contains duplicate source")
+        seen.add((source_run_id, source_attempt_id))
         source_attempt = _source_attempt(_load_run(root, source_run_id), source_attempt_id)
-        descriptor = _artifact_descriptor(
-            kind,
-            source_run_id,
-            source_attempt_id,
-            _stored_artifact_content(source_attempt, kind),
-        )
-        if descriptor["byte_length"] > policy["artifact_max_bytes"]:
-            raise HarnessError("readonly artifact exceeds artifact_max_bytes")
-        resolved.append(descriptor)
-    if len({(item["kind"], item["source_run_id"], item["source_attempt_id"]) for item in resolved}) != len(resolved):
-        raise HarnessError("readonly_artifacts must not contain duplicates")
-    if not set(policy["required_kinds"]) <= {item["kind"] for item in resolved}:
-        raise HarnessError("readonly_artifacts missing route-required kinds")
-    return resolved
+        source_packet = source_attempt.get("packet")
+        if not isinstance(source_packet, dict):
+            raise HarnessError("artifact_handoff source packet is unavailable")
+        base_compatibility = profile.get("base_compatibility")
+        if base_compatibility == "exact_packet_base" and source_packet.get("base_commit") != packet.get("base_commit"):
+            raise HarnessError("artifact_handoff source base is incompatible")
+        if base_compatibility not in {"exact_packet_base", "same_repository", None}:
+            raise HarnessError("artifact_handoff source base compatibility is invalid")
+        records.append((source_run_id, source_attempt_id, source_attempt, source_packet))
+    return records
+
+
+def _select_handoff_artifacts(
+    packet: dict[str, Any],
+    profile: dict[str, Any],
+    sources: list[tuple[str, str, dict[str, Any], dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    policy = packet["artifact_handoff_policy"]
+    selected: list[dict[str, Any]] = []
+    rejected: list[dict[str, str]] = []
+    selected_keys: set[tuple[str, str, str]] = set()
+
+    def select(kind: str, source: tuple[str, str, dict[str, Any], dict[str, Any]]) -> dict[str, Any]:
+        source_run_id, source_attempt_id, source_attempt, source_packet = source
+        content = _stored_artifact_content(source_attempt, kind)
+        _validate_handoff_artifact_content(kind, content, source_packet)
+        return _artifact_descriptor(kind, source_run_id, source_attempt_id, content)
+
+    def add(descriptor: dict[str, Any], *, required: bool) -> bool:
+        key = (descriptor["kind"], descriptor["source_run_id"], descriptor["source_attempt_id"])
+        if key in selected_keys:
+            if required:
+                raise HarnessError("artifact_handoff contains duplicate selected descriptor")
+            return False
+        if descriptor["byte_length"] > policy["catalog"][descriptor["kind"]]["byte_limit"]:
+            if required:
+                raise HarnessError("artifact_handoff required artifact exceeds byte limit")
+            rejected.append({"kind": descriptor["kind"], "reason": "byte_limit"})
+            return False
+        if len(selected) >= profile["count_limit"] or sum(item["byte_length"] for item in selected) + descriptor["byte_length"] > profile["total_byte_limit"]:
+            if required:
+                raise HarnessError("artifact_handoff required artifact exceeds profile bounds")
+            rejected.append({"kind": descriptor["kind"], "reason": "profile_limit"})
+            return False
+        selected.append(descriptor)
+        selected_keys.add(key)
+        return True
+
+    for kind in profile["required_kinds"]:
+        for source in sources:
+            try:
+                descriptor = select(kind, source)
+            except HarnessError as exc:
+                if "is unavailable" in str(exc):
+                    continue
+                raise HarnessError(f"artifact_handoff required `{kind}` is invalid") from exc
+            add(descriptor, required=True)
+            break
+        else:
+            raise HarnessError(f"artifact_handoff missing required `{kind}`")
+
+    for kind in (kind for kind in profile["kind_priority"] if kind not in profile["required_kinds"]):
+        for source in sources:
+            try:
+                descriptor = select(kind, source)
+            except HarnessError as exc:
+                rejected.append({"kind": kind, "reason": "unavailable" if "is unavailable" in str(exc) else "invalid"})
+                continue
+            add(descriptor, required=False)
+    return selected, rejected
+
+
+def _resolve_artifact_handoff_sources(
+    root: Path,
+    packet: dict[str, Any],
+    profile_name: str,
+    sources: list[dict[str, str]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    policy = packet["artifact_handoff_policy"]
+    if profile_name not in policy["allowed_profiles"]:
+        raise HarnessError("artifact_handoff profile is not allowed by route")
+    profile = policy["profiles"][profile_name]
+    source_records = _handoff_source_records(root, packet, profile, sources)
+    selected, rejected = _select_handoff_artifacts(packet, profile, source_records)
+    digest_input = {
+        "version": 1,
+        "profile": profile_name,
+        "lineage_mode": profile["lineage_mode"],
+        "sources": [{"run_id": run_id, "attempt_id": attempt_id} for run_id, attempt_id, _attempt, _packet in source_records],
+        "descriptors": [{key: item[key] for key in ("kind", "source_run_id", "source_attempt_id", "sha256", "byte_length")} for item in selected],
+        "rejections": rejected,
+    }
+    proof = {
+        "version": 1,
+        "profile": profile_name,
+        "lineage_mode": profile["lineage_mode"],
+        "selected_count": len(selected),
+        "total_bytes": sum(item["byte_length"] for item in selected),
+        "selection_digest": hashlib.sha256(_artifact_content_bytes(digest_input)).hexdigest(),
+    }
+    audit = {**proof, "sources": digest_input["sources"], "selected": digest_input["descriptors"], "optional_rejections": rejected}
+    return selected, {"proof": proof, "audit": audit}
+
+
+def _resolve_artifact_handoff(root: Path, packet: dict[str, Any], value: Any) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    if value is None:
+        return [], None
+    if packet["workspace_write_access"] != "read_only":
+        raise HarnessError("artifact_handoff requires read-only packet access")
+    if not isinstance(value, dict) or set(value) - {"source_run_id", "source_attempt_id", "profile"} or {"source_run_id", "source_attempt_id"} - set(value):
+        raise HarnessError("artifact_handoff has invalid fields")
+    policy = packet["artifact_handoff_policy"]
+    profile_name = value.get("profile", policy["default_profile"])
+    if not isinstance(profile_name, str) or profile_name not in policy["allowed_profiles"]:
+        raise HarnessError("artifact_handoff profile is not allowed by route")
+    if policy["profiles"][profile_name]["lineage_mode"] != "direct":
+        raise HarnessError("artifact_handoff requires a direct profile")
+    return _resolve_artifact_handoff_sources(root, packet, profile_name, [{
+        "run_id": value["source_run_id"],
+        "attempt_id": value["source_attempt_id"],
+    }])
 
 
 def _canonical_execution_mode(
@@ -716,7 +861,7 @@ def _route_packet(
     if not isinstance(authority, dict) or not isinstance(tools, list) or not isinstance(verification_profile, dict):
         raise HarnessError(f"task type `{task_type}` has unresolved route profiles")
     evidence_artifacts = _evidence_artifact_policy(policy)
-    readonly_artifact_policy = _readonly_artifact_policy(route, policy["context_limits"]["artifact_max_bytes"])
+    artifact_handoff_policy = _artifact_handoff_policy(policy, route)
     tool_bindings = [
         {
             "tool": name,
@@ -749,7 +894,7 @@ def _route_packet(
             for kind in evidence_artifacts["writer_retained_kinds"]
             if authority["workspace_write_access"] == "workspace_write"
         ],
-        "readonly_artifact_policy": readonly_artifact_policy,
+        "artifact_handoff_policy": artifact_handoff_policy,
         "orchestration": {
             "name": execution_mode,
             "work_scheduling": orchestration["work_scheduling"],
@@ -1170,30 +1315,22 @@ def record_friction_event(
 def _friction_readonly_artifact_requests(
     root: Path,
     observed: list[dict[str, Any]],
-    route: dict[str, Any],
 ) -> list[dict[str, str]]:
-    policy = _readonly_artifact_policy(route, _load_policy(root)["context_limits"]["artifact_max_bytes"])
-    if not policy["allowed_kinds"]:
-        return []
     requests: list[dict[str, str]] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str]] = set()
     for event in sorted(observed, key=lambda item: (item["occurred_at"], item["event_id"]), reverse=True):
         try:
             source_run_id = _safe_run_id(event["run_id"])
             source_attempt_id = _required_string(event["attempt_id"], "friction source attempt_id")
             source_attempt = _source_attempt(_load_run(root, source_run_id), source_attempt_id)
+            _stored_artifact_content(source_attempt, "terminal_observation")
         except HarnessError:
             continue
-        for kind in policy["allowed_kinds"]:
-            key = (kind, source_run_id, source_attempt_id)
-            if key in seen:
-                continue
-            try:
-                _stored_artifact_content(source_attempt, kind)
-            except HarnessError:
-                continue
-            requests.append({"kind": kind, "source_run_id": source_run_id, "source_attempt_id": source_attempt_id})
-            seen.add(key)
+        key = (source_run_id, source_attempt_id)
+        if key in seen:
+            continue
+        requests.append({"run_id": source_run_id, "attempt_id": source_attempt_id})
+        seen.add(key)
     return requests
 
 
@@ -1237,17 +1374,28 @@ def friction_report(root: Path, *, now: datetime | None = None) -> dict[str, Any
         if task_type is not None:
             route = routes[task_type]
             authority = route_policy["authorities"][route["authority"]]
-            readonly_artifacts = _friction_readonly_artifact_requests(root, observed, route)
-            readonly_policy = _readonly_artifact_policy(route, route_policy["context_limits"]["artifact_max_bytes"])
-            if set(readonly_policy["required_kinds"]) <= {item["kind"] for item in readonly_artifacts}:
+            sources = _friction_readonly_artifact_requests(root, observed)
+            handoff_policy = _artifact_handoff_policy(route_policy, route)
+            profile_name = "friction_terminal_diagnosis"
+            try:
+                _resolve_artifact_handoff_sources(
+                    root,
+                    {
+                        "workspace_write_access": authority["workspace_write_access"],
+                        "artifact_handoff_policy": handoff_policy,
+                    },
+                    profile_name,
+                    sources,
+                )
+            except HarnessError:
+                candidate["follow_up_blocked"] = "missing_required_readonly_artifacts"
+            else:
                 candidate["follow_up"] = {
                     "task_type": task_type,
                     "execution_mode": "single_work_lane",
                     "workspace_write_access": authority["workspace_write_access"],
-                    "readonly_artifacts": readonly_artifacts,
+                    "artifact_handoff": {"profile": profile_name},
                 }
-            else:
-                candidate["follow_up_blocked"] = "missing_required_readonly_artifacts"
         candidates.append(candidate)
     return {
         "version": FRICTION_EVENT_VERSION,
@@ -1504,6 +1652,9 @@ def _normalize_managed_request(
     admission = admit_request_api(version)
     if not admission["ok"]:
         raise HarnessError(admission["code"])
+    core_policy = policy.get("harness_core")
+    if not isinstance(core_policy, dict) or version != core_policy.get("request_api"):
+        raise HarnessError("managed request API must match policy request_api")
     normalized = copy.deepcopy(request)
     normalized["execution_mode"] = _canonical_execution_mode(
         policy,
@@ -1641,7 +1792,12 @@ def resolve_managed_packet(
     })
     if provider_runtime_binding is not None:
         packet["provider_runtime_binding"] = provider_runtime_binding
-    packet["readonly_artifacts"] = _resolve_readonly_artifacts(root, packet, request.get("readonly_artifacts"))
+    if "readonly_artifacts" in request:
+        raise HarnessError("request API 5 rejects readonly_artifacts")
+    packet["readonly_artifacts"], handoff = _resolve_artifact_handoff(root, packet, request.get("artifact_handoff"))
+    if handoff is not None:
+        packet["artifact_handoff"] = handoff["proof"]
+        packet["artifact_handoff_audit"] = handoff["audit"]
     if coordination is not None and plan_task is not None:
         packet.update({
             "plan_ref": coordination.plan_ref,
@@ -1682,6 +1838,7 @@ def _append_attempt(run: dict[str, Any], packet: dict[str, Any]) -> dict[str, An
         "claims": [],
         "node_observations": [],
         "evidence": {},
+        "artifact_handoff_audit": copy.deepcopy(packet.get("artifact_handoff_audit")),
         "friction_event_ids": [],
         "outcome": None,
         "decision": None,
@@ -2685,25 +2842,9 @@ def _normalize_retained_artifacts(exc: Exception, packet: dict[str, Any]) -> lis
             raise HarnessError(f"host retained artifact `{kind}` was not packet-approved")
         content = item["content"]
         if kind == "sanitized_command_trace":
-            if not isinstance(content, dict) or set(content) != {"version", "commands"} or content.get("version") != 1:
-                raise HarnessError("sanitized command trace is invalid")
-            commands = content.get("commands")
-            if not isinstance(commands, list) or len(commands) > 16:
-                raise HarnessError("sanitized command trace commands are invalid")
-            for command in commands:
-                if (
-                    not isinstance(command, dict)
-                    or set(command) != {"item_id", "command", "output", "exit_code"}
-                    or not isinstance(command["item_id"], str)
-                    or not isinstance(command["command"], str)
-                    or not isinstance(command["output"], str)
-                    or len(command["command"].encode("utf-8")) > limits[kind]
-                    or len(command["output"].encode("utf-8")) > limits[kind]
-                    or (command["exit_code"] is not None and (not isinstance(command["exit_code"], int) or isinstance(command["exit_code"], bool)))
-                ):
-                    raise HarnessError("sanitized command trace command is invalid")
-        if len(_artifact_content_bytes(content)) > limits[kind]:
-            raise HarnessError("sanitized command trace exceeds artifact_max_bytes")
+            _validate_sanitized_command_trace(content, limits[kind])
+        elif len(_artifact_content_bytes(content)) > limits[kind]:
+            raise HarnessError("retained artifact exceeds artifact_max_bytes")
         normalized.append({"kind": kind, "content": copy.deepcopy(content)})
     if len({item["kind"] for item in normalized}) != len(normalized):
         raise HarnessError("host retained artifacts must not contain duplicate kinds")
@@ -3241,6 +3382,10 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
         retry_policy = attempt["packet"]["retry_policy"]
         execution_budget_profile = None
         provider_runtime_binding = None
+        if attempt["packet"].get("version") == CURRENT_PACKET_API:
+            provider_runtime_binding = attempt["packet"].get("provider_runtime_binding")
+            if not isinstance(provider_runtime_binding, dict):
+                raise HarnessError("successor attempt lacks provider runtime binding")
         if outcome["reason"] == "dispatch_timeout":
             if kind != "escalate":
                 raise HarnessError("timeout outcome requires escalation or block")
@@ -3252,10 +3397,6 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
                     raise HarnessError("timeout outcome lacks operating profile transition")
                 successor_request = _successor_request(run, decision.get("successor"))
                 successor_request["operating_profile_selection"] = {"id": transition["to"], "reason": "dispatch_timeout"}
-                if attempt["packet"].get("version") == CURRENT_PACKET_API:
-                    provider_runtime_binding = attempt["packet"].get("provider_runtime_binding")
-                    if not isinstance(provider_runtime_binding, dict):
-                        raise HarnessError("timeout outcome lacks provider runtime binding")
             else:
                 execution_budget_profile = attempt["packet"]["execution_budget"].get("escalation_profile")
                 if not isinstance(execution_budget_profile, str) or not execution_budget_profile:
@@ -3327,7 +3468,18 @@ def main(argv: list[str] | None = None) -> int:
                 root,
                 task,
                 {
-                    "host_api": 2,
+                    "host_api": 5,
+                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 5},
+                    "preflight_evidence": lambda: {
+                        "provider_id": "codex_app_server",
+                        "host_api": 5,
+                        "contract_version": 5,
+                        "transport": "stdio",
+                        "lifecycle": "host_spawn",
+                        "protocol": "app-server-v1",
+                        "configuration_digest": "0" * 64,
+                        "readiness": "ready",
+                    },
                     "capabilities": lambda: {},
                     "unavailable_detail": "Generic harness CLI has no injected host adapter; use a provider host entrypoint.",
                 },

@@ -53,8 +53,8 @@ def write_harness_root(root: Path) -> None:
         "repo_config/harness.yaml",
         yaml.safe_dump(
             {
-                "version": 4,
-                "harness_core": {"request_api": 4},
+                "version": 5,
+                "harness_core": {"request_api": 5},
                 "context_limits": {
                     "objective_max_bytes": 1024,
                     "fact_max_bytes": 4096,
@@ -64,7 +64,40 @@ def write_harness_root(root: Path) -> None:
                     "outcome_summary_max_bytes": 2048,
                 },
                 "evidence_artifacts": {
-                    "writer_retained_kinds": ["sanitized_command_trace"],
+                    "catalog": {
+                        "terminal_observation": {
+                            "schema_id": "terminal_observation/v1",
+                            "producer": "host",
+                            "retention": "terminal",
+                            "byte_limit": 4096,
+                        },
+                        "sanitized_command_trace": {
+                            "schema_id": "sanitized_command_trace/v1",
+                            "producer": "writer",
+                            "retention": "writer_retained",
+                            "byte_limit": 4096,
+                        },
+                    },
+                    "profiles": {
+                        "direct_terminal_diagnosis": {
+                            "lineage_mode": "direct",
+                            "allowed_kinds": ["terminal_observation", "sanitized_command_trace"],
+                            "required_kinds": ["terminal_observation"],
+                            "kind_priority": ["terminal_observation", "sanitized_command_trace"],
+                            "base_compatibility": "exact_packet_base",
+                            "count_limit": 2,
+                            "total_byte_limit": 8192,
+                        },
+                        "friction_terminal_diagnosis": {
+                            "lineage_mode": "source_set",
+                            "allowed_kinds": ["terminal_observation", "sanitized_command_trace"],
+                            "required_kinds": ["terminal_observation"],
+                            "kind_priority": ["terminal_observation", "sanitized_command_trace"],
+                            "base_compatibility": "same_repository",
+                            "count_limit": 6,
+                            "total_byte_limit": 24576,
+                        },
+                    },
                 },
                 "delegation_profiles": {
                     "disabled": {
@@ -125,7 +158,7 @@ def write_harness_root(root: Path) -> None:
                         "root_probe": "shell_root_probe",
                     },
                 },
-                "runtime_providers": {"codex_app_server": {"contract_version": 4}},
+                "runtime_providers": {"codex_app_server": {"contract_version": 5}},
                 "friction_policy": {"event_version": 1, "minimum_distinct_runs": 3, "window_days": 14},
                 "approval_gates": {"protected": {"paths": ["repo_config/harness.yaml"]}},
                 "orchestration": {
@@ -218,7 +251,7 @@ def composed_policy(root: Path) -> tuple[Path, dict[str, object]]:
     return path, policy
 
 
-def test_v4_policy_profiles_validate(tmp_path: Path) -> None:
+def test_v5_policy_catalog_and_profiles_validate(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
 
     assert config_validation.validate(tmp_path) == []
@@ -296,30 +329,22 @@ def test_defaults_cannot_grant_approval_bypass(tmp_path: Path) -> None:
     assert "defaults must contain only safe route defaults" in config_validation.validate(tmp_path)
 
 
-def test_legacy_trace_limit_must_match_context_limit(tmp_path: Path) -> None:
+def test_v1_catalog_rejects_invalid_fixed_contract(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
     path, policy = load_policy(tmp_path)
-    policy["evidence_artifacts"]["sanitized_command_trace_max_bytes"] = 4096
+    policy["evidence_artifacts"]["catalog"]["terminal_observation"]["schema_id"] = "arbitrary/v1"
     write_policy(path, policy)
 
-    assert config_validation.validate(tmp_path) == []
-
-    policy["evidence_artifacts"]["sanitized_command_trace_max_bytes"] = 8192
-    write_policy(path, policy)
-
-    assert "evidence_artifacts legacy sanitized_command_trace_max_bytes must match artifact_max_bytes" in config_validation.validate(tmp_path)
+    assert "evidence artifact catalog `terminal_observation` has invalid V1 contract" in config_validation.validate(tmp_path)
 
 
-def test_readonly_artifacts_require_readonly_authority(tmp_path: Path) -> None:
+def test_artifact_handoff_profiles_require_readonly_authority(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
     path, policy = load_policy(tmp_path)
-    policy["routes"]["local_change"]["readonly_artifacts"] = {
-        "allowed_kinds": ["terminal_observation"],
-        "required_kinds": ["terminal_observation"],
-    }
+    policy["routes"]["local_change"]["artifact_handoff_profiles"] = ["direct_terminal_diagnosis"]
     write_policy(path, policy)
 
-    assert "route `local_change` readonly_artifacts requires read-only authority" in config_validation.validate(tmp_path)
+    assert "route `local_change` artifact_handoff_profiles require read-only authority" in config_validation.validate(tmp_path)
 
 
 def test_tool_fallback_is_rejected(tmp_path: Path) -> None:
@@ -347,7 +372,7 @@ def test_unknown_template_skill_and_rule_fail(tmp_path: Path) -> None:
     assert "route `local_change` has unknown rules" in errors
 
 
-@pytest.mark.parametrize("value", [None, "4", 1])
+@pytest.mark.parametrize("value", [None, "5", 4, 1])
 def test_harness_core_request_api_requires_current_integer(tmp_path: Path, value: object) -> None:
     write_harness_root(tmp_path)
     path, policy = load_policy(tmp_path)

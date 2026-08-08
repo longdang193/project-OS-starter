@@ -23,18 +23,26 @@ COMPATIBILITY_PROFILES = (
     },
     {
         "name": "provider_transport",
-        "request_apis": frozenset({4}),
+        "request_apis": frozenset(),
         "packet_api": 5,
         "dispatch_host_api": 4,
         "provider_contract": 4,
         "read_host_apis": frozenset({4}),
     },
+    {
+        "name": "artifact_handoff",
+        "request_apis": frozenset({5}),
+        "packet_api": 6,
+        "dispatch_host_api": 5,
+        "provider_contract": 5,
+        "read_host_apis": frozenset({5}),
+    },
 )
 SUPPORTED_REQUEST_APIS = frozenset().union(*(profile["request_apis"] for profile in COMPATIBILITY_PROFILES))
 SUPPORTED_PACKET_READ_APIS = frozenset(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)
-CURRENT_PACKET_API = 5
+CURRENT_PACKET_API = 6
 CURRENT_RUN_API = 2
-POLICY_SCHEMA_VERSION = 4
+POLICY_SCHEMA_VERSION = 5
 SUPPORTED_HOST_APIS = frozenset({profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES})
 TERMINAL_OBSERVATION_VERSION = 1
 TIMEOUT_OBSERVATION_VERSION = TERMINAL_OBSERVATION_VERSION
