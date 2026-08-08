@@ -51,7 +51,7 @@ from .compatibility import (
     admit_request_api,
     can_read_packet_api,
     legacy_role_capabilities,
-    package_release,
+    runtime_identity,
 )
 from .terminal_observation import TerminalObservationError, normalize_terminal_observation
 from .timeout_observation import TimeoutObservationError, normalize_timeout_observation
@@ -150,11 +150,11 @@ def _core_identity(
         if not dispatch_admission["ok"]:
             raise HarnessError(dispatch_admission["code"])
     try:
-        release = package_release()
+        identity = runtime_identity()
     except RuntimeError as exc:
         raise HarnessError("harness_core_identity_unavailable") from exc
     return {
-        "package_release": release,
+        **identity,
         "request_api": request_admission["request_api"],
         "packet_api": request_admission["packet_api"],
         "host_api": host_api,

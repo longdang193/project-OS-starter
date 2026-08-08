@@ -226,7 +226,7 @@ def test_codex_provider_guidance_uses_host_owned_transport_config() -> None:
             "provider_configuration_changed",
         ),
         REPO_ROOT / "docs/operating_system/procedures/harness-core-consumer-setup.md": (
-            "harness-core-v0.1.13",
+            "harness-core-v0.1.14",
             "contract_version: 4",
             "packet API 5",
         ),

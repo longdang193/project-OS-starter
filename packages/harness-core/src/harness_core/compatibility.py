@@ -34,6 +34,7 @@ SUPPORTED_REQUEST_APIS = frozenset().union(*(profile["request_apis"] for profile
 SUPPORTED_PACKET_READ_APIS = frozenset(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)
 CURRENT_PACKET_API = 5
 CURRENT_RUN_API = 2
+POLICY_SCHEMA_VERSION = 4
 SUPPORTED_HOST_APIS = frozenset({profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES})
 TERMINAL_OBSERVATION_VERSION = 1
 TIMEOUT_OBSERVATION_VERSION = TERMINAL_OBSERVATION_VERSION
@@ -52,6 +53,13 @@ def package_release() -> str:
         return version("harness-core")
     except PackageNotFoundError as exc:
         raise RuntimeError("harness-core package metadata is unavailable") from exc
+
+
+def runtime_identity() -> dict[str, Any]:
+    return {
+        "package_release": package_release(),
+        "policy_schema_version": POLICY_SCHEMA_VERSION,
+    }
 
 
 def admit_request_api(value: Any) -> dict[str, Any]:

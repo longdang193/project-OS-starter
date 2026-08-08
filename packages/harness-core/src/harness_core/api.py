@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .config_validation import validate as validate_config
+from .compatibility import runtime_identity
 from .coordination import load_plan_coordination
 from .managed import (
     admit_managed_operation,
@@ -34,6 +35,7 @@ __all__ = [
     "resolve_managed_packet",
     "resolve_task",
     "run_managed",
+    "runtime_identity",
     "validate_config",
     "verify_task",
     "TimeoutObservationError",

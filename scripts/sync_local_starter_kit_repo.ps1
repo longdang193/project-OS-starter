@@ -26,15 +26,32 @@ if ($sourceFullPath -eq $targetFullPath) {
     throw "Starter-kit source and target must differ: $sourceFullPath"
 }
 
-Get-ChildItem -LiteralPath $targetFullPath -Force |
-    Where-Object { $_.Name -ne '.git' } |
-    Remove-Item -Recurse -Force
+$stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("project-OS-starter-kit-sync-" + [guid]::NewGuid().ToString("N"))
+try {
+    New-Item -ItemType Directory -Path $stagingRoot | Out-Null
+    Get-ChildItem -LiteralPath $sourceFullPath -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $stagingRoot -Recurse -Force
+    }
+    $stagingPath = (Resolve-Path -LiteralPath $stagingRoot).Path
 
-Get-ChildItem -LiteralPath $sourceFullPath -Force | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $targetFullPath -Recurse -Force
+    & python (Join-Path $repoRoot 'scripts/validate_starter_kit.py') --kit-root $sourceFullPath --compare-kit-root $stagingPath
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    Get-ChildItem -LiteralPath $targetFullPath -Force |
+        Where-Object { $_.Name -ne '.git' } |
+        Remove-Item -Recurse -Force
+
+    Get-ChildItem -LiteralPath $stagingPath -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $targetFullPath -Recurse -Force
+    }
+
+    & python (Join-Path $repoRoot 'scripts/validate_starter_kit.py') --kit-root $sourceFullPath --compare-kit-root $targetFullPath
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
-
-& python (Join-Path $repoRoot 'scripts/validate_starter_kit.py') --kit-root $sourceFullPath --compare-kit-root $targetFullPath
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+finally {
+    if (Test-Path -LiteralPath $stagingRoot) {
+        Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+    }
+}
 
 Write-Host "Starter kit synced: $sourcePath -> $targetPath"

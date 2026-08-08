@@ -10,7 +10,7 @@ from .compatibility import (
     SUPPORTED_HOST_APIS,
     SUPPORTED_PACKET_READ_APIS,
     SUPPORTED_REQUEST_APIS,
-    package_release,
+    runtime_identity,
 )
 from .config_validation import validate as validate_config
 from .managed import main as managed_main
@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments == ["--identity"]:
         print(json.dumps({
             "package": "harness-core",
-            "package_release": package_release(),
+            **runtime_identity(),
             "supported_request_apis": sorted(SUPPORTED_REQUEST_APIS),
             "supported_packet_read_apis": sorted(SUPPORTED_PACKET_READ_APIS),
             "current_packet_api": CURRENT_PACKET_API,

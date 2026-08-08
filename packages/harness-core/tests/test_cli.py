@@ -19,3 +19,15 @@ def test_module_validate_reports_consumer_policy() -> None:
 
     assert result.returncode == 0
     assert json.loads(result.stdout) == {"errors": [], "status": "valid"}
+
+
+def test_module_identity_reports_policy_schema() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "harness_core.cli", "--identity"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["policy_schema_version"] == 4
