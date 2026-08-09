@@ -13,13 +13,13 @@ consumer scripts never implement managed execution.
 ## Install
 
 Pin both packages to released source tags compatible with provider host. Current
-tested pins: `harness-core-v0.1.21` and `harness-core-launcher-v0.1.0`.
+tested pins: `harness-core-v0.1.22` and `harness-core-launcher-v0.1.0`.
 Provider-host compatibility requires matching locked core pins, admitted host
 API, and committed runtime provenance. Host package version alone is not proof
 that its imported runtime contains a required host-source repair.
 
 ```powershell
-uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.21#subdirectory=packages/harness-core"
+uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.22#subdirectory=packages/harness-core"
 uv add "harness-core-launcher @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-launcher-v0.1.0#subdirectory=packages/harness-core-launcher"
 ```
 
@@ -43,6 +43,11 @@ preflight from installed provider source root. For `codex_app_server`, use
 `uv run --locked codex-harness-host preflight`; provider host owns trusted user
 transport configuration. Repository policy never carries endpoint,
 launch-command, or credential values.
+For `stdio` plus `host_spawn`, provider host requires Windows Job containment
+and rejects unsupported hosts before child creation with
+`containment_unavailable`; configure trusted external WebSocket transport
+instead. Host lifecycle and recovery evidence rules live in
+[`managed-execution-adapter-contract.md`](managed-execution-adapter-contract.md).
 
 Current Codex App Server policy requires `harness_core.request_api: 5` and
 provider `contract_version: 7`. Core resolves packet API 8 for host API 7 and

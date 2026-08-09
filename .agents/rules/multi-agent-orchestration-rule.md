@@ -52,6 +52,11 @@ To update: edit canonical source, then run sync.
   signed `controller_authorization/v1`. Core atomically writes terminal evidence,
   receipt, lease release, state history, and `run.json`. Live or unverified
   expired processes are `orphaned`; do not retry or resume them.
+- `stdio` plus `host_spawn` requires Windows Job containment and must reject
+  unsupported hosts before child creation. Preflight owns temporary containment;
+  lease lanes borrow containment. A host `terminal_recording_failed` payload
+  means cleanup proof is incomplete: preserve it for controller recovery, never
+  fabricate lane evidence, retry, or terminalize from host output.
 - `--run-id` resumes only when run state is `planned`. A terminal coordinated
   task failure is `blocked`; preserve evidence and require approved successor
   plan/task identity before a fresh request.

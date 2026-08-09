@@ -37,6 +37,11 @@ Host binds every observation to run, attempt, packet digest, lease, and host
 instance identity. Expired live or unverified process state is `orphaned`, not
 retryable work. Windows containment uses one unnamed kill-on-close Job Object
 per lease; no PID-tree, process-group, `taskkill`, or reopened-job fallback.
+`stdio` plus `host_spawn` requires Windows Job containment and rejects
+unsupported hosts before child creation. Preflight owns temporary containment;
+leased lanes borrow containment. A host `terminal_recording_failed` payload
+means cleanup proof is incomplete: preserve it for controller recovery, never
+fabricate lane evidence, retry, or terminalize from host output.
 Core records every finalization subject as `attempt_outcome/v2`. Controller uses
 only `terminalize_attempt(envelope)`: evidence form records outcome and terminal
 evidence; outcome form finalizes exact outcome. Core writes final state,

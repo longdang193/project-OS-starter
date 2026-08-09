@@ -55,6 +55,10 @@ ordinary direct execution.
   `--run-id <run-id>` only to resume an existing planned attempt. Do not retry
   through `run-unavailable`; preserve that terminal proof and create successor
   request.
+- `stdio` plus `host_spawn` requires Windows containment. A preflight failure
+  can carry sanitized lifecycle fields. A host `terminal_recording_failed`
+  payload is recovery evidence only: preserve it for controller recovery; never
+  create lane evidence, retry, or terminalize from it.
 - A terminal coordinated task failure derives `blocked` status. Preserve its
   run evidence; require approved successor plan/task identity instead of a
   fresh request against same task.

@@ -79,13 +79,26 @@ codex-harness-host run --help
 `run --help` must expose both exclusive inputs: `--request` and `--run-id`.
 
 `preflight` opens configured stdio or explicit external WebSocket transport and
-completes `initialize`. `run` admits core and host API, then repeats liveness
-proof before packet, workspace, or `run.json` creation. Missing or invalid
-trusted configuration returns `provider_runtime_unavailable`; configured
-transport or authentication failure returns `preflight_failed`. `--request`
-starts one run; `--run-id` resumes one existing planned attempt without request
-resubmission. Inputs are exclusive. Current dispatchable packet API stores a non-secret runtime
-binding; host re-reads configuration before every lane and returns
+completes `initialize`. `stdio` plus `host_spawn` is Windows-only: host resolves
+one registered launcher, contains its suspended direct child in a Job Object,
+verifies the child image, then resumes it. Unsupported hosts fail before child
+creation with `containment_unavailable`; use trusted external WebSocket transport
+instead. Preflight owns a temporary Job; managed lanes borrow their lease Job.
+
+Startup uses the host-owned short cap inside existing operation budget. Failure
+output is `preflight_failed` with sanitized `failure_code` and
+`session_observation`. Reaped managed sessions produce only current
+`host_terminal_observation/v2`. If cleanup cannot prove containment stopped,
+host emits bounded `terminal_recording_failed` recovery evidence; it must not
+emit incomplete lane evidence, write `run.json`, retry, or terminalize.
+
+`run` admits core and host API, then repeats liveness proof before packet,
+workspace, or `run.json` creation. Missing or invalid trusted configuration
+returns `provider_runtime_unavailable`; configured transport or authentication
+failure returns `preflight_failed`. `--request` starts one run; `--run-id`
+resumes one existing planned attempt without request resubmission. Inputs are
+exclusive. Current dispatchable packet API stores a non-secret runtime binding;
+host re-reads configuration before every lane and returns
 `provider_configuration_changed` before provider or product work if binding
 drifts. No automatic transport fallback exists.
 
