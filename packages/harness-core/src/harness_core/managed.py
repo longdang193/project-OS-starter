@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -31,6 +32,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import time
 import tomllib
 from typing import Any, Callable, NotRequired, TypedDict
 import uuid
@@ -53,7 +55,12 @@ from .compatibility import (
     legacy_role_capabilities,
     runtime_identity,
 )
-from .terminal_observation import TerminalObservationError, normalize_terminal_observation
+from .execution_lease import ExecutionLeaseError, normalize_duration_model, resolve_execution_lease
+from .terminal_observation import (
+    TerminalObservationError,
+    normalize_host_terminal_observation,
+    normalize_terminal_observation,
+)
 from .timeout_observation import TimeoutObservationError, normalize_timeout_observation
 from .coordination import PlanCoordination, PlanCoordinationError, PlanTask, load_plan_coordination, path_matches as _path_matches
 
@@ -119,9 +126,10 @@ DELEGATED_CHILD_TERMINAL_STATES = {"succeeded", "failed", "cancelled", "timed_ou
 CORE_STATE_TRANSITIONS = {
     "classified": ["planned", "blocked"],
     "planned": ["running", "awaiting_decision", "blocked"],
-    "running": ["observed", "awaiting_decision", "blocked"],
-    "observed": ["verifying", "running", "blocked"],
-    "verifying": ["awaiting_decision", "accepted", "blocked"],
+    "running": ["observed", "awaiting_decision", "blocked", "orphaned"],
+    "observed": ["verifying", "running", "blocked", "orphaned"],
+    "verifying": ["awaiting_decision", "accepted", "blocked", "orphaned"],
+    "orphaned": ["awaiting_decision", "blocked"],
     "awaiting_decision": ["awaiting_decision", "planned", "accepted", "unvalidated", "blocked"],
     "accepted": [],
     "unvalidated": [],
@@ -818,6 +826,10 @@ def _resolve_execution_budget(
     profile = budgets["profiles"].get(selected)
     if not isinstance(profile, dict):
         raise HarnessError(f"unknown execution budget profile `{selected}`")
+    try:
+        normalize_duration_model(budgets.get("lease_duration_model"))
+    except ExecutionLeaseError as exc:
+        raise HarnessError(str(exc)) from exc
     budget = {
         "profile": selected,
         "turn_timeout_seconds": profile["turn_timeout_seconds"],
@@ -1015,18 +1027,68 @@ def _run_path(root: Path, run_id: str) -> Path:
     return root / ".harness" / "runs" / _safe_run_id(run_id) / "run.json"
 
 
+@contextmanager
+def _run_lock(root: Path, run_id: str):
+    target = _run_path(root, run_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock = target.with_name(f".{target.name}.lock")
+    deadline = time.monotonic() + 10
+    descriptor: int | None = None
+    while descriptor is None:
+        try:
+            descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise HarnessError(f"run `{run_id}` is locked")
+            time.sleep(0.01)
+    try:
+        os.write(descriptor, str(os.getpid()).encode("ascii"))
+        yield
+    finally:
+        os.close(descriptor)
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def _canonical_digest(value: Any) -> str:
+    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
 def _write_run(root: Path, run: dict[str, Any]) -> None:
     target = _run_path(root, run["run_id"])
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(run, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temporary, target)
+    revision = run.get("run_revision", 0)
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
+        raise HarnessError("run_revision is invalid")
+    run["run_revision"] = revision + 1
+    try:
+        with temporary.open("wb") as handle:
+            handle.write(_canonical_json_bytes(run))
+            handle.write(b"\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    except Exception:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     run = _load_json(_run_path(root, run_id))
     if run.get("version") not in {1, CURRENT_RUN_API} or run.get("run_id") != run_id or not isinstance(run.get("attempts"), list):
         raise HarnessError(f"invalid run record `{run_id}`")
+    if "run_revision" not in run:
+        run["run_revision"] = 0
     if run.get("state") == "planned" and run["attempts"]:
         attempt = run["attempts"][-1]
         if not isinstance(attempt, dict):
@@ -1060,7 +1122,7 @@ def _load_run(root: Path, run_id: str) -> dict[str, Any]:
     return run
 
 
-ACTIVE_RUN_STATES = {"planned", "running", "observed", "verifying", "awaiting_decision"}
+ACTIVE_RUN_STATES = {"planned", "running", "observed", "verifying", "orphaned", "awaiting_decision"}
 TERMINAL_RUN_STATES = {"accepted", "unvalidated", "blocked"}
 HANDOFF_FIELDS = {"last_verified_fact", "next_action", "blocker_or_decision"}
 
@@ -1844,6 +1906,22 @@ def resolve_managed_packet(
             "plan_digest": coordination.digest,
         })
     packet["lanes"] = _normalize_lanes(root, packet, allowed_paths, request.get("lanes"))
+    if packet_api == CURRENT_PACKET_API:
+        try:
+            packet["execution_lease"] = resolve_execution_lease(
+                policy["execution_budgets"]["lease_duration_model"],
+                lanes=packet["lanes"],
+                checks=packet["checks"],
+                max_parallel_writers=packet["orchestration"]["max_parallel_writers"],
+                turn_timeout_seconds=packet["execution_budget"]["turn_timeout_seconds"],
+            )
+        except ExecutionLeaseError as exc:
+            raise HarnessError(str(exc)) from exc
+        provider_contract = policy["runtime_providers"][runtime_provider["provider_id"]]
+        packet["terminal_observation_contract"] = {
+            "schema_id": "host_terminal_observation/v2",
+            "capability": provider_contract["terminal_observation_capability"],
+        }
     if packet["version"] in {4, CURRENT_PACKET_API}:
         packet["invocation_id"] = f"{attempt_id}:primary"
         packet["parent_invocation_id"] = None
@@ -1865,6 +1943,7 @@ def _new_run(request: dict[str, Any], run_id: str) -> dict[str, Any]:
         "request": copy.deepcopy(request),
         "state": "classified",
         "state_history": [{"state": "classified", "reason": "created", "at": _timestamp()}],
+        "run_revision": 0,
         "attempts": [],
     }
 
@@ -1879,6 +1958,12 @@ def _append_attempt(run: dict[str, Any], packet: dict[str, Any]) -> dict[str, An
         "evidence": {},
         "artifact_handoff_audit": copy.deepcopy(packet.get("artifact_handoff_audit")),
         "friction_event_ids": [],
+        "execution_lease": None,
+        "host_terminal_observations": [],
+        "host_observation_digests": [],
+        "terminal_record": None,
+        "cancellation_request": None,
+        "recovery_blocked": None,
         "outcome": None,
         "decision": None,
         "decision_history": [],
@@ -1891,6 +1976,477 @@ def _active_attempt(run: dict[str, Any]) -> dict[str, Any]:
     if not run["attempts"] or not isinstance(run["attempts"][-1], dict):
         raise HarnessError("run has no active attempt")
     return run["attempts"][-1]
+
+
+_TERMINALIZATION_FIELDS = {"attempt_id", "host_terminal_observations"}
+_TERMINALIZATION_RECOVERY_FIELDS = _TERMINALIZATION_FIELDS | {"recovery_observation"}
+_TERMINALIZATION_STRANDED_RECOVERY_FIELDS = _TERMINALIZATION_FIELDS | {"stranded_recovery"}
+_STRANDED_RECOVERY_FIELDS = {"reason", "external_failure"}
+_RECOVERY_OBSERVATION_FIELDS = {
+    "lease_id",
+    "lease_epoch",
+    "host_instance_id",
+    "observed_at",
+    "host_process_absent",
+    "root_processes_absent",
+}
+_CANCELLATION_FIELDS = {"attempt_id", "actor", "reason"}
+_LEGACY_ABANDON_FIELDS = {"attempt_id", "actor", "reason", "acknowledged"}
+
+
+def _attempt_lease_binding(run: dict[str, Any], attempt: dict[str, Any]) -> dict[str, Any]:
+    lease = attempt.get("execution_lease")
+    required = {
+        "run_id",
+        "attempt_id",
+        "packet_sha256",
+        "lease_id",
+        "lease_epoch",
+        "host_instance_id",
+        "issued_at",
+        "expires_at",
+        "state",
+    }
+    if not isinstance(lease, dict) or required - lease.keys():
+        raise HarnessError("attempt lacks execution lease")
+    binding = {
+        "run_id": run["run_id"],
+        "attempt_id": attempt.get("attempt_id"),
+        "packet_sha256": _canonical_digest(attempt.get("packet")),
+        "lease_id": lease.get("lease_id"),
+        "lease_epoch": lease.get("lease_epoch"),
+        "host_instance_id": lease.get("host_instance_id"),
+    }
+    if (
+        lease.get("run_id") != binding["run_id"]
+        or lease.get("attempt_id") != binding["attempt_id"]
+        or lease.get("packet_sha256") != binding["packet_sha256"]
+        or not isinstance(binding["lease_id"], str)
+        or not isinstance(binding["host_instance_id"], str)
+        or not isinstance(binding["lease_epoch"], int)
+        or isinstance(binding["lease_epoch"], bool)
+        or binding["lease_epoch"] <= 0
+        or lease.get("state") not in {"active", "recovery_blocked", "released"}
+    ):
+        raise HarnessError("attempt execution lease is invalid")
+    _parse_timestamp(lease["issued_at"])
+    _parse_timestamp(lease["expires_at"])
+    return binding
+
+
+def _issue_execution_lease(
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    *,
+    host_instance_id: str,
+    now: datetime,
+) -> dict[str, Any]:
+    if attempt.get("execution_lease") is not None:
+        raise HarnessError("attempt execution lease already exists")
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict):
+        raise HarnessError("attempt packet is invalid")
+    duration = packet.get("execution_lease")
+    seconds = duration.get("execution_lease_seconds") if isinstance(duration, dict) else None
+    if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds <= 0:
+        raise HarnessError("packet execution lease duration is invalid")
+    if not isinstance(host_instance_id, str) or not host_instance_id:
+        raise HarnessError("host instance identity is invalid")
+    issued_at = now.astimezone(UTC)
+    lease = {
+        "run_id": run["run_id"],
+        "attempt_id": attempt["attempt_id"],
+        "packet_sha256": _canonical_digest(packet),
+        "lease_id": f"lease-{uuid.uuid4().hex}",
+        "lease_epoch": len(run["attempts"]),
+        "host_instance_id": host_instance_id,
+        "issued_at": issued_at.isoformat(),
+        "expires_at": (issued_at + timedelta(seconds=seconds)).isoformat(),
+        "state": "active",
+    }
+    attempt["execution_lease"] = lease
+    return copy.deepcopy(lease)
+
+
+def _dispatch_packet(packet: dict[str, Any], execution_lease: dict[str, Any] | None) -> dict[str, Any]:
+    if execution_lease is None:
+        return packet
+    runtime_packet = copy.deepcopy(packet)
+    runtime_packet["execution_lease_binding"] = copy.deepcopy(execution_lease)
+    return runtime_packet
+
+
+def _record_host_terminal_observation(attempt: dict[str, Any], packet: dict[str, Any], evidence: Any) -> None:
+    if packet.get("version") != CURRENT_PACKET_API:
+        return
+    observation = evidence.get("host_terminal_observation") if isinstance(evidence, dict) else None
+    if not isinstance(observation, dict):
+        raise HarnessError("host adapter lane evidence lacks terminal observation")
+    observations = attempt.setdefault("host_terminal_observations", [])
+    if not isinstance(observations, list):
+        raise HarnessError("attempt terminal observations are invalid")
+    observation_id = observation.get("observation_id")
+    if not isinstance(observation_id, str) or not observation_id:
+        raise HarnessError("host terminal observation identity is invalid")
+    if any(isinstance(item, dict) and item.get("observation_id") == observation_id for item in observations):
+        raise HarnessError("host terminal observation is duplicated")
+    observations.append(copy.deepcopy(observation))
+
+
+def _terminalize_collected_attempt(root: Path, run: dict[str, Any], attempt: dict[str, Any]) -> dict[str, Any]:
+    observations = attempt.get("host_terminal_observations")
+    if not isinstance(observations, list) or not observations:
+        raise HarnessError("attempt lacks host terminal observations")
+    _write_run(root, run)
+    terminalize_attempt(
+        root,
+        run["run_id"],
+        {"attempt_id": attempt["attempt_id"], "host_terminal_observations": observations},
+    )
+    return _managed_result(_load_run(root, run["run_id"]))
+
+
+def _has_terminal_host_failure(attempt: dict[str, Any]) -> bool:
+    observations = attempt.get("host_terminal_observations")
+    return isinstance(observations, list) and any(
+        isinstance(observation, dict) and observation.get("source") != "completed"
+        for observation in observations
+    )
+
+
+def _normalize_recovery_observation(value: Any, binding: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _RECOVERY_OBSERVATION_FIELDS:
+        raise HarnessError("recovery observation is invalid")
+    for field in ("lease_id", "lease_epoch", "host_instance_id"):
+        if value.get(field) != binding[field]:
+            raise HarnessError(f"recovery observation conflicts with {field}")
+    if not isinstance(value.get("host_process_absent"), bool) or not isinstance(value.get("root_processes_absent"), bool):
+        raise HarnessError("recovery observation process proof is invalid")
+    observed_at = value.get("observed_at")
+    if not isinstance(observed_at, str):
+        raise HarnessError("recovery observation observed_at is invalid")
+    _parse_timestamp(observed_at)
+    return copy.deepcopy(value)
+
+
+def _normalize_stranded_recovery(run: dict[str, Any], attempt: dict[str, Any], value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _STRANDED_RECOVERY_FIELDS:
+        raise HarnessError("stranded recovery evidence is invalid")
+    reason = value.get("reason")
+    if not isinstance(reason, str) or not reason or len(reason) > 512:
+        raise HarnessError("recovery reason is invalid")
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict) or packet.get("attempt_id") != attempt.get("attempt_id"):
+        raise HarnessError("recovery packet identity does not match attempt")
+    if attempt.get("terminal_record") is None and (
+        run["state"] != "running"
+        or attempt.get("claims") != []
+        or attempt.get("node_observations") != []
+        or attempt.get("evidence") != {}
+        or attempt.get("outcome") is not None
+        or attempt.get("decision") is not None
+        or attempt.get("decision_history") != []
+    ):
+        raise HarnessError("run is not stranded")
+    evidence = _normalize_recovery_evidence(run["run_id"], attempt["attempt_id"], value["external_failure"])
+    base_commit = _required_string(packet.get("base_commit"), "recovery packet base_commit")
+    return {
+        "reason": reason,
+        "evidence": {
+            "failure": {"reason": "stranded_running_recovered", "phase": "recovery", "detail": reason},
+            "external_failure": evidence,
+            "recovery": {
+                "version": 1,
+                "run_id": run["run_id"],
+                "attempt_id": attempt["attempt_id"],
+                "base_commit": base_commit,
+                "packet_sha256": hashlib.sha256(_artifact_content_bytes(packet)).hexdigest(),
+            },
+        },
+    }
+
+
+def _terminalization_input(value: Any) -> tuple[str, list[Any], Any | None, Any | None]:
+    fields = set(value) if isinstance(value, dict) else set()
+    if not isinstance(value, dict) or frozenset(fields) not in {
+        frozenset(_TERMINALIZATION_FIELDS),
+        frozenset(_TERMINALIZATION_RECOVERY_FIELDS),
+        frozenset(_TERMINALIZATION_STRANDED_RECOVERY_FIELDS),
+    }:
+        raise HarnessError("terminalization evidence has invalid fields")
+    attempt_id = _required_string(value.get("attempt_id"), "terminalization attempt_id")
+    observations = value.get("host_terminal_observations")
+    if not isinstance(observations, list):
+        raise HarnessError("terminalization evidence host_terminal_observations is invalid")
+    recovery = value.get("recovery_observation")
+    stranded_recovery = value.get("stranded_recovery")
+    if recovery is None and stranded_recovery is None and not observations:
+        raise HarnessError("terminalization evidence requires host observations")
+    if sum(item is not None for item in (recovery, stranded_recovery)) + bool(observations) != 1:
+        raise HarnessError("terminalization evidence cannot mix recovery and host observations")
+    return attempt_id, observations, recovery, stranded_recovery
+
+
+def _dispatched_lane_ids(attempt: dict[str, Any]) -> set[str]:
+    recorded = attempt.get("dispatched_lane_ids")
+    if isinstance(recorded, list):
+        if not all(isinstance(lane_id, str) and lane_id for lane_id in recorded):
+            raise HarnessError("attempt dispatched lanes are invalid")
+        return set(recorded)
+    nodes = attempt.get("nodes", [])
+    if not isinstance(nodes, list):
+        raise HarnessError("attempt nodes are invalid")
+    return {
+        node["lane_id"]
+        for node in nodes
+        if isinstance(node, dict)
+        and node.get("node_kind") == "agent"
+        and node.get("status") in {"running", "succeeded", "failed"}
+        and isinstance(node.get("lane_id"), str)
+    }
+
+
+def _terminal_classification(
+    attempt: dict[str, Any],
+    observations: list[dict[str, Any]],
+) -> tuple[str, str, list[str], list[str]]:
+    packet = attempt["packet"]
+    sources = {observation["source"] for observation in observations}
+    if sources == {"completed"}:
+        observed_lanes = {observation["lane_id"] for observation in observations}
+        dispatched_lanes = _dispatched_lane_ids(attempt)
+        if dispatched_lanes and observed_lanes != dispatched_lanes:
+            raise HarnessError("terminalization lacks observations for every dispatched lane")
+        verification = attempt.get("evidence")
+        if not isinstance(verification, dict) or not isinstance(verification.get("criteria"), list) or not isinstance(verification.get("blockers"), list):
+            raise HarnessError("terminalization lacks persisted core verification")
+        reason, decisions = _outcome_for_verification(verification, packet["retry_policy"])
+        return "completed", reason, decisions, ["evidence.criteria", "evidence.blockers", "evidence.checks"]
+    if "cancellation" in sources:
+        cancellation = attempt.get("cancellation_request")
+        if not isinstance(cancellation, dict):
+            raise HarnessError("cancellation observation has no persisted request")
+        request_id = cancellation.get("cancellation_request_id")
+        if any(observation["stop_proof"]["cancellation_request_id"] != request_id for observation in observations if observation["source"] == "cancellation"):
+            raise HarnessError("cancellation observation has unknown request id")
+        return "cancelled", "cancelled", ["block"], ["cancellation_request"]
+    if "timeout" in sources:
+        observation = next(item for item in observations if item["source"] == "timeout")
+        lane = next((item for item in packet["lanes"] if item["lane_id"] == observation["lane_id"]), None)
+        writer_missing = (
+            observation["final_claim_state"]["state"] == "missing"
+            and any(command["state"] == "completed" for command in observation["command_states"])
+            and isinstance(lane, dict)
+            and lane.get("kind") == "work"
+            and lane.get("write_capable") is True
+        )
+        if writer_missing:
+            return "writer_completion_missing", "writer_completion_missing", ["block"], []
+        return "timeout", "dispatch_timeout", list(packet["execution_budget"]["timeout_decisions"]), []
+    if "provider_failure" in sources:
+        decisions = ["block"]
+        if "dispatch_failed" in packet["retry_policy"]["retryable_reasons"]:
+            decisions = ["retry", "escalate", "block"]
+        return "provider_failure", "dispatch_failed", decisions, []
+    if sources <= {"host_crash_absence", "stranded_recovery_absence"}:
+        return "host_crash", "host_crash", ["block"], []
+    raise HarnessError("terminalization has incompatible host observation sources")
+
+
+def _terminalization_result(run: dict[str, Any], status: str, terminal_id: str | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "state": run["state"],
+        "run_revision": run["run_revision"],
+        "terminalization": {"status": status},
+    }
+    if terminal_id is not None:
+        result["terminalization"]["terminal_id"] = terminal_id
+    return result
+
+
+def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any]:
+    _validate_policy(root)
+    run_id = _safe_run_id(run_id)
+    with _run_lock(root, run_id):
+        run = _load_run(root, run_id)
+        if run["state"] not in {"running", "observed", "verifying", "orphaned", "awaiting_decision"}:
+            raise HarnessError(f"run `{run_id}` cannot terminalize from `{run['state']}`")
+        attempt = _active_attempt(run)
+        attempt_id, raw_observations, raw_recovery, raw_stranded_recovery = _terminalization_input(evidence)
+        if attempt.get("attempt_id") != attempt_id:
+            raise HarnessError("terminalization attempt identity does not match run")
+        binding = _attempt_lease_binding(run, attempt)
+        outcome_detail: str | None = None
+        stranded_recovery: dict[str, Any] | None = None
+        if raw_stranded_recovery is not None:
+            stranded_recovery = _normalize_stranded_recovery(run, attempt, raw_stranded_recovery)
+            normalized_observations = []
+            classification, reason, decisions, refs = "stranded_recovery", "stranded_running_recovered", ["block"], [
+                "evidence.failure",
+                "evidence.external_failure",
+                "evidence.recovery",
+            ]
+            outcome_detail = stranded_recovery["reason"]
+            aggregate = {"binding": binding, "stranded_recovery": stranded_recovery["evidence"], "core_evidence_refs": refs}
+        elif raw_recovery is not None:
+            recovery = _normalize_recovery_observation(raw_recovery, binding)
+            if _parse_timestamp(recovery["observed_at"]) < _parse_timestamp(attempt["execution_lease"]["expires_at"]):
+                raise HarnessError("recovery observation precedes lease expiry")
+            recovery_digest = _canonical_digest(recovery)
+            if not recovery["host_process_absent"] or not recovery["root_processes_absent"]:
+                existing_recovery = attempt.get("recovery_blocked")
+                if isinstance(existing_recovery, dict) and existing_recovery.get("evidence_digest") == recovery_digest:
+                    return _terminalization_result(run, "recovery_blocked")
+                attempt["recovery_blocked"] = {"evidence_digest": recovery_digest, "observation": recovery}
+                attempt["execution_lease"]["state"] = "recovery_blocked"
+                if run["state"] != "orphaned":
+                    _transition(run, _load_policy(root)["states"], "orphaned", "recovery_blocked")
+                _write_run(root, run)
+                return _terminalization_result(run, "recovery_blocked")
+            normalized_observations: list[dict[str, Any]] = []
+            classification, reason, decisions, refs = "host_crash", "host_crash", ["block"], ["recovery_blocked"]
+            aggregate = {"recovery_observation": recovery, "binding": binding, "core_evidence_refs": refs}
+        else:
+            normalized_observations = [
+                normalize_host_terminal_observation(raw, attempt["packet"], binding=binding)
+                for raw in raw_observations
+            ]
+            if len({observation["observation_id"] for observation in normalized_observations}) != len(normalized_observations):
+                raise HarnessError("terminalization host observations are duplicated")
+            normalized_observations.sort(key=lambda item: (item["lane_id"], item["observed_at"], item["observation_id"]))
+            lease_expiry = _parse_timestamp(attempt["execution_lease"]["expires_at"])
+            if any(_parse_timestamp(observation["observed_at"]) > lease_expiry for observation in normalized_observations):
+                raise HarnessError("terminalization observation exceeds lease expiry")
+            classification, reason, decisions, refs = _terminal_classification(attempt, normalized_observations)
+            aggregate = {
+                "binding": binding,
+                "host_observation_digests": [_canonical_digest(observation) for observation in normalized_observations],
+                "core_evidence_refs": refs,
+            }
+        evidence_digest = _canonical_digest(aggregate)
+        existing = attempt.get("terminal_record")
+        if isinstance(existing, dict):
+            if existing.get("evidence_digest") == evidence_digest:
+                return _terminalization_result(run, "replayed", existing.get("terminal_id"))
+            raise HarnessError("attempt_already_terminal")
+        terminal_id = f"terminal-{_canonical_digest({'run_id': run_id, 'attempt_id': attempt_id, 'lease_id': binding['lease_id'], 'lease_epoch': binding['lease_epoch'], 'evidence_digest': evidence_digest})}"
+        if stranded_recovery is not None:
+            attempt["evidence"] = stranded_recovery["evidence"]
+        attempt["host_terminal_observations"] = normalized_observations
+        attempt["host_observation_digests"] = aggregate.get("host_observation_digests", [])
+        attempt["terminal_record"] = {
+            "schema_id": "attempt_terminal_evidence/v2",
+            "terminal_id": terminal_id,
+            "classification": classification,
+            "evidence_digest": evidence_digest,
+            "host_observation_digests": attempt["host_observation_digests"],
+            "core_evidence_refs": refs,
+            "lease_id": binding["lease_id"],
+            "lease_epoch": binding["lease_epoch"],
+            "recorded_at": _timestamp(),
+        }
+        attempt["execution_lease"]["state"] = "released"
+        attempt["execution_lease"]["released_at"] = _timestamp()
+        _set_outcome(attempt, reason, decisions, ["terminal_record", *refs], detail=outcome_detail)
+        _transition(run, _load_policy(root)["states"], "awaiting_decision", classification)
+        _write_run(root, run)
+        return _terminalization_result(run, "applied", terminal_id)
+
+
+def request_attempt_cancellation(root: Path, run_id: str, request: Any) -> dict[str, Any]:
+    _validate_policy(root)
+    run_id = _safe_run_id(run_id)
+    if not isinstance(request, dict) or set(request) != _CANCELLATION_FIELDS:
+        raise HarnessError("cancellation request has invalid fields")
+    attempt_id = _required_string(request.get("attempt_id"), "cancellation attempt_id")
+    actor = _required_string(request.get("actor"), "cancellation actor")
+    reason = _required_string(request.get("reason"), "cancellation reason")
+    with _run_lock(root, run_id):
+        run = _load_run(root, run_id)
+        if run["state"] not in {"running", "observed", "verifying"}:
+            raise HarnessError(f"run `{run_id}` cannot cancel from `{run['state']}`")
+        attempt = _active_attempt(run)
+        if attempt.get("attempt_id") != attempt_id:
+            raise HarnessError("cancellation attempt identity does not match run")
+        binding = _attempt_lease_binding(run, attempt)
+        existing = attempt.get("cancellation_request")
+        if isinstance(existing, dict):
+            return {"cancellation_request_id": existing["cancellation_request_id"], "run_revision": run["run_revision"]}
+        cancellation_request_id = f"cancel-{uuid.uuid4()}"
+        attempt["cancellation_request"] = {
+            "cancellation_request_id": cancellation_request_id,
+            "actor": actor,
+            "reason_sha256": hashlib.sha256(reason.encode("utf-8")).hexdigest(),
+            "reason_length": len(reason),
+            "requested_at": _timestamp(),
+            "lease_id": binding["lease_id"],
+            "lease_epoch": binding["lease_epoch"],
+        }
+        _write_run(root, run)
+        return {"cancellation_request_id": cancellation_request_id, "run_revision": run["run_revision"]}
+
+
+def migration_preflight(root: Path) -> dict[str, Any]:
+    active: list[dict[str, str]] = []
+    for run in _all_runs(root):
+        if run.get("state") not in ACTIVE_RUN_STATES or not run.get("attempts"):
+            continue
+        attempt = _active_attempt(run)
+        packet = attempt.get("packet")
+        if (
+            isinstance(packet, dict)
+            and "terminal_observation_contract" not in packet
+            and not isinstance(attempt.get("execution_lease"), dict)
+            and attempt.get("terminal_record") is None
+        ):
+            active.append({"run_id": run["run_id"], "attempt_id": attempt.get("attempt_id", "")})
+    return {"active_legacy_attempts": active, "ready": not active}
+
+
+def abandon_legacy_attempt(root: Path, run_id: str, request: Any) -> dict[str, Any]:
+    _validate_policy(root)
+    run_id = _safe_run_id(run_id)
+    if not isinstance(request, dict) or set(request) != _LEGACY_ABANDON_FIELDS or request.get("acknowledged") is not True:
+        raise HarnessError("legacy abandonment has invalid fields")
+    attempt_id = _required_string(request.get("attempt_id"), "legacy abandonment attempt_id")
+    actor = _required_string(request.get("actor"), "legacy abandonment actor")
+    reason = _required_string(request.get("reason"), "legacy abandonment reason")
+    with _run_lock(root, run_id):
+        run = _load_run(root, run_id)
+        attempt = _active_attempt(run)
+        packet = attempt.get("packet")
+        if (
+            run["state"] not in ACTIVE_RUN_STATES
+            or attempt.get("attempt_id") != attempt_id
+            or not isinstance(packet, dict)
+            or "terminal_observation_contract" in packet
+            or isinstance(attempt.get("execution_lease"), dict)
+            or isinstance(attempt.get("terminal_record"), dict)
+        ):
+            raise HarnessError("legacy abandonment is not allowed")
+        audit = {
+            "actor": actor,
+            "reason_sha256": hashlib.sha256(reason.encode("utf-8")).hexdigest(),
+            "reason_length": len(reason),
+            "acknowledged": True,
+            "recorded_at": _timestamp(),
+            "packet_sha256": _canonical_digest(packet),
+        }
+        digest = _canonical_digest(audit)
+        attempt["terminal_record"] = {
+            "schema_id": "attempt_terminal_evidence/v2",
+            "terminal_id": f"terminal-{_canonical_digest({'run_id': run_id, 'attempt_id': attempt_id, 'legacy': digest})}",
+            "classification": "legacy_operator_abandoned",
+            "evidence_digest": digest,
+            "host_observation_digests": [],
+            "core_evidence_refs": ["legacy_abandonment"],
+            "recorded_at": _timestamp(),
+        }
+        attempt["legacy_abandonment"] = audit
+        _set_outcome(attempt, "legacy_operator_abandoned", ["block"], ["terminal_record", "legacy_abandonment"])
+        _transition(run, _load_policy(root)["states"], "blocked", "legacy_operator_abandoned")
+        _write_run(root, run)
+        return {"state": run["state"], "run_revision": run["run_revision"], "terminal_id": attempt["terminal_record"]["terminal_id"]}
 
 
 def _normalize_recovery_evidence(run_id: str, attempt_id: str, value: Any) -> dict[str, Any]:
@@ -1921,56 +2477,22 @@ def recover_stranded_run(
     reason: str,
     external_failure: Any,
 ) -> dict[str, Any]:
-    _validate_policy(root)
-    policy = _load_policy(root)
     run_id = _safe_run_id(run_id)
     run = _load_run(root, run_id)
     if run["state"] != "running":
         raise HarnessError(f"run `{run_id}` is not running")
-    attempt = _active_attempt(run)
-    if attempt.get("attempt_id") != attempt_id:
+    if _active_attempt(run).get("attempt_id") != attempt_id:
         raise HarnessError("recovery attempt identity does not match run")
-    packet = attempt.get("packet")
-    if not isinstance(packet, dict) or packet.get("attempt_id") != attempt_id:
-        raise HarnessError("recovery packet identity does not match attempt")
-    if (
-        attempt.get("claims") != []
-        or attempt.get("node_observations") != []
-        or attempt.get("evidence") != {}
-        or attempt.get("outcome") is not None
-        or attempt.get("decision") is not None
-        or attempt.get("decision_history") != []
-    ):
-        raise HarnessError("run is not stranded")
-    if not isinstance(reason, str) or not reason or len(reason) > 512:
-        raise HarnessError("recovery reason is invalid")
-    evidence = _normalize_recovery_evidence(run_id, attempt_id, external_failure)
-    base_commit = _required_string(packet.get("base_commit"), "recovery packet base_commit")
-    attempt["evidence"] = {
-        "failure": {
-            "reason": "stranded_running_recovered",
-            "phase": "recovery",
-            "detail": reason,
-        },
-        "external_failure": evidence,
-        "recovery": {
-            "version": 1,
-            "run_id": run_id,
+    terminalize_attempt(
+        root,
+        run_id,
+        {
             "attempt_id": attempt_id,
-            "base_commit": base_commit,
-            "packet_sha256": hashlib.sha256(_artifact_content_bytes(packet)).hexdigest(),
+            "host_terminal_observations": [],
+            "stranded_recovery": {"reason": reason, "external_failure": external_failure},
         },
-    }
-    _set_outcome(
-        attempt,
-        "stranded_running_recovered",
-        ["block"],
-        ["evidence.failure", "evidence.external_failure", "evidence.recovery"],
-        detail=reason,
     )
-    _transition(run, policy["states"], "awaiting_decision", "stranded_running_recovered")
-    _write_run(root, run)
-    return _managed_result(run)
+    return _managed_result(_load_run(root, run_id))
 
 
 def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[str, Any]) -> DelegationResult:
@@ -2240,8 +2762,12 @@ def _adapter_capabilities(adapter: Any, canonical_modes: set[str]) -> dict[str, 
     capabilities = _adapter_call(adapter, "capabilities")
     if not isinstance(capabilities, dict):
         raise HarnessError("host adapter capabilities must be a mapping")
+    known_capabilities = set(canonical_modes) | {
+        "host_terminal_observation_v2",
+        "execution_lease_duration_model",
+    }
     for mode, level in capabilities.items():
-        if not isinstance(mode, str) or mode not in canonical_modes or level not in CAPABILITY_LEVELS:
+        if not isinstance(mode, str) or mode not in known_capabilities or level not in CAPABILITY_LEVELS:
             raise HarnessError("host adapter capabilities contain invalid entry")
     return capabilities
 
@@ -2301,7 +2827,8 @@ def _provider_runtime_binding(adapter: Any, *, required: bool) -> dict[str, Any]
         "configuration_digest",
         "readiness",
     }
-    if not isinstance(evidence, dict) or set(evidence) != required_fields:
+    accepted_fields = {frozenset(required_fields), frozenset({*required_fields, "host_instance_id"})}
+    if not isinstance(evidence, dict) or frozenset(evidence) not in accepted_fields:
         raise HarnessError("host adapter preflight evidence has invalid shape")
     if (
         not isinstance(evidence["provider_id"], str)
@@ -2321,6 +2848,9 @@ def _provider_runtime_binding(adapter: Any, *, required: bool) -> dict[str, Any]
         or evidence["readiness"] != "ready"
     ):
         raise HarnessError("host adapter preflight evidence has invalid values")
+    host_instance_id = evidence.get("host_instance_id")
+    if host_instance_id is not None and (not isinstance(host_instance_id, str) or not host_instance_id or len(host_instance_id) > 256):
+        raise HarnessError("host adapter preflight evidence has invalid host instance identity")
     if any(re.search(r"(?i)(api[_-]?key|token|password|secret|authorization|cookie)", value) for value in evidence.values() if isinstance(value, str)):
         raise HarnessError("host adapter preflight evidence contains secret-bearing value")
     return copy.deepcopy(evidence)
@@ -2342,6 +2872,10 @@ def _validate_provider_runtime_binding(
     dispatch = admit_packet_dispatch(binding.get("host_api"), packet_api, binding.get("contract_version"))
     if not dispatch["ok"]:
         raise HarnessError(dispatch["code"])
+    if packet_api == CURRENT_PACKET_API:
+        host_instance_id = binding.get("host_instance_id")
+        if not isinstance(host_instance_id, str) or not host_instance_id or len(host_instance_id) > 256:
+            raise HarnessError("provider runtime binding lacks host instance identity")
     return copy.deepcopy(binding)
 
 
@@ -2412,9 +2946,16 @@ def _record_lane_execution_evidence(
         or not evidence["turn_id"]
         or not isinstance(evidence.get("workspace_status_before"), str)
         or not isinstance(evidence.get("workspace_status_after"), str)
-        or (packet.get("version") == CURRENT_PACKET_API and evidence.get("terminal_status") != "completed")
     ):
         raise HarnessError("host adapter lane execution evidence conflicts with packet")
+    is_current_packet = packet.get("version") == CURRENT_PACKET_API
+    if is_current_packet and evidence.get("terminal_status") != "completed":
+        _record_host_terminal_observation(attempt, packet, evidence)
+        records = attempt.setdefault("execution_evidence", [])
+        if any(record.get("lane_id") == lane["lane_id"] for record in records):
+            raise HarnessError("host adapter produced duplicate lane execution evidence")
+        records.append(copy.deepcopy(evidence))
+        return
     selected_tools = evidence.get("selected_tools_used")
     tool_calls = evidence.get("tool_calls")
     command_results = evidence.get("command_results")
@@ -2447,6 +2988,7 @@ def _record_lane_execution_evidence(
     if any(record.get("lane_id") == lane["lane_id"] for record in records):
         raise HarnessError("host adapter produced duplicate lane execution evidence")
     records.append(copy.deepcopy(evidence))
+    _record_host_terminal_observation(attempt, packet, evidence)
 
 
 def _record_node_observation(attempt: dict[str, Any], node: dict[str, Any], observation: dict[str, Any]) -> None:
@@ -3065,6 +3607,24 @@ def _record_dispatch_exception(
 ) -> dict[str, Any]:
     if isinstance(exc, WorkspaceBaselineError):
         return _record_failure(root, run, policy, attempt, "workspace_baseline_invalid", str(exc), phase=phase)
+    if attempt["packet"].get("version") == CURRENT_PACKET_API:
+        host_observation = getattr(exc, "host_terminal_observation", None)
+        if isinstance(host_observation, dict):
+            try:
+                normalize_host_terminal_observation(
+                    host_observation,
+                    attempt["packet"],
+                    binding=_attempt_lease_binding(run, attempt),
+                )
+            except TerminalObservationError as error:
+                raise HarnessError(f"host terminal observation is invalid: {error}") from error
+            _record_host_terminal_observation(
+                attempt,
+                attempt["packet"],
+                {"host_terminal_observation": host_observation},
+            )
+            _write_run(root, run)
+            return _terminalize_collected_attempt(root, run, attempt)
     terminal_evidence = _normalize_terminal_evidence(exc, attempt["packet"])
     if terminal_evidence is not None:
         try:
@@ -3096,9 +3656,14 @@ def _cancel_active_lanes(
     *,
     phase: str,
 ) -> None:
+    cancellation = attempt.get("cancellation_request")
+    cancellation_request_id = cancellation.get("cancellation_request_id") if isinstance(cancellation, dict) else None
     for lane, handle in active_handles:
         try:
-            _adapter_call(adapter, "cancel_lane", handle)
+            if isinstance(cancellation_request_id, str) and cancellation_request_id:
+                _adapter_call(adapter, "cancel_lane", handle, cancellation_request_id)
+            else:
+                _adapter_call(adapter, "cancel_lane", handle)
         except Exception:
             _record_attempt_friction(
                 root,
@@ -3391,9 +3956,15 @@ def _execute_attempt(
         _write_run(root, run)
         return _managed_result(run)
     try:
+        required_capabilities = set(policy["orchestration"]) | {policy["claim_repair"]["required_host_capability"]}
+        if packet.get("version") == CURRENT_PACKET_API:
+            terminal_contract = packet.get("terminal_observation_contract")
+            if not isinstance(terminal_contract, dict) or not isinstance(terminal_contract.get("capability"), str):
+                raise HarnessError("packet terminal observation contract is invalid")
+            required_capabilities.update({terminal_contract["capability"], "execution_lease_duration_model"})
         capabilities = _adapter_capabilities(
             adapter,
-            set(policy["orchestration"]) | {policy["claim_repair"]["required_host_capability"]},
+            required_capabilities,
         )
     except Exception as exc:
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
@@ -3420,11 +3991,22 @@ def _execute_attempt(
         _transition(run, policy["states"], "awaiting_decision", "execution_mode_unavailable")
         _write_run(root, run)
         return _managed_result(run)
+    terminalization_capabilities = {"host_terminal_observation_v2", "execution_lease_duration_model"}
+    if packet.get("version") == CURRENT_PACKET_API and any(
+        capabilities.get(capability) != "enforced"
+        for capability in terminalization_capabilities
+    ):
+        return _record_failure(root, run, policy, attempt, "execution_mode_unavailable", "host lacks required terminalization capability", phase="dispatch")
     try:
         attempt["adapter_identity"] = _adapter_identity(adapter, packet["runtime_provider"])
     except Exception as exc:
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
 
+    if packet.get("version") == CURRENT_PACKET_API:
+        binding = packet.get("provider_runtime_binding")
+        host_instance_id = binding.get("host_instance_id") if isinstance(binding, dict) else None
+        _issue_execution_lease(run, attempt, host_instance_id=host_instance_id, now=now)
+        packet = _dispatch_packet(packet, attempt["execution_lease"])
     _transition(run, policy["states"], "running", "dispatch")
     _write_run(root, run)
     pending = {node["lane_id"]: node for node in attempt["nodes"]}
@@ -3583,9 +4165,13 @@ def _execute_attempt(
             pending.pop(check_node["lane_id"])
     except ClaimError as exc:
         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="claim")
+        if packet.get("version") == CURRENT_PACKET_API and _has_terminal_host_failure(attempt):
+            return _terminalize_collected_attempt(root, run, attempt)
         return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc), phase="claim")
     except Exception as exc:
         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase=failure_phase)
+        if packet.get("version") == CURRENT_PACKET_API and _has_terminal_host_failure(attempt):
+            return _terminalize_collected_attempt(root, run, attempt)
         return _record_dispatch_exception(root, run, policy, attempt, exc, phase=failure_phase)
     _transition(run, policy["states"], "observed", "claim_collected")
     _transition(run, policy["states"], "verifying", "verify")
@@ -3612,6 +4198,8 @@ def _execute_attempt(
         return _record_failure(root, run, policy, attempt, "verification_failed", str(exc), phase="check")
     attempt.setdefault("evidence", {}).update(verification)
     _record_verification_frictions(root, run, attempt, verification)
+    if packet.get("version") == CURRENT_PACKET_API:
+        return _terminalize_collected_attempt(root, run, attempt)
     reason, decisions = _outcome_for_verification(verification, packet["retry_policy"])
     _set_outcome(attempt, reason, decisions, ["evidence"])
     _transition(run, policy["states"], "awaiting_decision", reason)
@@ -3638,6 +4226,8 @@ def run_managed(
         if _run_path(root, run_id).exists():
             raise HarnessError(f"run `{run_id}` already exists")
         core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
+        if core_identity["packet_api"] == CURRENT_PACKET_API and not migration_preflight(root)["ready"]:
+            raise HarnessError("active legacy attempts require migration preflight")
         binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
         packet = resolve_managed_packet(
             root,
@@ -3847,17 +4437,18 @@ def main(argv: list[str] | None = None) -> int:
                 root,
                 task,
                 {
-                    "host_api": 6,
-                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 6},
+                    "host_api": 7,
+                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 7},
                     "preflight_evidence": lambda: {
                         "provider_id": "codex_app_server",
-                        "host_api": 6,
-                        "contract_version": 6,
+                        "host_api": 7,
+                        "contract_version": 7,
                         "transport": "stdio",
                         "lifecycle": "host_spawn",
                         "protocol": "app-server-v1",
                         "configuration_digest": "0" * 64,
                         "readiness": "ready",
+                        "host_instance_id": "generic-cli",
                     },
                     "capabilities": lambda: {},
                     "unavailable_detail": "Generic harness CLI has no injected host adapter; use a provider host entrypoint.",

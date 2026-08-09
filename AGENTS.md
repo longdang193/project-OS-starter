@@ -30,6 +30,14 @@ verification profile, resolved tools/checks, workspace, approval gates, planned
 write paths, resolved base commit, and orchestration mode plus resolved
 `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
+For packet API 8, core issues one finite execution lease before `planned` enters
+`running` and controller invokes only `terminalize_attempt(evidence)` for a
+terminal mutation. Host owns provider lifecycle and bounded
+`host_terminal_observation/v2` production only; it never writes `run.json`.
+Host binds every observation to run, attempt, packet digest, lease, and host
+instance identity. Expired live or unverified process state is `orphaned`, not
+retryable work. Windows containment uses one unnamed kill-on-close Job Object
+per lease; no PID-tree, process-group, `taskkill`, or reopened-job fallback.
 Host returns baseline evidence before lane dispatch: root and parallel lanes use
 `packet_base` at exact packet base with a clean checkout; sequential dependents
 use `predecessor` only for direct materialized predecessor state. Core validates

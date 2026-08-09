@@ -39,18 +39,26 @@ COMPATIBILITY_PROFILES = (
     },
     {
         "name": "claim_repair",
-        "request_apis": frozenset({5}),
+        "request_apis": frozenset(),
         "packet_api": 7,
         "dispatch_host_api": 6,
         "provider_contract": 6,
         "read_host_apis": frozenset({6}),
     },
+    {
+        "name": "attempt_terminalization",
+        "request_apis": frozenset({5}),
+        "packet_api": 8,
+        "dispatch_host_api": 7,
+        "provider_contract": 7,
+        "read_host_apis": frozenset({7}),
+    },
 )
 SUPPORTED_REQUEST_APIS = frozenset().union(*(profile["request_apis"] for profile in COMPATIBILITY_PROFILES))
 SUPPORTED_PACKET_READ_APIS = frozenset(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)
-CURRENT_PACKET_API = 7
+CURRENT_PACKET_API = 8
 CURRENT_RUN_API = 2
-POLICY_SCHEMA_VERSION = 6
+POLICY_SCHEMA_VERSION = 8
 SUPPORTED_HOST_APIS = frozenset({profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES})
 TERMINAL_OBSERVATION_VERSION = 1
 TIMEOUT_OBSERVATION_VERSION = TERMINAL_OBSERVATION_VERSION

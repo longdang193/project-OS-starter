@@ -18,21 +18,21 @@ from harness_core.compatibility import (
 
 def test_protocol_matrix_is_exact() -> None:
     assert SUPPORTED_REQUEST_APIS == frozenset({2, 3, 5})
-    assert SUPPORTED_PACKET_READ_APIS == frozenset({3, 4, 5, 6, 7})
-    assert CURRENT_PACKET_API == 7
+    assert SUPPORTED_PACKET_READ_APIS == frozenset({3, 4, 5, 6, 7, 8})
+    assert CURRENT_PACKET_API == 8
     assert CURRENT_RUN_API == 2
-    assert SUPPORTED_HOST_APIS == frozenset({2, 3, 4, 5, 6})
+    assert SUPPORTED_HOST_APIS == frozenset({2, 3, 4, 5, 6, 7})
 
 
 def test_public_package_exports_current_protocol_constants() -> None:
-    assert harness_core.CURRENT_PACKET_API == 7
+    assert harness_core.CURRENT_PACKET_API == 8
     assert harness_core.CURRENT_RUN_API == 2
-    assert harness_core.SUPPORTED_HOST_APIS == frozenset({2, 3, 4, 5, 6})
+    assert harness_core.SUPPORTED_HOST_APIS == frozenset({2, 3, 4, 5, 6, 7})
 
 
 def test_request_and_host_admission_return_typed_results() -> None:
     assert admit_request_api(3) == {"ok": True, "request_api": 3, "packet_api": 3, "profile": "legacy_dispatch"}
-    assert admit_request_api(5) == {"ok": True, "request_api": 5, "packet_api": 7, "profile": "claim_repair"}
+    assert admit_request_api(5) == {"ok": True, "request_api": 5, "packet_api": 8, "profile": "attempt_terminalization"}
     assert admit_request_api("3") == {
         "ok": False,
         "code": "harness_core_request_api_invalid",
@@ -53,7 +53,7 @@ def test_request_and_host_admission_return_typed_results() -> None:
         "ok": False,
         "code": "harness_core_host_api_incompatible",
         "host_api": 1,
-        "supported_host_apis": [2, 3, 4, 5, 6],
+        "supported_host_apis": [2, 3, 4, 5, 6, 7],
     }
 
 

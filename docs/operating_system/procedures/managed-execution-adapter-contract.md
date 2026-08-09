@@ -366,7 +366,49 @@ packet-selected read-only tool, and identical workspace status before and
 after. Core stores both lane records in `run.json` and fails verification if a
 work or validator lane lacks valid host evidence.
 
+## Attempt Terminalization
+
+For packet API 8, core owns `terminalize_attempt(evidence)`, terminal record
+creation, outcome derivation, lease release, state history, and atomic
+`run.json` replacement. Host never writes `run.json`. Host returns only
+`host_terminal_observation/v2` bound to run, attempt, immutable packet digest,
+lease ID, lease epoch, and host instance ID.
+
+Core issues one non-renewable execution lease immediately before `planned`
+becomes `running`. Host rejects expired or mismatched lease bindings. On
+Windows, host creates one unnamed Job Object per lease, assigns each provider
+root before resume, and proves zero active processes before timeout or
+cancellation terminalization. No PID-tree, process-group, `taskkill`, named-job
+reopen, or host-side run-state fallback is allowed.
+
+An expired lease with absent host and provider identities terminalizes block-only
+as host crash. Live or unverified processes move attempt to nonterminal
+`orphaned` with recovery-blocked evidence. Fresh cleanup proof may terminalize
+that same attempt; retry, resume, acceptance, waiver, and successor creation
+remain forbidden while orphaned.
+
 ## Completion States
+
+## Attempt Terminalization
+
+For packet API 8, core owns `terminalize_attempt(evidence)`, terminal record
+creation, outcome derivation, lease release, state history, and atomic
+`run.json` replacement. Host never writes `run.json`. Host returns only
+`host_terminal_observation/v2` bound to run, attempt, immutable packet digest,
+lease ID, lease epoch, and host instance ID.
+
+Core issues one non-renewable execution lease immediately before `planned`
+becomes `running`. Host rejects expired or mismatched lease bindings. On
+Windows, host creates one unnamed Job Object per lease, assigns each provider
+root before resume, and proves zero active processes before timeout or
+cancellation terminalization. No PID-tree, process-group, `taskkill`, named-job
+reopen, or host-side run-state fallback is allowed.
+
+An expired lease with absent host and provider identities terminalizes block-only
+as host crash. Live or unverified processes move attempt to nonterminal
+`orphaned` with recovery-blocked evidence. Fresh cleanup proof may terminalize
+that same attempt; retry, resume, acceptance, waiver, and successor creation
+remain forbidden while orphaned.
 
 | Result | Meaning |
 | --- | --- |

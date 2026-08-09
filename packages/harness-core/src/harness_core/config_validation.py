@@ -29,6 +29,7 @@ from typing import Any
 import yaml
 
 from .compatibility import admit_request_api
+from .execution_lease import ExecutionLeaseError, normalize_duration_model
 
 
 ROUTE_FIELDS = {
@@ -75,9 +76,9 @@ ARTIFACT_HANDOFF_PROFILE_FIELDS = {
     "total_byte_limit",
 }
 EVIDENCE_ARTIFACT_POLICY_FIELDS = {"catalog", "profiles"}
-V1_ARTIFACT_CATALOG = {
+CURRENT_ARTIFACT_CATALOG = {
     "terminal_observation": {
-        "schema_id": "terminal_observation/v1",
+        "schema_id": "host_terminal_observation/v2",
         "producer": "host",
         "retention": "terminal",
     },
@@ -113,7 +114,11 @@ ORCHESTRATION_FIELDS = {
 }
 RETRY_POLICY_FIELDS = {"max_attempts", "retryable_reasons", "exhaustion", "approval_resume", "approval_ttl_seconds"}
 TOOL_FIELDS = {"optional", "host_kind", "writer_access", "validator_access", "root_probe"}
-RUNTIME_PROVIDER_FIELDS = {"contract_version"}
+RUNTIME_PROVIDER_FIELDS = {
+    "contract_version",
+    "terminal_observation_capability",
+    "execution_lease_duration_model_id",
+}
 CONTEXT_LIMIT_FIELDS = {
     "objective_max_bytes",
     "fact_max_bytes",
@@ -144,7 +149,12 @@ DEFAULT_FIELDS = {
 }
 FRICTION_POLICY_FIELDS = {"event_version", "minimum_distinct_runs", "window_days"}
 FRICTION_POLICY_OPTIONAL_FIELDS = {"follow_up_routes"}
-EXECUTION_BUDGET_FIELDS = {"max_turn_timeout_seconds", "finalization_reserve_seconds", "profiles"}
+EXECUTION_BUDGET_FIELDS = {
+    "max_turn_timeout_seconds",
+    "finalization_reserve_seconds",
+    "lease_duration_model",
+    "profiles",
+}
 EXECUTION_BUDGET_PROFILE_FIELDS = {"turn_timeout_seconds", "timeout_decisions"}
 EXECUTION_BUDGET_PROFILE_OPTIONAL_FIELDS = {"escalation_profile"}
 TIMEOUT_DECISIONS = {"escalate", "block"}
@@ -248,10 +258,10 @@ def _validate_evidence_artifacts(value: Any, context_limits: Any, errors: list[s
         errors.append("evidence_artifacts has invalid fields")
         return {}
     catalog = value.get("catalog")
-    if not isinstance(catalog, dict) or set(catalog) != set(V1_ARTIFACT_CATALOG):
-        errors.append("evidence_artifacts catalog must define V1 artifact kinds")
+    if not isinstance(catalog, dict) or set(catalog) != set(CURRENT_ARTIFACT_CATALOG):
+        errors.append("evidence_artifacts catalog must define current artifact kinds")
         catalog = {}
-    for kind, expected in V1_ARTIFACT_CATALOG.items():
+    for kind, expected in CURRENT_ARTIFACT_CATALOG.items():
         entry = catalog.get(kind)
         if (
             not isinstance(entry, dict)
@@ -261,7 +271,7 @@ def _validate_evidence_artifacts(value: Any, context_limits: Any, errors: list[s
             or not isinstance(context_limits, dict)
             or entry.get("byte_limit", 0) > context_limits.get("artifact_max_bytes", 0)
         ):
-            errors.append(f"evidence artifact catalog `{kind}` has invalid V1 contract")
+            errors.append(f"evidence artifact catalog `{kind}` has invalid current contract")
 
     profiles = value.get("profiles")
     if not isinstance(profiles, dict) or set(profiles) != set(V1_HANDOFF_PROFILES):
@@ -285,7 +295,7 @@ def _validate_evidence_artifacts(value: Any, context_limits: Any, errors: list[s
             or profile.get("base_compatibility") != expected["base_compatibility"]
             or not valid_string_list(allowed)
             or len(set(allowed)) != len(allowed)
-            or not set(allowed) <= set(V1_ARTIFACT_CATALOG)
+            or not set(allowed) <= set(CURRENT_ARTIFACT_CATALOG)
             or not valid_string_list(required)
             or len(set(required)) != len(required)
             or not set(required) <= set(allowed)
@@ -415,7 +425,7 @@ def _validate_named_commands(policy: dict[str, Any], errors: list[str]) -> dict[
 def _validate_execution_budgets(policy: dict[str, Any], errors: list[str]) -> dict[str, dict[str, Any]]:
     budgets = policy.get("execution_budgets")
     if not isinstance(budgets, dict) or set(budgets) != EXECUTION_BUDGET_FIELDS:
-        errors.append("execution_budgets must define max_turn_timeout_seconds, finalization_reserve_seconds, and profiles")
+        errors.append("execution_budgets must define finite lease duration model and profiles")
         return {}
     maximum = budgets.get("max_turn_timeout_seconds")
     if not positive_integer(maximum):
@@ -423,6 +433,11 @@ def _validate_execution_budgets(policy: dict[str, Any], errors: list[str]) -> di
     reserve = budgets.get("finalization_reserve_seconds")
     if not positive_integer(reserve):
         errors.append("execution_budgets finalization_reserve_seconds must be a positive integer")
+    try:
+        normalize_duration_model(budgets.get("lease_duration_model"))
+    except ExecutionLeaseError as exc:
+        detail = str(exc).removeprefix("execution lease duration model has invalid ")
+        errors.append(f"execution_budgets lease_duration_model has invalid {detail}")
     profiles = budgets.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         errors.append("execution_budgets profiles must be a non-empty mapping")
@@ -506,8 +521,8 @@ def validate(root: Path) -> list[str]:
     roles = _validate_roles(roles_payload, errors)
     if not isinstance(policy, dict):
         return [*errors, "harness policy must be a mapping"]
-    if policy.get("version") != 6:
-        errors.append("harness policy version must be 6")
+    if policy.get("version") != 8:
+        errors.append("harness policy version must be 8")
     unknown_policy_fields = set(policy) - POLICY_FIELDS - POLICY_OPTIONAL_FIELDS
     missing_policy_fields = POLICY_FIELDS - policy.keys()
     if missing_policy_fields:
@@ -571,7 +586,16 @@ def validate(root: Path) -> list[str]:
         errors.append("runtime_providers must be a non-empty mapping")
         runtime_providers = {}
     for name, provider in runtime_providers.items():
-        if not isinstance(name, str) or not name or not isinstance(provider, dict) or set(provider) != RUNTIME_PROVIDER_FIELDS or not positive_integer(provider.get("contract_version")):
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(provider, dict)
+            or set(provider) != RUNTIME_PROVIDER_FIELDS
+            or not positive_integer(provider.get("contract_version"))
+            or provider.get("terminal_observation_capability") != "host_terminal_observation_v2"
+            or not isinstance(provider.get("execution_lease_duration_model_id"), str)
+            or not provider["execution_lease_duration_model_id"]
+        ):
             errors.append(f"runtime provider `{name}` is invalid")
 
     defaults = policy.get("defaults")
@@ -656,6 +680,11 @@ def validate(root: Path) -> list[str]:
             errors.append(f"retry policy `{name}` is invalid")
 
     budget_profiles = _validate_execution_budgets(policy, errors)
+    duration_model = policy.get("execution_budgets", {}).get("lease_duration_model") if isinstance(policy.get("execution_budgets"), dict) else None
+    if isinstance(duration_model, dict):
+        for name, provider in runtime_providers.items():
+            if isinstance(provider, dict) and provider.get("execution_lease_duration_model_id") != duration_model.get("id"):
+                errors.append(f"runtime provider `{name}` has mismatched execution lease duration model")
     orchestration = _validate_orchestration(policy, errors, roles)
 
     friction_policy = policy.get("friction_policy")

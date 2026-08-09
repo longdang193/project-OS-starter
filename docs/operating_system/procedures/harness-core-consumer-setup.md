@@ -45,9 +45,15 @@ transport configuration. Repository policy never carries endpoint,
 launch-command, or credential values.
 
 Current Codex App Server policy requires `harness_core.request_api: 5` and
-provider `contract_version: 6`. Core resolves packet API 7 for host API 6 and
-that pair. Packet APIs 3, 4, 5, and 6 remain historical evidence under declared
-compatibility profiles. Packet API 7 never dispatches against host API 5.
+provider `contract_version: 7`. Core resolves packet API 8 for host API 7 and
+that pair. Packet APIs 3 through 7 remain historical evidence under declared
+compatibility profiles. Packet API 8 never dispatches against host API 6.
+
+Before packet API 8 admission, run migration preflight. Active unleased legacy
+attempts must drain or receive explicit operator abandonment; terminal history
+stays immutable. Core issues a finite execution lease only when `planned`
+becomes `running`. Host returns bounded terminal observations, while controller
+calls only `terminalize_attempt(evidence)` for terminal state mutation.
 Upgrade policy, provider pin, core pin, and host release together. For
 host-source repair without a release change, use committed runtime provenance;
 preserve old runs and create successors after migration.

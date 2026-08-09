@@ -1,4 +1,4 @@
-version: 6
+version: 8
 harness_core:
   request_api: 5
 context_limits:
@@ -11,7 +11,7 @@ context_limits:
 evidence_artifacts:
   catalog:
     terminal_observation:
-      schema_id: terminal_observation/v1
+      schema_id: host_terminal_observation/v2
       producer: host
       retention: terminal
       byte_limit: 4096
@@ -95,6 +95,14 @@ retry_policies:
 execution_budgets:
   max_turn_timeout_seconds: 900
   finalization_reserve_seconds: 60
+  lease_duration_model:
+    id: codex_app_server.v1
+    max_turns_per_lane: 2
+    per_turn_overhead_seconds: 15
+    stop_proof_seconds: 30
+    check_timeout_seconds: 60
+    core_verification_seconds: 45
+    cleanup_grace_seconds: 30
   profiles:
     default:
       turn_timeout_seconds: 300
@@ -164,7 +172,9 @@ tools:
     root_probe: ast_grep_root_probe
 runtime_providers:
   codex_app_server:
-    contract_version: 6
+    contract_version: 7
+    terminal_observation_capability: host_terminal_observation_v2
+    execution_lease_duration_model_id: codex_app_server.v1
 friction_policy:
   event_version: 1
   minimum_distinct_runs: 3

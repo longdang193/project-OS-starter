@@ -37,17 +37,19 @@ def isolate_root_friction_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         "_friction_events_path",
         lambda root: FRICTION_EVENTS_ROOT if root == ROOT else original_friction_events_path(root),
     )
+    monkeypatch.setattr(managed, "migration_preflight", lambda root: {"active_legacy_attempts": [], "ready": True})
 
 
 API6_BINDING = {
     "provider_id": "codex_app_server",
-    "host_api": 6,
-    "contract_version": 6,
+    "host_api": 7,
+    "contract_version": 7,
     "transport": "stdio",
     "lifecycle": "host_spawn",
     "protocol": "app-server-v1",
     "configuration_digest": "a" * 64,
     "readiness": "ready",
+    "host_instance_id": "host-test",
 }
 
 
@@ -126,7 +128,18 @@ def write_stranded_run(harness, run_id: str) -> None:
     request = managed_request(run_id=run_id)
     packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
     run = harness._new_run(request, run_id)
-    harness._append_attempt(run, packet)
+    attempt = harness._append_attempt(run, packet)
+    attempt["execution_lease"] = {
+        "run_id": run_id,
+        "attempt_id": "attempt-1",
+        "packet_sha256": harness._canonical_digest(packet),
+        "lease_id": "lease-stranded",
+        "lease_epoch": 1,
+        "host_instance_id": "host-stranded",
+        "issued_at": "2026-08-09T11:00:00+00:00",
+        "expires_at": "2026-08-09T13:00:00+00:00",
+        "state": "active",
+    }
     harness._transition(run, policy["states"], "planned", "test")
     harness._transition(run, policy["states"], "running", "dispatch")
     harness._write_run(ROOT, run)
@@ -221,16 +234,21 @@ class FakeAdapter:
         repair_terminal_status="completed",
         dispatch_error=None,
         identity=None,
-        host_api=6,
+        host_api=7,
         workspace_root=None,
     ):
-        self.capabilities_value = capabilities
+        self.capabilities_value = {
+            "claim_repair_same_thread": "enforced",
+            "host_terminal_observation_v2": "enforced",
+            "execution_lease_duration_model": "enforced",
+            **capabilities,
+        }
         self.claim_payload = claim_payload
         self.validator_claim = validator_claim
         self.repair_payload = repair_payload
         self.repair_terminal_status = repair_terminal_status
         self.dispatch_error = dispatch_error
-        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 6}
+        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 7}
         self.host_api_value = host_api
         self.workspace_root = str(workspace_root or ROOT)
         self.calls = []
@@ -365,7 +383,7 @@ class FakeAdapter:
 
     def collect_lane_evidence(self, handle, lane, packet, workspace):
         self.calls.append("collect_lane_evidence")
-        return {
+        evidence = {
             "lane_id": lane["lane_id"],
             "workspace_root": workspace["path"],
             "thread_id": "thread",
@@ -385,6 +403,43 @@ class FakeAdapter:
             "workspace_status_before": "",
             "workspace_status_after": "",
         }
+        if packet["version"] == 8:
+            lease = packet["execution_lease_binding"]
+            evidence["host_terminal_observation"] = {
+                "schema_id": "host_terminal_observation/v2",
+                "observation_id": f"observation-{lane['lane_id']}",
+                "run_id": lease["run_id"],
+                "attempt_id": lease["attempt_id"],
+                "packet_sha256": lease["packet_sha256"],
+                "lease_id": lease["lease_id"],
+                "lease_epoch": lease["lease_epoch"],
+                "host_instance_id": lease["host_instance_id"],
+                "lane_id": lane["lane_id"],
+                "source": "completed",
+                "observed_at": "2026-08-09T12:00:00+00:00",
+                "elapsed_seconds": 1.0,
+                "provider_session_id": "thread",
+                "provider_turn_id": f"turn-{lane['lane_id']}",
+                "terminal_status": "completed",
+                "item_states": [],
+                "command_states": [],
+                "final_claim_state": {"state": "missing"},
+                "error": None,
+                "containment": {
+                    "state": "stopped",
+                    "job_id": "job-test",
+                    "root_processes": [{"pid": 1, "creation_id": "process-test"}],
+                    "active_process_count": 0,
+                    "termination_action": "none",
+                },
+                "stop_proof": {
+                    "state": "confirmed",
+                    "observed_at": "2026-08-09T12:00:01+00:00",
+                    "host_process": {"pid": 2, "creation_id": "host-test"},
+                    "cancellation_request_id": None,
+                },
+            }
+        return evidence
 
 
 def assert_provider_conformance(harness, adapter, run_id, workspace_root):
@@ -447,7 +502,7 @@ def test_v5_packet_resolves_selected_profiles() -> None:
             planned_write_paths=["scripts/harness_task.py"],
         ),
         attempt_id="attempt-1",
-        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 6, "host_api": 6},
+        provider_runtime_binding=copy.deepcopy(API6_BINDING),
     )
 
     assert packet["authority"] == "workspace_write"
@@ -597,18 +652,18 @@ def test_protected_policy_includes_canonical_skill_sources() -> None:
     assert ".agents/skills/**" in packet["approval_gates"]["protected_policy"]
 
 
-def test_resolve_managed_packet_builds_api7_lane_dag() -> None:
+def test_resolve_managed_packet_builds_api8_lane_dag() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
 
-    assert packet["version"] == 7
+    assert packet["version"] == 8
     assert packet["user_request"] == "Update managed harness fixture."
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 6}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 7}
     assert packet["core_identity"] == {
         **harness.runtime_identity(),
         "request_api": 5,
-        "packet_api": 7,
+        "packet_api": 8,
         "host_api": None,
     }
     assert packet["execution_budget"] == {
@@ -617,6 +672,22 @@ def test_resolve_managed_packet_builds_api7_lane_dag() -> None:
         "finalization_reserve_seconds": 60,
         "timeout_decisions": ["escalate", "block"],
         "escalation_profile": "extended",
+    }
+    assert packet["execution_lease"] == {
+        "duration_model_id": "codex_app_server.v1",
+        "execution_lease_seconds": 1_425,
+        "host_duration_limits": {
+            "max_turns_per_lane": 2,
+            "per_turn_overhead_seconds": 15,
+            "stop_proof_seconds": 30,
+        },
+        "check_timeout_seconds": 60,
+        "core_verification_seconds": 45,
+        "cleanup_grace_seconds": 30,
+    }
+    assert packet["terminal_observation_contract"] == {
+        "schema_id": "host_terminal_observation/v2",
+        "capability": "host_terminal_observation_v2",
     }
     assert packet["agent_identity"] == {
         "template": "normal",
@@ -673,7 +744,7 @@ def test_current_packet_uses_route_capabilities_without_role_writes(monkeypatch)
     assert packet["lanes"][0]["write_capable"] is True
 
 
-def test_api7_packet_requires_immutable_provider_runtime_binding() -> None:
+def test_api8_packet_requires_immutable_provider_runtime_binding() -> None:
     harness = load_module()
     binding = copy.deepcopy(API6_BINDING)
     packet = harness.resolve_managed_packet(
@@ -683,7 +754,7 @@ def test_api7_packet_requires_immutable_provider_runtime_binding() -> None:
         provider_runtime_binding=binding,
     )
 
-    assert packet["version"] == 7
+    assert packet["version"] == 8
     assert packet["invocation_id"] == "attempt-1:primary"
     assert packet["parent_invocation_id"] is None
     assert packet["provider_runtime_binding"] == binding
@@ -743,7 +814,7 @@ def test_harness_diagnosis_packet_resolves_direct_artifact_handoff(monkeypatch: 
             artifact_handoff={"source_run_id": "writer-run", "source_attempt_id": "writer-attempt"},
         ),
         attempt_id="attempt-1",
-        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 6, "host_api": 6},
+            provider_runtime_binding=copy.deepcopy(API6_BINDING),
     )
 
     assert [(artifact["kind"], artifact["source_run_id"], artifact["source_attempt_id"]) for artifact in packet["readonly_artifacts"]] == [
@@ -1050,7 +1121,7 @@ def test_retained_trace_rejects_oversized_serialized_content() -> None:
         ("harness_improvement", ["repo.read", "repo.write", "code.search"], "disabled", "workspace_write"),
     ],
 )
-def test_api7_packet_uses_route_owned_capabilities_and_delegation_profile(
+def test_api8_packet_uses_route_owned_capabilities_and_delegation_profile(
     task_type: str,
     capabilities: list[str],
     delegation_profile: str,
@@ -1073,7 +1144,7 @@ def test_api7_packet_uses_route_owned_capabilities_and_delegation_profile(
     assert packet["capabilities"] == capabilities
     assert packet["delegation_profile"] == delegation_profile
     assert packet["workspace_write_access"] == workspace_write_access
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 6}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 7}
 
 def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
     harness = load_module()
@@ -1135,8 +1206,8 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=6,
-                identity={"provider_id": "codex_app_server", "contract_version": 6},
+                host_api=7,
+                identity={"provider_id": "codex_app_server", "contract_version": 7},
             )
             self.delegation_result = None
 
@@ -1428,7 +1499,7 @@ def test_run_managed_records_adapter_host_api_in_packet(tmp_path: Path) -> None:
 
         assert result["outcome"]["reason"] == "execution_mode_unavailable"
         packet = json.loads((run_dir / "run.json").read_text())["attempts"][0]["packet"]
-        assert packet["core_identity"]["host_api"] == 6
+        assert packet["core_identity"]["host_api"] == 7
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -1829,9 +1900,11 @@ def test_recover_stranded_running_run_records_external_failure_then_allows_block
         assert attempt["outcome"] == {
             "reason": "stranded_running_recovered",
             "allowed_decisions": ["block"],
-            "evidence_refs": ["evidence.failure", "evidence.external_failure", "evidence.recovery"],
+            "evidence_refs": ["terminal_record", "evidence.failure", "evidence.external_failure", "evidence.recovery"],
             "detail": "host terminal evidence could not be recorded",
         }
+        assert attempt["terminal_record"]["classification"] == "stranded_recovery"
+        assert attempt["execution_lease"]["state"] == "released"
         assert attempt["evidence"]["external_failure"] == recovery_evidence(run_id)
         assert attempt["evidence"]["recovery"]["run_id"] == run_id
         assert attempt["evidence"]["recovery"]["attempt_id"] == "attempt-1"
@@ -1933,7 +2006,7 @@ def test_resolve_managed_packet_accepts_allowed_runtime_provider() -> None:
         attempt_id="attempt-1",
     )
 
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 6}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 7}
 
 
 @pytest.mark.parametrize(("task_type", "template", "model"), [
@@ -2253,8 +2326,8 @@ def test_run_managed_requires_ready_provider_binding_before_packet_creation(tmp_
                 managed_request(version=5, run_id=run_id),
                 MissingBindingAdapter(
                     {"single_work_lane": "enforced"},
-                    host_api=6,
-                    identity={"provider_id": "codex_app_server", "contract_version": 6},
+                    host_api=7,
+                    identity={"provider_id": "codex_app_server", "contract_version": 7},
                 ),
             )
 
@@ -2760,7 +2833,7 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         assert len(run["attempts"]) == 2
         assert run["attempts"][0]["packet"]["runtime_provider"] == {
             "provider_id": "codex_app_server",
-            "contract_version": 6,
+            "contract_version": 7,
         }
         assert run["attempts"][1]["packet"]["runtime_provider"] == run["attempts"][0]["packet"]["runtime_provider"]
         assert run["attempts"][1]["packet"]["provider_runtime_binding"] == run["attempts"][0]["packet"]["provider_runtime_binding"]
@@ -3045,6 +3118,7 @@ def test_v7_missing_repair_capability_records_no_repair(tmp_path: Path) -> None:
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     adapter = FakeAdapter({"single_work_lane": "enforced"}, claim_payload={"state": "missing"})
+    adapter.capabilities_value.pop("claim_repair_same_thread")
     try:
         result = harness.run_managed(ROOT, managed_request(run_id=run_id), adapter)
         repair = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]["claim_repair"][0]
@@ -3071,8 +3145,8 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=6,
-                identity={"provider_id": "codex_app_server", "contract_version": 6},
+                host_api=7,
+                identity={"provider_id": "codex_app_server", "contract_version": 7},
             )
 
         def preflight_evidence(self):
@@ -3219,8 +3293,8 @@ def test_api5_timeout_escalation_preserves_provider_runtime_binding(tmp_path: Pa
             BoundTimeoutAdapter(
                 {"single_work_lane": "enforced"},
                 dispatch_error=TimedOutTurn("turn timed out"),
-                host_api=6,
-                identity={"provider_id": "codex_app_server", "contract_version": 6},
+                host_api=7,
+                identity={"provider_id": "codex_app_server", "contract_version": 7},
             ),
         )
 
@@ -3466,12 +3540,12 @@ def test_admit_managed_operation_returns_core_identity_before_packet_work() -> N
 
     identity = harness.admit_managed_operation(
         ROOT,
-        FakeAdapter({"single_work_lane": "enforced"}, host_api=6),
+        FakeAdapter({"single_work_lane": "enforced"}, host_api=7),
     )
 
     assert identity["request_api"] == 5
-    assert identity["packet_api"] == 7
-    assert identity["host_api"] == 6
+    assert identity["packet_api"] == 8
+    assert identity["host_api"] == 7
     assert isinstance(identity["package_release"], str)
 
 

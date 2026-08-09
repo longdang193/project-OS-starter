@@ -82,6 +82,11 @@ ignored local run artifacts. No scheduler, daemon, or job manager ships with
 starter kit. For `runtime_provider_id: codex_app_server`, use provider-host
 execution, never generic `run-unavailable`:
 
+Packet API 8 uses a core-issued finite execution lease and one core
+`terminalize_attempt(evidence)` boundary. Host owns provider process lifecycle
+and bounded terminal observations only; Windows providers run inside one
+kill-on-close Job Object per lease.
+
 ```powershell
 Set-Location <codex-harness-host-root>
 uv run codex-harness-host capabilities

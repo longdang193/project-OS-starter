@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import re
 from typing import Any
 
@@ -50,6 +51,40 @@ _SOURCE_BY_KIND = {
 _MAX_ITEMS = 16
 _MAX_ERROR_FIELDS = 8
 _MAX_LENGTH = 1_000_000
+_HOST_V2_FIELDS = {
+    "schema_id",
+    "observation_id",
+    "run_id",
+    "attempt_id",
+    "packet_sha256",
+    "lease_id",
+    "lease_epoch",
+    "host_instance_id",
+    "lane_id",
+    "source",
+    "observed_at",
+    "elapsed_seconds",
+    "provider_session_id",
+    "provider_turn_id",
+    "terminal_status",
+    "item_states",
+    "command_states",
+    "final_claim_state",
+    "error",
+    "containment",
+    "stop_proof",
+}
+_HOST_V2_SOURCES = {
+    "completed": "completed",
+    "provider_failure": "failed",
+    "timeout": "timed_out",
+    "cancellation": "cancelled",
+    "host_crash_absence": "absent",
+    "stranded_recovery_absence": "absent",
+}
+_PROCESS_FIELDS = {"pid", "creation_id"}
+_CONTAINMENT_FIELDS = {"state", "job_id", "root_processes", "active_process_count", "termination_action"}
+_STOP_PROOF_FIELDS = {"state", "observed_at", "host_process", "cancellation_request_id"}
 
 
 def _identifier(value: Any, field: str) -> str:
@@ -190,6 +225,140 @@ def _packet_lane(packet: dict[str, Any], lane_id: str) -> None:
     check_lane = lane_id.startswith("check:") and isinstance(checks, dict) and lane_id[6:] in checks
     if lane_id not in lane_ids and not check_lane:
         raise TerminalObservationError("terminal observation lane_id conflicts with packet")
+
+
+def _timestamp(value: Any, field: str) -> str:
+    if not isinstance(value, str) or len(value) > 64:
+        raise TerminalObservationError(f"terminal observation has invalid {field}")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise TerminalObservationError(f"terminal observation has invalid {field}") from exc
+    if parsed.tzinfo is None:
+        raise TerminalObservationError(f"terminal observation has invalid {field}")
+    return value
+
+
+def _process(value: Any, field: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _PROCESS_FIELDS:
+        raise TerminalObservationError(f"terminal observation has invalid {field}")
+    pid = value.get("pid")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise TerminalObservationError(f"terminal observation has invalid {field}.pid")
+    return {"pid": pid, "creation_id": _identifier(value.get("creation_id"), f"{field}.creation_id")}
+
+
+def _containment(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _CONTAINMENT_FIELDS:
+        raise TerminalObservationError("terminal observation has invalid containment")
+    roots = value.get("root_processes")
+    count = value.get("active_process_count")
+    if (
+        value.get("state") != "stopped"
+        or not isinstance(roots, list)
+        or not 1 <= len(roots) <= _MAX_ITEMS
+        or not isinstance(count, int)
+        or isinstance(count, bool)
+        or count != 0
+    ):
+        raise TerminalObservationError("terminal observation has incomplete containment proof")
+    action = value.get("termination_action")
+    if action not in {"none", "job_terminated", "host_handle_closed", "external_cleanup"}:
+        raise TerminalObservationError("terminal observation has invalid containment termination_action")
+    return {
+        "state": "stopped",
+        "job_id": _identifier(value.get("job_id"), "containment.job_id"),
+        "root_processes": [_process(item, "containment.root_processes") for item in roots],
+        "active_process_count": 0,
+        "termination_action": action,
+    }
+
+
+def _stop_proof(value: Any, source: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _STOP_PROOF_FIELDS or value.get("state") != "confirmed":
+        raise TerminalObservationError("terminal observation has invalid stop_proof")
+    cancellation_request_id = value.get("cancellation_request_id")
+    if source == "cancellation":
+        cancellation_request_id = _identifier(cancellation_request_id, "stop_proof.cancellation_request_id")
+    elif cancellation_request_id is not None:
+        raise TerminalObservationError("terminal observation has invalid stop_proof.cancellation_request_id")
+    return {
+        "state": "confirmed",
+        "observed_at": _timestamp(value.get("observed_at"), "stop_proof.observed_at"),
+        "host_process": _process(value.get("host_process"), "stop_proof.host_process"),
+        "cancellation_request_id": cancellation_request_id,
+    }
+
+
+def normalize_host_terminal_observation(
+    raw: Any,
+    packet: dict[str, Any],
+    *,
+    binding: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(raw, dict) or set(raw) != _HOST_V2_FIELDS:
+        raise TerminalObservationError("terminal observation has unsupported fields")
+    required_binding = {"run_id", "attempt_id", "packet_sha256", "lease_id", "lease_epoch", "host_instance_id"}
+    if not isinstance(binding, dict) or set(binding) != required_binding:
+        raise TerminalObservationError("terminal observation has invalid binding")
+    normalized_binding = {
+        "run_id": _identifier(binding.get("run_id"), "binding.run_id"),
+        "attempt_id": _identifier(binding.get("attempt_id"), "binding.attempt_id"),
+        "packet_sha256": _hash(binding.get("packet_sha256"), "binding.packet_sha256"),
+        "lease_id": _identifier(binding.get("lease_id"), "binding.lease_id"),
+        "lease_epoch": _length(binding.get("lease_epoch"), "binding.lease_epoch"),
+        "host_instance_id": _identifier(binding.get("host_instance_id"), "binding.host_instance_id"),
+    }
+    if normalized_binding["lease_epoch"] == 0:
+        raise TerminalObservationError("terminal observation has invalid binding.lease_epoch")
+    lease = packet.get("execution_lease")
+    if (
+        not isinstance(lease, dict)
+        or not isinstance(lease.get("execution_lease_seconds"), int)
+        or isinstance(lease["execution_lease_seconds"], bool)
+        or lease["execution_lease_seconds"] <= 0
+    ):
+        raise TerminalObservationError("packet execution lease is invalid")
+    if raw.get("schema_id") != "host_terminal_observation/v2":
+        raise TerminalObservationError("terminal observation has unsupported schema_id")
+    for field, expected in normalized_binding.items():
+        if raw.get(field) != expected:
+            raise TerminalObservationError(f"terminal observation conflicts with {field}")
+    source = raw.get("source")
+    if source not in _HOST_V2_SOURCES or raw.get("terminal_status") != _HOST_V2_SOURCES[source]:
+        raise TerminalObservationError("terminal observation has invalid source or terminal_status")
+    lane_id = _identifier(raw.get("lane_id"), "lane_id")
+    _packet_lane(packet, lane_id)
+    elapsed = raw.get("elapsed_seconds")
+    if (
+        not isinstance(elapsed, (int, float))
+        or isinstance(elapsed, bool)
+        or not 0 <= elapsed <= lease["execution_lease_seconds"]
+    ):
+        raise TerminalObservationError("terminal observation has invalid elapsed_seconds")
+    session_id = _optional_identifier(raw.get("provider_session_id"), "provider_session_id")
+    turn_id = _optional_identifier(raw.get("provider_turn_id"), "provider_turn_id")
+    if source in {"completed", "provider_failure", "timeout", "cancellation"} and (session_id is None or turn_id is None):
+        raise TerminalObservationError("terminal observation lacks provider identity")
+    containment = _containment(raw.get("containment"))
+    return {
+        "schema_id": "host_terminal_observation/v2",
+        "observation_id": _identifier(raw.get("observation_id"), "observation_id"),
+        **normalized_binding,
+        "lane_id": lane_id,
+        "source": source,
+        "observed_at": _timestamp(raw.get("observed_at"), "observed_at"),
+        "elapsed_seconds": float(elapsed),
+        "provider_session_id": session_id,
+        "provider_turn_id": turn_id,
+        "terminal_status": raw["terminal_status"],
+        "item_states": _item_states(raw.get("item_states")),
+        "command_states": _command_states(raw.get("command_states")),
+        "final_claim_state": _final_claim_state(raw.get("final_claim_state")),
+        "error": _error(raw.get("error")),
+        "containment": containment,
+        "stop_proof": _stop_proof(raw.get("stop_proof"), source),
+    }
 
 
 def normalize_terminal_observation(raw: Any, packet: dict[str, Any]) -> dict[str, Any]:

@@ -66,7 +66,7 @@ def write_harness_root(root: Path) -> None:
         "repo_config/harness.yaml",
         yaml.safe_dump(
             {
-                "version": 6,
+                "version": 8,
                 "harness_core": {"request_api": 5},
                 "context_limits": {
                     "objective_max_bytes": 1024,
@@ -79,7 +79,7 @@ def write_harness_root(root: Path) -> None:
                 "evidence_artifacts": {
                     "catalog": {
                         "terminal_observation": {
-                            "schema_id": "terminal_observation/v1",
+                            "schema_id": "host_terminal_observation/v2",
                             "producer": "host",
                             "retention": "terminal",
                             "byte_limit": 4096,
@@ -159,6 +159,15 @@ def write_harness_root(root: Path) -> None:
                 "execution_budgets": {
                     "max_turn_timeout_seconds": 900,
                     "finalization_reserve_seconds": 60,
+                    "lease_duration_model": {
+                        "id": "codex_app_server.v1",
+                        "max_turns_per_lane": 2,
+                        "per_turn_overhead_seconds": 15,
+                        "stop_proof_seconds": 30,
+                        "check_timeout_seconds": 60,
+                        "core_verification_seconds": 45,
+                        "cleanup_grace_seconds": 30,
+                    },
                     "profiles": {"default": {"turn_timeout_seconds": 300, "timeout_decisions": ["block"]}},
                 },
                 "claim_repair": {
@@ -184,7 +193,13 @@ def write_harness_root(root: Path) -> None:
                         "root_probe": "shell_root_probe",
                     },
                 },
-                "runtime_providers": {"codex_app_server": {"contract_version": 6}},
+                "runtime_providers": {
+                    "codex_app_server": {
+                        "contract_version": 6,
+                        "terminal_observation_capability": "host_terminal_observation_v2",
+                        "execution_lease_duration_model_id": "codex_app_server.v1",
+                    },
+                },
                 "friction_policy": {
                     "event_version": 1,
                     "minimum_distinct_runs": 3,
@@ -350,6 +365,16 @@ def test_every_budget_profile_must_exceed_finalization_reserve(tmp_path: Path) -
     ]
 
 
+def test_execution_lease_duration_model_requires_finite_values(tmp_path: Path) -> None:
+    path, policy = composed_policy(tmp_path)
+    policy["execution_budgets"]["lease_duration_model"]["cleanup_grace_seconds"] = 0
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == [
+        "execution_budgets lease_duration_model has invalid cleanup_grace_seconds"
+    ]
+
+
 def test_composed_route_uses_shared_profile_resolver(tmp_path: Path) -> None:
     _, policy = composed_policy(tmp_path)
 
@@ -366,7 +391,11 @@ def test_composed_route_uses_shared_profile_resolver(tmp_path: Path) -> None:
 
 def test_composed_route_rejects_cross_provider_profiles(tmp_path: Path) -> None:
     path, policy = composed_policy(tmp_path)
-    policy["runtime_providers"]["other"] = {"contract_version": 4}
+    policy["runtime_providers"]["other"] = {
+        "contract_version": 4,
+        "terminal_observation_capability": "host_terminal_observation_v2",
+        "execution_lease_duration_model_id": "codex_app_server.v1",
+    }
     policy["operating_profiles"]["local_change_extended"]["runtime_provider"] = "other"
     write_policy(path, policy)
 
@@ -418,7 +447,7 @@ def test_v1_catalog_rejects_invalid_fixed_contract(tmp_path: Path) -> None:
     policy["evidence_artifacts"]["catalog"]["terminal_observation"]["schema_id"] = "arbitrary/v1"
     write_policy(path, policy)
 
-    assert "evidence artifact catalog `terminal_observation` has invalid V1 contract" in config_validation.validate(tmp_path)
+    assert "evidence artifact catalog `terminal_observation` has invalid current contract" in config_validation.validate(tmp_path)
 
 
 def test_artifact_handoff_profiles_require_readonly_authority(tmp_path: Path) -> None:
