@@ -30,19 +30,27 @@ COMPATIBILITY_PROFILES = (
         "read_host_apis": frozenset({4}),
     },
     {
-        "name": "artifact_handoff",
-        "request_apis": frozenset({5}),
+        "name": "artifact_handoff_legacy",
+        "request_apis": frozenset(),
         "packet_api": 6,
         "dispatch_host_api": 5,
         "provider_contract": 5,
         "read_host_apis": frozenset({5}),
     },
+    {
+        "name": "claim_repair",
+        "request_apis": frozenset({5}),
+        "packet_api": 7,
+        "dispatch_host_api": 6,
+        "provider_contract": 6,
+        "read_host_apis": frozenset({6}),
+    },
 )
 SUPPORTED_REQUEST_APIS = frozenset().union(*(profile["request_apis"] for profile in COMPATIBILITY_PROFILES))
 SUPPORTED_PACKET_READ_APIS = frozenset(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)
-CURRENT_PACKET_API = 6
+CURRENT_PACKET_API = 7
 CURRENT_RUN_API = 2
-POLICY_SCHEMA_VERSION = 5
+POLICY_SCHEMA_VERSION = 6
 SUPPORTED_HOST_APIS = frozenset({profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES})
 TERMINAL_OBSERVATION_VERSION = 1
 TIMEOUT_OBSERVATION_VERSION = TERMINAL_OBSERVATION_VERSION

@@ -1,4 +1,11 @@
-version: 2
+version: 3
+claim_fields:
+  summary: nonempty_string
+  changed_files: string_list
+  findings: string_list
+  verdict: nonempty_string
+  decision: nonempty_string
+  frictions: friction_list
 roles:
   implement:
     accepts: [low, normal, high]

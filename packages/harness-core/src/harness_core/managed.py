@@ -63,7 +63,9 @@ class HarnessError(ValueError):
 
 
 class ClaimError(HarnessError):
-    pass
+    def __init__(self, detail: str, *, subcode: str | None = None):
+        super().__init__(detail)
+        self.subcode = subcode
 
 
 class WorkspaceBaselineError(HarnessError):
@@ -85,6 +87,33 @@ FRICTION_EVENT_KINDS = {"observed", "resolution"}
 FRICTION_SOURCES = {"agent", "host", "validator", "check", "controller"}
 FRICTION_PHASES = {"claim", "dispatch", "integration", "check", "validator", "decision"}
 FRICTION_RESOLUTIONS = {"keep", "revise", "remove", "pending"}
+CLAIM_OBSERVATION_VERSION = 1
+CLAIM_OBSERVATION_STATES = {"missing", "non_json", "json_non_object", "object"}
+CLAIM_OBSERVATION_FIELDS = {
+    "version",
+    "lane_id",
+    "thread_id",
+    "state",
+    "candidate_claim",
+    "content_digest",
+    "content_length",
+}
+CLAIM_REPAIR_RESULT_FIELDS = {"claim_observation", "finalization_evidence"}
+CLAIM_REPAIR_FINALIZATION_FIELDS = {
+    "lane_id",
+    "thread_id",
+    "turn_id",
+    "terminal_status",
+    "sandbox",
+    "tool_calls",
+    "command_results",
+    "workspace_status_before",
+    "workspace_status_after",
+    "agent_identity",
+    "prompt_contract_version",
+    "prompt_digest",
+    "elapsed_seconds",
+}
 DELEGATED_CHILD_TERMINAL_STATES = {"succeeded", "failed", "cancelled", "timed_out", "awaiting_decision"}
 CORE_STATE_TRANSITIONS = {
     "classified": ["planned", "blocked"],
@@ -726,13 +755,37 @@ def _safe_paths(value: Any, name: str, *, required: bool) -> list[str]:
     return [_safe_path(path) for path in _string_list(value, name)]
 
 
-def _load_roles(root: Path) -> dict[str, dict[str, Any]]:
+def _load_role_catalog(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
     with (root / "agents" / "roles.yaml").open(encoding="utf-8") as handle:
         payload = yaml.safe_load(handle)
     roles = payload.get("roles") if isinstance(payload, dict) else None
-    if not isinstance(roles, dict):
+    claim_fields = payload.get("claim_fields") if isinstance(payload, dict) else None
+    if not isinstance(roles, dict) or not isinstance(claim_fields, dict):
         raise HarnessError("roles must be a mapping")
-    return roles
+    if not all(isinstance(name, str) and name and isinstance(field_type, str) and field_type for name, field_type in claim_fields.items()):
+        raise HarnessError("claim_fields must be a mapping of non-empty strings")
+    return roles, claim_fields
+
+
+def _load_roles(root: Path) -> dict[str, dict[str, Any]]:
+    return _load_role_catalog(root)[0]
+
+
+def _claim_schema(role: dict[str, Any], claim_fields: dict[str, str]) -> dict[str, Any]:
+    required_fields = role.get("required_fields")
+    if not isinstance(required_fields, list) or not all(isinstance(field, str) and field in claim_fields for field in required_fields):
+        raise HarnessError("role claim fields conflict with claim catalog")
+    field_types = {field: claim_fields[field] for field in required_fields}
+    return {
+        "required_fields": copy.deepcopy(required_fields),
+        "field_types": field_types,
+        "optional_field_types": {
+            field: field_type
+            for field, field_type in claim_fields.items()
+            if field not in field_types
+        },
+        "field_constraints": copy.deepcopy(role.get("field_constraints", {})),
+    }
 
 
 def _load_agent_identity(root: Path, template: str) -> dict[str, str]:
@@ -1500,10 +1553,14 @@ def _patterns_overlap(left: str, right: str) -> bool:
 
 
 def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str], value: Any) -> list[dict[str, Any]]:
-    roles = _load_roles(root)
+    roles, claim_fields = _load_role_catalog(root)
     role_writes = lambda role: "repo.write" in (
         packet["capabilities"] if packet["version"] != 3 else legacy_role_capabilities(role)
     )
+
+    def lane_claim_schema(role: str) -> dict[str, Any]:
+        return _claim_schema(roles[role], claim_fields)
+
     if packet["orchestration"]["work_scheduling"] == "single":
         role = packet["role"]
         work_lanes = [{
@@ -1516,14 +1573,7 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
             "workspace_mode": packet["orchestration"]["workspace_mode"],
             "write_capable": role_writes(role),
             "required_claim_kind": roles[role]["result_kind"],
-            "claim_schema": {
-                "required_fields": copy.deepcopy(roles[role]["required_fields"]),
-                "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
-            },
-            "claim_schema": {
-                "required_fields": copy.deepcopy(roles[role]["required_fields"]),
-                "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
-            },
+            "claim_schema": lane_claim_schema(role),
         }]
     else:
         if not isinstance(value, list) or not value:
@@ -1557,14 +1607,7 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
                 "workspace_mode": workspace_mode,
                 "write_capable": write_capable,
                 "required_claim_kind": roles[role]["result_kind"],
-                "claim_schema": {
-                    "required_fields": copy.deepcopy(roles[role]["required_fields"]),
-                    "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
-                },
-                "claim_schema": {
-                    "required_fields": copy.deepcopy(roles[role]["required_fields"]),
-                    "field_constraints": copy.deepcopy(roles[role].get("field_constraints", {})),
-                },
+                "claim_schema": lane_claim_schema(role),
             })
     lane_ids = {lane["lane_id"] for lane in work_lanes}
     for lane in work_lanes:
@@ -1621,14 +1664,7 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
             "workspace_mode": workspace_mode,
             "write_capable": False,
             "required_claim_kind": validator["result_kind"],
-            "claim_schema": {
-                "required_fields": copy.deepcopy(validator["required_fields"]),
-                "field_constraints": copy.deepcopy(validator.get("field_constraints", {})),
-            },
-            "claim_schema": {
-                "required_fields": copy.deepcopy(validator["required_fields"]),
-                "field_constraints": copy.deepcopy(validator.get("field_constraints", {})),
-            },
+            "claim_schema": lane_claim_schema(validator_role),
         },
         {
             "lane_id": "check",
@@ -1790,6 +1826,8 @@ def resolve_managed_packet(
         "review_evidence": copy.deepcopy(request.get("review_evidence")),
         "manual_evidence": copy.deepcopy(request.get("manual_evidence")),
     })
+    if packet_api == CURRENT_PACKET_API:
+        packet["claim_repair"] = copy.deepcopy(policy["claim_repair"])
     if provider_runtime_binding is not None:
         packet["provider_runtime_binding"] = provider_runtime_binding
     if "readonly_artifacts" in request:
@@ -2119,10 +2157,15 @@ def complete_delegated_child(
     child_packet = child["packet"]
     if status == "succeeded" and child_packet.get("verification") == "schema":
         try:
-            role = _load_roles(root).get(child_packet.get("role"))
+            roles, claim_fields = _load_role_catalog(root)
+            role = roles.get(child_packet.get("role"))
             if not isinstance(role, dict) or claim is None:
                 raise HarnessError("delegated child claim is required")
-            claim = _validate_managed_claim(claim, role)
+            claim = _validate_managed_claim(
+                claim,
+                required_claim_kind=role["result_kind"],
+                claim_schema=_claim_schema(role, claim_fields),
+            )
         except HarnessError:
             return {"ok": False, "code": "delegation_result_invalid"}
 
@@ -2368,6 +2411,7 @@ def _record_lane_execution_evidence(
         or not evidence["turn_id"]
         or not isinstance(evidence.get("workspace_status_before"), str)
         or not isinstance(evidence.get("workspace_status_after"), str)
+        or (packet.get("version") == CURRENT_PACKET_API and evidence.get("terminal_status") != "completed")
     ):
         raise HarnessError("host adapter lane execution evidence conflicts with packet")
     selected_tools = evidence.get("selected_tools_used")
@@ -2545,25 +2589,124 @@ def _assert_workspace_readonly_artifacts(packet: dict[str, Any], workspace: dict
         observed_keys.add(key)
 
 
-def _validate_managed_claim(claim: Any, role: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(claim, dict) or claim.get("kind") != role["result_kind"]:
-        raise HarnessError("managed claim has invalid result kind")
-    for field in role["required_fields"]:
-        value = claim.get(field)
-        if field in {"changed_files", "findings"}:
-            _string_list(value, f"managed claim {field}")
-        elif not isinstance(value, str) or not value:
-            raise HarnessError(f"managed claim missing required field `{field}`")
-    for field, allowed_values in role.get("field_constraints", {}).items():
+def _claim_field_matches_type(value: Any, field_type: str) -> bool:
+    if field_type == "nonempty_string":
+        return isinstance(value, str) and bool(value)
+    if field_type == "string_list":
+        return isinstance(value, list) and bool(value) and all(isinstance(item, str) and item for item in value)
+    if field_type == "friction_list":
+        return isinstance(value, list) and all(
+            isinstance(item, dict) and isinstance(item.get("category"), str) and bool(item["category"])
+            for item in value
+        )
+    raise HarnessError("claim schema has unsupported field type")
+
+
+def _validate_managed_claim(
+    claim: Any,
+    *,
+    required_claim_kind: str,
+    claim_schema: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(claim, dict):
+        raise ClaimError("managed claim must be an object", subcode="claim_not_object")
+    if claim.get("kind") != required_claim_kind:
+        raise ClaimError("managed claim has invalid result kind", subcode="claim_kind_mismatch")
+    required_fields = claim_schema.get("required_fields")
+    field_types = claim_schema.get("field_types")
+    optional_field_types = claim_schema.get("optional_field_types")
+    constraints = claim_schema.get("field_constraints")
+    if (
+        not isinstance(required_fields, list)
+        or not all(isinstance(field, str) and field for field in required_fields)
+        or not isinstance(field_types, dict)
+        or set(field_types) != set(required_fields)
+        or not isinstance(optional_field_types, dict)
+        or not isinstance(constraints, dict)
+    ):
+        raise HarnessError("lane claim schema is invalid")
+    for field in required_fields:
+        if field not in claim:
+            raise ClaimError(f"managed claim missing required field `{field}`", subcode="claim_field_missing")
+        if not _claim_field_matches_type(claim[field], field_types[field]):
+            raise ClaimError(f"managed claim field `{field}` has invalid type", subcode="claim_field_type_invalid")
+    for field, field_type in optional_field_types.items():
+        if not isinstance(field, str) or not isinstance(field_type, str):
+            raise HarnessError("lane claim schema optional fields are invalid")
+        if field in claim and not _claim_field_matches_type(claim[field], field_type):
+            raise ClaimError(f"managed claim field `{field}` has invalid type", subcode="claim_field_type_invalid")
+    for field, allowed_values in constraints.items():
         if claim.get(field) not in allowed_values:
-            raise HarnessError(f"managed claim field `{field}` has unsupported value")
-    frictions = claim.get("frictions", [])
-    if not isinstance(frictions, list):
-        raise HarnessError("managed claim frictions must be a list")
-    for friction in frictions:
-        if not isinstance(friction, dict) or not isinstance(friction.get("category"), str) or not friction["category"]:
-            raise HarnessError("managed claim friction must have category")
+            raise ClaimError(
+                f"managed claim field `{field}` has unsupported value",
+                subcode="claim_field_constraint_invalid",
+            )
     return copy.deepcopy(claim)
+
+
+def _claim_schema_for_lane(root: Path, lane: dict[str, Any], packet_version: int) -> dict[str, Any]:
+    schema = lane.get("claim_schema")
+    if isinstance(schema, dict) and "field_types" in schema and "optional_field_types" in schema:
+        return schema
+    if packet_version == CURRENT_PACKET_API:
+        raise HarnessError("packet V7 lane lacks typed claim schema")
+    role_name = lane.get("role")
+    roles, claim_fields = _load_role_catalog(root)
+    role = roles.get(role_name)
+    if not isinstance(role, dict):
+        raise HarnessError(f"lane `{lane['lane_id']}` has unknown role `{role_name}`")
+    return _claim_schema(role, claim_fields)
+
+
+def _normalize_claim_observation(value: Any, lane: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) - CLAIM_OBSERVATION_FIELDS:
+        raise HarnessError("host adapter claim observation is invalid")
+    state = value.get("state")
+    if (
+        value.get("version") != CLAIM_OBSERVATION_VERSION
+        or value.get("lane_id") != lane["lane_id"]
+        or value.get("thread_id") != evidence.get("thread_id")
+        or state not in CLAIM_OBSERVATION_STATES
+    ):
+        raise HarnessError("host adapter claim observation conflicts with lane evidence")
+    if state == "object":
+        if "candidate_claim" not in value:
+            raise HarnessError("host adapter object claim observation lacks candidate")
+    elif "candidate_claim" in value:
+        raise HarnessError("host adapter non-object claim observation includes candidate")
+    if "content_digest" in value and (
+        not isinstance(value["content_digest"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", value["content_digest"]) is None
+    ):
+        raise HarnessError("host adapter claim observation digest is invalid")
+    if "content_length" in value and (not isinstance(value["content_length"], int) or value["content_length"] < 0):
+        raise HarnessError("host adapter claim observation length is invalid")
+    normalized = {
+        "version": CLAIM_OBSERVATION_VERSION,
+        "lane_id": lane["lane_id"],
+        "thread_id": evidence["thread_id"],
+        "state": state,
+    }
+    for field in ("content_digest", "content_length", "candidate_claim"):
+        if field in value:
+            normalized[field] = copy.deepcopy(value[field])
+    return normalized
+
+
+def _record_claim_observation(attempt: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
+    record = {
+        "lane_id": observation["lane_id"],
+        "thread_id": observation["thread_id"],
+        "state": observation["state"],
+    }
+    for field in ("content_digest", "content_length"):
+        if field in observation:
+            record[field] = observation[field]
+    records = attempt.setdefault("evidence", {}).setdefault("claim_observations", [])
+    if any(item.get("lane_id") == record["lane_id"] for item in records):
+        raise HarnessError("lane produced duplicate claim observation")
+    records.append(record)
+    return record
 
 
 def _validator_criterion(root: Path, attempt: dict[str, Any]) -> dict[str, str]:
@@ -2584,8 +2727,11 @@ def _validator_criterion(root: Path, attempt: dict[str, Any]) -> dict[str, str]:
     ):
         return {"status": "failed", "evidence_ref": "validator_claim"}
     try:
-        role = _load_roles(root)[validator_lane["role"]]
-        claim = _validate_managed_claim(validator_claim, role)
+        claim = _validate_managed_claim(
+            validator_claim,
+            required_claim_kind=validator_lane["required_claim_kind"],
+            claim_schema=_claim_schema_for_lane(root, validator_lane, attempt["packet"]["version"]),
+        )
     except (HarnessError, KeyError, TypeError):
         return {"status": "failed", "evidence_ref": "validator_claim"}
     if (
@@ -2965,17 +3111,28 @@ def _cancel_active_lanes(
             )
 
 
-def _record_lane_claim(root: Path, run: dict[str, Any], attempt: dict[str, Any], lane: dict[str, Any], claim: Any) -> None:
+def _record_lane_claim(
+    root: Path,
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    lane: dict[str, Any],
+    claim: Any,
+    *,
+    packet_version: int,
+) -> None:
     try:
-        role_name = lane.get("role")
-        if not isinstance(role_name, str):
+        if lane.get("node_kind") != "agent":
             raise HarnessError(f"lane `{lane['lane_id']}` cannot collect an agent claim")
-        role = _load_roles(root).get(role_name)
-        if not isinstance(role, dict):
-            raise HarnessError(f"lane `{lane['lane_id']}` has unknown role `{role_name}`")
-        normalized_claim = _validate_managed_claim(claim, role)
-        if normalized_claim["kind"] != lane["required_claim_kind"]:
-            raise HarnessError(f"lane `{lane['lane_id']}` claim kind conflicts with packet")
+        required_claim_kind = lane.get("required_claim_kind")
+        if not isinstance(required_claim_kind, str) or not required_claim_kind:
+            raise HarnessError(f"lane `{lane['lane_id']}` lacks required claim kind")
+        normalized_claim = _validate_managed_claim(
+            claim,
+            required_claim_kind=required_claim_kind,
+            claim_schema=_claim_schema_for_lane(root, lane, packet_version),
+        )
+    except ClaimError:
+        raise
     except HarnessError as exc:
         raise ClaimError(str(exc)) from exc
     attempt["claims"].append({"lane_id": lane["lane_id"], "claim": normalized_claim})
@@ -2990,6 +3147,192 @@ def _record_lane_claim(root: Path, run: dict[str, Any], attempt: dict[str, Any],
             code=friction["category"],
             evidence_ref=f"claims.{lane['lane_id']}",
         )
+
+
+def _claim_observation_failure(observation: dict[str, Any]) -> ClaimError | None:
+    state = observation["state"]
+    if state == "missing":
+        return ClaimError("managed final claim is missing", subcode="missing_final_claim")
+    if state == "non_json":
+        return ClaimError("managed final claim is not JSON", subcode="claim_not_json")
+    if state == "json_non_object":
+        return ClaimError("managed final claim is not a JSON object", subcode="claim_not_object")
+    return None
+
+
+def _claim_repair_admission(
+    attempt: dict[str, Any],
+    lane: dict[str, Any],
+    packet: dict[str, Any],
+    evidence: dict[str, Any],
+    capabilities: dict[str, str],
+) -> tuple[bool, str, int]:
+    repair = packet.get("claim_repair")
+    if not isinstance(repair, dict):
+        raise HarnessError("packet V7 lacks claim repair contract")
+    max_repairs = repair.get("max_repairs_per_lane")
+    if not isinstance(max_repairs, int) or max_repairs < 1:
+        raise HarnessError("packet claim repair budget is invalid")
+    records = attempt.setdefault("evidence", {}).setdefault("claim_repair", [])
+    repair_count = sum(
+        1
+        for record in records
+        if isinstance(record, dict)
+        and record.get("lane_id") == lane["lane_id"]
+        and record.get("admission", {}).get("admitted") is True
+    )
+    if lane.get("node_kind") != "agent":
+        return False, "lane_not_agent", repair_count
+    if evidence.get("terminal_status") != "completed":
+        return False, "terminal_completion_not_confirmed", repair_count
+    if not isinstance(evidence.get("thread_id"), str) or not evidence["thread_id"]:
+        return False, "original_thread_missing", repair_count
+    if repair_count >= max_repairs:
+        return False, "repair_budget_exhausted", repair_count
+    reserve = packet.get("execution_budget", {}).get("finalization_reserve_seconds")
+    if not isinstance(reserve, int) or reserve <= 0:
+        return False, "finalization_reserve_unavailable", repair_count
+    capability = repair.get("required_host_capability")
+    if not isinstance(capability, str) or capabilities.get(capability) != "enforced":
+        return False, "required_host_capability_unavailable", repair_count
+    return True, "eligible", repair_count
+
+
+def _normalize_claim_repair_result(
+    value: Any,
+    lane: dict[str, Any],
+    packet: dict[str, Any],
+    evidence: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not isinstance(value, dict) or set(value) != CLAIM_REPAIR_RESULT_FIELDS:
+        raise HarnessError("host adapter claim repair result is invalid")
+    finalization = value["finalization_evidence"]
+    if not isinstance(finalization, dict) or set(finalization) != CLAIM_REPAIR_FINALIZATION_FIELDS:
+        raise HarnessError("host adapter claim repair evidence is invalid")
+    elapsed = finalization["elapsed_seconds"]
+    reserve = packet["execution_budget"]["finalization_reserve_seconds"]
+    if (
+        finalization["lane_id"] != lane["lane_id"]
+        or finalization["thread_id"] != evidence["thread_id"]
+        or not isinstance(finalization["turn_id"], str)
+        or not finalization["turn_id"]
+        or finalization["terminal_status"] != "completed"
+        or finalization["sandbox"] != "read-only"
+        or finalization["tool_calls"] != []
+        or finalization["command_results"] != []
+        or finalization["workspace_status_before"] != finalization["workspace_status_after"]
+        or finalization["agent_identity"] != packet["agent_identity"]
+        or finalization["prompt_contract_version"] != 1
+        or not isinstance(finalization["prompt_digest"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", finalization["prompt_digest"]) is None
+        or isinstance(elapsed, bool)
+        or not isinstance(elapsed, (int, float))
+        or elapsed < 0
+        or elapsed > reserve
+    ):
+        raise HarnessError("host adapter claim repair evidence conflicts with packet")
+    observation = _normalize_claim_observation(value["claim_observation"], lane, evidence)
+    return observation, copy.deepcopy(finalization)
+
+
+def _record_v7_lane_claim(
+    root: Path,
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    adapter: Any,
+    capabilities: dict[str, str],
+    lane: dict[str, Any],
+    packet: dict[str, Any],
+    workspace: dict[str, Any],
+    handle: Any,
+    evidence: dict[str, Any],
+    value: Any,
+) -> None:
+    observation = _normalize_claim_observation(value, lane, evidence)
+    observation_record = _record_claim_observation(attempt, observation)
+    unusable = _claim_observation_failure(observation)
+    if unusable is None:
+        try:
+            _record_lane_claim(
+                root,
+                run,
+                attempt,
+                lane,
+                observation["candidate_claim"],
+                packet_version=packet["version"],
+            )
+            return
+        except ClaimError as exc:
+            unusable = exc
+    if unusable.subcode not in packet["claim_repair"]["admissible_subcodes"]:
+        raise HarnessError("claim validation produced unsupported repair subcode")
+    observation_record["subcode"] = unusable.subcode
+    admitted, reason, repair_count = _claim_repair_admission(attempt, lane, packet, evidence, capabilities)
+    repair_record = {
+        "lane_id": lane["lane_id"],
+        "observation": copy.deepcopy(observation_record),
+        "subcode": unusable.subcode,
+        "admission": {"admitted": admitted, "reason": reason},
+        "repair_count": repair_count + (1 if admitted else 0),
+    }
+    attempt["evidence"]["claim_repair"].append(repair_record)
+    if not admitted:
+        raise unusable
+    _write_run(root, run)
+    try:
+        result = _adapter_call(
+            adapter,
+            "repair_claim",
+            handle,
+            lane,
+            packet,
+            workspace,
+            {"version": 1, "subcode": unusable.subcode, "detail": str(unusable)},
+        )
+        repaired_observation, finalization = _normalize_claim_repair_result(result, lane, packet, evidence)
+        repair_record["finalization_identity"] = {
+            "thread_id": finalization["thread_id"],
+            "turn_id": finalization["turn_id"],
+        }
+        repair_record["safe_prompt_digest"] = finalization["prompt_digest"]
+        repaired_failure = _claim_observation_failure(repaired_observation)
+        if repaired_failure is not None:
+            raise repaired_failure
+        _record_lane_claim(
+            root,
+            run,
+            attempt,
+            lane,
+            repaired_observation["candidate_claim"],
+            packet_version=packet["version"],
+        )
+    except ClaimError as exc:
+        repair_record["repeated_validation"] = {"status": "invalid", "subcode": exc.subcode}
+        _record_attempt_friction(
+            root,
+            run,
+            attempt,
+            lane=lane,
+            source="host",
+            phase="validator" if lane["kind"] == "validate" else "claim",
+            code="claim_repair_failed",
+            evidence_ref=f"evidence.claim_repair.{lane['lane_id']}",
+        )
+        raise
+    except Exception:
+        repair_record["repeated_validation"] = {"status": "finalization_failed"}
+        _record_attempt_friction(
+            root,
+            run,
+            attempt,
+            lane=lane,
+            source="host",
+            phase="validator" if lane["kind"] == "validate" else "claim",
+            code="claim_repair_failed",
+            evidence_ref=f"evidence.claim_repair.{lane['lane_id']}",
+        )
+        raise
+    repair_record["repeated_validation"] = {"status": "valid"}
 
 
 def _record_verification_frictions(root: Path, run: dict[str, Any], attempt: dict[str, Any], verification: dict[str, Any]) -> None:
@@ -3045,7 +3388,10 @@ def _execute_attempt(
         _write_run(root, run)
         return _managed_result(run)
     try:
-        capabilities = _adapter_capabilities(adapter, set(policy["orchestration"]))
+        capabilities = _adapter_capabilities(
+            adapter,
+            set(policy["orchestration"]) | {policy["claim_repair"]["required_host_capability"]},
+        )
     except Exception as exc:
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
     mode = packet["orchestration"]["name"]
@@ -3118,14 +3464,29 @@ def _execute_attempt(
                     handle = _adapter_call(adapter, "dispatch_lane", lane, packet, workspace, _delegation_bridge(root, run, attempt, lane))
                     active_handles.append((lane, handle))
                 for lane, handle in active_handles[:]:
+                    evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
+                    _record_lane_execution_evidence(attempt, lane, packet, lane["workspace"], evidence)
                     claim = _adapter_call(adapter, "collect_claim", handle)
                     if _sync_delegation_state(root, run, attempt):
                         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="delegation")
                         _write_run(root, run)
                         return _managed_result(run)
-                    _record_lane_claim(root, run, attempt, lane, claim)
-                    evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
-                    _record_lane_execution_evidence(attempt, lane, packet, lane["workspace"], evidence)
+                    if packet["version"] == CURRENT_PACKET_API:
+                        _record_v7_lane_claim(
+                            root,
+                            run,
+                            attempt,
+                            adapter,
+                            capabilities,
+                            lane,
+                            packet,
+                            lane["workspace"],
+                            handle,
+                            evidence,
+                            claim,
+                        )
+                    else:
+                        _record_lane_claim(root, run, attempt, lane, claim, packet_version=packet["version"])
                     lane["status"] = "succeeded"
                     workspaces[lane["lane_id"]] = copy.deepcopy(lane["workspace"])
                     pending.pop(lane["lane_id"])
@@ -3156,10 +3517,25 @@ def _execute_attempt(
                 _record_tool_binding_evidence(attempt, validator, packet, workspace, bindings)
                 handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, _delegation_bridge(root, run, attempt, validator))
                 active_handles.append((validator, handle))
-                claim = _adapter_call(adapter, "collect_claim", handle)
-                _record_lane_claim(root, run, attempt, validator, claim)
                 evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
                 _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
+                claim = _adapter_call(adapter, "collect_claim", handle)
+                if packet["version"] == CURRENT_PACKET_API:
+                    _record_v7_lane_claim(
+                        root,
+                        run,
+                        attempt,
+                        adapter,
+                        capabilities,
+                        validator,
+                        packet,
+                        workspace,
+                        handle,
+                        evidence,
+                        claim,
+                    )
+                else:
+                    _record_lane_claim(root, run, attempt, validator, claim, packet_version=packet["version"])
                 validator["status"] = "succeeded"
                 pending.pop(validator["lane_id"])
                 active_handles.remove((validator, handle))
@@ -3231,7 +3607,7 @@ def _execute_attempt(
                 terminal_evidence=terminal_evidence,
             )
         return _record_failure(root, run, policy, attempt, "verification_failed", str(exc), phase="check")
-    attempt["evidence"] = verification
+    attempt.setdefault("evidence", {}).update(verification)
     _record_verification_frictions(root, run, attempt, verification)
     reason, decisions = _outcome_for_verification(verification, packet["retry_policy"])
     _set_outcome(attempt, reason, decisions, ["evidence"])
@@ -3468,12 +3844,12 @@ def main(argv: list[str] | None = None) -> int:
                 root,
                 task,
                 {
-                    "host_api": 5,
-                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 5},
+                    "host_api": 6,
+                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 6},
                     "preflight_evidence": lambda: {
                         "provider_id": "codex_app_server",
-                        "host_api": 5,
-                        "contract_version": 5,
+                        "host_api": 6,
+                        "contract_version": 6,
                         "transport": "stdio",
                         "lifecycle": "host_spawn",
                         "protocol": "app-server-v1",

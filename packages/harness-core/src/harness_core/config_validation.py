@@ -92,6 +92,17 @@ V1_HANDOFF_PROFILES = {
     "friction_terminal_diagnosis": {"lineage_mode": "source_set", "base_compatibility": "same_repository"},
 }
 ROLE_FIELDS = {"accepts", "result_kind", "required_fields"}
+CLAIM_FIELD_TYPES = {"nonempty_string", "string_list", "friction_list"}
+CLAIM_REPAIR_FIELDS = {"max_repairs_per_lane", "admissible_subcodes", "required_host_capability"}
+CLAIM_REPAIR_SUBCODES = {
+    "missing_final_claim",
+    "claim_not_json",
+    "claim_not_object",
+    "claim_kind_mismatch",
+    "claim_field_missing",
+    "claim_field_type_invalid",
+    "claim_field_constraint_invalid",
+}
 ORCHESTRATION_FIELDS = {
     "aliases",
     "work_scheduling",
@@ -151,6 +162,7 @@ POLICY_FIELDS = {
     "verification_profiles",
     "retry_policies",
     "execution_budgets",
+    "claim_repair",
     "checks",
     "tools",
     "runtime_providers",
@@ -329,9 +341,25 @@ def resolve_operating_profile(policy: dict[str, Any], route_name: str, profile_n
 
 def _validate_roles(roles_payload: Any, errors: list[str]) -> dict[str, dict[str, Any]]:
     version = roles_payload.get("version") if isinstance(roles_payload, dict) else None
-    if version not in {1, 2}:
-        errors.append("roles version must be 1 or 2")
+    if version not in {1, 2, 3}:
+        errors.append("roles version must be 1, 2, or 3")
         return {}
+    allowed_payload_fields = {"version", "roles"} if version in {1, 2} else {"version", "claim_fields", "roles"}
+    if set(roles_payload) != allowed_payload_fields:
+        errors.append("roles schema has invalid fields")
+    claim_fields = roles_payload.get("claim_fields", {}) if version == 3 else {}
+    if version == 3 and (
+        not isinstance(claim_fields, dict)
+        or not claim_fields
+        or any(
+            not isinstance(name, str)
+            or not name
+            or field_type not in CLAIM_FIELD_TYPES
+            for name, field_type in claim_fields.items()
+        )
+    ):
+        errors.append("claim_fields must map names to supported types")
+        claim_fields = {}
     roles = roles_payload.get("roles")
     if not isinstance(roles, dict):
         errors.append("roles must be a mapping")
@@ -346,7 +374,7 @@ def _validate_roles(roles_payload: Any, errors: list[str]) -> dict[str, dict[str
             errors.append(f"role `{name}` missing fields: {', '.join(sorted(missing))}")
         if version == 1 and not isinstance(role.get("writes"), bool):
             errors.append(f"role `{name}` writes must be a boolean")
-        if version == 2 and "writes" in role:
+        if version in {2, 3} and "writes" in role:
             errors.append(f"role `{name}` must not define writes in role schema v2")
         if not valid_string_list(role.get("accepts")):
             errors.append(f"role `{name}` accepts must be a list of strings")
@@ -354,10 +382,19 @@ def _validate_roles(roles_payload: Any, errors: list[str]) -> dict[str, dict[str
             errors.append(f"role `{name}` result_kind must be a non-empty string")
         if not valid_string_list(role.get("required_fields")):
             errors.append(f"role `{name}` required_fields must be a list of strings")
+        elif version == 3:
+            for field in role["required_fields"]:
+                if field not in claim_fields:
+                    errors.append(f"role `{name}` references unknown claim field `{field}`")
         constraints = role.get("field_constraints")
         if constraints is not None and (
             not isinstance(constraints, dict)
-            or any(field not in role.get("required_fields", []) or not valid_string_list(values) for field, values in constraints.items())
+            or any(
+                field not in role.get("required_fields", [])
+                or (version == 3 and claim_fields.get(field) != "nonempty_string")
+                or not valid_string_list(values)
+                for field, values in constraints.items()
+            )
         ):
             errors.append(f"role `{name}` field_constraints must target required string fields")
     return roles
@@ -469,8 +506,8 @@ def validate(root: Path) -> list[str]:
     roles = _validate_roles(roles_payload, errors)
     if not isinstance(policy, dict):
         return [*errors, "harness policy must be a mapping"]
-    if policy.get("version") != 5:
-        errors.append("harness policy version must be 5")
+    if policy.get("version") != 6:
+        errors.append("harness policy version must be 6")
     unknown_policy_fields = set(policy) - POLICY_FIELDS - POLICY_OPTIONAL_FIELDS
     missing_policy_fields = POLICY_FIELDS - policy.keys()
     if missing_policy_fields:
@@ -494,6 +531,18 @@ def validate(root: Path) -> list[str]:
     context_limits = policy.get("context_limits")
     if not isinstance(context_limits, dict) or set(context_limits) != CONTEXT_LIMIT_FIELDS or not all(positive_integer(value) for value in context_limits.values()):
         errors.append("context_limits must define positive integer limits")
+
+    claim_repair = policy.get("claim_repair")
+    if not isinstance(claim_repair, dict) or set(claim_repair) != CLAIM_REPAIR_FIELDS:
+        errors.append("claim_repair has invalid fields")
+    else:
+        if claim_repair["max_repairs_per_lane"] != 1:
+            errors.append("claim_repair max_repairs_per_lane must be 1")
+        subcodes = claim_repair["admissible_subcodes"]
+        if not isinstance(subcodes, list) or set(subcodes) != CLAIM_REPAIR_SUBCODES or len(subcodes) != len(CLAIM_REPAIR_SUBCODES):
+            errors.append("claim_repair admissible_subcodes are invalid")
+        if claim_repair["required_host_capability"] != "claim_repair_same_thread":
+            errors.append("claim_repair required_host_capability is invalid")
 
     artifact_handoff_profiles = _validate_evidence_artifacts(policy.get("evidence_artifacts"), context_limits, errors)
 

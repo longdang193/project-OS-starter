@@ -41,8 +41,8 @@ def isolate_root_friction_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 API6_BINDING = {
     "provider_id": "codex_app_server",
-    "host_api": 5,
-    "contract_version": 5,
+    "host_api": 6,
+    "contract_version": 6,
     "transport": "stdio",
     "lifecycle": "host_spawn",
     "protocol": "app-server-v1",
@@ -212,12 +212,23 @@ def write_coordinated_run(harness, root, run_id, *, state, plan_ref, task_id, pa
 
 
 class FakeAdapter:
-    def __init__(self, capabilities, claim_payload=None, validator_claim=None, dispatch_error=None, identity=None, host_api=5, workspace_root=None):
+    def __init__(
+        self,
+        capabilities,
+        claim_payload=None,
+        validator_claim=None,
+        repair_payload=None,
+        dispatch_error=None,
+        identity=None,
+        host_api=6,
+        workspace_root=None,
+    ):
         self.capabilities_value = capabilities
         self.claim_payload = claim_payload
         self.validator_claim = validator_claim
+        self.repair_payload = repair_payload
         self.dispatch_error = dispatch_error
-        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 5}
+        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 6}
         self.host_api_value = host_api
         self.workspace_root = str(workspace_root or ROOT)
         self.calls = []
@@ -288,19 +299,66 @@ class FakeAdapter:
         self.calls.append("collect_claim")
         if handle["lane_id"] == "validate":
             if self.validator_claim is not None:
-                return self.validator_claim
-            return {
+                payload = self.validator_claim
+            else:
+                payload = {
+                    "kind": "claimed_result",
+                    "summary": "validated",
+                    "findings": ["ok"],
+                    "verdict": "pass",
+                }
+        elif self.claim_payload is not None:
+            payload = self.claim_payload
+        else:
+            payload = {
                 "kind": "claimed_result",
-                "summary": "validated",
-                "findings": ["ok"],
-                "verdict": "pass",
+                "summary": "done",
+                "changed_files": ["scripts/harness_task.py"],
             }
-        if self.claim_payload is not None:
-            return self.claim_payload
-        return {
+        return self._claim_observation(handle, payload)
+
+    def repair_claim(self, handle, lane, packet, workspace, request):
+        self.calls.append("repair_claim")
+        payload = self.repair_payload or {
             "kind": "claimed_result",
-            "summary": "done",
+            "summary": "repaired",
             "changed_files": ["scripts/harness_task.py"],
+        }
+        return {
+            "claim_observation": self._claim_observation(handle, payload),
+            "finalization_evidence": {
+                "lane_id": lane["lane_id"],
+                "thread_id": "thread",
+                "turn_id": f"repair-{lane['lane_id']}",
+                "terminal_status": "completed",
+                "sandbox": "read-only",
+                "tool_calls": [],
+                "command_results": [],
+                "workspace_status_before": "",
+                "workspace_status_after": "",
+                "agent_identity": packet["agent_identity"],
+                "prompt_contract_version": 1,
+                "prompt_digest": "c" * 64,
+                "elapsed_seconds": 1.0,
+            },
+        }
+
+    def _claim_observation(self, handle, payload):
+        if self.host_api_value < 6:
+            return payload
+        if isinstance(payload, dict) and "state" in payload:
+            return {
+                "version": 1,
+                "lane_id": handle["lane_id"],
+                "thread_id": "thread",
+                **payload,
+            }
+        return {
+            "version": 1,
+            "lane_id": handle["lane_id"],
+            "thread_id": "thread",
+            "state": "object",
+            "candidate_claim": payload,
         }
 
     def collect_lane_evidence(self, handle, lane, packet, workspace):
@@ -310,6 +368,7 @@ class FakeAdapter:
             "workspace_root": workspace["path"],
             "thread_id": "thread",
             "turn_id": f"turn-{lane['lane_id']}",
+            "terminal_status": "completed",
             "sandbox": "read-only" if lane["kind"] == "validate" else "workspace-write",
             "selected_tools_used": ["shell"],
             "tool_calls": ["shell"],
@@ -386,7 +445,7 @@ def test_v5_packet_resolves_selected_profiles() -> None:
             planned_write_paths=["scripts/harness_task.py"],
         ),
         attempt_id="attempt-1",
-        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 5, "host_api": 5},
+        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 6, "host_api": 6},
     )
 
     assert packet["authority"] == "workspace_write"
@@ -536,18 +595,18 @@ def test_protected_policy_includes_canonical_skill_sources() -> None:
     assert ".agents/skills/**" in packet["approval_gates"]["protected_policy"]
 
 
-def test_resolve_managed_packet_builds_api6_lane_dag() -> None:
+def test_resolve_managed_packet_builds_api7_lane_dag() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
 
-    assert packet["version"] == 6
+    assert packet["version"] == 7
     assert packet["user_request"] == "Update managed harness fixture."
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 5}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 6}
     assert packet["core_identity"] == {
         **harness.runtime_identity(),
         "request_api": 5,
-        "packet_api": 6,
+        "packet_api": 7,
         "host_api": None,
     }
     assert packet["execution_budget"] == {
@@ -563,8 +622,30 @@ def test_resolve_managed_packet_builds_api6_lane_dag() -> None:
         "model": "combo-normal",
         "reasoning_effort": "medium",
     }
-    assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
-    assert packet["lanes"][0]["claim_schema"]["required_fields"] == ["summary", "changed_files"]
+    assert packet["claim_repair"] == {
+        "max_repairs_per_lane": 1,
+        "admissible_subcodes": [
+            "missing_final_claim",
+            "claim_not_json",
+            "claim_not_object",
+            "claim_kind_mismatch",
+            "claim_field_missing",
+            "claim_field_type_invalid",
+            "claim_field_constraint_invalid",
+        ],
+        "required_host_capability": "claim_repair_same_thread",
+    }
+    assert packet["lanes"][0]["claim_schema"] == {
+        "required_fields": ["summary", "changed_files"],
+        "field_types": {"summary": "nonempty_string", "changed_files": "string_list"},
+        "optional_field_types": {
+            "findings": "string_list",
+            "verdict": "nonempty_string",
+            "decision": "nonempty_string",
+            "frictions": "friction_list",
+        },
+        "field_constraints": {},
+    }
     assert packet["orchestration"]["name"] == "single_work_lane"
     assert [(lane["lane_id"], lane["kind"], lane["dependencies"]) for lane in packet["lanes"]] == [
         ("primary", "work", []),
@@ -590,7 +671,7 @@ def test_current_packet_uses_route_capabilities_without_role_writes(monkeypatch)
     assert packet["lanes"][0]["write_capable"] is True
 
 
-def test_api6_packet_requires_immutable_provider_runtime_binding() -> None:
+def test_api7_packet_requires_immutable_provider_runtime_binding() -> None:
     harness = load_module()
     binding = copy.deepcopy(API6_BINDING)
     packet = harness.resolve_managed_packet(
@@ -600,7 +681,7 @@ def test_api6_packet_requires_immutable_provider_runtime_binding() -> None:
         provider_runtime_binding=binding,
     )
 
-    assert packet["version"] == 6
+    assert packet["version"] == 7
     assert packet["invocation_id"] == "attempt-1:primary"
     assert packet["parent_invocation_id"] is None
     assert packet["provider_runtime_binding"] == binding
@@ -660,7 +741,7 @@ def test_harness_diagnosis_packet_resolves_direct_artifact_handoff(monkeypatch: 
             artifact_handoff={"source_run_id": "writer-run", "source_attempt_id": "writer-attempt"},
         ),
         attempt_id="attempt-1",
-        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 5, "host_api": 5},
+        provider_runtime_binding={"provider_id": "codex_app_server", "contract_version": 6, "host_api": 6},
     )
 
     assert [(artifact["kind"], artifact["source_run_id"], artifact["source_attempt_id"]) for artifact in packet["readonly_artifacts"]] == [
@@ -967,7 +1048,7 @@ def test_retained_trace_rejects_oversized_serialized_content() -> None:
         ("harness_improvement", ["repo.read", "repo.write", "code.search"], "disabled", "workspace_write"),
     ],
 )
-def test_api6_packet_uses_route_owned_capabilities_and_delegation_profile(
+def test_api7_packet_uses_route_owned_capabilities_and_delegation_profile(
     task_type: str,
     capabilities: list[str],
     delegation_profile: str,
@@ -990,7 +1071,7 @@ def test_api6_packet_uses_route_owned_capabilities_and_delegation_profile(
     assert packet["capabilities"] == capabilities
     assert packet["delegation_profile"] == delegation_profile
     assert packet["workspace_write_access"] == workspace_write_access
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 5}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 6}
 
 def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
     harness = load_module()
@@ -1052,8 +1133,8 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=5,
-                identity={"provider_id": "codex_app_server", "contract_version": 5},
+                host_api=6,
+                identity={"provider_id": "codex_app_server", "contract_version": 6},
             )
             self.delegation_result = None
 
@@ -1345,7 +1426,7 @@ def test_run_managed_records_adapter_host_api_in_packet(tmp_path: Path) -> None:
 
         assert result["outcome"]["reason"] == "execution_mode_unavailable"
         packet = json.loads((run_dir / "run.json").read_text())["attempts"][0]["packet"]
-        assert packet["core_identity"]["host_api"] == 5
+        assert packet["core_identity"]["host_api"] == 6
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -1811,7 +1892,7 @@ def test_resolve_managed_packet_accepts_allowed_runtime_provider() -> None:
         attempt_id="attempt-1",
     )
 
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 5}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 6}
 
 
 @pytest.mark.parametrize(("task_type", "template", "model"), [
@@ -1836,7 +1917,7 @@ def test_managed_packet_copies_template_model_identity(task_type, template, mode
     }
 
 
-def test_resolve_managed_packet_adds_system_lanes_after_api6_work_lane() -> None:
+def test_resolve_managed_packet_adds_system_lanes_after_api7_work_lane() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(
@@ -2096,13 +2177,13 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
             "prepare_workspace",
             "verify_tool_bindings",
             "dispatch_lane",
-            "collect_claim",
             "collect_lane_evidence",
+            "collect_claim",
             "materialize_final_state",
             "verify_tool_bindings",
             "dispatch_lane",
-            "collect_claim",
             "collect_lane_evidence",
+            "collect_claim",
         ]
 
         accepted = harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
@@ -2131,8 +2212,8 @@ def test_run_managed_requires_ready_provider_binding_before_packet_creation(tmp_
                 managed_request(version=5, run_id=run_id),
                 MissingBindingAdapter(
                     {"single_work_lane": "enforced"},
-                    host_api=5,
-                    identity={"provider_id": "codex_app_server", "contract_version": 5},
+                    host_api=6,
+                    identity={"provider_id": "codex_app_server", "contract_version": 6},
                 ),
             )
 
@@ -2298,7 +2379,6 @@ def test_missing_command_result_provider_blocks_before_verification(tmp_path: Pa
             "prepare_workspace",
             "verify_tool_bindings",
             "dispatch_lane",
-            "collect_claim",
             "collect_lane_evidence",
             "cancel_lane",
         ]
@@ -2639,7 +2719,7 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         assert len(run["attempts"]) == 2
         assert run["attempts"][0]["packet"]["runtime_provider"] == {
             "provider_id": "codex_app_server",
-            "contract_version": 5,
+            "contract_version": 6,
         }
         assert run["attempts"][1]["packet"]["runtime_provider"] == run["attempts"][0]["packet"]["runtime_provider"]
         assert run["attempts"][0]["packet"] == before
@@ -2727,6 +2807,189 @@ def test_managed_dispatch_failure_becomes_retryable_outcome(tmp_path: Path) -> N
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
+
+@pytest.mark.parametrize(
+    ("field_type", "valid_value", "invalid_value"),
+    [
+        ("nonempty_string", "ok", ""),
+        ("string_list", ["ok"], [""]),
+        ("friction_list", [{"category": "blocked"}], [{"category": ""}]),
+    ],
+)
+def test_v7_claim_validation_uses_packet_field_types(field_type, valid_value, invalid_value) -> None:
+    harness = load_module()
+    schema = {
+        "required_fields": ["value"],
+        "field_types": {"value": field_type},
+        "optional_field_types": {},
+        "field_constraints": {},
+    }
+
+    assert harness._validate_managed_claim(
+        {"kind": "claimed_result", "value": valid_value},
+        required_claim_kind="claimed_result",
+        claim_schema=schema,
+    )["value"] == valid_value
+    with pytest.raises(harness.ClaimError, match="managed claim field `value` has invalid type"):
+        harness._validate_managed_claim(
+            {"kind": "claimed_result", "value": invalid_value},
+            required_claim_kind="claimed_result",
+            claim_schema=schema,
+        )
+
+
+@pytest.mark.parametrize(
+    ("role_name", "field_types"),
+    [
+        ("implement", {"summary": "nonempty_string", "changed_files": "string_list"}),
+        ("investigate", {"summary": "nonempty_string", "findings": "string_list"}),
+        ("review", {"summary": "nonempty_string", "findings": "string_list"}),
+        ("validate", {"summary": "nonempty_string", "findings": "string_list", "verdict": "nonempty_string"}),
+        ("improve", {"summary": "nonempty_string", "changed_files": "string_list", "decision": "nonempty_string"}),
+    ],
+)
+def test_v7_claim_schema_projects_typed_catalog_for_every_role(role_name, field_types) -> None:
+    harness = load_module()
+    roles, claim_fields = harness._load_role_catalog(ROOT)
+
+    schema = harness._claim_schema(roles[role_name], claim_fields)
+
+    assert schema["field_types"] == field_types
+    assert schema["optional_field_types"]["frictions"] == "friction_list"
+
+
+@pytest.mark.parametrize(
+    ("observation", "subcode"),
+    [
+        ({"state": "missing"}, "missing_final_claim"),
+        ({"state": "non_json"}, "claim_not_json"),
+        ({"state": "json_non_object"}, "claim_not_object"),
+        ({"state": "object", "candidate_claim": {"kind": "wrong"}}, "claim_kind_mismatch"),
+    ],
+)
+def test_v7_repairs_each_unusable_claim_once(tmp_path: Path, observation, subcode) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    adapter = FakeAdapter(
+        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        claim_payload=observation,
+    )
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=run_id), adapter)
+        run = json.loads((run_dir / "run.json").read_text())
+        repair = run["attempts"][0]["evidence"]["claim_repair"][0]
+
+        assert result["outcome"]["reason"] != "claim_invalid"
+        assert len(run["attempts"]) == 1
+        assert adapter.calls.count("repair_claim") == 1
+        assert repair["subcode"] == subcode
+        assert repair["admission"] == {"admitted": True, "reason": "eligible"}
+        assert repair["repair_count"] == 1
+        assert repair["finalization_identity"] == {"thread_id": "thread", "turn_id": "repair-primary"}
+        assert repair["repeated_validation"] == {"status": "valid"}
+        assert "candidate_claim" not in repair
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_v7_repairs_validator_claim_on_same_attempt(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    adapter = FakeAdapter(
+        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        validator_claim={"state": "missing"},
+        repair_payload={
+            "kind": "claimed_result",
+            "summary": "repaired validation",
+            "findings": ["ok"],
+            "verdict": "pass",
+        },
+    )
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            adapter,
+            run_check=lambda command: (0, "ok", ""),
+            collect_changes=lambda root, base_commit: [],
+        )
+        repair = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]["claim_repair"][0]
+
+        assert result["outcome"]["reason"] == "verification_passed"
+        assert adapter.calls.count("repair_claim") == 1
+        assert repair["lane_id"] == "validate"
+        assert repair["repeated_validation"] == {"status": "valid"}
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_v7_repair_budget_rejects_repeat_for_same_lane() -> None:
+    harness = load_module()
+    packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
+    lane = packet["lanes"][0]
+    attempt = {"evidence": {"claim_repair": [{
+        "lane_id": "primary",
+        "admission": {"admitted": True, "reason": "eligible"},
+        "repair_count": 1,
+    }]}}
+    evidence = {"terminal_status": "completed", "thread_id": "thread"}
+
+    admitted, reason, repair_count = harness._claim_repair_admission(
+        attempt,
+        lane,
+        packet,
+        evidence,
+        {"claim_repair_same_thread": "enforced"},
+    )
+
+    assert (admitted, reason, repair_count) == (False, "repair_budget_exhausted", 1)
+
+
+def test_v7_failed_repair_records_one_friction_then_claim_invalid(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    adapter = FakeAdapter(
+        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        claim_payload={"state": "missing"},
+        repair_payload={"state": "object", "candidate_claim": {"kind": "wrong"}},
+    )
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=run_id), adapter)
+        run = json.loads((run_dir / "run.json").read_text())
+        events = [json.loads(line) for line in FRICTION_EVENTS_ROOT.read_text().splitlines()]
+
+        assert result["outcome"]["reason"] == "claim_invalid"
+        assert adapter.calls.count("repair_claim") == 1
+        assert [event["code"] for event in events].count("claim_repair_failed") == 1
+        assert run["attempts"][0]["evidence"]["claim_repair"][0]["repeated_validation"] == {
+            "status": "invalid",
+            "subcode": "claim_kind_mismatch",
+        }
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_v7_missing_repair_capability_records_no_repair(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    adapter = FakeAdapter({"single_work_lane": "enforced"}, claim_payload={"state": "missing"})
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=run_id), adapter)
+        repair = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]["claim_repair"][0]
+
+        assert result["outcome"]["reason"] == "claim_invalid"
+        assert adapter.calls.count("repair_claim") == 0
+        assert repair["admission"] == {
+            "admitted": False,
+            "reason": "required_host_capability_unavailable",
+        }
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
 def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2740,8 +3003,8 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=5,
-                identity={"provider_id": "codex_app_server", "contract_version": 5},
+                host_api=6,
+                identity={"provider_id": "codex_app_server", "contract_version": 6},
             )
 
         def preflight_evidence(self):
@@ -2888,8 +3151,8 @@ def test_api5_timeout_escalation_preserves_provider_runtime_binding(tmp_path: Pa
             BoundTimeoutAdapter(
                 {"single_work_lane": "enforced"},
                 dispatch_error=TimedOutTurn("turn timed out"),
-                host_api=5,
-                identity={"provider_id": "codex_app_server", "contract_version": 5},
+                host_api=6,
+                identity={"provider_id": "codex_app_server", "contract_version": 6},
             ),
         )
 
@@ -2945,10 +3208,11 @@ def test_writer_completion_missing_blocks_without_timeout_escalation(tmp_path: P
         }]
 
     try:
+        adapter = FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=MissingWriterCompletion("writer turn incomplete"))
         result = harness.run_managed(
             ROOT,
             managed_request(run_id=run_id),
-            FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=MissingWriterCompletion("writer turn incomplete")),
+            adapter,
         )
 
         assert result["outcome"] == {
@@ -2960,6 +3224,7 @@ def test_writer_completion_missing_blocks_without_timeout_escalation(tmp_path: P
         run = json.loads((run_dir / "run.json").read_text())
         assert run["attempts"][0]["evidence"]["terminal_observation"]["command_states"][-1]["exit_code"] == 1
         assert run["attempts"][0]["evidence"]["artifacts"][0]["kind"] == "sanitized_command_trace"
+        assert adapter.calls.count("repair_claim") == 0
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -3133,12 +3398,12 @@ def test_admit_managed_operation_returns_core_identity_before_packet_work() -> N
 
     identity = harness.admit_managed_operation(
         ROOT,
-        FakeAdapter({"single_work_lane": "enforced"}, host_api=5),
+        FakeAdapter({"single_work_lane": "enforced"}, host_api=6),
     )
 
     assert identity["request_api"] == 5
-    assert identity["packet_api"] == 6
-    assert identity["host_api"] == 5
+    assert identity["packet_api"] == 7
+    assert identity["host_api"] == 6
     assert isinstance(identity["package_release"], str)
 
 

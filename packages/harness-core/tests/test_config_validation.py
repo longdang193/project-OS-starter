@@ -29,7 +29,15 @@ def write_harness_root(root: Path) -> None:
         "agents/roles.yaml",
         yaml.safe_dump(
             {
-                "version": 2,
+                "version": 3,
+                "claim_fields": {
+                    "summary": "nonempty_string",
+                    "changed_files": "string_list",
+                    "findings": "string_list",
+                    "verdict": "nonempty_string",
+                    "decision": "nonempty_string",
+                    "frictions": "friction_list",
+                },
                 "roles": {
                     "implement": {
                         "accepts": ["low", "normal", "high"],
@@ -40,6 +48,11 @@ def write_harness_root(root: Path) -> None:
                         "accepts": ["low", "normal", "high"],
                         "result_kind": "claimed_result",
                         "required_fields": ["summary", "findings", "verdict"],
+                    },
+                    "investigate": {
+                        "accepts": ["low", "normal", "high"],
+                        "result_kind": "claimed_result",
+                        "required_fields": ["summary", "findings"],
                     },
                 },
             },
@@ -53,7 +66,7 @@ def write_harness_root(root: Path) -> None:
         "repo_config/harness.yaml",
         yaml.safe_dump(
             {
-                "version": 5,
+                "version": 6,
                 "harness_core": {"request_api": 5},
                 "context_limits": {
                     "objective_max_bytes": 1024,
@@ -137,7 +150,7 @@ def write_harness_root(root: Path) -> None:
                 "retry_policies": {
                     "bounded": {
                         "max_attempts": 2,
-                        "retryable_reasons": ["check_failed"],
+                        "retryable_reasons": ["check_failed", "claim_invalid"],
                         "exhaustion": "block",
                         "approval_resume": "successor_attempt",
                         "approval_ttl_seconds": 3600,
@@ -147,6 +160,19 @@ def write_harness_root(root: Path) -> None:
                     "max_turn_timeout_seconds": 900,
                     "finalization_reserve_seconds": 60,
                     "profiles": {"default": {"turn_timeout_seconds": 300, "timeout_decisions": ["block"]}},
+                },
+                "claim_repair": {
+                    "max_repairs_per_lane": 1,
+                    "admissible_subcodes": [
+                        "missing_final_claim",
+                        "claim_not_json",
+                        "claim_not_object",
+                        "claim_kind_mismatch",
+                        "claim_field_missing",
+                        "claim_field_type_invalid",
+                        "claim_field_constraint_invalid",
+                    ],
+                    "required_host_capability": "claim_repair_same_thread",
                 },
                 "checks": {"diff": {"command": ["git", "diff", "--check"]}},
                 "tools": {
@@ -158,8 +184,16 @@ def write_harness_root(root: Path) -> None:
                         "root_probe": "shell_root_probe",
                     },
                 },
-                "runtime_providers": {"codex_app_server": {"contract_version": 5}},
-                "friction_policy": {"event_version": 1, "minimum_distinct_runs": 3, "window_days": 14},
+                "runtime_providers": {"codex_app_server": {"contract_version": 6}},
+                "friction_policy": {
+                    "event_version": 1,
+                    "minimum_distinct_runs": 3,
+                    "window_days": 14,
+                    "follow_up_routes": {
+                        "writer_completion_missing": "harness_diagnosis",
+                        "claim_repair_failed": "harness_diagnosis",
+                    },
+                },
                 "approval_gates": {"protected": {"paths": ["repo_config/harness.yaml"]}},
                 "orchestration": {
                     "single_work_lane": {
@@ -182,6 +216,17 @@ def write_harness_root(root: Path) -> None:
                         "verification_profile": "write",
                         "delegation_profile": "disabled",
                         "approval_gates": ["protected"],
+                        "execution_modes": ["single_work_lane"],
+                    },
+                    "harness_diagnosis": {
+                        "template": "normal",
+                        "role": "investigate",
+                        "rules": ["command-execution-rule"],
+                        "skills": ["skill-code-standards"],
+                        "authority": "read_only",
+                        "toolset": "code",
+                        "verification_profile": "read_only",
+                        "delegation_profile": "disabled",
                         "execution_modes": ["single_work_lane"],
                     },
                 },
@@ -251,10 +296,48 @@ def composed_policy(root: Path) -> tuple[Path, dict[str, object]]:
     return path, policy
 
 
-def test_v5_policy_catalog_and_profiles_validate(tmp_path: Path) -> None:
+def test_v6_policy_catalog_profiles_and_claim_repair_validate(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
 
     assert config_validation.validate(tmp_path) == []
+
+
+def test_v6_rejects_claim_repair_without_typed_role_contract(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    roles_path = tmp_path / "agents" / "roles.yaml"
+    roles = yaml.safe_load(roles_path.read_text(encoding="utf-8"))
+    del roles["claim_fields"]["findings"]
+    roles_path.write_text(yaml.safe_dump(roles, sort_keys=False), encoding="utf-8")
+
+    assert config_validation.validate(tmp_path) == [
+        "role `validate` references unknown claim field `findings`",
+        "role `investigate` references unknown claim field `findings`",
+    ]
+
+
+def test_v6_rejects_constraint_on_non_string_claim_field(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    roles_path = tmp_path / "agents" / "roles.yaml"
+    roles = yaml.safe_load(roles_path.read_text(encoding="utf-8"))
+    roles["roles"]["validate"]["field_constraints"] = {"findings": ["pass"]}
+    roles_path.write_text(yaml.safe_dump(roles, sort_keys=False), encoding="utf-8")
+
+    assert config_validation.validate(tmp_path) == [
+        "role `validate` field_constraints must target required string fields"
+    ]
+
+
+def test_v6_rejects_invalid_claim_repair_contract(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["claim_repair"]["max_repairs_per_lane"] = 2
+    policy["claim_repair"]["admissible_subcodes"][-1] = "unknown_claim_failure"
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == [
+        "claim_repair max_repairs_per_lane must be 1",
+        "claim_repair admissible_subcodes are invalid",
+    ]
 
 
 def test_every_budget_profile_must_exceed_finalization_reserve(tmp_path: Path) -> None:
