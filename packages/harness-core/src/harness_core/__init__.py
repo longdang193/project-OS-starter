@@ -5,6 +5,7 @@ from .compatibility import (
     SUPPORTED_HOST_APIS,
     SUPPORTED_PACKET_READ_APIS,
     SUPPORTED_REQUEST_APIS,
+    static_provider_runtime_binding,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "SUPPORTED_HOST_APIS",
     "SUPPORTED_PACKET_READ_APIS",
     "SUPPORTED_REQUEST_APIS",
+    "static_provider_runtime_binding",
 ]

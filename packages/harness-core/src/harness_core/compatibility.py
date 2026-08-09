@@ -86,6 +86,12 @@ def runtime_identity() -> dict[str, Any]:
     }
 
 
+def static_provider_runtime_binding(binding: Any) -> dict[str, Any]:
+    if not isinstance(binding, dict):
+        raise ValueError("provider runtime binding must be an object")
+    return {key: value for key, value in binding.items() if key != "host_instance_id"}
+
+
 def admit_request_api(value: Any) -> dict[str, Any]:
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         return {

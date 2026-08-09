@@ -55,6 +55,7 @@ from .compatibility import (
     can_read_packet_api,
     legacy_role_capabilities,
     runtime_identity,
+    static_provider_runtime_binding,
 )
 from .execution_lease import ExecutionLeaseError, normalize_duration_model, resolve_execution_lease
 from .legacy_cleanup import (
@@ -3132,7 +3133,7 @@ def _validate_provider_runtime_binding(
 ) -> dict[str, Any]:
     if not isinstance(binding, dict):
         raise HarnessError("provider runtime binding is required")
-    static_binding = {key: value for key, value in binding.items() if key != "host_instance_id"}
+    static_binding = static_provider_runtime_binding(binding)
     if static_binding.get("provider_id") != runtime_provider["provider_id"] or static_binding.get("contract_version") != runtime_provider["contract_version"]:
         raise HarnessError("provider runtime binding conflicts with packet runtime provider")
     if host_api is not None and static_binding.get("host_api") != host_api:

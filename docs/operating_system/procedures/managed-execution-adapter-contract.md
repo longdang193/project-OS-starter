@@ -103,6 +103,8 @@ host re-reads configuration before every lane and returns
 drifts. Binding contains static transport configuration only; current host
 instance identity belongs to mutable preflight evidence and the execution lease.
 Historical bindings with a host instance ID compare by their static projection.
+`harness_core.static_provider_runtime_binding` is that projection for core and
+host consumers.
 No automatic transport fallback exists.
 
 Do not use `run-unavailable` for retry. It proves generic CLI lacks injected

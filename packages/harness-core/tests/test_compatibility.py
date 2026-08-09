@@ -13,6 +13,7 @@ from harness_core.compatibility import (
     admit_request_api,
     can_read_packet_api,
     legacy_role_capabilities,
+    static_provider_runtime_binding,
 )
 
 
@@ -28,6 +29,23 @@ def test_public_package_exports_current_protocol_constants() -> None:
     assert harness_core.CURRENT_PACKET_API == 8
     assert harness_core.CURRENT_RUN_API == 2
     assert harness_core.SUPPORTED_HOST_APIS == frozenset({2, 3, 4, 5, 6, 7})
+
+
+def test_static_provider_runtime_binding_omits_host_identity() -> None:
+    binding = {
+        "provider_id": "codex_app_server",
+        "configuration_digest": "a" * 64,
+        "host_instance_id": "host-prior",
+    }
+
+    assert static_provider_runtime_binding(binding) == {
+        "provider_id": "codex_app_server",
+        "configuration_digest": "a" * 64,
+    }
+    assert harness_core.static_provider_runtime_binding(binding) == {
+        "provider_id": "codex_app_server",
+        "configuration_digest": "a" * 64,
+    }
 
 
 def test_request_and_host_admission_return_typed_results() -> None:
