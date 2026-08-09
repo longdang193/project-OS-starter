@@ -1,6 +1,6 @@
 ---
 artifact_type: plan
-status: proposed
+status: completed
 layer: change
 template_id: implementation-plan
 name: operator-attested-legacy-attempt-cleanup
@@ -24,10 +24,17 @@ existing `block` decision without another human approval.
 
 ## Execution Status
 
-Tasks 1 through 3 implemented and verified on August 9, 2026. Task 4 remains
-deferred: it needs separate authorization for core version bump, commit, tag,
-release, host pin refresh, and host verification. No host file, release tag,
-or active external run changed during this execution.
+Tasks 1 through 4 implemented and verified on August 9, 2026. Core release
+`9862e140dddd24f259c967e73ae752997c21f84c` is tagged
+`harness-core-v0.1.21` and pushed to `origin/main`. Host release
+`ba7cd2ff1ac21843a4a8fd49ea5900d65eef6027` pins that tag, is version `0.1.6`,
+and is pushed to `origin/master`.
+
+Fresh final proof passed: core config validation, `233` core tests, generated
+agent-surface sync, `29` generated-doc tests, core and host lock checks, host
+runtime dependency tests, host capabilities, and host preflight. Host proof
+used isolated environment `C:\tmp\codex-harness-host-0.1.6-verify-019fe663`;
+the live Successor9 host environment and provider process tree were untouched.
 
 ## Implementation Outcomes
 
