@@ -390,6 +390,29 @@ as host crash. Live or unverified processes move attempt to nonterminal
 that same attempt; retry, resume, acceptance, waiver, and successor creation
 remain forbidden while orphaned.
 
+## Historical Legacy Cleanup
+
+An active historical attempt without an execution lease is isolated from dispatch
+and resume but never blocks admission of new leased packets. Core accepts its
+only cleanup path through `terminalize_attempt(evidence)`. Host has no legacy
+cleanup, reaper, `taskkill`, PID-tree, or named Job Object responsibility.
+
+External operator signs exact `legacy_cleanup_attestation/v1` unsigned fields:
+`attestation_id`, run and attempt IDs, packet SHA-256, issuer key ID, absence,
+issue, and expiry timestamps, cleanup scope, discovery method, root identity,
+identity list, complete-scope flag, reason SHA-256, and reason length. Transport
+adds base64url `attestation_signature`. Core verifies Ed25519 over UTF-8 sorted
+compact JSON bytes. Public attester records live only in
+`~/.codex/harness-attesters.toml`; private key material stays outside repository
+and agent workspace.
+
+Operator runs `harness-core sign-legacy-cleanup` with unsigned JSON and an
+external private-key file. Controller passes signed JSON to
+`harness-core terminalize-attempt --auto-block`. Core writes one tagged
+null-lease terminal record, then applies policy-owned `block`. Exact re-entry
+replays safely after interruption; agents may transport evidence but cannot mint,
+broaden, or apply it directly.
+
 ## Completion States
 
 | Result | Meaning |

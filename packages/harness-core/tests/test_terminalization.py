@@ -134,6 +134,8 @@ def test_terminalize_attempt_applies_and_replays_same_digest(tmp_path: Path) -> 
         run = json.loads(after_apply)
         assert run["state"] == "awaiting_decision"
         assert run["attempts"][0]["terminal_record"]["classification"] == "completed"
+        assert run["attempts"][0]["terminal_record"]["lease_id"] == binding["lease_id"]
+        assert run["attempts"][0]["terminal_record"]["lease_epoch"] == binding["lease_epoch"]
         assert run["attempts"][0]["outcome"]["reason"] == "verification_passed"
     finally:
         shutil.rmtree(path.parent, ignore_errors=True)
@@ -325,7 +327,7 @@ def test_expired_crash_observer_blocks_orphans_then_terminalizes_cleanup_proof(t
         shutil.rmtree(path.parent, ignore_errors=True)
 
 
-def test_migration_preflight_and_legacy_abandonment_only_accept_unleased_history(tmp_path: Path) -> None:
+def test_migration_preflight_reports_isolated_unleased_history(tmp_path: Path) -> None:
     run_id = tmp_path.name
     path = ROOT / ".harness" / "runs" / run_id / "run.json"
     try:
@@ -348,13 +350,10 @@ def test_migration_preflight_and_legacy_abandonment_only_accept_unleased_history
         path.write_text(json.dumps(legacy), encoding="utf-8")
 
         assert {"run_id": run_id, "attempt_id": "attempt-1"} in managed.migration_preflight(ROOT)["active_legacy_attempts"]
-        result = managed.abandon_legacy_attempt(
-            ROOT,
-            run_id,
-            {"attempt_id": "attempt-1", "actor": "operator-1", "reason": "cutover", "acknowledged": True},
-        )
-
-        assert result["state"] == "blocked"
-        assert json.loads(path.read_text())["attempts"][0]["terminal_record"]["classification"] == "legacy_operator_abandoned"
+        assert managed.migration_preflight(ROOT)["ready"] is True
+        before = path.read_bytes()
+        with pytest.raises(managed.HarnessError, match="legacy_abandonment_retired"):
+            managed.abandon_legacy_attempt(ROOT, run_id, {"attempt_id": "attempt-1"})
+        assert path.read_bytes() == before
     finally:
         shutil.rmtree(path.parent, ignore_errors=True)

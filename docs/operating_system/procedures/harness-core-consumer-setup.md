@@ -13,13 +13,13 @@ consumer scripts never implement managed execution.
 ## Install
 
 Pin both packages to released source tags compatible with provider host. Current
-tested pins: `harness-core-v0.1.20` and `harness-core-launcher-v0.1.0`.
+tested pins: `harness-core-v0.1.21` and `harness-core-launcher-v0.1.0`.
 Provider-host compatibility requires matching locked core pins, admitted host
 API, and committed runtime provenance. Host package version alone is not proof
 that its imported runtime contains a required host-source repair.
 
 ```powershell
-uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.20#subdirectory=packages/harness-core"
+uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.21#subdirectory=packages/harness-core"
 uv add "harness-core-launcher @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-launcher-v0.1.0#subdirectory=packages/harness-core-launcher"
 ```
 
@@ -49,11 +49,18 @@ provider `contract_version: 7`. Core resolves packet API 8 for host API 7 and
 that pair. Packet APIs 3 through 7 remain historical evidence under declared
 compatibility profiles. Packet API 8 never dispatches against host API 6.
 
-Before packet API 8 admission, run migration preflight. Active unleased legacy
-attempts must drain or receive explicit operator abandonment; terminal history
-stays immutable. Core issues a finite execution lease only when `planned`
-becomes `running`. Host returns bounded terminal observations, while controller
-calls only `terminalize_attempt(evidence)` for terminal state mutation.
+Migration preflight reports active unleased legacy attempts as isolated. They
+cannot dispatch or resume, but do not block new packet API 8 admission. Preserve
+their packet bytes. External operator creates signed
+`legacy_cleanup_attestation/v1` with `harness-core sign-legacy-cleanup`, using
+an Ed25519 key outside repository and agent workspace. Trusted public attesters
+live only in `~/.codex/harness-attesters.toml`. Controller runs
+`harness-core terminalize-attempt --auto-block`; core validates signature,
+scope, identity, and freshness, writes terminal evidence, then blocks. Direct
+legacy abandonment is retired. Core issues a finite execution lease only when
+`planned` becomes `running`; host returns bounded terminal observations while
+controller alone invokes `terminalize_attempt(evidence)`.
+
 Upgrade policy, provider pin, core pin, and host release together. For
 host-source repair without a release change, use committed runtime provenance;
 preserve old runs and create successors after migration.

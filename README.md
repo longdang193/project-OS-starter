@@ -87,6 +87,13 @@ Packet API 8 uses a core-issued finite execution lease and one core
 and bounded terminal observations only; Windows providers run inside one
 kill-on-close Job Object per lease.
 
+Historical unleased attempts stay isolated from dispatch and resume. External
+operator signs bounded `legacy_cleanup_attestation/v1` evidence with an Ed25519
+key outside repository and agent workspace; controller runs
+`harness-core terminalize-attempt --auto-block`. Core verifies public-only
+attester configuration, records one tagged null-lease terminal record, then
+blocks. Host never performs legacy cleanup or terminal state writes.
+
 ```powershell
 Set-Location <codex-harness-host-root>
 uv run codex-harness-host capabilities

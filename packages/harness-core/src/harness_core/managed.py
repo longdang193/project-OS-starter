@@ -56,6 +56,12 @@ from .compatibility import (
     runtime_identity,
 )
 from .execution_lease import ExecutionLeaseError, normalize_duration_model, resolve_execution_lease
+from .legacy_cleanup import (
+    LegacyCleanupError,
+    legacy_cleanup_evidence_digest,
+    normalize_legacy_cleanup_attestation,
+    sign_legacy_cleanup_attestation,
+)
 from .terminal_observation import (
     TerminalObservationError,
     normalize_host_terminal_observation,
@@ -1981,6 +1987,7 @@ def _active_attempt(run: dict[str, Any]) -> dict[str, Any]:
 _TERMINALIZATION_FIELDS = {"attempt_id", "host_terminal_observations"}
 _TERMINALIZATION_RECOVERY_FIELDS = _TERMINALIZATION_FIELDS | {"recovery_observation"}
 _TERMINALIZATION_STRANDED_RECOVERY_FIELDS = _TERMINALIZATION_FIELDS | {"stranded_recovery"}
+_TERMINALIZATION_LEGACY_FIELDS = {"attempt_id", "legacy_cleanup_attestation"}
 _STRANDED_RECOVERY_FIELDS = {"reason", "external_failure"}
 _RECOVERY_OBSERVATION_FIELDS = {
     "lease_id",
@@ -1991,7 +1998,6 @@ _RECOVERY_OBSERVATION_FIELDS = {
     "root_processes_absent",
 }
 _CANCELLATION_FIELDS = {"attempt_id", "actor", "reason"}
-_LEGACY_ABANDON_FIELDS = {"attempt_id", "actor", "reason", "acknowledged"}
 
 
 def _attempt_lease_binding(run: dict[str, Any], attempt: dict[str, Any]) -> dict[str, Any]:
@@ -2166,15 +2172,19 @@ def _normalize_stranded_recovery(run: dict[str, Any], attempt: dict[str, Any], v
     }
 
 
-def _terminalization_input(value: Any) -> tuple[str, list[Any], Any | None, Any | None]:
+def _terminalization_input(value: Any) -> tuple[str, list[Any], Any | None, Any | None, Any | None]:
     fields = set(value) if isinstance(value, dict) else set()
     if not isinstance(value, dict) or frozenset(fields) not in {
         frozenset(_TERMINALIZATION_FIELDS),
         frozenset(_TERMINALIZATION_RECOVERY_FIELDS),
         frozenset(_TERMINALIZATION_STRANDED_RECOVERY_FIELDS),
+        frozenset(_TERMINALIZATION_LEGACY_FIELDS),
     }:
         raise HarnessError("terminalization evidence has invalid fields")
     attempt_id = _required_string(value.get("attempt_id"), "terminalization attempt_id")
+    legacy_cleanup = value.get("legacy_cleanup_attestation")
+    if legacy_cleanup is not None:
+        return attempt_id, [], None, None, legacy_cleanup
     observations = value.get("host_terminal_observations")
     if not isinstance(observations, list):
         raise HarnessError("terminalization evidence host_terminal_observations is invalid")
@@ -2184,7 +2194,40 @@ def _terminalization_input(value: Any) -> tuple[str, list[Any], Any | None, Any 
         raise HarnessError("terminalization evidence requires host observations")
     if sum(item is not None for item in (recovery, stranded_recovery)) + bool(observations) != 1:
         raise HarnessError("terminalization evidence cannot mix recovery and host observations")
-    return attempt_id, observations, recovery, stranded_recovery
+    return attempt_id, observations, recovery, stranded_recovery, None
+
+
+def _validate_legacy_cleanup_attempt(run: dict[str, Any], attempt: dict[str, Any], policy: dict[str, Any], cleanup: dict[str, Any]) -> None:
+    packet = attempt.get("packet")
+    cleanup_policy = policy.get("legacy_cleanup")
+    if not isinstance(cleanup_policy, dict) or not isinstance(packet, dict):
+        raise HarnessError("legacy cleanup is not allowed")
+    packet_version = packet.get("version")
+    if (
+        not isinstance(packet_version, int)
+        or isinstance(packet_version, bool)
+        or packet_version > cleanup_policy["historical_packet_max_api"]
+        or "terminal_observation_contract" in packet
+        or attempt.get("execution_lease") is not None
+        or attempt.get("terminal_record") is not None
+        or attempt.get("claims")
+        or attempt.get("node_observations")
+        or attempt.get("evidence")
+        or attempt.get("outcome") is not None
+        or attempt.get("decision") is not None
+        or attempt.get("decision_history")
+        or attempt.get("host_terminal_observations")
+        or attempt.get("host_observation_digests")
+        or attempt.get("recovery_blocked") is not None
+        or attempt.get("cancellation_request") is not None
+    ):
+        raise HarnessError("legacy cleanup is not allowed")
+    if (
+        cleanup["run_id"] != run["run_id"]
+        or cleanup["attempt_id"] != attempt.get("attempt_id")
+        or cleanup["packet_sha256"] != _canonical_digest(packet)
+    ):
+        raise HarnessError("legacy cleanup identity does not match run")
 
 
 def _dispatched_lane_ids(attempt: dict[str, Any]) -> set[str]:
@@ -2269,16 +2312,58 @@ def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any
     run_id = _safe_run_id(run_id)
     with _run_lock(root, run_id):
         run = _load_run(root, run_id)
-        if run["state"] not in {"running", "observed", "verifying", "orphaned", "awaiting_decision"}:
-            raise HarnessError(f"run `{run_id}` cannot terminalize from `{run['state']}`")
         attempt = _active_attempt(run)
-        attempt_id, raw_observations, raw_recovery, raw_stranded_recovery = _terminalization_input(evidence)
+        attempt_id, raw_observations, raw_recovery, raw_stranded_recovery, raw_legacy_cleanup = _terminalization_input(evidence)
         if attempt.get("attempt_id") != attempt_id:
             raise HarnessError("terminalization attempt identity does not match run")
-        binding = _attempt_lease_binding(run, attempt)
+        legacy_cleanup: dict[str, Any] | None = None
+        if raw_legacy_cleanup is not None:
+            try:
+                candidate_digest = legacy_cleanup_evidence_digest(raw_legacy_cleanup)
+            except LegacyCleanupError as exc:
+                raise HarnessError(str(exc)) from exc
+            existing = attempt.get("terminal_record")
+            if isinstance(existing, dict):
+                audit = existing.get("legacy_cleanup")
+                if (
+                    existing.get("source_kind") == "legacy_cleanup"
+                    and isinstance(audit, dict)
+                    and audit.get("signed_evidence_sha256") == candidate_digest
+                ):
+                    return _terminalization_result(run, "replayed", existing.get("terminal_id"))
+                raise HarnessError("attempt_already_terminal")
+            if run["state"] not in ACTIVE_RUN_STATES:
+                raise HarnessError(f"run `{run_id}` cannot terminalize from `{run['state']}")
+            cleanup_policy = _load_policy(root).get("legacy_cleanup")
+            if not isinstance(cleanup_policy, dict):
+                raise HarnessError("legacy cleanup is not configured")
+            try:
+                legacy_cleanup = normalize_legacy_cleanup_attestation(
+                    raw_legacy_cleanup,
+                    cleanup_policy,
+                    now=datetime.now(UTC),
+                )
+            except LegacyCleanupError as exc:
+                raise HarnessError(str(exc)) from exc
+            if legacy_cleanup is None:
+                raise HarnessError("legacy cleanup attestation is invalid")
+            _validate_legacy_cleanup_attempt(run, attempt, _load_policy(root), legacy_cleanup)
+            binding = {"lease_id": None, "lease_epoch": None}
+        else:
+            if run["state"] not in {"running", "observed", "verifying", "orphaned", "awaiting_decision"}:
+                raise HarnessError(f"run `{run_id}` cannot terminalize from `{run['state']}")
+            binding = _attempt_lease_binding(run, attempt)
         outcome_detail: str | None = None
         stranded_recovery: dict[str, Any] | None = None
-        if raw_stranded_recovery is not None:
+        if legacy_cleanup is not None:
+            normalized_observations = []
+            classification, reason, decisions, refs = "legacy_cleanup_attested", "legacy_cleanup_attested", ["block"], ["legacy_cleanup"]
+            aggregate = {
+                "binding": binding,
+                "legacy_cleanup_signed_evidence_sha256": legacy_cleanup["signed_evidence_sha256"],
+                "core_evidence_refs": refs,
+            }
+        elif raw_stranded_recovery is not None:
             stranded_recovery = _normalize_stranded_recovery(run, attempt, raw_stranded_recovery)
             normalized_observations = []
             classification, reason, decisions, refs = "stranded_recovery", "stranded_running_recovered", ["block"], [
@@ -2345,8 +2430,12 @@ def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any
             "lease_epoch": binding["lease_epoch"],
             "recorded_at": _timestamp(),
         }
-        attempt["execution_lease"]["state"] = "released"
-        attempt["execution_lease"]["released_at"] = _timestamp()
+        if legacy_cleanup is not None:
+            attempt["terminal_record"]["source_kind"] = "legacy_cleanup"
+            attempt["terminal_record"]["legacy_cleanup"] = legacy_cleanup
+        else:
+            attempt["execution_lease"]["state"] = "released"
+            attempt["execution_lease"]["released_at"] = _timestamp()
         _set_outcome(attempt, reason, decisions, ["terminal_record", *refs], detail=outcome_detail)
         _transition(run, _load_policy(root)["states"], "awaiting_decision", classification)
         _write_run(root, run)
@@ -2400,53 +2489,11 @@ def migration_preflight(root: Path) -> dict[str, Any]:
             and attempt.get("terminal_record") is None
         ):
             active.append({"run_id": run["run_id"], "attempt_id": attempt.get("attempt_id", "")})
-    return {"active_legacy_attempts": active, "ready": not active}
+    return {"active_legacy_attempts": active, "ready": True}
 
 
 def abandon_legacy_attempt(root: Path, run_id: str, request: Any) -> dict[str, Any]:
-    _validate_policy(root)
-    run_id = _safe_run_id(run_id)
-    if not isinstance(request, dict) or set(request) != _LEGACY_ABANDON_FIELDS or request.get("acknowledged") is not True:
-        raise HarnessError("legacy abandonment has invalid fields")
-    attempt_id = _required_string(request.get("attempt_id"), "legacy abandonment attempt_id")
-    actor = _required_string(request.get("actor"), "legacy abandonment actor")
-    reason = _required_string(request.get("reason"), "legacy abandonment reason")
-    with _run_lock(root, run_id):
-        run = _load_run(root, run_id)
-        attempt = _active_attempt(run)
-        packet = attempt.get("packet")
-        if (
-            run["state"] not in ACTIVE_RUN_STATES
-            or attempt.get("attempt_id") != attempt_id
-            or not isinstance(packet, dict)
-            or "terminal_observation_contract" in packet
-            or isinstance(attempt.get("execution_lease"), dict)
-            or isinstance(attempt.get("terminal_record"), dict)
-        ):
-            raise HarnessError("legacy abandonment is not allowed")
-        audit = {
-            "actor": actor,
-            "reason_sha256": hashlib.sha256(reason.encode("utf-8")).hexdigest(),
-            "reason_length": len(reason),
-            "acknowledged": True,
-            "recorded_at": _timestamp(),
-            "packet_sha256": _canonical_digest(packet),
-        }
-        digest = _canonical_digest(audit)
-        attempt["terminal_record"] = {
-            "schema_id": "attempt_terminal_evidence/v2",
-            "terminal_id": f"terminal-{_canonical_digest({'run_id': run_id, 'attempt_id': attempt_id, 'legacy': digest})}",
-            "classification": "legacy_operator_abandoned",
-            "evidence_digest": digest,
-            "host_observation_digests": [],
-            "core_evidence_refs": ["legacy_abandonment"],
-            "recorded_at": _timestamp(),
-        }
-        attempt["legacy_abandonment"] = audit
-        _set_outcome(attempt, "legacy_operator_abandoned", ["block"], ["terminal_record", "legacy_abandonment"])
-        _transition(run, _load_policy(root)["states"], "blocked", "legacy_operator_abandoned")
-        _write_run(root, run)
-        return {"state": run["state"], "run_revision": run["run_revision"], "terminal_id": attempt["terminal_record"]["terminal_id"]}
+    raise HarnessError("legacy_abandonment_retired")
 
 
 def _normalize_recovery_evidence(run_id: str, attempt_id: str, value: Any) -> dict[str, Any]:
@@ -4226,8 +4273,6 @@ def run_managed(
         if _run_path(root, run_id).exists():
             raise HarnessError(f"run `{run_id}` already exists")
         core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
-        if core_identity["packet_api"] == CURRENT_PACKET_API and not migration_preflight(root)["ready"]:
-            raise HarnessError("active legacy attempts require migration preflight")
         binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
         packet = resolve_managed_packet(
             root,
@@ -4331,6 +4376,9 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
     outcome = attempt.get("outcome")
     if not isinstance(outcome, dict) or kind not in outcome.get("allowed_decisions", []):
         raise HarnessError(f"decision `{kind}` is not allowed for current outcome")
+    terminal_record = attempt.get("terminal_record")
+    if isinstance(terminal_record, dict) and terminal_record.get("classification") == "legacy_cleanup_attested" and kind != "block":
+        raise HarnessError("legacy cleanup outcome requires block")
     stored = copy.deepcopy(decision)
     stored["at"] = _timestamp()
     attempt["decision"] = stored
@@ -4422,6 +4470,14 @@ def main(argv: list[str] | None = None) -> int:
     recover_command.add_argument("--attempt-id", required=True)
     recover_command.add_argument("--reason", required=True)
     recover_command.add_argument("--evidence", required=True)
+    terminalize_command = subparsers.add_parser("terminalize-attempt")
+    terminalize_command.add_argument("--run-id", required=True)
+    terminalize_command.add_argument("--evidence", required=True)
+    terminalize_command.add_argument("--auto-block", action="store_true")
+    sign_cleanup_command = subparsers.add_parser("sign-legacy-cleanup")
+    sign_cleanup_command.add_argument("--attestation", required=True)
+    sign_cleanup_command.add_argument("--private-key-file", required=True)
+    sign_cleanup_command.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     try:
         root = Path(args.repo_root).resolve()
@@ -4461,6 +4517,42 @@ def main(argv: list[str] | None = None) -> int:
             result = resolve_friction(root, args.run_id, args.fingerprint, args.decision)
         elif args.command == "recover-stranded":
             result = recover_stranded_run(root, args.run_id, args.attempt_id, args.reason, _load_json(Path(args.evidence)))
+        elif args.command == "terminalize-attempt":
+            terminal_evidence = _load_json(Path(args.evidence))
+            if isinstance(terminal_evidence, dict) and terminal_evidence.get("schema_id") == "legacy_cleanup_attestation/v1":
+                terminal_evidence = {
+                    "attempt_id": terminal_evidence.get("attempt_id"),
+                    "legacy_cleanup_attestation": terminal_evidence,
+                }
+            result = terminalize_attempt(root, args.run_id, terminal_evidence)
+            if args.auto_block:
+                run = _load_run(root, _safe_run_id(args.run_id))
+                attempt = _active_attempt(run)
+                terminal_record = attempt.get("terminal_record")
+                if not isinstance(terminal_record, dict) or terminal_record.get("source_kind") != "legacy_cleanup":
+                    raise HarnessError("terminalize-attempt auto-block requires legacy cleanup evidence")
+                if run["state"] == "awaiting_decision":
+                    result = apply_controller_decision(root, args.run_id, {"kind": "block"})
+                elif run["state"] != "blocked":
+                    raise HarnessError("terminalize-attempt auto-block requires awaiting legacy decision")
+        elif args.command == "sign-legacy-cleanup":
+            private_key_path = Path(args.private_key_file).resolve()
+            if private_key_path.is_relative_to(root):
+                raise HarnessError("legacy cleanup private key must be outside repository")
+            output_path = Path(args.output).resolve()
+            if output_path.name == "run.json" or output_path.is_relative_to(root / ".harness" / "runs"):
+                raise HarnessError("legacy cleanup signer cannot write run.json")
+            signed = sign_legacy_cleanup_attestation(_load_json(Path(args.attestation)), private_key_path)
+            cleanup_policy = _load_policy(root).get("legacy_cleanup")
+            if not isinstance(cleanup_policy, dict):
+                raise HarnessError("legacy cleanup is not configured")
+            try:
+                normalize_legacy_cleanup_attestation(signed, cleanup_policy, now=datetime.now(UTC))
+            except LegacyCleanupError as exc:
+                raise HarnessError(str(exc)) from exc
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(signed, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+            result = {"signed_evidence_sha256": legacy_cleanup_evidence_digest(signed)}
         elif args.command == "coordination-status":
             result = coordination_status(root, args.plan)
         elif args.command == "handoff":
@@ -4475,7 +4567,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "blocked", "error": str(exc)}), file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True))
-    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff", "recover-stranded"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
+    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff", "recover-stranded", "terminalize-attempt", "sign-legacy-cleanup"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
 
 
 if __name__ == "__main__":

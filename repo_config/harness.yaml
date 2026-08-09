@@ -115,6 +115,20 @@ claim_repair:
   max_repairs_per_lane: 1
   admissible_subcodes: [missing_final_claim, claim_not_json, claim_not_object, claim_kind_mismatch, claim_field_missing, claim_field_type_invalid, claim_field_constraint_invalid]
   required_host_capability: claim_repair_same_thread
+legacy_cleanup:
+  enabled: true
+  historical_packet_max_api: 7
+  allowed_cleanup_scopes: [operator_discovered_provider_tree, operator_attested_no_provider_process]
+  allowed_discovery_methods: [windows_parent_chain/v1, windows_no_process_observation/v1]
+  max_attestation_age_seconds: 900
+  max_attestation_lifetime_seconds: 900
+  max_clock_skew_seconds: 60
+  max_total_bytes: 8192
+  max_identifier_bytes: 128
+  max_creation_id_bytes: 256
+  max_reason_length: 4096
+  max_process_identities: 32
+  allowed_attester_roles: [managed_cleanup_operator]
 skill_sets:
   local_change_base:
     skills: [skill-code-standards, skill-executing-plans, skill-test-driven-development]

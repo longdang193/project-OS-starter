@@ -423,6 +423,15 @@ def test_v4_rejects_deleted_policy_fields(tmp_path: Path) -> None:
     assert "route `local_change` has unknown fields: tools" in errors
 
 
+def test_legacy_cleanup_rejects_partial_policy(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["legacy_cleanup"] = {"enabled": True}
+    write_policy(path, policy)
+
+    assert "legacy_cleanup has invalid fields" in config_validation.validate(tmp_path)
+
+
 def test_route_requires_known_one_hop_profiles(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
     path, policy = load_policy(tmp_path)

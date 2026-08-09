@@ -55,8 +55,8 @@ owners:
 ### Outcome: Compatibility without synthetic history
 
 - affected actor or system: operators and migration tooling.
-- required result: existing terminal runs remain readable unchanged. Deployment blocks until active unleased attempts drain or receive explicit legacy abandonment before core/host schema cutover.
-- success condition: migration never invents lease, rewrite packet hashes, or forces a running legacy attempt into new protocol.
+- required result: existing terminal runs remain readable unchanged. An active unleased historical attempt remains isolated from new dispatch and may close only through signed operator cleanup evidence passed to `terminalize_attempt(evidence)`.
+- success condition: migration never invents lease, rewrites packet hashes, forces a running legacy attempt into new protocol, or retains a direct legacy terminal writer.
 
 ## Design Analysis
 
@@ -81,7 +81,7 @@ owners:
 
 - included behavior: terminal observation ingestion, core terminal record, lease, cancellation request binding, state transitions, Windows containment, crash recovery, orphan state, idempotency, migration, tests, and canonical guidance.
 - affected boundaries: core managed API and schemas, host adapter lifecycle, provider subprocess client, host capability contract, policy state map, tests, canonical adapter docs, generated agent guidance.
-- admissible cases: normal completion, verification failure after normal provider completion, provider failure, timeout, cancellation, host crash with absence proof, unresolved orphan, leased stranded recovery, and explicit legacy abandonment.
+- admissible cases: normal completion, verification failure after normal provider completion, provider failure, timeout, cancellation, host crash with absence proof, unresolved orphan, leased stranded recovery, and operator-attested cleanup for an unleased historical attempt.
 - compatibility expectation: old terminal records remain immutable and readable; no active legacy attempt crosses protocol versions.
 
 ### Non-Goals
@@ -95,18 +95,18 @@ owners:
 
 #### Requirement: Ownership and trusted boundary
 
-- trigger or actor: controller supplies host observation bundle or explicit legacy-abandon request to core.
-- preconditions: controller and host adapter run in one trusted local execution boundary. Provenance fields are semantic validation, not cryptographic authentication.
-- required behavior: host produces immutable `host_terminal_observation/v2` records. Core reads persisted core verification evidence and builds `attempt_terminal_evidence/v2`; caller cannot supply outcome, decision, target state, evidence digest, or terminal ID.
-- output or state change: core stores host-observation digests plus core-evidence references in one terminal record.
-- failure behavior: unsupported source, malformed record, mismatched identity, or caller-supplied authority field rejects without mutation.
-- observable acceptance: host code has no run-path writer; terminal outcome derives solely inside core.
+- trigger or actor: controller supplies host observation bundle or a signed legacy-cleanup attestation to core.
+- preconditions: controller and host adapter run in one trusted local execution boundary. Host-observation provenance is semantic validation, not cryptographic authentication. Legacy cleanup uses a separate external attester boundary.
+- required behavior: host produces immutable `host_terminal_observation/v2` records. Core reads persisted core verification evidence and builds `attempt_terminal_evidence/v2`; caller cannot supply outcome, decision, target state, evidence digest, or terminal ID. Controller trusted configuration at `~/.codex/harness-attesters.toml` contains only active or revoked attester public keys, opaque attester IDs, and roles. It contains no private signing material. The external attester retains private signing material outside controller, host, agent, packet, and repository boundaries.
+- output or state change: core stores host-observation digests plus core-evidence references, or normalized signed legacy-cleanup evidence, in one terminal record.
+- failure behavior: unsupported source, malformed record, mismatched identity, caller-supplied authority field, unknown issuer, revoked issuer, unsupported signature algorithm, or public configuration containing private-key fields rejects without mutation.
+- observable acceptance: host code has no run-path writer; terminal outcome derives solely inside core; agent-visible configuration cannot mint a legacy-cleanup attestation.
 
 #### Requirement: `terminalize_attempt(evidence)`
 
-- trigger or actor: controller after all required host observations are available, or operator through controller for legacy abandonment.
-- preconditions: current attempt is `running`, `observed`, `verifying`, or `orphaned`; supplied observations match active attempt, packet digest, and lease where a lease exists.
-- required behavior: core locks run, normalizes evidence, loads persisted lane and verification evidence, computes core-owned terminal classification, then applies exactly one terminal transaction.
+- trigger or actor: controller after all required host observations are available, or after verified external operator cleanup evidence is available.
+- preconditions: current attempt is `running`, `observed`, `verifying`, or `orphaned`; supplied observations match active attempt, packet digest, and lease where a lease exists. Evidence has exactly one admissible source: leased host observations, leased recovery observation, or unleased historical `legacy_cleanup_attestation/v1`.
+- required behavior: core locks run, normalizes evidence, loads persisted lane and verification evidence, computes core-owned terminal classification, then applies exactly one terminal transaction. Legacy evidence can produce only block-only outcome and never carries caller-selected outcome, decision, target state, evidence digest, or terminal ID.
 - output or state change: output contains `terminalization.status` of `applied`, `replayed`, or `recovery_blocked`, plus current `terminal_id` and `run_revision` when terminalized.
 - failure behavior: a different valid record after terminalization returns `attempt_already_terminal`; invalid evidence leaves byte-identical run record.
 - observable acceptance: post-dispatch error, success, timeout, cancellation, and recovery paths all invoke this operation rather than separate terminal writers.
@@ -174,14 +174,18 @@ owners:
 - failure behavior: recovery before expiry, mismatched lease, terminal attempt, or ordinary active work rejects without mutation.
 - observable acceptance: after external cleanup, fresh absence proof may terminalize orphaned attempt; no execution restarts while orphaned.
 
-#### Requirement: Explicit legacy abandonment
+#### Requirement: Operator-attested legacy cleanup
 
-- trigger or actor: authorized operator closes an historical active attempt without `execution_lease` before migration cutover.
-- preconditions: migration preflight classified attempt historical and unleased; operator supplies acknowledgement, actor identity, bounded reason, and exact attempt identity.
-- required behavior: core creates `legacy_operator_abandoned` terminal record and moves run directly to `blocked`.
-- output or state change: immutable audit holds operator, reason hash and length, timestamp, and historical packet identity.
-- failure behavior: leased, current-schema, terminal, accepted, blocked, or unclassified attempt rejects.
-- observable acceptance: abandonment never creates successor, resume, waiver, acceptance, or modified packet history.
+- trigger or actor: external operator confirms cleanup of an historical active attempt without `execution_lease`; controller submits that signed evidence to `terminalize_attempt(evidence)`.
+- preconditions: attempt is current-policy terminalizable, unleased, has no terminal record, outcome, decision, claim, node observation, or persisted evidence, and immutable packet lacks current terminal-observation contract. New packet APIs never select this path.
+- required behavior: evidence contains only `attempt_id` and `legacy_cleanup_attestation`. Unsigned attestation uses `schema_id: legacy_cleanup_attestation/v1` and exact fields: `attestation_id`, `run_id`, `attempt_id`, `packet_sha256`, `issuer_key_id`, `absence_observed_at`, `issued_at`, `expires_at`, `cleanup_scope`, `discovery_method`, `root_process_identity`, `process_identities`, `scope_complete`, `reason_sha256`, and `reason_length`. Transport adds one base64url `attestation_signature`. Core verifies Ed25519 signature over UTF-8 sorted compact JSON bytes of unsigned payload. Opaque identifiers use ASCII letters, digits, `.`, `_`, and `-`; SHA-256 values are lowercase hexadecimal; unsupported fields reject.
+- required behavior: `cleanup_scope` is exactly `operator_discovered_provider_tree` or `operator_attested_no_provider_process`. Trusted public configuration maps `issuer_key_id` to one opaque attester ID, role, Ed25519 public key, and `active` or `revoked` state. Rotation adds new active issuer before old issuer becomes revoked. New evidence from revoked issuer rejects; exact evidence already recorded may replay from stored digest without re-evaluating current issuer status. Current repository policy defines enabled flag, historical packet maximum API, allowed cleanup scopes and discovery methods, attestation age, lifetime, clock skew, total payload bytes, identifier bytes, creation-ID bytes, reason length, process-identity count, and allowed attester roles. No repository policy, packet, run record, request, or agent workspace contains private signing material.
+- required behavior: for `operator_discovered_provider_tree`, `root_process_identity` and every `process_identities` member contain positive `pid`, bounded `creation_id`, and `state: absent`; root appears exactly once in nonempty list. For `operator_attested_no_provider_process`, `root_process_identity` is `null`, `process_identities` is empty, and discovery method is `windows_no_process_observation/v1`. In both scopes, `scope_complete` is exactly `true`. Duplicate `{pid, creation_id}` pairs, PID-only entries, live or unverified states, or scope-shape mismatch reject. Core records signed operator-discovered scope or signed no-process assertion, never historic host or lease proof.
+- required behavior: core evaluates one current UTC time. `absence_observed_at <= issued_at < expires_at`; absence age, attestation lifetime, future skew, and total age must satisfy policy. Legacy terminal record remains `attempt_terminal_evidence/v2` with `source_kind: legacy_cleanup`, `lease_id: null`, `lease_epoch: null`, and normalized `legacy_cleanup` audit. Pre-existing v2 record without `source_kind` remains leased and requires string lease ID plus positive lease epoch. Readers accept both shapes. Core derives `legacy_cleanup_attested` with only allowed decision `block`, creates terminal evidence, and moves run to `awaiting_decision`.
+- required behavior: controller invokes `harness-core terminalize-attempt --run-id <run-id> --evidence <path> --auto-block`. Command invokes `terminalize_attempt` once, then invokes existing `apply_controller_decision` with `kind: block` only when matching legacy terminal record remains in `awaiting_decision`. Re-entry after terminalization or block is idempotent: matching stored digest returns `replayed`; already blocked result returns success without a second decision. External operator creates signed input through `harness-core sign-legacy-cleanup`; private-key file must be outside repository and agent workspace. This policy-owned automatic block requires no second human approval.
+- output or state change: immutable audit holds attester ID, issuer key ID, signed evidence digest, reason hash and length, timestamps, discovery method, scope shape, identity set, and historical packet identity. `run.json` changes atomically through core only.
+- failure behavior: leased, current-schema, terminal with different digest, claimed, observed, evidenced, outcome-bearing, decided, unknown issuer, revoked issuer for new evidence, invalid signature, malformed canonical bytes, stale or future timestamp, scope-shape mismatch, or mismatched identity rejects without mutation. Core computes candidate legacy digest before terminal-state rejection; same signed canonical evidence replays from `awaiting_decision` or final `blocked` state, while different evidence after terminalization rejects.
+- observable acceptance: cleanup never creates successor, resume, replay, waiver, acceptance, fabricated lease, host process action, or modified packet history. `abandon_legacy_attempt` returns `legacy_abandonment_retired` without mutation.
 
 #### Requirement: Atomicity and idempotency
 
@@ -207,8 +211,13 @@ owners:
 - constraint: crash recovery must not require unavailable host Job Object handle.
 - alternative: named job reopened by reaper.
   - benefit: reaper control after host crash.
-  - trade-off: conflicts with sole-handle kill-on-close model.
-  - reason rejected: observer proves absence; it never reopens old containment.
+   - trade-off: conflicts with sole-handle kill-on-close model.
+   - reason rejected: observer proves absence; it never reopens old containment.
+- constraint: legacy cleanup must authenticate an external operator without giving controller or agents capability to mint evidence.
+- alternative: shared HMAC secret in controller trusted configuration.
+  - benefit: stdlib-only verification.
+  - trade-off: verifier can mint attestations when agent access or process isolation is incomplete.
+  - reason rejected: Ed25519 public-key verification keeps controller configuration non-secret and leaves signing capability outside harness execution.
 
 ## Design Decisions
 
@@ -248,34 +257,34 @@ owners:
 - accepted trade-offs: no automated control of uncontained orphan; containment breach remains blocking incident.
 - affected owners and boundaries: host owns job lifecycle; core never owns or terminates job.
 
-### Decision: Drain active legacy attempts before cutover
+### Decision: Signed operator cleanup for active legacy attempts
 
-- context: historical attempts have no lease identity and cannot safely join v2 protocol.
-- selected approach: migration preflight blocks release while historical attempts are active. Operator may abandon eligible historical attempt before cutover.
-- rationale: avoids synthetic leases and split terminal semantics.
-- alternatives considered: v1/v2 active compatibility bridge; automatic abandonment; run rewrite.
-- accepted trade-offs: migration may wait for active attempts.
-- affected owners and boundaries: core migration tooling and controller; host release waits for preflight.
+- context: historical attempts have no lease identity and cannot safely join v2 protocol, but permanent release blocking leaves externally cleaned runs stranded.
+- selected approach: active legacy attempts remain unreadable for dispatch or resume and can close only through signed operator cleanup evidence inside the existing terminalization boundary. Valid evidence gets automatic policy-owned block decision; no per-attempt human controller approval follows signature verification.
+- rationale: avoids synthetic leases, direct legacy writes, shared signing secret, and permanent administrative drain gate.
+- alternatives considered: v1/v2 active compatibility bridge; direct operator abandonment; shared HMAC secret; automatic abandonment; run rewrite.
+- accepted trade-offs: external operator must retain complete pre-cleanup provider-tree discovery and signing authority; harness cannot repair legacy containment.
+- affected owners and boundaries: external attester signs; controller holds public attester configuration and invokes core; core verifies and persists; host has no legacy cleanup responsibility.
 
 ### Compatibility, Migration, and Risk
 
 - old behavior: v1 terminal observation and unleased stranded recovery; host future cancellation and child-only subprocess kill.
-- new behavior: v2 host observations, core-built terminal record, packet lease, Job Object stop proof, orphaned state, and legacy drain gate.
+- new behavior: v2 host observations, core-built terminal record, packet lease, Job Object stop proof, orphaned state, and signed operator cleanup for active unleased historical attempts.
 - compatibility boundary: historical terminal records read unchanged. New behavior applies only to packets admitted after both core and host capability deployment.
 - migration or backfill:
   1. Add core reader, state schema, run lock, duration model, terminalization operation, and migration preflight.
-  2. Stop new managed dispatch; drain or explicitly abandon each active historical unleased attempt.
-  3. Confirm migration preflight finds no active legacy attempt.
-  4. Release compatible host capability and Windows containment.
-  5. Admit new leased packets only when core/host capability versions match.
-  6. Remove compatibility adapters after retained historical-reader period.
+  2. Stop new dispatch or resume for every active historical unleased attempt; preserve its immutable packet and current evidence.
+  3. Configure public attester records outside repository and prove private signing material remains outside harness processes.
+  4. Release compatible core and host capability.
+  5. Admit new leased packets only when core/host capability versions match; legacy cleanup remains isolated to historical attempts.
+  6. Close active historical attempts only through signed cleanup evidence, then remove retired abandonment adapter after retained historical-reader period.
 - rollout and rollback: rollback before v2 packet admission is safe after preserving old terminal records. After v2 admission, rollback requires core reader capable of v2 records; do not downgrade to writer lacking v2 reader.
 - deprecation or consumer impact: generated guidance and consumer setup must state v2 core/host pairing; no legacy host dispatch for new packets.
 - risk:
   - Windows Job Object assignment unavailable.
   - mitigation: reject dispatch before provider work; keep packet planned for controller block or supported host.
   - active legacy attempt at deployment.
-  - mitigation: migration preflight blocks release and offers explicit pre-cutover abandonment.
+  - mitigation: isolate from dispatch and resume; preserve proof until signed operator cleanup passes core validation.
   - containment breach leaves live orphan.
   - mitigation: durable `orphaned` state, no successor, external incident cleanup, then fresh absence observation.
 
@@ -291,7 +300,7 @@ owners:
 - Timeout remains policy-owned escalation or block; `writer_completion_missing` remains block-only.
 - Provider error and command evidence remain opaque hashes, lengths, statuses, and bounded IDs. Never persist raw sensitive material.
 - Same normalized evidence digest replays. Different digest cannot supersede terminal or orphan record without allowed cleanup transition.
-- Legacy abandonment requires no lease and explicit audit. Leased attempt abandonment is always rejected.
+- Legacy cleanup requires no lease, exact signed audit, fresh absence observation, and complete operator-discovered provider-tree scope. Leased attempt legacy cleanup is always rejected.
 - Pre-dispatch admission failure creates no lease or host terminal observation.
 - Windows Job Object setup failure creates no provider side effect. Process groups, PID-tree traversal, and named-job reaper fallback are forbidden.
 
@@ -299,8 +308,8 @@ owners:
 
 ### Core boundary and state proof
 
-- Add direct `terminalize_attempt` tests for normal completion, verification failure, provider failure, timeout, `writer_completion_missing`, cancellation, host crash, stranded recovery, orphaned recovery block, cleanup-after-orphan, and legacy abandonment.
-- Test malformed, oversized, raw-sensitive, mismatched run/attempt/packet/lease/host/lane, expired, stale, and duplicate evidence.
+- Add direct `terminalize_attempt` tests for normal completion, verification failure, provider failure, timeout, `writer_completion_missing`, cancellation, host crash, stranded recovery, orphaned recovery block, cleanup-after-orphan, and signed operator-attested legacy cleanup.
+- Test malformed, oversized, raw-sensitive, mismatched run/attempt/packet/lease/host/lane, expired, stale, duplicate, unsigned, invalid-signature, unknown-issuer, revoked-issuer, future-skew, missing-absence-time, incomplete-scope, duplicate-identity, PID-only, no-process scope shape, replay after block, and direct-retired-abandonment evidence.
 - Test deterministic evidence digest and terminal ID using sorted compact JSON; same record replays byte-identically and different record rejects.
 - Use multi-process tests for run lock, atomic replace failure, concurrent terminalization, concurrent recovery, stale temporary files, and revision monotonicity.
 - Assert final `run.json`, lease state, attempt outcome, state history, node status, and decision allowance for every path.
@@ -316,8 +325,8 @@ owners:
 
 ### Migration and integration proof
 
-- Test migration preflight detects every active legacy run state and blocks v2 admission.
-- Test explicit legacy abandonment only accepts pre-cutover unleased attempt and records direct block audit.
+- Test migration preflight detects every active legacy run state, blocks its dispatch and resume, and preserves immutable records without blocking new leased-packet admission.
+- Test signed legacy cleanup accepts only eligible unleased historical attempt, terminalizes through core, permits only automatic controller `block`, replays after block, and records no private signing material.
 - Test v1 historical terminal records remain readable without rewrite; v2 reader remains available for rollback after v2 packet admission.
 - Run core and host contract suite against released compatible packages; reject host capability or duration-model mismatch before packet creation.
 - Update canonical adapter, consumer, runtime, and root-agent template guidance; regenerate derived agent and routing surfaces; inspect no private paths, secrets, or stale lifecycle rules.
@@ -329,6 +338,6 @@ owners:
 3. Core-created terminal record joins sanitized host observations with persisted core verification evidence and derives all outcome policy.
 4. Windows host proves Job Object containment on normal completion, timeout, cancellation, and host crash; no prohibited fallback exists.
 5. Expired live or unverified process becomes durable `orphaned`, blocks continuation, and can terminalize only after fresh absence proof.
-6. Active legacy attempts drain or explicit pre-cutover abandonment completes before new protocol admission; historical terminal evidence remains unchanged.
+6. Active legacy attempts remain isolated from dispatch and resume until signed cleanup terminalizes them; historical terminal evidence remains unchanged.
 7. Direct boundary, failure, state, idempotency, migration, host lifecycle, and Windows integration proof pass from fresh automated output.
 8. Canonical documentation, generated agent/routing surfaces, core/host compatibility declarations, and package release notes agree.

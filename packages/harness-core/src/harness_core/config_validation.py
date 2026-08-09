@@ -157,6 +157,29 @@ EXECUTION_BUDGET_FIELDS = {
 }
 EXECUTION_BUDGET_PROFILE_FIELDS = {"turn_timeout_seconds", "timeout_decisions"}
 EXECUTION_BUDGET_PROFILE_OPTIONAL_FIELDS = {"escalation_profile"}
+LEGACY_CLEANUP_FIELDS = {
+    "enabled",
+    "historical_packet_max_api",
+    "allowed_cleanup_scopes",
+    "allowed_discovery_methods",
+    "max_attestation_age_seconds",
+    "max_attestation_lifetime_seconds",
+    "max_clock_skew_seconds",
+    "max_total_bytes",
+    "max_identifier_bytes",
+    "max_creation_id_bytes",
+    "max_reason_length",
+    "max_process_identities",
+    "allowed_attester_roles",
+}
+LEGACY_CLEANUP_SCOPES = {
+    "operator_discovered_provider_tree",
+    "operator_attested_no_provider_process",
+}
+LEGACY_CLEANUP_DISCOVERY_METHODS = {
+    "windows_parent_chain/v1",
+    "windows_no_process_observation/v1",
+}
 TIMEOUT_DECISIONS = {"escalate", "block"}
 POSTCONDITIONS = {"workspace_unchanged"}
 CAPABILITIES = {"repo.read", "repo.write", "code.search", "docs.query", "harness.delegate"}
@@ -181,7 +204,7 @@ POLICY_FIELDS = {
     "orchestration",
     "routes",
 }
-POLICY_OPTIONAL_FIELDS = {"skill_sets", "operating_profiles"}
+POLICY_OPTIONAL_FIELDS = {"skill_sets", "operating_profiles", "legacy_cleanup"}
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -472,6 +495,38 @@ def _validate_execution_budgets(policy: dict[str, Any], errors: list[str]) -> di
     return profiles
 
 
+def _validate_legacy_cleanup(value: Any, errors: list[str]) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict) or set(value) != LEGACY_CLEANUP_FIELDS:
+        errors.append("legacy_cleanup has invalid fields")
+        return
+    if not isinstance(value["enabled"], bool):
+        errors.append("legacy_cleanup enabled must be a boolean")
+    for field in {
+        "historical_packet_max_api",
+        "max_attestation_age_seconds",
+        "max_attestation_lifetime_seconds",
+        "max_clock_skew_seconds",
+        "max_total_bytes",
+        "max_identifier_bytes",
+        "max_creation_id_bytes",
+        "max_reason_length",
+        "max_process_identities",
+    }:
+        if not positive_integer(value[field]):
+            errors.append(f"legacy_cleanup {field} must be a positive integer")
+    scopes = value["allowed_cleanup_scopes"]
+    if not valid_string_list(scopes) or len(scopes) != len(set(scopes)) or not set(scopes) <= LEGACY_CLEANUP_SCOPES:
+        errors.append("legacy_cleanup allowed_cleanup_scopes are invalid")
+    methods = value["allowed_discovery_methods"]
+    if not valid_string_list(methods) or len(methods) != len(set(methods)) or not set(methods) <= LEGACY_CLEANUP_DISCOVERY_METHODS:
+        errors.append("legacy_cleanup allowed_discovery_methods are invalid")
+    roles = value["allowed_attester_roles"]
+    if not valid_string_list(roles) or len(roles) != len(set(roles)):
+        errors.append("legacy_cleanup allowed_attester_roles are invalid")
+
+
 def _validate_orchestration(policy: dict[str, Any], errors: list[str], roles: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     orchestration = policy.get("orchestration")
     if not isinstance(orchestration, dict) or not orchestration:
@@ -546,6 +601,8 @@ def validate(root: Path) -> list[str]:
     context_limits = policy.get("context_limits")
     if not isinstance(context_limits, dict) or set(context_limits) != CONTEXT_LIMIT_FIELDS or not all(positive_integer(value) for value in context_limits.values()):
         errors.append("context_limits must define positive integer limits")
+
+    _validate_legacy_cleanup(policy.get("legacy_cleanup"), errors)
 
     claim_repair = policy.get("claim_repair")
     if not isinstance(claim_repair, dict) or set(claim_repair) != CLAIM_REPAIR_FIELDS:

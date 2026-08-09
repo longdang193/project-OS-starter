@@ -117,6 +117,15 @@ When spawning a subagent:
   external host evidence with code `terminal_recording_failed`; it records a
   block-only outcome and never dispatches. Product evidence, missing evidence,
   mismatched identity, or ordinary running work must be rejected.
+- Active unleased historical attempts are isolated from dispatch and resume but
+  do not block new leased-packet admission. Their only closure path is signed
+  `legacy_cleanup_attestation/v1` through core `terminalize_attempt(evidence)`.
+  External operator signs with an Ed25519 private key outside repository and
+  agent workspace; trusted public records live only in
+  `~/.codex/harness-attesters.toml`. Controller may run
+  `terminalize-attempt --auto-block`; agents may transport evidence but cannot
+  mint, broaden, or terminalize it. Host has no legacy cleanup or process-action
+  fallback. Direct legacy abandonment is retired.
 - `writer_completion_missing` means a write-capable lane completed commands
   without a final claim after its packet-owned finalization reserve is exhausted.
   Block it without retry, escalation, or resume. Host records prior bounded

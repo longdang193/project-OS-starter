@@ -1955,6 +1955,50 @@ def test_legacy_incompatible_request_can_block_but_not_retry(tmp_path: Path) -> 
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_current_packet_admission_ignores_isolated_legacy_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    harness = load_module()
+    legacy_run_id = f"legacy-{tmp_path.name}"
+    current_run_id = tmp_path.name
+    legacy_dir = ROOT / ".harness" / "runs" / legacy_run_id
+    current_dir = ROOT / ".harness" / "runs" / current_run_id
+    legacy = {
+        "version": 1,
+        "run_id": legacy_run_id,
+        "request": {},
+        "state": "planned",
+        "state_history": [{"state": "planned", "reason": "fixture", "at": "2026-08-09T10:00:00+00:00"}],
+        "run_revision": 0,
+        "attempts": [{
+            "attempt_id": "attempt-1",
+            "packet": {"version": 7, "attempt_id": "attempt-1", "base_commit": "legacy-base"},
+            "nodes": [],
+            "claims": [],
+            "node_observations": [],
+            "evidence": {},
+            "execution_lease": None,
+            "terminal_record": None,
+            "outcome": None,
+            "decision": None,
+        }],
+    }
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_dir / "run.json").write_text(json.dumps(legacy), encoding="utf-8")
+    monkeypatch.setattr(harness, "_execute_attempt", lambda *_args, **_kwargs: {"state": "running"})
+    try:
+        admitted = harness.run_managed(
+            ROOT,
+            managed_request(run_id=current_run_id),
+            FakeAdapter({"single_work_lane": "enforced"}),
+        )
+
+        assert admitted == {"state": "running"}
+        with pytest.raises(harness.HarnessError, match="harness_core_packet_api_unreadable"):
+            harness.run_managed(ROOT, None, FakeAdapter({"single_work_lane": "enforced"}), run_id=legacy_run_id)
+    finally:
+        shutil.rmtree(legacy_dir, ignore_errors=True)
+        shutil.rmtree(current_dir, ignore_errors=True)
+
+
 def test_recover_stranded_running_run_rejects_invalid_or_product_evidence(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
