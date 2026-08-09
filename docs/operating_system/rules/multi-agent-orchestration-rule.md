@@ -39,8 +39,10 @@ distribution_tier: starter_kit
 - For packet API 8, core issues one finite non-renewable lease before `running`.
   Host owns provider process lifecycle and returns only
   `host_terminal_observation/v2`; controller invokes only
-  `terminalize_attempt(evidence)`. Core atomically writes terminal evidence,
-  outcome, lease release, state history, and `run.json`. Live or unverified
+  `terminalize_attempt(envelope)`. Evidence records `attempt_outcome/v2`;
+  one-decision terminal outcomes auto-finalize, while ambiguous outcomes require
+  signed `controller_authorization/v1`. Core atomically writes terminal evidence,
+  receipt, lease release, state history, and `run.json`. Live or unverified
   expired processes are `orphaned`; do not retry or resume them.
 - `--run-id` resumes only when run state is `planned`. A terminal coordinated
   task failure is `blocked`; preserve evidence and require approved successor

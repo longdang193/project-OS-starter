@@ -83,16 +83,22 @@ starter kit. For `runtime_provider_id: codex_app_server`, use provider-host
 execution, never generic `run-unavailable`:
 
 Packet API 8 uses a core-issued finite execution lease and one core
-`terminalize_attempt(evidence)` boundary. Host owns provider process lifecycle
-and bounded terminal observations only; Windows providers run inside one
-kill-on-close Job Object per lease.
+`terminalize_attempt(envelope)` boundary. Evidence produces `attempt_outcome/v2`;
+one-decision terminal outcomes auto-finalize, while ambiguous terminal outcomes
+need signed external `controller_authorization/v1`. Core writes one v3 receipt.
+Host owns provider process lifecycle and bounded terminal observations only;
+Windows providers run inside one kill-on-close Job Object per lease.
 
 Historical unleased attempts stay isolated from dispatch and resume. External
 operator signs bounded `legacy_cleanup_attestation/v1` evidence with an Ed25519
-key outside repository and agent workspace; controller runs
-`harness-core terminalize-attempt --auto-block`. Core verifies public-only
-attester configuration, records one tagged null-lease terminal record, then
-blocks. Host never performs legacy cleanup or terminal state writes.
+key outside repository and agent workspace. Current public records live in
+`~/.codex/harness-authorities.toml`; migrate retired attester records with
+`harness-core migrate-harness-authorities`. Controller submits canonical
+`harness-core terminalize-attempt --input <envelope.json>`. Temporary
+`--evidence` accepts only readable packet API 8 legacy evidence; `--auto-block`
+is rejected. Core records one tagged null-lease terminal record, then policy
+auto-finalizes `blocked`. Host never performs legacy cleanup or terminal state
+writes.
 
 ```powershell
 Set-Location <codex-harness-host-root>

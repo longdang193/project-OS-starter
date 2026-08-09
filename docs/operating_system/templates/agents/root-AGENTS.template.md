@@ -23,13 +23,16 @@ write paths, resolved base commit, and orchestration mode plus resolved
 `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
 For packet API 8, core issues one finite execution lease before `planned` enters
-`running` and controller invokes only `terminalize_attempt(evidence)` for a
-terminal mutation. Host owns provider lifecycle and bounded
+`running`. Host owns provider lifecycle and bounded
 `host_terminal_observation/v2` production only; it never writes `run.json`.
 Host binds every observation to run, attempt, packet digest, lease, and host
 instance identity. Expired live or unverified process state is `orphaned`, not
 retryable work. Windows containment uses one unnamed kill-on-close Job Object
 per lease; no PID-tree, process-group, `taskkill`, or reopened-job fallback.
+Core records every finalization subject as `attempt_outcome/v2`. Controller uses
+only `terminalize_attempt(envelope)`: evidence form records outcome and terminal
+evidence; outcome form finalizes exact outcome. Core writes final state,
+decision, and `attempt_terminal_receipt/v3` atomically.
 Host returns baseline evidence before lane dispatch: root and parallel lanes use
 `packet_base` at exact packet base with a clean checkout; sequential dependents
 use `predecessor` only for direct materialized predecessor state. Core validates
@@ -99,14 +102,14 @@ When spawning a subagent:
   then uses the reserve only for a read-only final claim turn after interruption
   or empty final text. Transport preflight has separate short bound.
 - Harness dispatches only mode intersection of route policy and enforced host
-  capability. Controller alone accepts, retries, escalates, requests approval,
-  or blocks through recorded decision.
+  capability. Controller uses `terminalize_attempt` for `accept`, `block`, and
+  `waive`; retry, escalation, and approval request remain nonterminal decisions.
 - Agents return claimed results; harness records fresh verification evidence and
   never accepts, retries, escalates, or approves autonomously.
 - Work is managed only after host adapter creates a packet and `run.json`.
   Never call unpacketed work managed, validated, or accepted.
 - When selected managed mode returns `execution_mode_unavailable`, block it or
-  record controller `waive` decision with a reason. A waived run is terminal
+  finalize signed controller-authorized `waive`. A waived run is terminal
   `unvalidated`; local proof cannot become managed acceptance.
 - For `dispatch_timeout`, controller may only escalate through immutable packet
   `escalation_profile` or block. Never retry timeout or accept caller-selected
@@ -115,16 +118,22 @@ When spawning a subagent:
   with no claim, node observation, evidence, outcome, or decision after host
   terminal recording failed. It requires exact run/attempt identity and bounded
   external host evidence with code `terminal_recording_failed`; it records a
-  block-only outcome and never dispatches. Product evidence, missing evidence,
-  mismatched identity, or ordinary running work must be rejected.
+  block-only outcome and policy auto-finalizes. It never dispatches. Product
+  evidence, missing evidence, mismatched identity, or ordinary running work
+  must be rejected.
 - Active unleased historical attempts are isolated from dispatch and resume but
   do not block new leased-packet admission. Their only closure path is signed
   `legacy_cleanup_attestation/v1` through core `terminalize_attempt(evidence)`.
   External operator signs with an Ed25519 private key outside repository and
   agent workspace; trusted public records live only in
-  `~/.codex/harness-attesters.toml`. Controller may run
-  `terminalize-attempt --auto-block`; agents may transport evidence but cannot
-  mint, broaden, or terminalize it. Host has no legacy cleanup or process-action
+  `~/.codex/harness-authorities.toml`. `migrate-harness-authorities` is explicit;
+  current validation never falls back to the old registry. Controller submits
+  canonical `terminalize-attempt --input <envelope.json>`; temporary `--evidence`
+  accepts only readable packet API 8 legacy evidence. `--auto-block` is retired.
+  Legacy cleanup produces one block-only outcome and policy auto-finalizes one
+  receipt. Ambiguous terminal outcomes require external
+  `controller_authorization/v1`; agents may transport evidence but cannot mint,
+  broaden, or terminalize it. Host has no legacy cleanup or process-action
   fallback. Direct legacy abandonment is retired.
 - `writer_completion_missing` means a write-capable lane completed commands
   without a final claim after its packet-owned finalization reserve is exhausted.

@@ -11,7 +11,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from harness_core import legacy_cleanup, managed
+from harness_core import authority, legacy_cleanup, managed
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -24,7 +24,7 @@ def _base64url(value: bytes) -> str:
 def write_legacy_run(tmp_path: Path) -> tuple[str, Path, dict[str, object]]:
     run_id = tmp_path.name
     path = ROOT / ".harness" / "runs" / run_id / "run.json"
-    packet = {"version": 7, "attempt_id": "attempt-1", "base_commit": "legacy-base"}
+    packet = {"version": 8, "attempt_id": "attempt-1", "base_commit": "legacy-base"}
     run = {
         "version": 1,
         "run_id": run_id,
@@ -71,17 +71,20 @@ def write_attester(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, status: s
             serialization.PublicFormat.Raw,
         )
     )
-    config_path = tmp_path / "harness-attesters.toml"
+    config_path = tmp_path / "harness-authorities.toml"
     config_path.write_text(
-        "[attesters.operator-1]\n"
-        "attester_id = \"cleanup-operator\"\n"
-        "role = \"managed_cleanup_operator\"\n"
+        "[registry]\n"
+        "version = 1\n\n"
+        "[authorities.operator-1]\n"
+        "principal_id = \"cleanup-operator\"\n"
+        "roles = [\"managed_cleanup_operator\"]\n"
         "algorithm = \"ed25519\"\n"
         f"public_key = \"{public_key}\"\n"
+        f"key_fingerprint = \"{authority.public_key_fingerprint(public_key)}\"\n"
         f"status = \"{status}\"\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(legacy_cleanup, "legacy_cleanup_trusted_config_path", lambda: config_path)
+    monkeypatch.setattr(authority, "authority_registry_path", lambda: config_path)
     return private_key_path
 
 
@@ -120,7 +123,7 @@ def signed_attestation(
 
 
 @pytest.mark.parametrize("scope", ["operator_discovered_provider_tree", "operator_attested_no_provider_process"])
-def test_legacy_cleanup_terminalizes_and_replays_after_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str) -> None:
+def test_legacy_cleanup_auto_finalizes_and_replays_after_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str) -> None:
     run_id, path, packet = write_legacy_run(tmp_path)
     try:
         private_key_path = write_attester(tmp_path, monkeypatch)
@@ -132,7 +135,7 @@ def test_legacy_cleanup_terminalizes_and_replays_after_block(tmp_path: Path, mon
         record = recorded["attempts"][0]["terminal_record"]
 
         assert applied["terminalization"]["status"] == "applied"
-        assert recorded["state"] == "awaiting_decision"
+        assert recorded["state"] == "blocked"
         assert record["schema_id"] == "attempt_terminal_evidence/v2"
         assert record["classification"] == "legacy_cleanup_attested"
         assert record["source_kind"] == "legacy_cleanup"
@@ -140,8 +143,9 @@ def test_legacy_cleanup_terminalizes_and_replays_after_block(tmp_path: Path, mon
         assert record["lease_epoch"] is None
         assert record["legacy_cleanup"]["cleanup_scope"] == scope
         assert recorded["attempts"][0]["outcome"]["allowed_decisions"] == ["block"]
-
-        managed.apply_controller_decision(ROOT, run_id, {"kind": "block"})
+        receipt = recorded["attempts"][0]["terminal_receipt"]
+        assert receipt["schema_id"] == "attempt_terminal_receipt/v3"
+        assert receipt["authority"]["mode"] == "policy_auto"
         after_block = path.read_bytes()
         replayed = managed.terminalize_attempt(ROOT, run_id, evidence)
 
@@ -243,7 +247,7 @@ def test_legacy_cleanup_rejects_different_signed_evidence_after_terminalization(
         shutil.rmtree(path.parent, ignore_errors=True)
 
 
-def test_legacy_cleanup_cli_signs_and_auto_blocks_idempotently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_legacy_cleanup_cli_signs_and_terminalizes_idempotently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_id, path, packet = write_legacy_run(tmp_path)
     try:
         private_key_path = write_attester(tmp_path, monkeypatch)
@@ -267,6 +271,13 @@ def test_legacy_cleanup_cli_signs_and_auto_blocks_idempotently(tmp_path: Path, m
             "--run-id", run_id,
             "--evidence", str(evidence_path),
             "--auto-block",
+        ]) == 2
+        assert json.loads(path.read_text(encoding="utf-8"))["state"] == "running"
+        assert managed.main([
+            "--repo-root", str(ROOT),
+            "terminalize-attempt",
+            "--run-id", run_id,
+            "--evidence", str(evidence_path),
         ]) == 0
         assert json.loads(path.read_text(encoding="utf-8"))["state"] == "blocked"
         assert managed.main([
@@ -274,7 +285,6 @@ def test_legacy_cleanup_cli_signs_and_auto_blocks_idempotently(tmp_path: Path, m
             "terminalize-attempt",
             "--run-id", run_id,
             "--evidence", str(evidence_path),
-            "--auto-block",
         ]) == 0
         assert signed["attestation_signature"]
     finally:

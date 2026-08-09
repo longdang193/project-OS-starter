@@ -45,6 +45,7 @@ from .config_validation import (
     resolve_operating_profile,
     validate as validate_harness_config,
 )
+from . import authority
 from .compatibility import (
     CURRENT_PACKET_API,
     CURRENT_RUN_API,
@@ -1988,6 +1989,7 @@ _TERMINALIZATION_FIELDS = {"attempt_id", "host_terminal_observations"}
 _TERMINALIZATION_RECOVERY_FIELDS = _TERMINALIZATION_FIELDS | {"recovery_observation"}
 _TERMINALIZATION_STRANDED_RECOVERY_FIELDS = _TERMINALIZATION_FIELDS | {"stranded_recovery"}
 _TERMINALIZATION_LEGACY_FIELDS = {"attempt_id", "legacy_cleanup_attestation"}
+_TERMINALIZATION_OUTCOME_FIELDS = {"attempt_id", "outcome_id", "outcome_digest", "requested_decision", "controller_authorization"}
 _STRANDED_RECOVERY_FIELDS = {"reason", "external_failure"}
 _RECOVERY_OBSERVATION_FIELDS = {
     "lease_id",
@@ -2172,19 +2174,22 @@ def _normalize_stranded_recovery(run: dict[str, Any], attempt: dict[str, Any], v
     }
 
 
-def _terminalization_input(value: Any) -> tuple[str, list[Any], Any | None, Any | None, Any | None]:
+def _terminalization_input(value: Any) -> tuple[str, list[Any], Any | None, Any | None, Any | None, dict[str, Any] | None]:
     fields = set(value) if isinstance(value, dict) else set()
     if not isinstance(value, dict) or frozenset(fields) not in {
         frozenset(_TERMINALIZATION_FIELDS),
         frozenset(_TERMINALIZATION_RECOVERY_FIELDS),
         frozenset(_TERMINALIZATION_STRANDED_RECOVERY_FIELDS),
         frozenset(_TERMINALIZATION_LEGACY_FIELDS),
+        frozenset(_TERMINALIZATION_OUTCOME_FIELDS),
     }:
         raise HarnessError("terminalization evidence has invalid fields")
     attempt_id = _required_string(value.get("attempt_id"), "terminalization attempt_id")
+    if frozenset(fields) == frozenset(_TERMINALIZATION_OUTCOME_FIELDS):
+        return attempt_id, [], None, None, None, value
     legacy_cleanup = value.get("legacy_cleanup_attestation")
     if legacy_cleanup is not None:
-        return attempt_id, [], None, None, legacy_cleanup
+        return attempt_id, [], None, None, legacy_cleanup, None
     observations = value.get("host_terminal_observations")
     if not isinstance(observations, list):
         raise HarnessError("terminalization evidence host_terminal_observations is invalid")
@@ -2194,7 +2199,7 @@ def _terminalization_input(value: Any) -> tuple[str, list[Any], Any | None, Any 
         raise HarnessError("terminalization evidence requires host observations")
     if sum(item is not None for item in (recovery, stranded_recovery)) + bool(observations) != 1:
         raise HarnessError("terminalization evidence cannot mix recovery and host observations")
-    return attempt_id, observations, recovery, stranded_recovery, None
+    return attempt_id, observations, recovery, stranded_recovery, None, None
 
 
 def _validate_legacy_cleanup_attempt(run: dict[str, Any], attempt: dict[str, Any], policy: dict[str, Any], cleanup: dict[str, Any]) -> None:
@@ -2312,10 +2317,51 @@ def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any
     run_id = _safe_run_id(run_id)
     with _run_lock(root, run_id):
         run = _load_run(root, run_id)
+        policy = _load_policy(root)
         attempt = _active_attempt(run)
-        attempt_id, raw_observations, raw_recovery, raw_stranded_recovery, raw_legacy_cleanup = _terminalization_input(evidence)
+        attempt_id, raw_observations, raw_recovery, raw_stranded_recovery, raw_legacy_cleanup, raw_outcome = _terminalization_input(evidence)
         if attempt.get("attempt_id") != attempt_id:
             raise HarnessError("terminalization attempt identity does not match run")
+        if raw_outcome is not None:
+            outcome = _validated_outcome(attempt)
+            supplied_id = _required_string(raw_outcome.get("outcome_id"), "terminalization outcome_id")
+            supplied_digest = _required_string(raw_outcome.get("outcome_digest"), "terminalization outcome_digest")
+            requested_decision = _required_string(raw_outcome.get("requested_decision"), "terminalization requested_decision")
+            raw_authorization = raw_outcome.get("controller_authorization")
+            existing_receipt = attempt.get("terminal_receipt")
+            if isinstance(existing_receipt, dict):
+                if (
+                    existing_receipt.get("outcome_id") == supplied_id
+                    and existing_receipt.get("outcome_digest") == supplied_digest
+                    and existing_receipt.get("decision") == requested_decision
+                    and isinstance(existing_receipt.get("authority"), dict)
+                    and existing_receipt["authority"].get("authorization_digest") == authority.document_digest(raw_authorization)
+                ):
+                    return _terminalization_result(run, "replayed", existing_receipt.get("terminal_id"))
+                raise HarnessError("attempt_already_finalized")
+            if run["state"] != "awaiting_decision":
+                raise HarnessError(f"run `{run_id}` is not awaiting controller decision")
+            if outcome["outcome_id"] != supplied_id or outcome["outcome_digest"] != supplied_digest:
+                raise HarnessError("terminalization outcome does not match run")
+            try:
+                normalized_authorization = authority.normalize_controller_authorization(
+                    raw_authorization,
+                    registry=authority.load_authorities(),
+                    policy=outcome["policy_snapshot"],
+                    now=datetime.now(UTC),
+                )
+            except authority.AuthorityError as exc:
+                raise HarnessError(str(exc)) from exc
+            receipt = _finalize_outcome(
+                run,
+                attempt,
+                policy,
+                decision=requested_decision,
+                authorization=normalized_authorization,
+                policy_auto=False,
+            )
+            _write_run(root, run)
+            return _terminalization_result(run, "finalized", receipt["terminal_id"])
         legacy_cleanup: dict[str, Any] | None = None
         if raw_legacy_cleanup is not None:
             try:
@@ -2334,7 +2380,7 @@ def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any
                 raise HarnessError("attempt_already_terminal")
             if run["state"] not in ACTIVE_RUN_STATES:
                 raise HarnessError(f"run `{run_id}` cannot terminalize from `{run['state']}")
-            cleanup_policy = _load_policy(root).get("legacy_cleanup")
+            cleanup_policy = policy.get("legacy_cleanup")
             if not isinstance(cleanup_policy, dict):
                 raise HarnessError("legacy cleanup is not configured")
             try:
@@ -2347,7 +2393,7 @@ def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any
                 raise HarnessError(str(exc)) from exc
             if legacy_cleanup is None:
                 raise HarnessError("legacy cleanup attestation is invalid")
-            _validate_legacy_cleanup_attempt(run, attempt, _load_policy(root), legacy_cleanup)
+            _validate_legacy_cleanup_attempt(run, attempt, policy, legacy_cleanup)
             binding = {"lease_id": None, "lease_epoch": None}
         else:
             if run["state"] not in {"running", "observed", "verifying", "orphaned", "awaiting_decision"}:
@@ -2436,8 +2482,18 @@ def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any
         else:
             attempt["execution_lease"]["state"] = "released"
             attempt["execution_lease"]["released_at"] = _timestamp()
-        _set_outcome(attempt, reason, decisions, ["terminal_record", *refs], detail=outcome_detail)
-        _transition(run, _load_policy(root)["states"], "awaiting_decision", classification)
+        _set_outcome(
+            run,
+            attempt,
+            policy,
+            reason,
+            decisions,
+            ["terminal_record", *refs],
+            detail=outcome_detail,
+            source_valid_until=legacy_cleanup["expires_at"] if legacy_cleanup is not None else None,
+        )
+        if _auto_finalize_outcome(run, attempt, policy) is None:
+            _transition(run, policy["states"], "awaiting_decision", classification)
         _write_run(root, run)
         return _terminalization_result(run, "applied", terminal_id)
 
@@ -2689,7 +2745,9 @@ def _sync_delegation_state(root: Path, run: dict[str, Any], attempt: dict[str, A
         return False
     run["state"] = persisted_run["state"]
     run["state_history"] = copy.deepcopy(persisted_run["state_history"])
-    attempt["outcome"] = copy.deepcopy(persisted_attempt["outcome"])
+    for field in ("outcome", "terminal_receipt", "decision", "decision_history"):
+        if field in persisted_attempt:
+            attempt[field] = copy.deepcopy(persisted_attempt[field])
     return True
 
 
@@ -2767,25 +2825,187 @@ def complete_delegated_child(
     if isinstance(parent, dict):
         parent["status"] = "running" if status == "succeeded" else "waiting_for_child"
     if status != "succeeded" and run["state"] == "running":
-        _set_outcome(attempt, f"child_{status}", ["block"], ["children", "reservation_ledger"])
-        _transition(run, _load_policy(root)["states"], "awaiting_decision", f"child_{status}")
+        policy = _load_policy(root)
+        _set_outcome(run, attempt, policy, f"child_{status}", ["block"], ["children", "reservation_ledger"])
+        if _auto_finalize_outcome(run, attempt, policy) is None:
+            _transition(run, policy["states"], "awaiting_decision", f"child_{status}")
     _write_run(root, run)
     return result
 
 
 def _set_outcome(
+    run: dict[str, Any],
     attempt: dict[str, Any],
+    policy: dict[str, Any],
     reason: str,
     allowed_decisions: list[str],
     evidence_refs: list[str],
     *,
     detail: str | None = None,
+    source_valid_until: str | None = None,
 ) -> dict[str, Any]:
-    outcome = {"reason": reason, "allowed_decisions": allowed_decisions, "evidence_refs": evidence_refs}
-    if detail:
-        outcome["detail"] = detail
+    if not isinstance(reason, str) or not reason:
+        raise HarnessError("outcome reason is invalid")
+    if not isinstance(allowed_decisions, list) or not allowed_decisions or len(allowed_decisions) != len(set(allowed_decisions)) or any(decision not in DECISION_KINDS for decision in allowed_decisions):
+        raise HarnessError("outcome allowed_decisions are invalid")
+    if not isinstance(evidence_refs, list) or any(not isinstance(reference, str) or not reference for reference in evidence_refs):
+        raise HarnessError("outcome evidence_refs are invalid")
+    if detail is not None:
+        if not isinstance(detail, str) or len(detail.encode("utf-8")) > policy["context_limits"]["outcome_summary_max_bytes"]:
+            raise HarnessError("outcome detail is invalid")
+    recorded_at = _timestamp()
+    valid_until = _parse_timestamp(recorded_at) + timedelta(seconds=policy["terminalization"]["pending_outcome_ttl_seconds"])
+    if source_valid_until is not None:
+        source_deadline = _parse_timestamp(source_valid_until)
+        valid_until = min(valid_until, source_deadline)
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict):
+        raise HarnessError("outcome packet is invalid")
+    policy_snapshot = copy.deepcopy(policy["terminalization"])
+    subject = {
+        "run_id": run["run_id"],
+        "attempt_id": attempt.get("attempt_id"),
+        "packet_sha256": _canonical_digest(packet),
+        "reason": reason,
+        "allowed_decisions": allowed_decisions,
+        "evidence_refs": evidence_refs,
+        "detail": detail,
+        "recorded_at": recorded_at,
+        "valid_until": valid_until.isoformat(),
+        "policy_digest": _canonical_digest(policy),
+        "policy_snapshot": policy_snapshot,
+    }
+    outcome_id = f"outcome-{_canonical_digest(subject)}"
+    outcome = {"schema_id": "attempt_outcome/v2", "outcome_id": outcome_id, **subject}
+    outcome["outcome_digest"] = _canonical_digest(outcome)
     attempt["outcome"] = outcome
     return outcome
+
+
+_TERMINAL_DECISIONS = {"accept", "block", "waive"}
+
+
+def _validated_outcome(attempt: dict[str, Any]) -> dict[str, Any]:
+    outcome = attempt.get("outcome")
+    if not isinstance(outcome, dict) or outcome.get("schema_id") != "attempt_outcome/v2":
+        raise HarnessError("attempt outcome is invalid")
+    digest = outcome.get("outcome_digest")
+    unsigned = {key: value for key, value in outcome.items() if key != "outcome_digest"}
+    if not isinstance(digest, str) or digest != _canonical_digest(unsigned):
+        raise HarnessError("attempt outcome digest is invalid")
+    if not isinstance(outcome.get("outcome_id"), str) or not outcome["outcome_id"].startswith("outcome-"):
+        raise HarnessError("attempt outcome identity is invalid")
+    _parse_timestamp(outcome.get("recorded_at"))
+    _parse_timestamp(outcome.get("valid_until"))
+    if not isinstance(outcome.get("policy_snapshot"), dict) or not isinstance(outcome.get("policy_digest"), str):
+        raise HarnessError("attempt outcome policy snapshot is invalid")
+    return outcome
+
+
+def _final_state_for_decision(decision: str) -> str:
+    return {"accept": "accepted", "block": "blocked", "waive": "unvalidated"}[decision]
+
+
+def _finalize_outcome(
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    policy: dict[str, Any],
+    *,
+    decision: str,
+    authorization: dict[str, Any] | None = None,
+    policy_auto: bool,
+) -> dict[str, Any]:
+    outcome = _validated_outcome(attempt)
+    if decision not in _TERMINAL_DECISIONS or decision not in outcome["allowed_decisions"]:
+        raise HarnessError("terminal decision is not allowed for current outcome")
+    snapshot = outcome["policy_snapshot"]
+    now = datetime.now(UTC)
+    expired = now > _parse_timestamp(outcome["valid_until"])
+    if policy_auto:
+        if snapshot.get("auto_finalize_single_terminal_outcome") is not True or outcome["allowed_decisions"] != [decision]:
+            raise HarnessError("outcome is not eligible for policy auto finalization")
+        authority_receipt = {"mode": "policy_auto", "principal_id": None}
+    else:
+        if authorization is None:
+            raise HarnessError("terminal decision requires controller authorization")
+        expected = {
+            "run_id": run["run_id"],
+            "attempt_id": attempt["attempt_id"],
+            "packet_sha256": _canonical_digest(attempt["packet"]),
+            "outcome_id": outcome["outcome_id"],
+            "outcome_digest": outcome["outcome_digest"],
+            "requested_decision": decision,
+        }
+        if any(authorization.get(field) != value for field, value in expected.items()):
+            raise HarnessError("controller authorization does not match outcome")
+        if expired and decision != "block":
+            raise HarnessError("outcome is expired for acceptance or waiver")
+        if expired and _parse_timestamp(authorization["issued_at"]) < _parse_timestamp(outcome["valid_until"]):
+            raise HarnessError("expired outcome requires fresh controller authorization")
+        legacy_cleanup = attempt.get("terminal_record", {}).get("legacy_cleanup") if isinstance(attempt.get("terminal_record"), dict) else None
+        if (
+            isinstance(legacy_cleanup, dict)
+            and legacy_cleanup.get("issuer_key_id") == authorization.get("issuer_key_id")
+            and snapshot.get("allow_same_issuer_evidence_and_authorization") is not True
+        ):
+            raise HarnessError("controller authorization issuer cannot pair with evidence issuer")
+        authority_receipt = {
+            "mode": "controller_authorization",
+            "principal_id": authorization["principal_id"],
+            "authorization_id": authorization["authorization_id"],
+            "authorization_digest": authorization["authorization_digest"],
+            "issuer_key_id": authorization["issuer_key_id"],
+            "key_fingerprint": authorization["key_fingerprint"],
+            "registry_digest": authorization["registry_digest"],
+            "reason_sha256": authorization["reason_sha256"],
+            "reason_length": authorization["reason_length"],
+        }
+    if policy_auto and expired:
+        raise HarnessError("outcome is expired for policy auto finalization")
+    if decision == "accept":
+        criteria = attempt.get("evidence", {}).get("criteria", [])
+        if not criteria or any(criterion.get("status") != "proven" for criterion in criteria):
+            raise HarnessError("cannot accept run without proven criteria")
+    receipt_subject = {
+        "run_id": run["run_id"],
+        "attempt_id": attempt["attempt_id"],
+        "outcome_id": outcome["outcome_id"],
+        "outcome_digest": outcome["outcome_digest"],
+        "decision": decision,
+        "authority": authority_receipt,
+        "policy_digest": outcome["policy_digest"],
+        "terminal_evidence_digest": attempt.get("terminal_record", {}).get("evidence_digest") if isinstance(attempt.get("terminal_record"), dict) else None,
+        "finalized_at": _timestamp(),
+        "outcome_expired": expired,
+    }
+    terminal_id = f"terminal-{_canonical_digest(receipt_subject)}"
+    receipt = {"schema_id": "attempt_terminal_receipt/v3", "terminal_id": terminal_id, **receipt_subject}
+    existing = attempt.get("terminal_receipt")
+    if isinstance(existing, dict):
+        if existing.get("terminal_id") == terminal_id:
+            return existing
+        raise HarnessError("attempt_already_finalized")
+    attempt["terminal_receipt"] = receipt
+    stored_decision = {"kind": decision, "at": receipt["finalized_at"], "authority_mode": authority_receipt["mode"]}
+    attempt["decision"] = stored_decision
+    attempt.setdefault("decision_history", []).append(copy.deepcopy(stored_decision))
+    _transition(run, policy["states"], _final_state_for_decision(decision), f"{authority_receipt['mode']}_{decision}")
+    return receipt
+
+
+def _auto_finalize_outcome(run: dict[str, Any], attempt: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any] | None:
+    outcome = _validated_outcome(attempt)
+    decisions = outcome["allowed_decisions"]
+    if len(decisions) != 1 or decisions[0] not in _TERMINAL_DECISIONS:
+        return None
+    return _finalize_outcome(run, attempt, policy, decision=decisions[0], policy_auto=True)
+
+
+def _persist_outcome_transition(root: Path, run: dict[str, Any], attempt: dict[str, Any], policy: dict[str, Any], reason: str) -> dict[str, Any]:
+    if _auto_finalize_outcome(run, attempt, policy) is None:
+        _transition(run, policy["states"], "awaiting_decision", reason)
+    _write_run(root, run)
+    return _managed_result(run)
 
 
 def _managed_result(run: dict[str, Any]) -> dict[str, Any]:
@@ -3510,10 +3730,8 @@ def _record_failure(
     decisions = ["block"]
     if reason in attempt["packet"]["retry_policy"]["retryable_reasons"]:
         decisions = ["retry", "escalate", "block"]
-    _set_outcome(attempt, reason, decisions, ["friction_event_ids", "evidence.failure"], detail=detail)
-    _transition(run, policy["states"], "awaiting_decision", reason)
-    _write_run(root, run)
-    return _managed_result(run)
+    _set_outcome(run, attempt, policy, reason, decisions, ["friction_event_ids", "evidence.failure"], detail=detail)
+    return _persist_outcome_transition(root, run, attempt, policy, reason)
 
 
 def _normalize_terminal_evidence(exc: Exception, packet: dict[str, Any]) -> dict[str, Any] | None:
@@ -3632,15 +3850,15 @@ def _record_terminal_failure(
     if artifact_rejections:
         evidence_refs.append("evidence.artifact_rejections")
     _set_outcome(
+        run,
         attempt,
+        policy,
         reason,
         decisions,
         evidence_refs,
         detail=detail,
     )
-    _transition(run, policy["states"], "awaiting_decision", reason)
-    _write_run(root, run)
-    return _managed_result(run)
+    return _persist_outcome_transition(root, run, attempt, policy, reason)
 
 
 def _record_dispatch_exception(
@@ -3998,10 +4216,8 @@ def _execute_attempt(
             code="approval_required",
             evidence_ref="authorization.blockers",
         )
-        _set_outcome(attempt, "approval_required", ["request_approval", "retry", "block"], ["authorization"])
-        _transition(run, policy["states"], "awaiting_decision", "approval_required")
-        _write_run(root, run)
-        return _managed_result(run)
+        _set_outcome(run, attempt, policy, "approval_required", ["request_approval", "retry", "block"], ["authorization"])
+        return _persist_outcome_transition(root, run, attempt, policy, "approval_required")
     try:
         required_capabilities = set(policy["orchestration"]) | {policy["claim_repair"]["required_host_capability"]}
         if packet.get("version") == CURRENT_PACKET_API:
@@ -4029,7 +4245,9 @@ def _execute_attempt(
             evidence_ref="capabilities",
         )
         _set_outcome(
+            run,
             attempt,
+            policy,
             "execution_mode_unavailable",
             ["waive", "block"],
             ["capabilities"],
@@ -4248,10 +4466,8 @@ def _execute_attempt(
     if packet.get("version") == CURRENT_PACKET_API:
         return _terminalize_collected_attempt(root, run, attempt)
     reason, decisions = _outcome_for_verification(verification, packet["retry_policy"])
-    _set_outcome(attempt, reason, decisions, ["evidence"])
-    _transition(run, policy["states"], "awaiting_decision", reason)
-    _write_run(root, run)
-    return _managed_result(run)
+    _set_outcome(run, attempt, policy, reason, decisions, ["evidence"])
+    return _persist_outcome_transition(root, run, attempt, policy, reason)
 
 
 def run_managed(
@@ -4334,10 +4550,8 @@ def run_managed(
                 if packet["base_commit"] != _resolve_commit(root, coordination.base_ref):
                     raise HarnessError("coordinated packet base commit changed")
             except (PlanCoordinationError, HarnessError):
-                _set_outcome(attempt, "plan_binding_changed", ["retry", "block"], ["packet"])
-                _transition(run, policy["states"], "awaiting_decision", "plan_binding_changed")
-                _write_run(root, run)
-                return _managed_result(run)
+                _set_outcome(run, attempt, policy, "plan_binding_changed", ["retry", "block"], ["packet"])
+                return _persist_outcome_transition(root, run, attempt, policy, "plan_binding_changed")
     if packet.get("provider_runtime_binding") is not None:
         _active_attempt(run)["host_preflight"] = copy.deepcopy(packet["provider_runtime_binding"])
     _write_run(root, run)
@@ -4365,13 +4579,33 @@ def _successor_request(run: dict[str, Any], successor: Any) -> dict[str, Any]:
 
 def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any]) -> dict[str, Any]:
     _validate_policy(root)
+    if not isinstance(decision, dict):
+        raise HarnessError("decision must be an object")
+    kind = _required_string(decision.get("kind"), "decision kind")
+    if kind not in DECISION_KINDS:
+        raise HarnessError(f"unsupported decision kind `{kind}`")
+    if kind in _TERMINAL_DECISIONS:
+        if set(decision) != {"kind", "controller_authorization"}:
+            raise HarnessError("terminal decision requires only controller_authorization")
+        run = _load_run(root, _safe_run_id(run_id))
+        attempt = _active_attempt(run)
+        outcome = _validated_outcome(attempt)
+        terminalize_attempt(
+            root,
+            run_id,
+            {
+                "attempt_id": attempt["attempt_id"],
+                "outcome_id": outcome["outcome_id"],
+                "outcome_digest": outcome["outcome_digest"],
+                "requested_decision": kind,
+                "controller_authorization": decision["controller_authorization"],
+            },
+        )
+        return _managed_result(_load_run(root, _safe_run_id(run_id)))
     policy = _load_policy(root)
     run = _load_run(root, _safe_run_id(run_id))
     if run["state"] != "awaiting_decision":
         raise HarnessError(f"run `{run_id}` is not awaiting controller decision")
-    kind = _required_string(decision.get("kind"), "decision kind")
-    if kind not in DECISION_KINDS:
-        raise HarnessError(f"unsupported decision kind `{kind}`")
     attempt = _active_attempt(run)
     outcome = attempt.get("outcome")
     if not isinstance(outcome, dict) or kind not in outcome.get("allowed_decisions", []):
@@ -4383,17 +4617,7 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
     stored["at"] = _timestamp()
     attempt["decision"] = stored
     attempt.setdefault("decision_history", []).append(stored)
-    if kind == "accept":
-        criteria = attempt.get("evidence", {}).get("criteria", [])
-        if not criteria or any(criterion.get("status") != "proven" for criterion in criteria):
-            raise HarnessError("cannot accept run without proven criteria")
-        _transition(run, policy["states"], "accepted", "controller_accept")
-    elif kind == "waive":
-        _required_string(decision.get("reason"), "waiver reason")
-        _transition(run, policy["states"], "unvalidated", "controller_waive")
-    elif kind == "block":
-        _transition(run, policy["states"], "blocked", "controller_block")
-    elif kind == "request_approval":
+    if kind == "request_approval":
         _transition(run, policy["states"], "awaiting_decision", "controller_request_approval")
     else:
         retry_policy = attempt["packet"]["retry_policy"]
@@ -4424,8 +4648,8 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
         else:
             successor_request = _successor_request(run, decision.get("successor"))
         if len(run["attempts"]) >= retry_policy["max_attempts"]:
-            _set_outcome(attempt, "retry_exhausted", ["block"], ["decision"])
-            _transition(run, policy["states"], "blocked", "retry_exhausted")
+            _set_outcome(run, attempt, policy, "retry_exhausted", ["block"], ["decision"])
+            _auto_finalize_outcome(run, attempt, policy)
         else:
             packet = resolve_managed_packet(
                 root,
@@ -4438,6 +4662,108 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
             _transition(run, policy["states"], "planned", f"controller_{kind}")
     _write_run(root, run)
     return _managed_result(run)
+
+
+def sign_controller_authorization(
+    root: Path,
+    run_id: str,
+    issuer_key_id: str,
+    requested_decision: str,
+    rationale_path: Path,
+    private_key_path: Path,
+    output_path: Path,
+    *,
+    expires_in_seconds: int | None = None,
+) -> dict[str, str]:
+    _validate_policy(root)
+    root = root.resolve()
+    private_key_path = private_key_path.resolve()
+    output_path = output_path.resolve()
+    if private_key_path.is_relative_to(root):
+        raise HarnessError("controller authorization private key must be outside repository")
+    if output_path.is_relative_to(root):
+        raise HarnessError("controller authorization output must be outside repository")
+    try:
+        rationale = rationale_path.read_bytes()
+    except OSError as exc:
+        raise HarnessError("controller authorization rationale is unavailable") from exc
+    with _run_lock(root, _safe_run_id(run_id)):
+        policy = _load_policy(root)
+        terminalization = policy["terminalization"]
+        if not rationale or len(rationale) > terminalization["max_authorization_bytes"]:
+            raise HarnessError("controller authorization rationale is invalid")
+        if requested_decision not in _TERMINAL_DECISIONS:
+            raise HarnessError("controller authorization decision is invalid")
+        lifetime = terminalization["max_authorization_lifetime_seconds"] if expires_in_seconds is None else expires_in_seconds
+        if not isinstance(lifetime, int) or isinstance(lifetime, bool) or lifetime <= 0 or lifetime > terminalization["max_authorization_lifetime_seconds"]:
+            raise HarnessError("controller authorization expiry is invalid")
+        run = _load_run(root, run_id)
+        if run["state"] != "awaiting_decision":
+            raise HarnessError(f"run `{run_id}` is not awaiting controller decision")
+        attempt = _active_attempt(run)
+        outcome = _validated_outcome(attempt)
+        if requested_decision not in outcome["allowed_decisions"]:
+            raise HarnessError("controller authorization decision is not allowed")
+        now = datetime.now(UTC)
+        if requested_decision in {"accept", "waive"} and now > _parse_timestamp(outcome["valid_until"]):
+            raise HarnessError("outcome is expired for controller authorization")
+        try:
+            registry = authority.load_authorities()
+            entry = registry["entries"].get(issuer_key_id)
+            if not isinstance(entry, dict):
+                raise authority.AuthorityError("controller authorization issuer is unknown")
+            if entry.get("status") != "active":
+                raise authority.AuthorityError("controller authorization issuer is revoked")
+            if not set(entry.get("roles", [])) & set(terminalization["allowed_controller_roles"]):
+                raise authority.AuthorityError("controller authorization issuer role is not allowed")
+            private_key = authority.load_private_ed25519_key(private_key_path)
+            key_proof = {"issuer_key_id": issuer_key_id}
+            authority.verify_document(
+                key_proof,
+                authority.base64url_encode(private_key.sign(authority.canonical_json_bytes(key_proof))),
+                entry["public_key"],
+            )
+        except authority.AuthorityError as exc:
+            raise HarnessError(str(exc)) from exc
+        expires_at = now + timedelta(seconds=lifetime)
+        authorization = authority.sign_document(
+            {
+                "schema_id": "controller_authorization/v1",
+                "authorization_id": f"authorization-{uuid.uuid4().hex}",
+                "run_id": run_id,
+                "attempt_id": attempt["attempt_id"],
+                "packet_sha256": outcome["packet_sha256"],
+                "outcome_id": outcome["outcome_id"],
+                "outcome_digest": outcome["outcome_digest"],
+                "requested_decision": requested_decision,
+                "issuer_key_id": issuer_key_id,
+                "issued_at": now.isoformat(),
+                "expires_at": expires_at.isoformat(),
+                "reason_sha256": hashlib.sha256(rationale).hexdigest(),
+                "reason_length": len(rationale),
+            },
+            private_key,
+        )
+        try:
+            normalized = authority.normalize_controller_authorization(
+                authorization,
+                registry=registry,
+                policy=terminalization,
+                now=now,
+            )
+        except authority.AuthorityError as exc:
+            raise HarnessError(str(exc)) from exc
+    if output_path.exists():
+        raise HarnessError("controller authorization output already exists")
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(authorization, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    except OSError as exc:
+        raise HarnessError("controller authorization output is unavailable") from exc
+    return {
+        "authorization_id": normalized["authorization_id"],
+        "authorization_digest": normalized["authorization_digest"],
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -4472,12 +4798,27 @@ def main(argv: list[str] | None = None) -> int:
     recover_command.add_argument("--evidence", required=True)
     terminalize_command = subparsers.add_parser("terminalize-attempt")
     terminalize_command.add_argument("--run-id", required=True)
-    terminalize_command.add_argument("--evidence", required=True)
+    terminalize_input = terminalize_command.add_mutually_exclusive_group(required=True)
+    terminalize_input.add_argument("--input")
+    terminalize_input.add_argument("--evidence")
     terminalize_command.add_argument("--auto-block", action="store_true")
     sign_cleanup_command = subparsers.add_parser("sign-legacy-cleanup")
     sign_cleanup_command.add_argument("--attestation", required=True)
     sign_cleanup_command.add_argument("--private-key-file", required=True)
     sign_cleanup_command.add_argument("--output", required=True)
+    sign_authorization_command = subparsers.add_parser("sign-controller-authorization")
+    sign_authorization_command.add_argument("--run-id", required=True)
+    sign_authorization_command.add_argument("--issuer-key-id", required=True)
+    sign_authorization_command.add_argument("--decision", required=True, choices=sorted(_TERMINAL_DECISIONS))
+    sign_authorization_command.add_argument("--rationale-file", required=True)
+    sign_authorization_command.add_argument("--private-key-file", required=True)
+    sign_authorization_command.add_argument("--output", required=True)
+    sign_authorization_command.add_argument("--expires-in-seconds", type=int)
+    migrate_authorities_command = subparsers.add_parser("migrate-harness-authorities")
+    migrate_authorities_command.add_argument("--source")
+    migrate_authorities_command.add_argument("--target")
+    migrate_authorities_command.add_argument("--dry-run", action="store_true")
+    migrate_authorities_command.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
     try:
         root = Path(args.repo_root).resolve()
@@ -4518,23 +4859,23 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "recover-stranded":
             result = recover_stranded_run(root, args.run_id, args.attempt_id, args.reason, _load_json(Path(args.evidence)))
         elif args.command == "terminalize-attempt":
-            terminal_evidence = _load_json(Path(args.evidence))
-            if isinstance(terminal_evidence, dict) and terminal_evidence.get("schema_id") == "legacy_cleanup_attestation/v1":
+            if args.auto_block:
+                raise HarnessError("terminalize-attempt --auto-block is retired")
+            if args.input:
+                terminal_evidence = _load_json(Path(args.input))
+            else:
+                legacy_evidence = _load_json(Path(args.evidence))
+                if not isinstance(legacy_evidence, dict) or legacy_evidence.get("schema_id") != "legacy_cleanup_attestation/v1":
+                    raise HarnessError("terminalize-attempt --evidence accepts only legacy cleanup evidence")
+                legacy_run = _load_run(root, _safe_run_id(args.run_id))
+                legacy_attempt = _active_attempt(legacy_run)
+                if legacy_attempt.get("packet", {}).get("version") != CURRENT_PACKET_API:
+                    raise HarnessError("terminalize-attempt --evidence requires packet API 8")
                 terminal_evidence = {
-                    "attempt_id": terminal_evidence.get("attempt_id"),
-                    "legacy_cleanup_attestation": terminal_evidence,
+                    "attempt_id": legacy_evidence.get("attempt_id"),
+                    "legacy_cleanup_attestation": legacy_evidence,
                 }
             result = terminalize_attempt(root, args.run_id, terminal_evidence)
-            if args.auto_block:
-                run = _load_run(root, _safe_run_id(args.run_id))
-                attempt = _active_attempt(run)
-                terminal_record = attempt.get("terminal_record")
-                if not isinstance(terminal_record, dict) or terminal_record.get("source_kind") != "legacy_cleanup":
-                    raise HarnessError("terminalize-attempt auto-block requires legacy cleanup evidence")
-                if run["state"] == "awaiting_decision":
-                    result = apply_controller_decision(root, args.run_id, {"kind": "block"})
-                elif run["state"] != "blocked":
-                    raise HarnessError("terminalize-attempt auto-block requires awaiting legacy decision")
         elif args.command == "sign-legacy-cleanup":
             private_key_path = Path(args.private_key_file).resolve()
             if private_key_path.is_relative_to(root):
@@ -4553,6 +4894,27 @@ def main(argv: list[str] | None = None) -> int:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(json.dumps(signed, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
             result = {"signed_evidence_sha256": legacy_cleanup_evidence_digest(signed)}
+        elif args.command == "sign-controller-authorization":
+            result = sign_controller_authorization(
+                root,
+                args.run_id,
+                args.issuer_key_id,
+                args.decision,
+                Path(args.rationale_file),
+                Path(args.private_key_file),
+                Path(args.output),
+                expires_in_seconds=args.expires_in_seconds,
+            )
+        elif args.command == "migrate-harness-authorities":
+            try:
+                result = authority.migrate_legacy_attesters(
+                    Path(args.source) if args.source else None,
+                    Path(args.target) if args.target else None,
+                    dry_run=args.dry_run,
+                    overwrite=args.overwrite,
+                )
+            except authority.AuthorityError as exc:
+                raise HarnessError(str(exc)) from exc
         elif args.command == "coordination-status":
             result = coordination_status(root, args.plan)
         elif args.command == "handoff":
@@ -4567,7 +4929,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "blocked", "error": str(exc)}), file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True))
-    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff", "recover-stranded", "terminalize-attempt", "sign-legacy-cleanup"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
+    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff", "recover-stranded", "terminalize-attempt", "sign-legacy-cleanup", "sign-controller-authorization", "migrate-harness-authorities"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
 
 
 if __name__ == "__main__":

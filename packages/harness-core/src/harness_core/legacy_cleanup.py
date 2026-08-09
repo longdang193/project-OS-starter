@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import base64
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 from pathlib import Path
 import re
-import tomllib
 from typing import Any
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from . import authority
 
 
 class LegacyCleanupError(ValueError):
@@ -38,17 +34,8 @@ _UNSIGNED_FIELDS = {
     "reason_length",
 }
 _TRANSPORT_FIELDS = _UNSIGNED_FIELDS | {"attestation_signature"}
-_ATTESTER_FIELDS = {"attester_id", "role", "algorithm", "public_key", "status"}
 _OPAQUE_IDENTIFIER = re.compile(r"[A-Za-z0-9._-]+\Z")
-_BASE64URL = re.compile(r"[A-Za-z0-9_-]+\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-
-
-def _canonical_json_bytes(value: Any) -> bytes:
-    try:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise LegacyCleanupError("legacy cleanup attestation is not JSON") from exc
 
 
 def _required_mapping(value: Any, fields: set[str], name: str) -> dict[str, Any]:
@@ -87,19 +74,6 @@ def _timestamp(value: Any, name: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def _base64url(value: Any, name: str) -> bytes:
-    if not isinstance(value, str) or not value or not _BASE64URL.fullmatch(value):
-        raise LegacyCleanupError(f"legacy cleanup {name} is invalid")
-    try:
-        return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-    except (ValueError, UnicodeEncodeError) as exc:
-        raise LegacyCleanupError(f"legacy cleanup {name} is invalid") from exc
-
-
-def _base64url_encode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
-
-
 def _identity(value: Any, policy: dict[str, Any], name: str) -> dict[str, Any]:
     identity = _required_mapping(value, {"pid", "creation_id", "state"}, f"legacy cleanup {name}")
     pid = _positive_integer(identity["pid"], f"{name} pid")
@@ -110,41 +84,28 @@ def _identity(value: Any, policy: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def legacy_cleanup_trusted_config_path() -> Path:
-    return Path.home() / ".codex" / "harness-attesters.toml"
+    return authority.authority_registry_path()
 
 
-def load_legacy_cleanup_attesters() -> dict[str, dict[str, str]]:
+def load_legacy_cleanup_attesters() -> dict[str, dict[str, Any]]:
     path = legacy_cleanup_trusted_config_path()
     try:
-        with path.open("rb") as handle:
-            payload = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+        registry = authority.load_authorities(path)
+    except authority.AuthorityError as exc:
         raise LegacyCleanupError("legacy cleanup attester configuration is unavailable") from exc
-    if not isinstance(payload, dict) or set(payload) != {"attesters"} or not isinstance(payload["attesters"], dict):
-        raise LegacyCleanupError("legacy cleanup attester configuration is invalid")
-    attesters: dict[str, dict[str, str]] = {}
-    for issuer_key_id, raw_attester in payload["attesters"].items():
-        issuer = _opaque_identifier(issuer_key_id, "issuer_key_id", 128)
-        if issuer in attesters or not isinstance(raw_attester, dict) or set(raw_attester) != _ATTESTER_FIELDS:
-            raise LegacyCleanupError("legacy cleanup attester configuration is invalid")
-        attester_id = _opaque_identifier(raw_attester["attester_id"], "attester_id", 128)
-        role = _opaque_identifier(raw_attester["role"], "attester role", 128)
-        if raw_attester["algorithm"] != "ed25519" or raw_attester["status"] not in {"active", "revoked"}:
-            raise LegacyCleanupError("legacy cleanup attester configuration is invalid")
-        public_key = _base64url(raw_attester["public_key"], "attester public_key")
-        if len(public_key) != 32:
-            raise LegacyCleanupError("legacy cleanup attester configuration is invalid")
-        try:
-            Ed25519PublicKey.from_public_bytes(public_key)
-        except ValueError as exc:
-            raise LegacyCleanupError("legacy cleanup attester configuration is invalid") from exc
-        attesters[issuer] = {
-            "attester_id": attester_id,
-            "role": role,
-            "algorithm": "ed25519",
-            "public_key": raw_attester["public_key"],
-            "status": raw_attester["status"],
+    entries = registry["entries"]
+    attesters = {
+        key_id: {
+            "attester_id": entry["principal_id"],
+            "roles": entry["roles"],
+            "algorithm": entry["algorithm"],
+            "public_key": entry["public_key"],
+            "status": entry["status"],
+            "key_fingerprint": entry["key_fingerprint"],
+            "registry_digest": registry["registry_digest"],
         }
+        for key_id, entry in entries.items()
+    }
     if not attesters:
         raise LegacyCleanupError("legacy cleanup attester configuration is invalid")
     return attesters
@@ -152,8 +113,13 @@ def load_legacy_cleanup_attesters() -> dict[str, dict[str, str]]:
 
 def legacy_cleanup_evidence_digest(value: Any) -> str:
     attestation = _required_mapping(value, _TRANSPORT_FIELDS, "legacy cleanup attestation")
-    _base64url(attestation["attestation_signature"], "attestation signature")
-    return hashlib.sha256(_canonical_json_bytes(attestation)).hexdigest()
+    try:
+        signature = authority.base64url_encode(authority.base64url_decode(attestation["attestation_signature"], "signature"))
+    except authority.AuthorityError as exc:
+        raise LegacyCleanupError("legacy cleanup attestation signature is invalid") from exc
+    if signature != attestation["attestation_signature"]:
+        raise LegacyCleanupError("legacy cleanup attestation signature is invalid")
+    return authority.document_digest(attestation)
 
 
 def _unsigned_attestation(value: Any) -> dict[str, Any]:
@@ -162,12 +128,12 @@ def _unsigned_attestation(value: Any) -> dict[str, Any]:
 
 
 def verify_legacy_cleanup_signature(unsigned: dict[str, Any], signature: Any, public_key: str) -> None:
-    signature_bytes = _base64url(signature, "attestation signature")
-    if len(signature_bytes) != 64:
-        raise LegacyCleanupError("legacy cleanup attestation signature is invalid")
     try:
-        Ed25519PublicKey.from_public_bytes(_base64url(public_key, "attester public_key")).verify(signature_bytes, _canonical_json_bytes(unsigned))
-    except (InvalidSignature, ValueError) as exc:
+        signature_bytes = authority.base64url_decode(signature, "signature")
+        if len(signature_bytes) != 64:
+            raise authority.AuthorityError("authority signature is invalid")
+        authority.verify_document(unsigned, signature, public_key)
+    except authority.AuthorityError as exc:
         raise LegacyCleanupError("legacy cleanup attestation signature is invalid") from exc
 
 
@@ -176,7 +142,7 @@ def normalize_legacy_cleanup_attestation(value: Any, policy: dict[str, Any], *, 
         raise LegacyCleanupError("legacy cleanup is disabled")
     attestation = _required_mapping(value, _TRANSPORT_FIELDS, "legacy cleanup attestation")
     unsigned = _unsigned_attestation(attestation)
-    if len(_canonical_json_bytes(attestation)) > policy["max_total_bytes"]:
+    if len(authority.canonical_json_bytes(attestation)) > policy["max_total_bytes"]:
         raise LegacyCleanupError("legacy cleanup attestation exceeds byte limit")
     maximum_identifier = policy["max_identifier_bytes"]
     if unsigned["schema_id"] != _SCHEMA_ID:
@@ -233,7 +199,7 @@ def normalize_legacy_cleanup_attestation(value: Any, policy: dict[str, Any], *, 
         raise LegacyCleanupError("legacy cleanup issuer is unknown")
     if attester["status"] != "active":
         raise LegacyCleanupError("legacy cleanup issuer is revoked")
-    if attester["role"] not in policy["allowed_attester_roles"]:
+    if not set(attester["roles"]) & set(policy["allowed_attester_roles"]):
         raise LegacyCleanupError("legacy cleanup issuer role is not allowed")
     verify_legacy_cleanup_signature(unsigned, attestation["attestation_signature"], attester["public_key"])
     return {
@@ -260,12 +226,6 @@ def normalize_legacy_cleanup_attestation(value: Any, policy: dict[str, Any], *, 
 def sign_legacy_cleanup_attestation(value: Any, private_key_path: Path) -> dict[str, Any]:
     unsigned = _required_mapping(value, _UNSIGNED_FIELDS, "legacy cleanup attestation")
     try:
-        private_key = serialization.load_pem_private_key(private_key_path.read_bytes(), password=None)
-    except (OSError, TypeError, ValueError) as exc:
-        raise LegacyCleanupError("legacy cleanup private key is invalid") from exc
-    if not isinstance(private_key, Ed25519PrivateKey):
+        return authority.sign_document(unsigned, authority.load_private_ed25519_key(private_key_path))
+    except authority.AuthorityError as exc:
         raise LegacyCleanupError("legacy cleanup private key is invalid")
-    return {
-        **unsigned,
-        "attestation_signature": _base64url_encode(private_key.sign(_canonical_json_bytes(unsigned))),
-    }

@@ -32,7 +32,7 @@ def test_module_identity_reports_policy_schema() -> None:
     )
 
     assert result.returncode == 0
-    assert json.loads(result.stdout)["policy_schema_version"] == 8
+    assert json.loads(result.stdout)["policy_schema_version"] == 9
 
 
 def test_recover_stranded_cli_loads_explicit_evidence(monkeypatch, tmp_path: Path) -> None:

@@ -69,8 +69,9 @@ Use for ANY technical issue:
   `execution_lease`, attempt `execution_lease`, normalized
   `host_terminal_observations`, `terminal_record`, retained-artifact evidence,
   and host lane evidence before changing policy. Controller invokes only
-  `terminalize_attempt(evidence)`; host never writes `run.json`. Expired live
-  or unverified process state is `orphaned`, so retry and resume stay blocked.
+  `terminalize_attempt(envelope)`; evidence records outcome, and finalization
+  records receipt. Host never writes `run.json`. Expired live or unverified
+  process state is `orphaned`, so retry and resume stay blocked.
   A read-only diagnosis may consume only
   immutable packet `readonly_artifacts`; never inspect an ambient `.harness`
   directory from a clean clone. Missing route-required artifacts blocks

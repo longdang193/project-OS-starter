@@ -28,7 +28,7 @@ from typing import Any
 
 import yaml
 
-from .compatibility import admit_request_api
+from .compatibility import CURRENT_PACKET_API, admit_request_api
 from .execution_lease import ExecutionLeaseError, normalize_duration_model
 
 
@@ -180,6 +180,16 @@ LEGACY_CLEANUP_DISCOVERY_METHODS = {
     "windows_parent_chain/v1",
     "windows_no_process_observation/v1",
 }
+TERMINALIZATION_FIELDS = {
+    "auto_finalize_single_terminal_outcome",
+    "pending_outcome_ttl_seconds",
+    "allowed_controller_roles",
+    "max_authorization_age_seconds",
+    "max_authorization_lifetime_seconds",
+    "max_clock_skew_seconds",
+    "max_authorization_bytes",
+    "allow_same_issuer_evidence_and_authorization",
+}
 TIMEOUT_DECISIONS = {"escalate", "block"}
 POSTCONDITIONS = {"workspace_unchanged"}
 CAPABILITIES = {"repo.read", "repo.write", "code.search", "docs.query", "harness.delegate"}
@@ -196,6 +206,7 @@ POLICY_FIELDS = {
     "retry_policies",
     "execution_budgets",
     "claim_repair",
+    "terminalization",
     "checks",
     "tools",
     "runtime_providers",
@@ -516,6 +527,8 @@ def _validate_legacy_cleanup(value: Any, errors: list[str]) -> None:
     }:
         if not positive_integer(value[field]):
             errors.append(f"legacy_cleanup {field} must be a positive integer")
+    if positive_integer(value["historical_packet_max_api"]) and value["historical_packet_max_api"] > CURRENT_PACKET_API:
+        errors.append("legacy_cleanup historical_packet_max_api exceeds current packet API")
     scopes = value["allowed_cleanup_scopes"]
     if not valid_string_list(scopes) or len(scopes) != len(set(scopes)) or not set(scopes) <= LEGACY_CLEANUP_SCOPES:
         errors.append("legacy_cleanup allowed_cleanup_scopes are invalid")
@@ -525,6 +538,28 @@ def _validate_legacy_cleanup(value: Any, errors: list[str]) -> None:
     roles = value["allowed_attester_roles"]
     if not valid_string_list(roles) or len(roles) != len(set(roles)):
         errors.append("legacy_cleanup allowed_attester_roles are invalid")
+
+
+def _validate_terminalization(value: Any, errors: list[str]) -> None:
+    if not isinstance(value, dict) or set(value) != TERMINALIZATION_FIELDS:
+        errors.append("terminalization has invalid fields")
+        return
+    if not isinstance(value["auto_finalize_single_terminal_outcome"], bool):
+        errors.append("terminalization auto_finalize_single_terminal_outcome must be a boolean")
+    if not isinstance(value["allow_same_issuer_evidence_and_authorization"], bool):
+        errors.append("terminalization allow_same_issuer_evidence_and_authorization must be a boolean")
+    for field in {
+        "pending_outcome_ttl_seconds",
+        "max_authorization_age_seconds",
+        "max_authorization_lifetime_seconds",
+        "max_clock_skew_seconds",
+        "max_authorization_bytes",
+    }:
+        if not positive_integer(value[field]):
+            errors.append(f"terminalization {field} must be a positive integer")
+    roles = value["allowed_controller_roles"]
+    if not valid_string_list(roles) or len(roles) != len(set(roles)):
+        errors.append("terminalization allowed_controller_roles are invalid")
 
 
 def _validate_orchestration(policy: dict[str, Any], errors: list[str], roles: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -576,8 +611,8 @@ def validate(root: Path) -> list[str]:
     roles = _validate_roles(roles_payload, errors)
     if not isinstance(policy, dict):
         return [*errors, "harness policy must be a mapping"]
-    if policy.get("version") != 8:
-        errors.append("harness policy version must be 8")
+    if policy.get("version") != 9:
+        errors.append("harness policy version must be 9")
     unknown_policy_fields = set(policy) - POLICY_FIELDS - POLICY_OPTIONAL_FIELDS
     missing_policy_fields = POLICY_FIELDS - policy.keys()
     if missing_policy_fields:
@@ -603,6 +638,7 @@ def validate(root: Path) -> list[str]:
         errors.append("context_limits must define positive integer limits")
 
     _validate_legacy_cleanup(policy.get("legacy_cleanup"), errors)
+    _validate_terminalization(policy.get("terminalization"), errors)
 
     claim_repair = policy.get("claim_repair")
     if not isinstance(claim_repair, dict) or set(claim_repair) != CLAIM_REPAIR_FIELDS:

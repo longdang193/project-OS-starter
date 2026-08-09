@@ -203,9 +203,8 @@ run and attempt IDs, a bounded reason, and JSON external host evidence with
 source `host` and code `terminal_recording_failed`. Core rejects product
 evidence, mismatch, prior claims or evidence, and ordinary running work. It
 records immutable packet identity plus external failure evidence, creates a
-block-only outcome, and transitions to `awaiting_decision`; controller then
-uses normal `decision --decision <block.json>`. It never dispatches, resumes,
-retries, or runs checks.
+block-only outcome, and policy auto-finalizes a v3 terminal receipt. It never
+dispatches, resumes, retries, or runs checks.
 
 ## Plan-Linked Coordination
 
@@ -403,15 +402,20 @@ issue, and expiry timestamps, cleanup scope, discovery method, root identity,
 identity list, complete-scope flag, reason SHA-256, and reason length. Transport
 adds base64url `attestation_signature`. Core verifies Ed25519 over UTF-8 sorted
 compact JSON bytes. Public attester records live only in
-`~/.codex/harness-attesters.toml`; private key material stays outside repository
-and agent workspace.
+`~/.codex/harness-authorities.toml`; private key material stays outside
+repository and agent workspace. `harness-core migrate-harness-authorities`
+performs explicit old-registry conversion; current validation never falls back
+to `harness-attesters.toml`.
 
 Operator runs `harness-core sign-legacy-cleanup` with unsigned JSON and an
 external private-key file. Controller passes signed JSON to
-`harness-core terminalize-attempt --auto-block`. Core writes one tagged
-null-lease terminal record, then applies policy-owned `block`. Exact re-entry
-replays safely after interruption; agents may transport evidence but cannot mint,
-broaden, or apply it directly.
+`harness-core terminalize-attempt --run-id <run-id> --input <envelope.json>`.
+For readable packet API 8 legacy evidence only, temporary
+`--evidence <attestation.json>` translates to that envelope. `--auto-block` is
+rejected. Core writes one tagged null-lease terminal record, records a
+block-only outcome, then policy auto-finalizes one v3 receipt. Exact re-entry
+replays safely after interruption; agents may transport evidence but cannot
+mint, broaden, or apply it directly.
 
 ## Completion States
 

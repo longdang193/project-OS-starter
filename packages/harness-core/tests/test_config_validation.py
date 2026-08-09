@@ -66,7 +66,7 @@ def write_harness_root(root: Path) -> None:
         "repo_config/harness.yaml",
         yaml.safe_dump(
             {
-                "version": 8,
+                "version": 9,
                 "harness_core": {"request_api": 5},
                 "context_limits": {
                     "objective_max_bytes": 1024,
@@ -182,6 +182,16 @@ def write_harness_root(root: Path) -> None:
                         "claim_field_constraint_invalid",
                     ],
                     "required_host_capability": "claim_repair_same_thread",
+                },
+                "terminalization": {
+                    "auto_finalize_single_terminal_outcome": True,
+                    "pending_outcome_ttl_seconds": 3600,
+                    "allowed_controller_roles": ["controller_approver"],
+                    "max_authorization_age_seconds": 900,
+                    "max_authorization_lifetime_seconds": 900,
+                    "max_clock_skew_seconds": 60,
+                    "max_authorization_bytes": 8192,
+                    "allow_same_issuer_evidence_and_authorization": False,
                 },
                 "checks": {"diff": {"command": ["git", "diff", "--check"]}},
                 "tools": {
@@ -430,6 +440,29 @@ def test_legacy_cleanup_rejects_partial_policy(tmp_path: Path) -> None:
     write_policy(path, policy)
 
     assert "legacy_cleanup has invalid fields" in config_validation.validate(tmp_path)
+
+
+def test_legacy_cleanup_rejects_future_packet_cap(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["legacy_cleanup"] = {
+        "enabled": True,
+        "historical_packet_max_api": 9,
+        "allowed_cleanup_scopes": ["operator_discovered_provider_tree", "operator_attested_no_provider_process"],
+        "allowed_discovery_methods": ["windows_parent_chain/v1", "windows_no_process_observation/v1"],
+        "max_attestation_age_seconds": 900,
+        "max_attestation_lifetime_seconds": 900,
+        "max_clock_skew_seconds": 60,
+        "max_total_bytes": 8192,
+        "max_identifier_bytes": 128,
+        "max_creation_id_bytes": 256,
+        "max_reason_length": 4096,
+        "max_process_identities": 32,
+        "allowed_attester_roles": ["managed_cleanup_operator"],
+    }
+    write_policy(path, policy)
+
+    assert "legacy_cleanup historical_packet_max_api exceeds current packet API" in config_validation.validate(tmp_path)
 
 
 def test_route_requires_known_one_hop_profiles(tmp_path: Path) -> None:

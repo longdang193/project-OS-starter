@@ -27,9 +27,11 @@ ordinary direct execution.
   friction, outcomes, decisions, and state history under `.harness/runs/`.
 - For packet API 8, core issues one finite lease before `running`. Host owns
   provider process lifecycle and returns only `host_terminal_observation/v2`.
-  Controller invokes only `terminalize_attempt(evidence)`; core atomically
-  records terminal evidence, outcome, lease release, state history, and
-  `run.json`.
+  Controller invokes only `terminalize_attempt(envelope)`; evidence records
+  `attempt_outcome/v2`, one-decision terminal outcomes auto-finalize, and
+  ambiguous terminal outcomes require signed controller authority. Core
+  atomically records terminal evidence, receipt, lease release, state history,
+  and `run.json`.
 - Packet owns allowed paths, planned write paths, resolved base commit,
   workspace, tools, checks, approval gates, required rules, orchestration
   mode, and resolved `execution_budget`.

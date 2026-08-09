@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from .authority import (
+    AuthorityError,
+    authority_registry_path,
+    load_authorities,
+    migrate_legacy_attesters,
+    normalize_controller_authorization,
+)
 from .config_validation import validate as validate_config
 from .compatibility import runtime_identity
 from .coordination import load_plan_coordination
@@ -28,6 +35,7 @@ from .managed import (
     resolve_task,
     request_attempt_cancellation,
     run_managed,
+    sign_controller_authorization,
     terminalize_attempt,
     migration_preflight,
     verify_task,
@@ -41,13 +49,16 @@ from .timeout_observation import TimeoutObservationError, normalize_timeout_obse
 
 __all__ = [
     "admit_managed_operation",
+    "AuthorityError",
     "abandon_legacy_attempt",
     "apply_controller_decision",
+    "authority_registry_path",
     "complete_delegated_child",
     "coordination_status",
     "delegate",
     "DelegationResult",
     "friction_report",
+    "load_authorities",
     "load_plan_coordination",
     "record_controller_handoff",
     "resolve_friction",
@@ -56,8 +67,11 @@ __all__ = [
     "resolve_task",
     "request_attempt_cancellation",
     "run_managed",
+    "sign_controller_authorization",
     "terminalize_attempt",
     "migration_preflight",
+    "migrate_legacy_attesters",
+    "normalize_controller_authorization",
     "runtime_identity",
     "validate_config",
     "verify_task",

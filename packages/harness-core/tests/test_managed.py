@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 import copy
-from datetime import UTC, datetime
+import base64
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import shutil
 import subprocess
@@ -18,18 +19,25 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from harness_core import managed
+from harness_core import authority, managed
 
 
 ROOT = Path(__file__).resolve().parents[3]
 MANAGED_COMMAND = [sys.executable, "-m", "harness_core.managed"]
 FRICTION_EVENTS_ROOT: Path | None = None
+CONTROLLER_PRIVATE_KEY: Ed25519PrivateKey | None = None
+
+
+def _base64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
 
 
 @pytest.fixture(autouse=True)
 def isolate_root_friction_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    global FRICTION_EVENTS_ROOT
+    global CONTROLLER_PRIVATE_KEY, FRICTION_EVENTS_ROOT
     FRICTION_EVENTS_ROOT = tmp_path / "friction-events.jsonl"
     original_friction_events_path = managed._friction_events_path
     monkeypatch.setattr(
@@ -38,6 +46,54 @@ def isolate_root_friction_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         lambda root: FRICTION_EVENTS_ROOT if root == ROOT else original_friction_events_path(root),
     )
     monkeypatch.setattr(managed, "migration_preflight", lambda root: {"active_legacy_attempts": [], "ready": True})
+    CONTROLLER_PRIVATE_KEY = Ed25519PrivateKey.generate()
+    public_key = _base64url(
+        CONTROLLER_PRIVATE_KEY.public_key().public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+    )
+    registry = tmp_path / "harness-authorities.toml"
+    registry.write_text(
+        "[registry]\nversion = 1\n\n"
+        "[authorities.test-controller]\n"
+        "principal_id = \"test-controller\"\n"
+        "roles = [\"controller_approver\"]\n"
+        "algorithm = \"ed25519\"\n"
+        f"public_key = \"{public_key}\"\n"
+        f"key_fingerprint = \"{authority.public_key_fingerprint(public_key)}\"\n"
+        "status = \"active\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(authority, "authority_registry_path", lambda: registry)
+
+
+def controller_decision(harness, run_id: str, kind: str) -> dict[str, object]:
+    if CONTROLLER_PRIVATE_KEY is None:
+        raise AssertionError("controller signer fixture is unavailable")
+    run = harness._load_run(ROOT, run_id)
+    attempt = run["attempts"][-1]
+    outcome = attempt["outcome"]
+    now = datetime.now(UTC)
+    authorization = authority.sign_document(
+        {
+            "schema_id": "controller_authorization/v1",
+            "authorization_id": f"authorization-{kind}",
+            "run_id": run_id,
+            "attempt_id": attempt["attempt_id"],
+            "packet_sha256": outcome["packet_sha256"],
+            "outcome_id": outcome["outcome_id"],
+            "outcome_digest": outcome["outcome_digest"],
+            "requested_decision": kind,
+            "issuer_key_id": "test-controller",
+            "issued_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=5)).isoformat(),
+            "reason_sha256": "a" * 64,
+            "reason_length": 4,
+        },
+        CONTROLLER_PRIVATE_KEY,
+    )
+    return {"kind": kind, "controller_authorization": authorization}
 
 
 API6_BINDING = {
@@ -1259,18 +1315,17 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
             collect_changes=lambda root, base_commit: [],
         )
 
-        assert result["state"] == "awaiting_decision"
-        assert result["outcome"] == {
-            "reason": "child_failed",
-            "allowed_decisions": ["block"],
-            "evidence_refs": ["children", "reservation_ledger"],
-        }
+        assert result["state"] == "blocked"
+        assert result["outcome"]["reason"] == "child_failed"
+        assert result["outcome"]["allowed_decisions"] == ["block"]
+        assert result["outcome"]["evidence_refs"] == ["children", "reservation_ledger"]
         assert adapter.delegation_result == {
             "ok": True,
             "invocation_id": "attempt-1:primary/child-1",
             "status": "planned",
         }
         run = json.loads((run_dir / "run.json").read_text())
+        assert run["attempts"][0]["terminal_receipt"]["authority"]["mode"] == "policy_auto"
         children = run["attempts"][0]["children"]
         assert len(children) == 1
         assert children[0]["idempotency_key"] == "child-1"
@@ -1396,12 +1451,11 @@ def test_delegate_cancellation_waits_for_controller_decision(tmp_path: Path) -> 
 
         assert result == {"ok": True, "invocation_id": child["invocation_id"], "status": "cancelled", "summary": ""}
         resumed = harness._load_run(ROOT, run_id)
-        assert resumed["state"] == "awaiting_decision"
-        assert resumed["attempts"][0]["outcome"] == {
-            "reason": "child_cancelled",
-            "allowed_decisions": ["block"],
-            "evidence_refs": ["children", "reservation_ledger"],
-        }
+        assert resumed["state"] == "blocked"
+        assert resumed["attempts"][0]["outcome"]["reason"] == "child_cancelled"
+        assert resumed["attempts"][0]["outcome"]["allowed_decisions"] == ["block"]
+        assert resumed["attempts"][0]["outcome"]["evidence_refs"] == ["children", "reservation_ledger"]
+        assert resumed["attempts"][0]["terminal_receipt"]["authority"]["mode"] == "policy_auto"
         assert resumed["attempts"][0]["reservation_ledger"][0]["released"] is True
     finally:
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
@@ -1879,7 +1933,7 @@ def test_coordinated_admission_blocks_unmet_dependencies_and_path_conflicts(monk
         harness._admit_coordinated_packet(tmp_path, packet)
 
 
-def test_recover_stranded_running_run_records_external_failure_then_allows_block(tmp_path: Path) -> None:
+def test_recover_stranded_running_run_records_external_failure_and_auto_blocks(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
@@ -1894,24 +1948,25 @@ def test_recover_stranded_running_run_records_external_failure_then_allows_block
             recovery_evidence(run_id),
         )
 
-        assert result["state"] == "awaiting_decision"
+        assert result["state"] == "blocked"
         run = json.loads((run_dir / "run.json").read_text())
         attempt = run["attempts"][0]
-        assert attempt["outcome"] == {
-            "reason": "stranded_running_recovered",
-            "allowed_decisions": ["block"],
-            "evidence_refs": ["terminal_record", "evidence.failure", "evidence.external_failure", "evidence.recovery"],
-            "detail": "host terminal evidence could not be recorded",
-        }
+        assert attempt["outcome"]["reason"] == "stranded_running_recovered"
+        assert attempt["outcome"]["allowed_decisions"] == ["block"]
+        assert attempt["outcome"]["evidence_refs"] == [
+            "terminal_record",
+            "evidence.failure",
+            "evidence.external_failure",
+            "evidence.recovery",
+        ]
+        assert attempt["outcome"]["detail"] == "host terminal evidence could not be recorded"
         assert attempt["terminal_record"]["classification"] == "stranded_recovery"
+        assert attempt["terminal_receipt"]["authority"]["mode"] == "policy_auto"
         assert attempt["execution_lease"]["state"] == "released"
         assert attempt["evidence"]["external_failure"] == recovery_evidence(run_id)
         assert attempt["evidence"]["recovery"]["run_id"] == run_id
         assert attempt["evidence"]["recovery"]["attempt_id"] == "attempt-1"
         assert len(attempt["evidence"]["recovery"]["packet_sha256"]) == 64
-
-        blocked = harness.apply_controller_decision(ROOT, run_id, {"kind": "block"})
-        assert blocked["state"] == "blocked"
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -1923,20 +1978,20 @@ def test_legacy_incompatible_request_can_block_but_not_retry(tmp_path: Path) -> 
     write_stranded_run(harness, run_id)
 
     try:
-        harness.recover_stranded_run(
-            ROOT,
-            run_id,
-            "attempt-1",
-            "historical request cannot retry",
-            recovery_evidence(run_id),
-        )
         policy = harness._load_policy(ROOT)
         run = json.loads((run_dir / "run.json").read_text())
         run["version"] = 1
         run["request"]["version"] = 4
         run["attempts"][0]["packet"].pop("provider_runtime_binding", None)
         run["attempts"][0]["packet"]["version"] = 4
-        harness._set_outcome(run["attempts"][0], "verification_failed", ["retry", "block"], [])
+        harness._set_outcome(
+            run,
+            run["attempts"][0],
+            policy,
+            "verification_failed",
+            ["retry", "block"],
+            [],
+        )
         harness._transition(run, policy["states"], "awaiting_decision", "verification_failed")
         harness._write_run(ROOT, run)
         before = json.loads((run_dir / "run.json").read_text())
@@ -1945,7 +2000,7 @@ def test_legacy_incompatible_request_can_block_but_not_retry(tmp_path: Path) -> 
             harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
 
         assert json.loads((run_dir / "run.json").read_text()) == before
-        blocked = harness.apply_controller_decision(ROOT, run_id, {"kind": "block"})
+        blocked = harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "block"))
         persisted = json.loads((run_dir / "run.json").read_text())
         assert blocked["state"] == "blocked"
         assert persisted["request"]["version"] == 4
@@ -2255,18 +2310,14 @@ def test_unavailable_managed_run_requires_explicit_unvalidated_waiver(tmp_path: 
 
         assert result["outcome"]["reason"] == "execution_mode_unavailable"
         assert result["outcome"]["allowed_decisions"] == ["waive", "block"]
-        with pytest.raises(harness.HarnessError, match="waiver reason"):
+        with pytest.raises(harness.HarnessError, match="controller_authorization"):
             harness.apply_controller_decision(ROOT, run_id, {"kind": "waive"})
 
-        waived = harness.apply_controller_decision(
-            ROOT,
-            run_id,
-            {"kind": "waive", "reason": "host adapter unavailable"},
-        )
+        waived = harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "waive"))
 
         assert waived["state"] == "unvalidated"
         run = json.loads((run_dir / "run.json").read_text())
-        assert run["attempts"][0]["decision"]["reason"] == "host adapter unavailable"
+        assert run["attempts"][0]["decision"]["authority_mode"] == "controller_authorization"
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -2278,12 +2329,9 @@ def test_generic_cli_records_unavailable_adapter_proof(tmp_path: Path) -> None:
     task_path = tmp_path / "task.json"
     decision_path = tmp_path / "decision.json"
     task_path.write_text(json.dumps(managed_request(run_id=run_id)), encoding="utf-8")
-    decision_path.write_text(
-        json.dumps({"kind": "waive", "reason": "generic CLI has no host adapter"}),
-        encoding="utf-8",
-    )
     try:
         assert harness.main(["--repo-root", str(ROOT), "run-unavailable", "--task", str(task_path)]) == 1
+        decision_path.write_text(json.dumps(controller_decision(harness, run_id, "waive")), encoding="utf-8")
         assert harness.main(
             ["--repo-root", str(ROOT), "decision", "--run-id", run_id, "--decision", str(decision_path)]
         ) == 1
@@ -2344,7 +2392,7 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
             "collect_claim",
         ]
 
-        accepted = harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
+        accepted = harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "accept"))
 
         assert accepted["state"] == "accepted"
         run = json.loads((run_dir / "run.json").read_text())
@@ -2399,8 +2447,10 @@ def test_run_managed_blocks_dirty_workspace_before_writer_dispatch(tmp_path: Pat
             adapter,
         )
 
-        assert result["state"] == "awaiting_decision"
+        assert result["state"] == "blocked"
         assert result["outcome"]["reason"] == "workspace_baseline_invalid"
+        run = json.loads((run_dir / "run.json").read_text())
+        assert run["attempts"][0]["terminal_receipt"]["authority"]["mode"] == "policy_auto"
         assert adapter.calls == ["capabilities", "prepare_workspace"]
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -2415,7 +2465,7 @@ def test_provider_conformance_vector_accepts_adapter_implementation(tmp_path: Pa
     try:
         run = assert_provider_conformance(harness, adapter, run_id, workspace)
 
-        accepted = harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
+        accepted = harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "accept"))
 
         assert accepted["state"] == "accepted"
         assert run["state"] == "awaiting_decision"
@@ -2651,8 +2701,8 @@ def test_managed_validator_fail_blocks_acceptance(tmp_path: Path) -> None:
             "status": "failed",
             "evidence_ref": "validator_claim",
         }
-        with pytest.raises(harness.HarnessError, match="not allowed for current outcome"):
-            harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
+        with pytest.raises(harness.HarnessError, match="not allowed"):
+            harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "accept"))
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -2808,7 +2858,7 @@ def test_managed_verification_rejects_forged_claim_approval(tmp_path: Path) -> N
 
         assert result["outcome"]["reason"] == "approval_required"
         with pytest.raises(harness.HarnessError, match="not allowed"):
-            harness.apply_controller_decision(ROOT, run_id, {"kind": "accept"})
+            harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "accept"))
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -3287,12 +3337,14 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
             FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=TimedOutTurn("turn timed out")),
         )
 
-        assert result["outcome"] == {
-            "reason": "dispatch_timeout",
-            "allowed_decisions": ["escalate", "block"],
-            "evidence_refs": ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"],
-            "detail": "turn timed out",
-        }
+        assert result["outcome"]["reason"] == "dispatch_timeout"
+        assert result["outcome"]["allowed_decisions"] == ["escalate", "block"]
+        assert result["outcome"]["evidence_refs"] == [
+            "friction_event_ids",
+            "evidence.failure",
+            "evidence.terminal_observation",
+        ]
+        assert result["outcome"]["detail"] == "turn timed out"
         with pytest.raises(harness.HarnessError, match="decision `retry` is not allowed"):
             harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
 
@@ -3401,13 +3453,18 @@ def test_writer_completion_missing_blocks_without_timeout_escalation(tmp_path: P
             adapter,
         )
 
-        assert result["outcome"] == {
-            "reason": "writer_completion_missing",
-            "allowed_decisions": ["block"],
-            "evidence_refs": ["friction_event_ids", "evidence.failure", "evidence.terminal_observation", "evidence.artifacts"],
-            "detail": "writer turn incomplete",
-        }
+        assert result["outcome"]["reason"] == "writer_completion_missing"
+        assert result["outcome"]["allowed_decisions"] == ["block"]
+        assert result["outcome"]["evidence_refs"] == [
+            "friction_event_ids",
+            "evidence.failure",
+            "evidence.terminal_observation",
+            "evidence.artifacts",
+        ]
+        assert result["outcome"]["detail"] == "writer turn incomplete"
+        assert result["state"] == "blocked"
         run = json.loads((run_dir / "run.json").read_text())
+        assert run["attempts"][0]["terminal_receipt"]["authority"]["mode"] == "policy_auto"
         assert run["attempts"][0]["evidence"]["terminal_observation"]["command_states"][-1]["exit_code"] == 1
         assert run["attempts"][0]["evidence"]["artifacts"][0]["kind"] == "sanitized_command_trace"
         assert adapter.calls.count("repair_claim") == 0
@@ -3464,7 +3521,8 @@ def test_writer_completion_missing_records_terminal_evidence_when_trace_is_overs
 
         assert result["outcome"]["reason"] == "writer_completion_missing"
         run = json.loads((run_dir / "run.json").read_text())
-        assert run["state"] == "awaiting_decision"
+        assert run["state"] == "blocked"
+        assert run["attempts"][0]["terminal_receipt"]["authority"]["mode"] == "policy_auto"
         assert run["attempts"][0]["evidence"]["terminal_observation"]["kind"] == "timeout"
         assert run["attempts"][0]["evidence"]["artifact_rejections"] == [{
             "reason": "sanitized command trace exceeds artifact_max_bytes",
@@ -3511,12 +3569,14 @@ def test_provider_failure_records_terminal_observation_without_timeout_escalatio
         )
         run = json.loads((run_dir / "run.json").read_text())
 
-        assert result["outcome"] == {
-            "reason": "dispatch_failed",
-            "allowed_decisions": ["retry", "escalate", "block"],
-            "evidence_refs": ["friction_event_ids", "evidence.failure", "evidence.terminal_observation"],
-            "detail": "provider failed",
-        }
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert result["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+        assert result["outcome"]["evidence_refs"] == [
+            "friction_event_ids",
+            "evidence.failure",
+            "evidence.terminal_observation",
+        ]
+        assert result["outcome"]["detail"] == "provider failed"
         assert run["attempts"][0]["evidence"]["terminal_observation"]["kind"] == "provider_failure"
         assert "timeout" not in run["attempts"][0]["evidence"]
     finally:
