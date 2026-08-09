@@ -36,6 +36,10 @@ Admission order: launcher package load, request API, adapter host API, provider
 preflight, packet resolution, workspace, dispatch. Unsupported APIs create no
 packet. Unreadable historical packet cannot resume; controller creates a
 successor without changing its evidence.
+An awaiting historical run with an incompatible request API may record an
+outcome-authorized non-successor decision. A terminal `block` uses no request
+admission, packet resolution, or dispatch. `retry` and `escalate` create
+successor packets and must reject incompatible historical request APIs.
 For `runtime_provider_id: codex_app_server`, controller invokes provider host
 from its installed source root. Host reads transport only from trusted user
 configuration at `~/.codex/harness-providers.toml`: run

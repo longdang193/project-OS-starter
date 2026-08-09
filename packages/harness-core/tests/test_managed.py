@@ -1843,6 +1843,45 @@ def test_recover_stranded_running_run_records_external_failure_then_allows_block
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def test_legacy_incompatible_request_can_block_but_not_retry(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    write_stranded_run(harness, run_id)
+
+    try:
+        harness.recover_stranded_run(
+            ROOT,
+            run_id,
+            "attempt-1",
+            "historical request cannot retry",
+            recovery_evidence(run_id),
+        )
+        policy = harness._load_policy(ROOT)
+        run = json.loads((run_dir / "run.json").read_text())
+        run["version"] = 1
+        run["request"]["version"] = 4
+        run["attempts"][0]["packet"].pop("provider_runtime_binding", None)
+        run["attempts"][0]["packet"]["version"] = 4
+        harness._set_outcome(run["attempts"][0], "verification_failed", ["retry", "block"], [])
+        harness._transition(run, policy["states"], "awaiting_decision", "verification_failed")
+        harness._write_run(ROOT, run)
+        before = json.loads((run_dir / "run.json").read_text())
+
+        with pytest.raises(harness.HarnessError, match="harness_core_request_api_incompatible"):
+            harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
+
+        assert json.loads((run_dir / "run.json").read_text()) == before
+        blocked = harness.apply_controller_decision(ROOT, run_id, {"kind": "block"})
+        persisted = json.loads((run_dir / "run.json").read_text())
+        assert blocked["state"] == "blocked"
+        assert persisted["request"]["version"] == 4
+        assert len(persisted["attempts"]) == 1
+        assert persisted["attempts"][0]["decision"]["kind"] == "block"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_recover_stranded_running_run_rejects_invalid_or_product_evidence(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
