@@ -1,6 +1,6 @@
 ---
 artifact_type: plan
-status: active
+status: completed
 layer: change
 template_id: implementation-plan
 title: Terminalization Authority and Receipt SSOT Plan
@@ -14,9 +14,8 @@ owners:
 
 ## Execution Status
 
-Local core implementation and repository proof are complete. Separate Git/tag
-release and `codex-harness-host` consumer-runtime handoff remain pending explicit
-authorization; leave their verification steps unchecked.
+Core release `harness-core-v0.1.22` and `codex-harness-host` consumer-runtime
+handoff are complete. Host provenance pins the immutable release tag.
 
 ## Goal
 
@@ -228,7 +227,7 @@ CLI accepts canonical terminalization envelopes, rejects `--auto-block`, keeps o
 - [x] Update canonical root agent template: outcome v2 is decision subject, terminalize envelope is sole final mutation, policy auto is one-decision only, registry path/cutover is current, controller authorization is external, and auto-block is forbidden.
 - [x] Regenerate derived agent adapters from canonical template, then sync starter-kit outputs only after canonical source changes.
 - [x] Update both canonical consumer procedures: one registry, external controller signer, canonical input envelope, packet-8 wrapper lifetime, and retired `--auto-block`. Regenerate derived agent adapters and starter-kit outputs only from their canonical sources.
-- [ ] Split local core proof from post-release host handoff. Local completion proves package behavior before release. After separate Git/release authorization creates the bumped `harness-core-v<version>` tag, host owner updates `../codex-harness-host/pyproject.toml` and `../codex-harness-host/uv.lock` to that immutable tag, commits host provenance separately, then runs locked identity, capabilities, and preflight. Host source remains unchanged unless this proof exposes incompatibility.
+- [x] Split local core proof from post-release host handoff. Local completion proves package behavior before release. After separate Git/release authorization creates the bumped `harness-core-v<version>` tag, host owner updates `../codex-harness-host/pyproject.toml` and `../codex-harness-host/uv.lock` to that immutable tag, commits host provenance separately, then runs locked identity, capabilities, and preflight. Host source remains unchanged unless this proof exposes incompatibility.
 
 **Verification:**
 - [x] `uv lock`
@@ -258,10 +257,10 @@ CLI accepts canonical terminalization envelopes, rejects `--auto-block`, keeps o
 
 ### Consumer Runtime Proof
 
-- [ ] After separate core tag publication and host pin/lock commit, run in `../codex-harness-host`: `uv sync --locked`
-- [ ] In `../codex-harness-host`: `uv run --locked harness-core --identity`
-- [ ] In `../codex-harness-host`: `uv run --locked codex-harness-host capabilities`
-- [ ] In `../codex-harness-host`: `uv run --locked codex-harness-host preflight`
+- [x] After separate core tag publication and host pin/lock commit, run in `../codex-harness-host`: `uv sync --locked`
+- [x] In `../codex-harness-host`: `uv run --locked harness-core --identity`
+- [x] In `../codex-harness-host`: `uv run --locked codex-harness-host capabilities`
+- [x] In `../codex-harness-host`: `uv run --locked codex-harness-host preflight`
 - Expected: released core reports policy schema `9`, packet API `8`; host reports existing API/contract `7` and ready preflight. No host `run.json` or lifecycle change is required. This is post-release handoff proof, not local core completion proof.
 
 ## Completion Criteria
