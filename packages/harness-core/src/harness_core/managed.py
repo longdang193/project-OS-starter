@@ -3132,18 +3132,22 @@ def _validate_provider_runtime_binding(
 ) -> dict[str, Any]:
     if not isinstance(binding, dict):
         raise HarnessError("provider runtime binding is required")
-    if binding.get("provider_id") != runtime_provider["provider_id"] or binding.get("contract_version") != runtime_provider["contract_version"]:
+    static_binding = {key: value for key, value in binding.items() if key != "host_instance_id"}
+    if static_binding.get("provider_id") != runtime_provider["provider_id"] or static_binding.get("contract_version") != runtime_provider["contract_version"]:
         raise HarnessError("provider runtime binding conflicts with packet runtime provider")
-    if host_api is not None and binding.get("host_api") != host_api:
+    if host_api is not None and static_binding.get("host_api") != host_api:
         raise HarnessError("provider runtime binding conflicts with host API")
-    dispatch = admit_packet_dispatch(binding.get("host_api"), packet_api, binding.get("contract_version"))
+    dispatch = admit_packet_dispatch(static_binding.get("host_api"), packet_api, static_binding.get("contract_version"))
     if not dispatch["ok"]:
         raise HarnessError(dispatch["code"])
-    if packet_api == CURRENT_PACKET_API:
-        host_instance_id = binding.get("host_instance_id")
-        if not isinstance(host_instance_id, str) or not host_instance_id or len(host_instance_id) > 256:
-            raise HarnessError("provider runtime binding lacks host instance identity")
-    return copy.deepcopy(binding)
+    return static_binding
+
+
+def _host_instance_id(binding: dict[str, Any]) -> str:
+    host_instance_id = binding.get("host_instance_id")
+    if not isinstance(host_instance_id, str) or not host_instance_id or len(host_instance_id) > 256:
+        raise HarnessError("provider preflight evidence lacks host instance identity")
+    return host_instance_id
 
 
 def _record_tool_binding_evidence(
@@ -4199,6 +4203,7 @@ def _execute_attempt(
     *,
     run_check: CheckRunner | None,
     collect_changes: ChangeCollector,
+    host_instance_id: str | None,
     now: datetime,
 ) -> dict[str, Any]:
     attempt = _active_attempt(run)
@@ -4268,8 +4273,8 @@ def _execute_attempt(
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
 
     if packet.get("version") == CURRENT_PACKET_API:
-        binding = packet.get("provider_runtime_binding")
-        host_instance_id = binding.get("host_instance_id") if isinstance(binding, dict) else None
+        if host_instance_id is None:
+            raise HarnessError("host instance identity is invalid")
         _issue_execution_lease(run, attempt, host_instance_id=host_instance_id, now=now)
         packet = _dispatch_packet(packet, attempt["execution_lease"])
     _transition(run, policy["states"], "running", "dispatch")
@@ -4482,6 +4487,8 @@ def run_managed(
 ) -> dict[str, Any]:
     policy = _load_policy(root)
     _validate_policy(root)
+    preflight_binding: dict[str, Any] | None = None
+    host_instance_id: str | None = None
     if run_id is None:
         if request is None:
             raise HarnessError("managed run request is required")
@@ -4489,13 +4496,17 @@ def run_managed(
         if _run_path(root, run_id).exists():
             raise HarnessError(f"run `{run_id}` already exists")
         core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
-        binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
+        preflight_binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
+        if core_identity["packet_api"] == CURRENT_PACKET_API:
+            if preflight_binding is None:
+                raise HarnessError("provider preflight evidence is required")
+            host_instance_id = _host_instance_id(preflight_binding)
         packet = resolve_managed_packet(
             root,
             request,
             attempt_id="attempt-1",
             core_identity=core_identity,
-            provider_runtime_binding=binding,
+            provider_runtime_binding=preflight_binding,
         )
         _admit_coordinated_packet(root, packet)
         run = _new_run(request, run_id)
@@ -4529,13 +4540,21 @@ def run_managed(
         if not dispatch_admission["ok"]:
             raise HarnessError(dispatch_admission["code"])
         if packet_api == CURRENT_PACKET_API:
-            binding = _provider_runtime_binding(adapter, required=True)
+            preflight_binding = _provider_runtime_binding(adapter, required=True)
+            if preflight_binding is None:
+                raise HarnessError("provider preflight evidence is required")
+            host_instance_id = _host_instance_id(preflight_binding)
             if _validate_provider_runtime_binding(
-                binding,
+                preflight_binding,
                 runtime_provider,
                 packet_api=packet_api,
                 host_api=host_admission["host_api"],
-            ) != packet.get("provider_runtime_binding"):
+            ) != _validate_provider_runtime_binding(
+                packet.get("provider_runtime_binding"),
+                runtime_provider,
+                packet_api=packet_api,
+                host_api=host_admission["host_api"],
+            ):
                 raise HarnessError("provider runtime binding changed")
         if "plan_ref" in packet:
             try:
@@ -4553,10 +4572,19 @@ def run_managed(
                 _set_outcome(run, attempt, policy, "plan_binding_changed", ["retry", "block"], ["packet"])
                 return _persist_outcome_transition(root, run, attempt, policy, "plan_binding_changed")
     if packet.get("provider_runtime_binding") is not None:
-        _active_attempt(run)["host_preflight"] = copy.deepcopy(packet["provider_runtime_binding"])
+        _active_attempt(run)["host_preflight"] = copy.deepcopy(preflight_binding or packet["provider_runtime_binding"])
     _write_run(root, run)
     collector = collect_changes or _collect_changes
-    return _execute_attempt(root, run, policy, adapter, run_check=run_check, collect_changes=collector, now=now or datetime.now(UTC))
+    return _execute_attempt(
+        root,
+        run,
+        policy,
+        adapter,
+        run_check=run_check,
+        collect_changes=collector,
+        host_instance_id=host_instance_id,
+        now=now or datetime.now(UTC),
+    )
 
 
 def _successor_request(run: dict[str, Any], successor: Any) -> dict[str, Any]:

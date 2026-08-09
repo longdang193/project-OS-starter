@@ -100,7 +100,10 @@ resumes one existing planned attempt without request resubmission. Inputs are
 exclusive. Current dispatchable packet API stores a non-secret runtime binding;
 host re-reads configuration before every lane and returns
 `provider_configuration_changed` before provider or product work if binding
-drifts. No automatic transport fallback exists.
+drifts. Binding contains static transport configuration only; current host
+instance identity belongs to mutable preflight evidence and the execution lease.
+Historical bindings with a host instance ID compare by their static projection.
+No automatic transport fallback exists.
 
 Do not use `run-unavailable` for retry. It proves generic CLI lacks injected
 adapter and is terminal evidence for that invocation only. Preserve that

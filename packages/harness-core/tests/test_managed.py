@@ -813,7 +813,77 @@ def test_api8_packet_requires_immutable_provider_runtime_binding() -> None:
     assert packet["version"] == 8
     assert packet["invocation_id"] == "attempt-1:primary"
     assert packet["parent_invocation_id"] is None
-    assert packet["provider_runtime_binding"] == binding
+    assert packet["provider_runtime_binding"] == {
+        key: value for key, value in binding.items() if key != "host_instance_id"
+    }
+
+
+def test_api8_resume_rebinds_legacy_packet_to_current_host_instance(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class FreshHostAdapter(FakeAdapter):
+        def preflight_evidence(self):
+            return {**API6_BINDING, "host_instance_id": "host-fresh"}
+
+    try:
+        request = managed_request(run_id=run_id)
+        packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+        packet["provider_runtime_binding"]["host_instance_id"] = "host-prior"
+        run = harness._new_run(request, run_id)
+        harness._append_attempt(run, packet)
+        harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "test")
+        harness._write_run(ROOT, run)
+
+        result = harness.run_managed(
+            ROOT,
+            None,
+            FreshHostAdapter({"single_work_lane": "enforced"}),
+            run_id=run_id,
+            run_check=lambda command: (1, "", "failed"),
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        stored = json.loads((run_dir / "run.json").read_text())
+        attempt = stored["attempts"][0]
+        assert result["outcome"]["reason"] == "verification_failed"
+        assert attempt["execution_lease"]["host_instance_id"] == "host-fresh"
+        assert attempt["host_preflight"]["host_instance_id"] == "host-fresh"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_api8_resume_rejects_static_runtime_binding_change(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class ChangedConfigurationAdapter(FakeAdapter):
+        def preflight_evidence(self):
+            return {**API6_BINDING, "configuration_digest": "b" * 64, "host_instance_id": "host-fresh"}
+
+    try:
+        request = managed_request(run_id=run_id)
+        packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+        run = harness._new_run(request, run_id)
+        harness._append_attempt(run, packet)
+        harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "test")
+        harness._write_run(ROOT, run)
+
+        with pytest.raises(harness.HarnessError, match="provider runtime binding changed"):
+            harness.run_managed(
+                ROOT,
+                None,
+                ChangedConfigurationAdapter({"single_work_lane": "enforced"}),
+                run_id=run_id,
+            )
+
+        stored = json.loads((run_dir / "run.json").read_text())
+        assert stored["state"] == "planned"
+        assert stored["attempts"][0]["execution_lease"] is None
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def test_harness_diagnosis_packet_resolves_direct_artifact_handoff(monkeypatch: pytest.MonkeyPatch) -> None:
