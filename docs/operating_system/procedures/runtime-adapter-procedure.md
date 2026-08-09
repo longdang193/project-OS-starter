@@ -2,13 +2,13 @@
 
 ## Contract
 
-1. `AGENTS.md` is the shared global baseline contract.
+1. `docs/operating_system/templates/agents/root-AGENTS.template.md` owns the shared global baseline contract.
 2. `~/.codex`, `~/.claude`, `~/.gemini` are runtime targets.
 3. Runtime targets are generated and deployed only.
 4. Canonical edits happen in repo sources only:
    - `docs/operating_system/`
    - `.agents/skills/`
-   - `AGENTS.md`
+   - `docs/operating_system/templates/agents/root-AGENTS.template.md`
 
 ## Generate
 
@@ -18,6 +18,8 @@ python scripts/sync_agent_adapters.py
 
 Outputs:
 
+- `AGENTS.md`
+- `.agents/rules/`
 - `generated_agents/codex/`
 - `generated_agents/claude/`
 - `generated_agents/antigravity/`

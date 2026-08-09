@@ -13,11 +13,11 @@ consumer scripts never implement managed execution.
 ## Install
 
 Pin both packages to released source tags compatible with provider host. Current
-tested pins: `harness-core-v0.1.18` and `harness-core-launcher-v0.1.0`.
-Compatible `codex-harness-host` release: `0.1.4`.
+tested pins: `harness-core-v0.1.20` and `harness-core-launcher-v0.1.0`.
+Compatible `codex-harness-host` release: `0.1.5`.
 
 ```powershell
-uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.18#subdirectory=packages/harness-core"
+uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.20#subdirectory=packages/harness-core"
 uv add "harness-core-launcher @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-launcher-v0.1.0#subdirectory=packages/harness-core-launcher"
 ```
 
@@ -42,9 +42,9 @@ configuration. Repository policy never carries endpoint, launch-command, or
 credential values.
 
 Current Codex App Server policy requires `harness_core.request_api: 5` and
-provider `contract_version: 5`. Core resolves packet API 6 for host API 5 and
-that pair. Packet APIs 3, 4, and 5 remain historical evidence under declared
-compatibility profiles. Packet API 6 never dispatches against host API 4.
+provider `contract_version: 6`. Core resolves packet API 7 for host API 6 and
+that pair. Packet APIs 3, 4, 5, and 6 remain historical evidence under declared
+compatibility profiles. Packet API 7 never dispatches against host API 5.
 Upgrade policy, provider pin, core pin, and host release together; preserve old
 runs and create successors after migration.
 

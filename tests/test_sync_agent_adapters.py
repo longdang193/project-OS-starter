@@ -18,9 +18,13 @@ lifecycle:
 from __future__ import annotations
 
 import importlib.util
+from importlib.metadata import version
 import sys
 from pathlib import Path
 
+import yaml
+
+from harness_core.compatibility import COMPATIBILITY_PROFILES, CURRENT_PACKET_API
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SYNC_PATH = REPO_ROOT / "scripts" / "sync_agent_adapters.py"
@@ -205,6 +209,8 @@ def test_harness_guidance_scopes_child_delegation_to_packet_policy() -> None:
 
 
 def test_codex_provider_guidance_uses_host_owned_transport_config() -> None:
+    policy = yaml.safe_load((REPO_ROOT / "repo_config" / "harness.yaml").read_text(encoding="utf-8"))
+    current_profile = next(profile for profile in COMPATIBILITY_PROFILES if profile["packet_api"] == CURRENT_PACKET_API)
     canonical_paths = [
         REPO_ROOT / "README.md",
         REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md",
@@ -226,9 +232,11 @@ def test_codex_provider_guidance_uses_host_owned_transport_config() -> None:
             "provider_configuration_changed",
         ),
         REPO_ROOT / "docs/operating_system/procedures/harness-core-consumer-setup.md": (
-            "harness-core-v0.1.14",
-            "contract_version: 4",
-            "packet API 5",
+            f"harness-core-v{version('harness-core')}",
+            f"harness_core.request_api: {policy['harness_core']['request_api']}",
+            f"contract_version: {current_profile['provider_contract']}",
+            f"packet API {CURRENT_PACKET_API}",
+            f"host API {current_profile['dispatch_host_api']}",
         ),
     }
 

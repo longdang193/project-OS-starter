@@ -2724,6 +2724,7 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
             "contract_version": 6,
         }
         assert run["attempts"][1]["packet"]["runtime_provider"] == run["attempts"][0]["packet"]["runtime_provider"]
+        assert run["attempts"][1]["packet"]["provider_runtime_binding"] == run["attempts"][0]["packet"]["provider_runtime_binding"]
         assert run["attempts"][0]["packet"] == before
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)

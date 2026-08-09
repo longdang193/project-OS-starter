@@ -114,6 +114,15 @@ skill_sets:
   backend_verification:
     skills: [skill-backend-verification]
     selection_guidance: Select for material backend behavior or contract changes.
+  frontend_component_engineering:
+    skills: [skill-frontend-component-engineering]
+    selection_guidance: Select for material stateful frontend component or page changes.
+  frontend_design:
+    skills: [skill-distinctive-frontend-design]
+    selection_guidance: Select for new or materially restyled frontend work.
+  full_stack_integration:
+    skills: [skill-full-stack-integration]
+    selection_guidance: Select when frontend behavior crosses backend contracts or routes.
 operating_profiles:
   local_change_standard:
     template: normal
@@ -193,7 +202,7 @@ routes:
     role: implement
     rules: [command-execution-rule, python-contracts-rule]
     required_skill_sets: [local_change_base]
-    allowed_skill_sets: [backend_verification]
+    allowed_skill_sets: [backend_verification, frontend_component_engineering, frontend_design, full_stack_integration]
     default_operating_profile: local_change_standard
     allowed_operating_profiles: [local_change_standard, local_change_extended]
     escalation_transitions:

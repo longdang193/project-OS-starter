@@ -11,7 +11,7 @@ Controller task packet selects one route. Core resolves authority, toolset, and 
 
 | Task Type | Template | Role | Required Skills | Allowed Skill Sets | Operating Profiles | Artifact Handoff Profiles |
 | --- | --- | --- | --- | --- | --- |
-| `local_change` | `normal` | `implement` | `local_change_base`: `skill-code-standards`, `skill-executing-plans`, `skill-test-driven-development` | `backend_verification` | `local_change_standard`, `local_change_extended` |  |
+| `local_change` | `normal` | `implement` | `local_change_base`: `skill-code-standards`, `skill-executing-plans`, `skill-test-driven-development` | `backend_verification`, `frontend_component_engineering`, `frontend_design`, `full_stack_integration` | `local_change_standard`, `local_change_extended` |  |
 | `debugging` | `normal` | `investigate` | `skill-systematic-debugging` |  |  |  |
 | `harness_diagnosis` | `high` | `investigate` | `skill-improve-harness`, `skill-systematic-debugging`, `skill-repository-research`, `skill-verification-before-completion` |  |  | `direct_terminal_diagnosis` (default), `friction_terminal_diagnosis` |
 | `research` | `low` | `investigate` | `skill-repository-research` |  |  |  |

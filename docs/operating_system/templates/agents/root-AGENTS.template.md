@@ -115,7 +115,7 @@ When spawning a subagent:
   read-only `harness_diagnosis` without an owner decision. Missing required
   artifacts blocks diagnosis before dispatch; never mount ambient `.harness`
   state into packet workspace.
-- For packet API 5, host re-reads trusted provider configuration before every
+- For current dispatchable packet API, host re-reads trusted provider configuration before every
   lane. A changed runtime binding returns `provider_configuration_changed`
   before provider or product work; no transport fallback is allowed.
 - Independent validator claims exist only when host advertises and dispatches

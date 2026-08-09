@@ -84,7 +84,7 @@ proof before packet, workspace, or `run.json` creation. Missing or invalid
 trusted configuration returns `provider_runtime_unavailable`; configured
 transport or authentication failure returns `preflight_failed`. `--request`
 starts one run; `--run-id` resumes one existing planned attempt without request
-resubmission. Inputs are exclusive. Packet API 6 stores a non-secret runtime
+resubmission. Inputs are exclusive. Current dispatchable packet API stores a non-secret runtime
 binding; host re-reads configuration before every lane and returns
 `provider_configuration_changed` before provider or product work if binding
 drifts. No automatic transport fallback exists.
@@ -243,9 +243,9 @@ agent surfaces only and never participates in runtime selection or acceptance.
 A candidate stays absent from route policy until it passes same packet,
 workspace, tool-binding, check, read-only validator, and controller-acceptance
 proof as every admitted provider. No automatic provider fallback exists.
-Current `codex_app_server` policy uses contract version 5 with request API 5,
-packet API 6, and host API 5. Packet APIs 3, 4, and 5 remain readable evidence
-under declared compatibility profiles; host API 4 rejects packet API 6 before
+Current `codex_app_server` policy uses contract version 6 with request API 5,
+packet API 7, and host API 6. Packet APIs 3, 4, 5, and 6 remain readable evidence
+under declared compatibility profiles; host API 5 rejects packet API 7 before
 workspace preparation or lane dispatch. Mismatched identity fails before
 workspace preparation or lane dispatch.
 
