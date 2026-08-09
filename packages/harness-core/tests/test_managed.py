@@ -218,6 +218,7 @@ class FakeAdapter:
         claim_payload=None,
         validator_claim=None,
         repair_payload=None,
+        repair_terminal_status="completed",
         dispatch_error=None,
         identity=None,
         host_api=6,
@@ -227,6 +228,7 @@ class FakeAdapter:
         self.claim_payload = claim_payload
         self.validator_claim = validator_claim
         self.repair_payload = repair_payload
+        self.repair_terminal_status = repair_terminal_status
         self.dispatch_error = dispatch_error
         self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 6}
         self.host_api_value = host_api
@@ -330,7 +332,7 @@ class FakeAdapter:
                 "lane_id": lane["lane_id"],
                 "thread_id": "thread",
                 "turn_id": f"repair-{lane['lane_id']}",
-                "terminal_status": "completed",
+                "terminal_status": self.repair_terminal_status,
                 "sandbox": "read-only",
                 "tool_calls": [],
                 "command_results": [],
@@ -2967,6 +2969,32 @@ def test_v7_failed_repair_records_one_friction_then_claim_invalid(tmp_path: Path
         assert run["attempts"][0]["evidence"]["claim_repair"][0]["repeated_validation"] == {
             "status": "invalid",
             "subcode": "claim_kind_mismatch",
+        }
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_v7_timed_out_repair_records_claim_invalid(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    adapter = FakeAdapter(
+        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        claim_payload={"state": "missing"},
+        repair_payload={"state": "missing"},
+        repair_terminal_status="timed_out",
+    )
+    try:
+        result = harness.run_managed(ROOT, managed_request(run_id=run_id), adapter)
+        run = json.loads((run_dir / "run.json").read_text())
+        events = [json.loads(line) for line in FRICTION_EVENTS_ROOT.read_text().splitlines()]
+
+        assert result["outcome"]["reason"] == "claim_invalid"
+        assert adapter.calls.count("repair_claim") == 1
+        assert [event["code"] for event in events].count("claim_repair_failed") == 1
+        assert run["attempts"][0]["evidence"]["claim_repair"][0]["repeated_validation"] == {
+            "status": "invalid",
+            "subcode": "missing_final_claim",
         }
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)

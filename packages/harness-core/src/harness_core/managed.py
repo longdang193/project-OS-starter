@@ -99,6 +99,7 @@ CLAIM_OBSERVATION_FIELDS = {
     "content_length",
 }
 CLAIM_REPAIR_RESULT_FIELDS = {"claim_observation", "finalization_evidence"}
+CLAIM_REPAIR_FINALIZATION_TERMINAL_STATUSES = {"completed", "timed_out"}
 CLAIM_REPAIR_FINALIZATION_FIELDS = {
     "lane_id",
     "thread_id",
@@ -3216,7 +3217,7 @@ def _normalize_claim_repair_result(
         or finalization["thread_id"] != evidence["thread_id"]
         or not isinstance(finalization["turn_id"], str)
         or not finalization["turn_id"]
-        or finalization["terminal_status"] != "completed"
+        or finalization["terminal_status"] not in CLAIM_REPAIR_FINALIZATION_TERMINAL_STATUSES
         or finalization["sandbox"] != "read-only"
         or finalization["tool_calls"] != []
         or finalization["command_results"] != []
@@ -3232,6 +3233,8 @@ def _normalize_claim_repair_result(
     ):
         raise HarnessError("host adapter claim repair evidence conflicts with packet")
     observation = _normalize_claim_observation(value["claim_observation"], lane, evidence)
+    if finalization["terminal_status"] == "timed_out" and observation["state"] != "missing":
+        raise HarnessError("timed-out claim repair returned a candidate")
     return observation, copy.deepcopy(finalization)
 
 
