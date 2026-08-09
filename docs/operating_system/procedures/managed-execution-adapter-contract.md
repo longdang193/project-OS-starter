@@ -143,32 +143,35 @@ may inspect at most once, never writes or runs diagnostics, and returns only its
 structured claim. It is a completion phase, not a lane, check, retry, or resume.
 Packet-native tool probes and checks use packet `turn_timeout_seconds`. The short
 `preflight` bound is transport-only and never substitutes for packet budget.
-Host returns one provider-neutral `attempt.evidence.terminal_observation`; core
-owns version `1`, bounds, packet lane/budget validation, and persisted shape.
+For packet API 8, host returns one bounded
+`host_terminal_observation/v2` for each terminal dispatched lane. Core validates
+schema, lane, immutable run/attempt/packet/lease/host binding, lease duration,
+and timestamp before persisting normalized observations under
+`attempt.host_terminal_observations` inside `terminalize_attempt(evidence)`.
+Observation sources are `completed`, `provider_failure`, `timeout`, and
+`cancellation`; host crash uses separate recovery absence proof. Observations
+record only lane, opaque runtime IDs when available, terminal/interrupt state,
+bounded item and command state, final-claim state, containment, stop proof, and
+error field names plus SHA-256 hashes and byte lengths. They never store raw
+command output, prompts, environment values, provider error text, or assistant
+text.
 
-Observation `kind` is `timeout`, `provider_failure`, `approval_required`, or
-`protocol_failure`; source distinguishes provider terminal event, approval
-request, transport exception, and host timeout interrupt. It records only lane,
-opaque runtime IDs when available, terminal/interrupt state, bounded
-item/command state, final-claim state, and error field names plus SHA-256 hashes
-and byte lengths. It never stores raw command output, prompts, environment
-values, provider error text, or assistant text.
-
-Core records `kind: timeout` as `dispatch_timeout` unless terminal evidence
-shows a write-capable work lane completed one or more commands but emitted no
-final claim after finalization reserve expires. That condition is
+Core derives timeout as `dispatch_timeout` unless terminal evidence shows a
+write-capable work lane completed one or more commands but emitted no final
+claim after finalization reserve expires. That condition is
 `writer_completion_missing`; it permits only `block`, never retry, escalation,
-or resume. Other timeouts may only
-`escalate` through packet `escalation_profile` or `block`; timeout never permits
-`retry`. `provider_failure`, `approval_required`, and `protocol_failure` remain
-`dispatch_failed` until controller decision. Escalation creates fresh successor
-packet with core-selected profile. Preserve older packet and evidence unchanged.
+or resume. Other timeouts may only `escalate` through packet
+`escalation_profile` or `block`; timeout never permits `retry`. Provider failure
+derives `dispatch_failed` with packet retry-policy decisions. Escalation creates
+a fresh successor packet with core-selected profile. Preserve older packet and
+evidence unchanged.
 If an attempt is already `planned`, resume it with provider `--run-id`; do not
 submit its request again.
 
-Inspect `attempt.evidence.terminal_observation` before controller decision. It
-distinguishes missing, active, and completed command state without provider
-transcript recovery. Evidence informs decision; it never selects one.
+Inspect `attempt.execution_lease`, `attempt.host_terminal_observations`, and
+`attempt.terminal_record` before controller decision. They distinguish missing,
+active, and completed command state without provider transcript recovery.
+Evidence informs decision; it never selects one.
 
 ## Read-Only Evidence Artifacts
 
@@ -388,27 +391,6 @@ that same attempt; retry, resume, acceptance, waiver, and successor creation
 remain forbidden while orphaned.
 
 ## Completion States
-
-## Attempt Terminalization
-
-For packet API 8, core owns `terminalize_attempt(evidence)`, terminal record
-creation, outcome derivation, lease release, state history, and atomic
-`run.json` replacement. Host never writes `run.json`. Host returns only
-`host_terminal_observation/v2` bound to run, attempt, immutable packet digest,
-lease ID, lease epoch, and host instance ID.
-
-Core issues one non-renewable execution lease immediately before `planned`
-becomes `running`. Host rejects expired or mismatched lease bindings. On
-Windows, host creates one unnamed Job Object per lease, assigns each provider
-root before resume, and proves zero active processes before timeout or
-cancellation terminalization. No PID-tree, process-group, `taskkill`, named-job
-reopen, or host-side run-state fallback is allowed.
-
-An expired lease with absent host and provider identities terminalizes block-only
-as host crash. Live or unverified processes move attempt to nonterminal
-`orphaned` with recovery-blocked evidence. Fresh cleanup proof may terminalize
-that same attempt; retry, resume, acceptance, waiver, and successor creation
-remain forbidden while orphaned.
 
 | Result | Meaning |
 | --- | --- |

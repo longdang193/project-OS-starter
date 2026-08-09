@@ -68,6 +68,12 @@ this evidence. `workspace_baseline_invalid` is a host/environment failure:
 preserve its evidence and repair workspace materialization, never reinterpret
 it as product scope or agent behavior.
 
+For packet API 8, core issues one finite lease before `running`. Host owns
+provider processes and returns only `host_terminal_observation/v2`; controller
+invokes only `terminalize_attempt(evidence)`. Core atomically records outcome,
+lease release, state history, and `run.json`. Do not write terminal state from a
+host or repair an `orphaned` attempt through retry or resume.
+
 ## Conditional References
 
 Read only what the current task needs:

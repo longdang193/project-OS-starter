@@ -25,6 +25,11 @@ ordinary direct execution.
   starts managed run through host-supplied `run_managed` adapter boundary.
 - Run record owns immutable attempt packet, lanes, claims, change-set evidence,
   friction, outcomes, decisions, and state history under `.harness/runs/`.
+- For packet API 8, core issues one finite lease before `running`. Host owns
+  provider process lifecycle and returns only `host_terminal_observation/v2`.
+  Controller invokes only `terminalize_attempt(evidence)`; core atomically
+  records terminal evidence, outcome, lease release, state history, and
+  `run.json`.
 - Packet owns allowed paths, planned write paths, resolved base commit,
   workspace, tools, checks, approval gates, required rules, orchestration
   mode, and resolved `execution_budget`.
@@ -88,11 +93,12 @@ ordinary direct execution.
    When finalization runs, lane evidence retains bounded prior terminal state
    and read-only finalizer identity. A finalizer claim may be claim-only; it
    does not need a second packet-tool call.
-   `recover-stranded` is controller-only non-replay recovery for a `running` attempt
-   with no claim, node observation, evidence, outcome, or decision after host
-   terminal recording failed. It requires exact run/attempt identity plus bounded
-   external host evidence. It creates block-only recovery evidence; never use it
-   for product failure or ordinary running work.
+   `recover-stranded` is controller-only non-replay recovery for a leased
+   `running` attempt with no claim, node observation, evidence, outcome, or
+   decision after host terminal recording failed. It requires exact run/attempt
+   identity plus bounded external host evidence with `source: host` and
+   `code: terminal_recording_failed`. It creates block-only recovery evidence;
+   never use it for product failure or ordinary running work.
 
 ## Stop
 

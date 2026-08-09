@@ -65,9 +65,13 @@ Use for ANY technical issue:
 - Use `skill-dispatching-parallel-agents` only after evidence separates failures into independent problem domains.
 - Each dispatched investigator follows this debugging method inside its assigned domain.
 - Keep possibly shared-cause failures together until root-cause evidence proves independence.
-- For managed timeout, inspect packet `execution_budget`, normalized
-  `attempt.evidence.terminal_observation`, retained-artifact evidence, and host
-  lane evidence before changing policy. A read-only diagnosis may consume only
+- For packet API 8 timeout, inspect packet `execution_budget` and
+  `execution_lease`, attempt `execution_lease`, normalized
+  `host_terminal_observations`, `terminal_record`, retained-artifact evidence,
+  and host lane evidence before changing policy. Controller invokes only
+  `terminalize_attempt(evidence)`; host never writes `run.json`. Expired live
+  or unverified process state is `orphaned`, so retry and resume stay blocked.
+  A read-only diagnosis may consume only
   immutable packet `readonly_artifacts`; never inspect an ambient `.harness`
   directory from a clean clone. Missing route-required artifacts blocks
   diagnosis before dispatch.
