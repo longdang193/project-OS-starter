@@ -62,6 +62,5 @@ python scripts/validate_agent_runtime_drift.py --skip-deploy-check
 python scripts/validate_agent_metadata_schema.py
 ```
 
-Schema source:
-
-- `docs/operating_system/runtime/agent-runtime-metadata-schema.md`
+Metadata validation logic lives in `scripts/validate_agent_metadata_schema.py`.
+Runtime surface ownership lives in `docs/operating_system/runtime/runtime-surfaces.md`.

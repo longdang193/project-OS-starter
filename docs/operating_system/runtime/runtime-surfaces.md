@@ -8,7 +8,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- |
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
-| `AGENTS.md` | Canonical root instruction source |
+| `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 
 ## Generated Runtime Outputs
 

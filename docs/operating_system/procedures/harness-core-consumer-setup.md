@@ -14,7 +14,9 @@ consumer scripts never implement managed execution.
 
 Pin both packages to released source tags compatible with provider host. Current
 tested pins: `harness-core-v0.1.20` and `harness-core-launcher-v0.1.0`.
-Compatible `codex-harness-host` release: `0.1.5`.
+Provider-host compatibility requires matching locked core pins, admitted host
+API, and committed runtime provenance. Host package version alone is not proof
+that its imported runtime contains a required host-source repair.
 
 ```powershell
 uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.20#subdirectory=packages/harness-core"
@@ -31,22 +33,24 @@ delegate to installed packages.
 Run from consumer repository root:
 
 ```powershell
-uv run harness-core --identity
-uv run harness-core validate --repo-root .
+uv run --locked harness-core --identity
+uv run --locked harness-core validate --repo-root .
 ```
 
 For managed provider work, then run provider-host capability and transport
-preflight. For `codex_app_server`, use `codex-harness-host capabilities` then
-`codex-harness-host preflight`; provider host owns trusted user transport
-configuration. Repository policy never carries endpoint, launch-command, or
-credential values.
+preflight from installed provider source root. For `codex_app_server`, use
+`uv run --locked codex-harness-host capabilities` then
+`uv run --locked codex-harness-host preflight`; provider host owns trusted user
+transport configuration. Repository policy never carries endpoint,
+launch-command, or credential values.
 
 Current Codex App Server policy requires `harness_core.request_api: 5` and
 provider `contract_version: 6`. Core resolves packet API 7 for host API 6 and
 that pair. Packet APIs 3, 4, 5, and 6 remain historical evidence under declared
 compatibility profiles. Packet API 7 never dispatches against host API 5.
-Upgrade policy, provider pin, core pin, and host release together; preserve old
-runs and create successors after migration.
+Upgrade policy, provider pin, core pin, and host release together. For
+host-source repair without a release change, use committed runtime provenance;
+preserve old runs and create successors after migration.
 
 For local `codex-harness-host` development, policy/schema changes require a
 published core release plus matching host `pyproject.toml` and `uv.lock` pins.
@@ -70,7 +74,7 @@ will restore host lock source. A host run rejects a present
 | --- | --- | --- |
 | `harness_core_environment_unavailable` | environment | Install or repair package environment. No packet exists. |
 | `harness_core_request_api_incompatible` | consumer release pin | Upgrade or pin consumer package release. No packet exists. |
-| `harness_core_host_api_incompatible` | provider host release pin | Upgrade or pin provider host and core release line. No packet exists. |
+| `harness_core_host_api_incompatible` | provider host runtime or release pin | Align provider host runtime, locked core release line, and host API. No packet exists. |
 | `harness_core_packet_dispatch_incompatible` | policy/host compatibility skew | Preserve historical packet evidence. Align request API, packet API, and host contract; then create successor. |
 | `execution_mode_unavailable` | provider host capability | Block or record controller waiver. Do not use generic CLI as fallback. |
 

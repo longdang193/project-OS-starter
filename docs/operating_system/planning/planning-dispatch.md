@@ -44,4 +44,6 @@ or handoff into plan.
 Controller activation is serialized. `single_work_lane`,
 `sequential_work_lanes`, and `parallel_work_lanes` use same plan/run contract;
 parallelism stays packet-internal. No locks, leases, scheduler, queue, or host
-thread resume exists. Changed manifest or base creates successor attempt.
+thread resume exists. Changed manifest or base creates successor attempt. A
+terminal coordinated failure remains blocked and requires approved successor
+plan/task identity before a fresh request.

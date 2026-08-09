@@ -352,6 +352,13 @@ read-only finalizer thread, turn, and sandbox. Claim-only finalizers do not need
 another packet-tool call; host keeps prior execution evidence separate from the
 finalizer claim.
 
+For an interrupted work turn with positive
+`finalization_reserve_seconds`, host must use the read-only finalizer for every
+admitted packet API version. If that finalizer times out, terminal observation
+submitted to core must report full packet
+`execution_budget.turn_timeout_seconds`, never the work-slice or finalizer
+timeout. Preserve bounded per-slice observations in lane finalization evidence.
+
 Writer evidence must show use of at least one packet-selected tool with
 `workspace_write` access. Each command result must use exact packet workspace.
 Validator evidence must show a separate `read-only` turn, use of at least one

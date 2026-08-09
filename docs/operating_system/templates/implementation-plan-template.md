@@ -66,6 +66,10 @@ manifest owns target branch, base ref, dependencies, mode, allowed paths, and pl
 packet owns `plan_ref`, task ID, and normalized digest; `run.json` owns state,
 handoff, evidence, and controller decisions.
 
+A terminal coordinated failure requires newly approved successor plan/task
+identity and a fresh request. Do not reuse its mutable run state or add it to
+the manifest.
+
 ## Task Breakdown
 
 Use `Task` for directly executable implementation slices.
