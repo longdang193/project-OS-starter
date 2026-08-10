@@ -24,12 +24,20 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from harness_core import authority, managed
+from harness_core.runtime_profile import build_runtime_release_profile, runtime_protocol_profile
 
 
 ROOT = Path(__file__).resolve().parents[3]
 MANAGED_COMMAND = [sys.executable, "-m", "harness_core.managed"]
 FRICTION_EVENTS_ROOT: Path | None = None
 CONTROLLER_PRIVATE_KEY: Ed25519PrivateKey | None = None
+RUNTIME_RELEASE_PROFILE = build_runtime_release_profile(
+    protocol_profile=runtime_protocol_profile(5),
+    host_package_release="fixture-host",
+    host_commit="a" * 40,
+    core_package_release="fixture-core",
+    core_commit="b" * 40,
+)
 
 
 def _base64url(value: bytes) -> str:
@@ -99,14 +107,15 @@ def controller_decision(harness, run_id: str, kind: str) -> dict[str, object]:
 
 API6_BINDING = {
     "provider_id": "codex_app_server",
-    "host_api": 7,
-    "contract_version": 7,
+    "host_api": 8,
+    "contract_version": 8,
     "transport": "stdio",
     "lifecycle": "host_spawn",
     "protocol": "app-server-v1",
     "configuration_digest": "a" * 64,
     "readiness": "ready",
     "host_instance_id": "host-test",
+    "runtime_release_profile": RUNTIME_RELEASE_PROFILE,
 }
 
 
@@ -325,12 +334,12 @@ class FakeAdapter:
         repair_terminal_status="completed",
         dispatch_error=None,
         identity=None,
-        host_api=7,
+        host_api=8,
         workspace_root=None,
     ):
         self.capabilities_value = {
             "claim_repair_same_session": "enforced",
-            "host_terminal_observation_v2": "enforced",
+            "host_terminal_observation_v3": "enforced",
             "execution_lease_duration_model": "enforced",
             **capabilities,
         }
@@ -339,7 +348,7 @@ class FakeAdapter:
         self.repair_payload = repair_payload
         self.repair_terminal_status = repair_terminal_status
         self.dispatch_error = dispatch_error
-        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 7}
+        self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 8}
         self.host_api_value = host_api
         self.workspace_root = str(workspace_root or ROOT)
         self.calls = []
@@ -381,7 +390,7 @@ class FakeAdapter:
     def _host_terminal_observation(packet, lane_id, turn_id):
         lease = packet["execution_lease_binding"]
         return {
-            "schema_id": "host_terminal_observation/v2",
+            "schema_id": packet["terminal_observation_contract"]["schema_id"],
             "observation_id": f"observation-{lane_id}",
             "run_id": lease["run_id"],
             "attempt_id": lease["attempt_id"],
@@ -413,6 +422,7 @@ class FakeAdapter:
                 "host_process": {"pid": 2, "creation_id": "host-test"},
                 "cancellation_request_id": None,
             },
+            **({"runtime_release_profile": RUNTIME_RELEASE_PROFILE} if packet["version"] == 9 else {}),
         }
 
     def run_checks(self, packet, workspace):
@@ -427,7 +437,7 @@ class FakeAdapter:
                 "exit_code": 0,
                 "stdout": "ok",
                 "stderr": "",
-                **({"host_terminal_observation": self._host_terminal_observation(packet, f"check:{name}", f"turn-check:{name}")} if packet["version"] == 8 else {}),
+                **({"host_terminal_observation": self._host_terminal_observation(packet, f"check:{name}", f"turn-check:{name}")} if packet["version"] == 9 else {}),
             }
             for name, command in packet["checks"].items()
         }
@@ -543,6 +553,13 @@ class FakeAdapter:
             "workspace_status_before": "",
             "workspace_status_after": "",
         }
+        if packet["version"] == 9:
+            evidence["host_terminal_observation"] = self._host_terminal_observation(
+                packet,
+                lane["lane_id"],
+                f"turn-{lane['lane_id']}",
+            )
+            return evidence
         if packet["version"] == 8:
             lease = packet["execution_lease_binding"]
             evidence["host_terminal_observation"] = {
@@ -793,18 +810,18 @@ def test_protected_policy_includes_canonical_skill_sources() -> None:
     assert ".agents/skills/**" in packet["approval_gates"]["protected_policy"]
 
 
-def test_resolve_managed_packet_builds_api8_lane_dag() -> None:
+def test_resolve_managed_packet_builds_api9_lane_dag() -> None:
     harness = load_module()
 
     packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
 
-    assert packet["version"] == 8
+    assert packet["version"] == 9
     assert packet["user_request"] == "Update managed harness fixture."
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 7}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 8}
     assert packet["core_identity"] == {
         **harness.runtime_identity(),
         "request_api": 5,
-        "packet_api": 8,
+        "packet_api": 9,
         "host_api": None,
     }
     assert packet["execution_budget"] == {
@@ -829,9 +846,10 @@ def test_resolve_managed_packet_builds_api8_lane_dag() -> None:
         "cleanup_grace_seconds": 30,
     }
     assert packet["terminal_observation_contract"] == {
-        "schema_id": "host_terminal_observation/v2",
-        "capability": "host_terminal_observation_v2",
+        "schema_id": "host_terminal_observation/v3",
+        "capability": "host_terminal_observation_v3",
     }
+    assert packet["runtime_release_profile"] == RUNTIME_RELEASE_PROFILE
     assert packet["agent_identity"] == {
         "template": "normal",
         "model_provider": "9router",
@@ -851,6 +869,8 @@ def test_resolve_managed_packet_builds_api8_lane_dag() -> None:
         ],
         "required_host_capability": "claim_repair_same_session",
     }
+
+
     assert packet["lanes"][0]["claim_schema"] == {
         "required_fields": ["summary", "changed_files"],
         "field_types": {"summary": "nonempty_string", "changed_files": "string_list"},
@@ -873,6 +893,20 @@ def test_resolve_managed_packet_builds_api8_lane_dag() -> None:
     assert packet["lanes"][2]["write_capable"] is False
 
 
+def test_api9_rejects_missing_release_profile_before_packet_or_run_write(tmp_path: Path) -> None:
+    binding = {key: value for key, value in API6_BINDING.items() if key != "runtime_release_profile"}
+
+    with pytest.raises(managed.HarnessError, match="harness_runtime_profile_mismatch"):
+        managed.resolve_managed_packet(
+            ROOT,
+            managed_request(run_id=tmp_path.name),
+            attempt_id="attempt-1",
+            provider_runtime_binding=binding,
+        )
+
+    assert not (ROOT / ".harness" / "runs" / tmp_path.name).exists()
+
+
 def test_current_packet_uses_route_capabilities_without_role_writes(monkeypatch) -> None:
     harness = load_module()
     roles = yaml.safe_load((ROOT / "agents" / "roles.yaml").read_text())
@@ -887,7 +921,7 @@ def test_current_packet_uses_route_capabilities_without_role_writes(monkeypatch)
     assert packet["lanes"][0]["write_capable"] is True
 
 
-def test_api8_packet_requires_immutable_provider_runtime_binding() -> None:
+def test_api9_packet_requires_immutable_provider_runtime_binding() -> None:
     harness = load_module()
     binding = copy.deepcopy(API6_BINDING)
     packet = harness.resolve_managed_packet(
@@ -897,7 +931,7 @@ def test_api8_packet_requires_immutable_provider_runtime_binding() -> None:
         provider_runtime_binding=binding,
     )
 
-    assert packet["version"] == 8
+    assert packet["version"] == 9
     assert packet["invocation_id"] == "attempt-1:primary"
     assert packet["parent_invocation_id"] is None
     assert packet["provider_runtime_binding"] == {
@@ -1357,7 +1391,7 @@ def test_api8_packet_uses_route_owned_capabilities_and_delegation_profile(
     assert packet["capabilities"] == capabilities
     assert packet["delegation_profile"] == delegation_profile
     assert packet["workspace_write_access"] == workspace_write_access
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 7}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 8}
 
 def test_delegate_denies_ungranted_parent_before_child_work(tmp_path: Path) -> None:
     harness = load_module()
@@ -1419,8 +1453,8 @@ def test_dispatch_preserves_failed_child_decision(tmp_path: Path, monkeypatch: p
             super().__init__(
                 {"single_work_lane": "enforced"},
                 claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=7,
-                identity={"provider_id": "codex_app_server", "contract_version": 7},
+                host_api=8,
+                identity={"provider_id": "codex_app_server", "contract_version": 8},
             )
             self.delegation_result = None
 
@@ -1797,7 +1831,7 @@ def test_run_managed_records_adapter_host_api_in_packet(tmp_path: Path) -> None:
 
         assert result["outcome"]["reason"] == "execution_mode_unavailable"
         packet = json.loads((run_dir / "run.json").read_text())["attempts"][0]["packet"]
-        assert packet["core_identity"]["host_api"] == 7
+        assert packet["core_identity"]["host_api"] == 8
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -2349,7 +2383,7 @@ def test_resolve_managed_packet_accepts_allowed_runtime_provider() -> None:
         attempt_id="attempt-1",
     )
 
-    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 7}
+    assert packet["runtime_provider"] == {"provider_id": "codex_app_server", "contract_version": 8}
 
 
 @pytest.mark.parametrize(("task_type", "template", "model"), [
@@ -2664,8 +2698,8 @@ def test_run_managed_requires_ready_provider_binding_before_packet_creation(tmp_
                 managed_request(version=5, run_id=run_id),
                 MissingBindingAdapter(
                     {"single_work_lane": "enforced"},
-                    host_api=7,
-                    identity={"provider_id": "codex_app_server", "contract_version": 7},
+                    host_api=8,
+                    identity={"provider_id": "codex_app_server", "contract_version": 8},
                 ),
             )
 
@@ -3283,7 +3317,7 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         assert len(run["attempts"]) == 2
         assert run["attempts"][0]["packet"]["runtime_provider"] == {
             "provider_id": "codex_app_server",
-            "contract_version": 7,
+            "contract_version": 8,
         }
         assert run["attempts"][1]["packet"]["runtime_provider"] == run["attempts"][0]["packet"]["runtime_provider"]
         assert run["attempts"][1]["packet"]["provider_runtime_binding"] == run["attempts"][0]["packet"]["provider_runtime_binding"]
@@ -3710,12 +3744,12 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
 
     class ReadOnlyAdapter(FakeAdapter):
         def __init__(self) -> None:
-            super().__init__(
-                {"single_work_lane": "enforced"},
-                claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
-                host_api=7,
-                identity={"provider_id": "codex_app_server", "contract_version": 7},
-            )
+                super().__init__(
+                    {"single_work_lane": "enforced"},
+                    claim_payload={"kind": "claimed_result", "summary": "done", "findings": ["ok"]},
+                    host_api=8,
+                    identity={"provider_id": "codex_app_server", "contract_version": 8},
+                )
 
         def preflight_evidence(self):
             return copy.deepcopy(API6_BINDING)
@@ -3862,12 +3896,12 @@ def test_api5_timeout_escalation_preserves_provider_runtime_binding(tmp_path: Pa
         result = harness.run_managed(
             ROOT,
             managed_request(run_id=run_id, version=5, execution_mode="single_work_lane"),
-            BoundTimeoutAdapter(
-                {"single_work_lane": "enforced"},
-                dispatch_error=TimedOutTurn("turn timed out"),
-                host_api=7,
-                identity={"provider_id": "codex_app_server", "contract_version": 7},
-            ),
+                BoundTimeoutAdapter(
+                    {"single_work_lane": "enforced"},
+                    dispatch_error=TimedOutTurn("turn timed out"),
+                    host_api=8,
+                    identity={"provider_id": "codex_app_server", "contract_version": 8},
+                ),
         )
 
         assert result["outcome"]["reason"] == "dispatch_timeout"
@@ -4120,28 +4154,30 @@ def test_admit_managed_operation_returns_core_identity_before_packet_work() -> N
 
     identity = harness.admit_managed_operation(
         ROOT,
-        FakeAdapter({"single_work_lane": "enforced"}, host_api=7),
+        FakeAdapter({"single_work_lane": "enforced"}, host_api=8),
     )
 
     assert identity["request_api"] == 5
-    assert identity["packet_api"] == 8
-    assert identity["host_api"] == 7
+    assert identity["packet_api"] == 9
+    assert identity["host_api"] == 8
     assert isinstance(identity["package_release"], str)
 
 
-def test_admit_managed_operation_rejects_incompatible_policy_contract_before_packet_work(
+def test_admit_managed_operation_ignores_legacy_policy_contract_before_packet_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     harness = load_module()
     policy = copy.deepcopy(harness._load_policy(ROOT))
+    policy["version"] = 9
     policy["runtime_providers"]["codex_app_server"]["contract_version"] = 6
     monkeypatch.setattr(harness, "_load_policy", lambda root: policy)
 
-    with pytest.raises(harness.HarnessError, match="harness_core_packet_dispatch_incompatible"):
-        harness.admit_managed_operation(
-            ROOT,
-            FakeAdapter({"single_work_lane": "enforced"}, host_api=7),
-        )
+    identity = harness.admit_managed_operation(
+        ROOT,
+        FakeAdapter({"single_work_lane": "enforced"}, host_api=8),
+    )
+
+    assert identity["packet_api"] == 9
 
 
 def test_run_managed_resumes_planned_api4_packet_with_host3_only(tmp_path: Path) -> None:
@@ -4658,5 +4694,40 @@ def test_api8_verification_exception_terminalizes_completed_observations(
         assert result["outcome"]["reason"] == "verification_failed"
         assert attempt["terminal_record"]["classification"] == "core_failure"
         assert attempt["execution_lease"]["state"] == "released"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_api8_empty_validator_tool_proof_terminalizes_core_failure(tmp_path: Path) -> None:
+    class EmptyValidatorToolEvidenceAdapter(FakeAdapter):
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            if lane["kind"] == "validate":
+                evidence["selected_tools_used"] = []
+                evidence["tool_calls"] = []
+                evidence["command_results"] = []
+            return evidence
+
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(
+                run_id=run_id,
+                acceptance_criteria=[{"id": "validator", "kind": "validator"}],
+            ),
+            EmptyValidatorToolEvidenceAdapter({"single_work_lane": "enforced"}),
+        )
+        attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert attempt["terminal_record"]["classification"] == "core_failure"
+        assert attempt["execution_lease"]["state"] == "released"
+        assert any(
+            observation["lane_id"] == "validate"
+            for observation in attempt["host_terminal_observations"]
+        )
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)

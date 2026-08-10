@@ -29,8 +29,8 @@ To update: edit canonical source, then run sync.
   consumer request API or host API is a release-compatibility failure. All
   three block before packet creation; do not patch a consumer bridge, reroute,
   or waive around them.
-- For `codex_app_server`, invoke only `uv run --locked codex-harness-host` from
-  installed host source. Bare `codex-harness-host` can resolve stale PATH tool
+- For `codex_app_server`, invoke only `harness-core-launcher` through verified
+  active runtime pointer. Bare `codex-harness-host` can resolve stale PATH tool
   code and is not a managed preflight or dispatch boundary.
 - Controller alone dispatches, retries, escalates, or requests approval.
 - Each lane gets one validated harness packet with exact allowed paths, base
@@ -50,9 +50,9 @@ To update: edit canonical source, then run sync.
   `scope_escape`.
 - Work without a host-created packet and `run.json` is source-first local work,
   never managed or accepted harness work.
-- For packet API 8, core issues one finite non-renewable lease before `running`.
+- For current leased packets, core issues one finite non-renewable lease before `running`.
   Host owns provider process lifecycle and returns only
-  `host_terminal_observation/v2`; controller invokes only
+  packet-declared terminal evidence; controller invokes only
   `terminalize_attempt(envelope)`. Evidence records `attempt_outcome/v2`;
   one-decision terminal outcomes auto-finalize, while ambiguous outcomes require
   signed `controller_authorization/v1`. Core atomically writes terminal evidence,

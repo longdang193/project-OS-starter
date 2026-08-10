@@ -9,6 +9,7 @@ from harness_core.terminal_observation import (
     normalize_host_terminal_observation,
     normalize_terminal_observation,
 )
+from harness_core.runtime_profile import build_runtime_release_profile, runtime_protocol_profile
 
 
 PACKET = {
@@ -31,6 +32,18 @@ V2_BINDING = {
     "lease_id": "lease-1",
     "lease_epoch": 1,
     "host_instance_id": "host-1",
+}
+RUNTIME_RELEASE_PROFILE = build_runtime_release_profile(
+    protocol_profile=runtime_protocol_profile(5),
+    host_package_release="fixture-host",
+    host_commit="a" * 40,
+    core_package_release="fixture-core",
+    core_commit="b" * 40,
+)
+V3_PACKET = {
+    **V2_PACKET,
+    "version": 9,
+    "runtime_release_profile": RUNTIME_RELEASE_PROFILE,
 }
 
 
@@ -99,6 +112,15 @@ def host_observation(**overrides: object) -> dict[str, object]:
             "cancellation_request_id": None,
         },
     }
+    value.update(overrides)
+    return value
+
+
+def host_v3_observation(**overrides: object) -> dict[str, object]:
+    value = host_observation(
+        schema_id="host_terminal_observation/v3",
+        runtime_release_profile=RUNTIME_RELEASE_PROFILE,
+    )
     value.update(overrides)
     return value
 
@@ -202,6 +224,19 @@ def test_normalize_host_terminal_observation_v2_binds_packet_lease_and_containme
     raw = host_observation()
 
     assert normalize_host_terminal_observation(raw, V2_PACKET, binding=V2_BINDING) == raw
+
+
+def test_normalize_host_terminal_observation_v3_binds_runtime_release_profile() -> None:
+    raw = host_v3_observation()
+
+    assert normalize_host_terminal_observation(raw, V3_PACKET, binding=V2_BINDING) == raw
+
+
+def test_normalize_host_terminal_observation_v3_rejects_runtime_release_profile_conflict() -> None:
+    raw = host_v3_observation(runtime_release_profile={**RUNTIME_RELEASE_PROFILE, "host_commit": "c" * 40})
+
+    with pytest.raises(TerminalObservationError, match="runtime_release_profile"):
+        normalize_host_terminal_observation(raw, V3_PACKET, binding=V2_BINDING)
 
 
 def test_normalize_host_terminal_observation_v2_allows_no_start_provider_failure() -> None:

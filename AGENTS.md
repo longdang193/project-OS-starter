@@ -30,9 +30,9 @@ verification profile, resolved tools/checks, workspace, approval gates, planned
 write paths, resolved base commit, and orchestration mode plus resolved
 `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
-For packet API 8, core issues one finite execution lease before `planned` enters
+For current leased packets, core issues one finite execution lease before `planned` enters
 `running`. Host owns provider lifecycle and bounded
-`host_terminal_observation/v2` production only; it never writes `run.json`.
+packet-declared terminal-observation production only; it never writes `run.json`.
 Host binds every observation to run, attempt, packet digest, lease, and host
 instance identity. Expired live or unverified process state is `orphaned`, not
 retryable work. Windows containment uses one unnamed kill-on-close Job Object
@@ -68,15 +68,15 @@ An awaiting historical run with an incompatible request API may record an
 outcome-authorized non-successor decision. A terminal `block` uses no request
 admission, packet resolution, or dispatch. `retry` and `escalate` create
 successor packets and must reject incompatible historical request APIs.
-For `runtime_provider_id: codex_app_server`, controller invokes provider host
-from its installed source root. Host reads transport only from trusted user
-configuration at `~/.codex/harness-providers.toml`: run
-`uv run --locked codex-harness-host capabilities`, then `uv run --locked codex-harness-host
-preflight`, then `uv run --locked codex-harness-host run --harness-root <repo-root>
---request <request.json>`.
+For `runtime_provider_id: codex_app_server`, controller invokes only active
+pointer-selected runtime through `harness-core-launcher`: run
+`harness-core-launcher capabilities`, then `harness-core-launcher preflight`,
+then `harness-core-launcher run --harness-root <repo-root> --request <request.json>`.
+Host reads transport only from trusted user configuration at
+`~/.codex/harness-providers.toml`.
 Never dispatch bare `codex-harness-host`: PATH can resolve stale user-level tool
 code instead of the locked source host.
-Do not put endpoint, launch-command, or credential values in repository policy,
+Do not invoke bare `codex-harness-host`, and do not put endpoint, launch-command, or credential values in repository policy,
 requests, packets, or generated guidance. Host configuration admits only a
 registered launcher ID or an explicit external endpoint; it rejects arbitrary
 commands and secret fields.
@@ -124,7 +124,7 @@ When spawning a subagent:
   `check_timeout_seconds`. Reserve is one policy-owned slice used only for one
   read-only final claim turn after interruption or empty final text. Transport
   preflight has separate short bound.
-- For current packet API 8, core may authorize one unusable-claim repair only
+- For current leased packets, core may authorize one unusable-claim repair only
   after completed work. Host must reuse exact open provider session and original
   thread ID, consume only finalization reserve, use read-only with no tools, then
   close session before terminal evidence. No fresh session, repair thread, retry,

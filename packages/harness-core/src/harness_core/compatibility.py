@@ -46,20 +46,24 @@ COMPATIBILITY_PROFILES = (
         "read_host_apis": frozenset({6}),
     },
     {
-        "name": "attempt_terminalization",
+        "name": "runtime_profile",
         "request_apis": frozenset({5}),
-        "packet_api": 8,
-        "dispatch_host_api": 7,
-        "provider_contract": 7,
-        "read_host_apis": frozenset({7}),
+        "packet_api": 9,
+        "dispatch_host_api": 8,
+        "provider_contract": 8,
+        "required_capabilities": (
+            "execution_lease_duration_model",
+            "host_terminal_observation_v3",
+        ),
+        "read_host_apis": frozenset({8}),
     },
 )
 SUPPORTED_REQUEST_APIS = frozenset().union(*(profile["request_apis"] for profile in COMPATIBILITY_PROFILES))
-SUPPORTED_PACKET_READ_APIS = frozenset(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)
-CURRENT_PACKET_API = 8
+SUPPORTED_PACKET_READ_APIS = frozenset({3, 4, 5, 6, 7, 8, *(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)})
+CURRENT_PACKET_API = 9
 CURRENT_RUN_API = 2
-POLICY_SCHEMA_VERSION = 9
-SUPPORTED_HOST_APIS = frozenset({profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES})
+POLICY_SCHEMA_VERSION = 10
+SUPPORTED_HOST_APIS = frozenset({2, 3, 4, 5, 6, 7, *(profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES)})
 TERMINAL_OBSERVATION_VERSION = 1
 TIMEOUT_OBSERVATION_VERSION = TERMINAL_OBSERVATION_VERSION
 APP_SERVER_MODEL_SELECTION_FIELDS = (

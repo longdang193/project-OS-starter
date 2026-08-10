@@ -78,7 +78,7 @@ ARTIFACT_HANDOFF_PROFILE_FIELDS = {
 EVIDENCE_ARTIFACT_POLICY_FIELDS = {"catalog", "profiles"}
 CURRENT_ARTIFACT_CATALOG = {
     "terminal_observation": {
-        "schema_id": "host_terminal_observation/v2",
+        "schema_id": "host_terminal_observation/v3",
         "producer": "host",
         "retention": "terminal",
     },
@@ -116,10 +116,10 @@ ORCHESTRATION_OPTIONAL_FIELDS = {"max_parallel_lanes"}
 RETRY_POLICY_FIELDS = {"max_attempts", "retryable_reasons", "exhaustion", "approval_resume", "approval_ttl_seconds"}
 TOOL_FIELDS = {"optional", "host_kind", "writer_access", "validator_access", "root_probe"}
 RUNTIME_PROVIDER_FIELDS = {
-    "contract_version",
     "terminal_observation_capability",
     "execution_lease_duration_model_id",
 }
+LEGACY_RUNTIME_PROVIDER_FIELDS = RUNTIME_PROVIDER_FIELDS | {"contract_version"}
 CONTEXT_LIMIT_FIELDS = {
     "objective_max_bytes",
     "fact_max_bytes",
@@ -617,8 +617,9 @@ def validate(root: Path) -> list[str]:
     roles = _validate_roles(roles_payload, errors)
     if not isinstance(policy, dict):
         return [*errors, "harness policy must be a mapping"]
-    if policy.get("version") != 9:
-        errors.append("harness policy version must be 9")
+    version = policy.get("version")
+    if version not in {9, 10}:
+        errors.append("harness policy version must be 9 or 10")
     unknown_policy_fields = set(policy) - POLICY_FIELDS - POLICY_OPTIONAL_FIELDS
     missing_policy_fields = POLICY_FIELDS - policy.keys()
     if missing_policy_fields:
@@ -689,9 +690,9 @@ def validate(root: Path) -> list[str]:
             not isinstance(name, str)
             or not name
             or not isinstance(provider, dict)
-            or set(provider) != RUNTIME_PROVIDER_FIELDS
-            or not positive_integer(provider.get("contract_version"))
-            or provider.get("terminal_observation_capability") != "host_terminal_observation_v2"
+            or set(provider) != (LEGACY_RUNTIME_PROVIDER_FIELDS if version == 9 else RUNTIME_PROVIDER_FIELDS)
+            or version == 9 and not positive_integer(provider.get("contract_version"))
+            or provider.get("terminal_observation_capability") != ("host_terminal_observation_v2" if version == 9 else "host_terminal_observation_v3")
             or not isinstance(provider.get("execution_lease_duration_model_id"), str)
             or not provider["execution_lease_duration_model_id"]
         ):

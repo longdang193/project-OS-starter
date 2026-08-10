@@ -73,6 +73,13 @@ from .terminal_observation import (
 )
 from .timeout_observation import TimeoutObservationError, normalize_timeout_observation
 from .coordination import PlanCoordination, PlanCoordinationError, PlanTask, load_plan_coordination, path_matches as _path_matches
+from .runtime_profile import (
+    RuntimeProfileError,
+    build_runtime_release_profile,
+    normalize_runtime_release_profile,
+    runtime_protocol_profile,
+    runtime_protocol_profile_for_packet_api,
+)
 
 
 class HarnessError(ValueError):
@@ -199,10 +206,7 @@ def _core_identity(
         if not host_admission["ok"]:
             raise HarnessError(host_admission["code"])
         host_api = host_admission["host_api"]
-        runtime_provider = _default_runtime_provider(
-            policy,
-            packet_api=request_admission["packet_api"],
-        )
+        runtime_provider = _default_runtime_provider(policy, packet_api=request_admission["packet_api"])
         dispatch_admission = admit_packet_dispatch(
             host_api,
             request_admission["packet_api"],
@@ -1018,10 +1022,15 @@ def _route_packet(
 def _default_runtime_provider(policy: dict[str, Any], *, packet_api: int) -> dict[str, Any]:
     provider_id = policy["defaults"]["runtime_provider"]
     provider = policy["runtime_providers"].get(provider_id)
-    if not isinstance(provider, dict) or not isinstance(provider.get("contract_version"), int):
+    if not isinstance(provider, dict):
         raise HarnessError(f"unknown runtime provider `{provider_id}`")
-    contract_version = 2 if provider_id == "codex_app_server" and packet_api == 3 else provider["contract_version"]
-    return {"provider_id": provider_id, "contract_version": contract_version}
+    try:
+        profile = runtime_protocol_profile_for_packet_api(packet_api)
+    except RuntimeProfileError as exc:
+        raise HarnessError("harness_core_packet_api_unreadable") from exc
+    if provider_id != profile["provider_id"]:
+        raise HarnessError(f"unknown runtime provider `{provider_id}`")
+    return {"provider_id": provider_id, "contract_version": profile["provider_contract"]}
 
 
 def _resolve_runtime_provider(
@@ -1924,6 +1933,8 @@ def resolve_managed_packet(
         packet["claim_repair"] = copy.deepcopy(policy["claim_repair"])
     if provider_runtime_binding is not None:
         packet["provider_runtime_binding"] = provider_runtime_binding
+        if packet_api == CURRENT_PACKET_API:
+            packet["runtime_release_profile"] = copy.deepcopy(provider_runtime_binding["runtime_release_profile"])
     if "readonly_artifacts" in request:
         raise HarnessError("request API 5 rejects readonly_artifacts")
     packet["readonly_artifacts"], handoff = _resolve_artifact_handoff(root, packet, request.get("artifact_handoff"))
@@ -1951,7 +1962,7 @@ def resolve_managed_packet(
             raise HarnessError(str(exc)) from exc
         provider_contract = policy["runtime_providers"][runtime_provider["provider_id"]]
         packet["terminal_observation_contract"] = {
-            "schema_id": "host_terminal_observation/v2",
+            "schema_id": "host_terminal_observation/v3",
             "capability": provider_contract["terminal_observation_capability"],
         }
     if packet["version"] in {4, CURRENT_PACKET_API}:
@@ -3148,6 +3159,7 @@ def _adapter_capabilities(adapter: Any, canonical_modes: set[str]) -> dict[str, 
         raise HarnessError("host adapter capabilities must be a mapping")
     known_capabilities = set(canonical_modes) | {
         "host_terminal_observation_v2",
+        "host_terminal_observation_v3",
         "execution_lease_duration_model",
     }
     for mode, level in capabilities.items():
@@ -3211,7 +3223,12 @@ def _provider_runtime_binding(adapter: Any, *, required: bool) -> dict[str, Any]
         "configuration_digest",
         "readiness",
     }
-    accepted_fields = {frozenset(required_fields), frozenset({*required_fields, "host_instance_id"})}
+    accepted_fields = {
+        frozenset(required_fields),
+        frozenset({*required_fields, "host_instance_id"}),
+        frozenset({*required_fields, "runtime_release_profile"}),
+        frozenset({*required_fields, "host_instance_id", "runtime_release_profile"}),
+    }
     if not isinstance(evidence, dict) or frozenset(evidence) not in accepted_fields:
         raise HarnessError("host adapter preflight evidence has invalid shape")
     if (
@@ -3257,6 +3274,15 @@ def _validate_provider_runtime_binding(
     dispatch = admit_packet_dispatch(static_binding.get("host_api"), packet_api, static_binding.get("contract_version"))
     if not dispatch["ok"]:
         raise HarnessError(dispatch["code"])
+    if packet_api == CURRENT_PACKET_API:
+        try:
+            release_profile = normalize_runtime_release_profile(static_binding.get("runtime_release_profile"))
+            expected_profile = runtime_protocol_profile_for_packet_api(packet_api)
+        except RuntimeProfileError as exc:
+            raise HarnessError("harness_runtime_profile_mismatch") from exc
+        if release_profile["protocol_profile"] != expected_profile:
+            raise HarnessError("harness_runtime_profile_mismatch")
+        static_binding["runtime_release_profile"] = release_profile
     return static_binding
 
 
@@ -3354,8 +3380,9 @@ def _record_lane_execution_evidence(
         raise HarnessError("host adapter lane execution evidence conflicts with packet")
     _validate_app_server_model_selection(packet, evidence.get("app_server_model_selection"))
     is_current_packet = packet.get("version") == CURRENT_PACKET_API
-    if is_current_packet and evidence.get("terminal_status") != "completed":
+    if is_current_packet:
         _record_host_terminal_observation(attempt, packet, evidence)
+    if is_current_packet and evidence.get("terminal_status") != "completed":
         records = attempt.setdefault("execution_evidence", [])
         if any(record.get("lane_id") == lane["lane_id"] for record in records):
             raise HarnessError("host adapter produced duplicate lane execution evidence")
@@ -3366,7 +3393,6 @@ def _record_lane_execution_evidence(
     command_results = evidence.get("command_results")
     if (
         not isinstance(selected_tools, list)
-        or not selected_tools
         or not all(isinstance(tool, str) and tool for tool in selected_tools)
         or len(set(selected_tools)) != len(selected_tools)
         or not isinstance(tool_calls, list)
@@ -3393,7 +3419,6 @@ def _record_lane_execution_evidence(
     if any(record.get("lane_id") == lane["lane_id"] for record in records):
         raise HarnessError("host adapter produced duplicate lane execution evidence")
     records.append(copy.deepcopy(evidence))
-    _record_host_terminal_observation(attempt, packet, evidence)
 
 
 def _record_node_observation(attempt: dict[str, Any], node: dict[str, Any], observation: dict[str, Any]) -> None:
@@ -4494,7 +4519,7 @@ def _execute_attempt(
         _transition(run, policy["states"], "awaiting_decision", "execution_mode_unavailable")
         _write_run(root, run)
         return _managed_result(run)
-    terminalization_capabilities = {"host_terminal_observation_v2", "execution_lease_duration_model"}
+    terminalization_capabilities = {"host_terminal_observation_v3", "execution_lease_duration_model"}
     if packet.get("version") == CURRENT_PACKET_API and any(
         capabilities.get(capability) != "enforced"
         for capability in terminalization_capabilities
@@ -5211,18 +5236,25 @@ def main(argv: list[str] | None = None) -> int:
                 root,
                 task,
                 {
-                    "host_api": 7,
-                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 7},
+                    "host_api": 8,
+                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 8},
                     "preflight_evidence": lambda: {
                         "provider_id": "codex_app_server",
-                        "host_api": 7,
-                        "contract_version": 7,
+                        "host_api": 8,
+                        "contract_version": 8,
                         "transport": "stdio",
                         "lifecycle": "host_spawn",
                         "protocol": "app-server-v1",
                         "configuration_digest": "0" * 64,
                         "readiness": "ready",
                         "host_instance_id": "generic-cli",
+                        "runtime_release_profile": build_runtime_release_profile(
+                            protocol_profile=runtime_protocol_profile(5),
+                            host_package_release="run-unavailable",
+                            host_commit="0" * 40,
+                            core_package_release=runtime_identity()["package_release"],
+                            core_commit="0" * 40,
+                        ),
                     },
                     "capabilities": lambda: {},
                     "unavailable_detail": "Generic harness CLI has no injected host adapter; use a provider host entrypoint.",
@@ -5246,8 +5278,10 @@ def main(argv: list[str] | None = None) -> int:
                     raise HarnessError("terminalize-attempt --evidence accepts only legacy cleanup evidence")
                 legacy_run = _load_run(root, _safe_run_id(args.run_id))
                 legacy_attempt = _active_attempt(legacy_run)
-                if legacy_attempt.get("packet", {}).get("version") != CURRENT_PACKET_API:
-                    raise HarnessError("terminalize-attempt --evidence requires packet API 8")
+                legacy_cleanup = _load_policy(root).get("legacy_cleanup")
+                historical_packet_max_api = legacy_cleanup.get("historical_packet_max_api") if isinstance(legacy_cleanup, dict) else None
+                if legacy_attempt.get("packet", {}).get("version") != historical_packet_max_api:
+                    raise HarnessError(f"terminalize-attempt --evidence requires packet API {historical_packet_max_api}")
                 terminal_evidence = {
                     "attempt_id": legacy_evidence.get("attempt_id"),
                     "legacy_cleanup_attestation": legacy_evidence,

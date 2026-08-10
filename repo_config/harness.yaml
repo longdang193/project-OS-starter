@@ -1,4 +1,4 @@
-version: 9
+version: 10
 harness_core:
   request_api: 5
 context_limits:
@@ -11,7 +11,7 @@ context_limits:
 evidence_artifacts:
   catalog:
     terminal_observation:
-      schema_id: host_terminal_observation/v2
+      schema_id: host_terminal_observation/v3
       producer: host
       retention: terminal
       byte_limit: 4096
@@ -195,8 +195,7 @@ tools:
     root_probe: ast_grep_root_probe
 runtime_providers:
   codex_app_server:
-    contract_version: 7
-    terminal_observation_capability: host_terminal_observation_v2
+    terminal_observation_capability: host_terminal_observation_v3
     execution_lease_duration_model_id: codex_app_server.v1
 friction_policy:
   event_version: 1

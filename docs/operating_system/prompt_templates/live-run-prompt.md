@@ -9,7 +9,7 @@ distribution_tier: starter_kit
 Define scenario and success checks. Run preflight. Execute once. Verify outputs.
 
 For managed failure, classify admission versus terminal state before any follow-up.
-For packet API 8 terminal evidence, controller invokes only
+For current leased-packet terminal evidence, controller invokes only
 `terminalize_attempt(evidence)`; host never writes `run.json`. Expired live or
 unverified process state is `orphaned`, not retryable work.
 Resume only an existing `planned` attempt through provider `--run-id`. Preserve a

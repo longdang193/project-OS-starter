@@ -46,6 +46,14 @@ from .terminal_observation import (
     normalize_terminal_observation,
 )
 from .timeout_observation import TimeoutObservationError, normalize_timeout_observation
+from .runtime_profile import (
+    RuntimeProfileError,
+    build_runtime_release_profile,
+    normalize_runtime_protocol_profile,
+    normalize_runtime_release_profile,
+    runtime_protocol_profile,
+    runtime_protocol_profile_for_packet_api,
+)
 
 __all__ = [
     "admit_managed_operation",
@@ -73,6 +81,12 @@ __all__ = [
     "migrate_legacy_attesters",
     "normalize_controller_authorization",
     "runtime_identity",
+    "RuntimeProfileError",
+    "build_runtime_release_profile",
+    "normalize_runtime_protocol_profile",
+    "normalize_runtime_release_profile",
+    "runtime_protocol_profile",
+    "runtime_protocol_profile_for_packet_api",
     "validate_config",
     "verify_task",
     "ExecutionLeaseError",

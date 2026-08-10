@@ -66,7 +66,7 @@ def write_harness_root(root: Path) -> None:
         "repo_config/harness.yaml",
         yaml.safe_dump(
             {
-                "version": 9,
+                "version": 10,
                 "harness_core": {"request_api": 5},
                 "context_limits": {
                     "objective_max_bytes": 1024,
@@ -79,7 +79,7 @@ def write_harness_root(root: Path) -> None:
                 "evidence_artifacts": {
                     "catalog": {
                         "terminal_observation": {
-                            "schema_id": "host_terminal_observation/v2",
+                            "schema_id": "host_terminal_observation/v3",
                             "producer": "host",
                             "retention": "terminal",
                             "byte_limit": 4096,
@@ -205,8 +205,7 @@ def write_harness_root(root: Path) -> None:
                 },
                 "runtime_providers": {
                     "codex_app_server": {
-                        "contract_version": 6,
-                        "terminal_observation_capability": "host_terminal_observation_v2",
+                        "terminal_observation_capability": "host_terminal_observation_v3",
                         "execution_lease_duration_model_id": "codex_app_server.v1",
                     },
                 },
@@ -425,8 +424,7 @@ def test_composed_route_uses_shared_profile_resolver(tmp_path: Path) -> None:
 def test_composed_route_rejects_cross_provider_profiles(tmp_path: Path) -> None:
     path, policy = composed_policy(tmp_path)
     policy["runtime_providers"]["other"] = {
-        "contract_version": 4,
-        "terminal_observation_capability": "host_terminal_observation_v2",
+        "terminal_observation_capability": "host_terminal_observation_v3",
         "execution_lease_duration_model_id": "codex_app_server.v1",
     }
     policy["operating_profiles"]["local_change_extended"]["runtime_provider"] = "other"
@@ -470,7 +468,7 @@ def test_legacy_cleanup_rejects_future_packet_cap(tmp_path: Path) -> None:
     path, policy = load_policy(tmp_path)
     policy["legacy_cleanup"] = {
         "enabled": True,
-        "historical_packet_max_api": 9,
+            "historical_packet_max_api": 10,
         "allowed_cleanup_scopes": ["operator_discovered_provider_tree", "operator_attested_no_provider_process"],
         "allowed_discovery_methods": ["windows_parent_chain/v1", "windows_no_process_observation/v1"],
         "max_attestation_age_seconds": 900,

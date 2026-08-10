@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from .compatibility import TERMINAL_OBSERVATION_VERSION
+from .runtime_profile import RuntimeProfileError, normalize_runtime_release_profile
 
 
 class TerminalObservationError(ValueError):
@@ -75,6 +76,7 @@ _HOST_V2_FIELDS = {
     "stop_proof",
 }
 _HOST_V2_PROVIDER_SESSION_FIELD = "provider_session"
+_HOST_V3_RELEASE_PROFILE_FIELD = "runtime_release_profile"
 _PROVIDER_SESSION_FIELDS = {
     "schema_id",
     "operation",
@@ -397,7 +399,9 @@ def normalize_host_terminal_observation(
     *,
     binding: dict[str, Any],
 ) -> dict[str, Any]:
-    if not isinstance(raw, dict) or not (_HOST_V2_FIELDS <= set(raw) <= _HOST_V2_FIELDS | {_HOST_V2_PROVIDER_SESSION_FIELD}):
+    schema_id = raw.get("schema_id") if isinstance(raw, dict) else None
+    required_fields = _HOST_V2_FIELDS | ({_HOST_V3_RELEASE_PROFILE_FIELD} if schema_id == "host_terminal_observation/v3" else set())
+    if not isinstance(raw, dict) or not (required_fields <= set(raw) <= required_fields | {_HOST_V2_PROVIDER_SESSION_FIELD}):
         raise TerminalObservationError("terminal observation has unsupported fields")
     required_binding = {"run_id", "attempt_id", "packet_sha256", "lease_id", "lease_epoch", "host_instance_id"}
     if not isinstance(binding, dict) or set(binding) != required_binding:
@@ -420,8 +424,18 @@ def normalize_host_terminal_observation(
         or lease["execution_lease_seconds"] <= 0
     ):
         raise TerminalObservationError("packet execution lease is invalid")
-    if raw.get("schema_id") != "host_terminal_observation/v2":
+    if schema_id not in {"host_terminal_observation/v2", "host_terminal_observation/v3"}:
         raise TerminalObservationError("terminal observation has unsupported schema_id")
+    if packet.get("version") == 9 and schema_id != "host_terminal_observation/v3":
+        raise TerminalObservationError("terminal observation has unsupported schema_id")
+    release_profile = None
+    if schema_id == "host_terminal_observation/v3":
+        try:
+            release_profile = normalize_runtime_release_profile(raw.get(_HOST_V3_RELEASE_PROFILE_FIELD))
+        except RuntimeProfileError as exc:
+            raise TerminalObservationError("terminal observation has invalid runtime_release_profile") from exc
+        if release_profile != packet.get("runtime_release_profile"):
+            raise TerminalObservationError("terminal observation conflicts with runtime_release_profile")
     for field, expected in normalized_binding.items():
         if raw.get(field) != expected:
             raise TerminalObservationError(f"terminal observation conflicts with {field}")
@@ -449,7 +463,7 @@ def normalize_host_terminal_observation(
     if source != "provider_failure" and containment["state"] == "not_started":
         raise TerminalObservationError("terminal observation has incomplete containment proof")
     normalized = {
-        "schema_id": "host_terminal_observation/v2",
+        "schema_id": schema_id,
         "observation_id": _identifier(raw.get("observation_id"), "observation_id"),
         **normalized_binding,
         "lane_id": lane_id,
@@ -466,6 +480,8 @@ def normalize_host_terminal_observation(
         "containment": containment,
         "stop_proof": _stop_proof(raw.get("stop_proof"), source),
     }
+    if release_profile is not None:
+        normalized[_HOST_V3_RELEASE_PROFILE_FIELD] = release_profile
     if _HOST_V2_PROVIDER_SESSION_FIELD in raw:
         normalized[_HOST_V2_PROVIDER_SESSION_FIELD] = _provider_session(raw.get(_HOST_V2_PROVIDER_SESSION_FIELD))
     return normalized

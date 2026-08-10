@@ -36,13 +36,13 @@ source root, verify capability and dispatch same request through provider host:
 
 ```powershell
 $providerConfig = Join-Path $HOME ".codex\harness-providers.toml"
-uv run --locked codex-harness-host config init --config $providerConfig
-uv run --locked codex-harness-host config validate --config $providerConfig
-uv run --locked codex-harness-host config show --redacted --config $providerConfig
-uv run --locked codex-harness-host capabilities
-uv run --locked codex-harness-host preflight
-uv run --locked codex-harness-host run --harness-root <repo-root> --request <request.json>
-uv run --locked codex-harness-host run --harness-root <repo-root> --run-id <run-id>
+harness-core-launcher host config init --config $providerConfig
+harness-core-launcher host config validate --config $providerConfig
+harness-core-launcher host config show --redacted --config $providerConfig
+harness-core-launcher capabilities
+harness-core-launcher preflight
+harness-core-launcher run --harness-root <repo-root> --request <request.json>
+harness-core-launcher run --harness-root <repo-root> --run-id <run-id>
 ```
 
 Run `config init` only when user configuration is absent; it creates default
@@ -74,10 +74,9 @@ before dispatch:
 
 ```powershell
 Set-Location <codex-harness-host-root>
-uv sync --locked
-uv run --locked harness-core --identity
-uv run --locked codex-harness-host capabilities
-uv run --locked codex-harness-host preflight
+harness-core-launcher doctor
+harness-core-launcher capabilities
+harness-core-launcher preflight
 ```
 
 Never use bare `codex-harness-host` for preflight or dispatch. PATH can resolve
@@ -97,7 +96,7 @@ instead. Preflight owns a temporary Job; managed lanes borrow their lease Job.
 Startup uses the host-owned short cap inside existing operation budget. Failure
 output is `preflight_failed` with sanitized `failure_code` and
 `session_observation`. Reaped managed sessions produce only current
-`host_terminal_observation/v2`. If cleanup cannot prove containment stopped,
+packet-declared terminal evidence. If cleanup cannot prove containment stopped,
 host emits bounded `terminal_recording_failed` recovery evidence; it must not
 emit incomplete lane evidence, write `run.json`, retry, or terminalize.
 
@@ -184,7 +183,7 @@ packet-native tool probes and checks use `check_timeout_seconds`. The short
 Windows, every provider or packet-native tool process for one lease uses that
 lease's Job Object containment.
 
-For packet API 8, an unusable claim after a completed work turn may use exactly
+For a current leased packet, an unusable claim after a completed work turn may use exactly
 one core-authorized repair. Core first collects completed-turn identity, then
 requests repair against that same open provider session and original thread ID.
 Host uses only packet finalization reserve, a read-only sandbox, and no dynamic
@@ -198,8 +197,8 @@ lane, while `max_parallel_writers` further caps only write-capable lanes. Older
 consumer policy without `max_parallel_lanes` resolves it to
 `max_parallel_writers`; current packets always carry both resolved values. Host
 uses packet limit for executor capacity and never substitutes a host constant.
-For packet API 8, host returns one bounded
-`host_terminal_observation/v2` for each terminal dispatched lane and each
+For current leased packets, host returns one bounded packet-declared terminal
+observation for each terminal dispatched lane and each
 host-run packet check (`check:<name>`). Core validates schema, lane, immutable
 run/attempt/packet/lease/host binding, lease duration, and timestamp before
 persisting normalized observations under
@@ -309,11 +308,9 @@ agent surfaces only and never participates in runtime selection or acceptance.
 A candidate stays absent from route policy until it passes same packet,
 workspace, tool-binding, check, read-only validator, and controller-acceptance
 proof as every admitted provider. No automatic provider fallback exists.
-Current `codex_app_server` policy uses contract version 7 with request API 5,
-packet API 8, and host API 7. Packet APIs 3 through 7 remain readable evidence
-under declared compatibility profiles; host APIs below 7 reject packet API 8 before
-workspace preparation or lane dispatch. Mismatched identity fails before
-workspace preparation or lane dispatch.
+Core runtime protocol profile owns current provider contract and host
+compatibility. Historical packet readers retain their declared compatibility;
+current profile mismatch fails before workspace preparation or lane dispatch.
 
 ## Required Adapter Methods
 
@@ -327,7 +324,7 @@ Host adapter provides these methods:
 | `dispatch_lane(lane, packet, workspace, delegation_bridge)` | immutable lane, packet, workspace, optional core-owned delegation bridge | opaque dispatch handle |
 | `collect_lane_completion(handle, lane, packet, workspace)` | dispatch handle and immutable lane context | completed turn identity, or bounded terminal observation for provider failure |
 | `collect_claim(handle)` | dispatch handle | role-valid `claimed_result` |
-| `repair_claim(handle, lane, packet, workspace, failure)` | one completed packet API 8 work handle plus core-normalized unusable-claim failure | one read-only, no-tool repair from same open provider session and original thread |
+| `repair_claim(handle, lane, packet, workspace, failure)` | one completed leased work handle plus core-normalized unusable-claim failure | one read-only, no-tool repair from same open provider session and original thread |
 | `collect_lane_evidence(handle, lane, packet, workspace)` | dispatch handle, immutable lane and packet, workspace | host execution evidence for exactly one dispatched lane |
 | `cancel_lane(handle)` | dispatch handle | cancellation attempt |
 | `materialize_final_state(lane, packet, workspaces)` | immutable integration lane, packet, workspaces | final workspace identity object |
@@ -427,19 +424,20 @@ submitted to core must report full packet
 `execution_budget.turn_timeout_seconds`, never the work-slice or finalizer
 timeout. Preserve bounded per-slice observations in lane finalization evidence.
 
-Writer evidence must show use of at least one packet-selected tool with
-`workspace_write` access. Each command result must use exact packet workspace.
-Validator evidence must show a separate `read-only` turn, use of at least one
-packet-selected read-only tool, and identical workspace status before and
-after. Core stores both lane records in `run.json` and fails verification if a
-work or validator lane lacks valid host evidence.
+Host records every actual packet-selected tool use, including an empty list,
+plus exact packet workspace command results. Core alone validates whether writer
+evidence uses a packet-selected `workspace_write` tool and validator evidence
+uses a packet-selected read-only tool. Validator evidence still requires a
+separate `read-only` turn and identical workspace status before and after. Core
+stores terminal observations and lane records in `run.json`, then fails or
+terminalizes when required tool proof is absent.
 
 ## Attempt Terminalization
 
-For packet API 8, core owns `terminalize_attempt(evidence)`, terminal record
+For current leased packets, core owns `terminalize_attempt(evidence)`, terminal record
 creation, outcome derivation, lease release, state history, and atomic
 `run.json` replacement. Host never writes `run.json`. Host returns only
-`host_terminal_observation/v2` bound to run, attempt, immutable packet digest,
+packet-declared terminal observation bound to run, attempt, immutable packet digest,
 lease ID, lease epoch, and host instance ID.
 
 Core issues one non-renewable execution lease immediately before `planned`

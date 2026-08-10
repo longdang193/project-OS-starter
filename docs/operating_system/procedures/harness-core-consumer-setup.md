@@ -12,21 +12,13 @@ consumer scripts never implement managed execution.
 
 ## Install
 
-Pin both packages to released source tags compatible with provider host. Current
-tested pins: `harness-core-v0.1.33` and `harness-core-launcher-v0.1.0`.
-Provider-host compatibility requires matching locked core pins, admitted host
-API, and committed runtime provenance. Host package version alone is not proof
-that its imported runtime contains a required host-source repair.
+Install the organization-managed `harness-core-launcher` release channel. Do
+not copy release tags, host paths, host APIs, packet APIs, or provider contract
+values into consumer repositories. Host source owns its locked core dependency;
+the active local runtime pointer proves their exact compatible release profile.
 
-```powershell
-uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.33#subdirectory=packages/harness-core"
-uv add "harness-core-launcher @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-launcher-v0.1.0#subdirectory=packages/harness-core-launcher"
-```
-
-Commit generated `pyproject.toml` and `uv.lock`. Provider host owns its own
-compatible pins; match its committed `pyproject.toml` and lockfile. Do not copy
-package internals or rewrite bridge scripts. Starter kit bridge scripts only
-delegate to installed packages.
+Consumer policy owns only route intent and `harness_core.request_api`. Do not
+copy package internals or rewrite bridge scripts.
 
 ## Preflight
 
@@ -37,22 +29,28 @@ uv run --locked harness-core --identity
 uv run --locked harness-core validate --repo-root .
 ```
 
-For managed provider work, then run provider-host capability and transport
-preflight from installed provider source root. For `codex_app_server`, use
-`uv run --locked codex-harness-host capabilities` then
-`uv run --locked codex-harness-host preflight`; provider host owns trusted user
-transport configuration. Repository policy never carries endpoint,
-launch-command, or credential values.
+For managed provider work, use the active local runtime only:
+
+```powershell
+harness-core-launcher doctor
+harness-core-launcher capabilities
+harness-core-launcher preflight
+```
+
+`harness-core-launcher` selects one verified pointer-owned host root. Never
+invoke bare `codex-harness-host`; PATH can select stale runtime. Provider host
+owns trusted user transport configuration. Repository policy never carries
+endpoint, launch-command, or credential values.
 For `stdio` plus `host_spawn`, provider host requires Windows Job containment
 and rejects unsupported hosts before child creation with
 `containment_unavailable`; configure trusted external WebSocket transport
 instead. Host lifecycle and recovery evidence rules live in
 [`managed-execution-adapter-contract.md`](managed-execution-adapter-contract.md).
 
-Current Codex App Server policy requires `harness_core.request_api: 5` and
-provider `contract_version: 7`. Core resolves packet API 8 for host API 7 and
-that pair. Packet APIs 3 through 7 remain historical evidence under declared
-compatibility profiles. Packet API 8 never dispatches against host API 6.
+Core derives provider compatibility from its runtime protocol profile. Legacy
+provider `contract_version` is diagnostic-only; current policy must not add a
+second compatibility table. Historical packets remain readable without profile
+backfill and never become current dispatch evidence.
 
 Migration preflight reports active unleased legacy attempts as isolated. They
 cannot dispatch or resume, but do not block new packet API 8 admission. Preserve
@@ -72,9 +70,8 @@ or approval flags are rejected. Core issues a finite execution lease only when
 `planned` becomes `running`; host returns bounded terminal observations while
 controller alone invokes `terminalize_attempt(envelope)`.
 
-Upgrade policy, provider pin, core pin, and host release together. For
-host-source repair without a release change, use committed runtime provenance;
-preserve old runs and create successors after migration.
+Upgrade host and core through one staged release profile. Preserve old runs and
+create successors after migration; never mutate historical packet evidence.
 
 For local `codex-harness-host` development, policy/schema changes require a
 published core release plus matching host `pyproject.toml` and `uv.lock` pins.
@@ -85,12 +82,10 @@ Starter-kit synchronization does not update host virtual environments. From
 pwsh -NoProfile -File .\scripts\deploy_harness_core_to_host.ps1
 ```
 
-The command runs host through `uv run --locked`, proves locked runtime identity,
-rejects an editable `harness-core`, then runs host capabilities and preflight.
-Do not install starter source editable into host for managed work: next `uv run`
-will restore host lock source. A host run rejects a present
-`repo_config/harness.yaml` when its `version` differs from loaded
-`policy_schema_version`, before full policy admission or packet creation.
+The bridge stages and verifies the host release profile, atomically activates
+the local pointer, then runs doctor and preflight. It never resolves host from
+PATH. A host run rejects a present `repo_config/harness.yaml` when its version
+differs from loaded `policy_schema_version`, before packet creation.
 
 ## Failure Routing
 

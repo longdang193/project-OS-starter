@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import json
 
+from harness_core_launcher import cli
 from harness_core_launcher.loader import load_core, run_core_cli
 
 
@@ -24,3 +26,21 @@ def test_core_cli_returns_typed_environment_failure_without_loading_consumer(mon
 
     assert run_core_cli(["validate", "--repo-root", "ignored"]) == 1
     assert capsys.readouterr().out.strip() == '{"code": "harness_core_environment_unavailable", "failure_class": "environment", "ok": false, "package": "harness-core"}'
+
+
+def test_preflight_uses_runtime_manager(monkeypatch, tmp_path, capsys) -> None:
+    captured = []
+
+    class FakeManager:
+        def __init__(self, root):
+            captured.append(root)
+
+        def invoke_host(self, arguments):
+            captured.append(arguments)
+            return {"state": "ready"}
+
+    monkeypatch.setattr(cli, "RuntimeManager", FakeManager)
+
+    assert cli.main(["--runtime-root", str(tmp_path), "preflight"]) == 0
+    assert captured == [tmp_path, ["preflight"]]
+    assert json.loads(capsys.readouterr().out) == {"state": "ready"}

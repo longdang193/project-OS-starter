@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from harness_core import authority, managed
+from harness_core.runtime_profile import build_runtime_release_profile, runtime_protocol_profile
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -21,6 +22,13 @@ BINDING = {
     "lease_epoch": 1,
     "host_instance_id": "host-1",
 }
+RUNTIME_RELEASE_PROFILE = build_runtime_release_profile(
+    protocol_profile=runtime_protocol_profile(5),
+    host_package_release="fixture-host",
+    host_commit="a" * 40,
+    core_package_release="fixture-core",
+    core_commit="b" * 40,
+)
 
 
 def _digest(value: object) -> str:
@@ -71,7 +79,7 @@ def request(run_id: str) -> dict[str, object]:
 
 def host_observation(binding: dict[str, object], **overrides: object) -> dict[str, object]:
     value: dict[str, object] = {
-        "schema_id": "host_terminal_observation/v2",
+        "schema_id": "host_terminal_observation/v3",
         "observation_id": "observation-1",
         **binding,
         "lane_id": "primary",
@@ -102,6 +110,7 @@ def host_observation(binding: dict[str, object], **overrides: object) -> dict[st
             "host_process": {"pid": 456, "creation_id": "host-process-1"},
             "cancellation_request_id": None,
         },
+        "runtime_release_profile": RUNTIME_RELEASE_PROFILE,
     }
     value.update(overrides)
     return value
@@ -116,14 +125,15 @@ def write_running_run(tmp_path: Path) -> tuple[str, dict[str, object]]:
         attempt_id="attempt-1",
         provider_runtime_binding={
             "provider_id": "codex_app_server",
-            "host_api": 7,
-            "contract_version": 7,
+            "host_api": 8,
+            "contract_version": 8,
             "transport": "stdio",
             "lifecycle": "host_spawn",
             "protocol": "app-server-v1",
             "configuration_digest": "a" * 64,
             "readiness": "ready",
             "host_instance_id": "host-1",
+            "runtime_release_profile": RUNTIME_RELEASE_PROFILE,
         },
     )
     run = managed._new_run(current_request, run_id)
