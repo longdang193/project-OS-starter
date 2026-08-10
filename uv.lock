@@ -176,14 +176,8 @@ requires-dist = [
 
 [[package]]
 name = "harness-core-launcher"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "packages/harness-core-launcher" }
-dependencies = [
-    { name = "harness-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "harness-core", editable = "packages/harness-core" }]
 
 [[package]]
 name = "iniconfig"

@@ -2,25 +2,9 @@ from __future__ import annotations
 
 import importlib
 import json
-from importlib.metadata import version
-from pathlib import Path
-import tomllib
 
 from harness_core_launcher import cli
 from harness_core_launcher.loader import load_core, run_core_cli
-
-
-def test_launcher_declares_installed_core_dependency() -> None:
-    with (Path(__file__).parents[1] / "pyproject.toml").open("rb") as handle:
-        dependencies = tomllib.load(handle)["project"]["dependencies"]
-
-    assert any(
-        dependency.startswith(
-            "harness-core @ git+https://github.com/longdang193/project-OS-starter.git"
-            f"@harness-core-v{version('harness-core')}#subdirectory=packages/harness-core"
-        )
-        for dependency in dependencies
-    )
 
 
 def test_missing_core_returns_typed_environment_failure(monkeypatch) -> None:

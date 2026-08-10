@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from harness_core import build_runtime_release_profile, runtime_protocol_profile
+import harness_core_launcher.runtime_manager as runtime_manager
 from harness_core_launcher.runtime_manager import RuntimeManager, RuntimeManagerError
 
 
@@ -29,6 +30,14 @@ def _write_profile(root: Path, profile: dict[str, object]) -> Path:
 def test_doctor_rejects_missing_pointer(tmp_path: Path) -> None:
     with pytest.raises(RuntimeManagerError, match="harness_runtime_profile_unavailable"):
         RuntimeManager(tmp_path).doctor()
+
+
+def test_activation_does_not_require_launcher_core_import(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = _profile("b" * 40)
+    _write_profile(tmp_path, profile)
+    monkeypatch.setattr(runtime_manager, "load_core", lambda: {"missing": True}, raising=False)
+
+    assert RuntimeManager(tmp_path).activate(profile)["state"] == "ready"
 
 
 def test_activate_is_idempotent_keeps_previous_and_rolls_back(tmp_path: Path) -> None:

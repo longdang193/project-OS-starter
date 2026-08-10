@@ -10,9 +10,6 @@ import sys
 import uuid
 from typing import Any, Callable, Iterator, Sequence
 
-from .loader import load_core
-
-
 _POINTER_SCHEMA = "harness_runtime_pointer/v1"
 
 
@@ -38,17 +35,13 @@ def _result_json(result: Any, *, failure: str) -> dict[str, Any]:
     return payload
 
 
-def _normalize_release_profile(value: Any) -> dict[str, Any]:
-    core = load_core()
-    if isinstance(core, dict):
-        raise RuntimeManagerError("harness_runtime_profile_unavailable")
-    normalize = getattr(core, "normalize_runtime_release_profile", None)
-    if not callable(normalize):
-        raise RuntimeManagerError("harness_runtime_profile_unavailable")
-    try:
-        return normalize(value)
-    except ValueError as exc:
-        raise RuntimeManagerError("harness_runtime_profile_invalid") from exc
+def _profile_digest(value: Any) -> str:
+    if not isinstance(value, dict):
+        raise RuntimeManagerError("harness_runtime_profile_invalid")
+    digest = value.get("release_profile_digest")
+    if not isinstance(digest, str) or len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise RuntimeManagerError("harness_runtime_profile_invalid")
+    return digest
 
 
 class RuntimeManager:
@@ -113,7 +106,7 @@ class RuntimeManager:
 
     @staticmethod
     def _pointer_entry(profile: dict[str, Any]) -> dict[str, str]:
-        return {"release_profile_digest": profile["release_profile_digest"]}
+        return {"release_profile_digest": _profile_digest(profile)}
 
     def _write_pointer(self, pointer: dict[str, Any]) -> None:
         temporary = self.pointer_path.with_name(f".{self.pointer_path.name}.{uuid.uuid4().hex}.tmp")
@@ -152,10 +145,11 @@ class RuntimeManager:
         release_path = profile_root / "release.json"
         host_root = profile_root / "host"
         try:
-            profile = _normalize_release_profile(json.loads(release_path.read_text(encoding="utf-8")))
+            profile = json.loads(release_path.read_text(encoding="utf-8"))
+            profile_digest = _profile_digest(profile)
         except (OSError, RuntimeManagerError, json.JSONDecodeError) as exc:
             raise RuntimeManagerError("harness_runtime_profile_invalid") from exc
-        if profile["release_profile_digest"] != digest or not host_root.is_dir():
+        if profile_digest != digest or not host_root.is_dir():
             raise RuntimeManagerError("harness_runtime_profile_invalid")
         return profile, profile_root
 
@@ -173,8 +167,7 @@ class RuntimeManager:
                 shutil.rmtree(path)
 
     def _activate_locked(self, profile: dict[str, Any]) -> dict[str, Any]:
-        profile = _normalize_release_profile(profile)
-        profile_root = self._profile_root(profile["release_profile_digest"])
+        profile_root = self._profile_root(_profile_digest(profile))
         if not (profile_root / "host").is_dir() or not (profile_root / "release.json").is_file():
             raise RuntimeManagerError("harness_runtime_profile_invalid")
         try:
@@ -309,7 +302,7 @@ class RuntimeManager:
                     self._stage_command(staged_host, "release-profile", "--staging-root", str(stage), runner=runner),
                     failure="harness_runtime_profile_untrusted",
                 )
-                profile = _normalize_release_profile(profile)
+                _profile_digest(profile)
                 verified = _result_json(
                     self._stage_command(staged_host, "release-profile", "--staging-root", str(stage), "--verify", runner=runner),
                     failure="harness_runtime_profile_untrusted",
