@@ -1782,6 +1782,27 @@ def _normalize_lanes(root: Path, packet: dict[str, Any], allowed_paths: list[str
     ]
 
 
+def _lane_tool_use_requirement(packet: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any]:
+    read_only = lane["kind"] == "validate" or packet.get("workspace_write_access") == "read_only"
+    access_key = "validator_access" if read_only else "writer_access"
+    required_access = "read_only" if read_only else "workspace_write"
+    return {
+        "eligible_tools": sorted(
+            binding["tool"] for binding in packet["tool_bindings"] if binding[access_key] == required_access
+        ),
+        "required_access": required_access,
+        "minimum_uses": 1,
+    }
+
+
+def _resolved_lane_tool_use_requirement(packet: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any]:
+    requirement = _lane_tool_use_requirement(packet, lane)
+    recorded = lane.get("tool_use_requirement")
+    if recorded is not None and recorded != requirement:
+        raise HarnessError("packet lane tool-use requirement conflicts with packet tool bindings")
+    return requirement
+
+
 def _normalize_managed_request(
     root: Path,
     policy: dict[str, Any],
@@ -1949,6 +1970,9 @@ def resolve_managed_packet(
         })
     packet["lanes"] = _normalize_lanes(root, packet, allowed_paths, request.get("lanes"))
     if packet_api == CURRENT_PACKET_API:
+        for lane in packet["lanes"]:
+            if lane["node_kind"] == "agent":
+                lane["tool_use_requirement"] = _lane_tool_use_requirement(packet, lane)
         try:
             packet["execution_lease"] = resolve_execution_lease(
                 policy["execution_budgets"]["lease_duration_model"],
@@ -3406,12 +3430,11 @@ def _record_lane_execution_evidence(
         )
     ):
         raise HarnessError("host adapter lane execution evidence lacks packet tool proof")
-    access_key = "validator_access" if read_only else "writer_access"
-    required_access = "read_only" if read_only else "workspace_write"
+    requirement = _resolved_lane_tool_use_requirement(packet, lane)
     bindings = {binding["tool"]: binding for binding in packet["tool_bindings"]}
-    if any(tool not in bindings for tool in selected_tools) or not any(
-        bindings[tool][access_key] == required_access for tool in selected_tools
-    ):
+    if any(tool not in bindings for tool in selected_tools) or sum(
+        tool in requirement["eligible_tools"] for tool in selected_tools
+    ) < requirement["minimum_uses"]:
         raise HarnessError("host adapter lane did not use a packet-selected tool with required access")
     if read_only and evidence["workspace_status_before"] != evidence["workspace_status_after"]:
         raise HarnessError("read-only packet lane changed workspace")

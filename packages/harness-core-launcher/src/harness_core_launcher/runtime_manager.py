@@ -11,6 +11,7 @@ import uuid
 from typing import Any, Callable, Iterator, Sequence
 
 _POINTER_SCHEMA = "harness_runtime_pointer/v1"
+CONTROL_PLANE_TIMEOUT_SECONDS = 90
 
 
 class RuntimeManagerError(RuntimeError):
@@ -246,7 +247,7 @@ class RuntimeManager:
             capture_output=True,
             text=True,
             check=False,
-            timeout=90,
+            timeout=None if arguments[0] == "run" else CONTROL_PLANE_TIMEOUT_SECONDS,
         )
         payload = _result_json(result, failure="harness_runtime_profile_preflight_failed")
         runtime_release_profile = payload.get("runtime_release_profile")
@@ -260,7 +261,7 @@ class RuntimeManager:
             capture_output=True,
             text=True,
             check=False,
-            timeout=90,
+            timeout=CONTROL_PLANE_TIMEOUT_SECONDS,
         )
 
     def upgrade(

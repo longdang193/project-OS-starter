@@ -110,6 +110,37 @@ def test_host_invocation_uses_active_profile_project_not_path(tmp_path: Path) ->
     ]
 
 
+def test_host_run_invocation_defers_timeout_to_packet_owner(tmp_path: Path) -> None:
+    profile = _profile("b" * 40)
+    profile_root = _write_profile(tmp_path, profile)
+    manager = RuntimeManager(tmp_path)
+    manager.activate(profile)
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(command: list[str], **kwargs: object):
+        calls.append((command, kwargs))
+
+        class Result:
+            returncode = 0
+            stdout = json.dumps(
+                profile if "--verify" in command else {"state": "ready", "runtime_release_profile": profile}
+            )
+            stderr = ""
+
+        return Result()
+
+    manager.invoke_host(["run", "--harness-root", "repo", "--request", "request.json"], runner=run)
+    manager.invoke_host(["capabilities"], runner=run)
+
+    assert calls[1][0] == [
+        "uv", "--project", str(profile_root / "host"), "run", "--locked",
+        "codex-harness-host", "--release-profile", str(profile_root / "release.json"),
+        "run", "--harness-root", "repo", "--request", "request.json",
+    ]
+    assert calls[1][1]["timeout"] is None
+    assert calls[3][1]["timeout"] == 90
+
+
 def test_pointer_rejects_profile_outside_profile_directory(tmp_path: Path) -> None:
     manager = RuntimeManager(tmp_path)
     profile = _profile("b" * 40)

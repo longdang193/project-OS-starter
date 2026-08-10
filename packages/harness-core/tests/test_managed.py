@@ -671,6 +671,47 @@ def test_v5_packet_resolves_selected_profiles() -> None:
     assert packet["execution_budget"]["finalization_reserve_seconds"] == 60
 
 
+def test_current_packet_agent_lanes_embed_tool_use_requirement() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(version=5, execution_mode="single_work_lane"),
+        attempt_id="attempt-1",
+    )
+    requirements = {
+        lane["lane_id"]: lane["tool_use_requirement"]
+        for lane in packet["lanes"]
+        if lane["node_kind"] == "agent"
+    }
+
+    assert requirements == {
+        "primary": {
+            "eligible_tools": sorted(
+                binding["tool"]
+                for binding in packet["tool_bindings"]
+                if binding["writer_access"] == "workspace_write"
+            ),
+            "required_access": "workspace_write",
+            "minimum_uses": 1,
+        },
+        "validate": {
+            "eligible_tools": sorted(
+                binding["tool"]
+                for binding in packet["tool_bindings"]
+                if binding["validator_access"] == "read_only"
+            ),
+            "required_access": "read_only",
+            "minimum_uses": 1,
+        },
+    }
+    assert all(
+        "tool_use_requirement" not in lane
+        for lane in packet["lanes"]
+        if lane["node_kind"] != "agent"
+    )
+
+
 def test_fresh_request_api_must_match_policy_request_api(monkeypatch: pytest.MonkeyPatch) -> None:
     harness = load_module()
     policy = harness._load_policy(ROOT)

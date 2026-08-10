@@ -424,13 +424,14 @@ submitted to core must report full packet
 `execution_budget.turn_timeout_seconds`, never the work-slice or finalizer
 timeout. Preserve bounded per-slice observations in lane finalization evidence.
 
-Host records every actual packet-selected tool use, including an empty list,
-plus exact packet workspace command results. Core alone validates whether writer
-evidence uses a packet-selected `workspace_write` tool and validator evidence
-uses a packet-selected read-only tool. Validator evidence still requires a
-separate `read-only` turn and identical workspace status before and after. Core
-stores terminal observations and lane records in `run.json`, then fails or
-terminalizes when required tool proof is absent.
+Core resolves one immutable `tool_use_requirement` on each agent lane from
+packet tool bindings: eligible tools, required access, and minimum uses. Host
+renders that requirement verbatim but records every actual packet-selected tool
+use, including an empty list, plus exact packet workspace command results. Core
+alone validates evidence against this requirement. Validator evidence still
+requires a separate `read-only` turn and identical workspace status before and
+after. Core stores terminal observations and lane records in `run.json`, then
+fails or terminalizes when required tool proof is absent.
 
 ## Attempt Terminalization
 
