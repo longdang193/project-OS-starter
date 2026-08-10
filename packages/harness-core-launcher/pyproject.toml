@@ -4,11 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "harness-core-launcher"
-version = "0.1.1"
+version = "0.1.2"
 requires-python = ">=3.11"
+dependencies = [
+    "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.34#subdirectory=packages/harness-core",
+]
 
 [project.scripts]
 harness-core-launcher = "harness_core_launcher.cli:main"
+
+[tool.uv.sources]
+harness-core = { workspace = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]
