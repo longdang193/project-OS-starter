@@ -69,14 +69,23 @@ Passing `preflight` proves transport readiness, not committed runtime
 provenance. A dirty imported changed module blocks product dispatch even when
 preflight passes.
 
-After committed host-source update, refresh installed provider before dispatch:
+After a committed host-source update, refresh and prove the locked source host
+before dispatch:
 
 ```powershell
-uv tool install --force --reinstall --refresh .
-codex-harness-host run --help
+Set-Location <codex-harness-host-root>
+uv sync --locked
+uv run --locked harness-core --identity
+uv run --locked codex-harness-host capabilities
+uv run --locked codex-harness-host preflight
 ```
 
-`run --help` must expose both exclusive inputs: `--request` and `--run-id`.
+Never use bare `codex-harness-host` for preflight or dispatch. PATH can resolve
+a stale user-level `uv tool` with incompatible host or core code. If it does,
+inspect `Get-Command codex-harness-host -All` and `uv tool list`; preserve that
+tool until an authorized operator chooses update or removal. Locked source-host
+commands remain the only managed boundary. `run --help` must expose both
+exclusive inputs: `--request` and `--run-id`.
 
 `preflight` opens configured stdio or explicit external WebSocket transport and
 completes `initialize`. `stdio` plus `host_spawn` is Windows-only: host resolves

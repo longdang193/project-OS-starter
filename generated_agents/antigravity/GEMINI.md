@@ -74,6 +74,8 @@ configuration at `~/.codex/harness-providers.toml`: run
 `uv run --locked codex-harness-host capabilities`, then `uv run --locked codex-harness-host
 preflight`, then `uv run --locked codex-harness-host run --harness-root <repo-root>
 --request <request.json>`.
+Never dispatch bare `codex-harness-host`: PATH can resolve stale user-level tool
+code instead of the locked source host.
 Do not put endpoint, launch-command, or credential values in repository policy,
 requests, packets, or generated guidance. Host configuration admits only a
 registered launcher ID or an explicit external endpoint; it rejects arbitrary

@@ -29,6 +29,9 @@ To update: edit canonical source, then run sync.
   consumer request API or host API is a release-compatibility failure. All
   three block before packet creation; do not patch a consumer bridge, reroute,
   or waive around them.
+- For `codex_app_server`, invoke only `uv run --locked codex-harness-host` from
+  installed host source. Bare `codex-harness-host` can resolve stale PATH tool
+  code and is not a managed preflight or dispatch boundary.
 - Controller alone dispatches, retries, escalates, or requests approval.
 - Each lane gets one validated harness packet with exact allowed paths, base
   ref, selected authority, toolset, verification profile, and approval gates.

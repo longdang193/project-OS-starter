@@ -47,6 +47,8 @@ For `codex_app_server`, run host `capabilities` and `preflight` from installed
 host source before packet work. Host-owned trusted user configuration selects
 the registered launcher or explicit external endpoint; never copy endpoint,
 launch-command, or credential values into repository guidance or packets.
+Use only `uv run --locked codex-harness-host ...`; bare host commands can resolve
+stale user-level PATH tools and never prove the locked managed runtime.
 After host-source fix, follow
 [`managed-execution-adapter-contract.md`](../../../docs/operating_system/procedures/managed-execution-adapter-contract.md#committed-runtime-provenance)
 before product packet dispatch. `preflight` alone is insufficient; prove only

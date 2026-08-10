@@ -102,14 +102,15 @@ writes.
 
 ```powershell
 Set-Location <codex-harness-host-root>
-uv run codex-harness-host capabilities
-uv run codex-harness-host preflight
-uv run codex-harness-host run --harness-root <repo-root> --request <request.json>
+uv run --locked codex-harness-host capabilities
+uv run --locked codex-harness-host preflight
+uv run --locked codex-harness-host run --harness-root <repo-root> --request <request.json>
 ```
 
 Host reads transport only from trusted user configuration. Do not put an
 endpoint, launch command, or credentials in repository policy, requests, or
-packets.
+packets. Never dispatch bare `codex-harness-host`: PATH can resolve an unrelated
+user-level tool instead of the locked source host.
 
 Host contract:
 `docs/operating_system/procedures/managed-execution-adapter-contract.md`.
