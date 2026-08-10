@@ -172,6 +172,32 @@ def test_normalize_host_terminal_observation_v2_binds_packet_lease_and_containme
     assert normalize_host_terminal_observation(raw, V2_PACKET, binding=V2_BINDING) == raw
 
 
+def test_normalize_host_terminal_observation_v2_allows_no_start_provider_failure() -> None:
+    raw = host_observation(
+        source="provider_failure",
+        provider_session_id=None,
+        provider_turn_id=None,
+        terminal_status="failed",
+        final_claim_state={"state": "missing"},
+        error={
+            "field_names": ["message"],
+            "code_hash": None,
+            "code_length": None,
+            "message_hash": _digest("provider admission failed"),
+            "message_length": 25,
+        },
+        containment={
+            "state": "not_started",
+            "job_id": "job-1",
+            "root_processes": [],
+            "active_process_count": 0,
+            "termination_action": "none",
+        },
+    )
+
+    assert normalize_host_terminal_observation(raw, V2_PACKET, binding=V2_BINDING) == raw
+
+
 @pytest.mark.parametrize(
     "raw",
     [

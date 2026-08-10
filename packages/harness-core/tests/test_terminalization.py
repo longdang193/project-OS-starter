@@ -178,6 +178,76 @@ def test_terminalize_attempt_applies_and_replays_same_digest(tmp_path: Path) -> 
         shutil.rmtree(path.parent, ignore_errors=True)
 
 
+def test_terminalize_attempt_releases_lease_for_no_start_provider_failure(tmp_path: Path) -> None:
+    run_id, binding = write_running_run(tmp_path)
+    path = ROOT / ".harness" / "runs" / run_id / "run.json"
+    try:
+        evidence = {
+            "attempt_id": "attempt-1",
+            "host_terminal_observations": [
+                host_observation(
+                    binding,
+                    source="provider_failure",
+                    provider_session_id=None,
+                    provider_turn_id=None,
+                    terminal_status="failed",
+                    final_claim_state={"state": "missing"},
+                    error={
+                        "field_names": ["message"],
+                        "code_hash": None,
+                        "code_length": None,
+                        "message_hash": _digest("provider admission failed"),
+                        "message_length": 25,
+                    },
+                    containment={
+                        "state": "not_started",
+                        "job_id": "job-1",
+                        "root_processes": [],
+                        "active_process_count": 0,
+                        "termination_action": "none",
+                    },
+                )
+            ],
+        }
+
+        result = managed.terminalize_attempt(ROOT, run_id, evidence)
+        run = json.loads(path.read_text())
+
+        assert run["attempts"][0]["outcome"]["reason"] == "dispatch_failed"
+        assert run["attempts"][0]["execution_lease"]["state"] == "released"
+    finally:
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
+def test_terminalize_attempt_accepts_completed_check_observation(tmp_path: Path) -> None:
+    run_id, binding = write_running_run(tmp_path)
+    path = ROOT / ".harness" / "runs" / run_id / "run.json"
+    try:
+        managed.terminalize_attempt(
+            ROOT,
+            run_id,
+            {
+                "attempt_id": "attempt-1",
+                "host_terminal_observations": [
+                    host_observation(binding),
+                    host_observation(
+                        binding,
+                        observation_id="observation-check",
+                        lane_id="check:diff",
+                        provider_turn_id="turn-check",
+                    ),
+                ],
+            },
+        )
+
+        attempt = json.loads(path.read_text())["attempts"][0]
+        assert attempt["terminal_record"]["classification"] == "completed"
+        assert {item["lane_id"] for item in attempt["host_terminal_observations"]} == {"primary", "check:diff"}
+        assert attempt["execution_lease"]["state"] == "released"
+    finally:
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
 def test_terminalize_attempt_rejects_conflicting_or_malformed_evidence_without_mutation(tmp_path: Path) -> None:
     run_id, binding = write_running_run(tmp_path)
     path = ROOT / ".harness" / "runs" / run_id / "run.json"

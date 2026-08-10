@@ -342,6 +342,44 @@ class FakeAdapter:
             "runtime_provider": packet["runtime_provider"],
         } for binding in packet["tool_bindings"]]
 
+    @staticmethod
+    def _host_terminal_observation(packet, lane_id, turn_id):
+        lease = packet["execution_lease_binding"]
+        return {
+            "schema_id": "host_terminal_observation/v2",
+            "observation_id": f"observation-{lane_id}",
+            "run_id": lease["run_id"],
+            "attempt_id": lease["attempt_id"],
+            "packet_sha256": lease["packet_sha256"],
+            "lease_id": lease["lease_id"],
+            "lease_epoch": lease["lease_epoch"],
+            "host_instance_id": lease["host_instance_id"],
+            "lane_id": lane_id,
+            "source": "completed",
+            "observed_at": "2026-08-09T12:00:00+00:00",
+            "elapsed_seconds": 1.0,
+            "provider_session_id": "thread",
+            "provider_turn_id": turn_id,
+            "terminal_status": "completed",
+            "item_states": [],
+            "command_states": [],
+            "final_claim_state": {"state": "missing"},
+            "error": None,
+            "containment": {
+                "state": "stopped",
+                "job_id": "job-test",
+                "root_processes": [{"pid": 1, "creation_id": "process-test"}],
+                "active_process_count": 0,
+                "termination_action": "none",
+            },
+            "stop_proof": {
+                "state": "confirmed",
+                "observed_at": "2026-08-09T12:00:01+00:00",
+                "host_process": {"pid": 2, "creation_id": "host-test"},
+                "cancellation_request_id": None,
+            },
+        }
+
     def run_checks(self, packet, workspace):
         self.calls.append("run_checks")
         return {
@@ -354,6 +392,7 @@ class FakeAdapter:
                 "exit_code": 0,
                 "stdout": "ok",
                 "stderr": "",
+                **({"host_terminal_observation": self._host_terminal_observation(packet, f"check:{name}", f"turn-check:{name}")} if packet["version"] == 8 else {}),
             }
             for name, command in packet["checks"].items()
         }
@@ -2735,6 +2774,11 @@ def test_managed_run_uses_host_check_evidence(tmp_path: Path) -> None:
         assert [record["lane_id"] for record in run["attempts"][0]["claims"]] == ["primary", "validate"]
         assert [record["node_id"] for record in run["attempts"][0]["node_observations"]] == ["integrate", "check"]
         assert run["attempts"][0]["evidence"]["checks"][0]["workspace_root"] == str(ROOT)
+        assert {record["lane_id"] for record in run["attempts"][0]["host_terminal_observations"]} == {
+            "primary",
+            "validate",
+            "check:diff",
+        }
         assert adapter.calls.count("dispatch_lane") == 2
         assert adapter.calls.count("collect_claim") == 2
         assert "run_checks" in adapter.calls
@@ -2797,6 +2841,9 @@ def test_managed_validator_rejects_invalid_verdict(tmp_path: Path) -> None:
         )
 
         assert result["outcome"]["reason"] == "claim_invalid"
+        attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+        assert attempt["terminal_record"]["classification"] == "core_failure"
+        assert attempt["execution_lease"]["state"] == "released"
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -4092,3 +4139,106 @@ def test_friction_report_rejects_malformed_event(tmp_path: Path) -> None:
 
     with pytest.raises(harness.HarnessError, match="invalid friction event at line 1"):
         harness.friction_report(root)
+
+
+def test_api8_no_start_host_failure_terminalizes_and_releases_lease(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class DriftAdapter(FakeAdapter):
+        def prepare_workspace(self, lane, packet):
+            error = RuntimeError("provider_configuration_changed")
+            observation = self._host_terminal_observation(packet, lane["lane_id"], "turn-unallocated")
+            observation.update({
+                "source": "provider_failure",
+                "provider_session_id": None,
+                "provider_turn_id": None,
+                "terminal_status": "failed",
+                "final_claim_state": {"state": "missing"},
+                "error": {
+                    "field_names": ["message"],
+                    "code_hash": None,
+                    "code_length": None,
+                    "message_hash": "a" * 64,
+                    "message_length": len("provider_configuration_changed"),
+                },
+                "containment": {
+                    "state": "not_started",
+                    "job_id": "job-test",
+                    "root_processes": [],
+                    "active_process_count": 0,
+                    "termination_action": "none",
+                },
+            })
+            error.host_terminal_observation = observation
+            raise error
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            DriftAdapter({"single_work_lane": "enforced"}),
+        )
+        attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert attempt["terminal_record"]["classification"] == "provider_failure"
+        assert attempt["execution_lease"]["state"] == "released"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_api8_completed_host_evidence_terminalizes_core_failure(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class EvidenceFailureAdapter(FakeAdapter):
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            error = RuntimeError("agent evidence rejected")
+            error.host_terminal_observation = evidence["host_terminal_observation"]
+            raise error
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            EvidenceFailureAdapter({"single_work_lane": "enforced"}),
+        )
+        attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+        assert attempt["terminal_record"]["classification"] == "core_failure"
+        assert attempt["evidence"]["failure"]["reason"] == "dispatch_failed"
+        assert attempt["execution_lease"]["state"] == "released"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_api8_verification_exception_terminalizes_completed_observations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    def fail_verification(*_args, **_kwargs):
+        raise harness.HarnessError("verification exploded")
+
+    monkeypatch.setattr(harness, "_verify_managed", fail_verification)
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter({"single_work_lane": "enforced"}),
+        )
+        attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+
+        assert result["outcome"]["reason"] == "verification_failed"
+        assert attempt["terminal_record"]["classification"] == "core_failure"
+        assert attempt["execution_lease"]["state"] == "released"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)

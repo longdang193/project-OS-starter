@@ -37,6 +37,10 @@ Host binds every observation to run, attempt, packet digest, lease, and host
 instance identity. Expired live or unverified process state is `orphaned`, not
 retryable work. Windows containment uses one unnamed kill-on-close Job Object
 per lease; no PID-tree, process-group, `taskkill`, or reopened-job fallback.
+Host emits one terminal observation for every provider action, including packet
+checks. If completed stop proof exists but core rejects claim, check, or
+verification semantics, core records `core_failure` then terminalizes the same
+attempt; never fabricate `provider_failure` or leave the lease active.
 `stdio` plus `host_spawn` requires Windows Job containment and rejects
 unsupported hosts before child creation. Preflight owns temporary containment;
 leased lanes borrow containment. A host `terminal_recording_failed` payload

@@ -72,6 +72,11 @@ Use for ANY technical issue:
   `terminalize_attempt(envelope)`; evidence records outcome, and finalization
   records receipt. Host never writes `run.json`. Expired live or unverified
   process state is `orphaned`, so retry and resume stay blocked.
+  Distinguish provider lifecycle failure from core semantic failure: a completed
+  stop proof followed by claim, check, or verification rejection is
+  `core_failure`, not `provider_failure`. Verify one terminal observation per
+  lane or host-run check, then verify core terminalization releases the same
+  lease.
   A read-only diagnosis may consume only
   immutable packet `readonly_artifacts`; never inspect an ambient `.harness`
   directory from a clean clone. Missing route-required artifacts blocks

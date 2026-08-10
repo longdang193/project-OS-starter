@@ -160,11 +160,14 @@ separate read-only finalizer for exactly `finalization_reserve_seconds`. Finaliz
 may inspect at most once, never writes or runs diagnostics, and returns only its
 structured claim. It is a completion phase, not a lane, check, retry, or resume.
 Packet-native tool probes and checks use packet `turn_timeout_seconds`. The short
-`preflight` bound is transport-only and never substitutes for packet budget.
+`preflight` bound is transport-only and never substitutes for packet budget. On
+Windows, every provider or packet-native tool process for one lease uses that
+lease's Job Object containment.
 For packet API 8, host returns one bounded
-`host_terminal_observation/v2` for each terminal dispatched lane. Core validates
-schema, lane, immutable run/attempt/packet/lease/host binding, lease duration,
-and timestamp before persisting normalized observations under
+`host_terminal_observation/v2` for each terminal dispatched lane and each
+host-run packet check (`check:<name>`). Core validates schema, lane, immutable
+run/attempt/packet/lease/host binding, lease duration, and timestamp before
+persisting normalized observations under
 `attempt.host_terminal_observations` inside `terminalize_attempt(evidence)`.
 Observation sources are `completed`, `provider_failure`, `timeout`, and
 `cancellation`; host crash uses separate recovery absence proof. Observations
@@ -173,6 +176,11 @@ bounded item and command state, final-claim state, containment, stop proof, and
 error field names plus SHA-256 hashes and byte lengths. They never store raw
 command output, prompts, environment values, provider error text, or assistant
 text.
+
+If completed host stop proof exists but core later rejects a claim, check result,
+or verification semantics, core records `evidence.failure` and terminalizes the
+attempt as `core_failure`. Host must not rewrite completed work as
+`provider_failure`, and core must not leave the lease active.
 
 Core derives timeout as `dispatch_timeout` unless terminal evidence shows a
 write-capable work lane completed one or more commands but emitted no final

@@ -2123,6 +2123,30 @@ def _has_terminal_host_failure(attempt: dict[str, Any]) -> bool:
     )
 
 
+def _packet_check_lane_ids(packet: dict[str, Any]) -> set[str]:
+    checks = packet.get("checks")
+    if not isinstance(checks, dict):
+        return set()
+    return {f"check:{name}" for name in checks if isinstance(name, str)}
+
+
+def _has_completed_host_observations(attempt: dict[str, Any]) -> bool:
+    observations = attempt.get("host_terminal_observations")
+    if not isinstance(observations, list) or not observations:
+        return False
+    if not all(isinstance(observation, dict) and observation.get("source") == "completed" for observation in observations):
+        return False
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict):
+        return False
+    check_lane_ids = _packet_check_lane_ids(packet)
+    return {
+        observation["lane_id"]
+        for observation in observations
+        if isinstance(observation.get("lane_id"), str) and observation["lane_id"] not in check_lane_ids
+    } == _dispatched_lane_ids(attempt)
+
+
 def _normalize_recovery_observation(value: Any, binding: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != _RECOVERY_OBSERVATION_FIELDS:
         raise HarnessError("recovery observation is invalid")
@@ -2262,10 +2286,21 @@ def _terminal_classification(
     packet = attempt["packet"]
     sources = {observation["source"] for observation in observations}
     if sources == {"completed"}:
+        check_lane_ids = _packet_check_lane_ids(packet)
         observed_lanes = {observation["lane_id"] for observation in observations}
+        observed_agent_lanes = observed_lanes - check_lane_ids
         dispatched_lanes = _dispatched_lane_ids(attempt)
-        if dispatched_lanes and observed_lanes != dispatched_lanes:
+        if dispatched_lanes and observed_agent_lanes != dispatched_lanes:
             raise HarnessError("terminalization lacks observations for every dispatched lane")
+        failure = attempt.get("evidence", {}).get("failure")
+        if isinstance(failure, dict):
+            reason = failure.get("reason")
+            if not isinstance(reason, str) or not reason:
+                raise HarnessError("terminalization core failure is invalid")
+            decisions = ["block"]
+            if reason in packet["retry_policy"]["retryable_reasons"]:
+                decisions = ["retry", "escalate", "block"]
+            return "core_failure", reason, decisions, ["friction_event_ids", "evidence.failure"]
         verification = attempt.get("evidence")
         if not isinstance(verification, dict) or not isinstance(verification.get("criteria"), list) or not isinstance(verification.get("blockers"), list):
             raise HarnessError("terminalization lacks persisted core verification")
@@ -3739,6 +3774,35 @@ def _record_failure(
     return _persist_outcome_transition(root, run, attempt, policy, reason)
 
 
+def _record_core_failure_and_terminalize(
+    root: Path,
+    run: dict[str, Any],
+    policy: dict[str, Any],
+    attempt: dict[str, Any],
+    reason: str,
+    detail: str,
+    *,
+    phase: str,
+) -> dict[str, Any]:
+    _record_attempt_friction(
+        root,
+        run,
+        attempt,
+        lane=None,
+        source="controller",
+        phase=phase,
+        code=reason,
+        evidence_ref="evidence.failure",
+    )
+    attempt.setdefault("evidence", {})["failure"] = {
+        "reason": reason,
+        "phase": phase,
+        "detail": detail,
+    }
+    _write_run(root, run)
+    return _terminalize_collected_attempt(root, run, attempt)
+
+
 def _normalize_terminal_evidence(exc: Exception, packet: dict[str, Any]) -> dict[str, Any] | None:
     raw = getattr(exc, "terminal_observation", None)
     if raw is None:
@@ -3893,8 +3957,19 @@ def _record_dispatch_exception(
                 attempt["packet"],
                 {"host_terminal_observation": host_observation},
             )
-            _write_run(root, run)
-            return _terminalize_collected_attempt(root, run, attempt)
+            if _has_terminal_host_failure(attempt):
+                _write_run(root, run)
+                return _terminalize_collected_attempt(root, run, attempt)
+            if _has_completed_host_observations(attempt):
+                return _record_core_failure_and_terminalize(
+                    root,
+                    run,
+                    policy,
+                    attempt,
+                    "dispatch_failed",
+                    str(exc),
+                    phase=phase,
+                )
     terminal_evidence = _normalize_terminal_evidence(exc, attempt["packet"])
     if terminal_evidence is not None:
         try:
@@ -4318,6 +4393,7 @@ def _execute_attempt(
                     bindings = _adapter_call(adapter, "verify_tool_bindings", lane, packet, workspace)
                     _record_tool_binding_evidence(attempt, lane, packet, workspace, bindings)
                     handle = _adapter_call(adapter, "dispatch_lane", lane, packet, workspace, _delegation_bridge(root, run, attempt, lane))
+                    lane["status"] = "running"
                     active_handles.append((lane, handle))
                 for lane, handle in active_handles[:]:
                     evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
@@ -4372,6 +4448,7 @@ def _execute_attempt(
                 bindings = _adapter_call(adapter, "verify_tool_bindings", validator, packet, workspace)
                 _record_tool_binding_evidence(attempt, validator, packet, workspace, bindings)
                 handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, _delegation_bridge(root, run, attempt, validator))
+                validator["status"] = "running"
                 active_handles.append((validator, handle))
                 evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
                 _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
@@ -4429,6 +4506,8 @@ def _execute_attempt(
                     or not isinstance(check.get("stderr"), str)
                 ):
                     raise HarnessError(f"host adapter check `{name}` lacks packet workspace evidence")
+                if packet.get("version") == CURRENT_PACKET_API:
+                    _record_host_terminal_observation(attempt, packet, check)
                 checks.append({"name": name, **check})
             check_node["workspace"] = copy.deepcopy(workspace)
             check_node["status"] = "succeeded"
@@ -4438,11 +4517,31 @@ def _execute_attempt(
         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="claim")
         if packet.get("version") == CURRENT_PACKET_API and _has_terminal_host_failure(attempt):
             return _terminalize_collected_attempt(root, run, attempt)
+        if packet.get("version") == CURRENT_PACKET_API and _has_completed_host_observations(attempt):
+            return _record_core_failure_and_terminalize(
+                root,
+                run,
+                policy,
+                attempt,
+                "claim_invalid",
+                str(exc),
+                phase="claim",
+            )
         return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc), phase="claim")
     except Exception as exc:
         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase=failure_phase)
         if packet.get("version") == CURRENT_PACKET_API and _has_terminal_host_failure(attempt):
             return _terminalize_collected_attempt(root, run, attempt)
+        if packet.get("version") == CURRENT_PACKET_API and _has_completed_host_observations(attempt):
+            return _record_core_failure_and_terminalize(
+                root,
+                run,
+                policy,
+                attempt,
+                "dispatch_failed",
+                str(exc),
+                phase=failure_phase,
+            )
         return _record_dispatch_exception(root, run, policy, attempt, exc, phase=failure_phase)
     _transition(run, policy["states"], "observed", "claim_collected")
     _transition(run, policy["states"], "verifying", "verify")
@@ -4465,6 +4564,16 @@ def _execute_attempt(
                 str(exc),
                 phase="check",
                 terminal_evidence=terminal_evidence,
+            )
+        if packet.get("version") == CURRENT_PACKET_API and _has_completed_host_observations(attempt):
+            return _record_core_failure_and_terminalize(
+                root,
+                run,
+                policy,
+                attempt,
+                "verification_failed",
+                str(exc),
+                phase="check",
             )
         return _record_failure(root, run, policy, attempt, "verification_failed", str(exc), phase="check")
     attempt.setdefault("evidence", {}).update(verification)

@@ -44,6 +44,10 @@ distribution_tier: starter_kit
   signed `controller_authorization/v1`. Core atomically writes terminal evidence,
   receipt, lease release, state history, and `run.json`. Live or unverified
   expired processes are `orphaned`; do not retry or resume them.
+- Every host-executed lane, validator, and packet check returns one terminal
+  observation. Completed host stop proof plus later core claim, check, or
+  verification rejection is `core_failure`: core terminalizes and releases the
+  same lease; host never fabricates `provider_failure`.
 - `stdio` plus `host_spawn` requires Windows Job containment and must reject
   unsupported hosts before child creation. Preflight owns temporary containment;
   lease lanes borrow containment. A host `terminal_recording_failed` payload

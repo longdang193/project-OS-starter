@@ -253,20 +253,22 @@ def _containment(value: Any) -> dict[str, Any]:
         raise TerminalObservationError("terminal observation has invalid containment")
     roots = value.get("root_processes")
     count = value.get("active_process_count")
-    if (
-        value.get("state") != "stopped"
-        or not isinstance(roots, list)
-        or not 1 <= len(roots) <= _MAX_ITEMS
-        or not isinstance(count, int)
-        or isinstance(count, bool)
-        or count != 0
-    ):
-        raise TerminalObservationError("terminal observation has incomplete containment proof")
+    state = value.get("state")
     action = value.get("termination_action")
+    if not isinstance(roots, list) or not isinstance(count, int) or isinstance(count, bool) or count != 0:
+        raise TerminalObservationError("terminal observation has incomplete containment proof")
+    if state == "not_started":
+        if roots or action != "none":
+            raise TerminalObservationError("terminal observation has incomplete containment proof")
+    elif state == "stopped":
+        if not 1 <= len(roots) <= _MAX_ITEMS or action not in {"none", "job_terminated", "host_handle_closed", "external_cleanup"}:
+            raise TerminalObservationError("terminal observation has incomplete containment proof")
+    else:
+        raise TerminalObservationError("terminal observation has incomplete containment proof")
     if action not in {"none", "job_terminated", "host_handle_closed", "external_cleanup"}:
         raise TerminalObservationError("terminal observation has invalid containment termination_action")
     return {
-        "state": "stopped",
+        "state": state,
         "job_id": _identifier(value.get("job_id"), "containment.job_id"),
         "root_processes": [_process(item, "containment.root_processes") for item in roots],
         "active_process_count": 0,
@@ -338,9 +340,15 @@ def normalize_host_terminal_observation(
         raise TerminalObservationError("terminal observation has invalid elapsed_seconds")
     session_id = _optional_identifier(raw.get("provider_session_id"), "provider_session_id")
     turn_id = _optional_identifier(raw.get("provider_turn_id"), "provider_turn_id")
-    if source in {"completed", "provider_failure", "timeout", "cancellation"} and (session_id is None or turn_id is None):
-        raise TerminalObservationError("terminal observation lacks provider identity")
+    if (session_id is None) != (turn_id is None):
+        raise TerminalObservationError("terminal observation has incomplete provider identity")
     containment = _containment(raw.get("containment"))
+    if source in {"completed", "timeout", "cancellation"} and (session_id is None or turn_id is None):
+        raise TerminalObservationError("terminal observation lacks provider identity")
+    if source == "completed" and containment["state"] != "stopped":
+        raise TerminalObservationError("terminal observation has incomplete containment proof")
+    if source != "provider_failure" and containment["state"] == "not_started":
+        raise TerminalObservationError("terminal observation has incomplete containment proof")
     return {
         "schema_id": "host_terminal_observation/v2",
         "observation_id": _identifier(raw.get("observation_id"), "observation_id"),
