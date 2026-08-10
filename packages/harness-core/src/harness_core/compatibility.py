@@ -62,6 +62,11 @@ POLICY_SCHEMA_VERSION = 9
 SUPPORTED_HOST_APIS = frozenset({profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES})
 TERMINAL_OBSERVATION_VERSION = 1
 TIMEOUT_OBSERVATION_VERSION = TERMINAL_OBSERVATION_VERSION
+APP_SERVER_MODEL_SELECTION_FIELDS = (
+    "model_provider",
+    "model",
+    "reasoning_effort",
+)
 # ponytail: temporary API 2/3 authority map; remove when packet API 3 dispatch support ends.
 LEGACY_ROLE_CAPABILITIES = {
     "implement": ("repo.write",),

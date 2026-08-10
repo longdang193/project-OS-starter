@@ -47,6 +47,7 @@ from .config_validation import (
 )
 from . import authority
 from .compatibility import (
+    APP_SERVER_MODEL_SELECTION_FIELDS,
     CURRENT_PACKET_API,
     CURRENT_RUN_API,
     admit_host_api,
@@ -130,6 +131,7 @@ CLAIM_REPAIR_FINALIZATION_FIELDS = {
     "prompt_digest",
     "elapsed_seconds",
 }
+CLAIM_REPAIR_FINALIZATION_OPTIONAL_FIELDS = {"app_server_model_selection"}
 DELEGATED_CHILD_TERMINAL_STATES = {"succeeded", "failed", "cancelled", "timed_out", "awaiting_decision"}
 CORE_STATE_TRANSITIONS = {
     "classified": ["planned", "blocked"],
@@ -2767,7 +2769,14 @@ def _delegation_bridge(root: Path, run: dict[str, Any], attempt: dict[str, Any],
         "parent_node_id": parent_node_id,
         "delegate": lambda request: delegate(root, run["run_id"], parent_invocation_id, request),
         "child_packet": lambda child_id: _delegated_child_packet(root, run["run_id"], child_id),
-        "complete": lambda child_id, status, claim: complete_delegated_child(root, run["run_id"], child_id, status, claim),
+        "complete": lambda child_id, status, claim, app_server_model_selection=None: complete_delegated_child(
+            root,
+            run["run_id"],
+            child_id,
+            status,
+            claim,
+            app_server_model_selection,
+        ),
     }
 
 
@@ -2793,6 +2802,7 @@ def complete_delegated_child(
     child_invocation_id: str,
     status: str,
     claim: dict[str, Any] | None,
+    app_server_model_selection: dict[str, Any] | None = None,
 ) -> DelegationResult:
     run = _load_run(root, _safe_run_id(run_id))
     attempt = _active_attempt(run)
@@ -2819,6 +2829,10 @@ def complete_delegated_child(
         return {"ok": False, "code": "delegation_not_permitted"}
 
     child_packet = child["packet"]
+    try:
+        _validate_app_server_model_selection(child_packet, app_server_model_selection)
+    except HarnessError:
+        return {"ok": False, "code": "delegation_result_invalid"}
     if status == "succeeded" and child_packet.get("verification") == "schema":
         try:
             roles, claim_fields = _load_role_catalog(root)
@@ -2843,6 +2857,8 @@ def complete_delegated_child(
     child["status"] = status
     if claim is not None:
         child["claim"] = copy.deepcopy(claim)
+    if app_server_model_selection is not None:
+        child["app_server_model_selection"] = copy.deepcopy(app_server_model_selection)
     result: DelegationResult = {"ok": True, "invocation_id": child_invocation_id, "status": status, "summary": summary}
     child["terminal_result"] = copy.deepcopy(result)
     ledger = attempt.get("reservation_ledger")
@@ -3226,6 +3242,22 @@ def _record_tool_binding_evidence(
     })
 
 
+def _validate_app_server_model_selection(packet: dict[str, Any], value: Any) -> None:
+    if value is None:
+        return
+    identity = packet.get("agent_identity")
+    if not isinstance(identity, dict):
+        raise HarnessError("packet agent identity is invalid")
+    expected = {field: identity.get(field) for field in APP_SERVER_MODEL_SELECTION_FIELDS}
+    if (
+        not isinstance(value, dict)
+        or set(value) != set(APP_SERVER_MODEL_SELECTION_FIELDS)
+        or not all(isinstance(item, str) and item for item in expected.values())
+        or value != expected
+    ):
+        raise HarnessError("host adapter app server model selection conflicts with packet")
+
+
 def _record_lane_execution_evidence(
     attempt: dict[str, Any],
     lane: dict[str, Any],
@@ -3255,6 +3287,7 @@ def _record_lane_execution_evidence(
         or not isinstance(evidence.get("workspace_status_after"), str)
     ):
         raise HarnessError("host adapter lane execution evidence conflicts with packet")
+    _validate_app_server_model_selection(packet, evidence.get("app_server_model_selection"))
     is_current_packet = packet.get("version") == CURRENT_PACKET_API
     if is_current_packet and evidence.get("terminal_status") != "completed":
         _record_host_terminal_observation(attempt, packet, evidence)
@@ -4118,7 +4151,11 @@ def _normalize_claim_repair_result(
     if not isinstance(value, dict) or set(value) != CLAIM_REPAIR_RESULT_FIELDS:
         raise HarnessError("host adapter claim repair result is invalid")
     finalization = value["finalization_evidence"]
-    if not isinstance(finalization, dict) or set(finalization) != CLAIM_REPAIR_FINALIZATION_FIELDS:
+    if (
+        not isinstance(finalization, dict)
+        or not CLAIM_REPAIR_FINALIZATION_FIELDS <= set(finalization)
+        or set(finalization) - CLAIM_REPAIR_FINALIZATION_FIELDS - CLAIM_REPAIR_FINALIZATION_OPTIONAL_FIELDS
+    ):
         raise HarnessError("host adapter claim repair evidence is invalid")
     elapsed = finalization["elapsed_seconds"]
     reserve = packet["execution_budget"]["finalization_reserve_seconds"]
@@ -4142,6 +4179,7 @@ def _normalize_claim_repair_result(
         or elapsed > reserve
     ):
         raise HarnessError("host adapter claim repair evidence conflicts with packet")
+    _validate_app_server_model_selection(packet, finalization.get("app_server_model_selection"))
     observation = _normalize_claim_observation(value["claim_observation"], lane, evidence)
     if finalization["terminal_status"] == "timed_out" and observation["state"] != "missing":
         raise HarnessError("timed-out claim repair returned a candidate")
@@ -4208,6 +4246,8 @@ def _record_v7_lane_claim(
             "turn_id": finalization["turn_id"],
         }
         repair_record["safe_prompt_digest"] = finalization["prompt_digest"]
+        if "app_server_model_selection" in finalization:
+            repair_record["app_server_model_selection"] = copy.deepcopy(finalization["app_server_model_selection"])
         repaired_failure = _claim_observation_failure(repaired_observation)
         if repaired_failure is not None:
             raise repaired_failure
@@ -4506,6 +4546,7 @@ def _execute_attempt(
                     or not isinstance(check.get("stderr"), str)
                 ):
                     raise HarnessError(f"host adapter check `{name}` lacks packet workspace evidence")
+                _validate_app_server_model_selection(packet, check.get("app_server_model_selection"))
                 if packet.get("version") == CURRENT_PACKET_API:
                     _record_host_terminal_observation(attempt, packet, check)
                 checks.append({"name": name, **check})

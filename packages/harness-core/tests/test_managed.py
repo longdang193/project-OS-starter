@@ -1470,13 +1470,32 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
         })
         assert harness._load_run(ROOT, run_id)["attempts"][0]["nodes"][0]["status"] == "waiting_for_child"
         claim = {"kind": "claimed_result", "summary": "found", "findings": ["ok"]}
+        model_selection = {
+            field: packet["agent_identity"][field]
+            for field in ("model_provider", "model", "reasoning_effort")
+        }
 
-        first = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "succeeded", claim)
-        second = harness.complete_delegated_child(ROOT, run_id, child["invocation_id"], "succeeded", claim)
+        first = harness.complete_delegated_child(
+            ROOT,
+            run_id,
+            child["invocation_id"],
+            "succeeded",
+            claim,
+            model_selection,
+        )
+        second = harness.complete_delegated_child(
+            ROOT,
+            run_id,
+            child["invocation_id"],
+            "succeeded",
+            claim,
+            model_selection,
+        )
 
         assert first == second == {"ok": True, "invocation_id": child["invocation_id"], "status": "succeeded", "summary": "found"}
         attempt = harness._load_run(ROOT, run_id)["attempts"][0]
         assert attempt["children"][0]["status"] == "succeeded"
+        assert attempt["children"][0]["app_server_model_selection"] == model_selection
         assert attempt["nodes"][0]["status"] == "running"
         assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": True}]
 
@@ -2722,6 +2741,106 @@ def test_missing_or_mismatched_agent_identity_blocks_before_verification(tmp_pat
             ROOT,
             managed_request(run_id=tmp_path.name),
             MismatchedAgentAdapter({"single_work_lane": "enforced"}),
+        )
+
+        assert result["outcome"]["reason"] == "dispatch_failed"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_mismatched_app_server_model_selection_is_rejected() -> None:
+    harness = load_module()
+    runtime_provider = {"provider_id": "codex_app_server", "contract_version": 7}
+    workspace = {"path": "C:\\workspace"}
+    packet = {
+        "workspace_write_access": "read_only",
+        "runtime_provider": runtime_provider,
+        "agent_identity": {
+            "template": "low",
+            "model_provider": "9router",
+            "model": "combo-low",
+            "reasoning_effort": "medium",
+        },
+        "tool_bindings": [{
+            "tool": "shell",
+            "host_kind": "app_server_shell",
+            "writer_access": "workspace_write",
+            "validator_access": "read_only",
+            "root_probe": "shell_root_probe",
+        }],
+    }
+    lane = {"lane_id": "primary", "kind": "work"}
+    evidence = {
+        "lane_id": "primary",
+        "workspace_root": workspace["path"],
+        "sandbox": "read-only",
+        "ambient_mcp": False,
+        "runtime_provider": runtime_provider,
+        "agent_identity": packet["agent_identity"],
+        "app_server_model_selection": {
+            "model_provider": "9router",
+            "model": "wrong",
+            "reasoning_effort": "medium",
+        },
+        "thread_id": "thread",
+        "turn_id": "turn",
+        "workspace_status_before": "",
+        "workspace_status_after": "",
+        "selected_tools_used": ["shell"],
+        "tool_calls": ["shell"],
+        "command_results": [{"cwd": workspace["path"], "runtime_provider": runtime_provider}],
+    }
+
+    with pytest.raises(harness.HarnessError, match="app server model selection"):
+        harness._record_lane_execution_evidence({}, lane, packet, workspace, evidence)
+
+
+def test_claim_repair_model_selection_must_match_packet() -> None:
+    harness = load_module()
+    packet = harness.resolve_managed_packet(ROOT, managed_request(), attempt_id="attempt-1")
+    lane = packet["lanes"][0]
+    result = FakeAdapter({"single_work_lane": "enforced"}).repair_claim(
+        {"lane_id": lane["lane_id"]},
+        lane,
+        packet,
+        {"path": str(ROOT)},
+        {},
+    )
+    result["finalization_evidence"]["app_server_model_selection"] = {
+        "model_provider": packet["agent_identity"]["model_provider"],
+        "model": "wrong",
+        "reasoning_effort": packet["agent_identity"]["reasoning_effort"],
+    }
+
+    with pytest.raises(harness.HarnessError, match="app server model selection"):
+        harness._normalize_claim_repair_result(
+            result,
+            lane,
+            packet,
+            {"thread_id": "thread"},
+        )
+
+
+def test_host_check_model_selection_must_match_packet(tmp_path: Path) -> None:
+    class MismatchedCheckAdapter(FakeAdapter):
+        def run_checks(self, packet, workspace):
+            checks = super().run_checks(packet, workspace)
+            checks["diff"]["app_server_model_selection"] = {
+                "model_provider": packet["agent_identity"]["model_provider"],
+                "model": "wrong",
+                "reasoning_effort": packet["agent_identity"]["reasoning_effort"],
+            }
+            return checks
+
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            MismatchedCheckAdapter({"single_work_lane": "enforced"}),
+            collect_changes=lambda root, base_commit: [],
         )
 
         assert result["outcome"]["reason"] == "dispatch_failed"

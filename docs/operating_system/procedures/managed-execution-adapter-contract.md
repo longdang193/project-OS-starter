@@ -125,6 +125,14 @@ reasoning_effort}`. App-server has no template field; confirmed runtime model
 selection plus immutable template copy proves selected template contract.
 Missing or mismatched confirmation blocks lane evidence and acceptance.
 
+Host records a confirmed selection as `app_server_model_selection` on every
+completed App Server turn whose result becomes core evidence: lane evidence,
+packet checks, completed claim-repair finalization, and delegated-child
+completion. Core compares every present record to immutable packet
+`agent_identity`; no producer may substitute a caller-selected model. Field is
+additive for historical evidence only: core permits its absence from older
+records, while current host-produced evidence always includes it.
+
 ## Packet Context And Verification
 
 Core resolves the selected authority, toolset, and verification profile into

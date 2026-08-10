@@ -1,4 +1,5 @@
 from .compatibility import (
+    APP_SERVER_MODEL_SELECTION_FIELDS,
     COMPATIBILITY_PROFILES,
     CURRENT_PACKET_API,
     CURRENT_RUN_API,
@@ -9,6 +10,7 @@ from .compatibility import (
 )
 
 __all__ = [
+    "APP_SERVER_MODEL_SELECTION_FIELDS",
     "COMPATIBILITY_PROFILES",
     "CURRENT_PACKET_API",
     "CURRENT_RUN_API",

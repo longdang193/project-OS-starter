@@ -29,6 +29,16 @@ def test_public_package_exports_current_protocol_constants() -> None:
     assert harness_core.CURRENT_PACKET_API == 8
     assert harness_core.CURRENT_RUN_API == 2
     assert harness_core.SUPPORTED_HOST_APIS == frozenset({2, 3, 4, 5, 6, 7})
+    assert harness_core.APP_SERVER_MODEL_SELECTION_FIELDS == (
+        "model_provider",
+        "model",
+        "reasoning_effort",
+    )
+    assert harness_core.APP_SERVER_MODEL_SELECTION_FIELDS == (
+        "model_provider",
+        "model",
+        "reasoning_effort",
+    )
 
 
 def test_static_provider_runtime_binding_omits_host_identity() -> None:
