@@ -2645,6 +2645,10 @@ def recover_stranded_run(
     return _managed_result(_load_run(root, run_id))
 
 
+def _delegated_child_lane_id(child_invocation_id: str) -> str:
+    return f"child-{uuid.uuid5(uuid.NAMESPACE_URL, child_invocation_id).hex[:12]}"
+
+
 def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[str, Any]) -> DelegationResult:
     run = _load_run(root, _safe_run_id(run_id))
     attempt = _active_attempt(run)
@@ -2726,6 +2730,7 @@ def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[s
     child_packet = copy.deepcopy(packet)
     child_packet.update({
         "invocation_id": child_id,
+        "delegated_lane_id": _delegated_child_lane_id(child_id),
         "parent_invocation_id": parent_invocation_id,
         "delegation_depth": parent_depth + 1,
         "role": role,
@@ -2848,6 +2853,23 @@ def complete_delegated_child(
         _validate_app_server_model_selection(child_packet, app_server_model_selection)
     except HarnessError:
         return {"ok": False, "code": "delegation_result_invalid"}
+    claim_observation: dict[str, Any] | None = None
+    if status == "succeeded" and child_packet.get("version") == CURRENT_PACKET_API:
+        try:
+            lane_id = _required_string(child_packet.get("delegated_lane_id"), "delegated child lane id")
+            if not isinstance(claim, dict):
+                raise HarnessError("delegated child claim observation is required")
+            observation = _normalize_claim_observation(
+                claim,
+                {"lane_id": lane_id},
+                {"thread_id": claim.get("thread_id")},
+            )
+            if _claim_observation_failure(observation) is not None:
+                raise HarnessError("delegated child claim observation is unusable")
+            claim_observation = observation
+            claim = observation["candidate_claim"]
+        except HarnessError:
+            return {"ok": False, "code": "delegation_result_invalid"}
     if status == "succeeded" and child_packet.get("verification") == "schema":
         try:
             roles, claim_fields = _load_role_catalog(root)
@@ -2872,6 +2894,8 @@ def complete_delegated_child(
     child["status"] = status
     if claim is not None:
         child["claim"] = copy.deepcopy(claim)
+    if claim_observation is not None:
+        child["claim_observation"] = copy.deepcopy(claim_observation)
     if app_server_model_selection is not None:
         child["app_server_model_selection"] = copy.deepcopy(app_server_model_selection)
     result: DelegationResult = {"ok": True, "invocation_id": child_invocation_id, "status": status, "summary": summary}

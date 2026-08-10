@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 from types import SimpleNamespace
+import uuid
 
 import pytest
 import yaml
@@ -1511,13 +1512,20 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
             field: packet["agent_identity"][field]
             for field in ("model_provider", "model", "reasoning_effort")
         }
+        claim_observation = {
+            "version": 1,
+            "lane_id": harness._delegated_child_lane_id(child["invocation_id"]),
+            "thread_id": "child-thread",
+            "state": "object",
+            "candidate_claim": claim,
+        }
 
         first = harness.complete_delegated_child(
             ROOT,
             run_id,
             child["invocation_id"],
             "succeeded",
-            claim,
+            claim_observation,
             model_selection,
         )
         second = harness.complete_delegated_child(
@@ -1525,13 +1533,14 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
             run_id,
             child["invocation_id"],
             "succeeded",
-            claim,
+            claim_observation,
             model_selection,
         )
 
         assert first == second == {"ok": True, "invocation_id": child["invocation_id"], "status": "succeeded", "summary": "found"}
         attempt = harness._load_run(ROOT, run_id)["attempts"][0]
         assert attempt["children"][0]["status"] == "succeeded"
+        assert attempt["children"][0]["claim_observation"] == claim_observation
         assert attempt["children"][0]["app_server_model_selection"] == model_selection
         assert attempt["nodes"][0]["status"] == "running"
         assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": True}]
@@ -1550,6 +1559,55 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
             "succeeded",
             {"kind": "claimed_result", "summary": "x" * 4097, "findings": ["ok"]},
         ) == {"ok": False, "code": "delegation_result_invalid"}
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
+def test_delegate_current_packet_accepts_bound_claim_observation(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+        child = harness.delegate(ROOT, run_id, packet["invocation_id"], {
+            "idempotency_key": "child-1",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+        candidate_claim = {"kind": "claimed_result", "summary": "found", "findings": ["ok"]}
+        observation = {
+            "version": 1,
+            "lane_id": f"child-{uuid.uuid5(uuid.NAMESPACE_URL, child['invocation_id']).hex[:12]}",
+            "thread_id": "child-thread",
+            "state": "object",
+            "candidate_claim": candidate_claim,
+        }
+        model_selection = {
+            field: packet["agent_identity"][field]
+            for field in ("model_provider", "model", "reasoning_effort")
+        }
+
+        result = harness.complete_delegated_child(
+            ROOT,
+            run_id,
+            child["invocation_id"],
+            "succeeded",
+            observation,
+            model_selection,
+        )
+
+        assert result == {"ok": True, "invocation_id": child["invocation_id"], "status": "succeeded", "summary": "found"}
+        persisted_child = harness._load_run(ROOT, run_id)["attempts"][0]["children"][0]
+        assert persisted_child["claim"] == candidate_claim
+        assert persisted_child["claim_observation"] == observation
     finally:
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
