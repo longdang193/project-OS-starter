@@ -48,7 +48,7 @@ _SOURCE_BY_KIND = {
     "approval_required": "approval_request",
     "protocol_failure": "transport_exception",
 }
-_MAX_ITEMS = 16
+MAX_TERMINAL_OBSERVATION_ITEMS = 16
 _MAX_ERROR_FIELDS = 8
 _MAX_LENGTH = 1_000_000
 _HOST_V2_FIELDS = {
@@ -126,7 +126,7 @@ def _optional_status(value: Any, field: str) -> str | None:
 
 
 def _item_states(value: Any) -> list[dict[str, str]]:
-    if not isinstance(value, list) or len(value) > _MAX_ITEMS:
+    if not isinstance(value, list) or len(value) > MAX_TERMINAL_OBSERVATION_ITEMS:
         raise TerminalObservationError("terminal observation has invalid item_states")
     normalized: list[dict[str, str]] = []
     for item in value:
@@ -141,7 +141,7 @@ def _item_states(value: Any) -> list[dict[str, str]]:
 
 
 def _command_states(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list) or len(value) > _MAX_ITEMS:
+    if not isinstance(value, list) or len(value) > MAX_TERMINAL_OBSERVATION_ITEMS:
         raise TerminalObservationError("terminal observation has invalid command_states")
     normalized: list[dict[str, Any]] = []
     for item in value:
@@ -261,7 +261,7 @@ def _containment(value: Any) -> dict[str, Any]:
         if roots or action != "none":
             raise TerminalObservationError("terminal observation has incomplete containment proof")
     elif state == "stopped":
-        if not 1 <= len(roots) <= _MAX_ITEMS or action not in {"none", "job_terminated", "host_handle_closed", "external_cleanup"}:
+        if not 1 <= len(roots) <= MAX_TERMINAL_OBSERVATION_ITEMS or action not in {"none", "job_terminated", "host_handle_closed", "external_cleanup"}:
             raise TerminalObservationError("terminal observation has incomplete containment proof")
     else:
         raise TerminalObservationError("terminal observation has incomplete containment proof")

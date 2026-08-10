@@ -3375,6 +3375,7 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
             return evidence
 
     try:
+        adapter = ReadOnlyAdapter()
         result = harness.run_managed(
             ROOT,
             managed_request(
@@ -3385,11 +3386,12 @@ def test_readonly_managed_run_blocks_mutation_that_passes_diff_check(
                 allowed_paths=["docs/**"],
                 planned_write_paths=[],
             ),
-            ReadOnlyAdapter(),
+            adapter,
             collect_changes=lambda root, base_commit: [{"path": "docs/mutation.md", "kind": "modified"}],
         )
 
         assert result["outcome"]["reason"] == "verification_failed"
+        assert "run_checks" not in adapter.calls
         evidence = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]
         assert evidence["checks"] == []
         assert evidence["postconditions"] == [{"name": "workspace_unchanged", "status": "failed"}]

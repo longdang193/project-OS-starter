@@ -4483,7 +4483,7 @@ def _execute_attempt(
             if not isinstance(workspace, dict):
                 raise HarnessError("check requires final workspace")
             host_checks: dict[str, Any] = {}
-            if not run_check:
+            if not run_check and packet["checks"]:
                 host_checks = _adapter_call(adapter, "run_checks", packet, workspace)
                 if not isinstance(host_checks, dict):
                     raise HarnessError("host adapter checks must be a mapping")
