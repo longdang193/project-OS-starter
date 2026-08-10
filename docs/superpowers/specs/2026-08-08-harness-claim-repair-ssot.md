@@ -150,8 +150,8 @@ context; they do not define current dispatch or capability admission.
   guidance, and direct backend verification.
 - admissible cases: every managed `node_kind: agent` lane with packet claim
   contract, provider-completed terminal observation, exact original thread,
-  unused repair budget, final workspace/evidence, enforced same-thread repair
-  capability, and no non-claim terminal failure.
+  unused repair budget, final workspace/evidence, enforced same-session repair
+  capability with original-thread continuation, and no non-claim terminal failure.
 - compatibility expectation: historical packets remain readable under existing
   rules and retain original terminal behavior. Only newly resolved compatible
   packets may request claim repair.
@@ -177,7 +177,7 @@ context; they do not define current dispatch or capability admission.
 - required behavior: policy schema V6 in `repo_config/harness.yaml` owns one
   generic `claim_repair` policy with `max_repairs_per_lane: 1`, route-independent
   admissible failure family, and required host capability
-  `claim_repair_same_thread: enforced`. Existing `retry_policies` remains sole
+  `claim_repair_same_session: enforced`. Existing `retry_policies` remains sole
   owner of successor eligibility and exhaustion. `execution_budgets` remains
   sole owner of time; repair has no separate timeout or caller override.
 - output or state change: packet V7 stores resolved repair count, admissible
@@ -223,7 +223,7 @@ context; they do not define current dispatch or capability admission.
   3. immutable packet repair budget for lane is unused;
   4. finalization reserve remains available under packet execution budget;
   5. original `thread_id` exists and host advertises
-     `claim_repair_same_thread: enforced` for packet V7;
+     `claim_repair_same_session: enforced` for packet V7;
   6. no artifact descriptor/hash/proof failure, workspace baseline failure,
      provider configuration or transport failure, policy/API failure, approval
      gate failure, tool-security failure, or finalization write attempt exists.
@@ -436,7 +436,7 @@ context; they do not define current dispatch or capability admission.
   packet-7 repair evidence is additive under existing attempt evidence map.
 - compatibility boundary: packet V7 must not dispatch to host without exact
   API 6 / provider contract 6 identity plus
-  `claim_repair_same_thread: enforced`. Packet V6 and older packets cannot gain
+  `claim_repair_same_session: enforced`. Packet V6 and older packets cannot gain
   repair retrospectively.
 - migration or backfill: no run-state migration or artifact backfill. Core
   resolves new packets from existing request API 5 input shape; old run evidence
@@ -594,7 +594,7 @@ context; they do not define current dispatch or capability admission.
 ### Acceptance Criterion: Unsupported continuation never falls back
 
 - setup or precondition: packet V7 reaches unusable claim on provider without
-  `claim_repair_same_thread: enforced`, or without original thread identity.
+  `claim_repair_same_session: enforced`, or without original thread identity.
 - action: core evaluates repair admission.
 - expected result: no repair continuation or fresh thread starts; terminal
   `claim_invalid` records explicit no-repair reason.
