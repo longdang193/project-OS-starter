@@ -113,11 +113,12 @@ When spawning a subagent:
 - In every other packet, subagents must not spawn child agents.
 - If task scope or needed capability changes, controller creates successor
   attempt and regenerates immutable packet.
-- Host consumes only packet `execution_budget` for App Server turns, native
-  tool probes, and checks. `finalization_reserve_seconds` is one policy-owned
-  slice of every App Server turn budget: host runs normal work for the remainder,
-  then uses the reserve only for a read-only final claim turn after interruption
-  or empty final text. Transport preflight has separate short bound.
+- Host consumes only packet `execution_budget`: normal work gets
+  `turn_timeout_seconds - finalization_reserve_seconds`, full lane lifecycle
+  gets `lane_timeout_seconds`, and native probes/checks get
+  `check_timeout_seconds`. Reserve is one policy-owned slice used only for one
+  read-only final claim turn after interruption or empty final text. Transport
+  preflight has separate short bound.
 - Harness dispatches only mode intersection of route policy and enforced host
   capability. Controller uses `terminalize_attempt` for `accept`, `block`, and
   `waive`; retry, escalation, and approval request remain nonterminal decisions.

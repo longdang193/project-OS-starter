@@ -59,7 +59,7 @@ from .compatibility import (
     runtime_identity,
     static_provider_runtime_binding,
 )
-from .execution_lease import ExecutionLeaseError, normalize_duration_model, resolve_execution_lease
+from .execution_lease import ExecutionLeaseError, normalize_duration_model, resolve_execution_lease, resolve_lane_timeout
 from .legacy_cleanup import (
     LegacyCleanupError,
     legacy_cleanup_evidence_digest,
@@ -838,12 +838,18 @@ def _resolve_execution_budget(
     if not isinstance(profile, dict):
         raise HarnessError(f"unknown execution budget profile `{selected}`")
     try:
-        normalize_duration_model(budgets.get("lease_duration_model"))
+        duration_model = normalize_duration_model(budgets.get("lease_duration_model"))
+        lane_timeout_seconds = resolve_lane_timeout(
+            duration_model,
+            turn_timeout_seconds=profile["turn_timeout_seconds"],
+        )
     except ExecutionLeaseError as exc:
         raise HarnessError(str(exc)) from exc
     budget = {
         "profile": selected,
         "turn_timeout_seconds": profile["turn_timeout_seconds"],
+        "lane_timeout_seconds": lane_timeout_seconds,
+        "check_timeout_seconds": duration_model["check_timeout_seconds"],
         "finalization_reserve_seconds": budgets["finalization_reserve_seconds"],
         "timeout_decisions": list(profile["timeout_decisions"]),
     }
@@ -975,6 +981,7 @@ def _route_packet(
         "orchestration": {
             "name": execution_mode,
             "work_scheduling": orchestration["work_scheduling"],
+            "max_parallel_lanes": orchestration.get("max_parallel_lanes", orchestration["max_parallel_writers"]),
             "max_parallel_writers": orchestration["max_parallel_writers"],
             "workspace_mode": orchestration["workspace_mode"],
             "validator_role": orchestration["validator_role"],
@@ -1923,6 +1930,7 @@ def resolve_managed_packet(
                 policy["execution_budgets"]["lease_duration_model"],
                 lanes=packet["lanes"],
                 checks=packet["checks"],
+                max_parallel_lanes=packet["orchestration"]["max_parallel_lanes"],
                 max_parallel_writers=packet["orchestration"]["max_parallel_writers"],
                 turn_timeout_seconds=packet["execution_budget"]["turn_timeout_seconds"],
             )
@@ -4416,14 +4424,21 @@ def _execute_attempt(
 
             work_lanes = [lane for lane in ready if lane["kind"] == "work"]
             if work_lanes:
+                lane_slots = packet["orchestration"].get(
+                    "max_parallel_lanes",
+                    packet["orchestration"]["max_parallel_writers"],
+                )
                 writer_slots = packet["orchestration"]["max_parallel_writers"]
                 scheduled: list[dict[str, Any]] = []
                 for lane in work_lanes:
+                    if not lane_slots:
+                        break
                     if lane["write_capable"]:
                         if not writer_slots:
                             continue
                         writer_slots -= 1
                     scheduled.append(lane)
+                    lane_slots -= 1
                 for lane in scheduled:
                     workspace = _adapter_call(adapter, "prepare_workspace", lane, packet)
                     if not isinstance(workspace, dict):
@@ -4571,6 +4586,10 @@ def _execute_attempt(
             )
         return _record_failure(root, run, policy, attempt, "claim_invalid", str(exc), phase="claim")
     except Exception as exc:
+        recovery_evidence = getattr(exc, "recovery_evidence", None)
+        if isinstance(recovery_evidence, dict):
+            _normalize_recovery_evidence(run["run_id"], attempt["attempt_id"], recovery_evidence)
+            raise
         _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase=failure_phase)
         if packet.get("version") == CURRENT_PACKET_API and _has_terminal_host_failure(attempt):
             return _terminalize_collected_attempt(root, run, attempt)

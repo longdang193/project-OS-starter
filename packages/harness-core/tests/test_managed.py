@@ -742,6 +742,7 @@ def test_resolve_task_selects_validated_sequential_orchestration() -> None:
     assert packet["orchestration"] == {
         "name": "sequential_work_lanes",
         "work_scheduling": "sequential",
+        "max_parallel_lanes": 1,
         "max_parallel_writers": 1,
         "workspace_mode": "isolated",
         "validator_role": "validate",
@@ -798,6 +799,8 @@ def test_resolve_managed_packet_builds_api8_lane_dag() -> None:
     assert packet["execution_budget"] == {
         "profile": "default",
         "turn_timeout_seconds": 300,
+        "lane_timeout_seconds": 645,
+        "check_timeout_seconds": 60,
         "finalization_reserve_seconds": 60,
         "timeout_decisions": ["escalate", "block"],
         "escalation_profile": "extended",
@@ -3283,6 +3286,120 @@ def test_managed_dispatch_failure_becomes_retryable_outcome(tmp_path: Path) -> N
         assert result["state"] == "awaiting_decision"
         assert result["outcome"]["reason"] == "dispatch_failed"
         assert result["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_managed_provider_recovery_escapes_without_retryable_outcome(tmp_path: Path) -> None:
+    class RecoveryRequired(RuntimeError):
+        def __init__(self, evidence):
+            self.recovery_evidence = evidence
+            super().__init__("provider cleanup requires controller recovery")
+
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    recovery = RecoveryRequired({
+        "version": 1,
+        "source": "host",
+        "code": "terminal_recording_failed",
+        "run_id": run_id,
+        "attempt_id": "attempt-1",
+        "detail": "provider_cleanup_incomplete",
+        "observed_at": "2026-08-10T12:00:00+00:00",
+    })
+    try:
+        with pytest.raises(RecoveryRequired):
+            harness.run_managed(
+                ROOT,
+                managed_request(run_id=run_id),
+                FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=recovery),
+            )
+
+        run = json.loads((run_dir / "run.json").read_text())
+        assert run["state"] == "running"
+        assert run["attempts"][0]["execution_lease"]["state"] == "active"
+        assert run["attempts"][0]["outcome"] is None
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_managed_scheduler_respects_packet_parallel_lane_limit(tmp_path: Path) -> None:
+    class ScheduledAdapter(FakeAdapter):
+        def __init__(self):
+            super().__init__({"parallel_work_lanes": "enforced"})
+            self.events = []
+
+        def dispatch_lane(self, lane, packet, workspace, cancellation_token):
+            self.events.append(f"dispatch:{lane['lane_id']}")
+            return super().dispatch_lane(lane, packet, workspace, cancellation_token)
+
+        def verify_tool_bindings(self, lane, packet, workspace):
+            bindings = super().verify_tool_bindings(lane, packet, workspace)
+            if packet["workspace_write_access"] == "read_only":
+                for binding in bindings:
+                    expected = next(item for item in packet["tool_bindings"] if item["tool"] == binding["tool"])
+                    binding["access"] = expected["validator_access"]
+            return bindings
+
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            self.events.append(f"evidence:{lane['lane_id']}")
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            if packet["workspace_write_access"] == "read_only":
+                evidence["sandbox"] = "read-only"
+            return evidence
+
+        def collect_claim(self, handle):
+            lane_id = handle["lane_id"]
+            self.events.append(f"claim:{lane_id}")
+            if lane_id.startswith("research-"):
+                return self._claim_observation(handle, {
+                    "kind": "claimed_result",
+                    "summary": lane_id,
+                    "findings": [lane_id],
+                })
+            return super().collect_claim(handle)
+
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    lanes = [
+        {
+            "lane_id": f"research-{index}",
+            "role": "investigate",
+            "allowed_paths": ["packages/**"],
+            "dependencies": [],
+            "workspace_mode": "isolated",
+            "write_capable": False,
+        }
+        for index in range(5)
+    ]
+    adapter = ScheduledAdapter()
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(
+                run_id=run_id,
+                task_type="research",
+                execution_mode="parallel_work_lanes",
+                allowed_paths=["packages/**"],
+                planned_write_paths=[],
+                lanes=lanes,
+            ),
+            adapter,
+            run_check=lambda command: (0, "ok", ""),
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        assert result["outcome"]["reason"] == "verification_passed", result["outcome"]["detail"]
+        assert adapter.events[:5] == [
+            "dispatch:research-0",
+            "dispatch:research-1",
+            "dispatch:research-2",
+            "dispatch:research-3",
+            "evidence:research-0",
+        ]
+        assert adapter.events.index("dispatch:research-4") > adapter.events.index("claim:research-0")
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 

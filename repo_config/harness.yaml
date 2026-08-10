@@ -212,6 +212,7 @@ orchestration:
   single_work_lane:
     aliases: [single_agent]
     work_scheduling: single
+    max_parallel_lanes: 1
     max_parallel_writers: 1
     workspace_mode: isolated
     validator_role: validate
@@ -219,6 +220,7 @@ orchestration:
   sequential_work_lanes:
     aliases: [sequential_agents]
     work_scheduling: sequential
+    max_parallel_lanes: 1
     max_parallel_writers: 1
     workspace_mode: isolated
     validator_role: validate
@@ -226,6 +228,7 @@ orchestration:
   parallel_work_lanes:
     aliases: [parallel_lanes]
     work_scheduling: parallel
+    max_parallel_lanes: 4
     max_parallel_writers: 4
     workspace_mode: isolated
     validator_role: validate

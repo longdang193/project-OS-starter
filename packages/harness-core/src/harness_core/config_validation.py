@@ -104,7 +104,7 @@ CLAIM_REPAIR_SUBCODES = {
     "claim_field_type_invalid",
     "claim_field_constraint_invalid",
 }
-ORCHESTRATION_FIELDS = {
+ORCHESTRATION_REQUIRED_FIELDS = {
     "aliases",
     "work_scheduling",
     "max_parallel_writers",
@@ -112,6 +112,7 @@ ORCHESTRATION_FIELDS = {
     "validator_role",
     "rules",
 }
+ORCHESTRATION_OPTIONAL_FIELDS = {"max_parallel_lanes"}
 RETRY_POLICY_FIELDS = {"max_attempts", "retryable_reasons", "exhaustion", "approval_resume", "approval_ttl_seconds"}
 TOOL_FIELDS = {"optional", "host_kind", "writer_access", "validator_access", "root_probe"}
 RUNTIME_PROVIDER_FIELDS = {
@@ -572,7 +573,7 @@ def _validate_orchestration(policy: dict[str, Any], errors: list[str], roles: di
         if not isinstance(name, str) or not name or not isinstance(topology, dict):
             errors.append("orchestration must map names to mappings")
             continue
-        if set(topology) != ORCHESTRATION_FIELDS:
+        if not ORCHESTRATION_REQUIRED_FIELDS <= set(topology) <= ORCHESTRATION_REQUIRED_FIELDS | ORCHESTRATION_OPTIONAL_FIELDS:
             errors.append(f"orchestration `{name}` has invalid fields")
             continue
         mode_aliases = topology["aliases"]
@@ -583,6 +584,11 @@ def _validate_orchestration(policy: dict[str, Any], errors: list[str], roles: di
             errors.append(f"orchestration `{name}` has invalid work_scheduling")
         if not positive_integer(topology["max_parallel_writers"]):
             errors.append(f"orchestration `{name}` max_parallel_writers must be positive")
+        max_parallel_lanes = topology.get("max_parallel_lanes", topology["max_parallel_writers"])
+        if not positive_integer(max_parallel_lanes):
+            errors.append(f"orchestration `{name}` max_parallel_lanes must be positive")
+        elif positive_integer(topology["max_parallel_writers"]) and max_parallel_lanes < topology["max_parallel_writers"]:
+            errors.append(f"orchestration `{name}` max_parallel_lanes must cover max_parallel_writers")
         if topology["workspace_mode"] not in {"current", "isolated"}:
             errors.append(f"orchestration `{name}` has invalid workspace_mode")
         if topology["work_scheduling"] == "parallel" and topology["workspace_mode"] != "isolated":

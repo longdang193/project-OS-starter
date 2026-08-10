@@ -25,6 +25,9 @@ distribution_tier: starter_kit
 - Each lane gets one validated harness packet with exact allowed paths, base
   ref, selected authority, toolset, verification profile, and approval gates.
   Core resolves selected profiles into tools and checks once per packet.
+- Packet orchestration owns concurrency: `max_parallel_lanes` caps every
+  concurrent work lane and `max_parallel_writers` further caps write-capable
+  lanes. Host uses resolved packet values, never a host worker-count constant.
 - Packet-context and verification-profile semantics are owned by
   `docs/operating_system/procedures/managed-execution-adapter-contract.md`.
   Do not copy profile values, context limits, or fallback behavior into rules.

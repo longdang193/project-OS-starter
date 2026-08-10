@@ -385,6 +385,29 @@ def test_execution_lease_duration_model_requires_finite_values(tmp_path: Path) -
     ]
 
 
+def test_orchestration_lane_limit_must_cover_writer_limit(tmp_path: Path) -> None:
+    path, policy = composed_policy(tmp_path)
+    policy["orchestration"]["single_work_lane"]["max_parallel_lanes"] = 0
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == [
+        "orchestration `single_work_lane` max_parallel_lanes must be positive"
+    ]
+
+
+def test_orchestration_lane_limit_rejects_more_writers(tmp_path: Path) -> None:
+    path, policy = composed_policy(tmp_path)
+    policy["orchestration"]["single_work_lane"].update({
+        "max_parallel_lanes": 1,
+        "max_parallel_writers": 2,
+    })
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == [
+        "orchestration `single_work_lane` max_parallel_lanes must cover max_parallel_writers"
+    ]
+
+
 def test_composed_route_uses_shared_profile_resolver(tmp_path: Path) -> None:
     _, policy = composed_policy(tmp_path)
 

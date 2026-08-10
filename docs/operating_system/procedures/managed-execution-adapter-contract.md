@@ -157,20 +157,30 @@ artifact, or context fallback is permitted.
 ## Runtime Budget And Abnormal Turn Recovery
 
 `repo_config/harness.yaml:execution_budgets` owns named profiles, maximum turn
-timeout, and one `finalization_reserve_seconds`. Reserve is positive and less
-than every named profile timeout. `defaults.execution_budget_profile` selects
-initial profile. Core copies one resolved `execution_budget` into every immutable
-packet. Request and controller decision cannot choose an arbitrary profile.
+timeout, `finalization_reserve_seconds`, and lease duration model. Reserve is
+positive and less than every named profile timeout.
+`defaults.execution_budget_profile` selects initial profile. Core copies one
+resolved `execution_budget` into every immutable packet, including the bounded
+whole-lane `lane_timeout_seconds` and `check_timeout_seconds`. Request and
+controller decision cannot choose an arbitrary profile or timeout.
 
 Host gives each normal App Server lane turn `turn_timeout_seconds -
 finalization_reserve_seconds`. On interruption or empty final text, host runs one
 separate read-only finalizer for exactly `finalization_reserve_seconds`. Finalizer
 may inspect at most once, never writes or runs diagnostics, and returns only its
 structured claim. It is a completion phase, not a lane, check, retry, or resume.
-Packet-native tool probes and checks use packet `turn_timeout_seconds`. The short
+`lane_timeout_seconds` bounds the complete work turn and finalizer lifecycle;
+packet-native tool probes and checks use `check_timeout_seconds`. The short
 `preflight` bound is transport-only and never substitutes for packet budget. On
 Windows, every provider or packet-native tool process for one lease uses that
 lease's Job Object containment.
+
+`repo_config/harness.yaml:orchestration` owns concurrency. Core resolves
+`max_parallel_lanes` into packet orchestration to cap every concurrent work
+lane, while `max_parallel_writers` further caps only write-capable lanes. Older
+consumer policy without `max_parallel_lanes` resolves it to
+`max_parallel_writers`; current packets always carry both resolved values. Host
+uses packet limit for executor capacity and never substitutes a host constant.
 For packet API 8, host returns one bounded
 `host_terminal_observation/v2` for each terminal dispatched lane and each
 host-run packet check (`check:<name>`). Core validates schema, lane, immutable

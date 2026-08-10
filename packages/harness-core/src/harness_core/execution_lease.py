@@ -44,6 +44,16 @@ def normalize_duration_model(value: Any) -> dict[str, int | str]:
     }
 
 
+def resolve_lane_timeout(duration_model: Any, *, turn_timeout_seconds: Any) -> int:
+    model = normalize_duration_model(duration_model)
+    turn_timeout = _positive(turn_timeout_seconds, "turn_timeout_seconds")
+    return (
+        model["max_turns_per_lane"] * turn_timeout
+        + (model["max_turns_per_lane"] - 1) * model["per_turn_overhead_seconds"]
+        + model["stop_proof_seconds"]
+    )
+
+
 def _execution_waves(lanes: Any) -> list[list[dict[str, Any]]]:
     if not isinstance(lanes, list) or not lanes:
         raise ExecutionLeaseError("execution lease lanes are invalid")
@@ -87,26 +97,28 @@ def resolve_execution_lease(
     *,
     lanes: Any,
     checks: Any,
+    max_parallel_lanes: Any,
     max_parallel_writers: Any,
     turn_timeout_seconds: Any,
 ) -> dict[str, Any]:
     model = normalize_duration_model(duration_model)
+    if not isinstance(max_parallel_lanes, int) or isinstance(max_parallel_lanes, bool) or max_parallel_lanes <= 0:
+        raise ExecutionLeaseError("execution lease max_parallel_lanes is invalid")
     if not isinstance(max_parallel_writers, int) or isinstance(max_parallel_writers, bool) or max_parallel_writers <= 0:
         raise ExecutionLeaseError("execution lease max_parallel_writers is invalid")
-    turn_timeout = _positive(turn_timeout_seconds, "turn_timeout_seconds")
+    if max_parallel_lanes < max_parallel_writers:
+        raise ExecutionLeaseError("execution lease max_parallel_lanes must cover max_parallel_writers")
+    lane_seconds = resolve_lane_timeout(model, turn_timeout_seconds=turn_timeout_seconds)
     if not isinstance(checks, dict) or not all(isinstance(name, str) and isinstance(command, list) for name, command in checks.items()):
         raise ExecutionLeaseError("execution lease checks are invalid")
-    lane_seconds = (
-        model["max_turns_per_lane"] * turn_timeout
-        + (model["max_turns_per_lane"] - 1) * model["per_turn_overhead_seconds"]
-        + model["stop_proof_seconds"]
-    )
     host_seconds = 0
     for wave in _execution_waves(lanes):
         host_lanes = [lane for lane in wave if lane.get("kind") not in {"check", "integrate"}]
         writers = sum(lane["write_capable"] for lane in host_lanes)
-        nonwriters = len(host_lanes) - writers
-        host_seconds += lane_seconds * max(math.ceil(writers / max_parallel_writers), int(nonwriters > 0))
+        host_seconds += lane_seconds * max(
+            math.ceil(writers / max_parallel_writers),
+            math.ceil(len(host_lanes) / max_parallel_lanes),
+        )
     return {
         "duration_model_id": model["id"],
         "execution_lease_seconds": host_seconds

@@ -26,6 +26,7 @@ def test_resolve_execution_lease_uses_dependency_waves_and_writer_limit() -> Non
             {"lane_id": "check", "dependencies": ["validate"], "write_capable": False, "kind": "check"},
         ],
         checks={"diff": ["git", "diff", "--check"]},
+        max_parallel_lanes=1,
         max_parallel_writers=1,
         turn_timeout_seconds=300,
     )
@@ -58,6 +59,46 @@ def test_resolve_execution_lease_rejects_unbounded_or_invalid_duration_model(mod
             model,
             lanes=[{"lane_id": "work", "dependencies": [], "write_capable": True}],
             checks={},
+            max_parallel_lanes=1,
             max_parallel_writers=1,
+            turn_timeout_seconds=300,
+        )
+
+
+def test_resolve_execution_lease_caps_parallel_nonwriters_to_lane_limit() -> None:
+    result = resolve_execution_lease(
+        DURATION_MODEL,
+        lanes=[
+            {"lane_id": f"research-{index}", "dependencies": [], "write_capable": False}
+            for index in range(5)
+        ],
+        checks={},
+        max_parallel_lanes=2,
+        max_parallel_writers=1,
+        turn_timeout_seconds=300,
+    )
+
+    assert result["execution_lease_seconds"] == 2_010
+
+
+@pytest.mark.parametrize(
+    ("max_parallel_lanes", "max_parallel_writers", "message"),
+    [
+        (0, 1, "max_parallel_lanes"),
+        (1, 2, "must cover max_parallel_writers"),
+    ],
+)
+def test_resolve_execution_lease_rejects_invalid_lane_limit(
+    max_parallel_lanes: int,
+    max_parallel_writers: int,
+    message: str,
+) -> None:
+    with pytest.raises(ExecutionLeaseError, match=message):
+        resolve_execution_lease(
+            DURATION_MODEL,
+            lanes=[{"lane_id": "work", "dependencies": [], "write_capable": True}],
+            checks={},
+            max_parallel_lanes=max_parallel_lanes,
+            max_parallel_writers=max_parallel_writers,
             turn_timeout_seconds=300,
         )
