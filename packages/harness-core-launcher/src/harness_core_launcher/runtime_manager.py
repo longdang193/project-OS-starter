@@ -45,6 +45,13 @@ def _profile_digest(value: Any) -> str:
     return digest
 
 
+def _runtime_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    for key in ("VIRTUAL_ENV", "PYTHONHOME", "UV_INTERNAL__PYTHONHOME", "UV_RUN_RECURSION_DEPTH"):
+        environment.pop(key, None)
+    return environment
+
+
 class RuntimeManager:
     def __init__(self, root: Path | None = None) -> None:
         self.root = (root or Path.home() / ".codex" / "harness").resolve()
@@ -165,7 +172,10 @@ class RuntimeManager:
             return
         for path in self.profiles_root.iterdir():
             if path.is_dir() and path.name not in retained:
-                shutil.rmtree(path)
+                try:
+                    shutil.rmtree(path)
+                except OSError as exc:
+                    raise RuntimeManagerError("harness_runtime_profile_activation_busy") from exc
 
     def _activate_locked(self, profile: dict[str, Any]) -> dict[str, Any]:
         profile_root = self._profile_root(_profile_digest(profile))
@@ -186,8 +196,8 @@ class RuntimeManager:
             "current": entry,
             "previous": previous_pointer["current"] if previous_pointer is not None else None,
         }
-        self._write_pointer(pointer)
         self._clean_profiles(pointer)
+        self._write_pointer(pointer)
         return {"state": "ready", "changed": True, **profile}
 
     def activate(self, profile: dict[str, Any]) -> dict[str, Any]:
@@ -226,6 +236,7 @@ class RuntimeManager:
             text=True,
             check=False,
             timeout=30,
+            env=_runtime_environment(),
         )
         verified = _result_json(result, failure="harness_runtime_profile_untrusted")
         if verified != profile:
@@ -248,6 +259,7 @@ class RuntimeManager:
             text=True,
             check=False,
             timeout=None if arguments[0] == "run" else CONTROL_PLANE_TIMEOUT_SECONDS,
+            env=_runtime_environment(),
         )
         payload = _result_json(
             result,
@@ -266,6 +278,7 @@ class RuntimeManager:
             text=True,
             check=False,
             timeout=CONTROL_PLANE_TIMEOUT_SECONDS,
+            env=_runtime_environment(),
         )
 
     def upgrade(

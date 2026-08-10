@@ -95,6 +95,7 @@ differs from loaded `policy_schema_version`, before packet creation.
 | `harness_core_request_api_incompatible` | consumer release pin | Upgrade or pin consumer package release. No packet exists. |
 | `harness_core_host_api_incompatible` | provider host runtime or release pin | Align provider host runtime, locked core release line, and host API. No packet exists. |
 | `harness_core_packet_dispatch_incompatible` | policy/host compatibility skew | Preserve historical packet evidence. Align request API, packet API, and host contract; then create successor. |
+| `harness_runtime_profile_activation_busy` | stale profile cleanup | Preserve active pointer, close process holding obsolete profile, then rerun `harness-core-launcher upgrade`. |
 | `execution_mode_unavailable` | provider host capability | Block or record controller waiver. Do not use generic CLI as fallback. |
 
 Legacy `python scripts/harness_task.py ...` remains supported during migration,

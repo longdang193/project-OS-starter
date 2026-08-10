@@ -77,6 +77,38 @@ def test_activation_removes_unreferenced_profiles_only(tmp_path: Path) -> None:
     assert not (tmp_path / "profiles" / str(third["release_profile_digest"])).exists()
 
 
+def test_activation_preserves_pointer_when_profile_cleanup_is_locked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = RuntimeManager(tmp_path)
+    first = _profile("b" * 40)
+    second = _profile("c" * 40)
+    third = _profile("d" * 40)
+    _write_profile(tmp_path, first)
+    manager.activate(first)
+    _write_profile(tmp_path, second)
+    manager.activate(second)
+    _write_profile(tmp_path, third)
+    original_rmtree = runtime_manager.shutil.rmtree
+
+    def reject_locked_profile(path: Path) -> None:
+        if Path(path).name == first["release_profile_digest"]:
+            raise PermissionError("locked")
+        original_rmtree(path)
+
+    monkeypatch.setattr(runtime_manager.shutil, "rmtree", reject_locked_profile)
+
+    with pytest.raises(RuntimeManagerError, match="harness_runtime_profile_activation_busy"):
+        manager.activate(third)
+
+    assert json.loads((tmp_path / "current.json").read_text(encoding="utf-8")) == {
+        "schema_id": "harness_runtime_pointer/v1",
+        "current": {"release_profile_digest": second["release_profile_digest"]},
+        "previous": {"release_profile_digest": first["release_profile_digest"]},
+    }
+
+
 def test_host_invocation_uses_active_profile_project_not_path(tmp_path: Path) -> None:
     profile = _profile("b" * 40)
     profile_root = _write_profile(tmp_path, profile)
@@ -108,6 +140,41 @@ def test_host_invocation_uses_active_profile_project_not_path(tmp_path: Path) ->
             "capabilities",
         ],
     ]
+
+
+def test_host_invocation_isolates_profile_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = _profile("b" * 40)
+    _write_profile(tmp_path, profile)
+    manager = RuntimeManager(tmp_path)
+    manager.activate(profile)
+    inherited = {
+        "VIRTUAL_ENV": "C:/parent",
+        "PYTHONHOME": "C:/python",
+        "UV_INTERNAL__PYTHONHOME": "C:/python",
+        "UV_RUN_RECURSION_DEPTH": "1",
+    }
+    for key, value in inherited.items():
+        monkeypatch.setenv(key, value)
+    calls: list[dict[str, object]] = []
+
+    def run(command: list[str], **kwargs: object):
+        calls.append(kwargs)
+
+        class Result:
+            returncode = 0
+            stdout = json.dumps(
+                profile if "--verify" in command else {"state": "ready", "runtime_release_profile": profile}
+            )
+            stderr = ""
+
+        return Result()
+
+    manager.invoke_host(["capabilities"], runner=run)
+
+    assert all(not inherited.keys() & call["env"].keys() for call in calls)
 
 
 def test_host_run_invocation_defers_timeout_to_packet_owner(tmp_path: Path) -> None:
