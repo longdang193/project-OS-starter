@@ -115,6 +115,12 @@ Historical bindings with a host instance ID compare by their static projection.
 host consumers.
 No automatic transport fallback exists.
 
+`harness-core-launcher decision --harness-root <repo> --run-id <id> --decision
+<file>` is the only CLI retry or escalation boundary. Host supplies current
+admission and preflight facts; core creates the immutable successor packet and
+writes decision state. Generic core `decision` rejects executable retry or
+escalate without an adapter. Terminal decisions remain core-only.
+
 Do not use `run-unavailable` for retry. It proves generic CLI lacks injected
 adapter and is terminal evidence for that invocation only. Preserve that
 blocked run; create successor request with new `run_id` for provider-host retry.

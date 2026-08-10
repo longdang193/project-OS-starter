@@ -24,8 +24,8 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-def _result_json(result: Any, *, failure: str) -> dict[str, Any]:
-    if getattr(result, "returncode", 1) != 0:
+def _result_json(result: Any, *, failure: str, allow_nonzero: bool = False) -> dict[str, Any]:
+    if not allow_nonzero and getattr(result, "returncode", 1) != 0:
         raise RuntimeManagerError(failure)
     try:
         payload = json.loads(getattr(result, "stdout", ""))
@@ -249,7 +249,11 @@ class RuntimeManager:
             check=False,
             timeout=None if arguments[0] == "run" else CONTROL_PLANE_TIMEOUT_SECONDS,
         )
-        payload = _result_json(result, failure="harness_runtime_profile_preflight_failed")
+        payload = _result_json(
+            result,
+            failure="harness_runtime_profile_preflight_failed",
+            allow_nonzero=True,
+        )
         runtime_release_profile = payload.get("runtime_release_profile")
         if arguments[0] in {"capabilities", "preflight"} and runtime_release_profile != profile:
             raise RuntimeManagerError("harness_runtime_profile_mismatch")

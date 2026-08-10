@@ -141,6 +141,44 @@ def test_host_run_invocation_defers_timeout_to_packet_owner(tmp_path: Path) -> N
     assert calls[3][1]["timeout"] == 90
 
 
+def test_host_invocation_returns_structured_error_on_nonzero_exit(tmp_path: Path) -> None:
+    profile = _profile("b" * 40)
+    _write_profile(tmp_path, profile)
+    manager = RuntimeManager(tmp_path)
+    manager.activate(profile)
+
+    def run(command: list[str], **_kwargs: object):
+        class Result:
+            returncode = 2 if command[-1] == "run" else 0
+            stdout = json.dumps(profile if "--verify" in command else {"status": "blocked", "error": "provider_configuration_changed"})
+            stderr = "runtime changed"
+
+        return Result()
+
+    assert manager.invoke_host(["run"], runner=run) == {
+        "status": "blocked",
+        "error": "provider_configuration_changed",
+    }
+
+
+def test_host_invocation_uses_generic_error_for_malformed_nonzero_output(tmp_path: Path) -> None:
+    profile = _profile("b" * 40)
+    _write_profile(tmp_path, profile)
+    manager = RuntimeManager(tmp_path)
+    manager.activate(profile)
+
+    def run(command: list[str], **_kwargs: object):
+        class Result:
+            returncode = 2 if command[-1] == "run" else 0
+            stdout = json.dumps(profile) if "--verify" in command else "not-json"
+            stderr = "runtime changed"
+
+        return Result()
+
+    with pytest.raises(RuntimeManagerError, match="harness_runtime_profile_preflight_failed"):
+        manager.invoke_host(["run"], runner=run)
+
+
 def test_pointer_rejects_profile_outside_profile_directory(tmp_path: Path) -> None:
     manager = RuntimeManager(tmp_path)
     profile = _profile("b" * 40)

@@ -1905,7 +1905,7 @@ def resolve_managed_packet(
         packet_api=packet_api,
     )
     if packet_api == CURRENT_PACKET_API:
-        provider_runtime_binding = _validate_provider_runtime_binding(
+        provider_runtime_binding = _resolve_current_runtime_binding(
             provider_runtime_binding,
             runtime_provider,
             packet_api=packet_api,
@@ -3281,7 +3281,7 @@ def _provider_runtime_binding(adapter: Any, *, required: bool) -> dict[str, Any]
     return copy.deepcopy(evidence)
 
 
-def _validate_provider_runtime_binding(
+def _resolve_current_runtime_binding(
     binding: Any,
     runtime_provider: dict[str, Any],
     *,
@@ -4872,6 +4872,37 @@ def _execute_attempt(
     return _persist_outcome_transition(root, run, attempt, policy, reason)
 
 
+def prepare_attempt(
+    root: Path,
+    request: dict[str, Any],
+    adapter: Any,
+    *,
+    attempt_id: str,
+    execution_budget_profile: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any] | None, str | None]:
+    _validate_policy(root)
+    request_admission = admit_request_api(request.get("version"))
+    if not request_admission["ok"]:
+        raise HarnessError(request_admission["code"])
+    core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
+    preflight_binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
+    host_instance_id = None
+    if core_identity["packet_api"] == CURRENT_PACKET_API:
+        if preflight_binding is None:
+            raise HarnessError("provider preflight evidence is required")
+        host_instance_id = _host_instance_id(preflight_binding)
+    packet = resolve_managed_packet(
+        root,
+        request,
+        attempt_id=attempt_id,
+        execution_budget_profile=execution_budget_profile,
+        core_identity=core_identity,
+        provider_runtime_binding=preflight_binding,
+    )
+    _admit_coordinated_packet(root, packet)
+    return packet, preflight_binding, host_instance_id
+
+
 def run_managed(
     root: Path,
     request: dict[str, Any] | None,
@@ -4892,20 +4923,12 @@ def run_managed(
         run_id = _safe_run_id(request.get("run_id") or uuid.uuid4().hex)
         if _run_path(root, run_id).exists():
             raise HarnessError(f"run `{run_id}` already exists")
-        core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
-        preflight_binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
-        if core_identity["packet_api"] == CURRENT_PACKET_API:
-            if preflight_binding is None:
-                raise HarnessError("provider preflight evidence is required")
-            host_instance_id = _host_instance_id(preflight_binding)
-        packet = resolve_managed_packet(
+        packet, preflight_binding, host_instance_id = prepare_attempt(
             root,
             request,
             attempt_id="attempt-1",
-            core_identity=core_identity,
-            provider_runtime_binding=preflight_binding,
+            adapter=adapter,
         )
-        _admit_coordinated_packet(root, packet)
         run = _new_run(request, run_id)
         _transition(run, policy["states"], "planned", "preflight")
         _append_attempt(run, packet)
@@ -4941,12 +4964,12 @@ def run_managed(
             if preflight_binding is None:
                 raise HarnessError("provider preflight evidence is required")
             host_instance_id = _host_instance_id(preflight_binding)
-            if _validate_provider_runtime_binding(
+            if _resolve_current_runtime_binding(
                 preflight_binding,
                 runtime_provider,
                 packet_api=packet_api,
                 host_api=host_admission["host_api"],
-            ) != _validate_provider_runtime_binding(
+            ) != _resolve_current_runtime_binding(
                 packet.get("provider_runtime_binding"),
                 runtime_provider,
                 packet_api=packet_api,
@@ -5002,7 +5025,13 @@ def _successor_request(run: dict[str, Any], successor: Any) -> dict[str, Any]:
     return request
 
 
-def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+def apply_controller_decision(
+    root: Path,
+    run_id: str,
+    decision: dict[str, Any],
+    *,
+    adapter: Any | None = None,
+) -> dict[str, Any]:
     _validate_policy(root)
     if not isinstance(decision, dict):
         raise HarnessError("decision must be an object")
@@ -5038,20 +5067,17 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
     terminal_record = attempt.get("terminal_record")
     if isinstance(terminal_record, dict) and terminal_record.get("classification") == "legacy_cleanup_attested" and kind != "block":
         raise HarnessError("legacy cleanup outcome requires block")
-    stored = copy.deepcopy(decision)
-    stored["at"] = _timestamp()
-    attempt["decision"] = stored
-    attempt.setdefault("decision_history", []).append(stored)
+    if kind in {"retry", "escalate"} and "provider_runtime_binding" in decision:
+        raise HarnessError("controller decision cannot supply provider runtime binding")
     if kind == "request_approval":
+        stored = copy.deepcopy(decision)
+        stored["at"] = _timestamp()
+        attempt["decision"] = stored
+        attempt.setdefault("decision_history", []).append(stored)
         _transition(run, policy["states"], "awaiting_decision", "controller_request_approval")
     else:
         retry_policy = attempt["packet"]["retry_policy"]
         execution_budget_profile = None
-        provider_runtime_binding = None
-        if attempt["packet"].get("version") == CURRENT_PACKET_API:
-            provider_runtime_binding = attempt["packet"].get("provider_runtime_binding")
-            if not isinstance(provider_runtime_binding, dict):
-                raise HarnessError("successor attempt lacks provider runtime binding")
         if outcome["reason"] == "dispatch_timeout":
             if kind != "escalate":
                 raise HarnessError("timeout outcome requires escalation or block")
@@ -5073,16 +5099,26 @@ def apply_controller_decision(root: Path, run_id: str, decision: dict[str, Any])
         else:
             successor_request = _successor_request(run, decision.get("successor"))
         if len(run["attempts"]) >= retry_policy["max_attempts"]:
+            stored = copy.deepcopy(decision)
+            stored["at"] = _timestamp()
+            attempt["decision"] = stored
+            attempt.setdefault("decision_history", []).append(stored)
             _set_outcome(run, attempt, policy, "retry_exhausted", ["block"], ["decision"])
             _auto_finalize_outcome(run, attempt, policy)
         else:
-            packet = resolve_managed_packet(
+            if adapter is None:
+                raise HarnessError("executable controller decision requires host adapter")
+            packet, _, _ = prepare_attempt(
                 root,
                 successor_request,
                 attempt_id=f"attempt-{len(run['attempts']) + 1}",
                 execution_budget_profile=execution_budget_profile,
-                provider_runtime_binding=provider_runtime_binding,
+                adapter=adapter,
             )
+            stored = copy.deepcopy(decision)
+            stored["at"] = _timestamp()
+            attempt["decision"] = stored
+            attempt.setdefault("decision_history", []).append(stored)
             _append_attempt(run, packet)
             _transition(run, policy["states"], "planned", f"controller_{kind}")
     _write_run(root, run)

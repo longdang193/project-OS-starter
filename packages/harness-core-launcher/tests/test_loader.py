@@ -44,3 +44,39 @@ def test_preflight_uses_runtime_manager(monkeypatch, tmp_path, capsys) -> None:
     assert cli.main(["--runtime-root", str(tmp_path), "preflight"]) == 0
     assert captured == [tmp_path, ["preflight"]]
     assert json.loads(capsys.readouterr().out) == {"state": "ready"}
+
+
+def test_executable_decision_uses_active_host_runtime(monkeypatch, tmp_path, capsys) -> None:
+    captured = []
+
+    class FakeManager:
+        def __init__(self, root):
+            captured.append(root)
+
+        def invoke_host(self, arguments):
+            captured.append(arguments)
+            return {"state": "planned"}
+
+    monkeypatch.setattr(cli, "RuntimeManager", FakeManager)
+
+    assert cli.main([
+        "--runtime-root",
+        str(tmp_path),
+        "decision",
+        "--harness-root",
+        "repo",
+        "--run-id",
+        "retry-run",
+        "--decision",
+        "decision.json",
+    ]) == 1
+    assert captured == [tmp_path, [
+        "decision",
+        "--harness-root",
+        "repo",
+        "--run-id",
+        "retry-run",
+        "--decision",
+        "decision.json",
+    ]]
+    assert json.loads(capsys.readouterr().out) == {"state": "planned"}

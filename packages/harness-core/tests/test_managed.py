@@ -336,6 +336,7 @@ class FakeAdapter:
         identity=None,
         host_api=8,
         workspace_root=None,
+        preflight_binding=None,
     ):
         self.capabilities_value = {
             "claim_repair_same_session": "enforced",
@@ -351,6 +352,7 @@ class FakeAdapter:
         self.identity_value = identity or {"provider_id": "codex_app_server", "contract_version": 8}
         self.host_api_value = host_api
         self.workspace_root = str(workspace_root or ROOT)
+        self.preflight_binding = copy.deepcopy(preflight_binding or API6_BINDING)
         self.calls = []
 
     def identity(self):
@@ -360,7 +362,7 @@ class FakeAdapter:
         return self.host_api_value
 
     def preflight_evidence(self):
-        return copy.deepcopy(API6_BINDING)
+        return copy.deepcopy(self.preflight_binding)
 
     def capabilities(self):
         self.calls.append("capabilities")
@@ -2316,7 +2318,12 @@ def test_legacy_incompatible_request_can_block_but_not_retry(tmp_path: Path) -> 
         before = json.loads((run_dir / "run.json").read_text())
 
         with pytest.raises(harness.HarnessError, match="harness_core_request_api_incompatible"):
-            harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
+            harness.apply_controller_decision(
+                ROOT,
+                run_id,
+                {"kind": "retry"},
+                adapter=FakeAdapter({"single_work_lane": "enforced"}),
+            )
 
         assert json.loads((run_dir / "run.json").read_text()) == before
         blocked = harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "block"))
@@ -3338,7 +3345,12 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         )
         assert first["outcome"]["reason"] == "verification_failed"
 
-        retry = harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
+        retry = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "retry"},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}),
+        )
         assert retry["state"] == "planned"
         before = json.loads((run_dir / "run.json").read_text())["attempts"][0]["packet"]
 
@@ -3351,7 +3363,12 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
             collect_changes=lambda root, base_commit: [],
         )
         assert second["outcome"]["reason"] == "verification_failed"
-        exhausted = harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
+        exhausted = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "retry"},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}),
+        )
 
         run = json.loads((run_dir / "run.json").read_text())
         assert exhausted["state"] == "blocked"
@@ -3899,7 +3916,12 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         with pytest.raises(harness.HarnessError, match="decision `retry` is not allowed"):
             harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
 
-        resumed = harness.apply_controller_decision(ROOT, run_id, {"kind": "escalate"})
+        resumed = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "escalate"},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}),
+        )
         run = json.loads((run_dir / "run.json").read_text())
 
         assert resumed["state"] == "planned"
@@ -3909,7 +3931,7 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_api5_timeout_escalation_preserves_provider_runtime_binding(tmp_path: Path) -> None:
+def test_api5_timeout_escalation_resolves_current_provider_runtime_binding(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
@@ -3946,12 +3968,213 @@ def test_api5_timeout_escalation_preserves_provider_runtime_binding(tmp_path: Pa
         )
 
         assert result["outcome"]["reason"] == "dispatch_timeout"
-        harness.apply_controller_decision(ROOT, run_id, {"kind": "escalate"})
+        upgraded = copy.deepcopy(API6_BINDING)
+        upgraded["configuration_digest"] = "c" * 64
+        upgraded["runtime_release_profile"] = build_runtime_release_profile(
+            protocol_profile=runtime_protocol_profile(5),
+            host_package_release="fixture-host-upgraded",
+            host_commit="c" * 40,
+            core_package_release="fixture-core-upgraded",
+            core_commit="d" * 40,
+        )
+        harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "escalate"},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}, preflight_binding=upgraded),
+        )
         attempts = json.loads((run_dir / "run.json").read_text())["attempts"]
 
         assert [attempt["packet"]["version"] for attempt in attempts] == [harness.CURRENT_PACKET_API] * 2
         assert attempts[1]["packet"]["operating_profile"]["resolved"] == "local_change_extended"
-        assert attempts[1]["packet"]["provider_runtime_binding"] == attempts[0]["packet"]["provider_runtime_binding"]
+        assert attempts[0]["packet"]["provider_runtime_binding"] == {
+            key: value for key, value in API6_BINDING.items() if key != "host_instance_id"
+        }
+        assert attempts[1]["packet"]["provider_runtime_binding"] == {
+            key: value for key, value in upgraded.items() if key != "host_instance_id"
+        }
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_retry_resolves_upgraded_runtime_and_preserves_prior_attempt(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    upgraded = copy.deepcopy(API6_BINDING)
+    upgraded["configuration_digest"] = "e" * 64
+    upgraded["runtime_release_profile"] = build_runtime_release_profile(
+        protocol_profile=runtime_protocol_profile(5),
+        host_package_release="fixture-host-upgraded",
+        host_commit="e" * 40,
+        core_package_release="fixture-core-upgraded",
+        core_commit="f" * 40,
+    )
+    try:
+        first = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter({"single_work_lane": "enforced"}),
+            run_check=lambda command: (1, "", "failed"),
+            collect_changes=lambda root, base_commit: [],
+        )
+        assert first["outcome"]["reason"] == "verification_failed"
+        prior = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+
+        retry = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "retry"},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}, preflight_binding=upgraded),
+        )
+        attempts = json.loads((run_dir / "run.json").read_text())["attempts"]
+
+        assert retry["state"] == "planned"
+        assert attempts[0]["packet"] == prior["packet"]
+        assert attempts[0]["evidence"] == prior["evidence"]
+        assert attempts[0].get("claims") == prior.get("claims")
+        assert attempts[0].get("terminal_observations") == prior.get("terminal_observations")
+        assert attempts[0].get("execution_lease") == prior.get("execution_lease")
+        assert attempts[0]["outcome"] == prior["outcome"]
+        assert attempts[1]["packet"]["provider_runtime_binding"] == {
+            key: value for key, value in upgraded.items() if key != "host_instance_id"
+        }
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_current_runtime_binding_rejects_initial_and_retry_before_packet_creation(tmp_path: Path) -> None:
+    harness = load_module()
+    initial_run_id = f"initial-{tmp_path.name}"
+    retry_run_id = f"retry-{tmp_path.name}"
+    initial_dir = ROOT / ".harness" / "runs" / initial_run_id
+    retry_dir = ROOT / ".harness" / "runs" / retry_run_id
+    incompatible = copy.deepcopy(API6_BINDING)
+    incompatible["contract_version"] = 7
+
+    class IncompatibleBindingAdapter(FakeAdapter):
+        def preflight_evidence(self):
+            return copy.deepcopy(incompatible)
+
+    try:
+        with pytest.raises(harness.HarnessError, match="conflicts with packet runtime provider"):
+            harness.run_managed(
+                ROOT,
+                managed_request(run_id=initial_run_id),
+                IncompatibleBindingAdapter({"single_work_lane": "enforced"}),
+            )
+        assert not initial_dir.exists()
+
+        first = harness.run_managed(
+            ROOT,
+            managed_request(run_id=retry_run_id),
+            FakeAdapter({"single_work_lane": "enforced"}),
+            run_check=lambda command: (1, "", "failed"),
+            collect_changes=lambda root, base_commit: [],
+        )
+        assert first["outcome"]["reason"] == "verification_failed"
+        before = (retry_dir / "run.json").read_bytes()
+
+        with pytest.raises(harness.HarnessError, match="conflicts with packet runtime provider"):
+            harness.apply_controller_decision(
+                ROOT,
+                retry_run_id,
+                {"kind": "retry"},
+                adapter=IncompatibleBindingAdapter({"single_work_lane": "enforced"}),
+            )
+        assert (retry_dir / "run.json").read_bytes() == before
+    finally:
+        shutil.rmtree(initial_dir, ignore_errors=True)
+        shutil.rmtree(retry_dir, ignore_errors=True)
+
+
+def test_retry_requires_adapter_boundary_before_mutating_prior_attempt(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        first = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            FakeAdapter({"single_work_lane": "enforced"}),
+            run_check=lambda command: (1, "", "failed"),
+            collect_changes=lambda root, base_commit: [],
+        )
+        assert first["outcome"]["reason"] == "verification_failed"
+        before = (run_dir / "run.json").read_bytes()
+
+        with pytest.raises(harness.HarnessError, match="executable controller decision requires host adapter"):
+            harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
+        assert (run_dir / "run.json").read_bytes() == before
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_prepare_attempt_binds_current_upgraded_runtime() -> None:
+    harness = load_module()
+    upgraded = copy.deepcopy(API6_BINDING)
+    upgraded["configuration_digest"] = "1" * 64
+    upgraded["runtime_release_profile"] = build_runtime_release_profile(
+        protocol_profile=runtime_protocol_profile(5),
+        host_package_release="fixture-host-upgraded",
+        host_commit="1" * 40,
+        core_package_release="fixture-core-upgraded",
+        core_commit="2" * 40,
+    )
+
+    packet, binding, host_instance_id = harness.prepare_attempt(
+        ROOT,
+        managed_request(run_id="prepared-upgrade"),
+        FakeAdapter({"single_work_lane": "enforced"}, preflight_binding=upgraded),
+        attempt_id="attempt-1",
+    )
+
+    assert binding == upgraded
+    assert host_instance_id == "host-test"
+    assert packet["provider_runtime_binding"] == {
+        key: value for key, value in upgraded.items() if key != "host_instance_id"
+    }
+
+
+def test_escalation_rejects_incompatible_current_runtime_before_packet_creation(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    incompatible = copy.deepcopy(API6_BINDING)
+    incompatible["contract_version"] = 7
+
+    class TimedOutTurn(RuntimeError):
+        timeout_observation = {
+            "version": 1,
+            "lane_id": "primary",
+            "session_id": "thread-1",
+            "turn_id": "turn-1",
+            "turn_timeout_seconds": 300,
+            "elapsed_seconds": 300.0,
+            "terminal_status": "interrupted",
+            "interrupt_status": "terminal_confirmed",
+            "item_states": [],
+            "command_states": [],
+            "final_claim_state": {"state": "missing"},
+        }
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id, version=5),
+            FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=TimedOutTurn("turn timed out")),
+        )
+        assert result["outcome"]["reason"] == "dispatch_timeout"
+        before = (run_dir / "run.json").read_bytes()
+
+        with pytest.raises(harness.HarnessError, match="conflicts with packet runtime provider"):
+            harness.apply_controller_decision(
+                ROOT,
+                run_id,
+                {"kind": "escalate"},
+                adapter=FakeAdapter({"single_work_lane": "enforced"}, preflight_binding=incompatible),
+            )
+        assert (run_dir / "run.json").read_bytes() == before
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -4324,6 +4547,7 @@ def test_approval_resume_creates_successor_attempt(tmp_path: Path) -> None:
                 "attempt_id": "attempt-2",
                 "issued_at": now.isoformat(),
             }]}},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}),
         )
         assert resumed["state"] == "planned"
 

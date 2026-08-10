@@ -24,6 +24,10 @@ def main(argv: list[str] | None = None) -> int:
     run_input = run.add_mutually_exclusive_group(required=True)
     run_input.add_argument("--request")
     run_input.add_argument("--run-id")
+    decision = subparsers.add_parser("decision")
+    decision.add_argument("--harness-root", required=True)
+    decision.add_argument("--run-id", required=True)
+    decision.add_argument("--decision", required=True)
     host = subparsers.add_parser("host")
     host.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
@@ -44,6 +48,16 @@ def main(argv: list[str] | None = None) -> int:
                 host_args = ["run", "--harness-root", args.harness_root]
                 host_args.extend(["--run-id", args.run_id] if args.run_id else ["--request", args.request])
                 payload = manager.invoke_host(host_args)
+            elif args.command == "decision":
+                payload = manager.invoke_host([
+                    "decision",
+                    "--harness-root",
+                    args.harness_root,
+                    "--run-id",
+                    args.run_id,
+                    "--decision",
+                    args.decision,
+                ])
             else:
                 if not args.arguments:
                     raise RuntimeManagerError("harness_runtime_profile_invalid")
