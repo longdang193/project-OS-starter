@@ -16,9 +16,9 @@ ordinary direct execution.
   starts managed run through host-supplied `run_managed` adapter boundary.
 - Run record owns immutable attempt packet, lanes, claims, change-set evidence,
   friction, outcomes, decisions, and state history under `.harness/runs/`.
-- For packet API 8, core issues one finite lease before `running`. Host owns
-  provider process lifecycle and returns only `host_terminal_observation/v2`.
-  Controller invokes only `terminalize_attempt(envelope)`; evidence records
+- For current leased packets, core issues one finite lease before `running`.
+  Host owns provider process lifecycle and returns packet-declared terminal
+  evidence. Controller invokes only `terminalize_attempt(envelope)`; evidence records
   `attempt_outcome/v2`, one-decision terminal outcomes auto-finalize, and
   ambiguous terminal outcomes require signed controller authority. Core
   atomically records terminal evidence, receipt, lease release, state history,
@@ -46,15 +46,15 @@ ordinary direct execution.
   escalate, request approval, or block. Commit policy remains separate.
 - Generic CLI has no managed `run` command. `run-unavailable` records explicit
   `execution_mode_unavailable` proof; it never claims dispatch occurred.
-- For `runtime_provider_id: codex_app_server`, controller runs provider host
-  from its installed source root. Check `uv run --locked codex-harness-host capabilities`
-  then `uv run --locked codex-harness-host preflight`, then run `uv run --locked
-  codex-harness-host run --harness-root <repo-root> --request <request.json>`.
-  Host-owned trusted user configuration selects transport; do not copy endpoint,
-  launch-command, or credential values into repository inputs. Use exclusive
-  `--run-id <run-id>` only to resume an existing planned attempt. Do not retry
-  through `run-unavailable`; preserve that terminal proof and create successor
-  request.
+- For `runtime_provider_id: codex_app_server`, controller uses active
+  pointer-selected runtime through `harness-core-launcher`: run
+  `harness-core-launcher doctor`, then `capabilities`, then `preflight`, then
+  `run --harness-root <repo-root> --request <request.json>`. Never invoke bare
+  `codex-harness-host`; PATH can resolve stale user tools. Host-owned trusted
+  user configuration selects transport; do not copy endpoint, launch-command,
+  or credential values into repository inputs. Use exclusive `--run-id <run-id>`
+  only to resume an existing planned attempt. Do not retry through
+  `run-unavailable`; preserve that terminal proof and create successor request.
 - `stdio` plus `host_spawn` requires Windows containment. A preflight failure
   can carry sanitized lifecycle fields. A host `terminal_recording_failed`
   payload is recovery evidence only: preserve it for controller recovery; never

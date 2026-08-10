@@ -157,7 +157,7 @@ When spawning a subagent:
   `~/.codex/harness-authorities.toml`. `migrate-harness-authorities` is explicit;
   current validation never falls back to the old registry. Controller submits
   canonical `terminalize-attempt --input <envelope.json>`; temporary `--evidence`
-  accepts only readable packet API 8 legacy evidence. `--auto-block` is retired.
+  accepts only policy-defined historical legacy evidence. `--auto-block` is retired.
   Legacy cleanup produces one block-only outcome and policy auto-finalizes one
   receipt. Ambiguous terminal outcomes require external
   `controller_authorization/v1`; agents may transport evidence but cannot mint,

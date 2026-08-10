@@ -479,7 +479,7 @@ to `harness-attesters.toml`.
 Operator runs `harness-core sign-legacy-cleanup` with unsigned JSON and an
 external private-key file. Controller passes signed JSON to
 `harness-core terminalize-attempt --run-id <run-id> --input <envelope.json>`.
-For readable packet API 8 legacy evidence only, temporary
+For the policy-defined historical legacy packet API only, temporary
 `--evidence <attestation.json>` translates to that envelope. `--auto-block` is
 rejected. Core writes one tagged null-lease terminal record, records a
 block-only outcome, then policy auto-finalizes one v3 receipt. Exact re-entry

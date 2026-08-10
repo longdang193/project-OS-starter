@@ -82,7 +82,7 @@ ignored local run artifacts. No scheduler, daemon, or job manager ships with
 starter kit. For `runtime_provider_id: codex_app_server`, use provider-host
 execution, never generic `run-unavailable`:
 
-Packet API 8 uses a core-issued finite execution lease and one core
+Current leased packets use a core-issued finite execution lease and one core
 `terminalize_attempt(envelope)` boundary. Evidence produces `attempt_outcome/v2`;
 one-decision terminal outcomes auto-finalize, while ambiguous terminal outcomes
 need signed external `controller_authorization/v1`. Core writes one v3 receipt.
@@ -95,22 +95,23 @@ key outside repository and agent workspace. Current public records live in
 `~/.codex/harness-authorities.toml`; migrate retired attester records with
 `harness-core migrate-harness-authorities`. Controller submits canonical
 `harness-core terminalize-attempt --input <envelope.json>`. Temporary
-`--evidence` accepts only readable packet API 8 legacy evidence; `--auto-block`
-is rejected. Core records one tagged null-lease terminal record, then policy
-auto-finalizes `blocked`. Host never performs legacy cleanup or terminal state
-writes.
+`--evidence` accepts only the policy-defined historical legacy packet API;
+`--auto-block` is rejected. Core records one tagged null-lease terminal record,
+then policy auto-finalizes `blocked`. Host never performs legacy cleanup or
+terminal state writes.
 
 ```powershell
-Set-Location <codex-harness-host-root>
-uv run --locked codex-harness-host capabilities
-uv run --locked codex-harness-host preflight
-uv run --locked codex-harness-host run --harness-root <repo-root> --request <request.json>
+harness-core-launcher doctor
+harness-core-launcher capabilities
+harness-core-launcher preflight
+harness-core-launcher run --harness-root <repo-root> --request <request.json>
 ```
 
-Host reads transport only from trusted user configuration. Do not put an
-endpoint, launch command, or credentials in repository policy, requests, or
-packets. Never dispatch bare `codex-harness-host`: PATH can resolve an unrelated
-user-level tool instead of the locked source host.
+`harness-core-launcher` selects the verified pointer-owned host release profile.
+Host reads transport only from trusted user configuration. Do not put an endpoint,
+launch command, or credentials in repository policy, requests, or packets. Never
+dispatch bare `codex-harness-host`: PATH can resolve an unrelated user-level tool
+instead of the active release profile.
 
 Host contract:
 `docs/operating_system/procedures/managed-execution-adapter-contract.md`.

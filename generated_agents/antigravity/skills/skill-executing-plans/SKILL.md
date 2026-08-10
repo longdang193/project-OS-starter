@@ -52,12 +52,13 @@ For package-backed harnesses, use installed `harness-core` commands or a
 provider host, never copied consumer logic. Confirm `harness_core.request_api`
 and adapter `host_api` before packet work. Package, release tag, or provider
 absence is a blocker, not a local fallback.
-For `codex_app_server`, run host `capabilities` and `preflight` from installed
-host source before packet work. Host-owned trusted user configuration selects
-the registered launcher or explicit external endpoint; never copy endpoint,
-launch-command, or credential values into repository guidance or packets.
-Use only `uv run --locked codex-harness-host ...`; bare host commands can resolve
-stale user-level PATH tools and never prove the locked managed runtime.
+For `codex_app_server`, run `harness-core-launcher doctor`, `capabilities`, and
+`preflight` before packet work. Its active pointer selects the verified host
+release profile. Host-owned trusted user configuration selects the registered
+launcher or explicit external endpoint; never copy endpoint, launch-command, or
+credential values into repository guidance or packets. Never invoke bare
+`codex-harness-host`; PATH can resolve stale user-level tools and cannot prove
+the managed runtime.
 After host-source fix, follow
 [`managed-execution-adapter-contract.md`](../../../docs/operating_system/procedures/managed-execution-adapter-contract.md#committed-runtime-provenance)
 before product packet dispatch. `preflight` alone is insufficient; prove only
@@ -70,9 +71,9 @@ this evidence. `workspace_baseline_invalid` is a host/environment failure:
 preserve its evidence and repair workspace materialization, never reinterpret
 it as product scope or agent behavior.
 
-For packet API 8, core issues one finite lease before `running`. Host owns
-provider processes and returns only `host_terminal_observation/v2`; controller
-invokes only `terminalize_attempt(envelope)`. Evidence records
+For current leased packets, core issues one finite lease before `running`. Host
+owns provider processes and returns packet-declared terminal evidence;
+controller invokes only `terminalize_attempt(envelope)`. Evidence records
 `attempt_outcome/v2`; core auto-finalizes one-decision terminal outcomes and
 requires signed controller authority for ambiguous terminal outcomes. Core
 atomically records receipt, lease release, state history, and `run.json`. Do not

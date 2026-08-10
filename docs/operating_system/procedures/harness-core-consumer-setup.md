@@ -53,7 +53,7 @@ second compatibility table. Historical packets remain readable without profile
 backfill and never become current dispatch evidence.
 
 Migration preflight reports active unleased legacy attempts as isolated. They
-cannot dispatch or resume, but do not block new packet API 8 admission. Preserve
+cannot dispatch or resume, but do not block new leased-packet admission. Preserve
 their packet bytes. External operator creates signed
 `legacy_cleanup_attestation/v1` with `harness-core sign-legacy-cleanup`, using
 an Ed25519 key outside repository and agent workspace. Current trusted public
@@ -61,7 +61,7 @@ records live only in `~/.codex/harness-authorities.toml`; migrate an existing
 old file with `harness-core migrate-harness-authorities` before validation.
 Controller submits canonical `terminalize-attempt --input <envelope.json>`.
 The temporary `--evidence <legacy-attestation.json>` wrapper accepts only a
-readable packet API 8 legacy attestation. `--auto-block` is retired. Core
+policy-defined historical legacy attestation. `--auto-block` is retired. Core
 validates signature, scope, identity, and freshness, records a block-only
 `attempt_outcome/v2`, then policy auto-finalizes one `attempt_terminal_receipt/v3`.
 Direct legacy abandonment is retired. Ambiguous outcomes require an external
