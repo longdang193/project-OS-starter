@@ -175,6 +175,14 @@ packet-native tool probes and checks use `check_timeout_seconds`. The short
 Windows, every provider or packet-native tool process for one lease uses that
 lease's Job Object containment.
 
+For packet API 8, an unusable claim after a completed work turn may use exactly
+one core-authorized repair. Core first collects completed-turn identity, then
+requests repair against that same open provider session and original thread ID.
+Host uses only packet finalization reserve, a read-only sandbox, and no dynamic
+tools. It closes session before stopped-containment evidence; it never reopens a
+session, starts a fresh repair thread, or turns claim repair into retry, resume,
+validation, or product work.
+
 `repo_config/harness.yaml:orchestration` owns concurrency. Core resolves
 `max_parallel_lanes` into packet orchestration to cap every concurrent work
 lane, while `max_parallel_writers` further caps only write-capable lanes. Older
@@ -193,7 +201,10 @@ record only lane, opaque runtime IDs when available, terminal/interrupt state,
 bounded item and command state, final-claim state, containment, stop proof, and
 error field names plus SHA-256 hashes and byte lengths. They never store raw
 command output, prompts, environment values, provider error text, or assistant
-text.
+text. Provider failure observations may also carry core-normalized
+`provider_session_observation/v1`: bounded lifecycle timing, launcher binding
+digest, process identity and cleanup state, plus redacted and size-capped stderr
+diagnostic metadata.
 
 If completed host stop proof exists but core later rejects a claim, check result,
 or verification semantics, core records `evidence.failure` and terminalizes the
@@ -289,9 +300,9 @@ agent surfaces only and never participates in runtime selection or acceptance.
 A candidate stays absent from route policy until it passes same packet,
 workspace, tool-binding, check, read-only validator, and controller-acceptance
 proof as every admitted provider. No automatic provider fallback exists.
-Current `codex_app_server` policy uses contract version 6 with request API 5,
-packet API 7, and host API 6. Packet APIs 3, 4, 5, and 6 remain readable evidence
-under declared compatibility profiles; host API 5 rejects packet API 7 before
+Current `codex_app_server` policy uses contract version 7 with request API 5,
+packet API 8, and host API 7. Packet APIs 3 through 7 remain readable evidence
+under declared compatibility profiles; host APIs below 7 reject packet API 8 before
 workspace preparation or lane dispatch. Mismatched identity fails before
 workspace preparation or lane dispatch.
 
@@ -305,7 +316,9 @@ Host adapter provides these methods:
 | `identity()` | none | exact packet `runtime_provider` object: `{provider_id, contract_version}` |
 | `prepare_workspace(lane, packet)` | immutable lane and packet | workspace identity plus normalized baseline evidence |
 | `dispatch_lane(lane, packet, workspace, delegation_bridge)` | immutable lane, packet, workspace, optional core-owned delegation bridge | opaque dispatch handle |
+| `collect_lane_completion(handle, lane, packet, workspace)` | dispatch handle and immutable lane context | completed turn identity, or bounded terminal observation for provider failure |
 | `collect_claim(handle)` | dispatch handle | role-valid `claimed_result` |
+| `repair_claim(handle, lane, packet, workspace, failure)` | one completed packet API 8 work handle plus core-normalized unusable-claim failure | one read-only, no-tool repair from same open provider session and original thread |
 | `collect_lane_evidence(handle, lane, packet, workspace)` | dispatch handle, immutable lane and packet, workspace | host execution evidence for exactly one dispatched lane |
 | `cancel_lane(handle)` | dispatch handle | cancellation attempt |
 | `materialize_final_state(lane, packet, workspaces)` | immutable integration lane, packet, workspaces | final workspace identity object |

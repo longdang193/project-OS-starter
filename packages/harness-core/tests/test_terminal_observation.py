@@ -103,6 +103,38 @@ def host_observation(**overrides: object) -> dict[str, object]:
     return value
 
 
+def provider_session(**overrides: object) -> dict[str, object]:
+    value: dict[str, object] = {
+        "schema_id": "provider_session_observation/v1",
+        "operation": "run",
+        "outcome": "failed",
+        "primary_failure_code": "protocol_error",
+        "started_at": "2026-08-09T12:00:00+00:00",
+        "startup_deadline_at": "2026-08-09T12:00:10+00:00",
+        "operation_deadline_at": "2026-08-09T12:05:00+00:00",
+        "cleanup_deadline_at": "2026-08-09T12:05:10+00:00",
+        "finished_at": "2026-08-09T12:00:02+00:00",
+        "elapsed_ms": 2_000,
+        "launch_binding_digest": "b" * 64,
+        "root_process_identity": {"pid": 123, "creation_id": "process-1"},
+        "child_exit_code": 1,
+        "child_running_before_cleanup": False,
+        "cleanup": {
+            "state": "reaped",
+            "observed_at": "2026-08-09T12:00:02+00:00",
+            "active_process_count": 0,
+        },
+        "diagnostic": {
+            "stderr_sha256": _digest("provider stderr"),
+            "stderr_bytes": 15,
+            "stderr_truncated": False,
+            "stderr_tail": "provider exited",
+        },
+    }
+    value.update(overrides)
+    return value
+
+
 def test_normalize_terminal_observation_persists_bounded_provider_failure() -> None:
     assert normalize_terminal_observation(observation(), PACKET) == observation()
 
@@ -198,6 +230,17 @@ def test_normalize_host_terminal_observation_v2_allows_no_start_provider_failure
     assert normalize_host_terminal_observation(raw, V2_PACKET, binding=V2_BINDING) == raw
 
 
+def test_normalize_host_terminal_observation_v2_preserves_bounded_provider_session_diagnostic() -> None:
+    raw = host_observation(provider_session=provider_session(diagnostic={
+        "stderr_sha256": _digest("provider stderr"),
+        "stderr_bytes": 20_691_819,
+        "stderr_truncated": True,
+        "stderr_tail": "provider exited",
+    }))
+
+    assert normalize_host_terminal_observation(raw, V2_PACKET, binding=V2_BINDING) == raw
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -223,6 +266,12 @@ def test_normalize_host_terminal_observation_v2_allows_no_start_provider_failure
             "host_process": {"pid": 456, "creation_id": "host-process-1"},
             "cancellation_request_id": "cancel-1",
         }),
+        host_observation(provider_session=provider_session(diagnostic={
+            "stderr_sha256": _digest("token=secret"),
+            "stderr_bytes": 12,
+            "stderr_truncated": False,
+            "stderr_tail": "token=secret",
+        })),
     ],
 )
 def test_normalize_host_terminal_observation_v2_rejects_unbound_or_sensitive_data(raw: dict[str, object]) -> None:

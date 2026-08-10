@@ -114,7 +114,7 @@ execution_budgets:
 claim_repair:
   max_repairs_per_lane: 1
   admissible_subcodes: [missing_final_claim, claim_not_json, claim_not_object, claim_kind_mismatch, claim_field_missing, claim_field_type_invalid, claim_field_constraint_invalid]
-  required_host_capability: claim_repair_same_thread
+  required_host_capability: claim_repair_same_session
 terminalization:
   auto_finalize_single_terminal_outcome: true
   pending_outcome_ttl_seconds: 3600

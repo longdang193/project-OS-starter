@@ -655,7 +655,7 @@ def validate(root: Path) -> list[str]:
         subcodes = claim_repair["admissible_subcodes"]
         if not isinstance(subcodes, list) or set(subcodes) != CLAIM_REPAIR_SUBCODES or len(subcodes) != len(CLAIM_REPAIR_SUBCODES):
             errors.append("claim_repair admissible_subcodes are invalid")
-        if claim_repair["required_host_capability"] != "claim_repair_same_thread":
+        if claim_repair["required_host_capability"] != "claim_repair_same_session":
             errors.append("claim_repair required_host_capability is invalid")
 
     artifact_handoff_profiles = _validate_evidence_artifacts(policy.get("evidence_artifacts"), context_limits, errors)

@@ -181,7 +181,7 @@ def write_harness_root(root: Path) -> None:
                         "claim_field_type_invalid",
                         "claim_field_constraint_invalid",
                     ],
-                    "required_host_capability": "claim_repair_same_thread",
+                    "required_host_capability": "claim_repair_same_session",
                 },
                 "terminalization": {
                     "auto_finalize_single_terminal_outcome": True,

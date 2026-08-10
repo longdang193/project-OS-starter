@@ -2134,6 +2134,19 @@ def _has_terminal_host_failure(attempt: dict[str, Any]) -> bool:
     )
 
 
+def _terminalize_active_host_failure(
+    root: Path,
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    adapter: Any,
+    active_handles: list[tuple[dict[str, Any], Any]],
+    *,
+    phase: str,
+) -> dict[str, Any]:
+    _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase=phase)
+    return _terminalize_collected_attempt(root, run, attempt)
+
+
 def _packet_check_lane_ids(packet: dict[str, Any]) -> set[str]:
     checks = packet.get("checks")
     if not isinstance(checks, dict):
@@ -2779,7 +2792,7 @@ def _delegated_child_packet(root: Path, run_id: str, child_invocation_id: str) -
 
 def _delegation_bridge(root: Path, run: dict[str, Any], attempt: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any] | None:
     packet = attempt["packet"]
-    if lane.get("node_kind") != "agent" or "harness.delegate" not in packet.get("capabilities", []):
+    if lane.get("node_kind") != "agent" or lane.get("kind") != "work" or "harness.delegate" not in packet.get("capabilities", []):
         return None
     parent_node_id = _required_string(lane.get("lane_id"), "parent node id")
     parent_invocation_id = _required_string(packet.get("invocation_id"), "parent invocation id")
@@ -4225,6 +4238,58 @@ def _normalize_claim_repair_result(
     return observation, copy.deepcopy(finalization)
 
 
+def _record_v7_lane_completion(
+    attempt: dict[str, Any],
+    adapter: Any,
+    handle: Any,
+    lane: dict[str, Any],
+    packet: dict[str, Any],
+    workspace: dict[str, Any],
+) -> dict[str, Any] | None:
+    value = _adapter_call(adapter, "collect_lane_completion", handle, lane, packet, workspace)
+    if not isinstance(value, dict) or value.get("version") != 1 or value.get("lane_id") != lane["lane_id"]:
+        raise HarnessError("host adapter lane completion is invalid")
+    state = value.get("state")
+    if state == "completed":
+        if set(value) != {"version", "state", "lane_id", "thread_id", "turn_id"}:
+            raise HarnessError("host adapter completed lane completion is invalid")
+        if not isinstance(value["thread_id"], str) or not value["thread_id"]:
+            raise HarnessError("host adapter completed lane completion lacks thread identity")
+        if not isinstance(value["turn_id"], str) or not value["turn_id"]:
+            raise HarnessError("host adapter completed lane completion lacks turn identity")
+        return {"terminal_status": "completed", "thread_id": value["thread_id"]}
+    if state == "terminal":
+        if set(value) != {"version", "state", "lane_id", "evidence"} or not isinstance(value["evidence"], dict):
+            raise HarnessError("host adapter terminal lane completion is invalid")
+        _record_lane_execution_evidence(attempt, lane, packet, workspace, value["evidence"])
+        return None
+    raise HarnessError("host adapter lane completion has unknown state")
+
+
+def _assert_claim_terminal_evidence(value: Any, evidence: dict[str, Any]) -> None:
+    if (
+        not isinstance(value, dict)
+        or value.get("thread_id") != evidence.get("thread_id")
+        or evidence.get("terminal_status") != "completed"
+    ):
+        raise HarnessError("host adapter claim conflicts with terminal evidence")
+
+
+def _collect_v7_lane_evidence(
+    attempt: dict[str, Any],
+    adapter: Any,
+    handle: Any,
+    lane: dict[str, Any],
+    packet: dict[str, Any],
+    workspace: dict[str, Any],
+    claim: Any,
+) -> dict[str, Any]:
+    evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, workspace)
+    _record_lane_execution_evidence(attempt, lane, packet, workspace, evidence)
+    _assert_claim_terminal_evidence(claim, evidence)
+    return evidence
+
+
 def _record_v7_lane_claim(
     root: Path,
     run: dict[str, Any],
@@ -4482,29 +4547,64 @@ def _execute_attempt(
                     lane["status"] = "running"
                     active_handles.append((lane, handle))
                 for lane, handle in active_handles[:]:
-                    evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
-                    _record_lane_execution_evidence(attempt, lane, packet, lane["workspace"], evidence)
-                    claim = _adapter_call(adapter, "collect_claim", handle)
-                    if _sync_delegation_state(root, run, attempt):
-                        _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="delegation")
-                        _write_run(root, run)
-                        return _managed_result(run)
                     if packet["version"] == CURRENT_PACKET_API:
-                        _record_v7_lane_claim(
+                        completion = _record_v7_lane_completion(
+                            attempt,
+                            adapter,
+                            handle,
+                            lane,
+                            packet,
+                            lane["workspace"],
+                        )
+                        if completion is None:
+                            if not _has_terminal_host_failure(attempt):
+                                raise HarnessError("terminal lane completion lacks host failure evidence")
+                            return _terminalize_active_host_failure(
+                                root,
+                                run,
+                                attempt,
+                                adapter,
+                                active_handles,
+                                phase="terminal_observation",
+                            )
+                        claim = _adapter_call(adapter, "collect_claim", handle)
+                        try:
+                            _record_v7_lane_claim(
+                                root,
+                                run,
+                                attempt,
+                                adapter,
+                                capabilities,
+                                lane,
+                                packet,
+                                lane["workspace"],
+                                handle,
+                                completion,
+                                claim,
+                            )
+                        except Exception:
+                            _collect_v7_lane_evidence(attempt, adapter, handle, lane, packet, lane["workspace"], claim)
+                            raise
+                    else:
+                        evidence = _adapter_call(adapter, "collect_lane_evidence", handle, lane, packet, lane["workspace"])
+                        _record_lane_execution_evidence(attempt, lane, packet, lane["workspace"], evidence)
+                        claim = _adapter_call(adapter, "collect_claim", handle)
+                        _record_lane_claim(root, run, attempt, lane, claim, packet_version=packet["version"])
+                    if packet["version"] == CURRENT_PACKET_API:
+                        _collect_v7_lane_evidence(attempt, adapter, handle, lane, packet, lane["workspace"], claim)
+                    if packet.get("version") == CURRENT_PACKET_API and _has_terminal_host_failure(attempt):
+                        return _terminalize_active_host_failure(
                             root,
                             run,
                             attempt,
                             adapter,
-                            capabilities,
-                            lane,
-                            packet,
-                            lane["workspace"],
-                            handle,
-                            evidence,
-                            claim,
+                            active_handles,
+                            phase="terminal_observation",
                         )
-                    else:
-                        _record_lane_claim(root, run, attempt, lane, claim, packet_version=packet["version"])
+                    if _sync_delegation_state(root, run, attempt):
+                        _cancel_active_lanes(root, run, attempt, adapter, active_handles, phase="delegation")
+                        _write_run(root, run)
+                        return _managed_result(run)
                     lane["status"] = "succeeded"
                     workspaces[lane["lane_id"]] = copy.deepcopy(lane["workspace"])
                     pending.pop(lane["lane_id"])
@@ -4536,25 +4636,60 @@ def _execute_attempt(
                 handle = _adapter_call(adapter, "dispatch_lane", validator, packet, workspace, _delegation_bridge(root, run, attempt, validator))
                 validator["status"] = "running"
                 active_handles.append((validator, handle))
-                evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
-                _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
-                claim = _adapter_call(adapter, "collect_claim", handle)
                 if packet["version"] == CURRENT_PACKET_API:
-                    _record_v7_lane_claim(
+                    completion = _record_v7_lane_completion(
+                        attempt,
+                        adapter,
+                        handle,
+                        validator,
+                        packet,
+                        workspace,
+                    )
+                    if completion is None:
+                        if not _has_terminal_host_failure(attempt):
+                            raise HarnessError("terminal lane completion lacks host failure evidence")
+                        return _terminalize_active_host_failure(
+                            root,
+                            run,
+                            attempt,
+                            adapter,
+                            active_handles,
+                            phase="terminal_observation",
+                        )
+                    claim = _adapter_call(adapter, "collect_claim", handle)
+                    try:
+                        _record_v7_lane_claim(
+                            root,
+                            run,
+                            attempt,
+                            adapter,
+                            capabilities,
+                            validator,
+                            packet,
+                            workspace,
+                            handle,
+                            completion,
+                            claim,
+                        )
+                    except Exception:
+                        _collect_v7_lane_evidence(attempt, adapter, handle, validator, packet, workspace, claim)
+                        raise
+                else:
+                    evidence = _adapter_call(adapter, "collect_lane_evidence", handle, validator, packet, workspace)
+                    _record_lane_execution_evidence(attempt, validator, packet, workspace, evidence)
+                    claim = _adapter_call(adapter, "collect_claim", handle)
+                    _record_lane_claim(root, run, attempt, validator, claim, packet_version=packet["version"])
+                if packet["version"] == CURRENT_PACKET_API:
+                    _collect_v7_lane_evidence(attempt, adapter, handle, validator, packet, workspace, claim)
+                if packet.get("version") == CURRENT_PACKET_API and _has_terminal_host_failure(attempt):
+                    return _terminalize_active_host_failure(
                         root,
                         run,
                         attempt,
                         adapter,
-                        capabilities,
-                        validator,
-                        packet,
-                        workspace,
-                        handle,
-                        evidence,
-                        claim,
+                        active_handles,
+                        phase="terminal_observation",
                     )
-                else:
-                    _record_lane_claim(root, run, attempt, validator, claim, packet_version=packet["version"])
                 validator["status"] = "succeeded"
                 pending.pop(validator["lane_id"])
                 active_handles.remove((validator, handle))

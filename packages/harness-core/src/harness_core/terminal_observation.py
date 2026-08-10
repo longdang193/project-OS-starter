@@ -74,6 +74,32 @@ _HOST_V2_FIELDS = {
     "containment",
     "stop_proof",
 }
+_HOST_V2_PROVIDER_SESSION_FIELD = "provider_session"
+_PROVIDER_SESSION_FIELDS = {
+    "schema_id",
+    "operation",
+    "outcome",
+    "primary_failure_code",
+    "started_at",
+    "startup_deadline_at",
+    "operation_deadline_at",
+    "cleanup_deadline_at",
+    "finished_at",
+    "elapsed_ms",
+    "launch_binding_digest",
+    "root_process_identity",
+    "child_exit_code",
+    "child_running_before_cleanup",
+    "cleanup",
+    "diagnostic",
+}
+_PROVIDER_SESSION_CLEANUP_FIELDS = {"state", "observed_at", "active_process_count"}
+_PROVIDER_SESSION_DIAGNOSTIC_FIELDS = {"stderr_sha256", "stderr_bytes", "stderr_truncated", "stderr_tail"}
+_MAX_PROVIDER_SESSION_DIAGNOSTIC_BYTES = 2_048
+_MAX_PROVIDER_SESSION_STDERR_BYTES = 64 * 1024 * 1024
+_UNREDACTED_DIAGNOSTIC_SECRET = re.compile(
+    r"(?i)(?:\b(?:api[_-]?key|token|password|secret|authorization|cookie)\b\s*[:=]\s*(?!<redacted>)\S+|//[^:/\s]+:[^@/\s]+@)"
+)
 _HOST_V2_SOURCES = {
     "completed": "completed",
     "provider_failure": "failed",
@@ -292,13 +318,86 @@ def _stop_proof(value: Any, source: str) -> dict[str, Any]:
     }
 
 
+def _provider_session(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != _PROVIDER_SESSION_FIELDS:
+        raise TerminalObservationError("terminal observation has invalid provider_session")
+    if value.get("schema_id") != "provider_session_observation/v1":
+        raise TerminalObservationError("terminal observation has invalid provider_session.schema_id")
+    cleanup = value.get("cleanup")
+    if not isinstance(cleanup, dict) or set(cleanup) != _PROVIDER_SESSION_CLEANUP_FIELDS:
+        raise TerminalObservationError("terminal observation has invalid provider_session.cleanup")
+    cleanup_state = cleanup.get("state")
+    if cleanup_state not in {"not_started", "reaped", "incomplete"}:
+        raise TerminalObservationError("terminal observation has invalid provider_session.cleanup.state")
+    active_count = cleanup.get("active_process_count")
+    if not isinstance(active_count, int) or isinstance(active_count, bool) or not 0 <= active_count <= MAX_TERMINAL_OBSERVATION_ITEMS:
+        raise TerminalObservationError("terminal observation has invalid provider_session.cleanup.active_process_count")
+    diagnostic = value.get("diagnostic")
+    if diagnostic is None:
+        normalized_diagnostic = None
+    else:
+        if not isinstance(diagnostic, dict) or set(diagnostic) != _PROVIDER_SESSION_DIAGNOSTIC_FIELDS:
+            raise TerminalObservationError("terminal observation has invalid provider_session.diagnostic")
+        tail = diagnostic.get("stderr_tail")
+        if (
+            not isinstance(tail, str)
+            or len(tail.encode("utf-8")) > _MAX_PROVIDER_SESSION_DIAGNOSTIC_BYTES
+            or _UNREDACTED_DIAGNOSTIC_SECRET.search(tail)
+        ):
+            raise TerminalObservationError("terminal observation has unsafe provider_session.diagnostic.stderr_tail")
+        if not isinstance(diagnostic.get("stderr_truncated"), bool):
+            raise TerminalObservationError("terminal observation has invalid provider_session.diagnostic.stderr_truncated")
+        stderr_bytes = diagnostic.get("stderr_bytes")
+        if (
+            not isinstance(stderr_bytes, int)
+            or isinstance(stderr_bytes, bool)
+            or not 0 <= stderr_bytes <= _MAX_PROVIDER_SESSION_STDERR_BYTES
+        ):
+            raise TerminalObservationError("terminal observation has invalid provider_session.diagnostic.stderr_bytes")
+        normalized_diagnostic = {
+            "stderr_sha256": _hash(diagnostic.get("stderr_sha256"), "provider_session.diagnostic.stderr_sha256"),
+            "stderr_bytes": stderr_bytes,
+            "stderr_truncated": diagnostic["stderr_truncated"],
+            "stderr_tail": tail,
+        }
+    root_process = value.get("root_process_identity")
+    exit_code = value.get("child_exit_code")
+    if exit_code is not None and (not isinstance(exit_code, int) or isinstance(exit_code, bool) or not -_MAX_LENGTH <= exit_code <= _MAX_LENGTH):
+        raise TerminalObservationError("terminal observation has invalid provider_session.child_exit_code")
+    running_before_cleanup = value.get("child_running_before_cleanup")
+    if running_before_cleanup is not None and not isinstance(running_before_cleanup, bool):
+        raise TerminalObservationError("terminal observation has invalid provider_session.child_running_before_cleanup")
+    return {
+        "schema_id": "provider_session_observation/v1",
+        "operation": _status(value.get("operation"), "provider_session.operation"),
+        "outcome": _status(value.get("outcome"), "provider_session.outcome"),
+        "primary_failure_code": _optional_status(value.get("primary_failure_code"), "provider_session.primary_failure_code"),
+        "started_at": _timestamp(value.get("started_at"), "provider_session.started_at"),
+        "startup_deadline_at": _timestamp(value.get("startup_deadline_at"), "provider_session.startup_deadline_at"),
+        "operation_deadline_at": _timestamp(value.get("operation_deadline_at"), "provider_session.operation_deadline_at"),
+        "cleanup_deadline_at": _timestamp(value.get("cleanup_deadline_at"), "provider_session.cleanup_deadline_at"),
+        "finished_at": _timestamp(value.get("finished_at"), "provider_session.finished_at"),
+        "elapsed_ms": _length(value.get("elapsed_ms"), "provider_session.elapsed_ms"),
+        "launch_binding_digest": _hash(value.get("launch_binding_digest"), "provider_session.launch_binding_digest"),
+        "root_process_identity": None if root_process is None else _process(root_process, "provider_session.root_process_identity"),
+        "child_exit_code": exit_code,
+        "child_running_before_cleanup": running_before_cleanup,
+        "cleanup": {
+            "state": cleanup_state,
+            "observed_at": _timestamp(cleanup.get("observed_at"), "provider_session.cleanup.observed_at"),
+            "active_process_count": active_count,
+        },
+        "diagnostic": normalized_diagnostic,
+    }
+
+
 def normalize_host_terminal_observation(
     raw: Any,
     packet: dict[str, Any],
     *,
     binding: dict[str, Any],
 ) -> dict[str, Any]:
-    if not isinstance(raw, dict) or set(raw) != _HOST_V2_FIELDS:
+    if not isinstance(raw, dict) or not (_HOST_V2_FIELDS <= set(raw) <= _HOST_V2_FIELDS | {_HOST_V2_PROVIDER_SESSION_FIELD}):
         raise TerminalObservationError("terminal observation has unsupported fields")
     required_binding = {"run_id", "attempt_id", "packet_sha256", "lease_id", "lease_epoch", "host_instance_id"}
     if not isinstance(binding, dict) or set(binding) != required_binding:
@@ -349,7 +448,7 @@ def normalize_host_terminal_observation(
         raise TerminalObservationError("terminal observation has incomplete containment proof")
     if source != "provider_failure" and containment["state"] == "not_started":
         raise TerminalObservationError("terminal observation has incomplete containment proof")
-    return {
+    normalized = {
         "schema_id": "host_terminal_observation/v2",
         "observation_id": _identifier(raw.get("observation_id"), "observation_id"),
         **normalized_binding,
@@ -367,6 +466,9 @@ def normalize_host_terminal_observation(
         "containment": containment,
         "stop_proof": _stop_proof(raw.get("stop_proof"), source),
     }
+    if _HOST_V2_PROVIDER_SESSION_FIELD in raw:
+        normalized[_HOST_V2_PROVIDER_SESSION_FIELD] = _provider_session(raw.get(_HOST_V2_PROVIDER_SESSION_FIELD))
+    return normalized
 
 
 def normalize_terminal_observation(raw: Any, packet: dict[str, Any]) -> dict[str, Any]:

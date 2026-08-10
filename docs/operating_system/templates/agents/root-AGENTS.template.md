@@ -114,6 +114,11 @@ When spawning a subagent:
   `check_timeout_seconds`. Reserve is one policy-owned slice used only for one
   read-only final claim turn after interruption or empty final text. Transport
   preflight has separate short bound.
+- For current packet API 8, core may authorize one unusable-claim repair only
+  after completed work. Host must reuse exact open provider session and original
+  thread ID, consume only finalization reserve, use read-only with no tools, then
+  close session before terminal evidence. No fresh session, repair thread, retry,
+  resume, validation, or product work is allowed.
 - Harness dispatches only mode intersection of route policy and enforced host
   capability. Controller uses `terminalize_attempt` for `accept`, `block`, and
   `waive`; retry, escalation, and approval request remain nonterminal decisions.

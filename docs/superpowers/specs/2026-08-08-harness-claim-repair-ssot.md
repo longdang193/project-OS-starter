@@ -14,6 +14,18 @@ targets:
 
 # Harness Claim Repair SSOT
 
+## Current Runtime Alignment
+
+Current runtime contract is policy schema 9, request API 5, packet API 8,
+host API 7, and provider contract 7. New claim repair requires
+`claim_repair_same_session`: host preserves one open provider session and the
+original thread ID for a single read-only, no-tool repair turn. Current
+normative behavior lives in `repo_config/harness.yaml`,
+`packages/harness-core`, and
+`docs/operating_system/procedures/managed-execution-adapter-contract.md`.
+Versioned API 6 / packet API 7 rollout statements below retain initial design
+context; they do not define current dispatch or capability admission.
+
 ## Goal and Problem
 
 ### Problem

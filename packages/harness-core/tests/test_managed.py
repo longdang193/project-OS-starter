@@ -329,7 +329,7 @@ class FakeAdapter:
         workspace_root=None,
     ):
         self.capabilities_value = {
-            "claim_repair_same_thread": "enforced",
+            "claim_repair_same_session": "enforced",
             "host_terminal_observation_v2": "enforced",
             "execution_lease_duration_model": "enforced",
             **capabilities,
@@ -444,6 +444,16 @@ class FakeAdapter:
 
     def cancel_lane(self, handle):
         self.calls.append("cancel_lane")
+
+    def collect_lane_completion(self, handle, lane, packet, workspace):
+        self.calls.append("collect_lane_completion")
+        return {
+            "version": 1,
+            "state": "completed",
+            "lane_id": lane["lane_id"],
+            "thread_id": "thread",
+            "turn_id": f"turn-{lane['lane_id']}",
+        }
 
     def collect_claim(self, handle):
         self.calls.append("collect_claim")
@@ -839,7 +849,7 @@ def test_resolve_managed_packet_builds_api8_lane_dag() -> None:
             "claim_field_type_invalid",
             "claim_field_constraint_invalid",
         ],
-        "required_host_capability": "claim_repair_same_thread",
+        "required_host_capability": "claim_repair_same_session",
     }
     assert packet["lanes"][0]["claim_schema"] == {
         "required_fields": ["summary", "changed_files"],
@@ -1631,6 +1641,8 @@ def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_p
     try:
         harness._write_run(ROOT, run)
         bridge = harness._delegation_bridge(ROOT, run, attempt, attempt["nodes"][0])
+        validator = next(node for node in attempt["nodes"] if node["kind"] == "validate")
+        assert harness._delegation_bridge(ROOT, run, attempt, validator) is None
         child = bridge["delegate"]({
             "idempotency_key": "child-1",
             "role": "investigate",
@@ -2615,13 +2627,15 @@ def test_run_managed_records_evidence_then_controller_accepts(tmp_path: Path) ->
             "prepare_workspace",
             "verify_tool_bindings",
             "dispatch_lane",
-            "collect_lane_evidence",
+            "collect_lane_completion",
             "collect_claim",
+            "collect_lane_evidence",
             "materialize_final_state",
             "verify_tool_bindings",
             "dispatch_lane",
-            "collect_lane_evidence",
+            "collect_lane_completion",
             "collect_claim",
+            "collect_lane_evidence",
         ]
 
         accepted = harness.apply_controller_decision(ROOT, run_id, controller_decision(harness, run_id, "accept"))
@@ -2819,6 +2833,8 @@ def test_missing_command_result_provider_blocks_before_verification(tmp_path: Pa
             "prepare_workspace",
             "verify_tool_bindings",
             "dispatch_lane",
+            "collect_lane_completion",
+            "collect_claim",
             "collect_lane_evidence",
             "cancel_lane",
         ]
@@ -3416,6 +3432,10 @@ def test_managed_scheduler_respects_packet_parallel_lane_limit(tmp_path: Path) -
                 evidence["sandbox"] = "read-only"
             return evidence
 
+        def collect_lane_completion(self, handle, lane, packet, workspace):
+            self.events.append(f"completion:{lane['lane_id']}")
+            return super().collect_lane_completion(handle, lane, packet, workspace)
+
         def collect_claim(self, handle):
             lane_id = handle["lane_id"]
             self.events.append(f"claim:{lane_id}")
@@ -3464,9 +3484,9 @@ def test_managed_scheduler_respects_packet_parallel_lane_limit(tmp_path: Path) -
             "dispatch:research-1",
             "dispatch:research-2",
             "dispatch:research-3",
-            "evidence:research-0",
+            "completion:research-0",
         ]
-        assert adapter.events.index("dispatch:research-4") > adapter.events.index("claim:research-0")
+        assert adapter.events.index("dispatch:research-4") > adapter.events.index("evidence:research-0")
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -3535,7 +3555,7 @@ def test_v7_repairs_each_unusable_claim_once(tmp_path: Path, observation, subcod
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     adapter = FakeAdapter(
-        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        {"single_work_lane": "enforced", "claim_repair_same_session": "enforced"},
         claim_payload=observation,
     )
     try:
@@ -3561,7 +3581,7 @@ def test_v7_repairs_validator_claim_on_same_attempt(tmp_path: Path) -> None:
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     adapter = FakeAdapter(
-        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        {"single_work_lane": "enforced", "claim_repair_same_session": "enforced"},
         validator_claim={"state": "missing"},
         repair_payload={
             "kind": "claimed_result",
@@ -3604,7 +3624,7 @@ def test_v7_repair_budget_rejects_repeat_for_same_lane() -> None:
         lane,
         packet,
         evidence,
-        {"claim_repair_same_thread": "enforced"},
+        {"claim_repair_same_session": "enforced"},
     )
 
     assert (admitted, reason, repair_count) == (False, "repair_budget_exhausted", 1)
@@ -3615,7 +3635,7 @@ def test_v7_failed_repair_records_one_friction_then_claim_invalid(tmp_path: Path
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     adapter = FakeAdapter(
-        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        {"single_work_lane": "enforced", "claim_repair_same_session": "enforced"},
         claim_payload={"state": "missing"},
         repair_payload={"state": "object", "candidate_claim": {"kind": "wrong"}},
     )
@@ -3640,7 +3660,7 @@ def test_v7_timed_out_repair_records_claim_invalid(tmp_path: Path) -> None:
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     adapter = FakeAdapter(
-        {"single_work_lane": "enforced", "claim_repair_same_thread": "enforced"},
+        {"single_work_lane": "enforced", "claim_repair_same_session": "enforced"},
         claim_payload={"state": "missing"},
         repair_payload={"state": "missing"},
         repair_terminal_status="timed_out",
@@ -3666,7 +3686,7 @@ def test_v7_missing_repair_capability_records_no_repair(tmp_path: Path) -> None:
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
     adapter = FakeAdapter({"single_work_lane": "enforced"}, claim_payload={"state": "missing"})
-    adapter.capabilities_value.pop("claim_repair_same_thread")
+    adapter.capabilities_value.pop("claim_repair_same_session")
     try:
         result = harness.run_managed(ROOT, managed_request(run_id=run_id), adapter)
         repair = json.loads((run_dir / "run.json").read_text())["attempts"][0]["evidence"]["claim_repair"][0]
@@ -4522,6 +4542,50 @@ def test_api8_no_start_host_failure_terminalizes_and_releases_lease(tmp_path: Pa
         attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
 
         assert result["outcome"]["reason"] == "dispatch_failed"
+        assert attempt["terminal_record"]["classification"] == "provider_failure"
+        assert attempt["execution_lease"]["state"] == "released"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_api8_terminal_lane_evidence_short_circuits_claim_collection(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+
+    class TerminalEvidenceAdapter(FakeAdapter):
+        def collect_lane_completion(self, handle, lane, packet, workspace):
+            return {
+                "version": 1,
+                "state": "terminal",
+                "lane_id": lane["lane_id"],
+                "evidence": self.collect_lane_evidence(handle, lane, packet, workspace),
+            }
+
+        def collect_lane_evidence(self, handle, lane, packet, workspace):
+            evidence = super().collect_lane_evidence(handle, lane, packet, workspace)
+            observation = evidence["host_terminal_observation"]
+            observation.update({
+                "source": "provider_failure",
+                "terminal_status": "failed",
+                "final_claim_state": {"state": "missing"},
+                "error": None,
+            })
+            evidence["terminal_status"] = "failed"
+            return evidence
+
+        def collect_claim(self, handle):
+            raise AssertionError("core must terminalize before collecting a failed lane claim")
+
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            TerminalEvidenceAdapter({"single_work_lane": "enforced"}),
+        )
+        attempt = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+
+        assert result["state"] == "awaiting_decision"
         assert attempt["terminal_record"]["classification"] == "provider_failure"
         assert attempt["execution_lease"]["state"] == "released"
     finally:
