@@ -1018,7 +1018,7 @@ def test_api8_resume_rebinds_legacy_packet_to_current_host_instance(tmp_path: Pa
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_api8_resume_rejects_static_runtime_binding_change(tmp_path: Path) -> None:
+def test_api8_resume_records_runtime_binding_change_for_fresh_retry(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
@@ -1030,22 +1030,42 @@ def test_api8_resume_rejects_static_runtime_binding_change(tmp_path: Path) -> No
     try:
         request = managed_request(run_id=run_id)
         packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+        prior_packet = copy.deepcopy(packet)
         run = harness._new_run(request, run_id)
         harness._append_attempt(run, packet)
         harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "test")
         harness._write_run(ROOT, run)
 
-        with pytest.raises(harness.HarnessError, match="provider runtime binding changed"):
-            harness.run_managed(
-                ROOT,
-                None,
-                ChangedConfigurationAdapter({"single_work_lane": "enforced"}),
-                run_id=run_id,
-            )
+        result = harness.run_managed(
+            ROOT,
+            None,
+            ChangedConfigurationAdapter({"single_work_lane": "enforced"}),
+            run_id=run_id,
+        )
 
         stored = json.loads((run_dir / "run.json").read_text())
-        assert stored["state"] == "planned"
-        assert stored["attempts"][0]["execution_lease"] is None
+        attempt = stored["attempts"][0]
+        assert result["outcome"]["reason"] == "provider_configuration_changed"
+        assert result["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+        assert stored["state"] == "awaiting_decision"
+        assert attempt["packet"] == prior_packet
+        assert attempt["host_preflight"]["configuration_digest"] == "b" * 64
+        assert attempt["execution_lease"] is None
+        assert attempt["claims"] == []
+        assert attempt["node_observations"] == []
+        assert attempt["host_terminal_observations"] == []
+
+        retry = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "retry"},
+            adapter=ChangedConfigurationAdapter({"single_work_lane": "enforced"}),
+        )
+        attempts = json.loads((run_dir / "run.json").read_text())["attempts"]
+
+        assert retry["state"] == "planned"
+        assert attempts[0]["packet"] == prior_packet
+        assert attempts[1]["packet"]["provider_runtime_binding"]["configuration_digest"] == "b" * 64
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 

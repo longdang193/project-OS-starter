@@ -88,7 +88,7 @@ verification_profiles:
 retry_policies:
   bounded:
     max_attempts: 2
-    retryable_reasons: [check_failed, dispatch_failed, claim_invalid, verification_failed, review_required]
+    retryable_reasons: [check_failed, dispatch_failed, claim_invalid, verification_failed, review_required, provider_configuration_changed]
     exhaustion: block
     approval_resume: successor_attempt
     approval_ttl_seconds: 3600

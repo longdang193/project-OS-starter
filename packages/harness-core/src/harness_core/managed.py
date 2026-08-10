@@ -4964,18 +4964,29 @@ def run_managed(
             if preflight_binding is None:
                 raise HarnessError("provider preflight evidence is required")
             host_instance_id = _host_instance_id(preflight_binding)
-            if _resolve_current_runtime_binding(
+            current_runtime_binding = _resolve_current_runtime_binding(
                 preflight_binding,
                 runtime_provider,
                 packet_api=packet_api,
                 host_api=host_admission["host_api"],
-            ) != _resolve_current_runtime_binding(
+            )
+            packet_runtime_binding = _resolve_current_runtime_binding(
                 packet.get("provider_runtime_binding"),
                 runtime_provider,
                 packet_api=packet_api,
                 host_api=host_admission["host_api"],
-            ):
-                raise HarnessError("provider runtime binding changed")
+            )
+            if current_runtime_binding != packet_runtime_binding:
+                attempt["host_preflight"] = copy.deepcopy(preflight_binding)
+                return _record_failure(
+                    root,
+                    run,
+                    policy,
+                    attempt,
+                    "provider_configuration_changed",
+                    "provider runtime binding changed",
+                    phase="dispatch",
+                )
         if "plan_ref" in packet:
             try:
                 plan_ref = _required_string(packet.get("plan_ref"), "packet plan_ref")
