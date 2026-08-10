@@ -199,7 +199,15 @@ def _core_identity(
         if not host_admission["ok"]:
             raise HarnessError(host_admission["code"])
         host_api = host_admission["host_api"]
-        dispatch_admission = admit_packet_dispatch(host_api, request_admission["packet_api"])
+        runtime_provider = _default_runtime_provider(
+            policy,
+            packet_api=request_admission["packet_api"],
+        )
+        dispatch_admission = admit_packet_dispatch(
+            host_api,
+            request_admission["packet_api"],
+            runtime_provider["contract_version"],
+        )
         if not dispatch_admission["ok"]:
             raise HarnessError(dispatch_admission["code"])
     try:
@@ -1007,6 +1015,15 @@ def _route_packet(
     return packet
 
 
+def _default_runtime_provider(policy: dict[str, Any], *, packet_api: int) -> dict[str, Any]:
+    provider_id = policy["defaults"]["runtime_provider"]
+    provider = policy["runtime_providers"].get(provider_id)
+    if not isinstance(provider, dict) or not isinstance(provider.get("contract_version"), int):
+        raise HarnessError(f"unknown runtime provider `{provider_id}`")
+    contract_version = 2 if provider_id == "codex_app_server" and packet_api == 3 else provider["contract_version"]
+    return {"provider_id": provider_id, "contract_version": contract_version}
+
+
 def _resolve_runtime_provider(
     policy: dict[str, Any],
     task_type: str,
@@ -1020,11 +1037,7 @@ def _resolve_runtime_provider(
     provider_id = policy["defaults"]["runtime_provider"] if value is None else _required_string(value, "runtime_provider_id")
     if provider_id != policy["defaults"]["runtime_provider"]:
         raise HarnessError(f"runtime provider `{provider_id}` is not allowed for task type `{task_type}`")
-    provider = policy["runtime_providers"].get(provider_id)
-    if not isinstance(provider, dict) or not isinstance(provider.get("contract_version"), int):
-        raise HarnessError(f"unknown runtime provider `{provider_id}`")
-    contract_version = 2 if provider_id == "codex_app_server" and packet_api == 3 else provider["contract_version"]
-    return {"provider_id": provider_id, "contract_version": contract_version}
+    return _default_runtime_provider(policy, packet_api=packet_api)
 
 
 def _resolve_commit(root: Path, base_ref: str) -> str:

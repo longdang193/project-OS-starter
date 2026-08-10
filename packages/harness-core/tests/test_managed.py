@@ -4129,6 +4129,21 @@ def test_admit_managed_operation_returns_core_identity_before_packet_work() -> N
     assert isinstance(identity["package_release"], str)
 
 
+def test_admit_managed_operation_rejects_incompatible_policy_contract_before_packet_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = load_module()
+    policy = copy.deepcopy(harness._load_policy(ROOT))
+    policy["runtime_providers"]["codex_app_server"]["contract_version"] = 6
+    monkeypatch.setattr(harness, "_load_policy", lambda root: policy)
+
+    with pytest.raises(harness.HarnessError, match="harness_core_packet_dispatch_incompatible"):
+        harness.admit_managed_operation(
+            ROOT,
+            FakeAdapter({"single_work_lane": "enforced"}, host_api=7),
+        )
+
+
 def test_run_managed_resumes_planned_api4_packet_with_host3_only(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name

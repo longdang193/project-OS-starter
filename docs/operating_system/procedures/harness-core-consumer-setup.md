@@ -13,13 +13,13 @@ consumer scripts never implement managed execution.
 ## Install
 
 Pin both packages to released source tags compatible with provider host. Current
-tested pins: `harness-core-v0.1.32` and `harness-core-launcher-v0.1.0`.
+tested pins: `harness-core-v0.1.33` and `harness-core-launcher-v0.1.0`.
 Provider-host compatibility requires matching locked core pins, admitted host
 API, and committed runtime provenance. Host package version alone is not proof
 that its imported runtime contains a required host-source repair.
 
 ```powershell
-uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.32#subdirectory=packages/harness-core"
+uv add "harness-core @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-v0.1.33#subdirectory=packages/harness-core"
 uv add "harness-core-launcher @ git+https://github.com/longdang193/project-OS-starter.git@harness-core-launcher-v0.1.0#subdirectory=packages/harness-core-launcher"
 ```
 
