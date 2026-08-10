@@ -2762,7 +2762,13 @@ def _delegated_child_packet(root: Path, run_id: str, child_invocation_id: str) -
     attempt = _active_attempt(_load_run(root, _safe_run_id(run_id)))
     for child in attempt.get("children", []):
         if isinstance(child, dict) and isinstance(child.get("packet"), dict) and child["packet"].get("invocation_id") == child_invocation_id:
-            return copy.deepcopy(child["packet"])
+            packet = copy.deepcopy(child["packet"])
+            if packet.get("version") == CURRENT_PACKET_API:
+                lease = attempt.get("execution_lease")
+                if not isinstance(lease, dict) or lease.get("state") != "active":
+                    raise HarnessError("delegated child lacks active execution lease")
+                return _dispatch_packet(packet, lease)
+            return packet
     raise HarnessError("delegated child packet was not found")
 
 

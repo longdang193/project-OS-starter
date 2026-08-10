@@ -427,6 +427,11 @@ root before resume, and proves zero active processes before timeout or
 cancellation terminalization. No PID-tree, process-group, `taskkill`, named-job
 reopen, or host-side run-state fallback is allowed.
 
+A delegated child is not an independent attempt. Core projects its parent's
+active lease only into the host dispatch view; the stored child packet remains
+immutable and lease-free. Host borrows that same lease containment. Missing or
+inactive parent lease rejects child dispatch.
+
 An expired lease with absent host and provider identities terminalizes block-only
 as host crash. Live or unverified processes move attempt to nonterminal
 `orphaned` with recovery-blocked evidence. Fresh cleanup proof may terminalize

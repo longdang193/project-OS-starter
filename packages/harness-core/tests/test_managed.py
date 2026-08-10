@@ -1563,6 +1563,12 @@ def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_p
     packet["delegation_profile"] = "read_only_research"
     harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
     attempt = harness._append_attempt(run, packet)
+    lease = harness._issue_execution_lease(
+        run,
+        attempt,
+        host_instance_id="host-test",
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
     harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
     try:
         harness._write_run(ROOT, run)
@@ -1588,6 +1594,9 @@ def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_p
             "required_fields": ["summary", "findings"],
             "field_constraints": {},
         }
+        stored_child_packet = harness._load_run(ROOT, run_id)["attempts"][0]["children"][0]["packet"]
+        assert "execution_lease_binding" not in stored_child_packet
+        assert child_packet["execution_lease_binding"] == lease
     finally:
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 

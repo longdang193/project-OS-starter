@@ -102,6 +102,9 @@ When spawning a subagent:
 - Subagents may create child agents only when immutable packet grants
   `harness.delegate` and selects `read_only_research`. Core enforces child
   authority, paths, depth, budget, and read-only workspace.
+- A delegated child is not an independent attempt. Core projects its parent
+  active lease only into host dispatch; stored child packet remains immutable
+  and lease-free. Host borrows the parent containment.
 - In every other packet, subagents must not spawn child agents.
 - If task scope or needed capability changes, controller creates successor
   attempt and regenerates immutable packet.
