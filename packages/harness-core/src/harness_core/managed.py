@@ -25,6 +25,7 @@ import argparse
 import copy
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+import fnmatch
 import hashlib
 import json
 import os

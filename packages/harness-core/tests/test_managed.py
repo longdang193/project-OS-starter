@@ -179,6 +179,40 @@ def managed_request(**overrides):
     return payload
 
 
+def test_parallel_disjoint_exact_writer_paths_resolve() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(
+            execution_mode="parallel_work_lanes",
+            allowed_paths=["docs/harness-live/left.txt", "docs/harness-live/right.txt"],
+            planned_write_paths=["docs/harness-live/left.txt", "docs/harness-live/right.txt"],
+            lanes=[
+                {
+                    "lane_id": "left",
+                    "role": "implement",
+                    "allowed_paths": ["docs/harness-live/left.txt"],
+                    "dependencies": [],
+                    "workspace_mode": "isolated",
+                    "write_capable": True,
+                },
+                {
+                    "lane_id": "right",
+                    "role": "implement",
+                    "allowed_paths": ["docs/harness-live/right.txt"],
+                    "dependencies": [],
+                    "workspace_mode": "isolated",
+                    "write_capable": True,
+                },
+            ],
+        ),
+        attempt_id="attempt-1",
+    )
+
+    assert [lane["lane_id"] for lane in packet["lanes"] if lane["kind"] == "work"] == ["left", "right"]
+
+
 def write_stranded_run(harness, run_id: str) -> None:
     policy = harness._load_policy(ROOT)
     request = managed_request(run_id=run_id)
