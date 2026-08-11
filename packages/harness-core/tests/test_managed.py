@@ -3596,15 +3596,10 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
             collect_changes=lambda root, base_commit: [],
         )
         assert second["outcome"]["reason"] == "verification_failed"
-        exhausted = harness.apply_controller_decision(
-            ROOT,
-            run_id,
-            {"kind": "retry"},
-            adapter=FakeAdapter({"single_work_lane": "enforced"}),
-        )
+        assert second["outcome"]["allowed_decisions"] == ["block"]
 
         run = json.loads((run_dir / "run.json").read_text())
-        assert exhausted["state"] == "blocked"
+        assert second["state"] == "blocked"
         assert len(run["attempts"]) == 2
         assert run["attempts"][0]["packet"]["runtime_provider"] == {
             "provider_id": "codex_app_server",
@@ -3741,6 +3736,34 @@ def test_managed_dispatch_failure_becomes_retryable_outcome(tmp_path: Path) -> N
         assert result["state"] == "awaiting_decision"
         assert result["outcome"]["reason"] == "dispatch_failed"
         assert result["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+def test_last_retryable_attempt_hides_exhausted_successor_decisions(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    offline = FakeAdapter({"single_work_lane": "enforced"}, dispatch_error=RuntimeError("offline"))
+    try:
+        first = harness.run_managed(ROOT, managed_request(run_id=run_id), offline)
+        assert first["outcome"]["allowed_decisions"] == ["retry", "escalate", "block"]
+
+        retry = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": "retry"},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}),
+        )
+        assert retry["state"] == "planned"
+
+        last = harness.run_managed(ROOT, None, offline, run_id=run_id)
+        assert last["state"] == "blocked"
+        assert last["outcome"]["allowed_decisions"] == ["block"]
+
+        before = (run_dir / "run.json").read_bytes()
+        with pytest.raises(harness.HarnessError, match="not awaiting controller decision"):
+            harness.apply_controller_decision(ROOT, run_id, {"kind": "retry"})
+        assert (run_dir / "run.json").read_bytes() == before
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 

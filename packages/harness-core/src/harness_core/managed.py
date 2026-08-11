@@ -3190,6 +3190,23 @@ def complete_delegated_child(
     return result
 
 
+def _project_outcome_decisions(
+    run: dict[str, Any],
+    attempt: dict[str, Any],
+    allowed_decisions: list[str],
+) -> list[str]:
+    if not {"retry", "escalate"}.intersection(allowed_decisions):
+        return allowed_decisions
+    packet = attempt.get("packet")
+    if not isinstance(packet, dict):
+        raise HarnessError("outcome packet is invalid")
+    retry_policy = packet.get("retry_policy")
+    if not isinstance(retry_policy, dict) or not isinstance(retry_policy.get("max_attempts"), int):
+        raise HarnessError("outcome retry policy is invalid")
+    if len(run["attempts"]) < retry_policy["max_attempts"]:
+        return allowed_decisions
+    return [decision for decision in allowed_decisions if decision not in {"retry", "escalate"}]
+
 def _set_outcome(
     run: dict[str, Any],
     attempt: dict[str, Any],
@@ -3218,6 +3235,9 @@ def _set_outcome(
     packet = attempt.get("packet")
     if not isinstance(packet, dict):
         raise HarnessError("outcome packet is invalid")
+    allowed_decisions = _project_outcome_decisions(run, attempt, allowed_decisions)
+    if not allowed_decisions:
+        raise HarnessError("outcome has no available controller decisions")
     policy_snapshot = copy.deepcopy(policy["terminalization"])
     subject = {
         "run_id": run["run_id"],
