@@ -1884,6 +1884,50 @@ def test_delegate_cancellation_waits_for_controller_decision(tmp_path: Path) -> 
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
 
+def test_delegated_child_failure_keeps_structured_host_evidence(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    harness._append_attempt(run, packet)
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    failure = {"stage": "complete", "code": "delegation_result_invalid"}
+    try:
+        harness._write_run(ROOT, run)
+        child = harness.delegate(ROOT, run_id, packet["invocation_id"], {
+            "idempotency_key": "child-1",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+
+        result = harness.complete_delegated_child(
+            ROOT,
+            run_id,
+            child["invocation_id"],
+            "failed",
+            None,
+            failure=failure,
+        )
+
+        assert result == {
+            "ok": True,
+            "invocation_id": child["invocation_id"],
+            "status": "failed",
+            "summary": "",
+            "failure": failure,
+        }
+        persisted_child = harness._load_run(ROOT, run_id)["attempts"][0]["children"][0]
+        assert persisted_child["failure"] == failure
+        assert persisted_child["terminal_result"]["failure"] == failure
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
 @pytest.mark.parametrize(
     ("child_request", "code"),
     [

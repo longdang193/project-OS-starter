@@ -161,6 +161,7 @@ class DelegationResult(TypedDict):
     invocation_id: NotRequired[str]
     status: NotRequired[str]
     summary: NotRequired[str]
+    failure: NotRequired[dict[str, str]]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -2942,6 +2943,25 @@ def _delegated_child_packet(root: Path, run_id: str, child_invocation_id: str) -
     raise HarnessError("delegated child packet was not found")
 
 
+def _delegated_child_failure(failure: dict[str, Any] | None) -> dict[str, str] | None:
+    if failure is None:
+        return None
+    if set(failure) != {"stage", "code"}:
+        raise HarnessError("delegated child failure is invalid")
+    stage = failure.get("stage")
+    code = failure.get("code")
+    if (
+        not isinstance(stage, str)
+        or not stage
+        or not isinstance(code, str)
+        or not code
+        or len(stage.encode("utf-8")) > 128
+        or len(code.encode("utf-8")) > 128
+    ):
+        raise HarnessError("delegated child failure is invalid")
+    return {"stage": stage, "code": code}
+
+
 def _delegation_packet_bridge(root: Path, run_id: str, packet: dict[str, Any], parent_node_id: str) -> dict[str, Any] | None:
     if "harness.delegate" not in packet.get("capabilities", []):
         return None
@@ -2953,13 +2973,14 @@ def _delegation_packet_bridge(root: Path, run_id: str, packet: dict[str, Any], p
         "delegate": lambda request: delegate(root, run_id, parent_invocation_id, request),
         "child_packet": lambda child_id: _delegated_child_packet(root, run_id, child_id),
         "child_bridge": lambda child_id: _delegation_child_bridge(root, run_id, child_id),
-        "complete": lambda child_id, status, claim, app_server_model_selection=None: complete_delegated_child(
+        "complete": lambda child_id, status, claim, app_server_model_selection=None, failure=None: complete_delegated_child(
             root,
             run_id,
             child_id,
             status,
             claim,
             app_server_model_selection,
+            failure,
         ),
     }
 
@@ -3001,6 +3022,7 @@ def complete_delegated_child(
     status: str,
     claim: dict[str, Any] | None,
     app_server_model_selection: dict[str, Any] | None = None,
+    failure: dict[str, Any] | None = None,
 ) -> DelegationResult:
     run = _load_run(root, _safe_run_id(run_id))
     attempt = _active_attempt(run)
@@ -3025,6 +3047,12 @@ def complete_delegated_child(
         return copy.deepcopy(result)
     if status not in DELEGATED_CHILD_TERMINAL_STATES:
         return {"ok": False, "code": "delegation_not_permitted"}
+    try:
+        normalized_failure = _delegated_child_failure(failure)
+    except HarnessError:
+        return {"ok": False, "code": "delegation_result_invalid"}
+    if status == "succeeded" and normalized_failure is not None:
+        return {"ok": False, "code": "delegation_result_invalid"}
 
     child_packet = child["packet"]
     try:
@@ -3076,7 +3104,11 @@ def complete_delegated_child(
         child["claim_observation"] = copy.deepcopy(claim_observation)
     if app_server_model_selection is not None:
         child["app_server_model_selection"] = copy.deepcopy(app_server_model_selection)
+    if normalized_failure is not None:
+        child["failure"] = copy.deepcopy(normalized_failure)
     result: DelegationResult = {"ok": True, "invocation_id": child_invocation_id, "status": status, "summary": summary}
+    if normalized_failure is not None:
+        result["failure"] = copy.deepcopy(normalized_failure)
     child["terminal_result"] = copy.deepcopy(result)
     ledger = attempt.get("reservation_ledger")
     if not isinstance(ledger, list):
