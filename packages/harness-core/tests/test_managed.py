@@ -756,6 +756,23 @@ def test_composed_packet_resolves_selected_backend_facet_and_operating_profile()
     assert packet["operating_profile"]["resolved"] == "local_change_extended"
     assert packet["execution_budget"]["profile"] == "extended"
 
+def test_harness_diagnosis_packet_is_shell_only() -> None:
+    harness = load_module()
+
+    packet = harness.resolve_managed_packet(
+        ROOT,
+        managed_request(version=5, task_type="harness_diagnosis", execution_mode="single_work_lane"),
+        attempt_id="attempt-1",
+    )
+
+    assert packet["tools"] == ["shell"]
+    assert [binding["tool"] for binding in packet["tool_bindings"]] == ["shell"]
+    assert packet["lanes"][0]["tool_use_requirement"] == {
+        "eligible_tools": ["shell"],
+        "required_access": "read_only",
+        "minimum_uses": 1,
+    }
+
 
 @pytest.mark.parametrize(
     ("request_overrides", "message"),

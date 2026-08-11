@@ -77,6 +77,7 @@ authorities:
 toolsets:
   code: [shell, serena, ast_grep_preview]
   shell_serena: [shell, serena]
+  shell_only: [shell]
   research: [shell, semble_codebase_search]
 verification_profiles:
   read_only:
@@ -263,7 +264,7 @@ routes:
     rules: [command-execution-rule]
     skills: [skill-improve-harness, skill-systematic-debugging, skill-repository-research, skill-verification-before-completion]
     authority: read_only
-    toolset: shell_serena
+    toolset: shell_only
     verification_profile: read_only
     delegation_profile: disabled
     artifact_handoff_profiles: [direct_terminal_diagnosis, friction_terminal_diagnosis]

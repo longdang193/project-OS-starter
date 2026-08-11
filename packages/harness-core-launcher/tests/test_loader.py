@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import json
 
+import pytest
+
 from harness_core_launcher import cli
 from harness_core_launcher.loader import load_core, run_core_cli
 
@@ -80,3 +82,12 @@ def test_executable_decision_uses_active_host_runtime(monkeypatch, tmp_path, cap
         "decision.json",
     ]]
     assert json.loads(capsys.readouterr().out) == {"state": "planned"}
+
+def test_decision_help_identifies_json_file(capsys) -> None:
+    with pytest.raises(SystemExit) as error:
+        cli.main(["decision", "--help"])
+
+    assert error.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--decision DECISION_FILE" in help_text
+    assert "Path to controller decision JSON file" in help_text
