@@ -82,7 +82,9 @@ core declines dispatch.
 Never use generic `run-unavailable` to retry a managed packet.
 
 For Git-tracked active coordination plans, frontmatter owns static target
-branch, base ref, task dependencies, canonical mode, allowed scope, and planned paths. Packet
+branch, base ref, task dependencies, canonical mode, allowed scope, planned paths, and optional
+task-owned immutable verification checks. Plan checks must not reuse a
+verification-profile check name. Packet
 adds immutable `plan_ref`, `plan_task_id`, and normalized digest; `run.json`
 owns derived task state, handoff, evidence, and decisions. Use
 `coordination-status` for recovery. Manifest or base change requires successor

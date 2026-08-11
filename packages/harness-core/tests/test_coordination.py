@@ -93,6 +93,30 @@ def test_loads_tracked_proposed_plan_and_normalizes_digest() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_tracks_immutable_task_verification_checks() -> None:
+    root = make_root()
+    try:
+        module = load_module()
+        coordination_text = VALID_COORDINATION.replace(
+            "      planned_write_paths: [scripts/**]\n",
+            "      planned_write_paths: [scripts/**]\n"
+            "      verification_checks:\n"
+            "        focused-pytest: [uv, run, pytest, tests/test_target.py::test_target, -q]\n",
+        )
+        plan_ref = write_plan(root, plan_text(coordination=coordination_text))
+
+        coordination = module.load_plan_coordination(root, plan_ref)
+
+        assert coordination.task("task-1").verification_checks == {
+            "focused-pytest": ("uv", "run", "pytest", "tests/test_target.py::test_target", "-q")
+        }
+        assert coordination.normalized()["tasks"][0]["verification_checks"] == {
+            "focused-pytest": ["uv", "run", "pytest", "tests/test_target.py::test_target", "-q"]
+        }
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 @pytest.mark.parametrize(
     ("coordination", "prose_ids", "message"),
     [

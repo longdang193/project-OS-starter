@@ -1843,6 +1843,8 @@ def _normalize_managed_request(
     if has_plan_ref != has_plan_task_id:
         raise HarnessError("managed request requires both `plan_ref` and `plan_task_id`")
     if not has_plan_ref:
+        if "verification_checks" in normalized:
+            raise HarnessError("managed request verification_checks require a coordinated plan")
         return normalized, None, None
     plan_ref = _required_string(normalized["plan_ref"], "plan_ref")
     plan_task_id = _required_string(normalized["plan_task_id"], "plan_task_id")
@@ -1863,6 +1865,8 @@ def _normalize_managed_request(
         if field in request and normalized.get(field) != value:
             raise HarnessError(f"managed request `{field}` conflicts with plan coordination")
         normalized[field] = value
+    if "verification_checks" in request:
+        raise HarnessError("managed request verification_checks are plan-owned")
     normalized["plan_ref"] = coordination.plan_ref
     normalized["plan_task_id"] = plan_task.task_id
     return normalized, coordination, plan_task
@@ -1902,6 +1906,19 @@ def resolve_managed_packet(
         skill_set_selections=skill_set_selections,
         operating_profile_selection=operating_profile_selection,
     )
+    plan_checks = getattr(plan_task, "verification_checks", {}) if plan_task is not None else {}
+    if plan_checks:
+        check_names = set(packet["checks"])
+        plan_check_names = set(plan_checks)
+        collisions = sorted(check_names & plan_check_names)
+        if collisions:
+            raise HarnessError(
+                "plan verification checks conflict with verification profile checks: " + ", ".join(collisions)
+            )
+        packet["checks"].update({
+            name: list(command)
+            for name, command in plan_checks.items()
+        })
     if packet_api == 3:
         packet["capabilities"] = list(legacy_role_capabilities(packet["role"]))
     resolved_provider_id = packet.get("runtime_provider_id")

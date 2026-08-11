@@ -152,6 +152,12 @@ one immutable packet. Host uses only resolved packet tools. Controller runs
 only packet-declared checks through `run_checks`; worker authority never grants
 check execution.
 
+A coordinated task may add `verification_checks` in Git-tracked plan
+frontmatter. Core merges those commands into the immutable packet before
+criteria resolution. Check names must not collide with the selected
+verification profile, so policy owns baseline checks and plan owns only
+task-specific proof.
+
 Core owns `work_context` normalization and validation. Host renders one context
 object exactly once per turn: supplied `packet["work_context"]`, or legacy
 `{"version": 0, "objective": packet["user_request"]}` when an already

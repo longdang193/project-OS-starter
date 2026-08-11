@@ -263,12 +263,14 @@ def plan_coordination(
     execution_mode="single_work_lane",
     paths=("scripts/harness_task.py",),
     allowed_paths=("scripts/**", "tests/**"),
+    verification_checks=None,
 ):
     task = SimpleNamespace(
         task_id="task-1",
         execution_mode=execution_mode,
         allowed_paths=allowed_paths,
         planned_write_paths=paths,
+        verification_checks=verification_checks or {},
     )
     return SimpleNamespace(
         plan_ref="docs/superpowers/plans/fixture.md",
@@ -2158,6 +2160,53 @@ def test_resolve_managed_packet_derives_immutable_plan_binding(monkeypatch) -> N
         "plan_task_id": "task-1",
         "plan_digest": "plan-digest",
     }
+
+
+def test_resolve_managed_packet_merges_immutable_plan_checks(monkeypatch) -> None:
+    harness = load_module()
+    coordination = plan_coordination(
+        verification_checks={
+            "focused-pytest": ("uv", "run", "pytest", "tests/test_target.py::test_target", "-q"),
+            "semantic-postcondition": ("uv", "run", "python", "-c", "assert True"),
+        }
+    )
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    request = managed_request(
+        version=5,
+        plan_ref=coordination.plan_ref,
+        plan_task_id="task-1",
+        acceptance_criteria=[
+            {"id": "diff", "kind": "check", "check": "diff"},
+            {"id": "focused", "kind": "check", "check": "focused-pytest"},
+            {"id": "semantic", "kind": "check", "check": "semantic-postcondition"},
+        ],
+    )
+    for field in ("execution_mode", "base_ref", "allowed_paths", "planned_write_paths"):
+        request.pop(field)
+
+    packet = harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+
+    assert packet["checks"] == {
+        "diff": ["git", "diff", "--check"],
+        "focused-pytest": ["uv", "run", "pytest", "tests/test_target.py::test_target", "-q"],
+        "semantic-postcondition": ["uv", "run", "python", "-c", "assert True"],
+    }
+
+
+def test_resolve_managed_packet_rejects_plan_check_owner_collision(monkeypatch) -> None:
+    harness = load_module()
+    coordination = plan_coordination(verification_checks={"diff": ("git", "status", "--short")})
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    request = managed_request(
+        version=5,
+        plan_ref=coordination.plan_ref,
+        plan_task_id="task-1",
+    )
+    for field in ("execution_mode", "base_ref", "allowed_paths", "planned_write_paths"):
+        request.pop(field)
+
+    with pytest.raises(harness.HarnessError, match="conflict with verification profile checks: diff"):
+        harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
 
 
 @pytest.mark.parametrize(

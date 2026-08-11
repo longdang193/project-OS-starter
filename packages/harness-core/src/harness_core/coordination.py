@@ -20,7 +20,7 @@ lifecycle:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import fnmatch
 import hashlib
 import json
@@ -50,15 +50,22 @@ class PlanTask:
     execution_mode: str
     allowed_paths: tuple[str, ...]
     planned_write_paths: tuple[str, ...]
+    verification_checks: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "id": self.task_id,
             "depends_on": list(self.depends_on),
             "execution_mode": self.execution_mode,
             "allowed_paths": list(self.allowed_paths),
             "planned_write_paths": list(self.planned_write_paths),
         }
+        if self.verification_checks:
+            result["verification_checks"] = {
+                name: list(command)
+                for name, command in sorted(self.verification_checks.items())
+            }
+        return result
 
 
 @dataclass(frozen=True)
@@ -122,7 +129,7 @@ def _canonical_modes(root: Path) -> set[str]:
 def _normalize_task(value: Any, canonical_modes: set[str]) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PlanCoordinationError("coordination `tasks` entries must be objects")
-    allowed = {"id", "depends_on", "execution_mode", "allowed_paths", "planned_write_paths"}
+    allowed = {"id", "depends_on", "execution_mode", "allowed_paths", "planned_write_paths", "verification_checks"}
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise PlanCoordinationError(f"coordination task has unknown fields: {', '.join(unknown)}")
@@ -151,13 +158,30 @@ def _normalize_task(value: Any, canonical_modes: set[str]) -> dict[str, Any]:
         raise PlanCoordinationError("coordination `tasks.planned_write_paths` must not contain duplicates")
     if any(not path_matches(path, normalized_allowed_paths) for path in normalized_paths):
         raise PlanCoordinationError("coordination `tasks.planned_write_paths` must stay within `tasks.allowed_paths`")
-    return {
+    normalized = {
         "id": task_id,
         "depends_on": sorted(depends_on),
         "execution_mode": execution_mode,
         "allowed_paths": sorted(normalized_allowed_paths),
         "planned_write_paths": sorted(normalized_paths),
     }
+    if "verification_checks" in value:
+        checks = value["verification_checks"]
+        if not isinstance(checks, dict) or not checks:
+            raise PlanCoordinationError("coordination `tasks.verification_checks` must be a non-empty mapping")
+        normalized_checks: dict[str, list[str]] = {}
+        for name, command in checks.items():
+            check_name = _required_string(name, "tasks.verification_checks name")
+            if not isinstance(command, list) or not command or any(not isinstance(item, str) or not item for item in command):
+                raise PlanCoordinationError(
+                    f"coordination task `{task_id}` verification check `{check_name}` must be a non-empty list of strings"
+                )
+            normalized_checks[check_name] = list(command)
+        normalized["verification_checks"] = {
+            name: normalized_checks[name]
+            for name in sorted(normalized_checks)
+        }
+    return normalized
 
 
 def _validate_dependencies(tasks: list[dict[str, Any]]) -> None:
@@ -297,6 +321,10 @@ def load_plan_coordination(root: Path, plan_ref: str, *, require_active: bool = 
             execution_mode=task["execution_mode"],
             allowed_paths=tuple(task["allowed_paths"]),
             planned_write_paths=tuple(task["planned_write_paths"]),
+            verification_checks={
+                name: tuple(command)
+                for name, command in task.get("verification_checks", {}).items()
+            },
         )
         for task in normalized["tasks"]
     )
