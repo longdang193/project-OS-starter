@@ -272,8 +272,8 @@ def test_host_invocation_returns_structured_error_on_nonzero_exit(tmp_path: Path
     def run(command: list[str], **_kwargs: object):
         class Result:
             returncode = 2 if command[-1] == "run" else 0
-            stdout = json.dumps(profile) if "--verify" in command else ""
-            stderr = "" if "--verify" in command else json.dumps({"status": "blocked", "error": "provider_configuration_changed"})
+            stdout = json.dumps(profile) if "--verify" in command else json.dumps({"status": "blocked", "error": "provider_configuration_changed"})
+            stderr = ""
 
         return Result()
 

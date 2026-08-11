@@ -41,12 +41,15 @@ def _strict_result_json(result: Any, *, failure: str) -> dict[str, Any]:
 
 
 def _envelope_result_json(result: Any, *, failure: str) -> dict[str, Any]:
+    stdout = _json_object(getattr(result, "stdout", ""))
+    stderr = _json_object(getattr(result, "stderr", ""))
     if getattr(result, "returncode", 1) == 0:
-        payload_stream, other_stream = "stdout", "stderr"
+        payload, other = stdout, stderr
+    elif stdout is not None and stderr is None:
+        return stdout
     else:
-        payload_stream, other_stream = "stderr", "stdout"
-    payload = _json_object(getattr(result, payload_stream, ""))
-    if payload is None or _json_object(getattr(result, other_stream, "")) is not None:
+        payload, other = stderr, stdout
+    if payload is None or other is not None:
         raise RuntimeManagerError(failure)
     return payload
 
