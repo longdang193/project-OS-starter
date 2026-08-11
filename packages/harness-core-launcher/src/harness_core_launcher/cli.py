@@ -20,7 +20,7 @@ def _managed_response_state(payload: dict[str, object]) -> str | None:
 
 
 def _managed_exit_code(command: str, payload: dict[str, object]) -> int:
-    if command == "terminalize-attempt":
+    if command in {"terminalize-attempt", "controller-init", "close"}:
         return 1 if payload.get("error") else 0
     return 0 if _managed_response_state(payload) in _MANAGED_SUCCESS_STATES else 1
 
@@ -49,6 +49,12 @@ def main(argv: list[str] | None = None) -> int:
     terminalize_attempt.add_argument("--harness-root", required=True)
     terminalize_attempt.add_argument("--run-id", required=True)
     terminalize_attempt.add_argument("--input", metavar="ENVELOPE_FILE", required=True, help="Path to terminalization envelope JSON file")
+    subparsers.add_parser("controller-init")
+    close = subparsers.add_parser("close")
+    close.add_argument("--harness-root", required=True)
+    close.add_argument("--run-id", required=True)
+    close.add_argument("--decision", required=True, choices=("accept", "block", "waive"))
+    close.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     if args.command:
         manager = RuntimeManager(Path(args.runtime_root) if args.runtime_root else None)
@@ -79,13 +85,17 @@ def main(argv: list[str] | None = None) -> int:
                 ])
             elif args.command == "terminalize-attempt":
                 payload = manager.terminalize_attempt(args.harness_root, args.run_id, args.input)
+            elif args.command == "controller-init":
+                payload = manager.controller_init()
+            elif args.command == "close":
+                payload = manager.close_attempt(args.harness_root, args.run_id, args.decision, args.reason)
             else:
                 raise RuntimeManagerError("harness_runtime_profile_invalid")
         except RuntimeManagerError as error:
             print(json.dumps({"state": error.code}, sort_keys=True))
             return 1
         print(json.dumps(payload, sort_keys=True))
-        if args.command in {"capabilities", "preflight", "run", "decision", "terminalize-attempt"}:
+        if args.command in {"capabilities", "preflight", "run", "decision", "terminalize-attempt", "controller-init", "close"}:
             return _managed_exit_code(args.command, payload)
         return 0 if payload.get("state") in {"accepted", "configured", "ready"} else 1
     result = load_core()

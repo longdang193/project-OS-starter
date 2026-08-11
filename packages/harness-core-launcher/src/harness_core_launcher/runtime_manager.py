@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import uuid
 from typing import Any, Callable, Iterator, Sequence
 
@@ -24,17 +23,32 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-def _result_json(result: Any, *, failure: str, allow_nonzero: bool = False) -> dict[str, Any]:
-    if not allow_nonzero and getattr(result, "returncode", 1) != 0:
+def _json_object(value: Any) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _strict_result_json(result: Any, *, failure: str) -> dict[str, Any]:
+    if getattr(result, "returncode", 1) != 0:
         raise RuntimeManagerError(failure)
-    for stream in ("stdout", "stderr"):
-        try:
-            payload = json.loads(getattr(result, stream, ""))
-        except (TypeError, json.JSONDecodeError):
-            continue
-        if isinstance(payload, dict):
-            return payload
-    raise RuntimeManagerError(failure)
+    payload = _json_object(getattr(result, "stdout", ""))
+    if payload is None or _json_object(getattr(result, "stderr", "")) is not None:
+        raise RuntimeManagerError(failure)
+    return payload
+
+
+def _envelope_result_json(result: Any, *, failure: str) -> dict[str, Any]:
+    if getattr(result, "returncode", 1) == 0:
+        payload_stream, other_stream = "stdout", "stderr"
+    else:
+        payload_stream, other_stream = "stderr", "stdout"
+    payload = _json_object(getattr(result, payload_stream, ""))
+    if payload is None or _json_object(getattr(result, other_stream, "")) is not None:
+        raise RuntimeManagerError(failure)
+    return payload
 
 
 def _profile_digest(value: Any) -> str:
@@ -251,7 +265,7 @@ class RuntimeManager:
             timeout=30,
             env=_runtime_environment(),
         )
-        verified = _result_json(result, failure="harness_runtime_profile_untrusted")
+        verified = _strict_result_json(result, failure="harness_runtime_profile_untrusted")
         if verified != profile:
             raise RuntimeManagerError("harness_runtime_profile_mismatch")
         return profile, profile_root
@@ -274,15 +288,34 @@ class RuntimeManager:
             timeout=None if arguments[0] == "run" else CONTROL_PLANE_TIMEOUT_SECONDS,
             env=_runtime_environment(),
         )
-        payload = _result_json(
+        payload = _envelope_result_json(
             result,
             failure="harness_runtime_profile_preflight_failed",
-            allow_nonzero=True,
         )
         runtime_release_profile = payload.get("runtime_release_profile")
         if arguments[0] in {"capabilities", "preflight"} and runtime_release_profile != profile:
             raise RuntimeManagerError("harness_runtime_profile_mismatch")
         return payload
+
+    def invoke_active_core(
+        self,
+        arguments: Sequence[str],
+        *,
+        runner: Callable[..., Any] = subprocess.run,
+    ) -> dict[str, Any]:
+        _, profile_root = self.verify_active_profile(runner=runner)
+        result = runner(
+            [
+                "uv", "--project", str(profile_root / "host"), "run", "--locked",
+                "python", "-m", "harness_core.managed", *arguments,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=CONTROL_PLANE_TIMEOUT_SECONDS,
+            env=_runtime_environment(),
+        )
+        return _envelope_result_json(result, failure="harness_runtime_profile_core_command_failed")
 
     def terminalize_attempt(
         self,
@@ -292,23 +325,32 @@ class RuntimeManager:
         *,
         runner: Callable[..., Any] = subprocess.run,
     ) -> dict[str, Any]:
-        _, profile_root = self.verify_active_profile(runner=runner)
-        result = runner(
+        return self.invoke_active_core(
             [
-                "uv", "--project", str(profile_root / "host"), "run", "--locked",
-                "harness-core", "--repo-root", harness_root,
+                "--repo-root", harness_root,
                 "terminalize-attempt", "--run-id", run_id, "--input", input_file,
             ],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=CONTROL_PLANE_TIMEOUT_SECONDS,
-            env=_runtime_environment(),
+            runner=runner,
         )
-        return _result_json(
-            result,
-            failure="harness_runtime_profile_terminalization_failed",
-            allow_nonzero=True,
+
+    def controller_init(self, *, runner: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
+        return self.invoke_active_core(["controller-init"], runner=runner)
+
+    def close_attempt(
+        self,
+        harness_root: str,
+        run_id: str,
+        decision: str,
+        reason: str,
+        *,
+        runner: Callable[..., Any] = subprocess.run,
+    ) -> dict[str, Any]:
+        return self.invoke_active_core(
+            [
+                "--repo-root", harness_root,
+                "close-attempt", "--run-id", run_id, "--decision", decision, "--reason", reason,
+            ],
+            runner=runner,
         )
 
     def _stage_command(self, host_root: Path, *arguments: str, runner: Callable[..., Any]) -> Any:
@@ -356,18 +398,18 @@ class RuntimeManager:
                 synced = runner(["uv", "sync", "--locked"], cwd=staged_host, capture_output=True, text=True, check=False, timeout=300)
                 if getattr(synced, "returncode", 1):
                     raise RuntimeManagerError("harness_runtime_profile_untrusted")
-                profile = _result_json(
+                profile = _strict_result_json(
                     self._stage_command(staged_host, "release-profile", "--staging-root", str(stage), runner=runner),
                     failure="harness_runtime_profile_untrusted",
                 )
                 _profile_digest(profile)
-                verified = _result_json(
+                verified = _strict_result_json(
                     self._stage_command(staged_host, "release-profile", "--staging-root", str(stage), "--verify", runner=runner),
                     failure="harness_runtime_profile_untrusted",
                 )
                 if verified != profile:
                     raise RuntimeManagerError("harness_runtime_profile_mismatch")
-                preflight = _result_json(
+                preflight = _strict_result_json(
                     self._stage_command(staged_host, "--release-profile", str(stage / "release.json"), "preflight", runner=runner),
                     failure="harness_runtime_profile_preflight_failed",
                 )

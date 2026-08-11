@@ -2606,6 +2606,88 @@ def terminalize_attempt(root: Path, run_id: str, evidence: Any) -> dict[str, Any
         return _terminalization_result(run, "applied", terminal_id)
 
 
+def close_attempt(root: Path, run_id: str, decision: str, reason: str) -> dict[str, Any]:
+    _validate_policy(root)
+    run_id = _safe_run_id(run_id)
+    if decision not in _TERMINAL_DECISIONS:
+        raise HarnessError("personal close decision is invalid")
+    if not isinstance(reason, str):
+        raise HarnessError("personal close reason is invalid")
+    try:
+        reason_bytes = reason.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise HarnessError("personal close reason is invalid") from exc
+    with _run_lock(root, run_id):
+        run = _load_run(root, run_id)
+        policy = _load_policy(root)
+        terminalization = policy["terminalization"]
+        if not reason_bytes or len(reason_bytes) > terminalization["max_authorization_bytes"]:
+            raise HarnessError("personal close reason is invalid")
+        attempt = _active_attempt(run)
+        outcome = _validated_outcome(attempt)
+        reason_sha256 = hashlib.sha256(reason_bytes).hexdigest()
+        existing_receipt = attempt.get("terminal_receipt")
+        if isinstance(existing_receipt, dict):
+            receipt_authority = existing_receipt.get("authority")
+            if (
+                existing_receipt.get("outcome_id") == outcome["outcome_id"]
+                and existing_receipt.get("outcome_digest") == outcome["outcome_digest"]
+                and existing_receipt.get("decision") == decision
+                and isinstance(receipt_authority, dict)
+                and receipt_authority.get("mode") == "controller_authorization"
+                and authority.is_personal_controller_identity(
+                    key_id=receipt_authority.get("issuer_key_id"),
+                    principal_id=receipt_authority.get("principal_id"),
+                    key_fingerprint=receipt_authority.get("key_fingerprint"),
+                )
+                and receipt_authority.get("reason_sha256") == reason_sha256
+                and receipt_authority.get("reason_length") == len(reason_bytes)
+            ):
+                return _terminalization_result(run, "replayed", existing_receipt.get("terminal_id"))
+            raise HarnessError("attempt_already_finalized")
+        if run["state"] != "awaiting_decision":
+            raise HarnessError(f"run `{run_id}` is not awaiting controller decision")
+        try:
+            controller = authority.resolve_personal_controller()
+            now = datetime.now(UTC)
+            authorization = authority.sign_document(
+                {
+                    "schema_id": "controller_authorization/v1",
+                    "authorization_id": f"authorization-{uuid.uuid4().hex}",
+                    "run_id": run_id,
+                    "attempt_id": attempt["attempt_id"],
+                    "packet_sha256": outcome["packet_sha256"],
+                    "outcome_id": outcome["outcome_id"],
+                    "outcome_digest": outcome["outcome_digest"],
+                    "requested_decision": decision,
+                    "issuer_key_id": controller["issuer_key_id"],
+                    "issued_at": now.isoformat(),
+                    "expires_at": (now + timedelta(seconds=terminalization["max_authorization_lifetime_seconds"])).isoformat(),
+                    "reason_sha256": reason_sha256,
+                    "reason_length": len(reason_bytes),
+                },
+                controller["private_key"],
+            )
+            normalized_authorization = authority.normalize_controller_authorization(
+                authorization,
+                registry=controller["registry"],
+                policy=outcome["policy_snapshot"],
+                now=now,
+            )
+        except authority.AuthorityError as exc:
+            raise HarnessError(str(exc)) from exc
+        receipt = _finalize_outcome(
+            run,
+            attempt,
+            policy,
+            decision=decision,
+            authorization=normalized_authorization,
+            policy_auto=False,
+        )
+        _write_run(root, run)
+        return _terminalization_result(run, "finalized", receipt["terminal_id"])
+
+
 def request_attempt_cancellation(root: Path, run_id: str, request: Any) -> dict[str, Any]:
     _validate_policy(root)
     run_id = _safe_run_id(run_id)
@@ -5285,6 +5367,10 @@ def main(argv: list[str] | None = None) -> int:
     terminalize_input.add_argument("--input")
     terminalize_input.add_argument("--evidence")
     terminalize_command.add_argument("--auto-block", action="store_true")
+    close_command = subparsers.add_parser("close-attempt")
+    close_command.add_argument("--run-id", required=True)
+    close_command.add_argument("--decision", required=True, choices=sorted(_TERMINAL_DECISIONS))
+    close_command.add_argument("--reason", required=True)
     sign_cleanup_command = subparsers.add_parser("sign-legacy-cleanup")
     sign_cleanup_command.add_argument("--attestation", required=True)
     sign_cleanup_command.add_argument("--private-key-file", required=True)
@@ -5302,6 +5388,7 @@ def main(argv: list[str] | None = None) -> int:
     migrate_authorities_command.add_argument("--target")
     migrate_authorities_command.add_argument("--dry-run", action="store_true")
     migrate_authorities_command.add_argument("--overwrite", action="store_true")
+    subparsers.add_parser("controller-init")
     args = parser.parse_args(argv)
     try:
         root = Path(args.repo_root).resolve()
@@ -5368,6 +5455,8 @@ def main(argv: list[str] | None = None) -> int:
                     "legacy_cleanup_attestation": legacy_evidence,
                 }
             result = terminalize_attempt(root, args.run_id, terminal_evidence)
+        elif args.command == "close-attempt":
+            result = close_attempt(root, args.run_id, args.decision, args.reason)
         elif args.command == "sign-legacy-cleanup":
             private_key_path = Path(args.private_key_file).resolve()
             if private_key_path.is_relative_to(root):
@@ -5407,6 +5496,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
             except authority.AuthorityError as exc:
                 raise HarnessError(str(exc)) from exc
+        elif args.command == "controller-init":
+            try:
+                result = authority.initialize_personal_controller()
+            except authority.AuthorityError as exc:
+                raise HarnessError(str(exc)) from exc
         elif args.command == "coordination-status":
             result = coordination_status(root, args.plan)
         elif args.command == "handoff":
@@ -5421,7 +5515,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "blocked", "error": str(exc)}), file=sys.stderr)
         return 2
     print(json.dumps(result, sort_keys=True))
-    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff", "recover-stranded", "terminalize-attempt", "sign-legacy-cleanup", "sign-controller-authorization", "migrate-harness-authorities"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
+    return 0 if args.command in {"preflight", "friction-report", "friction-resolve", "coordination-status", "handoff", "recover-stranded", "terminalize-attempt", "close-attempt", "sign-legacy-cleanup", "sign-controller-authorization", "migrate-harness-authorities", "controller-init"} or result.get("status") == "verified" or result.get("state") == "accepted" else 1
 
 
 if __name__ == "__main__":

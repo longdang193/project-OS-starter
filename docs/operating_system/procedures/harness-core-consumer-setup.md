@@ -52,6 +52,37 @@ provider `contract_version` is diagnostic-only; current policy must not add a
 second compatibility table. Historical packets remain readable without profile
 backfill and never become current dispatch evidence.
 
+## Personal Controller
+
+For personal local use, initialize one fixed controller authority once:
+
+```powershell
+harness-core-launcher controller-init
+```
+
+Then close an eligible ambiguous outcome without writing an envelope or choosing
+a key:
+
+```powershell
+harness-core-launcher close --harness-root <repo-root> --run-id <run-id> --decision <accept|block|waive> --reason <reason>
+```
+
+Launcher verifies active profile, invokes active core module, and starts no
+provider host or packet work. Core binds current outcome, signs existing
+`controller_authorization/v1` in memory, atomically finalizes, and replays exact
+same decision and UTF-8 reason before key or registry lookup. Private key stays
+at `~/.codex/harness-controller/controller-ed25519.pem`; public trust stays at
+`~/.codex/harness-authorities.toml`. Any process under same OS user that can
+invoke launcher can exercise this authority. Use only for personal local
+installations, never shared machines or production. Detached
+`sign-controller-authorization` plus `terminalize-attempt --input` remains
+advanced compatibility path.
+
+`retry` and `escalate` remain
+`harness-core-launcher decision --harness-root <repo-root> --run-id <run-id>
+--decision <decision.json>`. They require host adapter admission and current
+provider preflight; never route them through core-only control commands.
+
 Migration preflight reports active unleased legacy attempts as isolated. They
 cannot dispatch or resume, but do not block new leased-packet admission. Preserve
 their packet bytes. External operator creates signed
@@ -65,9 +96,10 @@ The temporary `--evidence <legacy-attestation.json>` wrapper accepts only a
 policy-defined historical legacy attestation. `--auto-block` is retired. Core
 validates signature, scope, identity, and freshness, records a block-only
 `attempt_outcome/v2`, then policy auto-finalizes one `attempt_terminal_receipt/v3`.
-Direct legacy abandonment is retired. Ambiguous outcomes require an external
-`sign-controller-authorization` signature and an outcome envelope; raw actor
-or approval flags are rejected. Core issues a finite execution lease only when
+Direct legacy abandonment is retired. Detached ambiguous-outcome closure uses
+an external `sign-controller-authorization` signature and outcome envelope;
+raw actor or approval flags are rejected. Personal local closure uses `close`
+above. Core issues a finite execution lease only when
 `planned` becomes `running`; host returns bounded terminal observations while
 controller alone invokes `terminalize_attempt(envelope)`.
 

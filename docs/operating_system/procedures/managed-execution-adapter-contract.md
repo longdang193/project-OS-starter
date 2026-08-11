@@ -462,6 +462,38 @@ as host crash. Live or unverified processes move attempt to nonterminal
 that same attempt; retry, resume, acceptance, waiver, and successor creation
 remain forbidden while orphaned.
 
+## Personal Local Controller
+
+Personal local installations may run `harness-core-launcher controller-init`
+once. It creates one fixed Ed25519 private key at
+`~/.codex/harness-controller/controller-ed25519.pem` and one matching active
+public record in `~/.codex/harness-authorities.toml`. No issuer argument,
+environment value, custom signer config, broker, daemon, or remote service
+exists.
+
+For an eligible ambiguous outcome, controller runs:
+
+```powershell
+harness-core-launcher close --harness-root <repo-root> --run-id <run-id> --decision <accept|block|waive> --reason <reason>
+```
+
+Launcher verifies active profile then invokes active core module. It does not
+invoke provider host, create a packet, start a provider session, or alter old
+attempt packets. Core takes run lock, validates UTF-8 reason bounds, replays an
+exact matching personal receipt before key or registry lookup, or resolves
+current personal authority, signs existing `controller_authorization/v1` in
+memory, normalizes it, and calls shared outcome finalizer. A conflict, missing
+or revoked signer, expired or ineligible outcome, or finalizer failure leaves
+`run.json` unchanged.
+
+This trust model deliberately grants closure authority to any process under
+same OS user that can invoke launcher. It is personal-use only, excluded from
+production and shared machines. Detached
+`sign-controller-authorization` plus `terminalize-attempt --input` remains
+compatible for advanced external approval. `retry` and `escalate` never use
+this path: they stay `harness-core-launcher decision` operations and require
+host adapter admission plus current provider preflight.
+
 ## Historical Legacy Cleanup
 
 An active historical attempt without an execution lease is isolated from dispatch

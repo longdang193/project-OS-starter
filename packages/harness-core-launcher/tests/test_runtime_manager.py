@@ -227,9 +227,40 @@ def test_terminalize_attempt_uses_active_profile(tmp_path: Path) -> None:
     assert manager.terminalize_attempt("repo", "terminal-run", "envelope.json", runner=run) == {"state": "blocked"}
     assert calls[1] == [
         "uv", "--project", str(profile_root / "host"), "run", "--locked",
-        "harness-core", "--repo-root", "repo",
+        "python", "-m", "harness_core.managed", "--repo-root", "repo",
         "terminalize-attempt", "--run-id", "terminal-run", "--input", "envelope.json",
     ]
+
+
+def test_personal_control_commands_use_active_core(tmp_path: Path) -> None:
+    profile = _profile("b" * 40)
+    profile_root = _write_profile(tmp_path, profile)
+    manager = RuntimeManager(tmp_path)
+    manager.activate(profile)
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object):
+        calls.append(command)
+
+        class Result:
+            returncode = 0
+            stdout = json.dumps(profile if "--verify" in command else {"state": "configured" if command[-1] == "controller-init" else "blocked"})
+            stderr = ""
+
+        return Result()
+
+    assert manager.controller_init(runner=run) == {"state": "configured"}
+    assert manager.close_attempt("repo", "terminal-run", "block", "reason", runner=run) == {"state": "blocked"}
+    assert calls[1] == [
+        "uv", "--project", str(profile_root / "host"), "run", "--locked",
+        "python", "-m", "harness_core.managed", "controller-init",
+    ]
+    assert calls[3] == [
+        "uv", "--project", str(profile_root / "host"), "run", "--locked",
+        "python", "-m", "harness_core.managed", "--repo-root", "repo",
+        "close-attempt", "--run-id", "terminal-run", "--decision", "block", "--reason", "reason",
+    ]
+    assert "codex-harness-host" not in calls[3]
 
 
 def test_host_invocation_returns_structured_error_on_nonzero_exit(tmp_path: Path) -> None:
@@ -242,13 +273,33 @@ def test_host_invocation_returns_structured_error_on_nonzero_exit(tmp_path: Path
         class Result:
             returncode = 2 if command[-1] == "run" else 0
             stdout = json.dumps(profile) if "--verify" in command else ""
-            stderr = json.dumps({"status": "blocked", "error": "provider_configuration_changed"})
+            stderr = "" if "--verify" in command else json.dumps({"status": "blocked", "error": "provider_configuration_changed"})
 
         return Result()
 
     assert manager.invoke_host(["run"], runner=run) == {
         "status": "blocked",
         "error": "provider_configuration_changed",
+    }
+
+
+def test_active_core_invocation_returns_structured_error_on_nonzero_exit(tmp_path: Path) -> None:
+    profile = _profile("b" * 40)
+    _write_profile(tmp_path, profile)
+    manager = RuntimeManager(tmp_path)
+    manager.activate(profile)
+
+    def run(command: list[str], **_kwargs: object):
+        class Result:
+            returncode = 2 if command[-1] == "controller-init" else 0
+            stdout = json.dumps(profile) if "--verify" in command else ""
+            stderr = "" if "--verify" in command else json.dumps({"status": "blocked", "error": "personal_controller_authority_invalid"})
+
+        return Result()
+
+    assert manager.controller_init(runner=run) == {
+        "status": "blocked",
+        "error": "personal_controller_authority_invalid",
     }
 
 
@@ -263,6 +314,24 @@ def test_host_invocation_uses_generic_error_for_malformed_nonzero_output(tmp_pat
             returncode = 2 if command[-1] == "run" else 0
             stdout = json.dumps(profile) if "--verify" in command else "not-json"
             stderr = "runtime changed"
+
+        return Result()
+
+    with pytest.raises(RuntimeManagerError, match="harness_runtime_profile_preflight_failed"):
+        manager.invoke_host(["run"], runner=run)
+
+
+def test_host_invocation_rejects_conflicting_json_streams(tmp_path: Path) -> None:
+    profile = _profile("b" * 40)
+    _write_profile(tmp_path, profile)
+    manager = RuntimeManager(tmp_path)
+    manager.activate(profile)
+
+    def run(command: list[str], **_kwargs: object):
+        class Result:
+            returncode = 0
+            stdout = json.dumps(profile) if "--verify" in command else json.dumps({"state": "ready"})
+            stderr = "" if "--verify" in command else json.dumps({"state": "blocked"})
 
         return Result()
 

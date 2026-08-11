@@ -11,6 +11,16 @@ owners:
 
 # Terminalization Authority and Receipt SSOT
 
+## Personal Local Controller Amendment
+
+`docs/superpowers/specs/2026-08-11-personal-local-controller-close-ssot.md`
+supersedes only this specification's external-signer-only and private-key-storage
+restrictions for explicitly configured personal local mode. Detached external
+signing, public registry trust, authorization validation, receipt semantics, and
+all production or shared-machine guidance remain owned here. Until personal mode
+is released and canonical guidance is synchronized, current external-only
+behavior remains executable truth.
+
 ## Goal and Problem
 
 ### Problem

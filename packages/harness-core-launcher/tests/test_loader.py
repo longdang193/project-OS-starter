@@ -140,6 +140,48 @@ def test_terminalize_attempt_preserves_structured_error(monkeypatch, tmp_path, c
     assert json.loads(capsys.readouterr().out) == {"status": "blocked", "error": "terminalization_invalid"}
 
 
+def test_controller_init_and_close_use_active_core_runtime(monkeypatch, tmp_path, capsys) -> None:
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    class Manager:
+        def __init__(self, _root):
+            pass
+
+        def controller_init(self):
+            calls.append(("controller-init", ()))
+            return {"status": "configured"}
+
+        def close_attempt(self, harness_root, run_id, decision, reason):
+            calls.append(("close", (harness_root, run_id, decision, reason)))
+            return {"state": "accepted"}
+
+    monkeypatch.setattr(cli, "RuntimeManager", Manager)
+
+    assert cli.main(["--runtime-root", str(tmp_path), "controller-init"]) == 0
+    assert cli.main([
+        "--runtime-root",
+        str(tmp_path),
+        "close",
+        "--harness-root",
+        "repo",
+        "--run-id",
+        "run-1",
+        "--decision",
+        "accept",
+        "--reason",
+        "verified",
+    ]) == 0
+
+    assert calls == [
+        ("controller-init", ()),
+        ("close", ("repo", "run-1", "accept", "verified")),
+    ]
+    assert [json.loads(line) for line in capsys.readouterr().out.splitlines()] == [
+        {"status": "configured"},
+        {"state": "accepted"},
+    ]
+
+
 def test_host_passthrough_is_rejected(capsys) -> None:
     with pytest.raises(SystemExit) as error:
         cli.main(["host", "config", "show"])

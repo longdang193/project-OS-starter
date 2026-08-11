@@ -43,6 +43,8 @@ _AUTHORIZATION_UNSIGNED_FIELDS = {
     "reason_length",
 }
 _AUTHORIZATION_FIELDS = _AUTHORIZATION_UNSIGNED_FIELDS | {"authorization_signature"}
+_PERSONAL_CONTROLLER_PRINCIPAL_ID = "personal-local-controller"
+_PERSONAL_CONTROLLER_ROLE = "controller_approver"
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -116,6 +118,10 @@ def public_key_fingerprint(public_key: Any) -> str:
 
 def authority_registry_path() -> Path:
     return Path.home() / ".codex" / "harness-authorities.toml"
+
+
+def personal_controller_key_path() -> Path:
+    return Path.home() / ".codex" / "harness-controller" / "controller-ed25519.pem"
 
 
 def legacy_attester_registry_path() -> Path:
@@ -218,6 +224,113 @@ def _authority_registry_toml(entries: dict[str, dict[str, Any]]) -> str:
             ]
         )
     return "\n".join(lines) + "\n"
+
+
+def _atomic_write(path: Path, contents: bytes, *, failure: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(contents)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    except OSError as exc:
+        raise AuthorityError(failure) from exc
+
+
+def _write_authority_registry(path: Path, entries: dict[str, dict[str, Any]], *, failure: str) -> None:
+    contents = _authority_registry_toml(entries)
+    try:
+        _normalize_authority_registry(tomllib.loads(contents))
+    except tomllib.TOMLDecodeError as exc:
+        raise AuthorityError(failure) from exc
+    _atomic_write(path, contents.encode("utf-8"), failure=failure)
+
+
+def _personal_controller_entry(private_key: Ed25519PrivateKey) -> tuple[str, dict[str, Any]]:
+    public_key = base64url_encode(
+        private_key.public_key().public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+    )
+    fingerprint = public_key_fingerprint(public_key)
+    key_id = f"personal-local-{fingerprint[:16]}"
+    return key_id, {
+        "principal_id": _PERSONAL_CONTROLLER_PRINCIPAL_ID,
+        "roles": [_PERSONAL_CONTROLLER_ROLE],
+        "algorithm": "ed25519",
+        "public_key": public_key,
+        "key_fingerprint": fingerprint,
+        "status": "active",
+    }
+
+
+def _personal_controller_result(status: str, key_id: str, entry: dict[str, Any], registry: dict[str, Any]) -> dict[str, str]:
+    return {
+        "status": status,
+        "issuer_key_id": key_id,
+        "principal_id": entry["principal_id"],
+        "key_fingerprint": entry["key_fingerprint"],
+        "registry_digest": registry["registry_digest"],
+    }
+
+
+def _personal_controller_entry_matches(existing: Any, expected: dict[str, Any]) -> bool:
+    return isinstance(existing, dict) and all(existing.get(field) == value for field, value in expected.items())
+
+
+def is_personal_controller_identity(*, key_id: Any, principal_id: Any, key_fingerprint: Any) -> bool:
+    return (
+        isinstance(key_id, str)
+        and isinstance(principal_id, str)
+        and isinstance(key_fingerprint, str)
+        and principal_id == _PERSONAL_CONTROLLER_PRINCIPAL_ID
+        and key_id == f"personal-local-{key_fingerprint[:16]}"
+    )
+
+
+def _write_personal_controller_key(path: Path, private_key: Ed25519PrivateKey) -> None:
+    contents = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    _atomic_write(path, contents, failure="personal controller private key is unavailable")
+
+
+def initialize_personal_controller() -> dict[str, str]:
+    key_path = personal_controller_key_path().resolve()
+    registry_path = authority_registry_path().resolve()
+    key_exists = key_path.exists()
+    private_key = load_private_ed25519_key(key_path) if key_exists else Ed25519PrivateKey.generate()
+    key_id, entry = _personal_controller_entry(private_key)
+    registry_entries: dict[str, dict[str, Any]] = {}
+    if registry_path.exists():
+        registry_entries = dict(load_authorities(registry_path)["entries"])
+    matching_fingerprint = [existing_id for existing_id, existing in registry_entries.items() if existing.get("key_fingerprint") == entry["key_fingerprint"]]
+    personal_entries = [existing_id for existing_id, existing in registry_entries.items() if existing.get("principal_id") == _PERSONAL_CONTROLLER_PRINCIPAL_ID]
+    existing = registry_entries.get(key_id)
+    if _personal_controller_entry_matches(existing, entry):
+        registry = load_authorities(registry_path)
+        return _personal_controller_result("replayed", key_id, entry, registry)
+    if existing is not None or matching_fingerprint or personal_entries:
+        raise AuthorityError("personal controller authority is conflicting")
+    if not key_exists:
+        _write_personal_controller_key(key_path, private_key)
+    registry_entries[key_id] = entry
+    _write_authority_registry(registry_path, registry_entries, failure="personal controller registry is unavailable")
+    return _personal_controller_result("configured", key_id, entry, load_authorities(registry_path))
+
+
+def resolve_personal_controller() -> dict[str, Any]:
+    private_key = load_private_ed25519_key(personal_controller_key_path().resolve())
+    key_id, entry = _personal_controller_entry(private_key)
+    registry = load_authorities()
+    if not _personal_controller_entry_matches(registry["entries"].get(key_id), entry):
+        raise AuthorityError("personal controller authority is invalid")
+    return {**_personal_controller_result("resolved", key_id, entry, registry), "private_key": private_key, "registry": registry}
 
 
 def migrate_legacy_attesters(

@@ -50,6 +50,16 @@ distribution_tier: starter_kit
   signed `controller_authorization/v1`. Core atomically writes terminal evidence,
   receipt, lease release, state history, and `run.json`. Live or unverified
   expired processes are `orphaned`; do not retry or resume them.
+- Personal local use may initialize one controller with
+  `harness-core-launcher controller-init`, then close an eligible ambiguous
+  outcome with `harness-core-launcher close`. Core signs the existing
+  authorization schema in memory and replays an exact receipt before signer
+  lookup. This grants close authority to processes under same OS user that can
+  invoke launcher; exclude shared-machine and production use. Detached signed
+  envelopes remain advanced compatibility path.
+- `retry` and `escalate` remain `harness-core-launcher decision` operations.
+  They stay host-bound for adapter admission and current provider preflight;
+  personal close never creates successor packet or provider session.
 - Every host-executed lane, validator, and packet check returns one terminal
   observation. Completed host stop proof plus later core claim, check, or
   verification rejection is `core_failure`: core terminalizes and releases the

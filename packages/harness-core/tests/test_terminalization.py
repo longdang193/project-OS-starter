@@ -338,6 +338,104 @@ def test_terminalize_attempt_finalizes_ambiguous_outcome_with_signed_authorizati
         shutil.rmtree(path.parent, ignore_errors=True)
 
 
+def test_personal_close_finalizes_and_replays_without_current_signer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id, binding = write_running_run(tmp_path)
+    path = ROOT / ".harness" / "runs" / run_id / "run.json"
+    registry_path = tmp_path / "harness-authorities.toml"
+    key_path = tmp_path / "harness-controller" / "controller-ed25519.pem"
+    monkeypatch.setattr(authority, "authority_registry_path", lambda: registry_path)
+    monkeypatch.setattr(authority, "personal_controller_key_path", lambda: key_path)
+    try:
+        authority.initialize_personal_controller()
+        managed.terminalize_attempt(ROOT, run_id, {"attempt_id": "attempt-1", "host_terminal_observations": [host_observation(binding)]})
+
+        finalized = managed.close_attempt(ROOT, run_id, "accept", "verified personal probe")
+        finalized_bytes = path.read_bytes()
+
+        assert finalized["state"] == "accepted"
+        assert finalized["terminalization"]["status"] == "finalized"
+        key_path.unlink()
+        registry_path.unlink()
+
+        replayed = managed.close_attempt(ROOT, run_id, "accept", "verified personal probe")
+
+        assert replayed["terminalization"] == finalized["terminalization"] | {"status": "replayed"}
+        assert path.read_bytes() == finalized_bytes
+        with pytest.raises(managed.HarnessError, match="attempt_already_finalized"):
+            managed.close_attempt(ROOT, run_id, "block", "different decision")
+    finally:
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
+@pytest.mark.parametrize("failure", ["missing", "revoked"])
+def test_personal_close_preserves_awaiting_run_when_signer_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    run_id, binding = write_running_run(tmp_path)
+    path = ROOT / ".harness" / "runs" / run_id / "run.json"
+    registry_path = tmp_path / "harness-authorities.toml"
+    key_path = tmp_path / "harness-controller" / "controller-ed25519.pem"
+    monkeypatch.setattr(authority, "authority_registry_path", lambda: registry_path)
+    monkeypatch.setattr(authority, "personal_controller_key_path", lambda: key_path)
+    try:
+        authority.initialize_personal_controller()
+        managed.terminalize_attempt(ROOT, run_id, {"attempt_id": "attempt-1", "host_terminal_observations": [host_observation(binding)]})
+        if failure == "missing":
+            key_path.unlink()
+        else:
+            registry_path.write_text(registry_path.read_text(encoding="utf-8").replace('status = "active"', 'status = "revoked"'), encoding="utf-8")
+        before = path.read_bytes()
+
+        with pytest.raises(managed.HarnessError, match="personal controller authority is invalid|authority private key is invalid"):
+            managed.close_attempt(ROOT, run_id, "accept", "verified personal probe")
+
+        assert path.read_bytes() == before
+    finally:
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
+def test_personal_close_rejects_invalid_input_without_mutation(tmp_path: Path) -> None:
+    run_id, binding = write_running_run(tmp_path)
+    path = ROOT / ".harness" / "runs" / run_id / "run.json"
+    try:
+        managed.terminalize_attempt(ROOT, run_id, {"attempt_id": "attempt-1", "host_terminal_observations": [host_observation(binding)]})
+        oversized_reason = "x" * (managed._load_policy(ROOT)["terminalization"]["max_authorization_bytes"] + 1)
+        before = path.read_bytes()
+
+        for decision, reason in (("retry", "reason"), ("accept", ""), ("accept", "\ud800"), ("accept", oversized_reason)):
+            with pytest.raises(managed.HarnessError, match="personal close (decision|reason) is invalid"):
+                managed.close_attempt(ROOT, run_id, decision, reason)
+
+            assert path.read_bytes() == before
+    finally:
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
+def test_close_attempt_cli_finalizes_personal_authority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    run_id, binding = write_running_run(tmp_path)
+    path = ROOT / ".harness" / "runs" / run_id / "run.json"
+    registry_path = tmp_path / "harness-authorities.toml"
+    key_path = tmp_path / "harness-controller" / "controller-ed25519.pem"
+    monkeypatch.setattr(authority, "authority_registry_path", lambda: registry_path)
+    monkeypatch.setattr(authority, "personal_controller_key_path", lambda: key_path)
+    try:
+        authority.initialize_personal_controller()
+        managed.terminalize_attempt(ROOT, run_id, {"attempt_id": "attempt-1", "host_terminal_observations": [host_observation(binding)]})
+
+        assert managed.main(["--repo-root", str(ROOT), "close-attempt", "--run-id", run_id, "--decision", "accept", "--reason", "verified personal probe"]) == 0
+
+        result = json.loads(capsys.readouterr().out)
+        assert result["state"] == "accepted"
+        assert json.loads(path.read_text(encoding="utf-8"))["attempts"][0]["terminal_receipt"]["authority"]["principal_id"] == "personal-local-controller"
+    finally:
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
 def test_expired_outcome_rejects_accept_and_allows_fresh_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_id, binding = write_running_run(tmp_path)
     path = ROOT / ".harness" / "runs" / run_id / "run.json"

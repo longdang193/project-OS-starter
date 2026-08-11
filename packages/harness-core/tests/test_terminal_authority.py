@@ -88,6 +88,56 @@ def test_signed_document_uses_one_canonical_encoding() -> None:
     assert authority.canonical_json_bytes(value) == b'{"a":"value","z":[2,1]}'
 
 
+def test_personal_controller_initialization_replays_and_recovers_key_first_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry_path = tmp_path / "harness-authorities.toml"
+    key_path = tmp_path / "harness-controller" / "controller-ed25519.pem"
+    monkeypatch.setattr(authority, "authority_registry_path", lambda: registry_path)
+    monkeypatch.setattr(authority, "personal_controller_key_path", lambda: key_path)
+
+    configured = authority.initialize_personal_controller()
+    key_bytes = key_path.read_bytes()
+    registry_bytes = registry_path.read_bytes()
+
+    assert configured["status"] == "configured"
+    assert configured["issuer_key_id"].startswith("personal-local-")
+    assert configured["principal_id"] == "personal-local-controller"
+    assert authority.resolve_personal_controller()["issuer_key_id"] == configured["issuer_key_id"]
+
+    replayed = authority.initialize_personal_controller()
+
+    assert replayed == {**configured, "status": "replayed"}
+    assert key_path.read_bytes() == key_bytes
+    assert registry_path.read_bytes() == registry_bytes
+
+    registry_path.unlink()
+
+    recovered = authority.initialize_personal_controller()
+
+    assert recovered == configured
+    assert key_path.read_bytes() == key_bytes
+    assert authority.load_authorities(registry_path)["entries"][configured["issuer_key_id"]]["key_fingerprint"] == configured["key_fingerprint"]
+
+
+def test_controller_init_cli_configures_personal_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    registry_path = tmp_path / "harness-authorities.toml"
+    key_path = tmp_path / "harness-controller" / "controller-ed25519.pem"
+    monkeypatch.setattr(authority, "authority_registry_path", lambda: registry_path)
+    monkeypatch.setattr(authority, "personal_controller_key_path", lambda: key_path)
+
+    assert managed.main(["--repo-root", str(ROOT), "controller-init"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "configured"
+    assert "private_key" not in payload
+
+
 def test_load_registry_rejects_private_key_field(tmp_path: Path) -> None:
     private_key = Ed25519PrivateKey.generate()
     path = tmp_path / "harness-authorities.toml"

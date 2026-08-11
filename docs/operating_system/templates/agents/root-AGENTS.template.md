@@ -38,9 +38,10 @@ unsupported hosts before child creation. Preflight owns temporary containment;
 leased lanes borrow containment. A host `terminal_recording_failed` payload
 means cleanup proof is incomplete: preserve it for controller recovery, never
 fabricate lane evidence, retry, or terminalize from host output.
-Core records every finalization subject as `attempt_outcome/v2`. Controller uses
-only `terminalize_attempt(envelope)`: evidence form records outcome and terminal
-evidence; outcome form finalizes exact outcome. Core writes final state,
+Core records every finalization subject as `attempt_outcome/v2`.
+`terminalize_attempt(envelope)` records evidence or applies detached signed
+outcome authorization. Personal-local `harness-core-launcher close` resolves one
+fixed authority and invokes same core finalizer. Core writes final state,
 decision, and `attempt_terminal_receipt/v3` atomically.
 Host returns baseline evidence before lane dispatch: root and parallel lanes use
 `packet_base` at exact packet base with a clean checkout; sequential dependents
@@ -122,8 +123,10 @@ When spawning a subagent:
   close session before terminal evidence. No fresh session, repair thread, retry,
   resume, validation, or product work is allowed.
 - Harness dispatches only mode intersection of route policy and enforced host
-  capability. Controller uses `terminalize_attempt` for `accept`, `block`, and
-  `waive`; retry, escalation, and approval request remain nonterminal decisions.
+  capability. Detached finalization uses `terminalize_attempt`; personal local
+  finalization uses `harness-core-launcher close`. Retry, escalation, and
+  approval request remain nonterminal decisions and `retry`/`escalate` stay
+  host-bound `harness-core-launcher decision` operations.
 - Agents return claimed results; harness records fresh verification evidence and
   never accepts, retries, escalates, or approves autonomously.
 - Work is managed only after host adapter creates a packet and `run.json`.
@@ -151,8 +154,14 @@ When spawning a subagent:
   canonical `terminalize-attempt --input <envelope.json>`; temporary `--evidence`
   accepts only policy-defined historical legacy evidence. `--auto-block` is retired.
   Legacy cleanup produces one block-only outcome and policy auto-finalizes one
-  receipt. Ambiguous terminal outcomes require external
-  `controller_authorization/v1`; agents may transport evidence but cannot mint,
+  receipt. Personal local ambiguous closure runs `harness-core-launcher
+  controller-init` once, then `harness-core-launcher close` with run ID,
+  terminal decision, and reason. Fixed private key stays at
+  `~/.codex/harness-controller/controller-ed25519.pem`; public trust remains
+  `~/.codex/harness-authorities.toml`. Any process under same OS user that can
+  invoke launcher can close an eligible outcome, so exclude shared-machine and
+  production use. Detached external `controller_authorization/v1` remains
+  advanced compatibility path; agents may transport evidence but cannot mint,
   broaden, or terminalize it. Host has no legacy cleanup or process-action
   fallback. Direct legacy abandonment is retired.
 - `writer_completion_missing` means a write-capable lane completed commands
