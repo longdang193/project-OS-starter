@@ -31,8 +31,8 @@ validator lanes, run packet checks, or retry managed work.
 ## Codex Provider Invocation
 
 `runtime_provider_id: codex_app_server` selects provider identity; it does not
-make generic core CLI a provider host. From installed `codex-harness-host`
-source root, verify capability and dispatch same request through provider host:
+make generic core CLI a provider host. Use only the active pointer-selected
+runtime through launcher:
 
 ```powershell
 harness-core-launcher capabilities
@@ -55,10 +55,11 @@ After a host-source fix, require this gate before product packet dispatch:
 
 1. Commit changed host runtime module and its regression test. Preserve unrelated
    host work; clean repository state is not required.
-2. Resolve actual imported module path used by configured host executable.
-3. Record host `HEAD` SHA and prove changed imported module matches that committed
-   file at `HEAD`.
-4. Refresh installed provider, then run fresh `capabilities` and `preflight`.
+2. Run `harness-core-launcher doctor` and record its active `host_root`, host
+   commit, and host release.
+3. Prove changed host source matches that committed file at `HEAD`.
+4. Activate that committed host through launcher, then run fresh `doctor`,
+   `capabilities`, and `preflight`.
 5. Create fresh product successor request only after this proof passes. Never
    resume terminal-blocked run.
 
@@ -70,7 +71,7 @@ After a committed host-source update, refresh and prove the locked source host
 before dispatch:
 
 ```powershell
-Set-Location <codex-harness-host-root>
+harness-core-launcher upgrade --host-root <codex-harness-host-root>
 harness-core-launcher doctor
 harness-core-launcher capabilities
 harness-core-launcher preflight

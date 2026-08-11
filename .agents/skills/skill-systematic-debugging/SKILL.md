@@ -60,8 +60,9 @@ Use for ANY technical issue:
   `execution_lease`, attempt `execution_lease`, normalized
   `host_terminal_observations`, `terminal_record`, retained-artifact evidence,
   and host lane evidence before changing policy. Controller invokes only
-  `terminalize_attempt(envelope)`; evidence records outcome, and finalization
-  records receipt. Host never writes `run.json`. Expired live or unverified
+  `terminalize_attempt(envelope)` for external signed or legacy evidence;
+  personal-local closure uses `harness-core-launcher close`. Evidence records
+  outcome, and finalization records receipt. Host never writes `run.json`. Expired live or unverified
   process state is `orphaned`, so retry and resume stay blocked.
   Distinguish provider lifecycle failure from core semantic failure: a completed
   stop proof followed by claim, check, or verification rejection is

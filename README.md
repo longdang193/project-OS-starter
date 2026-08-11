@@ -102,14 +102,19 @@ then policy auto-finalizes `blocked`. Host never performs legacy cleanup or
 terminal state writes.
 
 ```powershell
+harness-core-launcher controller-init
 harness-core-launcher doctor
 harness-core-launcher capabilities
 harness-core-launcher preflight
 harness-core-launcher run --harness-root <repo-root> --request <request.json>
-harness-core-launcher terminalize-attempt --harness-root <repo-root> --run-id <run-id> --input <envelope.json>
+harness-core-launcher decision --harness-root <repo-root> --run-id <run-id> --decision <decision.json>
+harness-core-launcher close --harness-root <repo-root> --run-id <run-id> --decision <accept|block|waive> --reason <reason>
 ```
 
 `harness-core-launcher` selects the verified pointer-owned host release profile.
+`controller-init` is one-time personal-local setup. `close` is personal-local
+terminal closure; external signed and legacy cleanup paths use
+`terminalize-attempt` above. `decision` handles only `retry` and `escalate`.
 Host reads transport only from trusted user configuration. Do not put an endpoint,
 launch command, or credentials in repository policy, requests, or packets. Never
 dispatch bare `codex-harness-host`: PATH can resolve an unrelated user-level tool

@@ -51,9 +51,11 @@ To update: edit canonical source, then run sync.
 - Work without a host-created packet and `run.json` is source-first local work,
   never managed or accepted harness work.
 - For current leased packets, core issues one finite non-renewable lease before `running`.
-  Host owns provider process lifecycle and returns only
-  packet-declared terminal evidence; controller invokes only
-  `terminalize_attempt(envelope)`. Evidence records `attempt_outcome/v2`;
+  Host owns provider process lifecycle and returns only packet-declared terminal
+  evidence. Core finalizes external signed and legacy evidence through
+  `terminalize_attempt(envelope)`; personal-local closure uses
+  `harness-core-launcher close` on same core finalizer. Evidence records
+  `attempt_outcome/v2`;
   one-decision terminal outcomes auto-finalize, while ambiguous outcomes require
   signed `controller_authorization/v1`. Core atomically writes terminal evidence,
   receipt, lease release, state history, and `run.json`. Live or unverified
@@ -87,8 +89,8 @@ To update: edit canonical source, then run sync.
   `claimed_result`; harness records verification evidence and controller
   records final decision.
 - Missing enforced host capability returns `execution_mode_unavailable` before
-  dispatch. Controller either blocks or records `waive` with reason; waiver is
-  terminal `unvalidated`, never acceptance.
+  dispatch. Controller either blocks or finalizes controller-authorized `waive`
+  with reason; waiver is terminal `unvalidated`, never acceptance.
 - `writer_completion_missing` means a write-capable lane completed commands
   without a final claim before terminal timeout. Controller blocks that product
   run without retry, escalation, or resume. When `friction-report` returns its

@@ -63,8 +63,9 @@ preserve its evidence and repair workspace materialization, never reinterpret
 it as product scope or agent behavior.
 
 For current leased packets, core issues one finite lease before `running`. Host
-owns provider processes and returns packet-declared terminal evidence;
-controller invokes only `terminalize_attempt(envelope)`. Evidence records
+owns provider processes and returns packet-declared terminal evidence. Core
+finalizes external signed and legacy evidence through `terminalize_attempt(envelope)`;
+personal-local closure uses `harness-core-launcher close`. Evidence records
 `attempt_outcome/v2`; core auto-finalizes one-decision terminal outcomes and
 requires signed controller authority for ambiguous terminal outcomes. Core
 atomically records receipt, lease release, state history, and `run.json`. Do not

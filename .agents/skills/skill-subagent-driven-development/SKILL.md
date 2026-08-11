@@ -18,7 +18,9 @@ ordinary direct execution.
   friction, outcomes, decisions, and state history under `.harness/runs/`.
 - For current leased packets, core issues one finite lease before `running`.
   Host owns provider process lifecycle and returns packet-declared terminal
-  evidence. Controller invokes only `terminalize_attempt(envelope)`; evidence records
+  evidence. Core finalizes external signed and legacy evidence through
+  `terminalize_attempt(envelope)`; personal-local closure uses
+  `harness-core-launcher close`. Evidence records
   `attempt_outcome/v2`, one-decision terminal outcomes auto-finalize, and
   ambiguous terminal outcomes require signed controller authority. Core
   atomically records terminal evidence, receipt, lease release, state history,
@@ -42,8 +44,8 @@ ordinary direct execution.
 - Implementer returns `claimed_result`, never `verified`.
 - Harness records outcome after dispatch, claim collection, and verification.
   Installed `harness-core` owns packet lifecycle. Consumer scripts only bridge
-  to package commands. Controller alone calls `apply_controller_decision` to accept, retry,
-  escalate, request approval, or block. Commit policy remains separate.
+  to package commands. Controller alone selects decisions. `retry` and `escalate`
+  use host-bound `harness-core-launcher decision`; commit policy remains separate.
 - Generic CLI has no managed `run` command. `run-unavailable` records explicit
   `execution_mode_unavailable` proof; it never claims dispatch occurred.
 - For `runtime_provider_id: codex_app_server`, controller uses active
@@ -62,8 +64,9 @@ ordinary direct execution.
 - A terminal coordinated task failure derives `blocked` status. Preserve its
   run evidence; require approved successor plan/task identity instead of a
   fresh request against same task.
-- Controller may record `waive` only with reason. Waived work is terminal
-  `unvalidated`; local proof remains local and cannot become managed acceptance.
+- Controller may finalize controller-authorized `waive` only with reason. Waived
+  work is terminal `unvalidated`; local proof remains local and cannot become
+  managed acceptance.
 - Independent validator evidence requires host dispatch of a separate enforced,
   read-only validator lane. Implementer claims and local checks do not count.
 - Controller must not dispatch a write-capable implementer lane to discover an

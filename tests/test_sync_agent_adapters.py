@@ -223,20 +223,24 @@ def test_codex_provider_guidance_uses_host_owned_transport_config() -> None:
     required_phrases = {
         REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md": (
             "harness-providers.toml",
-            "codex-harness-host preflight",
+            "harness-core-launcher preflight",
+            "Never dispatch bare `codex-harness-host`",
+            "harness-core-launcher terminalize-attempt --input",
         ),
         REPO_ROOT / "docs/operating_system/procedures/managed-execution-adapter-contract.md": (
-            "config init",
-            "config validate",
-            "codex-harness-host preflight",
+            "harness-core-launcher upgrade --host-root",
+            "harness-core-launcher preflight",
             "provider_configuration_changed",
         ),
         REPO_ROOT / "docs/operating_system/procedures/harness-core-consumer-setup.md": (
-            f"harness-core-v{version('harness-core')}",
-            f"harness_core.request_api: {policy['harness_core']['request_api']}",
-            f"contract_version: {current_profile['provider_contract']}",
-            f"packet API {CURRENT_PACKET_API}",
-            f"host API {current_profile['dispatch_host_api']}",
+            "harness_core.request_api",
+            "harness-core-launcher doctor",
+            "harness-core-launcher close",
+        ),
+        REPO_ROOT / "README.md": (
+            "harness-core-launcher controller-init",
+            "harness-core-launcher decision",
+            "harness-core-launcher close",
         ),
     }
 
@@ -244,11 +248,59 @@ def test_codex_provider_guidance_uses_host_owned_transport_config() -> None:
         content = path.read_text(encoding="utf-8")
         assert "ws://127.0.0.1:4500" not in content, f"hardcoded endpoint in {path.relative_to(REPO_ROOT)}"
         assert "--server-uri" not in content, f"raw endpoint flag in {path.relative_to(REPO_ROOT)}"
+        assert "codex-harness-host preflight" not in content, f"bare host preflight in {path.relative_to(REPO_ROOT)}"
 
     for path, phrases in required_phrases.items():
         content = " ".join(path.read_text(encoding="utf-8").split())
         for phrase in phrases:
             assert phrase in content, f"missing `{phrase}` in {path.relative_to(REPO_ROOT)}"
+
+    consumer_content = (REPO_ROOT / "docs/operating_system/procedures/harness-core-consumer-setup.md").read_text(encoding="utf-8")
+    for phrase in (
+        f"harness-core-v{version('harness-core')}",
+        f"harness_core.request_api: {policy['harness_core']['request_api']}",
+        f"contract_version: {current_profile['provider_contract']}",
+        f"packet API {CURRENT_PACKET_API}",
+        f"host API {current_profile['dispatch_host_api']}",
+    ):
+        assert phrase not in consumer_content, f"copied runtime value `{phrase}` in consumer guidance"
+
+
+def test_agent_profiles_and_live_run_prompt_keep_packet_boundaries() -> None:
+    delegation_requirement = (
+        "Do not spawn child agents unless immutable packet grants `harness.delegate` "
+        "and selects `read_only_research`."
+    )
+    for profile in ("low", "normal", "high"):
+        content = (REPO_ROOT / "agents" / f"{profile}.toml").read_text(encoding="utf-8")
+        assert delegation_requirement in content, f"missing packet delegation boundary in agents/{profile}.toml"
+
+    live_run_prompt = (REPO_ROOT / "docs/operating_system/prompt_templates/live-run-prompt.md").read_text(encoding="utf-8")
+    assert "harness-core-launcher close" in live_run_prompt
+    assert "external signed or legacy closure" in live_run_prompt
+
+
+def test_guidance_uses_runtime_and_policy_sources_of_truth() -> None:
+    root_template = (REPO_ROOT / "docs/operating_system/templates/agents/root-AGENTS.template.md").read_text(encoding="utf-8")
+    assert "Historical packet API 3" not in root_template
+    assert "Historical packet compatibility is owned by" in root_template
+
+    orchestration_rule = " ".join(
+        (REPO_ROOT / "docs/operating_system/rules/multi-agent-orchestration-rule.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "finalizes controller-authorized `waive` with reason" in orchestration_rule
+
+    consumer_setup = (REPO_ROOT / "docs/operating_system/procedures/harness-core-consumer-setup.md").read_text(encoding="utf-8")
+    assert "finalize controller-authorized waiver with reason" in consumer_setup
+
+    publication_rule = (REPO_ROOT / "docs/operating_system/rules/publication-boundary-rule.md").read_text(encoding="utf-8")
+    assert "repo_config/publication-config.json` owns exact" in publication_rule
+    assert "- `.agents/`" not in publication_rule
+
+    docs_template = (REPO_ROOT / "docs/operating_system/templates/agents/docs-AGENTS.template.md").read_text(encoding="utf-8")
+    assert "`repo_config/` owns machine-enforced policy" in docs_template
 
 
 def _mapping(source: str, destination: str, mode: str = "copy_tree") -> object:

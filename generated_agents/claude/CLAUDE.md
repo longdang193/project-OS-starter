@@ -84,8 +84,9 @@ commands and secret fields.
 Use `--run-id <run-id>` instead of `--request` only when run state is `planned`
 for an existing dispatchable attempt. A terminal coordinated task failure is
 `blocked`; preserve its evidence and require approved successor plan/task
-identity before a fresh request. Historical packet API 3 remains readable
-through host API 3 but cannot dispatch; preserve it and create successor.
+identity before a fresh request. Historical packet compatibility is owned by
+installed `harness-core`; preserve evidence and create a successor only when
+core declines dispatch.
 Never use generic `run-unavailable` to retry a managed packet.
 
 For Git-tracked active coordination plans, frontmatter owns static target
@@ -159,7 +160,8 @@ When spawning a subagent:
   agent workspace; trusted public records live only in
   `~/.codex/harness-authorities.toml`. `migrate-harness-authorities` is explicit;
   current validation never falls back to the old registry. Controller submits
-  canonical `terminalize-attempt --input <envelope.json>`; temporary `--evidence`
+  canonical `harness-core-launcher terminalize-attempt --input <envelope.json>`;
+  temporary `--evidence`
   accepts only policy-defined historical legacy evidence. `--auto-block` is retired.
   Legacy cleanup produces one block-only outcome and policy auto-finalizes one
   receipt. Personal local ambiguous closure runs `harness-core-launcher

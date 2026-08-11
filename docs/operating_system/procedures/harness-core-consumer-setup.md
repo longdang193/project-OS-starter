@@ -130,7 +130,7 @@ differs from loaded `policy_schema_version`, before packet creation.
 | `harness_core_packet_dispatch_incompatible` | policy/host compatibility skew | Preserve historical packet evidence. Align request API, packet API, and host contract; then create successor. |
 | `harness_runtime_profile_activation_busy` | another activation holds launcher lock | Wait for current activation to finish, then rerun `harness-core-launcher upgrade`. |
 | `cleanup_pending: true` | obsolete profile cleanup could not finish | Active profile already switched. Close process holding obsolete profile; next upgrade retries cleanup. |
-| `execution_mode_unavailable` | provider host capability | Block or record controller waiver. Do not use generic CLI as fallback. |
+| `execution_mode_unavailable` | provider host capability | Block or finalize controller-authorized waiver with reason. Do not use generic CLI as fallback. |
 
 Legacy `python scripts/harness_task.py ...` remains supported during migration,
 but new automation uses installed `harness-core` commands or provider-host
