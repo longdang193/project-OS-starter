@@ -161,7 +161,7 @@ wheels = [
 
 [[package]]
 name = "harness-core"
-version = "0.1.39"
+version = "0.1.40"
 source = { editable = "packages/harness-core" }
 dependencies = [
     { name = "cryptography" },

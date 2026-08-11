@@ -2792,11 +2792,37 @@ def _delegated_child_lane_id(child_invocation_id: str) -> str:
     return f"child-{uuid.uuid5(uuid.NAMESPACE_URL, child_invocation_id).hex[:12]}"
 
 
+def _delegation_parent_packet(attempt: dict[str, Any], parent_invocation_id: str) -> dict[str, Any] | None:
+    packet = attempt.get("packet")
+    if isinstance(packet, dict) and packet.get("invocation_id") == parent_invocation_id:
+        return packet
+    for child in attempt.get("children", []):
+        if isinstance(child, dict) and isinstance(child.get("packet"), dict) and child["packet"].get("invocation_id") == parent_invocation_id:
+            return child["packet"]
+    return None
+
+
+def _set_delegation_parent_status(attempt: dict[str, Any], parent_invocation_id: str, status: str) -> None:
+    packet = attempt.get("packet")
+    if isinstance(packet, dict) and packet.get("invocation_id") == parent_invocation_id:
+        parent_node_id = parent_invocation_id.rpartition(":")[2]
+        parent = next((node for node in attempt.get("nodes", []) if isinstance(node, dict) and node.get("lane_id") == parent_node_id), None)
+        if not isinstance(parent, dict):
+            raise HarnessError("delegation parent node is missing")
+        parent["status"] = status
+        return
+    for child in attempt.get("children", []):
+        if isinstance(child, dict) and isinstance(child.get("packet"), dict) and child["packet"].get("invocation_id") == parent_invocation_id:
+            child["status"] = status
+            return
+    raise HarnessError("delegation parent is missing")
+
+
 def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[str, Any]) -> DelegationResult:
     run = _load_run(root, _safe_run_id(run_id))
     attempt = _active_attempt(run)
-    packet = attempt.get("packet")
-    if not isinstance(packet, dict) or packet.get("invocation_id") != parent_invocation_id:
+    packet = _delegation_parent_packet(attempt, parent_invocation_id)
+    if not isinstance(packet, dict):
         return {"ok": False, "code": "delegation_parent_not_found"}
     if "harness.delegate" not in packet.get("capabilities", []):
         return {"ok": False, "code": "delegation_not_permitted"}
@@ -2897,11 +2923,7 @@ def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[s
     attempt["children"] = children
     attempt["reservation_ledger"] = ledger
     attempt["delegation_idempotency"] = idempotency
-    parent_node_id = parent_invocation_id.rpartition(":")[2]
-    parent = next((node for node in attempt.get("nodes", []) if isinstance(node, dict) and node.get("lane_id") == parent_node_id), None)
-    if not isinstance(parent, dict):
-        raise HarnessError("delegation parent node is missing")
-    parent["status"] = "waiting_for_child"
+    _set_delegation_parent_status(attempt, parent_invocation_id, "waiting_for_child")
     _write_run(root, run)
     return copy.deepcopy(result)
 
@@ -2920,27 +2942,40 @@ def _delegated_child_packet(root: Path, run_id: str, child_invocation_id: str) -
     raise HarnessError("delegated child packet was not found")
 
 
-def _delegation_bridge(root: Path, run: dict[str, Any], attempt: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any] | None:
-    packet = attempt["packet"]
-    if lane.get("node_kind") != "agent" or lane.get("kind") != "work" or "harness.delegate" not in packet.get("capabilities", []):
+def _delegation_packet_bridge(root: Path, run_id: str, packet: dict[str, Any], parent_node_id: str) -> dict[str, Any] | None:
+    if "harness.delegate" not in packet.get("capabilities", []):
         return None
-    parent_node_id = _required_string(lane.get("lane_id"), "parent node id")
     parent_invocation_id = _required_string(packet.get("invocation_id"), "parent invocation id")
     return {
-        "run_id": run["run_id"],
-        "attempt_id": attempt["attempt_id"],
+        "run_id": run_id,
+        "attempt_id": _required_string(packet.get("attempt_id"), "parent attempt id"),
         "parent_node_id": parent_node_id,
-        "delegate": lambda request: delegate(root, run["run_id"], parent_invocation_id, request),
-        "child_packet": lambda child_id: _delegated_child_packet(root, run["run_id"], child_id),
+        "delegate": lambda request: delegate(root, run_id, parent_invocation_id, request),
+        "child_packet": lambda child_id: _delegated_child_packet(root, run_id, child_id),
+        "child_bridge": lambda child_id: _delegation_child_bridge(root, run_id, child_id),
         "complete": lambda child_id, status, claim, app_server_model_selection=None: complete_delegated_child(
             root,
-            run["run_id"],
+            run_id,
             child_id,
             status,
             claim,
             app_server_model_selection,
         ),
     }
+
+
+def _delegation_child_bridge(root: Path, run_id: str, child_invocation_id: str) -> dict[str, Any] | None:
+    packet = _delegated_child_packet(root, run_id, child_invocation_id)
+    parent_node_id = _required_string(packet.get("delegated_lane_id"), "delegated parent node id")
+    return _delegation_packet_bridge(root, run_id, packet, parent_node_id)
+
+
+def _delegation_bridge(root: Path, run: dict[str, Any], attempt: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any] | None:
+    packet = attempt["packet"]
+    if lane.get("node_kind") != "agent" or lane.get("kind") != "work":
+        return None
+    parent_node_id = _required_string(lane.get("lane_id"), "parent node id")
+    return _delegation_packet_bridge(root, run["run_id"], packet, parent_node_id)
 
 
 def _sync_delegation_state(root: Path, run: dict[str, Any], attempt: dict[str, Any]) -> bool:
@@ -3054,10 +3089,9 @@ def complete_delegated_child(
         raise HarnessError("delegated child lacks reservation")
 
     parent_id = child_packet.get("parent_invocation_id")
-    parent_node_id = parent_id.rpartition(":")[2] if isinstance(parent_id, str) else ""
-    parent = next((node for node in attempt.get("nodes", []) if isinstance(node, dict) and node.get("lane_id") == parent_node_id), None)
-    if isinstance(parent, dict):
-        parent["status"] = "running" if status == "succeeded" else "waiting_for_child"
+    if not isinstance(parent_id, str) or not parent_id:
+        raise HarnessError("delegated child lacks parent invocation id")
+    _set_delegation_parent_status(attempt, parent_id, "running" if status == "succeeded" else "waiting_for_child")
     if status != "succeeded" and run["state"] == "running":
         policy = _load_policy(root)
         _set_outcome(run, attempt, policy, f"child_{status}", ["block"], ["children", "reservation_ledger"])

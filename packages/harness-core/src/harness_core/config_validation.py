@@ -759,12 +759,23 @@ def validate(root: Path) -> list[str]:
             errors.append(f"delegation profile `{name}` is invalid")
             continue
         numeric_fields = ("max_depth", "max_children", "max_concurrent_children", "per_child_timeout_seconds", "total_child_timeout_seconds")
-        if not all(isinstance(profile[field], int) and not isinstance(profile[field], bool) and profile[field] >= 0 for field in numeric_fields):
+        valid_limits = all(isinstance(profile[field], int) and not isinstance(profile[field], bool) and profile[field] >= 0 for field in numeric_fields)
+        if not valid_limits:
             errors.append(f"delegation profile `{name}` has invalid limits")
         if not valid_string_list(profile["allowed_roles"], allow_empty=True) or not set(profile["allowed_roles"]) <= set(roles):
             errors.append(f"delegation profile `{name}` allowed_roles is invalid")
-        if not valid_string_list(profile["capability_ceiling"], allow_empty=True) or not set(profile["capability_ceiling"]) <= CAPABILITIES:
+        valid_capability_ceiling = valid_string_list(profile["capability_ceiling"], allow_empty=True) and set(profile["capability_ceiling"]) <= CAPABILITIES
+        if not valid_capability_ceiling:
             errors.append(f"delegation profile `{name}` capability_ceiling is invalid")
+        elif valid_limits and profile["max_depth"] > 1:
+            if "harness.delegate" not in profile["capability_ceiling"]:
+                errors.append(f"delegation profile `{name}` depth above 1 requires `harness.delegate` capability")
+            if profile["max_children"] < profile["max_depth"]:
+                errors.append(f"delegation profile `{name}` max_children must cover max_depth")
+            if profile["max_concurrent_children"] < profile["max_depth"]:
+                errors.append(f"delegation profile `{name}` max_concurrent_children must cover max_depth")
+            if profile["total_child_timeout_seconds"] < profile["max_depth"] * profile["per_child_timeout_seconds"]:
+                errors.append(f"delegation profile `{name}` total_child_timeout_seconds must cover max_depth")
         if profile["workspace_write_access"] not in {"read_only", "workspace_write"} or profile["verification"] not in {"none", "schema", "checks", "validator"}:
             errors.append(f"delegation profile `{name}` has invalid workspace or verification")
 

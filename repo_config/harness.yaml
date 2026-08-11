@@ -49,13 +49,13 @@ delegation_profiles:
     workspace_write_access: read_only
     verification: none
   read_only_research:
-    max_depth: 1
+    max_depth: 2
     max_children: 2
-    max_concurrent_children: 1
+    max_concurrent_children: 2
     per_child_timeout_seconds: 120
     total_child_timeout_seconds: 240
     allowed_roles: [investigate, review]
-    capability_ceiling: [repo.read, code.search, docs.query]
+    capability_ceiling: [repo.read, code.search, docs.query, harness.delegate]
     workspace_write_access: read_only
     verification: schema
 defaults:

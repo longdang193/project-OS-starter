@@ -326,6 +326,55 @@ def test_v6_policy_catalog_profiles_and_claim_repair_validate(tmp_path: Path) ->
     assert config_validation.validate(tmp_path) == []
 
 
+def test_delegation_depth_requires_nested_capacity(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    profile = policy["delegation_profiles"]["disabled"]
+    profile.update({
+        "max_depth": 2,
+        "max_children": 2,
+        "max_concurrent_children": 2,
+        "per_child_timeout_seconds": 60,
+        "total_child_timeout_seconds": 120,
+        "allowed_roles": ["investigate"],
+        "capability_ceiling": ["repo.read"],
+        "verification": "schema",
+    })
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == [
+        "delegation profile `disabled` depth above 1 requires `harness.delegate` capability"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("max_children", 1, "delegation profile `disabled` max_children must cover max_depth"),
+        ("max_concurrent_children", 1, "delegation profile `disabled` max_concurrent_children must cover max_depth"),
+        ("total_child_timeout_seconds", 119, "delegation profile `disabled` total_child_timeout_seconds must cover max_depth"),
+    ],
+)
+def test_nested_delegation_depth_requires_child_limits(tmp_path: Path, field: str, value: int, error: str) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    profile = policy["delegation_profiles"]["disabled"]
+    profile.update({
+        "max_depth": 2,
+        "max_children": 2,
+        "max_concurrent_children": 2,
+        "per_child_timeout_seconds": 60,
+        "total_child_timeout_seconds": 120,
+        "allowed_roles": ["investigate"],
+        "capability_ceiling": ["repo.read", "harness.delegate"],
+        "verification": "schema",
+    })
+    profile[field] = value
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == [error]
+
+
 def test_v6_rejects_claim_repair_without_typed_role_contract(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
     roles_path = tmp_path / "agents" / "roles.yaml"

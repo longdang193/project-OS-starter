@@ -1785,6 +1785,71 @@ def test_delegation_bridge_binds_one_parent_and_reads_derived_child_packet(tmp_p
         shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
 
 
+def test_delegation_bridge_supports_nested_child_completion(tmp_path: Path) -> None:
+    harness = load_module()
+    run_id = tmp_path.name
+    run = harness._new_run(managed_request(version=5, run_id=run_id, execution_mode="single_work_lane"), run_id)
+    packet = harness.resolve_managed_packet(ROOT, run["request"], attempt_id="attempt-1")
+    packet["capabilities"] = ["repo.read", "harness.delegate"]
+    packet["delegation_profile"] = "read_only_research"
+    harness._transition(run, harness._load_policy(ROOT)["states"], "planned", "preflight")
+    attempt = harness._append_attempt(run, packet)
+    harness._issue_execution_lease(
+        run,
+        attempt,
+        host_instance_id="host-test",
+        now=datetime(2026, 8, 10, tzinfo=UTC),
+    )
+    harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
+    try:
+        harness._write_run(ROOT, run)
+        bridge = harness._delegation_bridge(ROOT, run, attempt, attempt["nodes"][0])
+        child = bridge["delegate"]({
+            "idempotency_key": "child-1",
+            "role": "investigate",
+            "capabilities": ["repo.read", "harness.delegate"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+        child_bridge = bridge["child_bridge"](child["invocation_id"])
+        grandchild = child_bridge["delegate"]({
+            "idempotency_key": "child-2",
+            "role": "investigate",
+            "capabilities": ["repo.read"],
+            "allowed_paths": ["scripts/**"],
+            "timeout_seconds": 60,
+        })
+
+        grandchild_packet = child_bridge["child_packet"](grandchild["invocation_id"])
+        assert grandchild_packet["parent_invocation_id"] == child["invocation_id"]
+        assert grandchild_packet["delegation_depth"] == 2
+        stored = harness._load_run(ROOT, run_id)["attempts"][0]
+        assert stored["children"][0]["status"] == "waiting_for_child"
+
+        result = harness.complete_delegated_child(
+            ROOT,
+            run_id,
+            grandchild["invocation_id"],
+            "succeeded",
+            {
+                "version": 1,
+                "state": "object",
+                "lane_id": grandchild_packet["delegated_lane_id"],
+                "thread_id": "thread-nested",
+                "candidate_claim": {"kind": "claimed_result", "summary": "nested", "findings": ["ok"]},
+            },
+            {
+                field: grandchild_packet["agent_identity"][field]
+                for field in ("model_provider", "model", "reasoning_effort")
+            },
+        )
+
+        assert result["status"] == "succeeded"
+        assert harness._load_run(ROOT, run_id)["attempts"][0]["children"][0]["status"] == "running"
+    finally:
+        shutil.rmtree(ROOT / ".harness" / "runs" / run_id, ignore_errors=True)
+
+
 def test_delegate_cancellation_waits_for_controller_decision(tmp_path: Path) -> None:
     harness = load_module()
     run_id = tmp_path.name
