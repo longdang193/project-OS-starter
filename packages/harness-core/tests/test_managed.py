@@ -822,6 +822,42 @@ def test_v4_packet_rejects_oversized_work_context_before_dispatch() -> None:
         )
 
 
+def test_current_request_rejects_ambient_manual_source_path_before_packet_creation() -> None:
+    harness = load_module()
+    request = managed_request(task_type="design_exploration", execution_mode="single_work_lane")
+    request["manual_evidence"] = {
+        "source_path": r"C:\\Users\\example\\outside-repo.md",
+        "source_sha256": "a" * 64,
+    }
+
+    with pytest.raises(harness.HarnessError, match="manual_evidence cannot bind a source_path"):
+        harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+
+
+def test_current_request_rejects_tracked_artifact_sha_mismatch_before_packet_creation() -> None:
+    harness = load_module()
+    request = managed_request(
+        task_type="design_exploration",
+        execution_mode="single_work_lane",
+        user_request="Analyze tracked harness artifact.",
+    )
+    base_commit = harness._resolve_commit(ROOT, "HEAD")
+    request["work_context"] = {
+        "version": 1,
+        "objective": request["user_request"],
+        "facts": [],
+        "artifacts": [{
+            "path": "docs/superpowers/specs/2026-08-08-harness-artifact-handoff-ssot.md",
+            "base_commit": base_commit,
+            "sha256": "a" * 64,
+        }],
+        "expected_result": {"kind": "claimed_result", "required_fields": ["summary", "findings"]},
+    }
+
+    with pytest.raises(harness.HarnessError, match="work_context artifact content conflicts with sha256"):
+        harness.resolve_managed_packet(ROOT, request, attempt_id="attempt-1")
+
+
 def test_resolve_task_selects_validated_sequential_orchestration() -> None:
     harness = load_module()
 

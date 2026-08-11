@@ -159,7 +159,9 @@ admitted packet omits it. Host must not separately render `user_request`, parent
 transcript, or a second instruction channel, and must not duplicate core context
 schema validation. Core validates supplied context digest, fact/reference
 identity, UTF-8/count limits, and readonly-artifact SHA-256/byte length before
-dispatch. Host materializes only those packet artifacts.
+dispatch. A work-context artifact must be Git-tracked at packet base and match
+its declared SHA-256; manual evidence cannot bind a local `source_path`. Host
+materializes only those packet artifacts.
 
 Core evaluates packet postconditions against final change collection. A
 `workspace_unchanged` postcondition fails on every change from packet base;

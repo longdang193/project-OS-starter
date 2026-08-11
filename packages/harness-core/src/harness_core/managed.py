@@ -567,6 +567,7 @@ def _json_bytes(value: Any) -> int:
 
 
 def _normalize_work_context(
+    root: Path,
     policy: dict[str, Any],
     *,
     user_request: str,
@@ -625,6 +626,16 @@ def _normalize_work_context(
         digest = _required_string(artifact["sha256"], "work_context artifact sha256")
         if path in seen_artifact_paths or artifact_base != base_commit or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise HarnessError("work_context artifact is duplicated or has invalid identity")
+        source = subprocess.run(
+            ["git", "show", f"{base_commit}:{path}"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        if source.returncode:
+            raise HarnessError("work_context artifact is unavailable at base_commit")
+        if hashlib.sha256(source.stdout).hexdigest() != digest:
+            raise HarnessError("work_context artifact content conflicts with sha256")
         seen_artifact_paths.add(path)
         normalized_artifacts.append({"path": path, "base_commit": artifact_base, "sha256": digest})
     expected_result = value["expected_result"]
@@ -1931,12 +1942,16 @@ def resolve_managed_packet(
     base_commit = _resolve_commit(root, base_ref)
     user_request = _required_string(request.get("user_request"), "user_request")
     work_context = _normalize_work_context(
+        root,
         policy,
         user_request=user_request,
         role=role,
         base_commit=base_commit,
         value=request.get("work_context"),
     )
+    manual_evidence = request.get("manual_evidence")
+    if isinstance(manual_evidence, dict) and "source_path" in manual_evidence:
+        raise HarnessError("manual_evidence cannot bind a source_path; use a tracked work_context artifact")
     packet.update({
         "version": packet_api,
         "core_identity": copy.deepcopy(resolved_core_identity),
@@ -1953,7 +1968,7 @@ def resolve_managed_packet(
         "acceptance_criteria": _validate_criteria(request.get("acceptance_criteria"), packet["checks"]),
         "approvals": _validate_approvals(request.get("approvals")),
         "review_evidence": copy.deepcopy(request.get("review_evidence")),
-        "manual_evidence": copy.deepcopy(request.get("manual_evidence")),
+        "manual_evidence": copy.deepcopy(manual_evidence),
     })
     if packet_api == CURRENT_PACKET_API:
         packet["claim_repair"] = copy.deepcopy(policy["claim_repair"])
