@@ -1514,8 +1514,8 @@ def test_delegate_derives_one_idempotent_read_only_child(tmp_path: Path) -> None
         first = harness.delegate(ROOT, run_id, packet["invocation_id"], request)
         second = harness.delegate(ROOT, run_id, packet["invocation_id"], request)
 
-        assert first == second
         assert first["ok"] is True
+        assert second == {"ok": False, "code": "delegation_in_progress"}
         attempt = harness._load_run(ROOT, run_id)["attempts"][0]
         assert len(attempt["children"]) == 1
         assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": False}]
@@ -1623,13 +1623,14 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
     harness._transition(run, harness._load_policy(ROOT)["states"], "running", "dispatch")
     try:
         harness._write_run(ROOT, run)
-        child = harness.delegate(ROOT, run_id, packet["invocation_id"], {
+        request = {
             "idempotency_key": "child-1",
             "role": "investigate",
             "capabilities": ["repo.read"],
             "allowed_paths": ["scripts/**"],
             "timeout_seconds": 60,
-        })
+        }
+        child = harness.delegate(ROOT, run_id, packet["invocation_id"], request)
         assert harness._load_run(ROOT, run_id)["attempts"][0]["nodes"][0]["status"] == "waiting_for_child"
         claim = {"kind": "claimed_result", "summary": "found", "findings": ["ok"]}
         model_selection = {
@@ -1668,6 +1669,7 @@ def test_delegate_releases_reservation_once_at_child_terminal_state(tmp_path: Pa
         assert attempt["children"][0]["app_server_model_selection"] == model_selection
         assert attempt["nodes"][0]["status"] == "running"
         assert attempt["reservation_ledger"] == [{"idempotency_key": "child-1", "timeout_seconds": 60, "released": True}]
+        assert harness.delegate(ROOT, run_id, packet["invocation_id"], request) == first
 
         oversized = harness.delegate(ROOT, run_id, packet["invocation_id"], {
             "idempotency_key": "child-2",

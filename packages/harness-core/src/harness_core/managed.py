@@ -2847,7 +2847,28 @@ def delegate(root: Path, run_id: str, parent_invocation_id: str, request: dict[s
         result = idempotency[idempotency_key]
         if not isinstance(result, dict):
             raise HarnessError("invalid delegation idempotency result")
-        return copy.deepcopy(result)
+        child_invocation_id = result.get("invocation_id")
+        children = attempt.get("children")
+        if not isinstance(child_invocation_id, str) or not child_invocation_id or not isinstance(children, list):
+            raise HarnessError("invalid delegation idempotency result")
+        child = next(
+            (
+                item
+                for item in children
+                if isinstance(item, dict)
+                and isinstance(item.get("packet"), dict)
+                and item["packet"].get("invocation_id") == child_invocation_id
+            ),
+            None,
+        )
+        if not isinstance(child, dict):
+            raise HarnessError("delegated child is missing")
+        if child.get("status") in DELEGATED_CHILD_TERMINAL_STATES:
+            terminal_result = child.get("terminal_result")
+            if not isinstance(terminal_result, dict):
+                raise HarnessError("terminal delegated child lacks result")
+            return copy.deepcopy(terminal_result)
+        return {"ok": False, "code": "delegation_in_progress"}
 
     role = request.get("role")
     roles = _load_roles(root)
