@@ -19,7 +19,7 @@ publication workflow for mirror/export actions.
 
 ## Canonical Policy
 
-`repo_config/publication-config.json` owns exact public, forbidden, required,
+Repository publication configuration owns exact public, forbidden, required,
 generated, and scrubbed paths. Do not copy its path lists into rules or prompts.
 
 ## Prompt Before Execute

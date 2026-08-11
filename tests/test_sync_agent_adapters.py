@@ -296,7 +296,7 @@ def test_guidance_uses_runtime_and_policy_sources_of_truth() -> None:
     assert "finalize controller-authorized waiver with reason" in consumer_setup
 
     publication_rule = (REPO_ROOT / "docs/operating_system/rules/publication-boundary-rule.md").read_text(encoding="utf-8")
-    assert "repo_config/publication-config.json` owns exact" in publication_rule
+    assert "Repository publication configuration owns exact" in publication_rule
     assert "- `.agents/`" not in publication_rule
 
     docs_template = (REPO_ROOT / "docs/operating_system/templates/agents/docs-AGENTS.template.md").read_text(encoding="utf-8")
