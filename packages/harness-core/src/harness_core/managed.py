@@ -1203,7 +1203,7 @@ def _matching_plan_runs(root: Path, plan_ref: str) -> list[tuple[dict[str, Any],
     return matches
 
 
-def coordination_status(root: Path, plan_ref: str) -> dict[str, Any]:
+def coordination_status(root: Path, plan_ref: str, *, exclude_run_id: str | None = None) -> dict[str, Any]:
     try:
         coordination = load_plan_coordination(root, plan_ref, require_active=True)
     except PlanCoordinationError as exc:
@@ -1214,6 +1214,8 @@ def coordination_status(root: Path, plan_ref: str) -> dict[str, Any]:
         task.task_id: [] for task in coordination.tasks
     }
     for run, attempt in _matching_plan_runs(root, coordination.plan_ref):
+        if run["run_id"] == exclude_run_id:
+            continue
         packet = attempt.get("packet", {})
         task_id = packet.get("plan_task_id") if isinstance(packet, dict) else None
         if task_id in runs_by_task:
@@ -1279,17 +1281,19 @@ def _planned_paths_overlap(left: list[str], right: list[str]) -> bool:
     return any(_path_matches(left_path, [right_path]) or _path_matches(right_path, [left_path]) for left_path in left for right_path in right)
 
 
-def _admit_coordinated_packet(root: Path, packet: dict[str, Any]) -> None:
+def _admit_coordinated_packet(root: Path, packet: dict[str, Any], *, exclude_run_id: str | None = None) -> None:
     if "plan_ref" not in packet:
         return
     plan_ref = _required_string(packet.get("plan_ref"), "packet plan_ref")
     task_id = _required_string(packet.get("plan_task_id"), "packet plan_task_id")
-    status = coordination_status(root, plan_ref)
+    status = coordination_status(root, plan_ref, exclude_run_id=exclude_run_id)
     task_status = next((task for task in status["tasks"] if task["id"] == task_id), None)
     if not isinstance(task_status, dict) or task_status["state"] != "ready":
         reason = task_status.get("reason", "missing") if isinstance(task_status, dict) else "missing"
         raise HarnessError(f"coordinated task `{task_id}` is not ready: {reason}")
     for run in _all_runs(root):
+        if run["run_id"] == exclude_run_id:
+            continue
         if run["state"] not in ACTIVE_RUN_STATES or not run["attempts"]:
             continue
         active_packet = run["attempts"][-1].get("packet")
@@ -5048,6 +5052,7 @@ def prepare_attempt(
     *,
     attempt_id: str,
     execution_budget_profile: str | None = None,
+    exclude_run_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None, str | None]:
     _validate_policy(root)
     request_admission = admit_request_api(request.get("version"))
@@ -5068,7 +5073,7 @@ def prepare_attempt(
         core_identity=core_identity,
         provider_runtime_binding=preflight_binding,
     )
-    _admit_coordinated_packet(root, packet)
+    _admit_coordinated_packet(root, packet, exclude_run_id=exclude_run_id)
     return packet, preflight_binding, host_instance_id
 
 
@@ -5305,6 +5310,7 @@ def apply_controller_decision(
                     attempt_id=f"attempt-{len(run['attempts']) + 1}",
                     execution_budget_profile=execution_budget_profile,
                     adapter=adapter,
+                    exclude_run_id=run_id,
                 )
                 stored = copy.deepcopy(decision)
                 stored["at"] = _timestamp()

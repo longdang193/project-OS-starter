@@ -3532,6 +3532,53 @@ def test_retry_creates_immutable_successor_then_exhausts(tmp_path: Path) -> None
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+@pytest.mark.parametrize("kind", ["retry", "escalate"])
+def test_coordinated_successor_excludes_its_awaiting_decision_source(monkeypatch, tmp_path: Path, kind: str) -> None:
+    harness = load_module()
+    coordination = plan_coordination_with_tasks(coordinated_task("task-1"))
+    monkeypatch.setattr(harness, "load_plan_coordination", lambda *_args, **_kwargs: coordination)
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    request = managed_request(run_id=run_id, plan_ref=coordination.plan_ref, plan_task_id="task-1")
+    try:
+        result = harness.run_managed(
+            ROOT,
+            request,
+            FakeAdapter({"single_work_lane": "enforced"}),
+            run_check=lambda command: (1, "", "failed"),
+            collect_changes=lambda root, base_commit: [],
+        )
+        assert result["state"] == "awaiting_decision"
+        before = json.loads((run_dir / "run.json").read_text())
+
+        with pytest.raises(harness.HarnessError, match="is not ready: awaiting_decision"):
+            harness.prepare_attempt(
+                ROOT,
+                managed_request(run_id="fresh", plan_ref=coordination.plan_ref, plan_task_id="task-1"),
+                FakeAdapter({"single_work_lane": "enforced"}),
+                attempt_id="attempt-1",
+            )
+        assert json.loads((run_dir / "run.json").read_text()) == before
+
+        successor = harness.apply_controller_decision(
+            ROOT,
+            run_id,
+            {"kind": kind},
+            adapter=FakeAdapter({"single_work_lane": "enforced"}),
+        )
+        stored = json.loads((run_dir / "run.json").read_text())
+
+        assert successor["state"] == "planned"
+        assert len(stored["attempts"]) == 2
+        for field in ("packet", "claims", "node_observations", "host_terminal_observations", "outcome"):
+            assert stored["attempts"][0][field] == before["attempts"][0][field]
+        assert stored["attempts"][0]["decision"]["kind"] == kind
+        assert stored["attempts"][1]["packet"]["plan_ref"] == coordination.plan_ref
+        assert stored["attempts"][1]["packet"]["plan_task_id"] == "task-1"
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
 def test_collect_changes_includes_untracked_paths(tmp_path: Path) -> None:
     harness = load_module()
     repo = tmp_path / "repo"
