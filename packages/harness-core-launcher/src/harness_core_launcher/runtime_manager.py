@@ -164,18 +164,20 @@ class RuntimeManager:
     def _active_profile(self) -> tuple[dict[str, Any], Path]:
         return self._load_profile(self._load_pointer()["current"])
 
-    def _clean_profiles(self, pointer: dict[str, Any]) -> None:
+    def _clean_profiles(self, pointer: dict[str, Any]) -> bool:
         retained = {pointer["current"]["release_profile_digest"]}
         if pointer["previous"] is not None:
             retained.add(pointer["previous"]["release_profile_digest"])
         if not self.profiles_root.is_dir():
-            return
+            return False
+        cleanup_pending = False
         for path in self.profiles_root.iterdir():
             if path.is_dir() and path.name not in retained:
                 try:
                     shutil.rmtree(path)
-                except OSError as exc:
-                    raise RuntimeManagerError("harness_runtime_profile_activation_busy") from exc
+                except OSError:
+                    cleanup_pending = True
+        return cleanup_pending
 
     def _activate_locked(self, profile: dict[str, Any]) -> dict[str, Any]:
         profile_root = self._profile_root(_profile_digest(profile))
@@ -189,16 +191,26 @@ class RuntimeManager:
             previous_pointer = None
         entry = self._pointer_entry(profile)
         if previous_pointer is not None and previous_pointer["current"] == entry:
-            self._clean_profiles(previous_pointer)
-            return {"state": "ready", "changed": False, **profile}
+            cleanup_pending = self._clean_profiles(previous_pointer)
+            return {
+                "state": "ready",
+                "changed": False,
+                **profile,
+                **({"cleanup_pending": True} if cleanup_pending else {}),
+            }
         pointer = {
             "schema_id": _POINTER_SCHEMA,
             "current": entry,
             "previous": previous_pointer["current"] if previous_pointer is not None else None,
         }
-        self._clean_profiles(pointer)
         self._write_pointer(pointer)
-        return {"state": "ready", "changed": True, **profile}
+        cleanup_pending = self._clean_profiles(pointer)
+        return {
+            "state": "ready",
+            "changed": True,
+            **profile,
+            **({"cleanup_pending": True} if cleanup_pending else {}),
+        }
 
     def activate(self, profile: dict[str, Any]) -> dict[str, Any]:
         with self._activation_lock():

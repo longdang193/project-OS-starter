@@ -77,7 +77,7 @@ def test_activation_removes_unreferenced_profiles_only(tmp_path: Path) -> None:
     assert not (tmp_path / "profiles" / str(third["release_profile_digest"])).exists()
 
 
-def test_activation_preserves_pointer_when_profile_cleanup_is_locked(
+def test_activation_switches_pointer_when_profile_cleanup_is_locked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -99,13 +99,12 @@ def test_activation_preserves_pointer_when_profile_cleanup_is_locked(
 
     monkeypatch.setattr(runtime_manager.shutil, "rmtree", reject_locked_profile)
 
-    with pytest.raises(RuntimeManagerError, match="harness_runtime_profile_activation_busy"):
-        manager.activate(third)
+    assert manager.activate(third)["cleanup_pending"] is True
 
     assert json.loads((tmp_path / "current.json").read_text(encoding="utf-8")) == {
         "schema_id": "harness_runtime_pointer/v1",
-        "current": {"release_profile_digest": second["release_profile_digest"]},
-        "previous": {"release_profile_digest": first["release_profile_digest"]},
+        "current": {"release_profile_digest": third["release_profile_digest"]},
+        "previous": {"release_profile_digest": second["release_profile_digest"]},
     }
 
 
