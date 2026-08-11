@@ -9,6 +9,10 @@ from harness_core_launcher import cli
 from harness_core_launcher.loader import load_core, run_core_cli
 
 
+def test_run_awaiting_decision_is_successful_execution() -> None:
+    assert cli._managed_exit_code("run", {"state": "awaiting_decision"}) == 0
+
+
 def test_missing_core_returns_typed_environment_failure(monkeypatch) -> None:
     def missing(_: str):
         raise ModuleNotFoundError("harness_core")

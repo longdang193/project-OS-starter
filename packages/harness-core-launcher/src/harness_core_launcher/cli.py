@@ -8,7 +8,7 @@ from .loader import load_core
 from .runtime_manager import RuntimeManager, RuntimeManagerError
 
 
-_MANAGED_SUCCESS_STATES = frozenset({"accepted", "configured", "planned", "ready", "verified"})
+_MANAGED_SUCCESS_STATES = frozenset({"accepted", "awaiting_decision", "configured", "planned", "ready", "verified"})
 
 
 def _managed_response_state(payload: dict[str, object]) -> str | None:
