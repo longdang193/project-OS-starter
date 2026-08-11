@@ -94,7 +94,8 @@ operator signs bounded `legacy_cleanup_attestation/v1` evidence with an Ed25519
 key outside repository and agent workspace. Current public records live in
 `~/.codex/harness-authorities.toml`; migrate retired attester records with
 `harness-core migrate-harness-authorities`. Controller submits canonical
-`harness-core terminalize-attempt --input <envelope.json>`. Temporary
+`harness-core-launcher terminalize-attempt --harness-root <repo-root> --run-id
+<run-id> --input <envelope.json>`. Temporary
 `--evidence` accepts only the policy-defined historical legacy packet API;
 `--auto-block` is rejected. Core records one tagged null-lease terminal record,
 then policy auto-finalizes `blocked`. Host never performs legacy cleanup or
@@ -105,6 +106,7 @@ harness-core-launcher doctor
 harness-core-launcher capabilities
 harness-core-launcher preflight
 harness-core-launcher run --harness-root <repo-root> --request <request.json>
+harness-core-launcher terminalize-attempt --harness-root <repo-root> --run-id <run-id> --input <envelope.json>
 ```
 
 `harness-core-launcher` selects the verified pointer-owned host release profile.

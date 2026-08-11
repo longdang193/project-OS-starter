@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import argparse
 import copy
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 import fnmatch
 import hashlib
@@ -4921,18 +4921,26 @@ def run_managed(
         if request is None:
             raise HarnessError("managed run request is required")
         run_id = _safe_run_id(request.get("run_id") or uuid.uuid4().hex)
-        if _run_path(root, run_id).exists():
-            raise HarnessError(f"run `{run_id}` already exists")
-        packet, preflight_binding, host_instance_id = prepare_attempt(
-            root,
-            request,
-            attempt_id="attempt-1",
-            adapter=adapter,
-        )
-        run = _new_run(request, run_id)
-        _transition(run, policy["states"], "planned", "preflight")
-        _append_attempt(run, packet)
-        _write_run(root, run)
+        try:
+            with _run_lock(root, run_id):
+                if _run_path(root, run_id).exists():
+                    raise HarnessError(f"run `{run_id}` already exists")
+                packet, preflight_binding, host_instance_id = prepare_attempt(
+                    root,
+                    request,
+                    attempt_id="attempt-1",
+                    adapter=adapter,
+                )
+                run = _new_run(request, run_id)
+                _transition(run, policy["states"], "planned", "preflight")
+                _append_attempt(run, packet)
+                _write_run(root, run)
+        except Exception:
+            try:
+                _run_path(root, run_id).parent.rmdir()
+            except OSError:
+                pass
+            raise
     else:
         run_id = _safe_run_id(run_id)
         run = _load_run(root, run_id)
@@ -5067,73 +5075,76 @@ def apply_controller_decision(
             },
         )
         return _managed_result(_load_run(root, _safe_run_id(run_id)))
-    policy = _load_policy(root)
-    run = _load_run(root, _safe_run_id(run_id))
-    if run["state"] != "awaiting_decision":
-        raise HarnessError(f"run `{run_id}` is not awaiting controller decision")
-    attempt = _active_attempt(run)
-    outcome = attempt.get("outcome")
-    if not isinstance(outcome, dict) or kind not in outcome.get("allowed_decisions", []):
-        raise HarnessError(f"decision `{kind}` is not allowed for current outcome")
-    terminal_record = attempt.get("terminal_record")
-    if isinstance(terminal_record, dict) and terminal_record.get("classification") == "legacy_cleanup_attested" and kind != "block":
-        raise HarnessError("legacy cleanup outcome requires block")
-    if kind in {"retry", "escalate"} and "provider_runtime_binding" in decision:
-        raise HarnessError("controller decision cannot supply provider runtime binding")
-    if kind == "request_approval":
-        stored = copy.deepcopy(decision)
-        stored["at"] = _timestamp()
-        attempt["decision"] = stored
-        attempt.setdefault("decision_history", []).append(stored)
-        _transition(run, policy["states"], "awaiting_decision", "controller_request_approval")
-    else:
-        retry_policy = attempt["packet"]["retry_policy"]
-        execution_budget_profile = None
-        if outcome["reason"] == "dispatch_timeout":
-            if kind != "escalate":
-                raise HarnessError("timeout outcome requires escalation or block")
-            profile_metadata = attempt["packet"].get("operating_profile")
-            if isinstance(profile_metadata, dict):
-                route = policy["routes"][attempt["packet"]["task_type"]]
-                transition = next((item for item in route.get("escalation_transitions", []) if item["from"] == profile_metadata["resolved"] and item["on"] == "dispatch_timeout"), None)
-                if not isinstance(transition, dict):
-                    raise HarnessError("timeout outcome lacks operating profile transition")
-                successor_request = _successor_request(run, decision.get("successor"))
-                successor_request["operating_profile_selection"] = {"id": transition["to"], "reason": "dispatch_timeout"}
+    run_id = _safe_run_id(run_id)
+    decision_lock = _run_lock(root, run_id) if kind in {"retry", "escalate"} else nullcontext()
+    with decision_lock:
+        policy = _load_policy(root)
+        run = _load_run(root, run_id)
+        if run["state"] != "awaiting_decision":
+            raise HarnessError(f"run `{run_id}` is not awaiting controller decision")
+        attempt = _active_attempt(run)
+        outcome = attempt.get("outcome")
+        if not isinstance(outcome, dict) or kind not in outcome.get("allowed_decisions", []):
+            raise HarnessError(f"decision `{kind}` is not allowed for current outcome")
+        terminal_record = attempt.get("terminal_record")
+        if isinstance(terminal_record, dict) and terminal_record.get("classification") == "legacy_cleanup_attested" and kind != "block":
+            raise HarnessError("legacy cleanup outcome requires block")
+        if kind in {"retry", "escalate"} and "provider_runtime_binding" in decision:
+            raise HarnessError("controller decision cannot supply provider runtime binding")
+        if kind == "request_approval":
+            stored = copy.deepcopy(decision)
+            stored["at"] = _timestamp()
+            attempt["decision"] = stored
+            attempt.setdefault("decision_history", []).append(stored)
+            _transition(run, policy["states"], "awaiting_decision", "controller_request_approval")
+        else:
+            retry_policy = attempt["packet"]["retry_policy"]
+            execution_budget_profile = None
+            if outcome["reason"] == "dispatch_timeout":
+                if kind != "escalate":
+                    raise HarnessError("timeout outcome requires escalation or block")
+                profile_metadata = attempt["packet"].get("operating_profile")
+                if isinstance(profile_metadata, dict):
+                    route = policy["routes"][attempt["packet"]["task_type"]]
+                    transition = next((item for item in route.get("escalation_transitions", []) if item["from"] == profile_metadata["resolved"] and item["on"] == "dispatch_timeout"), None)
+                    if not isinstance(transition, dict):
+                        raise HarnessError("timeout outcome lacks operating profile transition")
+                    successor_request = _successor_request(run, decision.get("successor"))
+                    successor_request["operating_profile_selection"] = {"id": transition["to"], "reason": "dispatch_timeout"}
+                else:
+                    execution_budget_profile = attempt["packet"]["execution_budget"].get("escalation_profile")
+                    if not isinstance(execution_budget_profile, str) or not execution_budget_profile:
+                        raise HarnessError("timeout outcome lacks escalation budget profile")
+                    successor_request = _successor_request(run, decision.get("successor"))
+            elif outcome["reason"] not in retry_policy["retryable_reasons"] and outcome["reason"] not in {"approval_required", "plan_binding_changed"}:
+                raise HarnessError(f"outcome `{outcome['reason']}` is not retryable")
             else:
-                execution_budget_profile = attempt["packet"]["execution_budget"].get("escalation_profile")
-                if not isinstance(execution_budget_profile, str) or not execution_budget_profile:
-                    raise HarnessError("timeout outcome lacks escalation budget profile")
                 successor_request = _successor_request(run, decision.get("successor"))
-        elif outcome["reason"] not in retry_policy["retryable_reasons"] and outcome["reason"] not in {"approval_required", "plan_binding_changed"}:
-            raise HarnessError(f"outcome `{outcome['reason']}` is not retryable")
-        else:
-            successor_request = _successor_request(run, decision.get("successor"))
-        if len(run["attempts"]) >= retry_policy["max_attempts"]:
-            stored = copy.deepcopy(decision)
-            stored["at"] = _timestamp()
-            attempt["decision"] = stored
-            attempt.setdefault("decision_history", []).append(stored)
-            _set_outcome(run, attempt, policy, "retry_exhausted", ["block"], ["decision"])
-            _auto_finalize_outcome(run, attempt, policy)
-        else:
-            if adapter is None:
-                raise HarnessError("executable controller decision requires host adapter")
-            packet, _, _ = prepare_attempt(
-                root,
-                successor_request,
-                attempt_id=f"attempt-{len(run['attempts']) + 1}",
-                execution_budget_profile=execution_budget_profile,
-                adapter=adapter,
-            )
-            stored = copy.deepcopy(decision)
-            stored["at"] = _timestamp()
-            attempt["decision"] = stored
-            attempt.setdefault("decision_history", []).append(stored)
-            _append_attempt(run, packet)
-            _transition(run, policy["states"], "planned", f"controller_{kind}")
-    _write_run(root, run)
-    return _managed_result(run)
+            if len(run["attempts"]) >= retry_policy["max_attempts"]:
+                stored = copy.deepcopy(decision)
+                stored["at"] = _timestamp()
+                attempt["decision"] = stored
+                attempt.setdefault("decision_history", []).append(stored)
+                _set_outcome(run, attempt, policy, "retry_exhausted", ["block"], ["decision"])
+                _auto_finalize_outcome(run, attempt, policy)
+            else:
+                if adapter is None:
+                    raise HarnessError("executable controller decision requires host adapter")
+                packet, _, _ = prepare_attempt(
+                    root,
+                    successor_request,
+                    attempt_id=f"attempt-{len(run['attempts']) + 1}",
+                    execution_budget_profile=execution_budget_profile,
+                    adapter=adapter,
+                )
+                stored = copy.deepcopy(decision)
+                stored["at"] = _timestamp()
+                attempt["decision"] = stored
+                attempt.setdefault("decision_history", []).append(stored)
+                _append_attempt(run, packet)
+                _transition(run, policy["states"], "planned", f"controller_{kind}")
+        _write_run(root, run)
+        return _managed_result(run)
 
 
 def sign_controller_authorization(

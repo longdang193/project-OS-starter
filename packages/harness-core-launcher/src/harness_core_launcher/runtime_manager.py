@@ -27,13 +27,14 @@ def _json(value: Any) -> str:
 def _result_json(result: Any, *, failure: str, allow_nonzero: bool = False) -> dict[str, Any]:
     if not allow_nonzero and getattr(result, "returncode", 1) != 0:
         raise RuntimeManagerError(failure)
-    try:
-        payload = json.loads(getattr(result, "stdout", ""))
-    except json.JSONDecodeError as exc:
-        raise RuntimeManagerError(failure) from exc
-    if not isinstance(payload, dict):
-        raise RuntimeManagerError(failure)
-    return payload
+    for stream in ("stdout", "stderr"):
+        try:
+            payload = json.loads(getattr(result, stream, ""))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            return payload
+    raise RuntimeManagerError(failure)
 
 
 def _profile_digest(value: Any) -> str:
@@ -282,6 +283,33 @@ class RuntimeManager:
         if arguments[0] in {"capabilities", "preflight"} and runtime_release_profile != profile:
             raise RuntimeManagerError("harness_runtime_profile_mismatch")
         return payload
+
+    def terminalize_attempt(
+        self,
+        harness_root: str,
+        run_id: str,
+        input_file: str,
+        *,
+        runner: Callable[..., Any] = subprocess.run,
+    ) -> dict[str, Any]:
+        _, profile_root = self.verify_active_profile(runner=runner)
+        result = runner(
+            [
+                "uv", "--project", str(profile_root / "host"), "run", "--locked",
+                "harness-core", "--repo-root", harness_root,
+                "terminalize-attempt", "--run-id", run_id, "--input", input_file,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=CONTROL_PLANE_TIMEOUT_SECONDS,
+            env=_runtime_environment(),
+        )
+        return _result_json(
+            result,
+            failure="harness_runtime_profile_terminalization_failed",
+            allow_nonzero=True,
+        )
 
     def _stage_command(self, host_root: Path, *arguments: str, runner: Callable[..., Any]) -> Any:
         return runner(

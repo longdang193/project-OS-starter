@@ -3968,7 +3968,7 @@ def test_timeout_escalation_uses_packet_named_budget_profile(tmp_path: Path) -> 
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_api5_timeout_escalation_resolves_current_provider_runtime_binding(tmp_path: Path) -> None:
+def test_api5_timeout_escalation_resolves_current_provider_runtime_binding(tmp_path: Path, monkeypatch) -> None:
     harness = load_module()
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
@@ -4014,6 +4014,13 @@ def test_api5_timeout_escalation_resolves_current_provider_runtime_binding(tmp_p
             core_package_release="fixture-core-upgraded",
             core_commit="d" * 40,
         )
+        prepare_attempt = harness.prepare_attempt
+
+        def prepare_attempt_under_run_lock(*args, **kwargs):
+            assert (run_dir / ".run.json.lock").is_file()
+            return prepare_attempt(*args, **kwargs)
+
+        monkeypatch.setattr(harness, "prepare_attempt", prepare_attempt_under_run_lock)
         harness.apply_controller_decision(
             ROOT,
             run_id,
@@ -4034,7 +4041,7 @@ def test_api5_timeout_escalation_resolves_current_provider_runtime_binding(tmp_p
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
-def test_retry_resolves_upgraded_runtime_and_preserves_prior_attempt(tmp_path: Path) -> None:
+def test_retry_resolves_upgraded_runtime_and_preserves_prior_attempt(tmp_path: Path, monkeypatch) -> None:
     harness = load_module()
     run_id = tmp_path.name
     run_dir = ROOT / ".harness" / "runs" / run_id
@@ -4057,6 +4064,14 @@ def test_retry_resolves_upgraded_runtime_and_preserves_prior_attempt(tmp_path: P
         )
         assert first["outcome"]["reason"] == "verification_failed"
         prior = json.loads((run_dir / "run.json").read_text())["attempts"][0]
+
+        prepare_attempt = harness.prepare_attempt
+
+        def prepare_attempt_under_run_lock(*args, **kwargs):
+            assert (run_dir / ".run.json.lock").is_file()
+            return prepare_attempt(*args, **kwargs)
+
+        monkeypatch.setattr(harness, "prepare_attempt", prepare_attempt_under_run_lock)
 
         retry = harness.apply_controller_decision(
             ROOT,
@@ -4091,6 +4106,7 @@ def test_current_runtime_binding_rejects_initial_and_retry_before_packet_creatio
 
     class IncompatibleBindingAdapter(FakeAdapter):
         def preflight_evidence(self):
+            assert (initial_dir / ".run.json.lock").is_file() or (retry_dir / ".run.json.lock").is_file()
             return copy.deepcopy(incompatible)
 
     try:
@@ -4149,6 +4165,7 @@ def test_retry_requires_adapter_boundary_before_mutating_prior_attempt(tmp_path:
 
 def test_prepare_attempt_binds_current_upgraded_runtime() -> None:
     harness = load_module()
+    run_dir = ROOT / ".harness" / "runs" / "prepared-upgrade"
     upgraded = copy.deepcopy(API6_BINDING)
     upgraded["configuration_digest"] = "1" * 64
     upgraded["runtime_release_profile"] = build_runtime_release_profile(
@@ -4159,18 +4176,22 @@ def test_prepare_attempt_binds_current_upgraded_runtime() -> None:
         core_commit="2" * 40,
     )
 
-    packet, binding, host_instance_id = harness.prepare_attempt(
-        ROOT,
-        managed_request(run_id="prepared-upgrade"),
-        FakeAdapter({"single_work_lane": "enforced"}, preflight_binding=upgraded),
-        attempt_id="attempt-1",
-    )
+    try:
+        packet, binding, host_instance_id = harness.prepare_attempt(
+            ROOT,
+            managed_request(run_id="prepared-upgrade"),
+            FakeAdapter({"single_work_lane": "enforced"}, preflight_binding=upgraded),
+            attempt_id="attempt-1",
+        )
 
-    assert binding == upgraded
-    assert host_instance_id == "host-test"
-    assert packet["provider_runtime_binding"] == {
-        key: value for key, value in upgraded.items() if key != "host_instance_id"
-    }
+        assert binding == upgraded
+        assert host_instance_id == "host-test"
+        assert packet["provider_runtime_binding"] == {
+            key: value for key, value in upgraded.items() if key != "host_instance_id"
+        }
+        assert not run_dir.exists()
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def test_escalation_rejects_incompatible_current_runtime_before_packet_creation(tmp_path: Path) -> None:

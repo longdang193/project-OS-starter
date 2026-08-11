@@ -35,18 +35,15 @@ make generic core CLI a provider host. From installed `codex-harness-host`
 source root, verify capability and dispatch same request through provider host:
 
 ```powershell
-$providerConfig = Join-Path $HOME ".codex\harness-providers.toml"
-harness-core-launcher host config init --config $providerConfig
-harness-core-launcher host config validate --config $providerConfig
-harness-core-launcher host config show --redacted --config $providerConfig
 harness-core-launcher capabilities
 harness-core-launcher preflight
 harness-core-launcher run --harness-root <repo-root> --request <request.json>
 harness-core-launcher run --harness-root <repo-root> --run-id <run-id>
+harness-core-launcher terminalize-attempt --harness-root <repo-root> --run-id <run-id> --input <envelope.json>
 ```
 
-Run `config init` only when user configuration is absent; it creates default
-stdio configuration with registered launcher ID `installed_codex_app_server`.
+Provider-host installation initializes absent user configuration with registered
+launcher ID `installed_codex_app_server`.
 The host reads no provider setting from repository policy, request, packet,
 environment, or current directory. Configuration accepts a registered launcher
 ID for host-spawned stdio or an explicit external WebSocket endpoint. It rejects
@@ -485,7 +482,8 @@ to `harness-attesters.toml`.
 
 Operator runs `harness-core sign-legacy-cleanup` with unsigned JSON and an
 external private-key file. Controller passes signed JSON to
-`harness-core terminalize-attempt --run-id <run-id> --input <envelope.json>`.
+`harness-core-launcher terminalize-attempt --harness-root <repo-root> --run-id
+<run-id> --input <envelope.json>` through active runtime profile.
 For the policy-defined historical legacy packet API only, temporary
 `--evidence <attestation.json>` translates to that envelope. `--auto-block` is
 rejected. Core writes one tagged null-lease terminal record, records a

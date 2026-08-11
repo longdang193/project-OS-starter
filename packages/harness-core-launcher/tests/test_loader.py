@@ -71,7 +71,7 @@ def test_executable_decision_uses_active_host_runtime(monkeypatch, tmp_path, cap
         "retry-run",
         "--decision",
         "decision.json",
-    ]) == 1
+    ]) == 0
     assert captured == [tmp_path, [
         "decision",
         "--harness-root",
@@ -82,6 +82,66 @@ def test_executable_decision_uses_active_host_runtime(monkeypatch, tmp_path, cap
         "decision.json",
     ]]
     assert json.loads(capsys.readouterr().out) == {"state": "planned"}
+
+
+def test_terminalize_attempt_uses_active_host_runtime(monkeypatch, tmp_path, capsys) -> None:
+    captured = []
+
+    class FakeManager:
+        def __init__(self, root):
+            captured.append(root)
+
+        def terminalize_attempt(self, harness_root, run_id, input_file):
+            captured.append([harness_root, run_id, input_file])
+            return {"state": "blocked"}
+
+    monkeypatch.setattr(cli, "RuntimeManager", FakeManager)
+
+    assert cli.main([
+        "--runtime-root",
+        str(tmp_path),
+        "terminalize-attempt",
+        "--harness-root",
+        "repo",
+        "--run-id",
+        "terminal-run",
+        "--input",
+        "envelope.json",
+    ]) == 0
+    assert captured == [tmp_path, ["repo", "terminal-run", "envelope.json"]]
+    assert json.loads(capsys.readouterr().out) == {"state": "blocked"}
+
+
+def test_terminalize_attempt_preserves_structured_error(monkeypatch, tmp_path, capsys) -> None:
+    class FakeManager:
+        def __init__(self, _root):
+            pass
+
+        def terminalize_attempt(self, _harness_root, _run_id, _input_file):
+            return {"status": "blocked", "error": "terminalization_invalid"}
+
+    monkeypatch.setattr(cli, "RuntimeManager", FakeManager)
+
+    assert cli.main([
+        "--runtime-root",
+        str(tmp_path),
+        "terminalize-attempt",
+        "--harness-root",
+        "repo",
+        "--run-id",
+        "terminal-run",
+        "--input",
+        "envelope.json",
+    ]) == 1
+    assert json.loads(capsys.readouterr().out) == {"status": "blocked", "error": "terminalization_invalid"}
+
+
+def test_host_passthrough_is_rejected(capsys) -> None:
+    with pytest.raises(SystemExit) as error:
+        cli.main(["host", "config", "show"])
+
+    assert error.value.code == 2
+    assert "invalid choice: 'host'" in capsys.readouterr().err
 
 def test_decision_help_identifies_json_file(capsys) -> None:
     with pytest.raises(SystemExit) as error:

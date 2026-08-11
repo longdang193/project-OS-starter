@@ -59,7 +59,8 @@ their packet bytes. External operator creates signed
 an Ed25519 key outside repository and agent workspace. Current trusted public
 records live only in `~/.codex/harness-authorities.toml`; migrate an existing
 old file with `harness-core migrate-harness-authorities` before validation.
-Controller submits canonical `terminalize-attempt --input <envelope.json>`.
+Controller submits canonical `harness-core-launcher terminalize-attempt
+--harness-root <repo-root> --run-id <run-id> --input <envelope.json>`.
 The temporary `--evidence <legacy-attestation.json>` wrapper accepts only a
 policy-defined historical legacy attestation. `--auto-block` is retired. Core
 validates signature, scope, identity, and freshness, records a block-only
