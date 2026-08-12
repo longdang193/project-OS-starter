@@ -8,7 +8,7 @@ Git owns workspace identity and change evidence. Codex native work is advisory.
 Before work, record task objective, repository-relative allowed paths, base
 commit, and declared checks. Missing any item means `block`.
 
-Run controller commands with selected workspace:
+Run every controller command with selected absolute workspace:
 
 ```powershell
 $workspace = (Resolve-Path .).Path
@@ -27,7 +27,7 @@ Follow
 - Record absolute workspace, creation mechanism, branch or detached state,
   base, current `HEAD`, and preserved pre-existing changes.
 
-Start Codex native work only from actual selected workspace context. If context
+Start Codex native work only from actual selected-workspace context. If context
 cannot be proved, work directly in selected workspace or `block`.
 
 ## Check And Review
@@ -40,13 +40,14 @@ git -C $workspace diff --name-status -M -C --find-copies-harder $base --
 git -C $workspace ls-files --others --exclude-standard -z
 ```
 
-Review every emitted path against declared paths. For `R` or `C`, review source
-and destination paths. Include staged, unstaged, deleted, renamed, copied,
-type-changed, and untracked changes.
+Review every emitted path against declared paths. For `R` or `C`, review both
+source and destination paths. Include tracked, staged, unstaged, deleted,
+renamed, copied, type-changed, and untracked changes.
 
-Record `block` and preserve workspace when a declared command or check fails;
-paths are unsafe or outside scope; a conflict, nested repository, or submodule
-change exists; workspace context is uncertain; or Git evidence is missing.
+Record `block` and preserve workspace and evidence when a declared command or
+check fails; paths are unsafe or outside scope; a conflict, nested repository,
+or submodule change exists; workspace context is uncertain; or required Git
+evidence is missing.
 
 When checks and scope proof pass, operator records `accept` or `block` in task
 handoff. `accept` hands off only to
