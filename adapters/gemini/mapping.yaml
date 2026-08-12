@@ -2,7 +2,7 @@ platform: antigravity
 mappings:
   - source: AGENTS.md
     destination: generated_agents/antigravity/GEMINI.md
-    mode: render_root_doc_with_manifest
+    mode: copy_file
     comment_prefix: "#"
   - source: docs/operating_system/rules
     destination: .agents/rules
