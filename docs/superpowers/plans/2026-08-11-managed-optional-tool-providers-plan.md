@@ -380,6 +380,7 @@ binding drift, cleanup, sanitization, and no hidden fallback.
   Specmatic remain blocked until their approval gates are met.
 - [ ] Run agent-adapter sync from canonical template. Do not hand-edit generated `AGENTS.md` or generated rule surfaces.
 - [ ] Build and activate the committed host release through launcher. Re-run capabilities and preflight before fresh managed native-tool probes. Verify host registry advertises only generic capability and selected non-secret binding records.
+- [ ] Run a fresh managed `harness-core-launcher run` probe before any host or launcher tag/push. Record active core/host identity, packet and attempt creation, provider work, terminal observation, and changed-behavior proof. Pre-packet or pre-provider failure blocks release qualification.
 
 **Verification:**
 - [ ] `\.venv\Scripts\python.exe scripts\sync_agent_adapters.py`
@@ -415,4 +416,4 @@ binding drift, cleanup, sanitization, and no hidden fallback.
 5. Existing `shell`, Serena, Semble, and ast-grep bindings run through host registry entries. No static core host-kind/probe field, host tool contract map, adapter tool-name map, or provider-specific core capability remains.
 6. Core and host compatibility profiles reject historical incompatible packets rather than guessing semantics.
 7. Chrome diagnosis, durable screenshots, Specmatic, and unapproved GitNexus mutation remain absent from this release.
-8. Fresh core, host, documentation, generated-surface, starter-kit, launcher, and whitespace evidence passes before `skill-verification-before-completion` marks this plan completed.
+8. Fresh core, host, documentation, generated-surface, starter-kit, launcher, whitespace, and managed-dispatch evidence passes before `skill-verification-before-completion` marks this plan completed. Local tests, direct probes, `doctor`, `capabilities`, and `preflight` cannot replace managed proof or qualify release.

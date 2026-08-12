@@ -3531,6 +3531,31 @@ def test_managed_validator_rejects_invalid_verdict(tmp_path: Path) -> None:
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
 
+def test_managed_run_accepts_empty_host_check_output(tmp_path: Path) -> None:
+    class EmptyOutputCheckAdapter(FakeAdapter):
+        def run_checks(self, packet, workspace):
+            checks = super().run_checks(packet, workspace)
+            for check in checks.values():
+                check["stdout"] = ""
+            return checks
+
+    harness = load_module()
+    run_id = tmp_path.name
+    run_dir = ROOT / ".harness" / "runs" / run_id
+    try:
+        result = harness.run_managed(
+            ROOT,
+            managed_request(run_id=run_id),
+            EmptyOutputCheckAdapter({"single_work_lane": "enforced"}),
+            collect_changes=lambda root, base_commit: [],
+        )
+
+        assert result["outcome"]["reason"] == "verification_passed"
+        run = json.loads((run_dir / "run.json").read_text())
+        assert run["attempts"][0]["evidence"]["checks"][0]["stdout"] == ""
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
 
 @pytest.mark.parametrize(
     ("execution_mode", "lanes", "work_lane_ids"),

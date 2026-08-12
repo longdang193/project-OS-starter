@@ -67,6 +67,20 @@ Passing `preflight` proves transport readiness, not committed runtime
 provenance. A dirty imported changed module blocks product dispatch even when
 preflight passes.
 
+### Managed Release Qualification
+
+Host tests, direct host probes, `doctor`, `capabilities`, and `preflight` prove
+package or runtime readiness only. They do not qualify a host or launcher
+release. Before tagging or pushing a release that changes managed behavior,
+run one fresh managed dispatch through `harness-core-launcher run` with the
+active runtime profile. Release evidence must show the active core and host
+identity, packet and attempt creation, provider work, host terminal
+observation, and the changed behavior or contract proof. A probe that fails
+before packet or provider work, or lacks valid managed evidence, blocks release
+qualification. Preserve its evidence, repair the owning boundary, and rerun a
+fresh managed probe; never qualify release from local or direct-probe evidence
+alone.
+
 After a committed host-source update, refresh and prove the locked source host
 before dispatch:
 

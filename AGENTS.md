@@ -193,10 +193,20 @@ When spawning a subagent:
   read-only `harness_diagnosis` without an owner decision. Missing required
   artifacts blocks diagnosis before dispatch; never mount ambient `.harness`
   state into packet workspace.
-- For current dispatchable packet API, host re-reads trusted provider configuration before every
-  lane. A changed runtime binding returns `provider_configuration_changed`
-  before provider or product work; no transport fallback is allowed.
-- Independent validator claims exist only when host advertises and dispatches
+ - For current dispatchable packet API, host re-reads trusted provider configuration before every
+   lane. A changed runtime binding returns `provider_configuration_changed`
+   before provider or product work; no transport fallback is allowed.
+ - Host tests, direct probes, `doctor`, `capabilities`, and `preflight` prove
+   package or runtime readiness only. They do not qualify a managed host or
+   launcher release. Before tagging or pushing a release that changes managed
+   behavior, run one fresh managed dispatch through `harness-core-launcher run`
+   with active runtime profile and require evidence of active core/host identity,
+   packet and attempt creation, provider work, terminal observation, and changed
+   behavior or contract proof. Pre-packet or pre-provider failure, or missing
+   managed evidence, blocks release qualification; preserve evidence and rerun a
+   fresh managed probe after repair. Never qualify release from local or direct
+   probe evidence alone.
+ - Independent validator claims exist only when host advertises and dispatches
   an enforced read-only validator lane. Do not infer validator evidence from
   local checks or an implementer claim.
 - Parallel writers need disjoint paths and isolated workspaces.
