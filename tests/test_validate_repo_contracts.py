@@ -246,3 +246,18 @@ def test_starter_kit_classification_ignores_generated_local_rule_mirror(tmp_path
     issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
 
     assert issues == []
+
+
+def test_starter_kit_classification_ignores_generated_deepagents_project_roles(tmp_path: Path) -> None:
+    write_text(
+        tmp_path / "repo_config" / "starter-kit-manifest.json",
+        '{"copyPaths": [".deepagents/agents"]}\n',
+    )
+    write_text(
+        tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md",
+        "---\nname: normal\ndescription: Role\n---\n\nInstructions.\n",
+    )
+
+    issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
+
+    assert issues == []

@@ -17,3 +17,6 @@ Thumbs.db
 generated_exports/
 *.private.*
 *.local.*
+.deepagents/*
+!.deepagents/agents/
+!.deepagents/agents/**

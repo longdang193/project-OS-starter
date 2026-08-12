@@ -590,3 +590,13 @@ def test_shipped_planning_templates_cover_schema_required_frontmatter() -> None:
         assert all(required_frontmatter[key] == value for key, value in required_values.items())
         for field in ("status", "layer"):
             assert required_frontmatter[field] in SCHEMA.get_allowed_values(REPO_ROOT, field, artifact_type)
+
+
+def test_implementation_plan_template_documents_optional_executor_and_coordination() -> None:
+    template = (
+        REPO_ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Executor: `codex | deepagents`" in template
+    assert "## Coordination State (Optional)" in template
+    assert "Allowed states: `pending`, `active`, `blocked`, `completed`." in template

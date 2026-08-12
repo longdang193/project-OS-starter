@@ -14,3 +14,8 @@ mappings:
     mode: copy_tree
     include_glob: "**/*"
     comment_prefix: "#"
+  - source: agents
+    destination: generated_agents/codex/agents
+    mode: render_codex_agents_tree
+    include_glob: "*.toml"
+    comment_prefix: "#"

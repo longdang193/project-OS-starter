@@ -20,6 +20,9 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+import tomllib
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -135,6 +138,143 @@ def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "SKILL.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "task-reviewer-prompt.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "helper.sh").exists()
+
+
+def _write_agent_role(path: Path, *, name: str = "normal", extra: str = "") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f'''name = "{name}"
+description = "Role description"
+developer_instructions = "Return ROLE_OK."
+{extra}''',
+        encoding="utf-8",
+    )
+
+
+def test_sync_codex_agents_tree_generates_parseable_toml_and_removes_stale_output(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    source = root / "agents" / "normal.toml"
+    _write_agent_role(source)
+    mapping = SYNC.Mapping(
+        source="agents",
+        destination="generated_agents/codex/agents",
+        mode="render_codex_agents_tree",
+        comment_prefix="#",
+        include_glob="*.toml",
+    )
+
+    stale = root / "generated_agents" / "codex" / "agents" / "stale.toml"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("stale\n", encoding="utf-8")
+
+    assert SYNC._sync_codex_agents_tree(root, mapping, check=False) == []
+    rendered = (root / "generated_agents" / "codex" / "agents" / "normal.toml").read_text(encoding="utf-8")
+    assert "Source: agents/normal.toml" in rendered
+    assert rendered.startswith("# GENERATED FILE - DO NOT EDIT\n")
+    assert tomllib.loads(rendered) == {
+        "name": "normal",
+        "description": "Role description",
+        "developer_instructions": "Return ROLE_OK.",
+    }
+    assert not stale.exists()
+    assert SYNC._sync_codex_agents_tree(root, mapping, check=True) == []
+
+
+def test_sync_deepagents_agents_tree_starts_with_frontmatter_and_removes_stale_output(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    _write_agent_role(root / "agents" / "normal.toml")
+    mapping = SYNC.Mapping(
+        source="agents",
+        destination=".deepagents/agents",
+        mode="render_deepagents_agents_tree",
+        comment_prefix="#",
+        include_glob="*.toml",
+    )
+    stale = root / ".deepagents" / "agents" / "stale" / "AGENTS.md"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("stale\n", encoding="utf-8")
+
+    assert SYNC._sync_deepagents_agents_tree(root, mapping, check=False) == []
+    rendered = (root / ".deepagents" / "agents" / "normal" / "AGENTS.md").read_text(encoding="utf-8")
+    assert rendered.startswith('---\nname: "normal"\ndescription: >-\n')
+    assert "<!--\nGENERATED FILE - DO NOT EDIT\n" in rendered
+    assert rendered.endswith("Return ROLE_OK.\n")
+    assert not stale.exists()
+    assert SYNC._sync_deepagents_agents_tree(root, mapping, check=True) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "content", "message"),
+    [
+        ("normal.toml", 'name = "normal"\ndescription = "x"\n', "developer_instructions"),
+        ("normal.toml", 'name = "wrong"\ndescription = "x"\ndeveloper_instructions = "x"\n', "filename must match"),
+        ("normal.toml", 'name = "normal"\ndescription = "x"\ndeveloper_instructions = "x"\nmodel = "x"\n', "runtime-owned keys"),
+        ("normal.toml", 'name = "normal"\ndescription = "x"\ndeveloper_instructions = "x"\nextra = "x"\n', "unsupported keys"),
+    ],
+)
+def test_load_agent_roles_rejects_invalid_or_runtime_owned_source(
+    tmp_path: Path,
+    filename: str,
+    content: str,
+    message: str,
+) -> None:
+    source = tmp_path / "agents" / filename
+    source.parent.mkdir(parents=True)
+    source.write_text(content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        SYNC._load_agent_roles(source.parent, "*.toml")
+
+
+def test_run_parses_shared_role_source_once_for_codex_and_deepagents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    _write_agent_role(root / "agents" / "normal.toml")
+    template = root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md"
+    template.parent.mkdir(parents=True)
+    template.write_text("# Root\n", encoding="utf-8")
+    _write_yaml(
+        root / "adapters" / "codex" / "mapping.yaml",
+        """platform: codex
+mappings:
+  - source: agents
+    destination: generated_agents/codex/agents
+    mode: render_codex_agents_tree
+    include_glob: '*.toml'
+    comment_prefix: '#'
+""",
+    )
+    _write_yaml(
+        root / "adapters" / "deepagents" / "mapping.yaml",
+        """platform: deepagents
+mappings:
+  - source: agents
+    destination: .deepagents/agents
+    mode: render_deepagents_agents_tree
+    include_glob: '*.toml'
+    comment_prefix: '#'
+""",
+    )
+    calls = 0
+    original = SYNC._load_agent_roles
+
+    def count_load(src_root: Path, pattern: str):
+        nonlocal calls
+        calls += 1
+        return original(src_root, pattern)
+
+    monkeypatch.setattr(SYNC, "repo_root", lambda: root)
+    monkeypatch.setattr(
+        SYNC,
+        "parse_args",
+        lambda: type("Args", (), {"check": False, "adapters_root": "adapters", "platform": [], "all_platforms": True})(),
+    )
+    monkeypatch.setattr(SYNC, "_load_agent_roles", count_load)
+
+    assert SYNC.run() == 0
+    assert calls == 1
 def test_resolve_platform_selection_defaults_to_codex(tmp_path: Path) -> None:
     args = type("Args", (), {"all_platforms": False, "platform": []})()
     assert SYNC._resolve_platform_selection(tmp_path, args) == ({"codex"}, "default")

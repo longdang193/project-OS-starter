@@ -37,11 +37,35 @@ Describe another concrete implementation result this plan must deliver, such as 
 ## Execution Approach
 
 - Mode: `inline sequential | subagent-ready | parallel-capable`
+- Executor: `codex | deepagents` (optional; Codex default; selects local runtime only)
 - Required skills: `<exact skill names or none>`
 - Isolation: `<current workspace | optional worktree>`
 - Commit policy: `<per-task commits authorized | no commits during execution>`
 - Parallel ownership: `<disjoint files/symbols or none>`
 - Sequential fallback: `<ordered fallback when parallel work is unsafe>`
+
+## Coordination State (Optional)
+
+Use only for Git-tracked active multi-task work. One lead controller owns this
+section and task ledger. Git owns workspace and change evidence; executor
+thread state never becomes repository state.
+
+- Coordination owner: `single lead controller`
+- Branch: `<target branch>`
+- Base commit: `<commit>`
+- Active task: `<Task N | none>`
+- Last checkpoint: `<commit | none>`
+- Expected workspace: `<clean or named preserved changes>`
+- Next action: `<one dependency-ready action>`
+- Blockers: `<none or concrete blocker>`
+
+| Task | State | Executor | Depends On | Checkpoint | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| Task 1 | `pending` | `codex` | none | none | pending |
+
+Allowed states: `pending`, `active`, `blocked`, `completed`. Exactly one task
+may be `active`. Completed task changes and ledger update share checkpoint commit
+after task-local proof. Commit or push still needs explicit authorization.
 
 ## Task Breakdown
 

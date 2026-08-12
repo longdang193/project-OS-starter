@@ -1,6 +1,8 @@
 {
   "outputRoot": "project-OS-starter-kit",
   "copyPaths": [
+    "agents",
+    ".deepagents/agents",
     ".agents/skills",
     ".gitignore",
     "AGENTS.md",
@@ -40,6 +42,12 @@
     "GEMINI.md",
     "CLAUDE.md",
     ".agents/skills/skill-using-superpowers/SKILL.md",
+    "agents/high.toml",
+    "agents/normal.toml",
+    "agents/low.toml",
+    ".deepagents/agents/high/AGENTS.md",
+    ".deepagents/agents/normal/AGENTS.md",
+    ".deepagents/agents/low/AGENTS.md",
     "docs/operating_system/governance/repo-governance.md",
     "docs/superpowers/plans",
     "docs/superpowers/specs",
@@ -60,7 +68,12 @@
     "scripts/validate_agent_runtime_drift.py",
     "scripts/validate_generated_header_format.py",
     "tests/test_sync_agent_adapters.py",
-    "tests/test_deploy_agent_runtime.py"
+    "tests/test_deploy_agent_runtime.py",
+    ".deepagents/config.toml",
+    ".deepagents/.env",
+    ".deepagents/.mcp.json",
+    ".deepagents/hooks.json",
+    ".deepagents/.state"
   ],
   "omitPaths": [
     "docs/operating_system/manifest.yaml",

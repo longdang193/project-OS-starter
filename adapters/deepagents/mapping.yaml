@@ -1,0 +1,7 @@
+platform: deepagents
+mappings:
+  - source: agents
+    destination: .deepagents/agents
+    mode: render_deepagents_agents_tree
+    include_glob: "*.toml"
+    comment_prefix: "#"

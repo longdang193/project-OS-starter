@@ -1,7 +1,9 @@
 # Native Personal-Local Worktree Procedure
 
 Use `native-personal-local` for ordinary work by one trusted local OS user.
-Git owns workspace identity and change evidence. Codex native work is advisory.
+Git owns workspace identity and change evidence. Selected local executor is
+Codex or DeepAgents; executor choice grants no extra authority. Codex is default
+when plan omits executor.
 
 ## Start
 
@@ -27,8 +29,39 @@ Follow
 - Record absolute workspace, creation mechanism, branch or detached state,
   base, current `HEAD`, and preserved pre-existing changes.
 
-Start Codex native work only from actual selected-workspace context. If context
-cannot be proved, work directly in selected workspace or `block`.
+Start selected local executor only from actual selected-workspace context. If
+context cannot be proved, work directly in selected workspace or `block`.
+
+For delegated roles, Codex uses parseable TOML based on shared `agents/*.toml`.
+DeepAgents reads generated project subagents from `.deepagents/agents/`; those
+are not `dcode --agent` primary profiles.
+Both use provider and model selection from active user-local primary runtime.
+Never add provider bindings, credentials, MCP config, hooks, memories, threads,
+or mutable DeepAgents state to repository coordination.
+
+## Resume In A New Task
+
+When plan has `Coordination State`, one lead controller resumes only through
+plan plus Git. Do not use Codex thread IDs, DeepAgents thread IDs, or `dcode -r`
+as repository coordination state.
+
+1. Open plan from selected workspace and identify recorded branch, base, active
+   task, last checkpoint, expected workspace, next action, and blockers.
+2. Run `git rev-parse --show-toplevel`, `git status --short --branch`,
+   `git worktree list --porcelain`, and `git rev-parse HEAD`.
+3. Compare current branch, base ancestry, `HEAD`, and workspace changes with
+   plan coordination state.
+4. Read task ledger. Resume recorded `active` task, or first dependency-ready
+   `pending` task when no task is active.
+5. Re-run declared proof for last completed task when checkpoint or current
+   changes make prior evidence uncertain.
+6. Record reconciled task, checkpoint, workspace, and next action in plan.
+   Only lead controller updates coordination state or task ledger.
+7. `block` before implementation on plan/Git mismatch, more than one active
+   task, unknown checkpoint, out-of-scope changes, or unresolved blocker.
+
+Completed task changes and lead-controller ledger update share checkpoint commit
+after task-local proof. Push still requires separate explicit authorization.
 
 ## Check And Review
 

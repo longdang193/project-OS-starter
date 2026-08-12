@@ -253,12 +253,16 @@ def test_generated_runtime_files_skip_repo_skills_for_codex(tmp_path: Path) -> N
     skill_file = generated_root / "skills" / "demo" / "SKILL.md"
     skill_file.parent.mkdir(parents=True, exist_ok=True)
     skill_file.write_text("skill", encoding="utf-8")
+    agent_file = generated_root / "agents" / "normal.toml"
+    agent_file.parent.mkdir(parents=True, exist_ok=True)
+    agent_file.write_text("agent", encoding="utf-8")
 
     codex_files = DEPLOY._iter_generated_runtime_files("codex", generated_root)
     claude_files = DEPLOY._iter_generated_runtime_files("claude", generated_root)
 
     assert generated_root / "AGENTS.md" in codex_files
     assert skill_file not in codex_files
+    assert agent_file in codex_files
     assert skill_file in claude_files
 
 

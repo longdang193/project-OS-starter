@@ -48,8 +48,9 @@ Do not use `low` for multi-file implementation, architectural decisions, ambiguo
 
 Ordinary trusted one-user work follows `native-personal-local` in
 `docs/operating_system/procedures/personal-local-worktree-procedure.md`:
-native Git and Codex. Reuse a clean checkout for small reversible work; use a
-native Git worktree only when existing worktree guidance selects isolation.
+native Git plus selected local executor, Codex or DeepAgents. Codex is default
+when plan omits executor. Reuse a clean checkout for small reversible work; use
+a native Git worktree only when existing worktree guidance selects isolation.
 Git owns workspace identity, change evidence, and authorized branch disposition.
 Do not invent provider fallback, runtime state, or cleanup commands.
 

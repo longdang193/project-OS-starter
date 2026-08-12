@@ -68,6 +68,8 @@ def make_manifest(repo_root: Path) -> Path:
             "requiredPaths": [
                 ".gitignore",
                 "AGENTS.md",
+                "agents/normal.toml",
+                ".deepagents/agents/normal/AGENTS.md",
                 "GEMINI.md",
                 "CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
@@ -82,10 +84,17 @@ def make_manifest(repo_root: Path) -> Path:
                 "scripts/deploy_agent_runtime.py",
                 "tests/test_sync_agent_adapters.py",
                 "tests/test_deploy_agent_runtime.py",
+                ".deepagents/config.toml",
+                ".deepagents/.env",
+                ".deepagents/.mcp.json",
+                ".deepagents/hooks.json",
+                ".deepagents/.state",
             ],
             "copyPaths": [
                 ".gitignore",
                 "AGENTS.md",
+                "agents",
+                ".deepagents/agents",
                 "generated_agents/antigravity/GEMINI.md",
                 "generated_agents/claude/CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
@@ -107,6 +116,8 @@ def make_manifest(repo_root: Path) -> Path:
 def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
+    write_text(repo_root / "agents" / "normal.toml", 'name = "normal"\n')
+    write_text(repo_root / ".deepagents" / "agents" / "normal" / "AGENTS.md", "---\nname: normal\n---\n")
     write_text(repo_root / ".gitignore", ".env\n")
     write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "antigravity" / "GEMINI.md", "# gemini\n")
@@ -125,6 +136,8 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
 
     kit_root = output_root / "project-OS-starter-kit"
     assert (kit_root / "AGENTS.md").exists()
+    assert (kit_root / "agents" / "normal.toml").exists()
+    assert (kit_root / ".deepagents" / "agents" / "normal" / "AGENTS.md").exists()
     assert (kit_root / ".gitignore").exists()
     assert (kit_root / "GEMINI.md").exists()
     assert (kit_root / "CLAUDE.md").exists()
@@ -171,9 +184,35 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
     assert any("Forbidden content reference" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "forbidden_path",
+    [
+        ".deepagents/config.toml",
+        ".deepagents/.env",
+        ".deepagents/.mcp.json",
+        ".deepagents/hooks.json",
+        ".deepagents/.state",
+    ],
+)
+def test_validate_starter_kit_rejects_personal_deepagents_state(
+    tmp_path: Path,
+    forbidden_path: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    manifest_path = make_manifest(repo_root)
+    kit_root = repo_root / "out" / "project-OS-starter-kit"
+    write_text(kit_root / forbidden_path, "private\n")
+
+    errors = VERIFY.validate_starter_kit(kit_root=kit_root, manifest_path=manifest_path)
+
+    assert f"Forbidden path present: {forbidden_path}" in errors
+
+
 def test_build_starter_kit_fails_when_generated_root_instruction_missing(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
+    write_text(repo_root / "agents" / "normal.toml", 'name = "normal"\n')
+    write_text(repo_root / ".deepagents" / "agents" / "normal" / "AGENTS.md", "---\nname: normal\n---\n")
     write_text(repo_root / ".gitignore", ".env\n")
     write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")

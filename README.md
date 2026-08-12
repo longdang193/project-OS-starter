@@ -59,9 +59,12 @@ First-hour flow:
 
 Ordinary trusted one-user development uses
 [`native-personal-local`](docs/operating_system/procedures/personal-local-worktree-procedure.md):
-native Git plus Codex. Reuse clean checkout for small reversible work. Use a
-native Git worktree only when existing worktree guidance selects isolation.
-Git owns workspace identity, change evidence, and branch disposition.
+native Git plus Codex or DeepAgents. Codex is default when plan omits executor.
+Reuse clean checkout for small reversible work. Use a native Git worktree only
+when existing worktree guidance selects isolation. Git owns workspace identity,
+change evidence, and branch disposition. Shared delegated roles live in
+`agents/*.toml`; DeepAgents project subagents are generated under
+`.deepagents/agents/`, not user-local `dcode --agent` profiles.
 
 ## Agent Memory
 

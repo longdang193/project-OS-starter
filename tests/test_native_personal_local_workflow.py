@@ -42,8 +42,13 @@ def test_native_personal_local_workflow_is_documented_and_shipped() -> None:
 
     assert "native-personal-local" in procedure_text
     assert "Git worktree" in procedure_text
+    assert "Codex or DeepAgents" in procedure_text
+    assert "Resume In A New Task" in procedure_text
+    assert "dcode -r" in procedure_text
     assert "native-personal-local" in root_guidance
+    assert "Codex or DeepAgents" in root_guidance
     assert "native-personal-local" in readme
+    assert "Codex or DeepAgents" in readme
     assert "docs/operating_system" in manifest["copyPaths"]
     assert "tests/test_native_personal_local_workflow.py" in manifest["copyPaths"]
 
@@ -73,3 +78,18 @@ def test_native_git_evidence_exposes_tracked_and_untracked_scope_changes(tmp_pat
     assert changed_paths == {"allowed.txt"}
     assert untracked_paths == {"outside.txt"}
     assert untracked_paths - {"allowed.txt"}
+
+
+def test_single_controller_resume_contract_is_documented() -> None:
+    procedure_text = (
+        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
+    ).read_text(encoding="utf-8")
+    template_text = (
+        ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md"
+    ).read_text(encoding="utf-8")
+
+    for step in range(1, 8):
+        assert f"{step}." in procedure_text
+    assert "Coordination State (Optional)" in template_text
+    assert "Executor: `codex | deepagents`" in template_text
+    assert "Exactly one task" in template_text
