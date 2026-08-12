@@ -5301,6 +5301,8 @@ def _prepare_attempt(
 ) -> tuple[dict[str, Any], dict[str, Any] | None, str | None, dict[str, str] | None]:
     _validate_policy(root)
     policy = _load_policy(root)
+    if policy.get("retirement", {}).get("block_new_managed_attempts") is True:
+        raise HarnessError("managed_advanced_retired")
     tool_selection = _request_tool_selection(policy, request)
     request_admission = _request_admission(request)
     if not request_admission["ok"]:

@@ -510,6 +510,25 @@ def test_legacy_cleanup_rejects_partial_policy(tmp_path: Path) -> None:
     assert "legacy_cleanup has invalid fields" in config_validation.validate(tmp_path)
 
 
+@pytest.mark.parametrize("retirement", [True, {}, {"block_new_managed_attempts": "true"}, {"block_new_managed_attempts": True, "unexpected": False}])
+def test_retirement_requires_only_boolean_block_new_managed_attempts(tmp_path: Path, retirement: object) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["retirement"] = retirement
+    write_policy(path, policy)
+
+    assert "retirement has invalid fields" in config_validation.validate(tmp_path)
+
+
+def test_retirement_accepts_boolean_block_new_managed_attempts(tmp_path: Path) -> None:
+    write_harness_root(tmp_path)
+    path, policy = load_policy(tmp_path)
+    policy["retirement"] = {"block_new_managed_attempts": True}
+    write_policy(path, policy)
+
+    assert config_validation.validate(tmp_path) == []
+
+
 def test_legacy_cleanup_rejects_future_packet_cap(tmp_path: Path) -> None:
     write_harness_root(tmp_path)
     path, policy = load_policy(tmp_path)

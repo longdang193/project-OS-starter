@@ -50,11 +50,18 @@ def isolate_root_friction_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     global CONTROLLER_PRIVATE_KEY, FRICTION_EVENTS_ROOT
     FRICTION_EVENTS_ROOT = tmp_path / "friction-events.jsonl"
     original_friction_events_path = managed._friction_events_path
+    original_load_policy = managed._load_policy
     monkeypatch.setattr(
         managed,
         "_friction_events_path",
         lambda root: FRICTION_EVENTS_ROOT if root == ROOT else original_friction_events_path(root),
     )
+    def load_test_policy(root: Path):
+        policy = original_load_policy(root)
+        if root == ROOT:
+            policy.pop("retirement", None)
+        return policy
+    monkeypatch.setattr(managed, "_load_policy", load_test_policy)
     monkeypatch.setattr(managed, "migration_preflight", lambda root: {"active_legacy_attempts": [], "ready": True})
     CONTROLLER_PRIVATE_KEY = Ed25519PrivateKey.generate()
     public_key = _base64url(
@@ -4582,6 +4589,58 @@ def test_retry_requires_adapter_boundary_before_mutating_prior_attempt(tmp_path:
         assert (run_dir / "run.json").read_bytes() == before
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_retirement_rejects_fresh_and_successor_attempts_before_adapter_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = load_module()
+    fresh_run_id = f"retired-fresh-{tmp_path.name}"
+    retry_run_id = f"retired-retry-{tmp_path.name}"
+    fresh_dir = ROOT / ".harness" / "runs" / fresh_run_id
+    retry_dir = ROOT / ".harness" / "runs" / retry_run_id
+    adapter = FakeAdapter({"single_work_lane": "enforced"})
+    base_load_policy = harness._load_policy
+    base_validate_policy = harness._validate_policy
+    try:
+        policy = copy.deepcopy(base_load_policy(ROOT))
+        policy["retirement"] = {"block_new_managed_attempts": True}
+        monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+        monkeypatch.setattr(harness, "_validate_policy", lambda _root: None)
+
+        with pytest.raises(harness.HarnessError, match="managed_advanced_retired"):
+            harness.run_managed(ROOT, managed_request(run_id=fresh_run_id), adapter)
+        assert not fresh_dir.exists()
+        assert adapter.calls == []
+        assert adapter.binding_calls == []
+
+        monkeypatch.setattr(harness, "_load_policy", base_load_policy)
+        monkeypatch.setattr(harness, "_validate_policy", base_validate_policy)
+        first = harness.run_managed(
+            ROOT,
+            managed_request(run_id=retry_run_id),
+            adapter,
+            run_check=lambda command: (1, "", "failed"),
+            collect_changes=lambda root, base_commit: [],
+        )
+        assert first["outcome"]["reason"] == "verification_failed"
+        before = (retry_dir / "run.json").read_bytes()
+        calls_before = list(adapter.calls)
+        bindings_before = list(adapter.binding_calls)
+
+        policy = copy.deepcopy(base_load_policy(ROOT))
+        policy["retirement"] = {"block_new_managed_attempts": True}
+        monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
+        monkeypatch.setattr(harness, "_validate_policy", lambda _root: None)
+        with pytest.raises(harness.HarnessError, match="managed_advanced_retired"):
+            harness.apply_controller_decision(ROOT, retry_run_id, {"kind": "retry"}, adapter=adapter)
+        assert (retry_dir / "run.json").read_bytes() == before
+        assert adapter.calls == calls_before
+        assert adapter.binding_calls == bindings_before
+    finally:
+        shutil.rmtree(fresh_dir, ignore_errors=True)
+        shutil.rmtree(retry_dir, ignore_errors=True)
 
 
 def test_prepare_attempt_binds_current_upgraded_runtime() -> None:

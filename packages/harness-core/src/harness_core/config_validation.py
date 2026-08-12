@@ -217,7 +217,8 @@ POLICY_FIELDS = {
     "orchestration",
     "routes",
 }
-POLICY_OPTIONAL_FIELDS = {"skill_sets", "operating_profiles", "legacy_cleanup"}
+POLICY_OPTIONAL_FIELDS = {"skill_sets", "operating_profiles", "legacy_cleanup", "retirement"}
+RETIREMENT_FIELDS = {"block_new_managed_attempts"}
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -564,6 +565,13 @@ def _validate_terminalization(value: Any, errors: list[str]) -> None:
         errors.append("terminalization allowed_controller_roles are invalid")
 
 
+def _validate_retirement(value: Any, errors: list[str]) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict) or set(value) != RETIREMENT_FIELDS or not isinstance(value["block_new_managed_attempts"], bool):
+        errors.append("retirement has invalid fields")
+
+
 def _validate_orchestration(policy: dict[str, Any], errors: list[str], roles: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     orchestration = policy.get("orchestration")
     if not isinstance(orchestration, dict) or not orchestration:
@@ -647,6 +655,7 @@ def validate(root: Path) -> list[str]:
 
     _validate_legacy_cleanup(policy.get("legacy_cleanup"), errors)
     _validate_terminalization(policy.get("terminalization"), errors)
+    _validate_retirement(policy.get("retirement"), errors)
 
     claim_repair = policy.get("claim_repair")
     if not isinstance(claim_repair, dict) or set(claim_repair) != CLAIM_REPAIR_FIELDS:
