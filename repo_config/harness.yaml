@@ -1,4 +1,4 @@
-version: 10
+version: 11
 harness_core:
   request_api: 5
 context_limits:
@@ -172,28 +172,20 @@ checks:
 tools:
   shell:
     optional: false
-    host_kind: app_server_shell
     writer_access: workspace_write
     validator_access: read_only
-    root_probe: shell_root_probe
   serena:
     optional: true
-    host_kind: local_serena
     writer_access: workspace_write
     validator_access: read_only
-    root_probe: serena_root_probe
   semble_codebase_search:
     optional: true
-    host_kind: local_semble
     writer_access: read_only
     validator_access: read_only
-    root_probe: semble_root_probe
   ast_grep_preview:
     optional: true
-    host_kind: local_ast_grep
     writer_access: read_only
     validator_access: read_only
-    root_probe: ast_grep_root_probe
 runtime_providers:
   codex_app_server:
     terminal_observation_capability: host_terminal_observation_v3

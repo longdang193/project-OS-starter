@@ -400,17 +400,30 @@ failure tests plus live managed proof.
 
 ## Packet Tool Bindings
 
-`repo_config/harness.yaml` owns logical tool metadata. Packet resolution copies
-an immutable `tool_bindings` manifest with one declaration for every selected
-route tool. Host must resolve every declaration to exactly one native binding
-whose workspace root equals the dispatched lane workspace.
+`repo_config/harness.yaml` owns logical tool IDs, optionality, and lane access.
+Controller requests may select only route-authorized optional IDs with a
+non-empty reason. Packet resolution copies immutable logical `tool_bindings`,
+then current packet API resolves one host-owned non-secret binding for every
+selected tool before packet persistence. Host registry owns provider ID,
+operation schema, trusted configuration, probing, cleanup, provenance, and
+sanitization; core never receives host kinds, probes, endpoints, executable
+paths, cookies, credentials, or raw provider bodies.
 
-Each host binding evidence record must include tool, host kind, effective
-access, root probe, workspace root, exact packet `runtime_provider`, and
-`verified: true`. Writer lanes use
+Current packet API requires host capability `optional_tool_bindings`. Each
+frozen binding contains only tool, provider ID, approved operations,
+operation-schema digest, and binding digest. Host re-resolves this envelope
+before every lane and rejects drift before provider or product work. Binding
+evidence repeats that frozen envelope plus effective access, workspace root,
+exact packet `runtime_provider`, and `verified: true`. Writer lanes use
 `writer_access`; validator lanes use `validator_access`, which must be
 read-only. Missing, duplicate, ambient, mismatched, or unverified bindings
 block dispatch. Ambient desktop MCP roots never satisfy a packet binding.
+
+Historical packet API 9 remains readable only. Its legacy host details are
+private compatibility data and are never emitted for current packets.
+No external browser, Context7, or GitNexus tool provider is registered until
+its trusted transport, containment, cleanup, and deterministic fixture are
+approved. No fallback binds an ambient MCP tool.
 
 Host runs checks only through a verified selected `shell` binding in the final
 packet workspace. Check evidence must identify that workspace, binding, and

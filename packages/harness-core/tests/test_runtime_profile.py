@@ -15,17 +15,18 @@ def test_current_runtime_protocol_profile_is_canonical() -> None:
 
     assert profile == {
         "schema_id": "harness_runtime_protocol_profile/v1",
-        "profile_id": "runtime_profile",
+        "profile_id": "optional_tool_bindings",
         "request_api": 5,
-        "packet_api": 9,
-        "host_api": 8,
+        "packet_api": 10,
+        "host_api": 9,
         "provider_id": "codex_app_server",
-        "provider_contract": 8,
+        "provider_contract": 9,
         "required_capabilities": [
             "execution_lease_duration_model",
             "host_terminal_observation_v3",
+            "optional_tool_bindings",
         ],
-        "profile_digest": "e4221ea715f52289ad99d2775fe15156f9f3d3fb8d2b6dda1a886ab0f7f69fee",
+        "profile_digest": "9251824356559cd4c32cfd945d3d5912937fc8be04856961f1844a0726ff8af0",
     }
 
 
@@ -39,9 +40,9 @@ def test_release_profile_binds_protocol_and_provenance() -> None:
     )
 
     assert release["schema_id"] == "harness_runtime_release/v1"
-    assert release["release_profile_id"] == "runtime_profile"
+    assert release["release_profile_id"] == "optional_tool_bindings"
     assert release["protocol_profile"] == runtime_protocol_profile(5)
-    assert release["release_profile_digest"] == "28fe85505cb2a22ce3dea39cd4f1c06b47b1f554d8791476de29be33a22f35a6"
+    assert release["release_profile_digest"] == "4cc04aa935d75041e033f53a530a27c71c967ab236ae36457c375278c620fb66"
 
 
 @pytest.mark.parametrize(

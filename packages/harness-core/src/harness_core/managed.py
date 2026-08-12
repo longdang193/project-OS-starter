@@ -56,6 +56,7 @@ from .compatibility import (
     admit_request_api,
     can_read_packet_api,
     legacy_role_capabilities,
+    required_packet_capabilities,
     runtime_identity,
     static_provider_runtime_binding,
 )
@@ -227,9 +228,18 @@ def _core_identity(
     }
 
 
-def admit_managed_operation(root: Path, adapter: Any, *, request_api: Any | None = None) -> dict[str, Any]:
+def admit_managed_operation(
+    root: Path,
+    adapter: Any,
+    *,
+    request_api: Any | None = None,
+) -> dict[str, Any]:
     """Admit consumer and host protocol versions before provider I/O."""
-    return _core_identity(_load_policy(root), adapter, request_api=request_api)
+    return _core_identity(
+        _load_policy(root),
+        adapter,
+        request_api=request_api,
+    )
 
 
 def _friction_policy(root: Path) -> dict[str, Any]:
@@ -913,6 +923,50 @@ def _normalize_operating_profile_selection(request: dict[str, Any], route: dict[
     return {"id": identifier, "reason": _required_string(value.get("reason"), "operating profile reason")}
 
 
+def _normalize_tool_selection(
+    request: dict[str, Any],
+    route: dict[str, Any],
+    policy: dict[str, Any],
+) -> dict[str, Any] | None:
+    value = request.get("tool_selection")
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"tools", "reason"}:
+        raise HarnessError("tool_selection must define tools and reason")
+    tools = value["tools"]
+    if (
+        not isinstance(tools, list)
+        or not tools
+        or not all(isinstance(tool, str) and tool for tool in tools)
+        or len(set(tools)) != len(tools)
+    ):
+        raise HarnessError("tool_selection tools must be a non-empty unique list")
+    allowed = route.get("optional_tools", [])
+    if not isinstance(allowed, list):
+        raise HarnessError("route optional_tools is invalid")
+    for tool in tools:
+        definition = policy["tools"].get(tool)
+        if not isinstance(definition, dict):
+            raise HarnessError(f"tool_selection includes unknown tool `{tool}`")
+        if definition.get("optional") is not True or tool not in allowed:
+            raise HarnessError(f"tool_selection includes route-denied tool `{tool}`")
+    return {"tools": sorted(tools), "reason": _required_string(value["reason"], "tool_selection reason")}
+
+
+def _request_admission(
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    return admit_request_api(request.get("version"))
+
+
+def _request_tool_selection(policy: dict[str, Any], request: dict[str, Any]) -> dict[str, Any] | None:
+    task_type = _required_string(request.get("task_type"), "task_type")
+    route = policy["routes"].get(task_type)
+    if not isinstance(route, dict):
+        raise HarnessError(f"unknown task type `{task_type}`")
+    return _normalize_tool_selection(request, route, policy)
+
+
 def _resolve_skill_sets(policy: dict[str, Any], route: dict[str, Any], selected: list[dict[str, str]]) -> tuple[list[str], dict[str, Any] | None]:
     if "required_skill_sets" not in route:
         return list(route["skills"]), None
@@ -935,6 +989,7 @@ def _route_packet(
     execution_budget_profile: str | None = None,
     skill_set_selections: list[dict[str, str]] | None = None,
     operating_profile_selection: dict[str, str] | None = None,
+    tool_selection: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     route = policy["routes"].get(task_type)
     if not isinstance(route, dict):
@@ -963,19 +1018,19 @@ def _route_packet(
         template = route["template"]
         runtime_provider_id = None
     authority = policy["authorities"].get(authority_name)
-    tools = policy["toolsets"].get(toolset_name)
+    base_tools = policy["toolsets"].get(toolset_name)
     verification_profile = policy["verification_profiles"].get(verification_profile_name)
-    if not isinstance(authority, dict) or not isinstance(tools, list) or not isinstance(verification_profile, dict):
+    if not isinstance(authority, dict) or not isinstance(base_tools, list) or not isinstance(verification_profile, dict):
         raise HarnessError(f"task type `{task_type}` has unresolved route profiles")
+    tools = list(dict.fromkeys([*base_tools, *(tool_selection or {}).get("tools", [])]))
     evidence_artifacts = _evidence_artifact_policy(policy)
     artifact_handoff_policy = _artifact_handoff_policy(policy, route)
     tool_bindings = [
         {
             "tool": name,
-            "host_kind": policy["tools"][name]["host_kind"],
+            "optional": policy["tools"][name]["optional"],
             "writer_access": policy["tools"][name]["writer_access"],
             "validator_access": policy["tools"][name]["validator_access"],
-            "root_probe": policy["tools"][name]["root_probe"],
         }
         for name in tools
     ]
@@ -1025,6 +1080,8 @@ def _route_packet(
     }
     if skill_sets is not None:
         packet["skill_sets"] = skill_sets
+    if tool_selection is not None:
+        packet["tool_selection"] = copy.deepcopy(tool_selection)
     if profile_metadata is not None:
         packet["operating_profile"] = profile_metadata
         packet["runtime_provider_id"] = runtime_provider_id
@@ -1802,13 +1859,19 @@ def _lane_tool_use_requirement(packet: dict[str, Any], lane: dict[str, Any]) -> 
     read_only = lane["kind"] == "validate" or packet.get("workspace_write_access") == "read_only"
     access_key = "validator_access" if read_only else "writer_access"
     required_access = "read_only" if read_only else "workspace_write"
-    return {
+    requirement = {
         "eligible_tools": sorted(
             binding["tool"] for binding in packet["tool_bindings"] if binding[access_key] == required_access
         ),
         "required_access": required_access,
         "minimum_uses": 1,
     }
+    selection = packet.get("tool_selection")
+    if isinstance(selection, dict) and isinstance(selection.get("tools"), list):
+        requirement["required_tools"] = sorted(
+            set(selection["tools"]) & set(requirement["eligible_tools"])
+        )
+    return requirement
 
 
 def _resolved_lane_tool_use_requirement(packet: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any]:
@@ -1825,7 +1888,7 @@ def _normalize_managed_request(
     request: dict[str, Any],
 ) -> tuple[dict[str, Any], PlanCoordination | None, PlanTask | None]:
     version = request.get("version")
-    admission = admit_request_api(version)
+    admission = _request_admission(request)
     if not admission["ok"]:
         raise HarnessError(admission["code"])
     core_policy = policy.get("harness_core")
@@ -1880,15 +1943,20 @@ def resolve_managed_packet(
     execution_budget_profile: str | None = None,
     core_identity: dict[str, Any] | None = None,
     provider_runtime_binding: dict[str, Any] | None = None,
+    adapter: Any | None = None,
 ) -> dict[str, Any]:
     policy = _load_policy(root)
     _validate_policy(root)
     request, coordination, plan_task = _normalize_managed_request(root, policy, request)
-    request_admission = admit_request_api(request["version"])
+    tool_selection = _request_tool_selection(policy, request)
+    request_admission = _request_admission(request)
     if not request_admission["ok"]:
         raise HarnessError(request_admission["code"])
     packet_api = request_admission["packet_api"]
-    resolved_core_identity = core_identity or _core_identity(policy, request_api=request["version"])
+    resolved_core_identity = core_identity or _core_identity(
+        policy,
+        request_api=request["version"],
+    )
     task_type = _required_string(request.get("task_type"), "task_type")
     execution_mode = _required_string(request.get("execution_mode"), "execution_mode")
     route = policy["routes"].get(task_type)
@@ -1905,6 +1973,7 @@ def resolve_managed_packet(
         execution_budget_profile=execution_budget_profile,
         skill_set_selections=skill_set_selections,
         operating_profile_selection=operating_profile_selection,
+        tool_selection=tool_selection,
     )
     plan_checks = getattr(plan_task, "verification_checks", {}) if plan_task is not None else {}
     if plan_checks:
@@ -1944,6 +2013,12 @@ def resolve_managed_packet(
             packet_api=packet_api,
             host_api=resolved_core_identity.get("host_api"),
         )
+        if adapter is not None:
+            packet["optional_tool_bindings"] = _resolve_optional_tool_bindings(
+                adapter,
+                packet["tool_bindings"],
+                runtime_provider,
+            )
     role = _load_roles(root).get(packet["role"])
     if not isinstance(role, dict):
         raise HarnessError(f"unknown route role `{packet['role']}`")
@@ -3410,11 +3485,105 @@ def _adapter_capabilities(adapter: Any, canonical_modes: set[str]) -> dict[str, 
         "host_terminal_observation_v2",
         "host_terminal_observation_v3",
         "execution_lease_duration_model",
+        "optional_tool_bindings",
     }
     for mode, level in capabilities.items():
         if not isinstance(mode, str) or mode not in known_capabilities or level not in CAPABILITY_LEVELS:
             raise HarnessError("host adapter capabilities contain invalid entry")
     return capabilities
+
+
+def _required_host_capabilities(policy: dict[str, Any], packet_api: int) -> set[str]:
+    del policy
+    return set(required_packet_capabilities(packet_api))
+
+
+def _normalized_optional_tool_bindings(value: Any, expected_tools: set[str]) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise HarnessError("host adapter optional tool bindings must be a list")
+    fields = {
+        "tool",
+        "provider_id",
+        "operations",
+        "operation_schema_digest",
+        "binding_digest",
+        "readiness",
+    }
+    bindings: dict[str, dict[str, Any]] = {}
+    for value_binding in value:
+        if not isinstance(value_binding, dict) or set(value_binding) != fields:
+            raise HarnessError("host adapter optional tool binding has invalid shape")
+        tool = value_binding.get("tool")
+        provider_id = value_binding.get("provider_id")
+        operations = value_binding.get("operations")
+        schema_digest = value_binding.get("operation_schema_digest")
+        binding_digest = value_binding.get("binding_digest")
+        if (
+            not isinstance(tool, str)
+            or tool not in expected_tools
+            or tool in bindings
+            or not isinstance(provider_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", provider_id)
+            or not isinstance(operations, list)
+            or not operations
+            or not all(isinstance(operation, str) and re.fullmatch(r"[A-Za-z0-9._-]{1,128}", operation) for operation in operations)
+            or len(set(operations)) != len(operations)
+            or not isinstance(schema_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", schema_digest)
+            or not isinstance(binding_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", binding_digest)
+            or value_binding.get("readiness") != "ready"
+        ):
+            raise HarnessError("host adapter optional tool binding has invalid values")
+        bindings[tool] = {
+            "tool": tool,
+            "provider_id": provider_id,
+            "operations": sorted(operations),
+            "operation_schema_digest": schema_digest,
+            "binding_digest": binding_digest,
+        }
+    if set(bindings) != expected_tools:
+        raise HarnessError("host adapter did not resolve every packet tool binding")
+    return [bindings[tool] for tool in sorted(bindings)]
+
+
+def _resolve_optional_tool_bindings(
+    adapter: Any,
+    tool_bindings: list[dict[str, Any]],
+    runtime_provider: dict[str, Any],
+) -> list[dict[str, Any]]:
+    expected_tools = {
+        binding["tool"]
+        for binding in tool_bindings
+        if isinstance(binding, dict) and isinstance(binding.get("tool"), str)
+    }
+    if len(expected_tools) != len(tool_bindings):
+        raise HarnessError("packet tool bindings are invalid")
+    raw = _adapter_call(
+        adapter,
+        "resolve_optional_tool_bindings",
+        copy.deepcopy(tool_bindings),
+        copy.deepcopy(runtime_provider),
+    )
+    return _normalized_optional_tool_bindings(raw, expected_tools)
+
+
+def _packet_optional_tool_bindings(packet: dict[str, Any]) -> list[dict[str, Any]]:
+    expected_tools = {binding["tool"] for binding in packet["tool_bindings"]}
+    raw = packet.get("optional_tool_bindings")
+    if not isinstance(raw, list):
+        raise HarnessError("packet optional tool bindings are missing")
+    return _normalized_optional_tool_bindings(
+        [{**binding, "readiness": "ready"} for binding in raw],
+        expected_tools,
+    )
+
+
+def _assert_current_optional_tool_bindings(adapter: Any, packet: dict[str, Any]) -> None:
+    stored = _packet_optional_tool_bindings(packet)
+    current = _resolve_optional_tool_bindings(adapter, packet["tool_bindings"], packet["runtime_provider"])
+    if current != stored:
+        raise HarnessError("provider_configuration_changed")
 
 
 def _adapter_unavailable_detail(adapter: Any) -> str | None:
@@ -3555,6 +3724,10 @@ def _record_tool_binding_evidence(
         raise HarnessError("host adapter tool binding evidence must be a list")
     expected_access_key = "validator_access" if lane["kind"] == "validate" or packet.get("workspace_write_access") == "read_only" else "writer_access"
     expected = {binding["tool"]: binding for binding in packet["tool_bindings"]}
+    expected_runtime_bindings = {
+        binding["tool"]: binding
+        for binding in _packet_optional_tool_bindings(packet)
+    } if packet.get("version") == CURRENT_PACKET_API else {}
     observed: dict[str, dict[str, Any]] = {}
     for binding in evidence:
         if not isinstance(binding, dict) or not isinstance(binding.get("tool"), str):
@@ -3564,14 +3737,21 @@ def _record_tool_binding_evidence(
             raise HarnessError("host adapter tool binding evidence conflicts with packet")
         required = expected[tool]
         if (
-            binding.get("host_kind") != required["host_kind"]
-            or binding.get("access") != required[expected_access_key]
-            or binding.get("root_probe") != required["root_probe"]
+            binding.get("access") != required[expected_access_key]
             or binding.get("workspace_root") != workspace["path"]
             or binding.get("verified") is not True
             or binding.get("runtime_provider") != packet["runtime_provider"]
         ):
             raise HarnessError(f"host adapter tool binding `{tool}` is not verified for packet workspace")
+        if expected_runtime_bindings:
+            runtime_binding = expected_runtime_bindings[tool]
+            if (
+                binding.get("provider_id") != runtime_binding["provider_id"]
+                or binding.get("operations") != runtime_binding["operations"]
+                or binding.get("operation_schema_digest") != runtime_binding["operation_schema_digest"]
+                or binding.get("binding_digest") != runtime_binding["binding_digest"]
+            ):
+                raise HarnessError(f"host adapter tool binding `{tool}` changed from packet binding")
         observed[tool] = binding
     if set(observed) != set(expected):
         raise HarnessError("host adapter did not verify every packet-selected tool")
@@ -3661,6 +3841,8 @@ def _record_lane_execution_evidence(
         tool in requirement["eligible_tools"] for tool in selected_tools
     ) < requirement["minimum_uses"]:
         raise HarnessError("host adapter lane did not use a packet-selected tool with required access")
+    if any(tool not in selected_tools for tool in requirement.get("required_tools", [])):
+        raise HarnessError("host adapter lane did not use every selected optional tool with required access")
     if read_only and evidence["workspace_status_before"] != evidence["workspace_status_after"]:
         raise HarnessError("read-only packet lane changed workspace")
     records = attempt.setdefault("execution_evidence", [])
@@ -4710,6 +4892,7 @@ def _execute_attempt(
     run_check: CheckRunner | None,
     collect_changes: ChangeCollector,
     host_instance_id: str | None,
+    capabilities: dict[str, str] | None,
     now: datetime,
 ) -> dict[str, Any]:
     attempt = _active_attempt(run)
@@ -4730,16 +4913,11 @@ def _execute_attempt(
         _set_outcome(run, attempt, policy, "approval_required", ["request_approval", "retry", "block"], ["authorization"])
         return _persist_outcome_transition(root, run, attempt, policy, "approval_required")
     try:
-        required_capabilities = set(policy["orchestration"]) | {policy["claim_repair"]["required_host_capability"]}
-        if packet.get("version") == CURRENT_PACKET_API:
-            terminal_contract = packet.get("terminal_observation_contract")
-            if not isinstance(terminal_contract, dict) or not isinstance(terminal_contract.get("capability"), str):
-                raise HarnessError("packet terminal observation contract is invalid")
-            required_capabilities.update({terminal_contract["capability"], "execution_lease_duration_model"})
-        capabilities = _adapter_capabilities(
-            adapter,
-            required_capabilities,
-        )
+        if capabilities is None:
+            required_capabilities = set(policy["orchestration"]) | {policy["claim_repair"]["required_host_capability"]}
+            if packet.get("version") == CURRENT_PACKET_API:
+                required_capabilities.update(_required_host_capabilities(policy, packet["version"]))
+            capabilities = _adapter_capabilities(adapter, required_capabilities)
     except Exception as exc:
         return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
     mode = packet["orchestration"]["name"]
@@ -4767,12 +4945,27 @@ def _execute_attempt(
         _transition(run, policy["states"], "awaiting_decision", "execution_mode_unavailable")
         _write_run(root, run)
         return _managed_result(run)
-    terminalization_capabilities = {"host_terminal_observation_v3", "execution_lease_duration_model"}
+    terminalization_capabilities = _required_host_capabilities(policy, CURRENT_PACKET_API)
     if packet.get("version") == CURRENT_PACKET_API and any(
         capabilities.get(capability) != "enforced"
         for capability in terminalization_capabilities
     ):
         return _record_failure(root, run, policy, attempt, "execution_mode_unavailable", "host lacks required terminalization capability", phase="dispatch")
+    if packet.get("version") == CURRENT_PACKET_API:
+        try:
+            _assert_current_optional_tool_bindings(adapter, packet)
+        except HarnessError as exc:
+            if str(exc) == "provider_configuration_changed":
+                return _record_failure(
+                    root,
+                    run,
+                    policy,
+                    attempt,
+                    "provider_configuration_changed",
+                    "optional tool binding changed",
+                    phase="dispatch",
+                )
+            return _record_failure(root, run, policy, attempt, "dispatch_failed", str(exc), phase="dispatch")
     try:
         attempt["adapter_identity"] = _adapter_identity(adapter, packet["runtime_provider"])
     except Exception as exc:
@@ -5097,6 +5290,61 @@ def _execute_attempt(
     return _persist_outcome_transition(root, run, attempt, policy, reason)
 
 
+def _prepare_attempt(
+    root: Path,
+    request: dict[str, Any],
+    adapter: Any,
+    *,
+    attempt_id: str,
+    execution_budget_profile: str | None = None,
+    exclude_run_id: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any] | None, str | None, dict[str, str] | None]:
+    _validate_policy(root)
+    policy = _load_policy(root)
+    tool_selection = _request_tool_selection(policy, request)
+    request_admission = _request_admission(request)
+    if not request_admission["ok"]:
+        raise HarnessError(request_admission["code"])
+    core_identity = admit_managed_operation(
+        root,
+        adapter,
+        request_api=request.get("version"),
+    )
+    preflight_binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
+    host_instance_id = None
+    capabilities: dict[str, str] | None = None
+    if core_identity["packet_api"] == CURRENT_PACKET_API:
+        if preflight_binding is None:
+            raise HarnessError("provider preflight evidence is required")
+        host_instance_id = _host_instance_id(preflight_binding)
+        _adapter_identity(
+            adapter,
+            _default_runtime_provider(policy, packet_api=core_identity["packet_api"]),
+        )
+        capabilities = _adapter_capabilities(
+            adapter,
+            set(policy["orchestration"])
+            | _required_host_capabilities(policy, core_identity["packet_api"])
+            | {_required_string(policy["claim_repair"].get("required_host_capability"), "claim repair host capability")},
+        )
+        if any(
+            capabilities.get(capability) != "enforced"
+            for capability in _required_host_capabilities(policy, core_identity["packet_api"])
+        ):
+            raise HarnessError("host lacks required optional tool binding capability")
+    packet = resolve_managed_packet(
+        root,
+        request,
+        attempt_id=attempt_id,
+        execution_budget_profile=execution_budget_profile,
+        core_identity=core_identity,
+        provider_runtime_binding=preflight_binding,
+        adapter=adapter,
+    )
+    _admit_coordinated_packet(root, packet, exclude_run_id=exclude_run_id)
+    return packet, preflight_binding, host_instance_id, capabilities
+
+
 def prepare_attempt(
     root: Path,
     request: dict[str, Any],
@@ -5106,27 +5354,15 @@ def prepare_attempt(
     execution_budget_profile: str | None = None,
     exclude_run_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None, str | None]:
-    _validate_policy(root)
-    request_admission = admit_request_api(request.get("version"))
-    if not request_admission["ok"]:
-        raise HarnessError(request_admission["code"])
-    core_identity = admit_managed_operation(root, adapter, request_api=request.get("version"))
-    preflight_binding = _provider_runtime_binding(adapter, required=core_identity["packet_api"] == CURRENT_PACKET_API)
-    host_instance_id = None
-    if core_identity["packet_api"] == CURRENT_PACKET_API:
-        if preflight_binding is None:
-            raise HarnessError("provider preflight evidence is required")
-        host_instance_id = _host_instance_id(preflight_binding)
-    packet = resolve_managed_packet(
+    packet, binding, host_instance_id, _ = _prepare_attempt(
         root,
         request,
+        adapter,
         attempt_id=attempt_id,
         execution_budget_profile=execution_budget_profile,
-        core_identity=core_identity,
-        provider_runtime_binding=preflight_binding,
+        exclude_run_id=exclude_run_id,
     )
-    _admit_coordinated_packet(root, packet, exclude_run_id=exclude_run_id)
-    return packet, preflight_binding, host_instance_id
+    return packet, binding, host_instance_id
 
 
 def run_managed(
@@ -5143,6 +5379,7 @@ def run_managed(
     _validate_policy(root)
     preflight_binding: dict[str, Any] | None = None
     host_instance_id: str | None = None
+    prepared_capabilities: dict[str, str] | None = None
     if run_id is None:
         if request is None:
             raise HarnessError("managed run request is required")
@@ -5151,7 +5388,7 @@ def run_managed(
             with _run_lock(root, run_id):
                 if _run_path(root, run_id).exists():
                     raise HarnessError(f"run `{run_id}` already exists")
-                packet, preflight_binding, host_instance_id = prepare_attempt(
+                packet, preflight_binding, host_instance_id, prepared_capabilities = _prepare_attempt(
                     root,
                     request,
                     attempt_id="attempt-1",
@@ -5236,6 +5473,22 @@ def run_managed(
             except (PlanCoordinationError, HarnessError):
                 _set_outcome(run, attempt, policy, "plan_binding_changed", ["retry", "block"], ["packet"])
                 return _persist_outcome_transition(root, run, attempt, policy, "plan_binding_changed")
+        if packet_api == CURRENT_PACKET_API:
+            try:
+                _assert_current_optional_tool_bindings(adapter, packet)
+            except HarnessError as exc:
+                if str(exc) != "provider_configuration_changed":
+                    raise
+                attempt["host_preflight"] = copy.deepcopy(preflight_binding)
+                return _record_failure(
+                    root,
+                    run,
+                    policy,
+                    attempt,
+                    "provider_configuration_changed",
+                    "optional tool binding changed",
+                    phase="dispatch",
+                )
     if packet.get("provider_runtime_binding") is not None:
         _active_attempt(run)["host_preflight"] = copy.deepcopy(preflight_binding or packet["provider_runtime_binding"])
     _write_run(root, run)
@@ -5248,6 +5501,7 @@ def run_managed(
         run_check=run_check,
         collect_changes=collector,
         host_instance_id=host_instance_id,
+        capabilities=prepared_capabilities,
         now=now or datetime.now(UTC),
     )
 
@@ -5549,12 +5803,12 @@ def main(argv: list[str] | None = None) -> int:
                 root,
                 task,
                 {
-                    "host_api": 8,
-                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 8},
+                    "host_api": 9,
+                    "identity": lambda: {"provider_id": "codex_app_server", "contract_version": 9},
                     "preflight_evidence": lambda: {
                         "provider_id": "codex_app_server",
-                        "host_api": 8,
-                        "contract_version": 8,
+                        "host_api": 9,
+                        "contract_version": 9,
                         "transport": "stdio",
                         "lifecycle": "host_spawn",
                         "protocol": "app-server-v1",
@@ -5569,7 +5823,20 @@ def main(argv: list[str] | None = None) -> int:
                             core_commit="0" * 40,
                         ),
                     },
-                    "capabilities": lambda: {},
+                    "capabilities": lambda: {
+                        "claim_repair_same_session": "enforced",
+                        "host_terminal_observation_v3": "enforced",
+                        "execution_lease_duration_model": "enforced",
+                        "optional_tool_bindings": "enforced",
+                    },
+                    "resolve_optional_tool_bindings": lambda bindings, _provider: [{
+                        "tool": binding["tool"],
+                        "provider_id": "run_unavailable",
+                        "operations": ["unavailable"],
+                        "operation_schema_digest": hashlib.sha256(binding["tool"].encode("utf-8")).hexdigest(),
+                        "binding_digest": hashlib.sha256(f"run-unavailable:{binding['tool']}".encode("utf-8")).hexdigest(),
+                        "readiness": "ready",
+                    } for binding in bindings],
                     "unavailable_detail": "Generic harness CLI has no injected host adapter; use a provider host entrypoint.",
                 },
                 run_id=args.run_id,

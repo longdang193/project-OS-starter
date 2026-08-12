@@ -32,6 +32,8 @@ Use live code intelligence for discovery. Keep source, tests, and CI as truth.
   is unknown; fall back to native search, Serena, or GitNexus.
 - `sg` previews structural matches or JSON only. `apply_patch` remains sole
   source edit path.
+- In managed lanes, optional tools run only when packet-selected and verified
+  through host-owned bindings. Ambient MCP tools never count as packet proof.
 - Semble MCP and ast-grep CLI are user-level choices, not repository or CI
   dependencies. See `docs/operating_system/procedures/code-intelligence-tools-setup.md`.
 

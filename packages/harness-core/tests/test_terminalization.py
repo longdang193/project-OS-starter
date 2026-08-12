@@ -125,8 +125,8 @@ def write_running_run(tmp_path: Path) -> tuple[str, dict[str, object]]:
         attempt_id="attempt-1",
         provider_runtime_binding={
             "provider_id": "codex_app_server",
-            "host_api": 8,
-            "contract_version": 8,
+            "host_api": 9,
+            "contract_version": 9,
             "transport": "stdio",
             "lifecycle": "host_spawn",
             "protocol": "app-server-v1",

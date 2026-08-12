@@ -22,6 +22,13 @@ verification profile, resolved tools/checks, workspace, approval gates, planned
 write paths, resolved base commit, and orchestration mode plus resolved
 `execution_budget`. Generic CLI has no managed `run` command. Its `run-unavailable` proof
 command reports unavailable mode instead of claiming dispatch.
+Repository policy owns logical tool IDs and lane access; controller request
+selects only route-authorized optional IDs; host registry owns trusted provider
+configuration, binding resolution, operation schemas, probing, cleanup, and
+sanitized provenance. Current packet bindings retain only tool, provider ID,
+approved operations, and binding/schema digests. Core never stores host kinds,
+probe commands, endpoints, executable paths, cookies, credentials, or raw
+provider bodies. Ambient MCP tools never satisfy packet tool proof.
 For current leased packets, core issues one finite execution lease before `planned` enters
 `running`. Host owns provider lifecycle and bounded
 packet-declared terminal-observation production only; it never writes `run.json`.

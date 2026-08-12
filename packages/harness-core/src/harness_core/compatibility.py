@@ -47,7 +47,7 @@ COMPATIBILITY_PROFILES = (
     },
     {
         "name": "runtime_profile",
-        "request_apis": frozenset({5}),
+        "request_apis": frozenset(),
         "packet_api": 9,
         "dispatch_host_api": 8,
         "provider_contract": 8,
@@ -57,12 +57,25 @@ COMPATIBILITY_PROFILES = (
         ),
         "read_host_apis": frozenset({8}),
     },
+    {
+        "name": "optional_tool_bindings",
+        "request_apis": frozenset({5}),
+        "packet_api": 10,
+        "dispatch_host_api": 9,
+        "provider_contract": 9,
+        "required_capabilities": (
+            "execution_lease_duration_model",
+            "host_terminal_observation_v3",
+            "optional_tool_bindings",
+        ),
+        "read_host_apis": frozenset({9}),
+    },
 )
 SUPPORTED_REQUEST_APIS = frozenset().union(*(profile["request_apis"] for profile in COMPATIBILITY_PROFILES))
 SUPPORTED_PACKET_READ_APIS = frozenset({3, 4, 5, 6, 7, 8, *(profile["packet_api"] for profile in COMPATIBILITY_PROFILES)})
-CURRENT_PACKET_API = 9
+CURRENT_PACKET_API = 10
 CURRENT_RUN_API = 2
-POLICY_SCHEMA_VERSION = 10
+POLICY_SCHEMA_VERSION = 11
 SUPPORTED_HOST_APIS = frozenset({2, 3, 4, 5, 6, 7, *(profile["dispatch_host_api"] for profile in COMPATIBILITY_PROFILES)})
 TERMINAL_OBSERVATION_VERSION = 1
 TIMEOUT_OBSERVATION_VERSION = TERMINAL_OBSERVATION_VERSION
@@ -139,6 +152,20 @@ def admit_host_api(value: Any) -> dict[str, Any]:
 
 def can_read_packet_api(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value in SUPPORTED_PACKET_READ_APIS
+
+
+def required_packet_capabilities(packet_api: Any) -> tuple[str, ...]:
+    profile = next(
+        (
+            candidate
+            for candidate in COMPATIBILITY_PROFILES
+            if candidate["packet_api"] == packet_api
+        ),
+        None,
+    )
+    if profile is None:
+        raise ValueError(f"packet API `{packet_api}` is unsupported")
+    return tuple(profile.get("required_capabilities", ()))
 
 
 def legacy_role_capabilities(role: str) -> tuple[str, ...]:

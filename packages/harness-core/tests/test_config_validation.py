@@ -66,7 +66,7 @@ def write_harness_root(root: Path) -> None:
         "repo_config/harness.yaml",
         yaml.safe_dump(
             {
-                "version": 10,
+                "version": 11,
                 "harness_core": {"request_api": 5},
                 "context_limits": {
                     "objective_max_bytes": 1024,
@@ -197,10 +197,8 @@ def write_harness_root(root: Path) -> None:
                 "tools": {
                     "shell": {
                         "optional": False,
-                        "host_kind": "app_server_shell",
                         "writer_access": "workspace_write",
                         "validator_access": "read_only",
-                        "root_probe": "shell_root_probe",
                     },
                 },
                 "runtime_providers": {
@@ -517,7 +515,7 @@ def test_legacy_cleanup_rejects_future_packet_cap(tmp_path: Path) -> None:
     path, policy = load_policy(tmp_path)
     policy["legacy_cleanup"] = {
         "enabled": True,
-            "historical_packet_max_api": 10,
+            "historical_packet_max_api": 11,
         "allowed_cleanup_scopes": ["operator_discovered_provider_tree", "operator_attested_no_provider_process"],
         "allowed_discovery_methods": ["windows_parent_chain/v1", "windows_no_process_observation/v1"],
         "max_attestation_age_seconds": 900,

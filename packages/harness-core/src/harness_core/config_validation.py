@@ -43,7 +43,7 @@ ROUTE_FIELDS = {
     "delegation_profile",
     "execution_modes",
 }
-ROUTE_OPTIONAL_FIELDS = {"approval_gates", "artifact_handoff_profiles", "default_artifact_handoff_profile"}
+ROUTE_OPTIONAL_FIELDS = {"approval_gates", "artifact_handoff_profiles", "default_artifact_handoff_profile", "optional_tools"}
 COMPOSED_ROUTE_FIELDS = {
     "role",
     "rules",
@@ -114,7 +114,8 @@ ORCHESTRATION_REQUIRED_FIELDS = {
 }
 ORCHESTRATION_OPTIONAL_FIELDS = {"max_parallel_lanes"}
 RETRY_POLICY_FIELDS = {"max_attempts", "retryable_reasons", "exhaustion", "approval_resume", "approval_ttl_seconds"}
-TOOL_FIELDS = {"optional", "host_kind", "writer_access", "validator_access", "root_probe"}
+TOOL_FIELDS = {"optional", "writer_access", "validator_access"}
+LEGACY_TOOL_FIELDS = TOOL_FIELDS | {"host_kind", "root_probe"}
 RUNTIME_PROVIDER_FIELDS = {
     "terminal_observation_capability",
     "execution_lease_duration_model_id",
@@ -618,8 +619,8 @@ def validate(root: Path) -> list[str]:
     if not isinstance(policy, dict):
         return [*errors, "harness policy must be a mapping"]
     version = policy.get("version")
-    if version not in {9, 10}:
-        errors.append("harness policy version must be 9 or 10")
+    if version not in {9, 10, 11}:
+        errors.append("harness policy version must be 9, 10, or 11")
     unknown_policy_fields = set(policy) - POLICY_FIELDS - POLICY_OPTIONAL_FIELDS
     missing_policy_fields = POLICY_FIELDS - policy.keys()
     if missing_policy_fields:
@@ -667,19 +668,23 @@ def validate(root: Path) -> list[str]:
         errors.append("tools must be a non-empty mapping")
         tools = {}
     for name, tool in tools.items():
-        if not isinstance(name, str) or not name or not isinstance(tool, dict) or set(tool) != TOOL_FIELDS:
+        expected_tool_fields = LEGACY_TOOL_FIELDS if version in {9, 10} else TOOL_FIELDS
+        if not isinstance(name, str) or not name or not isinstance(tool, dict) or set(tool) != expected_tool_fields:
             errors.append(f"tool `{name}` has invalid fields")
             continue
         if not isinstance(tool["optional"], bool):
             errors.append(f"tool `{name}` optional must be a boolean")
-        if not isinstance(tool["host_kind"], str) or not tool["host_kind"]:
-            errors.append(f"tool `{name}` host_kind must be a non-empty string")
         if tool["writer_access"] not in {"workspace_write", "read_only"}:
             errors.append(f"tool `{name}` writer_access must be `workspace_write` or `read_only`")
         if tool["validator_access"] != "read_only":
             errors.append(f"tool `{name}` validator_access must be `read_only`")
-        if not isinstance(tool["root_probe"], str) or not tool["root_probe"]:
-            errors.append(f"tool `{name}` root_probe must be a non-empty string")
+        if version in {9, 10} and (
+            not isinstance(tool["host_kind"], str)
+            or not tool["host_kind"]
+            or not isinstance(tool["root_probe"], str)
+            or not tool["root_probe"]
+        ):
+            errors.append(f"tool `{name}` legacy host binding is invalid")
 
     runtime_providers = policy.get("runtime_providers")
     if not isinstance(runtime_providers, dict) or not runtime_providers:
@@ -732,6 +737,15 @@ def validate(root: Path) -> list[str]:
     for name, selected_tools in toolsets.items():
         if not isinstance(name, str) or not name or not valid_string_list(selected_tools) or len(set(selected_tools)) != len(selected_tools) or not set(selected_tools) <= set(tools):
             errors.append(f"toolset `{name}` is invalid")
+
+    def validate_optional_tools(route_name: str, route: dict[str, Any]) -> None:
+        selected = route.get("optional_tools", [])
+        if not valid_string_list(selected, allow_empty=True) or len(set(selected)) != len(selected):
+            errors.append(f"route `{route_name}` optional_tools must be a unique list of strings")
+        elif not set(selected) <= {tool for tool, definition in tools.items() if definition.get("optional") is True}:
+            errors.append(f"route `{route_name}` optional_tools must reference optional tools")
+        elif version != 11 and selected:
+            errors.append(f"route `{route_name}` optional_tools require harness policy version 11")
 
     verification_profiles = policy.get("verification_profiles")
     if not isinstance(verification_profiles, dict) or not verification_profiles:
@@ -912,6 +926,7 @@ def validate(root: Path) -> list[str]:
                 resolved_default.get("authority") and authorities.get(resolved_default["authority"], {}).get("workspace_write_access") if resolved_default else None,
                 errors,
             )
+            validate_optional_tools(name, route)
             for field, available in (("delegation_profile", delegation_profiles),):
                 if route.get(field) not in available:
                     errors.append(f"route `{name}` has unknown {field} `{route.get(field)}`")
@@ -959,6 +974,7 @@ def validate(root: Path) -> list[str]:
             authorities.get(route.get("authority"), {}).get("workspace_write_access"),
             errors,
         )
+        validate_optional_tools(name, route)
     for code, task_type in follow_up_routes.items():
         route = routes.get(task_type)
         authority = authorities.get(route.get("authority"), {}) if isinstance(route, dict) else {}
