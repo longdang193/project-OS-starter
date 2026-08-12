@@ -704,28 +704,22 @@ def test_v5_packet_resolves_selected_profiles() -> None:
     assert packet["execution_budget"]["finalization_reserve_seconds"] == 60
 
 
-def test_optional_tool_selection_resolves_only_route_authorized_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_plan_review_route_authorizes_optional_ast_grep_preview() -> None:
     harness = load_module()
-    policy = harness._load_policy(ROOT)
-    policy["tools"]["browser"] = {
-        "optional": True,
-        "writer_access": "read_only",
-        "validator_access": "read_only",
-    }
-    policy["routes"]["local_change"]["optional_tools"] = ["browser"]
-    monkeypatch.setattr(harness, "_load_policy", lambda _root: policy)
-    monkeypatch.setattr(harness, "_validate_policy", lambda _root: None)
 
     packet = harness.resolve_managed_packet(
         ROOT,
-        managed_request(tool_selection={"tools": ["browser"], "reason": "verify route behavior"}),
+        managed_request(
+            task_type="plan_review",
+            tool_selection={"tools": ["ast_grep_preview"], "reason": "inspect exact plan patterns"},
+        ),
         attempt_id="attempt-1",
     )
 
-    assert packet["tool_selection"] == {"tools": ["browser"], "reason": "verify route behavior"}
-    assert packet["tools"] == ["shell", "serena", "ast_grep_preview", "browser"]
+    assert packet["tool_selection"] == {"tools": ["ast_grep_preview"], "reason": "inspect exact plan patterns"}
+    assert packet["tools"] == ["shell", "serena", "ast_grep_preview"]
     assert packet["tool_bindings"][-1] == {
-        "tool": "browser",
+        "tool": "ast_grep_preview",
         "optional": True,
         "writer_access": "read_only",
         "validator_access": "read_only",

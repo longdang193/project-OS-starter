@@ -279,6 +279,7 @@ routes:
     skills: [skill-plan-document-reviewer]
     authority: read_only
     toolset: shell_serena
+    optional_tools: [ast_grep_preview]
     verification_profile: read_only
     delegation_profile: disabled
     execution_modes: [single_work_lane, sequential_work_lanes]

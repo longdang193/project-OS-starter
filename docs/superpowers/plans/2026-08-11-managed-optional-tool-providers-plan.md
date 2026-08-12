@@ -184,7 +184,7 @@ binding drift, cleanup, sanitization, and no hidden fallback.
 
 **Steps:**
 - [ ] Reduce core tool descriptors to policy facts only: tool ID, optionality, and lane access. Remove host implementation fields such as `host_kind` and `root_probe` from repository policy and packets.
-- [ ] Add route-owned `optional_tools` allowlists for `browser`, `context7`, and `gitnexus_read`; keep every route's base toolset unchanged when no selection exists.
+- [x] Add one route-owned `optional_tools` allowlist for released host-native `ast_grep_preview`; keep every route's base toolset unchanged when no selection exists. Keep `browser`, `context7`, and `gitnexus_read` unregistered while their provider gates remain unmet.
 - [ ] Add strict `tool_selection` exactly shaped as `{tools, reason}` with unique selected tool names and required reason. Reject unknown, duplicate, unapproved, or empty selections.
 - [ ] Resolve base plus controller-selected optional tool IDs deterministically into packet selection metadata. Do not resolve provider, operation schema, endpoint, executable, or probe details in core routing.
 - [ ] Preserve selection metadata across retry and escalation only through `prepare_attempt()`; reject every selection override. Selection changes require a fresh request.
