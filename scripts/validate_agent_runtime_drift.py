@@ -3,7 +3,6 @@
 name: validate_agent_runtime_drift
 type: script
 domain: validation
-distribution_tier: starter_kit
 responsibility:
   - Validate drift across generated agent artifacts and deployed runtime targets.
   - Execute adapter sync and deploy-runtime checks in deterministic validation order.

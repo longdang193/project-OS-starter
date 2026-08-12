@@ -3,7 +3,6 @@
 name: validate_generated_header_format
 type: script
 domain: validation
-distribution_tier: starter_kit
 responsibility:
   - Validate generated artifact header format for text/markdown and JSON outputs.
 lifecycle:

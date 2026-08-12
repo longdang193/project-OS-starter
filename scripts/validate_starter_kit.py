@@ -47,7 +47,6 @@ CONTENT_SCAN_ROOTS = (
 
 FORBIDDEN_CONTENT_TOKENS = (
     ".codex/agents/",
-    "agent-core/",
     "scripts/sync_agent_adapters.py",
     "scripts/deploy_agent_runtime.py",
     "repo_config/publication-config.json",

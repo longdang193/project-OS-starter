@@ -173,9 +173,7 @@ def build_subprocess_steps(
     prompt_metadata_schema_script = str(root / "scripts" / "validate_prompt_metadata_schema.py")
     repo_config_script = str(root / "scripts" / "validate_repo_config.py")
     agent_metadata_schema_script = str(root / "scripts" / "validate_agent_metadata_schema.py")
-    generated_header_script = str(root / "scripts" / "validate_generated_header_format.py")
     env_gitignore_contract_script = str(root / "scripts" / "validate_env_gitignore_contract.py")
-    agent_runtime_drift_script = str(root / "scripts" / "validate_agent_runtime_drift.py")
 
     steps: list[list[str]] = [
         [python_executable, planning_lifecycle_script],
@@ -183,10 +181,14 @@ def build_subprocess_steps(
         [python_executable, learning_format_script],
         [python_executable, prompt_metadata_schema_script],
         [python_executable, agent_metadata_schema_script],
-        [python_executable, generated_header_script],
         [python_executable, env_gitignore_contract_script],
-        [python_executable, agent_runtime_drift_script, "--skip-deploy-check"],
     ]
+    generated_header_script = root / "scripts" / "validate_generated_header_format.py"
+    if generated_header_script.is_file():
+        steps.append([python_executable, str(generated_header_script)])
+    agent_runtime_drift_script = root / "scripts" / "validate_agent_runtime_drift.py"
+    if agent_runtime_drift_script.is_file():
+        steps.append([python_executable, str(agent_runtime_drift_script), "--skip-deploy-check"])
     steps.append([python_executable, repo_config_script])
     if not fast:
         pytest_targets = [
@@ -251,8 +253,10 @@ def _iter_files_pruned(root: Path) -> list[Path]:
     }
     files: list[Path] = []
     for current_root, dirnames, filenames in os.walk(root):
-        dirnames[:] = [name for name in dirnames if name not in excluded_dirs]
         current_path = Path(current_root)
+        if current_path == root / ".agents":
+            dirnames[:] = [name for name in dirnames if name != "rules"]
+        dirnames[:] = [name for name in dirnames if name not in excluded_dirs]
         for filename in filenames:
             files.append(current_path / filename)
     return files

@@ -8,13 +8,13 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- |
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
-| `AGENTS.md` | Canonical root instruction source |
+| `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 
 ## Generated Runtime Outputs
 
 | Provider | Root instructions | Rules | Native skills | Hooks/settings |
 | --- | --- | --- | --- | --- |
-| Codex | `generated_agents/codex/AGENTS.md` | `generated_agents/codex/rules/*.rules` | `generated_agents/codex/skills/<skill>/SKILL.md` | `generated_agents/codex/hooks.json` |
+| Codex | `generated_agents/codex/AGENTS.md` | none | `generated_agents/codex/skills/<skill>/SKILL.md` | none |
 | Claude | `generated_agents/claude/CLAUDE.md` | `generated_agents/claude/rules/*.md` | `generated_agents/claude/skills/<skill>/SKILL.md` | `generated_agents/claude/settings.json` |
 | Antigravity/Gemini | `generated_agents/antigravity/GEMINI.md` | `generated_agents/antigravity/rules/*.md` | `generated_agents/antigravity/skills/<skill>/SKILL.md` | `generated_agents/antigravity/settings.json` |
 

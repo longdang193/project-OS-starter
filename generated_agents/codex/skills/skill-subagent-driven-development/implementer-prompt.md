@@ -133,7 +133,6 @@ Subagent (general-purpose):
       - rollback/idempotency and real-dependency disposition
       - contract and representative-operation trace evidence when applicable
     - **UI Evidence** when material UI is in scope: rendered viewport/container, supported themes, affected states, keyboard/focus/accessibility, and browser console/runtime result
-    - **Specmatic Evidence** only when plan names it: contract discovery, validation, mock, example, or conformance action and result
     - **TDD Evidence** (if TDD was required for this task):
       - RED: command run, relevant failing output before implementation, and why the failure was expected
       - GREEN: command run and relevant passing output after implementation

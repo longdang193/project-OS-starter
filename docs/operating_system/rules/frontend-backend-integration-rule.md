@@ -14,7 +14,6 @@ distribution_tier: starter_kit
 - Prove material backend behavior directly whether or not frontend exists. Frontend, browser, or consumer evidence extends backend proof; it never substitutes for it.
 - Use `skill-full-stack-integration` when work crosses UI behavior and backend contracts or routes. Use `skill-backend-verification` for direct backend evidence.
 - Use Context7 only for current version-specific external-library documentation not answered by pinned local sources. Treat result as advisory.
-- Use Specmatic only when canonical OpenAPI exists or is deliberately established. Mocks and conformance checks are contract evidence, not replacements for backend or frontend tests.
 - Tool unavailability never blocks safe source-first work and never justifies duplicate contracts, schemas, or documentation.
 
 Operational routing: `docs/operating_system/tooling/frontend-backend-integration-tools.md`.

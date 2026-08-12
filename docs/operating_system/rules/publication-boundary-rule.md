@@ -22,7 +22,6 @@ publication workflow for mirror/export actions.
 - `.agents/`
 - `.cursor/`
 - source-only generation machinery and private build inputs
-- `.codex/rules/`
 - `docs/operating_system/`
 - `docs/superpowers/`
 - `logs/`

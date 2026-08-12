@@ -14,6 +14,7 @@ A private starter repository for carrying forward the repo operating system with
 
 Canonical source layers live in:
 
+- `AGENTS.md` and scoped `AGENTS.md` files
 - `docs/operating_system/`
 - `.agents/skills/`
 - `docs/operating_system/templates/agents/`
@@ -21,17 +22,17 @@ Canonical source layers live in:
 - `configs/`
 - `scripts/`
 
-Generated outputs are downstream artifacts:
+Generated runtime outputs are downstream artifacts:
 
 - `AGENTS.md`
-- `docs/AGENTS.md`
-- `.codex/rules/*.rules`
 
 Do not edit generated outputs directly. Regenerate them from the source layers.
 
+Scoped `AGENTS.md` files are canonical instructions for their directories.
+
 ## Bootstrap A New Project
 
-Start with [docs/adoption_guide.md](docs/adoption_guide.md).
+Start with [Project Adoption Migration](docs/operating_system/adoption/project-adoption-migration-guide.md).
 
 First-hour flow:
 
@@ -52,8 +53,15 @@ First-hour flow:
    - `tests/`
 4. fill `docs/intent/` before deep procedure docs
 5. decide whether the private/public publication procedure applies
-6. review starter governance and shipped root agent docs before adding any
-   source-only factory procedures
+6. review starter governance and shipped root agent docs
+
+## Native Personal-Local Work
+
+Ordinary trusted one-user development uses
+[`native-personal-local`](docs/operating_system/procedures/personal-local-worktree-procedure.md):
+native Git plus Codex. Reuse clean checkout for small reversible work. Use a
+native Git worktree only when existing worktree guidance selects isolation.
+Git owns workspace identity, change evidence, and branch disposition.
 
 ## Agent Memory
 
@@ -61,9 +69,9 @@ Use official MCP Memory Server for verified reusable project knowledge. See `doc
 
 Memory data is private local state outside repository. Source code, tests, ADRs, current governance, and explicit instructions remain authoritative.
 
-## Integration MCPs
+## Optional Documentation MCP
 
-Optional Context7 and Specmatic MCP servers support version-specific library research and OpenAPI contract work. See `docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md` for private Codex setup, smoke tests, fallbacks, and removal.
+Optional Context7 supports version-specific external-library research when pinned local sources do not answer. It is advisory only. See `docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md` for private Codex setup, smoke test, fallback, and removal.
 
 ## Customize First
 
@@ -76,9 +84,7 @@ When bootstrapping a new project, review these first:
 - `docs/architecture.md`
 - `docs/intent/README.md`
 - `docs/operating_system/governance/repo-governance.md`
-- `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/templates/agents/*.template.md`
-- `repo_config/planning_artifact_schema.yaml`
 - `repo_config/planning_artifact_schema.yaml`
 
 ## Optional Nested AGENTS Templates
@@ -109,12 +115,4 @@ Push to the configured public remote when ready:
 The default starter config keeps operating-system docs, skills, adapter sources, generated agent files, and other private-only materials out of the public mirror.
 
 Repo/system configuration lives in `repo_config/`. Optional durable product feature documentation may live in `docs/features/`; code, configuration, schemas, and tests own executable behavior.
-
-## Reusable Documentation Update Prompt
-
-Use this reusable prompt when updating docs in any project:
-
-- `docs/prompts/docs-update-prompt.md`
-
-Keep it generic and repo-agnostic. Apply with a separate README-only prompt when needed.
 

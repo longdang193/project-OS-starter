@@ -74,7 +74,8 @@ Implementation plan owns exact files, task order, commands, dependencies, rollou
 
 - Use native tools for direct file inspection, local search, configuration, tests, and repository state.
 - Use Serena for exact symbols, definitions, callers, references, implementations, and diagnostics.
-- Use GitNexus for broad flows, dependency impact, duplication, or ownership analysis when fresh and materially useful.
+- Use `semble_codebase_search` for unknown-location code discovery or similar implementations.
+- Use private read-only GitNexus for broad flows, dependency impact, duplication, or ownership analysis only when available, fresh, and materially useful.
 - Use domain MCP tools for external services, databases, models, reports, or platform state.
 - Do not query every tool by default. Source and tests remain authoritative.
 

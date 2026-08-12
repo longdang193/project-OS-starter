@@ -66,11 +66,13 @@ def make_manifest(repo_root: Path) -> Path:
         {
             "outputRoot": "project-OS-starter-kit",
             "requiredPaths": [
+                ".gitignore",
                 "AGENTS.md",
                 "GEMINI.md",
                 "CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
+                "requirements.txt",
                 "docs/superpowers/plans",
             ],
             "forbiddenPaths": [
@@ -82,11 +84,13 @@ def make_manifest(repo_root: Path) -> Path:
                 "tests/test_deploy_agent_runtime.py",
             ],
             "copyPaths": [
+                ".gitignore",
                 "AGENTS.md",
                 "generated_agents/antigravity/GEMINI.md",
                 "generated_agents/claude/CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
+                "requirements.txt",
                 "docs/operating_system",
             ],
             "omitPaths": [
@@ -103,6 +107,8 @@ def make_manifest(repo_root: Path) -> Path:
 def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
+    write_text(repo_root / ".gitignore", ".env\n")
+    write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "antigravity" / "GEMINI.md", "# gemini\n")
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")
     write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
@@ -119,10 +125,12 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
 
     kit_root = output_root / "project-OS-starter-kit"
     assert (kit_root / "AGENTS.md").exists()
+    assert (kit_root / ".gitignore").exists()
     assert (kit_root / "GEMINI.md").exists()
     assert (kit_root / "CLAUDE.md").exists()
     assert (kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md").exists()
     assert (kit_root / "repo_config" / "planning_artifact_schema.yaml").exists()
+    assert (kit_root / "requirements.txt").exists()
     assert (kit_root / "docs" / "superpowers" / "plans").is_dir()
     assert not (kit_root / "docs" / "operating_system" / "runtime").exists()
     assert not (kit_root / ".codex").exists()
@@ -166,6 +174,8 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
 def test_build_starter_kit_fails_when_generated_root_instruction_missing(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
+    write_text(repo_root / ".gitignore", ".env\n")
+    write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")
     write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")

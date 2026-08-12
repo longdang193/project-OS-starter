@@ -99,7 +99,7 @@ Examples:
 - `.agents/`
 - `.cursor/`
 - `docs/superpowers/`
-- starter adoption/bootstrap docs such as `docs/adoption_guide.md`
+- starter adoption/bootstrap docs such as `docs/operating_system/adoption/project-adoption-migration-guide.md`
 - logs/debug artifacts
 - internal prompts/workflow docs
 - abandoned experiments

@@ -41,6 +41,12 @@ Verification makes closure actions eligible. User authorization selects action.
 
 Do not commit, fetch, pull, create branch, rebase, merge, push, create or update pull request, apply or drop stash, delete branch, prune metadata, or remove worktree without explicit authorization for that action.
 
+Never infer a file is “superseded.” Before reconciliation can remove or overwrite
+content, show every overlapping file with hashes and diff summary, then require an
+explicit per-file disposition: **restore**, **reconcile**, **keep current**, or
+**delete**. Unknown files default to **preserve**. Never drop a stash or run `git clean`
+before disposition approval.
+
 ## 1. Reconfirm Repository State
 
 Inspect without mutation:
@@ -170,6 +176,40 @@ When fast-forward is impossible or conflicts exist, report:
 - exact conflicting or overlapping files when known
 - smallest resolution option
 
+Before rebase, merge, conflict resolution, stash apply or pop, reset, checkout
+restore, worktree cleanup, or deletion, collect and show evidence for every
+overlapping file, including tracked, untracked, ignored, conflict, and stash-only
+files:
+
+- path and source state: base, lane, current worktree, index, untracked, or stash ID
+- blob or content hashes for each available source
+- concise diff summary and diff stat for each differing source pair
+
+Use read-only evidence commands as applicable:
+
+```powershell
+git diff --name-status <base>...<lane>
+git diff --stat <base>...<lane>
+git diff --summary <base>...<lane>
+git diff --name-status
+git diff --cached --name-status
+git ls-files --others --ignored --exclude-standard
+git stash show --name-status <stash-id>
+git stash show --stat <stash-id>
+git rev-parse <ref>:<path>
+git hash-object -- <path>
+```
+
+Require explicit disposition for each listed file:
+
+- **restore**: name exact source ref or stash version to restore
+- **reconcile**: name intended combined result; stop for semantic choice
+- **keep current**: preserve current worktree or index version
+- **delete**: require explicit destructive confirmation for that path
+
+Preserve every file without approved disposition. Identical names, matching paths,
+timestamps, partial overlap, or later commits never prove a file is superseded.
+
 Allowed proposals:
 
 - rebase lane onto base
@@ -192,6 +232,10 @@ When explicitly authorized lane-related stash is used or pre-existing lane stash
 - resolved files
 - verification rerun result
 - whether lane-related stash remains
+
+Never run `git stash drop`, `git stash clear`, or `git stash pop` before every
+affected file has approved disposition. Prefer `git stash apply` until disposition
+approval and verification complete. Never run `git clean` before disposition approval.
 
 Unrelated historical stashes remain untouched. Closure is blocked only by unresolved lane-related stash.
 
@@ -255,6 +299,7 @@ Stop when:
 - detached HEAD lacks approved branch destination
 - network, credentials, or repository policy blocks selected action
 - lane-related stash remains unresolved
+- overlapping file lacks approved disposition
 - destructive confirmation is missing
 
 ## Red Flags
@@ -265,6 +310,8 @@ Stop when:
 - checking out base inside lane worktree without topology inspection
 - pushing base when pull-request path was selected
 - using stash to hide dirty state
+- inferring a file is superseded
+- dropping a stash or running `git clean` before per-file disposition approval
 - deleting worktree directory directly
 - cleaning native-managed workspace with manual Git commands
 - treating publication as branch finishing

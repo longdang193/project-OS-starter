@@ -77,14 +77,14 @@ Canonical sources are edited directly; generated surfaces are regenerated.
 - `.agents/skills/` is canonical skill source.
 - `docs/operating_system/rules/` and rules are canonical governance sources.
 - `generated_agents/` contains provider packaging.
-- `.agents/rules/` and `.codex/rules/` are generated adapter surfaces where configured.
+- `.agents/rules/` is generated from canonical rules for supported local runtimes.
 - `generated_exports/project-OS-starter-kit/` is disposable starter output.
 
 If generated output conflicts with canonical source, fix source or mapping and regenerate. Never maintain both manually.
 
 ## Code Intelligence
 
-Use native tools for local work, Serena for exact symbols and references, and GitNexus for broad flows or impact when fresh. Do not query both by default. Source and tests win every conflict; optional tooling never blocks safe work.
+Use native tools for local work, Serena for exact symbols and references, `semble_codebase_search` for unknown-location code discovery, and `ast_grep_preview` for structural preview when available. Use private read-only GitNexus for broad flows or impact only when available and fresh. Do not query multiple tools for the same fact by default. Source and tests win every conflict; optional tooling never blocks safe work.
 
 Detailed policy lives in `docs/operating_system/tooling/code-intelligence-tools.md`.
 

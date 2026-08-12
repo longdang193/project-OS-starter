@@ -29,6 +29,7 @@ ledger and the tool results carry the record.
 ## Ownership And Preconditions
 
 - `skill-executing-plans` owns general approved-plan execution invariants; this skill specializes that execution through sequential fresh implementers and per-task reviewers.
+- When dispatching subagents, follow the active `Subagent Routing` policy. Select the agent type explicitly and never override its template model or reasoning effort.
 - Tasks must be separable enough for isolated briefs, but implementers remain sequential in one workspace.
 - Explicit authorization for per-task commits is required because `scripts/review-package` uses recorded commit ranges. Without that authorization, use `skill-executing-plans` directly.
 - Use `skill-using-git-worktrees` when isolation materially reduces risk; an already-safe workspace does not require a new worktree.

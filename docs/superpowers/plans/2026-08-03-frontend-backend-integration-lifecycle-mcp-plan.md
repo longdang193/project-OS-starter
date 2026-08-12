@@ -16,7 +16,7 @@ targets:
 
 ## Goal
 
-Add a lightweight draft-spec-to-prototype-to-final-spec lifecycle, make UI intent and integration ownership unambiguous, require direct backend test/state/trace proof whether or not a frontend exists, deliver cross-boundary work through traceable vertical slices, and install Context7 and Specmatic MCP support with stage-specific guidance that preserves source, contracts, tests, and runtime evidence as truth.
+Add a lightweight draft-spec-to-prototype-to-final-spec lifecycle, make UI intent and integration ownership unambiguous, require direct backend test/state/trace proof whether or not a frontend exists, deliver cross-boundary work through traceable vertical slices, and install bounded Context7 MCP support that preserves source, contracts, tests, and runtime evidence as truth.
 
 ## Implementation Outcomes
 
@@ -36,9 +36,9 @@ Plans divide frontend/backend features by complete user capability rather than f
 
 Every material backend behavior change has direct boundary proof, important business and failure-path proof, final state or side-effect assertions, and fresh automated test output. Contract, real-dependency, trace, and browser evidence are selected by applicability. Frontend or consumer verification extends backend proof; it never substitutes for it.
 
-### Context7 And Specmatic Are Available And Bounded
+### Context7 Is Available And Bounded
 
-Codex can access Context7 for current version-specific library documentation and Specmatic for canonical OpenAPI inspection, mocks, examples, and contract conformance. Neither MCP becomes an architecture, contract, source, test, or runtime owner; absence of either tool falls back to pinned documentation, existing contract tooling, source, and tests.
+Codex can access Context7 for current version-specific library documentation. It never becomes an architecture, contract, source, test, or runtime owner; absence falls back to pinned documentation, existing contract tooling, source, and tests.
 
 ### Canonical And Generated Surfaces Stay Synchronized
 
@@ -59,14 +59,14 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 
 ## Task Breakdown
 
-### Task 1: Install And Document Integration MCP Servers
+### Task 1: Install And Document Context7
 
 **Purpose:**
-- Make Context7 and Specmatic available in Codex through private machine configuration and add one reusable setup, smoke-test, fallback, and removal procedure to the starter repository.
+- Make Context7 available in Codex through private machine configuration and add one reusable setup, smoke-test, fallback, and removal procedure to the starter repository.
 
 **Specification Coverage:**
-- Context7 and Specmatic are installed without repository credentials or machine-specific committed paths.
-- Current machine uses remote Context7 and Docker-backed Specmatic because Docker is available and Java is not installed.
+- Context7 is installed without repository credentials or machine-specific committed paths.
+- Current machine uses remote Context7.
 - MCP availability is proven with temporary evidence that leaves no repository artifact.
 
 **Required Skills:**
@@ -80,29 +80,26 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - Verify: Codex MCP tool inventory after restart
 
 **Dependencies:**
-- Docker Desktop running for Specmatic
-- Network access to `https://mcp.context7.com/mcp` and official Specmatic container registry
+- Network access to `https://mcp.context7.com/mcp`
 - Existing MCP configuration preserved, including tool allowlists and environment sections
 
 **Steps:**
 - [ ] Add remote Context7 configuration using `[mcp_servers.context7]` with `url = "https://mcp.context7.com/mcp"`.
-- [ ] Add Docker-backed Specmatic configuration using `docker run --rm -i -v .:/usr/src/app specmatic/specmatic mcp server`, with a 120-second startup timeout. Document that `.` must resolve to the active project workspace; clients that launch from another directory must use a private absolute path.
 - [ ] Keep credentials, API keys, tokens, local caches, and generated MCP state outside repository files.
 - [ ] Document Windows Codex setup, Docker prerequisite, optional vendor authentication boundary, restart requirement, tool-specific smoke tests, source-first fallback, and removal steps.
 - [ ] Restart Codex so both servers register.
 - [ ] Smoke Context7 by resolving one installed library and retrieving version-relevant documentation.
-- [ ] Smoke Specmatic against a temporary minimal OpenAPI file under `.tmp-tests/mcp-smoke/`, confirm discovery and validation, then remove temporary files.
 
 **Verification:**
 - [ ] `docker info`
 - Expected: Docker daemon responds successfully.
-- [ ] Codex tool inventory contains Context7 documentation tools and Specmatic specification tools after restart.
+- [ ] Codex tool inventory contains Context7 documentation tools after restart.
 - Expected: both servers initialize without exposing credentials or committing local configuration.
 - [ ] `git status --short`
 - Expected: only intended repository documentation changes appear; no `.codex`, MCP cache, temporary OpenAPI file, or credential file appears.
 
 **Exit Criteria:**
-- Context7 and Specmatic complete one clean temporary smoke test each, setup documentation is reproducible, and no private runtime state enters Git.
+- Context7 completes one clean smoke test, setup documentation is reproducible, and no private runtime state enters Git.
 
 ### Task 2: Establish Integration Ownership And Tool Routing
 
@@ -112,7 +109,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 **Specification Coverage:**
 - Brief, draft spec, prototype, final spec, canonical contract, plan, sidecar, code, tests, and runtime evidence have non-overlapping ownership.
 - Backend task-local verification remains required when no frontend, browser flow, or integration sidecar exists.
-- Context7 answers library-documentation questions; Specmatic answers canonical contract, mock, example, and conformance questions.
+- Context7 answers version-specific library-documentation questions.
 - Existing Serena, GitNexus, DeepWiki, Playwright, and Chrome DevTools responsibilities remain unchanged and non-duplicated.
 
 **Required Skills:**
@@ -132,7 +129,6 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 **Steps:**
 - [ ] Define hard invariants: one specification owner, one transport-contract owner, prototypes as evidence rather than truth, sidecars as temporary mapping/evidence, vertical slices, and source/test/runtime precedence.
 - [ ] Define Context7 routing: use only for current version-specific external library documentation when local pinned source or maintained docs do not answer question; record library/version context; treat output as advisory.
-- [ ] Define Specmatic routing: use only when canonical OpenAPI exists or is deliberately established; reference rather than copy schemas; use mocks and conformance checks as contract evidence rather than replacements for backend/frontend tests.
 - [ ] Define backend evidence profiles: direct boundary, business/failure, state/side-effect, and fresh automated proof are required; contract, real dependency, trace, performance, and browser proof are conditional on changed behavior and approved claims.
 - [ ] Define trace verification as reconstruction of one representative operation using existing logs, trace/correlation IDs, job/message IDs, dependency records, or test instrumentation; do not require new observability infrastructure for every backend change.
 - [ ] Keep Grafana, Postman, database, and GitHub MCPs as optional target-project profiles with active consumers; do not add them to default Codex setup in Task 1.
@@ -148,7 +144,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 **Verification:**
 - [ ] `rg -n "skill-brainstorming|skill-spec-drafting|skill-backend-verification|skill-full-stack-integration|skill-frontend-component-engineering|skill-executing-plans|skill-subagent-driven-development|skill-systematic-debugging|skill-verification-before-completion" docs/operating_system/tooling/frontend-backend-integration-tools.md docs/operating_system/templates/agents/root-AGENTS.template.md`
 - Expected: routing matrix names every lifecycle owner once and root instructions contain only concise activation guidance.
-- [ ] `rg -n "Context7|Specmatic|backend verification|direct boundary|draft spec|prototype|integration.*sidecar|vertical slice" docs/operating_system/rules docs/operating_system/tooling docs/operating_system/README.md`
+- [ ] `rg -n "Context7|backend verification|direct boundary|draft spec|prototype|integration.*sidecar|vertical slice" docs/operating_system/rules docs/operating_system/tooling docs/operating_system/README.md`
 - Expected: one canonical rule owns invariants, one tooling guide owns operational routing, and index text only links to owners.
 - [ ] Review new files against `docs/operating_system/governance/repo-governance.md`.
 - Expected: no duplicated planning process, transport schema, UI checklist, or client setup instructions across ownership layers.
@@ -237,7 +233,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - [ ] Route `skill-brainstorming` to draft spec when prototype work needs stable behavioral guidance, while retaining direct approved scope for local design-clear work.
 - [ ] Extend planning dispatch with concise method routing: backend proof uses `skill-backend-verification`; matching frontend/backend contract work uses `skill-full-stack-integration`; failures return to `skill-systematic-debugging`; final completion uses `skill-verification-before-completion`.
 - [ ] Link brainstorming and specification skills to the integration tooling guide only when external library, contract, prototype, or backend-verification evidence is material; avoid mandatory reads for ordinary planning work.
-- [ ] Add Context7 as optional evidence for external framework constraints and Specmatic as optional contract-feasibility evidence without letting either tool own specification decisions.
+- [ ] Add Context7 as optional evidence for external framework constraints without letting it own specification decisions.
 - [ ] Update detailed template guidance for approved user flow, UI behavior/state transitions, prototype reference, contract requirements, observability intent, and unresolved approved deferrals.
 - [ ] Add backend verification intent covering direct boundary, expected state or side effects, important failure behavior, contract applicability, real dependencies, and representative-operation traceability.
 - [ ] Update prompt wording to support draft creation and final materialization instead of jumping directly to frozen detailed specification.
@@ -289,7 +285,6 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - [ ] Keep aesthetic direction in `skill-distinctive-frontend-design`; treat prototypes and rendered comparisons as evidence feeding specification approval.
 - [ ] Gate `ui-ux-pro-max` by declared target platform and existing project design-system ownership; prohibit automatic persistence of `design-system/MASTER.md` or page overrides when canonical design system already exists.
 - [ ] Add Context7 only for version-specific UI framework or accessibility-library documentation; keep Playwright and Chrome DevTools routing unchanged.
-- [ ] Add Specmatic to full-stack integration only when canonical OpenAPI exists, using it for mock/conformance evidence before and after real backend integration.
 - [ ] Require `skill-full-stack-integration` to invoke `skill-backend-verification` for direct backend, state, failure, dependency, contract, and representative-operation evidence before accepting browser/client proof.
 - [ ] Make frontend/backend integration rule refer agents to `skill-full-stack-integration` for cross-boundary method and `skill-backend-verification` for backend proof; make frontend UI rule refer to full-stack skill only when contract or route work exists.
 - [ ] Give `skill-full-stack-integration` one conditional tooling-guide reference and explicit handoffs to backend verification, frontend component engineering, Playwright/DevTools evidence, and final verification without copying those methods.
@@ -299,7 +294,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 **Verification:**
 - [ ] `rg -n "temporary UI intent" AGENTS.md docs .agents generated_agents --glob '!docs/superpowers/plans/**'`
 - Expected: no active canonical or generated guidance retains obsolete sidecar ownership after synchronization.
-- [ ] `rg -n "Context7|Specmatic|ui-ux-pro-max|Playwright MCP|Chrome DevTools MCP|skill-backend-verification" docs/operating_system/rules/frontend-ui-rule.md .agents/skills/skill-distinctive-frontend-design .agents/skills/skill-frontend-component-engineering .agents/skills/skill-full-stack-integration`
+- [ ] `rg -n "Context7|ui-ux-pro-max|browser.test|skill-backend-verification" docs/operating_system/rules/frontend-ui-rule.md .agents/skills/skill-distinctive-frontend-design .agents/skills/skill-frontend-component-engineering .agents/skills/skill-full-stack-integration`
 - Expected: tools have distinct questions, platform-safe activation, and source-first fallback.
 
 **Exit Criteria:**
@@ -314,7 +309,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - Frontend/backend work is not decomposed into isolated frontend and backend phases.
 - Backend-only tasks select direct boundary, state, failure, dependency, contract, and trace evidence without requiring a frontend sidecar.
 - `subagent-ready` means approved plan, separable sequential tasks, same-session coordination, and explicit per-task commit authorization.
-- Context7 and Specmatic are named only when task-local questions require them.
+- Context7 is named only when task-local questions require it.
 
 **Required Skills:**
 - `skill-writing-skills`
@@ -347,7 +342,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - [ ] Tighten `subagent-ready` selection to match `skill-subagent-driven-development` preconditions and name `skill-executing-plans` as fallback without commit authorization.
 - [ ] Require backend task plans to name applicable direct boundary, final state or side effects, important failures, rollback/idempotency behavior, real dependencies, contract evidence, and representative-operation trace mechanism.
 - [ ] Require frontend integration tasks additionally to name final spec, prototype reference when material, canonical contract owner, integration sidecar, browser flow, and sidecar removal condition.
-- [ ] Require implementer reports to include applicable backend test/state/failure/trace evidence; material UI tasks add rendered viewport/theme/accessibility/state evidence; Specmatic tasks add contract discovery, validation, mock, or conformance evidence named by plan.
+- [ ] Require implementer reports to include applicable backend test/state/failure/trace evidence and material UI rendered viewport/theme/accessibility/state evidence.
 - [ ] Require task reviewers to reject frontend-only proof for backend claims and treat missing required backend, browser, or contract evidence as spec-compliance findings without rerunning broad suites or expanding task scope.
 - [ ] Preserve fresh implementer, task review, fix/re-review, final broad review, and final verification sequence.
 - [ ] Resolve every canonical `skill-parallel-execution` reference by expanding `skill-dispatching-parallel-agents` to own approved disjoint concurrent lanes as well as investigation fan-out, then update executing, planning, refactoring, subagent, and `skill-using-superpowers` tool-reference guidance to reference the existing owner.
@@ -356,7 +351,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - [ ] Keep subagent skill dependent on plan `Required Skills`; do not hardcode every backend, frontend, contract, or tooling skill into every implementer brief.
 
 **Verification:**
-- [ ] `rg -n "vertical capability|Commit policy|skill-backend-verification|direct backend|state.*failure|representative trace|Context7|Specmatic|browser evidence|contract evidence" .agents/skills/skill-writing-plans docs/operating_system/templates/implementation-plan-template.md .agents/skills/skill-subagent-driven-development`
+- [ ] `rg -n "vertical capability|Commit policy|skill-backend-verification|direct backend|state.*failure|representative trace|Context7|browser evidence|contract evidence" .agents/skills/skill-writing-plans docs/operating_system/templates/implementation-plan-template.md .agents/skills/skill-subagent-driven-development`
 - Expected: plan, implementer, and reviewer contracts agree without repeating full MCP or frontend rules.
 - [ ] `python -m pytest tests/test_validate_agent_metadata_schema.py -q`
 - Expected: canonical routing references resolve; missing `skill-*` identifiers and canonical rule paths are rejected with actionable locations.
@@ -400,7 +395,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - [ ] Run stale-reference searches for obsolete sidecar wording, duplicate draft artifacts, unsupported universal `ui-ux-pro-max` routing, copied schema guidance, frontend-only backend proof, and mandatory observability infrastructure.
 - [ ] Run routing-reference validation and inspect root/rule/skill handoffs for missing, circular, or duplicated ownership.
 - [ ] Inspect `git diff --check`, generated headers, and working-tree status.
-- [ ] Re-run Context7 and Specmatic temporary smoke tests after final configuration and documentation settle.
+- [ ] Re-run Context7 smoke test after final configuration and documentation settle.
 
 **Verification:**
 - [ ] `python scripts/sync_agent_adapters.py --all-platforms`
@@ -412,7 +407,7 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - [ ] `python -m pytest tests/test_validate_agent_metadata_schema.py tests/test_validate_template_required_sections.py tests/test_sync_agent_adapters.py tests/test_starter_kit_generation.py -q`
 - [ ] `git diff --check`
 - Expected: every command exits successfully; generated and starter-kit surfaces match canonical sources.
-- [ ] `rg -n "temporary UI intent|design-system/MASTER.md.*must|Context7.*(source of truth|authoritative)|Specmatic.*(contract owner|source of truth)|frontend-only proof is sufficient|Grafana.*required|OpenTelemetry.*required" AGENTS.md docs .agents generated_agents generated_exports --glob '!docs/superpowers/plans/**'`
+- [ ] `rg -n "temporary UI intent|design-system/MASTER.md.*must|Context7.*(source of truth|authoritative)|frontend-only proof is sufficient|Grafana.*required|OpenTelemetry.*required" AGENTS.md docs .agents generated_agents generated_exports --glob '!docs/superpowers/plans/**'`
 - Expected: no stale or ownership-violating active guidance remains.
 - [ ] Run routing resolver from `scripts/validate_agent_metadata_schema.py` through `python scripts/validate_agent_metadata_schema.py`.
 - Expected: every active skill reference resolves; every required read and explicit rule/skill path exists.
@@ -428,9 +423,8 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 
 - Repository implementation, generated adapters, deployed Codex runtime, and starter-kit rebuild are complete.
 - Context7 direct MCP initialization returned HTTP 200 and protocol metadata.
-- Specmatic `v2.51.1` MCP server started, discovered temporary OpenAPI 3.0.3 contract, and validated one external example; temporary files were removed.
 - Focused tests, full `68`-test suite, repository contracts, adapter checks, starter-kit validation, runtime drift, metadata resolver, template validators, and `git diff --check` pass.
-- Fresh Codex MCP evidence passed: Context7 resolved `/python/cpython` and retrieved current `tomllib` documentation; Specmatic listed active mock servers successfully.
+- Fresh Codex MCP evidence passed: Context7 resolved `/python/cpython` and retrieved current `tomllib` documentation.
 - External MCP verification complete. Plan status is `completed`.
 
 - `python scripts/validate_planning_lifecycle.py`
@@ -442,7 +436,6 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 - `python -m pytest tests/test_validate_agent_metadata_schema.py tests/test_validate_template_required_sections.py tests/test_sync_agent_adapters.py tests/test_starter_kit_generation.py -q`
 - `git diff --check`
 - Context7 smoke: resolve one pinned library and retrieve version-relevant documentation after Codex restart.
-- Specmatic smoke: discover and validate one temporary minimal OpenAPI contract, then confirm temporary files are removed.
 - Backend verification inspection: direct backend proof exists independently of frontend proof; required and conditional evidence remain distinct.
 - Routing inspection: root instructions and planning dispatch provide concise triggers, rules point to method skills, skills hand off to adjacent owners, and all active `skill-*` references resolve.
 - Ownership inspection: one draft/final spec path, one canonical transport contract, sidecar limited to mapping/evidence, and no duplicated UI or MCP guidance.
@@ -451,13 +444,13 @@ Agents receive concise triggers from root instructions and planning dispatch, ha
 
 The plan is ready for completion verification when:
 
-1. Context7 and Specmatic initialize in Codex and pass clean temporary smoke tests without committed credentials or machine state.
+1. Context7 initializes in Codex and passes a clean smoke test without committed credentials or machine state.
 2. Draft and detailed specifications share one validated artifact lifecycle and target path.
 3. Prototype evidence can refine draft before same specification becomes approved implementation truth.
 4. Material backend behavior changes have direct boundary, business/failure, state or side-effect, and fresh automated proof whether or not a frontend exists.
 5. Contract, real-dependency, trace, performance, and browser evidence are selected by applicability; no universal Grafana, OpenTelemetry, correlation-ID framework, database MCP, or eight-layer test requirement exists.
 6. UI intent, visual direction, component state, transport contract, integration mapping, backend verification, and runtime evidence each have one canonical owner.
-7. Context7 and Specmatic have precise stage-specific activation, handoff, evidence, and fallback guidance.
+7. Context7 has precise stage-specific activation, handoff, evidence, and fallback guidance.
 8. Backend and frontend/backend plans use complete capability slices and subagent execution honors settled behavior, commit authorization, direct backend proof, and required UI/contract evidence.
 9. Canonical rules, skills, templates, prompts, generated adapters, tests, README guidance, and starter-kit output are synchronized.
 10. Root instructions, planning dispatch, rules, and skills use one canonical stage-to-rule-to-skill routing matrix; all active skill identifiers and canonical rule paths resolve, and no nonexistent `skill-parallel-execution` link remains.

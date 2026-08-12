@@ -52,7 +52,7 @@ Classify current state:
 - linked worktree on named branch
 - linked worktree at detached HEAD
 - submodule rather than worktree
-- harness-managed isolated workspace
+- externally managed isolated workspace
 
 If already in suitable isolated workspace, reuse it. Do not create nested worktree.
 

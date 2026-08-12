@@ -77,9 +77,9 @@ Keep these procedures separate:
 - starter-kit procedure -> build consume-only clone-ready starter output
 - public mirror procedure -> curate product-facing public export
 - source-only adapter regeneration procedure -> maintain private factory/runtime
-  generation surfaces
+  generation surfaces outside starter output
 - private runtime-bundle procedures -> maintain local provider/runtime deployment
-  surfaces when applicable
+  surfaces outside starter output
 
 The starter kit ships final root instruction files for downstream use, but it
 must not ship downstream adapter-regeneration machinery.

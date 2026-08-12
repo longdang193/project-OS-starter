@@ -1,5 +1,3 @@
-# GENERATED FILE - do not edit directly.
-# Source: `docs/operating_system/templates/agents/docs-AGENTS.template.md`
 # Docs Instructions
 
 This directory contains product docs, generated discovery, and operating-system docs.

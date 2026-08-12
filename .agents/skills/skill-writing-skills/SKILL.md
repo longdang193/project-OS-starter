@@ -18,7 +18,7 @@ You write test cases (pressure scenarios with subagents), watch them fail (basel
 
 **REQUIRED BACKGROUND:** You MUST understand superpowers:skill-test-driven-development before using this skill. That skill defines the fundamental RED-GREEN-REFACTOR cycle. This skill adapts TDD to documentation.
 
-**Official guidance:** Follow the Codex Skills model first: one focused workflow per skill, `SKILL.md` as the entrypoint, and optional `scripts/`, `references/`, `assets/`, or `agents/openai.yaml` only when they materially help. The bundled `anthropic-best-practices.md` remains a supplemental historical reference, not the primary contract.
+**Official guidance:** Follow the Codex Skills model first: one focused workflow per skill, `SKILL.md` as the entrypoint, and optional `scripts/`, `references/`, `assets/`, or `agents/openai.yaml` only when they materially help.
 
 ## What is a Skill?
 

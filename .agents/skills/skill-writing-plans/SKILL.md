@@ -43,7 +43,7 @@ stop and use `skill-spec-drafting`.
 - Read the approved specification in full when one exists.
 - Use `docs/operating_system/templates/implementation-plan-template.md` when saving a canonical plan.
 - Read governance only when ownership, generation, publication, or repository boundaries affect execution.
-- Use native tools for local file mapping, Serena for exact symbols and references, and GitNexus for broad flow or impact when fresh and materially useful. Do not query both by default.
+- Use native tools for local file mapping, Serena for exact symbols and references, `semble_codebase_search` for unknown-location discovery, and private read-only GitNexus for broad flow or impact only when available, fresh, and materially useful. Do not query multiple tools for the same fact by default.
 - Read related execution skills only when the chosen execution approach requires them.
 - Name `ui-ux-pro-max` only for tasks requiring material visual or interaction judgment, and include rendered viewport, theme, and accessibility proof for those tasks.
 - Name `skill-performance-optimization` only for explicit performance requirements or measured regressions. Performance tasks must identify baseline command or evidence source, representative workload and environment, target metric, threshold owner, and regression proof.

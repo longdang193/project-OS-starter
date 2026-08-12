@@ -98,6 +98,31 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
     assert not any("validate_python_meta_headers.py" in step for step in rendered)
 
 
+def test_build_subprocess_steps_skips_factory_only_validators_when_absent(tmp_path: Path) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in (
+        "validate_planning_lifecycle.py",
+        "validate_template_required_sections.py",
+        "validate_learning_materials_format.py",
+        "validate_prompt_metadata_schema.py",
+        "validate_agent_metadata_schema.py",
+        "validate_env_gitignore_contract.py",
+        "validate_repo_config.py",
+    ):
+        write_text(scripts / name, "")
+
+    steps = VALIDATOR.build_subprocess_steps(
+        root=tmp_path,
+        python_executable="python",
+        fast=True,
+    )
+
+    rendered = [" ".join(step) for step in steps]
+    assert not any("validate_generated_header_format.py" in step for step in rendered)
+    assert not any("validate_agent_runtime_drift.py" in step for step in rendered)
+
+
 def test_starter_kit_classification_constants_match_contract() -> None:
     assert VALIDATOR.STARTER_KIT_DISTRIBUTION_TIER == "starter_kit"
     assert VALIDATOR.STARTER_KIT_CLASSIFICATION_ENFORCEMENT == "fail"
@@ -197,6 +222,25 @@ type: script
 distribution_tier: starter_kit
 \"\"\"
 """,
+    )
+
+    issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
+
+    assert issues == []
+
+
+def test_starter_kit_classification_ignores_generated_local_rule_mirror(tmp_path: Path) -> None:
+    write_text(
+        tmp_path / "repo_config" / "starter-kit-manifest.json",
+        '{"copyPaths": ["docs/operating_system/rules"]}\n',
+    )
+    write_text(
+        tmp_path / "docs" / "operating_system" / "rules" / "sample-rule.md",
+        "---\ndistribution_tier: starter_kit\n---\n# Rule\n",
+    )
+    write_text(
+        tmp_path / ".agents" / "rules" / "sample-rule.md",
+        "---\ndistribution_tier: starter_kit\n---\n# Generated Rule\n",
     )
 
     issues = VALIDATOR.validate_starter_kit_classification(tmp_path)

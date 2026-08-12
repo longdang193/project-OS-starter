@@ -2,13 +2,18 @@
 
 ## Contract
 
-1. `AGENTS.md` is the shared global baseline contract.
+1. `AGENTS.md` is the generated shared global baseline contract.
 2. `~/.codex`, `~/.claude`, `~/.gemini` are runtime targets.
 3. Runtime targets are generated and deployed only.
 4. Canonical edits happen in repo sources only:
+   - `AGENTS.md` and scoped `AGENTS.md` files
    - `docs/operating_system/`
    - `.agents/skills/`
-   - `AGENTS.md`
+   - `docs/operating_system/templates/agents/root-AGENTS.template.md`
+
+Scoped `AGENTS.md` files are canonical instructions for their directories.
+`docs/operating_system/rules/` is canonical rule source. Adapter sync mirrors it
+to `.agents/rules/` for supported local runtimes.
 
 ## Generate
 

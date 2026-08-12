@@ -3,7 +3,6 @@
 name: sync_agent_adapters
 type: script
 domain: governance
-distribution_tier: starter_kit
 responsibility:
   - Generate runtime adapter artifacts from canonical adapter mappings.
   - Enforce role-aware source inclusion/omission during adapter sync.

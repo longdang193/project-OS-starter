@@ -57,7 +57,7 @@ Do not load every reference for every review.
 
 ## Code Intelligence
 
-Use native tools for direct evidence and local search. Use Serena for exact symbols and references. Use GitNexus for broad dependency, duplication, ownership, or implementation-path analysis when fresh and materially useful. Do not query both by default. Source and tests remain authoritative.
+Use native tools for direct evidence and local search. Use Serena for exact symbols and references. Use `semble_codebase_search` for unknown-location discovery. Use private read-only GitNexus for broad dependency, duplication, ownership, or implementation-path analysis only when available, fresh, and materially useful. Do not query multiple tools for the same fact by default. Source and tests remain authoritative.
 
 ## Review Process
 

@@ -52,7 +52,7 @@ Do not load every linked document or skill by default.
 
 ## Code Intelligence
 
-Use native tools for direct file inspection and local search. Use Serena for exact symbols and references. Use GitNexus for broad flows or impact when fresh and materially useful. Do not query both by default. Source and tests remain authoritative.
+Use native tools for direct file inspection and local search. Use Serena for exact symbols and references. Use `semble_codebase_search` for unknown-location discovery. Use private read-only GitNexus for broad flows or impact only when available, fresh, and materially useful. Do not query multiple tools for the same fact by default. Source and tests remain authoritative.
 
 Before modifying a shared symbol, route, validator, generator, or orchestration function, inspect its direct consumers and affected tests. Fix root cause at the narrowest shared owner.
 
