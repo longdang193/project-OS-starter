@@ -2,7 +2,6 @@
   "outputRoot": "project-OS-starter-kit",
   "copyPaths": [
     "agents",
-    ".deepagents/agents",
     ".agents/skills",
     ".gitignore",
     "AGENTS.md",
@@ -19,6 +18,8 @@
     "scripts/publish_public_repo.ps1",
     "scripts/setup_hooks.ps1",
     "scripts/setup_hooks.sh",
+    "scripts/dcode_project.py",
+    "scripts/setup_deepagents_runtime.ps1",
     "scripts/validate_agent_metadata_schema.py",
     "scripts/validate_env_gitignore_contract.py",
     "scripts/validate_learning_materials_format.py",
@@ -34,6 +35,7 @@
     "tests/test_native_personal_local_workflow.py",
     "tests/test_validate_repo_config.py",
     "tests/test_validate_repo_contracts.py",
+    "tests/test_dcode_project.py",
     "tests/test_validate_template_required_sections.py"
   ],
   "requiredPaths": [
@@ -45,9 +47,6 @@
     "agents/high.toml",
     "agents/normal.toml",
     "agents/low.toml",
-    ".deepagents/agents/high/AGENTS.md",
-    ".deepagents/agents/normal/AGENTS.md",
-    ".deepagents/agents/low/AGENTS.md",
     "docs/operating_system/governance/repo-governance.md",
     "docs/superpowers/plans",
     "docs/superpowers/specs",
@@ -69,11 +68,7 @@
     "scripts/validate_generated_header_format.py",
     "tests/test_sync_agent_adapters.py",
     "tests/test_deploy_agent_runtime.py",
-    ".deepagents/config.toml",
-    ".deepagents/.env",
-    ".deepagents/.mcp.json",
-    ".deepagents/hooks.json",
-    ".deepagents/.state"
+    ".deepagents"
   ],
   "omitPaths": [
     "docs/operating_system/manifest.yaml",

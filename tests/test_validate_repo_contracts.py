@@ -143,8 +143,6 @@ def test_validate_env_gitignore_contract_passes_with_required_entries(tmp_path: 
     issues = ENV_GITIGNORE_VALIDATOR.validate_env_gitignore_contract(tmp_path)
 
     assert issues == []
-
-
 def test_validate_env_gitignore_contract_reports_missing_entries(tmp_path: Path) -> None:
     write_text(tmp_path / ".gitignore", "node_modules/\n")
     write_text(tmp_path / ".env.example", "API_KEY=placeholder\n")
@@ -241,21 +239,6 @@ def test_starter_kit_classification_ignores_generated_local_rule_mirror(tmp_path
     write_text(
         tmp_path / ".agents" / "rules" / "sample-rule.md",
         "---\ndistribution_tier: starter_kit\n---\n# Generated Rule\n",
-    )
-
-    issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
-
-    assert issues == []
-
-
-def test_starter_kit_classification_ignores_generated_deepagents_project_roles(tmp_path: Path) -> None:
-    write_text(
-        tmp_path / "repo_config" / "starter-kit-manifest.json",
-        '{"copyPaths": [".deepagents/agents"]}\n',
-    )
-    write_text(
-        tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md",
-        "---\nname: normal\ndescription: Role\n---\n\nInstructions.\n",
     )
 
     issues = VALIDATOR.validate_starter_kit_classification(tmp_path)

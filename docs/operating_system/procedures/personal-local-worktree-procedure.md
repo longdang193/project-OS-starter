@@ -2,8 +2,10 @@
 
 Use `native-personal-local` for ordinary work by one trusted local OS user.
 Git owns workspace identity and change evidence. Selected local executor is
-Codex or DeepAgents; executor choice grants no extra authority. Codex is default
-when plan omits executor.
+Codex or DeepAgents; Codex is default when plan omits executor. Executor choice
+does not change task paths, Git acceptance, or user approval. It can change
+host-enforced tool containment; current DeepAgents containment is not a Codex
+permission projection.
 
 ## Start
 
@@ -32,12 +34,49 @@ Follow
 Start selected local executor only from actual selected-workspace context. If
 context cannot be proved, work directly in selected workspace or `block`.
 
-For delegated roles, Codex uses parseable TOML based on shared `agents/*.toml`.
-DeepAgents reads generated project subagents from `.deepagents/agents/`; those
-are not `dcode --agent` primary profiles.
-Both use provider and model selection from active user-local primary runtime.
-Never add provider bindings, credentials, MCP config, hooks, memories, threads,
-or mutable DeepAgents state to repository coordination.
+For delegated roles, `agents/*.toml` owns role prompts. Codex consumes deployed
+TOML. User-local `dcode-project` materializes ignored `.deepagents/agents/`
+views at launch. It derives `normal` and `low` from active `*-high` controller
+model; use optional local `[roles]` overrides only for a provider without that
+alias pattern. It is not a `dcode --agent` primary profile.
+
+`dcode-project` reads its endpoint from active user-local Codex provider
+configuration and its API key from user-local secret configuration. Never add
+provider bindings, credentials, tier-model aliases, MCP config, hooks, memories,
+threads, or generated `.deepagents/` files to repository coordination.
+
+## DeepAgents Tool Boundary
+
+Current `dcode-project` bridges canonical role prompts and active Codex model
+binding only. It starts `dcode` with `--no-mcp`; Codex MCP servers, their tool
+allowlists, approval policy, sandbox mode, and shell policy do not transfer.
+DeepAgents still has its own built-in filesystem, shell, task, and web tools.
+Treat those as executor-local capabilities, not proof of Codex-equivalent
+containment. Keep DeepAgents work inside trusted one-user workspace, retain
+controller path checks, and verify Git scope before acceptance.
+
+DeepAgents controller may use built-in `task` for a bounded `low`, `normal`, or
+`high` project subagent. Name role in task prompt; do not use `dcode --agent`
+or `dcode -r` for project coordination. Same allowed paths, task evidence,
+checks, and acceptance rules apply to Codex and DeepAgents delegates.
+
+`dcode-project` rejects direct model/profile, agent/thread, MCP/hook trust,
+approval/Yolo, sandbox, shell/filesystem/interpreter, startup, install, and ACP
+flags. It allows only bounded task flags such as `--max-turns`, `--timeout`,
+`--rubric`, `--goal`, and output controls. Use Codex directly for current MCP
+work. Pass resulting sanitized findings to DeepAgents; never pass credentials,
+tool configs, or approval authority through task text.
+
+Install or refresh local DeepAgents runtime:
+
+```powershell
+./scripts/setup_deepagents_runtime.ps1 -SecretFile <local-env-file>
+```
+
+Installer writes only `%USERPROFILE%\.local\share\dcode-project\config.toml`
+and `%USERPROFILE%\.local\bin\dcode-project.{cmd,ps1}`. Wrapper resolves current
+Git workspace and runs tracked `scripts/dcode_project.py`. Run `dcode-project`
+from selected repository workspace; do not pass `--model`.
 
 ## Resume In A New Task
 

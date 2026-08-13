@@ -17,7 +17,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- | --- | --- |
 | Codex | `generated_agents/codex/AGENTS.md` | none | `generated_agents/codex/skills/<skill>/SKILL.md` | none |
 | Codex delegated roles | `generated_agents/codex/agents/<role>.toml` | none | none | Deployed to `~/.codex/agents/` |
-| DeepAgents project subagents | `.deepagents/agents/<role>/AGENTS.md` | none | none | Repository discovery only; no home deployment |
+| DeepAgents delegated roles | `agents/<role>.toml` | User-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | none | Local runtime only; no MCP projection |
 | Claude | `generated_agents/claude/CLAUDE.md` | `generated_agents/claude/rules/*.md` | `generated_agents/claude/skills/<skill>/SKILL.md` | `generated_agents/claude/settings.json` |
 | Antigravity/Gemini | `generated_agents/antigravity/GEMINI.md` | `generated_agents/antigravity/rules/*.md` | `generated_agents/antigravity/skills/<skill>/SKILL.md` | `generated_agents/antigravity/settings.json` |
 
@@ -27,7 +27,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- |
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | none | Project subagents load from `.deepagents/agents/`; `~/.deepagents` keeps user-local primary profile and mutable state. |
+| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding, local secret source, and optional local role-model overrides; forces `--no-mcp`. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 
@@ -35,5 +35,8 @@ This document records provider-native deployment for rules, skills, root instruc
 
 - Canonical repo sources remain source of truth.
 - Generated runtime outputs remain deployable packaging surfaces.
-- DeepAgents project subagents are generated prompt views, not primary profiles.
+- DeepAgents role views are local generated runtime state, not primary profiles or tracked adapter output.
+- DeepAgents built-ins are executor-local. Current launcher does not project
+  Codex MCP servers, tool allowlists, approval, sandbox, shell, profile, or
+  thread settings.
 - Reusable operating methods live in skills; prompts remain wording-only.

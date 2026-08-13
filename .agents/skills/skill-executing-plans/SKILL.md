@@ -39,6 +39,11 @@ Read only what the current task needs:
 - governance or publication rules only when those boundaries are in scope
 - configured MCP memory only when the task touches a known reusable workflow or repeats a recorded failure mode; follow `docs/operating_system/rules/agent-memory-rule.md`
 
+When plan selects `deepagents`, its executor choice does not project Codex MCP
+tools, approval, sandbox, or shell policy. Current `dcode-project` forces
+`--no-mcp`. Keep task scope and Git acceptance executor-neutral; use Codex for
+MCP work until a validated permission projection exists.
+
 Do not load every linked document or skill by default.
 
 ## Code Intelligence

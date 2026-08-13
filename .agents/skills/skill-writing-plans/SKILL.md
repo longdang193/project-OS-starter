@@ -52,6 +52,11 @@ stop and use `skill-spec-drafting`.
 
 Source and tests remain authoritative when documents or optional tools disagree.
 
+When a plan names `deepagents` as executor, record only executor choice and
+task role. Do not treat it as a tool-permission grant. Current `dcode-project`
+forces `--no-mcp`; plan required MCP research or verification under Codex until
+a validated permission projection exists.
+
 ## Artifact Boundaries
 
 - optional roadmap: coordinated direction across several outcomes

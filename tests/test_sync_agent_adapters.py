@@ -180,29 +180,6 @@ def test_sync_codex_agents_tree_generates_parseable_toml_and_removes_stale_outpu
     assert SYNC._sync_codex_agents_tree(root, mapping, check=True) == []
 
 
-def test_sync_deepagents_agents_tree_starts_with_frontmatter_and_removes_stale_output(tmp_path: Path) -> None:
-    root = tmp_path / "repo"
-    _write_agent_role(root / "agents" / "normal.toml")
-    mapping = SYNC.Mapping(
-        source="agents",
-        destination=".deepagents/agents",
-        mode="render_deepagents_agents_tree",
-        comment_prefix="#",
-        include_glob="*.toml",
-    )
-    stale = root / ".deepagents" / "agents" / "stale" / "AGENTS.md"
-    stale.parent.mkdir(parents=True)
-    stale.write_text("stale\n", encoding="utf-8")
-
-    assert SYNC._sync_deepagents_agents_tree(root, mapping, check=False) == []
-    rendered = (root / ".deepagents" / "agents" / "normal" / "AGENTS.md").read_text(encoding="utf-8")
-    assert rendered.startswith('---\nname: "normal"\ndescription: >-\n')
-    assert "<!--\nGENERATED FILE - DO NOT EDIT\n" in rendered
-    assert rendered.endswith("Return ROLE_OK.\n")
-    assert not stale.exists()
-    assert SYNC._sync_deepagents_agents_tree(root, mapping, check=True) == []
-
-
 @pytest.mark.parametrize(
     ("filename", "content", "message"),
     [
@@ -226,7 +203,7 @@ def test_load_agent_roles_rejects_invalid_or_runtime_owned_source(
         SYNC._load_agent_roles(source.parent, "*.toml")
 
 
-def test_run_parses_shared_role_source_once_for_codex_and_deepagents(
+def test_run_parses_shared_role_source_once_for_codex(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -242,17 +219,6 @@ mappings:
   - source: agents
     destination: generated_agents/codex/agents
     mode: render_codex_agents_tree
-    include_glob: '*.toml'
-    comment_prefix: '#'
-""",
-    )
-    _write_yaml(
-        root / "adapters" / "deepagents" / "mapping.yaml",
-        """platform: deepagents
-mappings:
-  - source: agents
-    destination: .deepagents/agents
-    mode: render_deepagents_agents_tree
     include_glob: '*.toml'
     comment_prefix: '#'
 """,

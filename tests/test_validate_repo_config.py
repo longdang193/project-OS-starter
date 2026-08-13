@@ -125,17 +125,15 @@ def test_validator_allows_missing_starter_kit_manifest_file() -> None:
         rmtree(test_root, ignore_errors=True)
 
 
-def test_deepagents_project_agents_are_tracked_but_local_state_is_ignored() -> None:
+def test_deepagents_runtime_state_is_ignored() -> None:
     ignored = subprocess.run(
         ["git", "check-ignore", "-q", ".deepagents/config.toml"],
         cwd=REPO_ROOT,
         check=False,
     )
-    tracked = subprocess.run(
-        ["git", "check-ignore", "-q", ".deepagents/agents/normal/AGENTS.md"],
+    assert ignored.returncode == 0
+    assert subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", ".deepagents/agents/generated/AGENTS.md"],
         cwd=REPO_ROOT,
         check=False,
-    )
-
-    assert ignored.returncode == 0
-    assert tracked.returncode == 1
+    ).returncode == 0

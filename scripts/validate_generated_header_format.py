@@ -125,10 +125,6 @@ def validate(root: Path) -> list[Finding]:
                 findings.extend(_validate_toml_header(path, rel))
             else:
                 findings.extend(_validate_text_header(path, rel))
-    deepagents_root = root / ".deepagents" / "agents"
-    if deepagents_root.exists():
-        for path in sorted(deepagents_root.glob("*/AGENTS.md")):
-            findings.extend(_validate_text_header(path, _relative(path, root)))
     return findings
 
 

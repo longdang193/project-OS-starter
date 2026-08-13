@@ -18,10 +18,10 @@ to `.agents/rules/` for supported local runtimes.
 
 `agents/high.toml`, `agents/normal.toml`, and `agents/low.toml` are canonical
 delegated-role templates. Sync renders Codex TOML into
-`generated_agents/codex/agents/` and DeepAgents project subagents into
-`.deepagents/agents/`. Both inherit provider and model selection from active
-user-local primary runtime. Keep endpoints, credentials, MCP configuration, and
-private model bindings out of role templates and generated project agents.
+`generated_agents/codex/agents/`. User-local `dcode-project` generates ignored
+DeepAgents project views at launch, combining those prompts with local model
+bindings. Keep endpoints, credentials, MCP configuration, and model bindings
+out of role templates and tracked outputs.
 
 ## Generate
 
@@ -34,7 +34,6 @@ Outputs:
 - `generated_agents/codex/`
 - `generated_agents/claude/`
 - `generated_agents/antigravity/`
-- `.deepagents/agents/`
 
 ## Deploy
 
@@ -48,10 +47,16 @@ Targets:
 - `~/.claude`
 - `~/.gemini`
 
-DeepAgents project subagents are discovered from repository
-`.deepagents/agents/`; do not deploy them to `~/.deepagents`. User-local
-`dcode --agent` primary profiles, provider setup, credentials, and mutable state
-remain under `~/.deepagents`.
+DeepAgents is not an adapter-sync target. User-local `dcode-project` derives
+ignored project subagents from `agents/*.toml` at launch. Its provider setup,
+credentials, role-model map, and mutable state remain local.
+
+Current `dcode-project` forces DeepAgents `--no-mcp` and rejects direct runtime
+authority flags. It does not translate Codex `mcp_servers`, tool allowlists,
+approval policy, sandbox mode, shell policy, profiles, or threads. DeepAgents
+built-ins remain executor-local. Use Codex for MCP work until a separately
+validated adapter projects a narrowed compatible subset from user-local Codex
+configuration.
 
 ## Drift Checks
 

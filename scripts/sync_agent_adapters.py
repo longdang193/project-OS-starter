@@ -290,10 +290,6 @@ def _expected_codex_agent_paths(roles: list[AgentRole]) -> set[Path]:
     return {Path(f"{role.name}.toml") for role in roles}
 
 
-def _expected_deepagents_agent_paths(roles: list[AgentRole]) -> set[Path]:
-    return {Path(role.name) / "AGENTS.md" for role in roles}
-
-
 def _render_codex_agent(role: AgentRole, *, source_rel: str) -> str:
     return (
         _render_toml_generated_block(source_rel)
@@ -301,25 +297,6 @@ def _render_codex_agent(role: AgentRole, *, source_rel: str) -> str:
         + f"description = {json.dumps(role.description, ensure_ascii=False)}\n"
         + "developer_instructions = "
         + json.dumps(role.developer_instructions, ensure_ascii=False)
-        + "\n"
-    )
-
-
-def _render_deepagents_agent(role: AgentRole, *, source_rel: str) -> str:
-    description = "\n".join(
-        f"  {line}" if line else "  " for line in role.description.splitlines()
-    )
-    frontmatter = (
-        "---\n"
-        f"name: {json.dumps(role.name, ensure_ascii=False)}\n"
-        "description: >-\n"
-        f"{description}\n"
-        "---\n\n"
-    )
-    return (
-        frontmatter
-        + _render_generated_block(source_rel)
-        + role.developer_instructions
         + "\n"
     )
 
@@ -537,41 +514,6 @@ def _sync_codex_agents_tree(
     return issues
 
 
-def _sync_deepagents_agents_tree(
-    root: Path,
-    mapping: Mapping,
-    *,
-    check: bool,
-    preserve_paths: set[Path] | None = None,
-    roles: list[AgentRole] | None = None,
-) -> list[str]:
-    src_root = root / mapping.source
-    dst_root = root / mapping.destination
-    if not src_root.exists():
-        return [f"Missing source directory: {src_root.as_posix()}"]
-    agent_roles = roles if roles is not None else _load_agent_roles(
-        src_root, mapping.include_glob or "*.toml"
-    )
-    issues: list[str] = []
-    for role in agent_roles:
-        dst = dst_root / role.name / "AGENTS.md"
-        rendered = _render_deepagents_agent(
-            role,
-            source_rel=role.source.relative_to(root).as_posix(),
-        )
-        if check:
-            if not dst.exists():
-                issues.append(f"Missing generated file: {dst.as_posix()}")
-            elif _normalized(dst.read_text(encoding="utf-8")) != _normalized(rendered):
-                issues.append(f"Drift detected: {dst.as_posix()}")
-            continue
-        _write_text_if_changed(dst, rendered)
-    if not check:
-        _remove_stale_files(dst_root, preserve_paths or _expected_deepagents_agent_paths(agent_roles))
-    return issues
-
-
-
 def _sync_root_instruction(root: Path, *, check: bool) -> list[str]:
     return _sync_file(
         root,
@@ -630,10 +572,7 @@ def run() -> int:
                     destination_preserve_paths[dst_root].update(
                         _expected_codex_rules_paths(src_root, pattern, dst_root)
                     )
-            elif mapping.mode in {
-                "render_codex_agents_tree",
-                "render_deepagents_agents_tree",
-            }:
+            elif mapping.mode == "render_codex_agents_tree":
                 src_root = root / mapping.source
                 if not src_root.exists():
                     continue
@@ -649,14 +588,9 @@ def run() -> int:
                     invalid_agent_mappings.add(mapping)
                     continue
                 agent_roles_by_mapping[mapping] = roles
-                if mapping.mode == "render_codex_agents_tree":
-                    destination_preserve_paths[dst_root].update(
-                        _expected_codex_agent_paths(roles)
-                    )
-                else:
-                    destination_preserve_paths[dst_root].update(
-                        _expected_deepagents_agent_paths(roles)
-                    )
+                destination_preserve_paths[dst_root].update(
+                    _expected_codex_agent_paths(roles)
+                )
 
     destination_roots = list(destination_preserve_paths.keys())
     for dst_root in destination_roots:
@@ -697,16 +631,6 @@ def run() -> int:
             elif mapping.mode == "render_codex_agents_tree":
                 issues.extend(
                     _sync_codex_agents_tree(
-                        root,
-                        mapping,
-                        check=args.check,
-                        preserve_paths=preserve_paths,
-                        roles=agent_roles_by_mapping[mapping],
-                    )
-                )
-            elif mapping.mode == "render_deepagents_agents_tree":
-                issues.extend(
-                    _sync_deepagents_agents_tree(
                         root,
                         mapping,
                         check=args.check,

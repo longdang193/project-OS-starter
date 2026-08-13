@@ -598,5 +598,6 @@ def test_implementation_plan_template_documents_optional_executor_and_coordinati
     ).read_text(encoding="utf-8")
 
     assert "Executor: `codex | deepagents`" in template
+    assert "current DeepAgents launcher uses no MCP" in template
     assert "## Coordination State (Optional)" in template
     assert "Allowed states: `pending`, `active`, `blocked`, `completed`." in template

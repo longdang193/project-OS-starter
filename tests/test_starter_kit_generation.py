@@ -69,7 +69,8 @@ def make_manifest(repo_root: Path) -> Path:
                 ".gitignore",
                 "AGENTS.md",
                 "agents/normal.toml",
-                ".deepagents/agents/normal/AGENTS.md",
+                "scripts/dcode_project.py",
+                "scripts/setup_deepagents_runtime.ps1",
                 "GEMINI.md",
                 "CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
@@ -84,17 +85,15 @@ def make_manifest(repo_root: Path) -> Path:
                 "scripts/deploy_agent_runtime.py",
                 "tests/test_sync_agent_adapters.py",
                 "tests/test_deploy_agent_runtime.py",
-                ".deepagents/config.toml",
-                ".deepagents/.env",
-                ".deepagents/.mcp.json",
-                ".deepagents/hooks.json",
-                ".deepagents/.state",
+                ".deepagents",
             ],
             "copyPaths": [
                 ".gitignore",
                 "AGENTS.md",
                 "agents",
-                ".deepagents/agents",
+                "scripts/dcode_project.py",
+                "scripts/setup_deepagents_runtime.ps1",
+                "tests/test_dcode_project.py",
                 "generated_agents/antigravity/GEMINI.md",
                 "generated_agents/claude/CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
@@ -117,7 +116,9 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
     write_text(repo_root / "agents" / "normal.toml", 'name = "normal"\n')
-    write_text(repo_root / ".deepagents" / "agents" / "normal" / "AGENTS.md", "---\nname: normal\n---\n")
+    write_text(repo_root / "scripts" / "dcode_project.py", "print('launcher')\n")
+    write_text(repo_root / "scripts" / "setup_deepagents_runtime.ps1", "Write-Output launcher\n")
+    write_text(repo_root / "tests" / "test_dcode_project.py", "# launcher test\n")
     write_text(repo_root / ".gitignore", ".env\n")
     write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "antigravity" / "GEMINI.md", "# gemini\n")
@@ -137,7 +138,8 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     kit_root = output_root / "project-OS-starter-kit"
     assert (kit_root / "AGENTS.md").exists()
     assert (kit_root / "agents" / "normal.toml").exists()
-    assert (kit_root / ".deepagents" / "agents" / "normal" / "AGENTS.md").exists()
+    assert (kit_root / "scripts" / "dcode_project.py").exists()
+    assert (kit_root / "scripts" / "setup_deepagents_runtime.ps1").exists()
     assert (kit_root / ".gitignore").exists()
     assert (kit_root / "GEMINI.md").exists()
     assert (kit_root / "CLAUDE.md").exists()
@@ -187,11 +189,7 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
 @pytest.mark.parametrize(
     "forbidden_path",
     [
-        ".deepagents/config.toml",
-        ".deepagents/.env",
-        ".deepagents/.mcp.json",
-        ".deepagents/hooks.json",
-        ".deepagents/.state",
+        ".deepagents",
     ],
 )
 def test_validate_starter_kit_rejects_personal_deepagents_state(
@@ -212,7 +210,9 @@ def test_build_starter_kit_fails_when_generated_root_instruction_missing(tmp_pat
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
     write_text(repo_root / "agents" / "normal.toml", 'name = "normal"\n')
-    write_text(repo_root / ".deepagents" / "agents" / "normal" / "AGENTS.md", "---\nname: normal\n---\n")
+    write_text(repo_root / "scripts" / "dcode_project.py", "print('launcher')\n")
+    write_text(repo_root / "scripts" / "setup_deepagents_runtime.ps1", "Write-Output launcher\n")
+    write_text(repo_root / "tests" / "test_dcode_project.py", "# launcher test\n")
     write_text(repo_root / ".gitignore", ".env\n")
     write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")

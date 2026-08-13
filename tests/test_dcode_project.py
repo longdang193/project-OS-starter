@@ -1,0 +1,306 @@
+"""
+@meta
+name: test_dcode_project
+type: test
+scope: unit
+domain: runtime
+distribution_tier: starter_kit
+covers:
+  - User-local DeepAgents launcher materializes role views from canonical templates
+  - Local role-model binding selects each delegated tier
+tags:
+  - fast
+  - ci-safe
+lifecycle:
+  status: active
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parent.parent
+LAUNCHER_PATH = ROOT / "scripts" / "dcode_project.py"
+
+
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+LAUNCHER = load_module("dcode_project", LAUNCHER_PATH)
+
+
+def write_role(root: Path, name: str) -> None:
+    (root / "agents").mkdir(parents=True, exist_ok=True)
+    (root / "agents" / f"{name}.toml").write_text(
+        f'name = "{name}"\n'
+        'description = "Role description"\n'
+        'developer_instructions = "Return ROLE_OK."\n',
+        encoding="utf-8",
+    )
+
+
+def test_local_role_views_use_canonical_prompt_and_local_model_map(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+
+    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    agents_root = LAUNCHER._write_role_views(tmp_path, roles)
+    rendered = (agents_root / "normal" / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert 'name: "normal"' in rendered
+    assert 'model: "openai:combo-normal"' in rendered
+    assert rendered.endswith("Return ROLE_OK.\n")
+    assert (agents_root / ".dcode-project-owned").exists()
+
+
+def test_local_role_views_refuse_unowned_directory(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    unowned = tmp_path / ".deepagents" / "agents" / "custom"
+    unowned.mkdir(parents=True)
+    (unowned / "AGENTS.md").write_text("custom\n", encoding="utf-8")
+
+    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+
+    with pytest.raises(RuntimeError, match="user-owned"):
+        LAUNCHER._write_role_views(tmp_path, roles)
+
+
+def test_local_role_views_replace_empty_retired_directories(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    (tmp_path / ".deepagents" / "agents" / "normal").mkdir(parents=True)
+
+    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    agents_root = LAUNCHER._write_role_views(tmp_path, roles)
+
+    assert (agents_root / ".dcode-project-owned").exists()
+    assert (agents_root / "normal" / "AGENTS.md").exists()
+
+
+def test_local_role_view_cleanup_removes_only_owned_files(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    agents_root = LAUNCHER._write_role_views(tmp_path, roles)
+    user_file = agents_root / "normal" / "notes.txt"
+    user_file.write_text("retain\n", encoding="utf-8")
+
+    LAUNCHER._remove_role_views(tmp_path, roles)
+
+    assert not (agents_root / ".dcode-project-owned").exists()
+    assert not (agents_root / "normal" / "AGENTS.md").exists()
+    assert user_file.read_text(encoding="utf-8") == "retain\n"
+
+
+def test_local_role_view_cleanup_keeps_unmarked_matching_view(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    agents_root = tmp_path / ".deepagents" / "agents"
+    view = agents_root / "normal" / "AGENTS.md"
+    view.parent.mkdir(parents=True)
+    view.write_text(LAUNCHER._role_view_content(roles[0]), encoding="utf-8")
+
+    LAUNCHER._remove_role_views(tmp_path, roles)
+
+    assert view.exists()
+
+
+def test_local_role_views_refuse_user_file_after_owned_generation(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    agents_root = LAUNCHER._write_role_views(tmp_path, roles)
+    (agents_root / "custom.txt").write_text("retain\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="user-owned"):
+        LAUNCHER._write_role_views(tmp_path, roles)
+
+
+def test_local_role_view_write_failure_cleans_partial_generated_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    write_role(tmp_path, "normal")
+    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    original_write_text = Path.write_text
+
+    def fail_role_view(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        if self.name == "AGENTS.md":
+            raise OSError("disk full")
+        return original_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_role_view)
+
+    with pytest.raises(OSError, match="disk full"):
+        LAUNCHER._write_role_views(tmp_path, roles)
+
+    assert not (tmp_path / ".deepagents").exists()
+
+
+def test_main_cleans_owned_role_views_after_dcode_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    write_role(tmp_path, "normal")
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_runtime_binding",
+        lambda config: ("combo-high", "https://provider.example/v1", "secret", "provider"),
+    )
+    monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
+    monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+
+    def fail_dcode(*args: object, **kwargs: object) -> None:
+        assert (tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md").is_file()
+        raise OSError("dcode unavailable")
+
+    monkeypatch.setattr(LAUNCHER.subprocess, "run", fail_dcode)
+
+    with pytest.raises(OSError, match="dcode unavailable"):
+        LAUNCHER.main([])
+
+    assert not (tmp_path / ".deepagents").exists()
+
+
+@pytest.mark.parametrize(
+    "argument",
+    [
+        "--agent",
+        "--model=combo-normal",
+        "-Mcombo-normal",
+        "--resume",
+        "-rthread-id",
+        "--yolo",
+        "--mcp-config",
+        "--trust-project-mcp",
+        "--shell-allow-list",
+        "--allow-fs-tools",
+        "--interpreter-tools",
+        "--sandbox",
+        "--startup-cmd",
+        "--max-retries",
+        "--rubric-model",
+        "--default-model",
+        "--clear-default-model",
+        "mcp",
+    ],
+)
+def test_launcher_rejects_unmanaged_runtime_options(argument: str) -> None:
+    with pytest.raises(RuntimeError, match="no Codex permission or MCP projection"):
+        LAUNCHER._reject_unmanaged_runtime_options([argument])
+
+
+def test_launcher_allows_bounded_noninteractive_options() -> None:
+    LAUNCHER._reject_unmanaged_runtime_options(
+        [
+            "--print-config",
+            "--json",
+            "--max-turns",
+            "4",
+            "--timeout=120",
+            "--rubric",
+            "@acceptance.md",
+            "--no-mcp",
+            "-n",
+            "task",
+        ]
+    )
+
+
+@pytest.mark.parametrize("argument", ["--timeout", "--rubric"])
+def test_launcher_rejects_missing_bounded_option_value(argument: str) -> None:
+    with pytest.raises(RuntimeError, match="requires a value"):
+        LAUNCHER._reject_unmanaged_runtime_options([argument])
+
+
+def test_main_forces_no_mcp_and_cleans_role_views(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    write_role(tmp_path, "normal")
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_runtime_binding",
+        lambda config: ("combo-high", "https://provider.example/v1", "secret", "provider"),
+    )
+    monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
+    monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    invoked: list[object] = []
+
+    def complete_dcode(*args: object, **kwargs: object) -> subprocess.CompletedProcess[object]:
+        invoked.extend(args)
+        return subprocess.CompletedProcess(args[0], 0)
+
+    monkeypatch.setattr(LAUNCHER.subprocess, "run", complete_dcode)
+
+    assert LAUNCHER.main(["--json", "--no-mcp", "-n", "task"]) == 0
+    assert invoked[0] == [
+        "dcode",
+        "-M",
+        "openai:combo-high",
+        "--json",
+        "-n",
+        "task",
+        "--no-mcp",
+    ]
+    assert not (tmp_path / ".deepagents").exists()
+
+
+def test_default_normal_model_follows_active_high_controller(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+
+    roles = LAUNCHER._load_roles(tmp_path, {}, "combo-high")
+
+    assert roles[0]["model"] == "combo-normal"
+
+
+def test_local_role_loader_rejects_runtime_owned_model(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    role_path = tmp_path / "agents" / "normal.toml"
+    role_path.write_text(
+        role_path.read_text(encoding="utf-8") + 'model = "combo-normal"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="Unsupported role template fields"):
+        LAUNCHER._load_roles(tmp_path, {}, "combo-high")
+
+
+def test_runtime_environment_reaches_deepagents_server_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    environment = LAUNCHER._runtime_environment("http://127.0.0.1:20128/v1", "test-key")
+
+    assert environment["DEEPAGENTS_CODE_OPENAI_BASE_URL"] == "http://127.0.0.1:20128/v1"
+    assert environment["DEEPAGENTS_CODE_OPENAI_API_KEY"] == "test-key"
+    assert environment["OPENAI_BASE_URL"] == "http://127.0.0.1:20128/v1"
+    assert environment["OPENAI_API_KEY"] == "test-key"
+
+
+def test_setup_launcher_uses_current_repository_source() -> None:
+    setup = (ROOT / "scripts" / "setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
+
+    assert "Copy-Item" not in setup
+    assert "git rev-parse --show-toplevel" in setup
+    assert 'Join-Path $repoRoot "scripts\\dcode_project.py"' in setup
+    assert 'dcode-project.ps1' in setup

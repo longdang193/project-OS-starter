@@ -44,7 +44,15 @@ native Git plus selected local executor, Codex or DeepAgents. Codex is default
 when plan omits executor. Reuse a clean checkout for small reversible work; use
 a native Git worktree only when existing worktree guidance selects isolation.
 Git owns workspace identity, change evidence, and authorized branch disposition.
-Do not invent provider fallback, runtime state, or cleanup commands.
+For DeepAgents, use user-local `dcode-project`; it derives ignored project role
+views from `agents/*.toml` and local runtime bindings. Do not track
+`.deepagents/`, invent provider fallback, runtime state, or cleanup commands.
+Current launcher forces `--no-mcp` and does not project Codex MCP servers,
+tool allowlists, approval, sandbox, shell, profile, or thread settings.
+DeepAgents built-ins remain executor-local; use Codex for MCP work until a
+validated narrowed bridge exists. Name `low`, `normal`, or `high` in bounded
+DeepAgents `task` delegation; do not use `dcode --agent` or `dcode -r` for
+project coordination.
 
 ## Project Design Rules
 

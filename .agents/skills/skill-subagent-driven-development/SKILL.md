@@ -25,6 +25,11 @@ ledger and the tool results carry the record.
 - Explicit authorization for per-task commits is required because `scripts/review-package` uses recorded commit ranges. Without that authorization, use `skill-executing-plans` directly.
 - Use `skill-using-git-worktrees` when isolation materially reduces risk; an already-safe workspace does not require a new worktree.
 - Use `skill-dispatching-parallel-agents` instead when independent lanes should run concurrently with disjoint write ownership.
+- When plan selects `deepagents`, delegate through one bounded built-in `task` and
+  name canonical `low`, `normal`, or `high` in its brief. Do not use `dcode
+  --agent`, `dcode -r`, direct model flags, or executor-local approvals as
+  project coordination. Current `dcode-project` forces `--no-mcp`; required MCP
+  work stays with Codex until a validated permission projection exists.
 - Approved plan and settled behavior are required. Return unresolved design to `skill-spec-drafting` or `skill-writing-plans`.
 - Task `Required Skills` determine implementer methods. Do not inject every backend, frontend, contract, or tooling skill into every brief.
 

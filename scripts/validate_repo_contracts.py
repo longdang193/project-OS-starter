@@ -275,10 +275,6 @@ def _has_starter_kit_distribution_tier_from_analysis(analysis: tuple[bool, bool]
     return analysis[1]
 
 
-def _is_generated_runtime_view(relative_path: str) -> bool:
-    return relative_path.startswith(".deepagents/agents/")
-
-
 def sync_starter_kit_distribution_tier(root: Path) -> int:
     manifest = _load_starter_kit_manifest(root)
     if manifest is None:
@@ -303,7 +299,7 @@ def sync_starter_kit_distribution_tier(root: Path) -> int:
 
     patched = 0
     for rel in sorted(in_kit):
-        if rel.startswith("docs/operating_system/templates/") or _is_generated_runtime_view(rel):
+        if rel.startswith("docs/operating_system/templates/"):
             continue
         file_path = root / rel
         if not file_path.exists() or not _is_metadata_capable(file_path):
@@ -364,7 +360,7 @@ def validate_starter_kit_classification(root: Path) -> list[ValidationIssue]:
                     in_kit.add(relative_path(file, root))
 
     for rel in sorted(in_kit):
-        if rel.startswith("docs/operating_system/templates/") or _is_generated_runtime_view(rel):
+        if rel.startswith("docs/operating_system/templates/"):
             continue
         file_path = root / rel
         if not file_path.exists():

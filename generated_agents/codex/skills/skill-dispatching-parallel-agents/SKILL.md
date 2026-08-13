@@ -33,6 +33,10 @@ When you have multiple unrelated failures (different test files, different subsy
 - `skill-using-git-worktrees` provides isolation when concurrent writers need separate workspaces.
 - `skill-requesting-code-review` and `skill-receiving-code-review` own review exchange after implementation changes.
 - `skill-verification-before-completion` owns fresh final proof after results are integrated.
+- With `deepagents`, built-in `task` is one executor-local delegation path. It
+  does not make Codex MCP tools or permissions available. Keep same-workspace
+  tasks sequential; parallel writers still need disjoint paths and isolated Git
+  worktrees.
 
 Use this skill directly for independent investigations, audits, research questions, bounded fixes, or approved multi-lane implementation with disjoint write ownership.
 ## When to Use

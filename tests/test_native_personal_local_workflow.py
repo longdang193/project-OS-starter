@@ -45,6 +45,9 @@ def test_native_personal_local_workflow_is_documented_and_shipped() -> None:
     assert "Codex or DeepAgents" in procedure_text
     assert "Resume In A New Task" in procedure_text
     assert "dcode -r" in procedure_text
+    assert "DeepAgents Tool Boundary" in procedure_text
+    assert "--no-mcp" in procedure_text
+    assert "Codex MCP servers" in procedure_text
     assert "native-personal-local" in root_guidance
     assert "Codex or DeepAgents" in root_guidance
     assert "native-personal-local" in readme
@@ -92,4 +95,5 @@ def test_single_controller_resume_contract_is_documented() -> None:
         assert f"{step}." in procedure_text
     assert "Coordination State (Optional)" in template_text
     assert "Executor: `codex | deepagents`" in template_text
+    assert "current DeepAgents launcher uses no MCP" in template_text
     assert "Exactly one task" in template_text

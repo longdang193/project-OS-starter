@@ -90,3 +90,12 @@ Do not associate DeepWiki with execution, verification, testing, code-review, or
 No code-intelligence tool owns architecture or runtime behavior. Use `docs/architecture.md`
 for durable system shape, ADRs for significant decisions, and native tests/CI
 for enforceable boundaries.
+
+## Executor Boundary
+
+Tool IDs and permissions belong to active executor. Do not assume a Codex MCP
+tool, allowlist, approval setting, or result shape exists in DeepAgents. Current
+`dcode-project` runs DeepAgents with `--no-mcp`; use DeepAgents native tools for
+bounded trusted-local work, or call required MCP through Codex and hand over
+sanitized findings. Never paste credentials, raw tool configuration, or approval
+authority into an executor prompt.

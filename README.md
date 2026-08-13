@@ -63,8 +63,10 @@ native Git plus Codex or DeepAgents. Codex is default when plan omits executor.
 Reuse clean checkout for small reversible work. Use a native Git worktree only
 when existing worktree guidance selects isolation. Git owns workspace identity,
 change evidence, and branch disposition. Shared delegated roles live in
-`agents/*.toml`; DeepAgents project subagents are generated under
-`.deepagents/agents/`, not user-local `dcode --agent` profiles.
+`agents/*.toml`. User-local `dcode-project` materializes ignored DeepAgents
+project subagents at launch; they are not `dcode --agent` primary profiles.
+Current launcher forces `--no-mcp`; it does not mirror Codex MCP tools or
+permissions. Use Codex for MCP work, then hand DeepAgents sanitized task facts.
 
 ## Agent Memory
 
