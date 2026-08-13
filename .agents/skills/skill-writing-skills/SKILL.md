@@ -140,7 +140,7 @@ Concrete results
 
 ## Claude Search Optimization (CSO)
 
-**Critical for discovery:** Future Claude needs to FIND your skill
+**Critical for discovery:** Future agents need to FIND your skill
 
 ### 1. Rich Description Field
 
@@ -635,7 +635,7 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 
 ## Discovery Workflow
 
-How future Claude finds your skill:
+How future agents find your skill:
 
 1. **Encounters problem** ("tests are flaky")
 3. **Finds SKILL** (description matches)

@@ -45,6 +45,12 @@ Use when pinned local source or maintained docs do not answer current version-sp
 
 Grafana, Postman, database, and GitHub MCPs remain target-project options with active consumers, not starter defaults.
 
+### DeepAgents
+
+Current `dcode-project` forces `--no-mcp`. Codex performs required MCP calls and
+passes only validated `codex.mcp.handoff.v1` facts to DeepAgents; selected MCP
+IDs narrow handoff provenance and never grant DeepAgents tools.
+
 ## Source-First Fallback
 
 If optional MCP unavailable, continue with pinned documentation, local source, canonical contracts, tests, existing command-line tools, and runtime systems. Do not create substitute truth layers.

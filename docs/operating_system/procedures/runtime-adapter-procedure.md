@@ -6,7 +6,7 @@
 2. `~/.codex`, `~/.claude`, `~/.gemini` are runtime targets.
 3. Runtime targets are generated and deployed only.
 4. Canonical edits happen in repo sources only:
-   - `AGENTS.md` and scoped `AGENTS.md` files
+   - scoped `AGENTS.md` files, when present
    - `docs/operating_system/`
    - `.agents/skills/`
    - `agents/*.toml`
@@ -54,9 +54,9 @@ credentials, role-model map, and mutable state remain local.
 Current `dcode-project` forces DeepAgents `--no-mcp` and rejects direct runtime
 authority flags. It does not translate Codex `mcp_servers`, tool allowlists,
 approval policy, sandbox mode, shell policy, profiles, or threads. DeepAgents
-built-ins remain executor-local. Use Codex for MCP work until a separately
-validated adapter projects a narrowed compatible subset from user-local Codex
-configuration.
+built-ins remain executor-local. Call MCP through Codex, then pass only
+validated `codex.mcp.handoff.v1` facts to DeepAgents. Setup rejects a
+user-local `~/.deepagents/.mcp.json` to prevent an accidental direct MCP path.
 
 ## Drift Checks
 

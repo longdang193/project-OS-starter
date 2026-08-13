@@ -17,6 +17,8 @@ Requirements:
 - keep optional API keys in private client configuration or environment variables
 
 Do not commit client configuration, credentials, caches, or generated MCP state.
+This procedure configures Codex only. For DeepAgents work, Codex supplies
+validated handoff facts; do not add direct DeepAgents MCP configuration.
 
 ## Smoke Tests
 

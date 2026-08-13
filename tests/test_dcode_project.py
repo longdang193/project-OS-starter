@@ -18,8 +18,10 @@ lifecycle:
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -160,6 +162,17 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
         "_runtime_binding",
         lambda config: ("combo-high", "https://provider.example/v1", "secret", "provider"),
     )
+    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
 
@@ -240,6 +253,17 @@ def test_main_forces_no_mcp_and_cleans_role_views(
         "_runtime_binding",
         lambda config: ("combo-high", "https://provider.example/v1", "secret", "provider"),
     )
+    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
     invoked: list[object] = []
@@ -296,6 +320,113 @@ def test_runtime_environment_reaches_deepagents_server_child(
     assert environment["OPENAI_BASE_URL"] == "http://127.0.0.1:20128/v1"
     assert environment["OPENAI_API_KEY"] == "test-key"
 
+def mcp_config() -> dict[str, object]:
+    return {
+        "mcp_servers": {
+            "context7": {"tools": {"resolve_library_id": {}, "query_docs": {}}},
+            "serena": {"tools": {"find_symbol": {}}},
+        }
+    }
+
+def handoff_payload(capabilities: dict[str, object]) -> dict[str, object]:
+    return {
+        "schema": "codex.mcp.handoff.v1",
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "mcp_capability_digest": capabilities["mcp_capability_digest"],
+        "sources": [{"server": "context7", "tool": "query_docs"}],
+        "facts": [{"source": 0, "value": "DeepAgents supports task-based subagent delegation."}],
+        "constraints": ["Do not call MCP tools."],
+    }
+
+def test_mcp_capability_projection_omits_runtime_values() -> None:
+    capabilities = LAUNCHER._mcp_capabilities(mcp_config())
+
+    assert capabilities["mcp_servers"] == ["context7", "serena"]
+    assert capabilities["mcp_tools"] == [
+        "context7.query_docs",
+        "context7.resolve_library_id",
+        "serena.find_symbol",
+    ]
+    assert "https://" not in json.dumps(capabilities)
+
+def test_mcp_selection_narrows_and_rejects_unknown() -> None:
+    capabilities = LAUNCHER._mcp_capabilities(mcp_config())
+
+    assert LAUNCHER._parse_mcp_selection(["context7.query_docs"], capabilities) == [
+        "context7.query_docs"
+    ]
+    with pytest.raises(RuntimeError, match="Unknown MCP tool"):
+        LAUNCHER._parse_mcp_selection(["context7.missing"], capabilities)
+
+def test_handoff_validation_accepts_current_selected_facts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_handoff_root", lambda: tmp_path)
+    capabilities = LAUNCHER._mcp_capabilities(mcp_config())
+    path = tmp_path / "handoff.json"
+    path.write_text(json.dumps(handoff_payload(capabilities)), encoding="utf-8")
+
+    resolved, payload = LAUNCHER._validate_handoff(
+        str(path), capabilities, ["context7.query_docs"]
+    )
+
+    assert resolved == path
+    assert payload["schema"] == "codex.mcp.handoff.v1"
+
+@pytest.mark.parametrize(
+    "mutator, message",
+    [
+        (lambda payload: payload["facts"][0]["value"] == "Bearer secret", "sensitive"),
+        (lambda payload: payload.update({"schema": "bad"}), "Unsupported handoff schema"),
+        (lambda payload: payload.update({"mcp_capability_digest": "bad"}), "digest"),
+    ],
+)
+def test_handoff_validation_rejects_unsafe_or_mismatched_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mutator: object,
+    message: str,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_handoff_root", lambda: tmp_path)
+    capabilities = LAUNCHER._mcp_capabilities(mcp_config())
+    payload = handoff_payload(capabilities)
+    if message == "sensitive":
+        payload["facts"][0]["value"] = "Bearer secret"
+    else:
+        mutator(payload)
+    path = tmp_path / "handoff.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=message):
+        LAUNCHER._validate_handoff(str(path), capabilities, ["context7.query_docs"])
+
+def test_handoff_validation_rejects_symlink(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_handoff_root", lambda: tmp_path)
+    capabilities = LAUNCHER._mcp_capabilities(mcp_config())
+    source = tmp_path / "source.json"
+    source.write_text(json.dumps(handoff_payload(capabilities)), encoding="utf-8")
+    link = tmp_path / "handoff.json"
+    try:
+        link.symlink_to(source)
+    except OSError:
+        pytest.skip("Symlink creation unavailable")
+
+    with pytest.raises(RuntimeError, match="symlink"):
+        LAUNCHER._validate_handoff(str(link), capabilities, ["context7.query_docs"])
+
+def test_handoff_instruction_appends_to_existing_task_text(tmp_path: Path) -> None:
+    argv = ["-n", "caller task", "--no-mcp"]
+
+    LAUNCHER._append_handoff_instruction(argv, tmp_path / "handoff.json")
+
+    assert argv[1].startswith("caller task")
+    assert "Read validated Codex MCP handoff file" in argv[1]
+    assert argv.count("-n") == 1
+
 
 def test_setup_launcher_uses_current_repository_source() -> None:
     setup = (ROOT / "scripts" / "setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
@@ -304,3 +435,5 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert "git rev-parse --show-toplevel" in setup
     assert 'Join-Path $repoRoot "scripts\\dcode_project.py"' in setup
     assert 'dcode-project.ps1' in setup
+    assert 'Join-Path $HOME ".deepagents\\.mcp.json"' in setup
+    assert "Direct DeepAgents MCP config detected" in setup

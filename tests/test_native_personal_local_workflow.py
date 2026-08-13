@@ -48,6 +48,9 @@ def test_native_personal_local_workflow_is_documented_and_shipped() -> None:
     assert "DeepAgents Tool Boundary" in procedure_text
     assert "--no-mcp" in procedure_text
     assert "Codex MCP servers" in procedure_text
+    assert "codex.mcp.handoff.v1" in procedure_text
+    assert "--handoff-file" in procedure_text
+    assert "--mcp-select" in procedure_text
     assert "native-personal-local" in root_guidance
     assert "Codex or DeepAgents" in root_guidance
     assert "native-personal-local" in readme

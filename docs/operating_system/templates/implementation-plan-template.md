@@ -37,7 +37,7 @@ Describe another concrete implementation result this plan must deliver, such as 
 ## Execution Approach
 
 - Mode: `inline sequential | subagent-ready | parallel-capable`
-- Executor: `codex | deepagents` (optional; Codex default; selects local runtime only; current DeepAgents launcher uses no MCP)
+- Executor: `codex | deepagents` (optional; Codex default; selects local runtime only; current DeepAgents launcher uses no MCP, so required MCP work stays with Codex and passes validated handoff facts)
 - Required skills: `<exact skill names or none>`
 - Isolation: `<current workspace | optional worktree>`
 - Commit policy: `<per-task commits authorized | no commits during execution>`

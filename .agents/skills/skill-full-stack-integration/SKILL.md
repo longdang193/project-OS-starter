@@ -51,10 +51,10 @@ Reference request and response schemas; do not copy them.
 4. Before changing an API route handler, use GitNexus `api_impact` only when private read-only GitNexus is available and fresh. Fall back to source search when unavailable.
 5. Implement smallest complete slice: canonical contract when applicable, backend validation and authorization, narrow route or service change, existing client generation command, frontend query or mutation, and mapped UI states. Reuse existing mocks; do not add mock infrastructure by default.
 6. Use `skill-backend-verification` for direct boundary, business/failure, state, dependency, contract, representative-operation, and automated backend evidence before accepting consumer proof.
-7. Use Context7 only when pinned local sources do not answer a version-specific library question; treat output as advisory.
+7. Use Context7 only when active executor exposes it and pinned local sources do not answer a version-specific library question; under DeepAgents, use validated Codex handoff facts. Treat output as advisory.
 8. Run focused frontend checks. When `browser.test` is available, use it for repeatable user flows and accessibility state. `browser.diagnose` is not available yet.
 9. Remove sidecar when all acceptance evidence passes. If blocked, delete completed items and retain only exact unresolved work.
-10. Hand final claims to `skill-verification-before-completion`. Store MCP Memory only for a verified recurring invariant or costly failure not already owned by source or documentation. Never store task progress, payloads, credentials, or user data.
+10. Hand final claims to `skill-verification-before-completion`. Store MCP Memory only for a verified recurring invariant or costly failure not already owned by source or documentation when active executor exposes it; under DeepAgents, use validated Codex handoff facts. Never store task progress, payloads, credentials, or user data.
 
 ## Common Mistakes
 

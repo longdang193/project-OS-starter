@@ -38,7 +38,8 @@ ledger and the tool results carry the record.
   name canonical `low`, `normal`, or `high` in its brief. Do not use `dcode
   --agent`, `dcode -r`, direct model flags, or executor-local approvals as
   project coordination. Current `dcode-project` forces `--no-mcp`; required MCP
-  work stays with Codex until a validated permission projection exists.
+  calls stay with Codex; pass only validated `codex.mcp.handoff.v1` facts to
+  DeepAgents.
 - Approved plan and settled behavior are required. Return unresolved design to `skill-spec-drafting` or `skill-writing-plans`.
 - Task `Required Skills` determine implementer methods. Do not inject every backend, frontend, contract, or tooling skill into every brief.
 

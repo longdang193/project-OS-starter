@@ -87,7 +87,7 @@ You MUST complete each phase before proceeding to the next.
    - Browser replay is diagnostic evidence, not committed regression coverage; preserve the failure in the existing browser test suite before fixing when practical
 
 3. **Check Failure Memory When The Issue Looks Familiar**
-   - If the failure appears repeated, method-related, or suspiciously similar to a previous repo-operating issue, search configured MCP memory for matching symptoms, confirmed causes, and fixes
+   - If the failure appears repeated, method-related, or suspiciously similar to a previous repo-operating issue, search configured MCP memory when active executor exposes it; under DeepAgents, request validated Codex handoff facts
    - Use it to recognize known failure modes earlier
    - Do not skip direct investigation just because something looks familiar
 

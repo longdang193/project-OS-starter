@@ -14,6 +14,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $runtimeRoot = Join-Path $HOME ".local\share\dcode-project"
 $binRoot = Join-Path $HOME ".local\bin"
 $launcherSource = Join-Path $repoRoot "scripts\dcode_project.py"
+$directMcpConfig = Join-Path $HOME ".deepagents\.mcp.json"
 
 if (-not (Test-Path $launcherSource -PathType Leaf)) {
     throw "Missing launcher source: $launcherSource"
@@ -23,6 +24,9 @@ if (-not (Test-Path $CodexConfigPath -PathType Leaf)) {
 }
 if (-not (Test-Path $SecretFile -PathType Leaf)) {
     throw "Missing secret file: $SecretFile"
+}
+if (Test-Path -LiteralPath $directMcpConfig -PathType Leaf) {
+    throw "Direct DeepAgents MCP config detected: $directMcpConfig. Remove it before setup: Remove-Item -LiteralPath '$directMcpConfig' -Force"
 }
 
 if (-not $SkipInstall) {

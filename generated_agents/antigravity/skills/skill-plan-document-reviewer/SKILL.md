@@ -50,7 +50,7 @@ Skip for tiny, local, reversible tasks with settled behavior and obvious proof.
 - Read linked specification when reviewing a plan.
 - Inspect named source, tests, configuration, schemas, and scripts needed to verify material claims.
 - Read `references/technical-review-checklist.md` when proposal has substantial software, API, data, analytics, ML, optimization, storage, integration, platform, starter, or publication implications.
-- Search configured MCP memory only when proposal resembles a known reusable failure mode; follow `docs/operating_system/rules/agent-memory-rule.md`.
+- Search configured MCP memory only when active executor exposes it and proposal resembles a known reusable failure mode; follow `docs/operating_system/rules/agent-memory-rule.md`.
 - Read governance only when ownership or publication boundaries are in scope.
 
 Do not load every reference for every review.

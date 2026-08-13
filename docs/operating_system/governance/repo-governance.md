@@ -90,7 +90,7 @@ Detailed policy lives in `docs/operating_system/tooling/code-intelligence-tools.
 
 ## Agent Memory
 
-Configured MCP Memory Server stores verified reusable lessons outside repository. Use it conditionally for recorded invariants, recurring failures, resumed work, or known operational constraints. Memory never overrides source, tests, ADRs, current governance, or explicit instructions.
+Configured MCP Memory Server stores verified reusable lessons outside repository when active executor exposes it. Under `dcode-project`, Codex handles required memory calls and passes validated handoff facts. Use it conditionally for recorded invariants, recurring failures, resumed work, or known operational constraints. Memory never overrides source, tests, ADRs, current governance, or explicit instructions.
 
 Canonical policy: `docs/operating_system/rules/agent-memory-rule.md`.
 

@@ -54,8 +54,8 @@ Source and tests remain authoritative when documents or optional tools disagree.
 
 When a plan names `deepagents` as executor, record only executor choice and
 task role. Do not treat it as a tool-permission grant. Current `dcode-project`
-forces `--no-mcp`; plan required MCP research or verification under Codex until
-a validated permission projection exists.
+forces `--no-mcp`; plan required MCP research or verification under Codex, then
+pass only validated `codex.mcp.handoff.v1` facts to DeepAgents.
 
 ## Artifact Boundaries
 

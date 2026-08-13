@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -15,6 +17,22 @@ import tomllib
 _ROLE_VIEWS_MARKER = ".dcode-project-owned"
 _ROLE_VIEWS_SCHEMA = 1
 _LEGACY_ROLE_VIEWS_MARKER = "dcode-project owns this directory.\n"
+_HANDOFF_SCHEMA = "codex.mcp.handoff.v1"
+_HANDOFF_MAX_BYTES = 262_144
+_HANDOFF_MAX_SOURCES = 64
+_HANDOFF_MAX_FACTS = 256
+_HANDOFF_MAX_STRING = 4_096
+_HANDOFF_MAX_DEPTH = 16
+_HANDOFF_MAX_AGE = timedelta(hours=24)
+_HANDOFF_ROOT_PARTS = (".local", "share", "dcode-project", "handoffs")
+_SENSITIVE_NAME = re.compile(
+    r"(?:api[_-]?key|authorization|cookie|credential|password|secret|token|raw[_-]?(?:body|header|network))",
+    re.IGNORECASE,
+)
+_SENSITIVE_VALUE = re.compile(
+    r"(?:bearer\s+\S+|sk-[A-Za-z0-9_-]{8,}|api[_-]?key\s*[:=]\s*\S+)",
+    re.IGNORECASE,
+)
 _ALLOWED_RUNTIME_FLAGS = {
     "--print-config",
     "--json",
@@ -33,6 +51,8 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--rubric",
     "--rubric-max-iterations",
     "--recursion-limit",
+    "--mcp-select",
+    "--handoff-file",
 }
 
 
@@ -321,6 +341,265 @@ def _runtime_binding(config: dict[str, object]) -> tuple[str, str, str, str]:
     base_url = _required_string(provider, "base_url", "active Codex provider")
     return model, base_url, _read_env_value(secret_file, secret_key), provider_name
 
+def _codex_config(config: dict[str, object]) -> dict[str, object]:
+    paths = config.get("paths")
+    if not isinstance(paths, dict):
+        raise RuntimeError("Missing local `[paths]` configuration.")
+    path = Path(_required_string(paths, "codex_config", "local paths")).expanduser()
+    return _load_toml(path, "Codex config")
+
+def _mcp_capabilities(codex_config: dict[str, object]) -> dict[str, object]:
+    servers = codex_config.get("mcp_servers", {})
+    if not isinstance(servers, dict):
+        raise RuntimeError("Invalid Codex `[mcp_servers]` configuration.")
+    normalized: dict[str, list[str]] = {}
+    for server_name, server_config in servers.items():
+        if not isinstance(server_name, str) or not server_name.strip():
+            raise RuntimeError("Codex MCP server names must be non-empty strings.")
+        if not isinstance(server_config, dict):
+            normalized[server_name] = []
+            continue
+        tools = server_config.get("tools", {})
+        if not isinstance(tools, dict):
+            tools = {}
+        normalized[server_name] = sorted(
+            tool_name
+            for tool_name in tools
+            if isinstance(tool_name, str) and tool_name.strip()
+        )
+    server_ids = sorted(normalized)
+    tool_ids = sorted(
+        f"{server}.{tool}"
+        for server, tools in normalized.items()
+        for tool in tools
+    )
+    runtime = {
+        "mcp_servers": normalized,
+    }
+    capability_digest = _sha256_json(runtime)
+    return {
+        "mcp_servers": server_ids,
+        "mcp_tools": tool_ids,
+        "server_tools": normalized,
+        "mcp_capability_digest": capability_digest,
+    }
+
+def _sha256_json(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+def _runtime_binding_digest(
+    provider_name: str,
+    model: str,
+    base_url: str,
+) -> str:
+    return _sha256_json(
+        {"base_url": base_url, "model": model, "provider": provider_name}
+    )
+
+def _parse_mcp_selection(values: list[str], capabilities: dict[str, object]) -> list[str]:
+    server_tools = capabilities["server_tools"]
+    if not isinstance(server_tools, dict):
+        raise RuntimeError("Invalid MCP capability projection.")
+    if not values:
+        return sorted(
+            list(capabilities["mcp_servers"])
+            + list(capabilities["mcp_tools"])
+        )
+    selected: set[str] = set()
+    for value in values:
+        for selector in value.split(","):
+            selector = selector.strip()
+            if not selector:
+                continue
+            server, separator, tool = selector.partition(".")
+            if server not in server_tools:
+                raise RuntimeError(f"Unknown MCP server selection `{server}`.")
+            if separator:
+                tools = server_tools[server]
+                if not isinstance(tools, list) or tool not in tools:
+                    raise RuntimeError(f"Unknown MCP tool selection `{selector}`.")
+            selected.add(selector)
+    return sorted(selected)
+
+def _controller_options(argv: list[str]) -> tuple[list[str], list[str], str | None]:
+    child: list[str] = []
+    selections: list[str] = []
+    handoff_file: str | None = None
+    index = 0
+    while index < len(argv):
+        argument = argv[index]
+        option, separator, inline_value = argument.partition("=")
+        if option in {"--mcp-select", "--handoff-file"}:
+            if separator:
+                value = inline_value
+            elif index + 1 < len(argv):
+                value = argv[index + 1]
+                index += 1
+            else:
+                raise RuntimeError(f"dcode-project requires a value for `{option}`.")
+            if not value:
+                raise RuntimeError(f"dcode-project requires a value for `{option}`.")
+            if option == "--mcp-select":
+                selections.append(value)
+            elif handoff_file is not None:
+                raise RuntimeError("dcode-project accepts only one `--handoff-file`.")
+            else:
+                handoff_file = value
+        else:
+            child.append(argument)
+        index += 1
+    return child, selections, handoff_file
+
+def _handoff_root() -> Path:
+    return Path.home().joinpath(*_HANDOFF_ROOT_PARTS)
+
+def _safe_handoff_path(raw_path: str) -> Path:
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        raise RuntimeError("Handoff path must be absolute.")
+    root = _handoff_root().resolve()
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as exc:
+        raise RuntimeError(f"Handoff path must stay under `{root}`.") from exc
+    current = root
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            raise RuntimeError("Handoff path cannot contain symlinks.")
+    if not candidate.is_file() or candidate.is_symlink():
+        raise RuntimeError(f"Handoff file is missing or not a regular file: {candidate}")
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Handoff path resolves outside approved root.") from exc
+    return candidate
+
+def _parse_timestamp(value: object) -> datetime:
+    if not isinstance(value, str) or len(value) > 64:
+        raise RuntimeError("Handoff `generated_at` must be RFC3339 text.")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RuntimeError("Handoff `generated_at` must be RFC3339 text.") from exc
+    if parsed.tzinfo is None:
+        raise RuntimeError("Handoff `generated_at` must include timezone.")
+    return parsed.astimezone(timezone.utc)
+
+def _reject_sensitive_value(value: object, depth: int = 0) -> None:
+    if depth > _HANDOFF_MAX_DEPTH:
+        raise RuntimeError("Handoff value nesting is too deep.")
+    if isinstance(value, str):
+        if len(value) > _HANDOFF_MAX_STRING or _SENSITIVE_VALUE.search(value):
+            raise RuntimeError("Handoff contains sensitive or oversized text.")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str) or len(key) > _HANDOFF_MAX_STRING:
+                raise RuntimeError("Handoff object keys are invalid.")
+            if _SENSITIVE_NAME.search(key):
+                raise RuntimeError("Handoff contains sensitive field names.")
+            _reject_sensitive_value(item, depth + 1)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _reject_sensitive_value(item, depth + 1)
+        return
+    if value is not None and not isinstance(value, (bool, int, float)):
+        raise RuntimeError("Handoff contains unsupported value type.")
+
+def _validate_handoff(
+    raw_path: str,
+    capabilities: dict[str, object],
+    selected: list[str],
+) -> tuple[Path, dict[str, object]]:
+    path = _safe_handoff_path(raw_path)
+    if path.stat().st_size > _HANDOFF_MAX_BYTES:
+        raise RuntimeError("Handoff file exceeds size limit.")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Handoff file is not valid UTF-8 JSON.") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Handoff root must be an object.")
+    required = {"schema", "generated_at", "mcp_capability_digest", "sources", "facts"}
+    allowed = required | {"constraints"}
+    if set(payload) - allowed or not required <= set(payload):
+        raise RuntimeError("Handoff fields do not match codex.mcp.handoff.v1.")
+    if payload["schema"] != _HANDOFF_SCHEMA:
+        raise RuntimeError("Unsupported handoff schema.")
+    generated_at = _parse_timestamp(payload["generated_at"])
+    now = datetime.now(timezone.utc)
+    if generated_at > now + timedelta(minutes=5) or now - generated_at > _HANDOFF_MAX_AGE:
+        raise RuntimeError("Handoff is stale or from the future.")
+    if payload["mcp_capability_digest"] != capabilities["mcp_capability_digest"]:
+        raise RuntimeError("Handoff MCP capability digest does not match current Codex config.")
+    sources = payload["sources"]
+    facts = payload["facts"]
+    if not isinstance(sources, list) or len(sources) > _HANDOFF_MAX_SOURCES:
+        raise RuntimeError("Handoff sources are invalid or exceed limit.")
+    if not isinstance(facts, list) or len(facts) > _HANDOFF_MAX_FACTS:
+        raise RuntimeError("Handoff facts are invalid or exceed limit.")
+    selected_set = set(selected)
+    source_keys: list[str] = []
+    server_tools = capabilities["server_tools"]
+    for source in sources:
+        if not isinstance(source, dict) or set(source) - {"server", "tool"} or "server" not in source:
+            raise RuntimeError("Handoff source shape is invalid.")
+        server = source["server"]
+        tool = source.get("tool")
+        if not isinstance(server, str) or not server or len(server) > _HANDOFF_MAX_STRING:
+            raise RuntimeError("Handoff source server is invalid.")
+        if server not in server_tools:
+            raise RuntimeError(f"Handoff source server is unknown: {server}")
+        if tool is not None and (not isinstance(tool, str) or not tool or len(tool) > _HANDOFF_MAX_STRING):
+            raise RuntimeError("Handoff source tool is invalid.")
+        if tool is not None and tool not in server_tools[server]:
+            raise RuntimeError(f"Handoff source tool is unknown: {server}.{tool}")
+        source_key = f"{server}.{tool}" if tool is not None else server
+        if source_key in source_keys:
+            raise RuntimeError("Handoff sources must be unique.")
+        if selected and source_key not in selected_set:
+            raise RuntimeError(f"Handoff source was not selected: {source_key}")
+        source_keys.append(source_key)
+    for fact in facts:
+        if not isinstance(fact, dict) or set(fact) != {"source", "value"}:
+            raise RuntimeError("Handoff fact shape is invalid.")
+        source_index = fact["source"]
+        if not isinstance(source_index, int) or isinstance(source_index, bool) or not 0 <= source_index < len(sources):
+            raise RuntimeError("Handoff fact source index is invalid.")
+        _reject_sensitive_value(fact["value"])
+    constraints = payload.get("constraints", [])
+    if not isinstance(constraints, list) or len(constraints) > 32 or any(
+        not isinstance(item, str) or len(item) > _HANDOFF_MAX_STRING for item in constraints
+    ):
+        raise RuntimeError("Handoff constraints are invalid.")
+    return path, payload
+
+def _append_handoff_instruction(argv: list[str], path: Path) -> None:
+    instruction = (
+        " Read validated Codex MCP handoff file at "
+        f"{path.absolute()}. Use only its facts; do not call MCP tools."
+    )
+    for index, argument in enumerate(argv):
+        if argument in {"-n", "--non-interactive"}:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+                raise RuntimeError("Handoff task text is missing.")
+            argv[index + 1] += instruction
+            return
+        for option in ("-n=", "--non-interactive="):
+            if argument.startswith(option):
+                argv[index] += instruction
+                return
+    raise RuntimeError("`--handoff-file` requires non-interactive task text via `-n`.")
+
 
 def _find_dcode() -> str | None:
     return shutil.which("dcode") or next(
@@ -361,26 +640,42 @@ def _reject_conflicting_user_openai_base_url() -> None:
 
 def main(argv: list[str]) -> int:
     _reject_unmanaged_runtime_options(argv)
+    child_argv, selection_values, handoff_file = _controller_options(argv)
     config = _load_toml(_config_path(), "dcode-project config")
     role_models = config.get("roles", {})
     if not isinstance(role_models, dict):
         raise RuntimeError("Invalid local `[roles]` configuration.")
     repo_root = _repo_root()
     model, base_url, api_key, provider_name = _runtime_binding(config)
+    codex_config = _codex_config(config)
+    capabilities = _mcp_capabilities(codex_config)
+    selected = _parse_mcp_selection(selection_values, capabilities)
     roles = _load_roles(repo_root, role_models, model)
-    if argv == ["--print-config"]:
+    if "--print-config" in child_argv and len(child_argv) == 1:
         print(
             json.dumps(
                 {
                     "controller_model": f"openai:{model}",
                     "provider": provider_name,
                     "role_models": {role["name"]: f"openai:{role['model']}" for role in roles},
+                    "mcp_servers": capabilities["mcp_servers"],
+                    "mcp_tools": capabilities["mcp_tools"],
+                    "selected_mcp": selected,
+                    "runtime_binding_digest": _runtime_binding_digest(
+                        provider_name,
+                        model,
+                        base_url,
+                    ),
+                    "mcp_capability_digest": capabilities["mcp_capability_digest"],
                     "roles_path": str(repo_root / ".deepagents" / "agents"),
                 },
                 sort_keys=True,
             )
         )
         return 0
+    if handoff_file is not None:
+        validated_path, _ = _validate_handoff(handoff_file, capabilities, selected)
+        _append_handoff_instruction(child_argv, validated_path)
     _reject_conflicting_user_openai_base_url()
     dcode = _find_dcode()
     if not dcode:
@@ -389,7 +684,7 @@ def main(argv: list[str]) -> int:
     _write_role_views(repo_root, roles)
     try:
         completed = subprocess.run(
-            [dcode, "-M", f"openai:{model}", *(arg for arg in argv if arg != "--no-mcp"), "--no-mcp"],
+            [dcode, "-M", f"openai:{model}", *(arg for arg in child_argv if arg != "--no-mcp"), "--no-mcp"],
             env=environment,
         )
         return completed.returncode

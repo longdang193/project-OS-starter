@@ -5,7 +5,7 @@ A private starter repository for carrying forward the repo operating system with
 ## What This Repo Owns
 
 - `docs/operating_system/`: human-readable repo governance and procedures
-- `.agents/skills/`: canonical Codex skill discovery surface
+- `.agents/skills/`: canonical project skill source, discovered by Codex and DeepAgents
 - `docs/operating_system/templates/agents/`: source templates for generated instruction outputs
 - `repo_config/`: starter-level configuration for shipped starter validation and planning contracts
 - `scripts/`: validation, hooks, and curated repo procedures
@@ -14,7 +14,7 @@ A private starter repository for carrying forward the repo operating system with
 
 Canonical source layers live in:
 
-- `AGENTS.md` and scoped `AGENTS.md` files
+- scoped `AGENTS.md` files, when present
 - `docs/operating_system/`
 - `.agents/skills/`
 - `docs/operating_system/templates/agents/`
@@ -66,7 +66,10 @@ change evidence, and branch disposition. Shared delegated roles live in
 `agents/*.toml`. User-local `dcode-project` materializes ignored DeepAgents
 project subagents at launch; they are not `dcode --agent` primary profiles.
 Current launcher forces `--no-mcp`; it does not mirror Codex MCP tools or
-permissions. Use Codex for MCP work, then hand DeepAgents sanitized task facts.
+permissions. Codex controller performs MCP work, writes validated
+`codex.mcp.handoff.v1` under user-local handoff root, then launches DeepAgents
+with `--handoff-file <absolute-path>`. Optional `--mcp-select` narrows
+provenance only; it does not grant DeepAgents MCP access.
 
 ## Agent Memory
 

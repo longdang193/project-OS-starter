@@ -28,7 +28,8 @@ When you have multiple unrelated failures (different test files, different subsy
 - With `deepagents`, built-in `task` is one executor-local delegation path. It
   does not make Codex MCP tools or permissions available. Keep same-workspace
   tasks sequential; parallel writers still need disjoint paths and isolated Git
-  worktrees.
+  worktrees. Required MCP calls stay with Codex; pass only validated
+  `codex.mcp.handoff.v1` facts to DeepAgents.
 
 Use this skill directly for independent investigations, audits, research questions, bounded fixes, or approved multi-lane implementation with disjoint write ownership.
 ## When to Use

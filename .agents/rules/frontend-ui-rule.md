@@ -30,7 +30,7 @@ To update: edit canonical source, then run sync.
 - Among equally correct and safe options, minimize total user burden through safe defaults, recognition over recall, progressive disclosure, error prevention, and reversible actions.
 - Material visual changes require fresh rendered or browser evidence for affected container sizes, supported themes, long content and zoom, keyboard and focus behavior, console errors, and unexpected layout shifts. Reuse existing visual-regression tooling; do not add tooling solely for this rule. Source inspection alone is insufficient.
 - When `browser.test` is available, use it for repeatable navigation, forms, accessibility snapshots, viewport checks, and screenshots. `browser.diagnose` is not available yet. Browser evidence never replaces committed regression tests.
-- Use Context7 only when pinned project sources do not answer version-specific UI framework or accessibility-library behavior.
+- Use Context7 only when active executor exposes it and pinned project sources do not answer version-specific UI framework or accessibility-library behavior. Under DeepAgents, use validated Codex handoff facts.
 - Browser MCP sessions provide live evidence, not durable regression coverage. Preserve important behavior in the existing Playwright Test or end-to-end suite when one exists; do not add a new test framework solely for this rule.
 - Keep detailed style catalogs and checklists inside `ui-ux-pro-max`; do not duplicate them in repository rules or root instructions.
 - If `ui-ux-pro-max` is unavailable, follow this rule and existing product design system. Do not block safe local fix.

@@ -40,6 +40,13 @@ views at launch. It derives `normal` and `low` from active `*-high` controller
 model; use optional local `[roles]` overrides only for a provider without that
 alias pattern. It is not a `dcode --agent` primary profile.
 
+DeepAgents auto-loads root `AGENTS.md` and discovers `.agents/skills` as
+project skills. It does not directly load `.agents/rules`; those are generated
+adapter views, not DeepAgents instruction inputs. When delegated work needs a
+detailed rule beyond root instructions, name and read canonical
+`docs/operating_system/rules/<rule>.md` in task scope. Do not create a duplicate
+`.deepagents/AGENTS.md` rule bundle.
+
 `dcode-project` reads its endpoint from active user-local Codex provider
 configuration and its API key from user-local secret configuration. Never add
 provider bindings, credentials, tier-model aliases, MCP config, hooks, memories,
@@ -48,26 +55,33 @@ threads, or generated `.deepagents/` files to repository coordination.
 ## DeepAgents Tool Boundary
 
 Current `dcode-project` bridges canonical role prompts and active Codex model
-binding only. It starts `dcode` with `--no-mcp`; Codex MCP servers, their tool
-allowlists, approval policy, sandbox mode, and shell policy do not transfer.
+binding, then validates a controller-owned sanitized handoff. It starts `dcode`
+with `--no-mcp`; Codex MCP servers, their tool allowlists, approval policy,
+sandbox mode, and shell policy do not transfer.
 DeepAgents still has its own built-in filesystem, shell, task, and web tools.
 Treat those as executor-local capabilities, not proof of Codex-equivalent
-containment. Web search needs separate DeepAgents provider configuration; its
-absence disables web search and does not fall back to Codex browser or web MCPs.
+containment. Web search needs user-local `TAVILY_API_KEY`; its absence disables
+web search and does not fall back to Codex browser or web MCPs.
 Keep DeepAgents work inside trusted one-user workspace, retain controller path
 checks, and verify Git scope before acceptance.
 
 DeepAgents controller may use built-in `task` for a bounded `low`, `normal`, or
 `high` project subagent. Name role in task prompt; do not use `dcode --agent`
-or `dcode -r` for project coordination. Same allowed paths, task evidence,
-checks, and acceptance rules apply to Codex and DeepAgents delegates.
+or `dcode -r` for project coordination. Same role source, Git scope, plan
+coordination, task evidence, checks, and acceptance rules apply to Codex and
+DeepAgents delegates; executor containment and approval remain distinct.
 
 `dcode-project` rejects direct model/profile, agent/thread, MCP/hook trust,
 approval/Yolo, sandbox, shell/filesystem/interpreter, startup, install, and ACP
 flags. It allows only bounded task flags such as `--max-turns`, `--timeout`,
-`--rubric`, `--goal`, and output controls. Use Codex directly for current MCP
-work. Pass resulting sanitized findings to DeepAgents; never pass credentials,
-tool configs, or approval authority through task text.
+`--rubric`, `--goal`, and output controls. Codex controller performs MCP calls,
+then writes handoff under `%USERPROFILE%\.local\share\dcode-project\handoffs`.
+Launch with `--handoff-file <absolute-path>` and optional repeatable
+`--mcp-select <server[.tool][,server[.tool]...]>`; selection narrows provenance
+only and never grants DeepAgents tools. Handoff schema is
+`codex.mcp.handoff.v1`; controller deletes handoff after use. Never pass
+credentials, tool configs, raw headers, cookies, or approval authority through
+task text.
 
 Install or refresh local DeepAgents runtime:
 
@@ -78,7 +92,9 @@ Install or refresh local DeepAgents runtime:
 Installer writes only `%USERPROFILE%\.local\share\dcode-project\config.toml`
 and `%USERPROFILE%\.local\bin\dcode-project.{cmd,ps1}`. Wrapper resolves current
 Git workspace and runs tracked `scripts/dcode_project.py`. Run `dcode-project`
-from selected repository workspace; do not pass `--model`.
+from selected repository workspace; do not pass `--model`. Setup fails when
+`%USERPROFILE%\.deepagents\.mcp.json` exists; remove that direct DeepAgents MCP
+config before setup so Codex config remains sole MCP authority.
 
 ## Resume In A New Task
 

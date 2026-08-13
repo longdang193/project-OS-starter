@@ -37,12 +37,13 @@ Read only what the current task needs:
 - `skill-systematic-debugging` after unexpected failures or unexplained behavior
 - `skill-test-driven-development` for non-trivial behavior changes or bug fixes
 - governance or publication rules only when those boundaries are in scope
-- configured MCP memory only when the task touches a known reusable workflow or repeats a recorded failure mode; follow `docs/operating_system/rules/agent-memory-rule.md`
+- configured MCP memory only when active executor exposes it and task touches a known reusable workflow or repeats a recorded failure mode; follow `docs/operating_system/rules/agent-memory-rule.md`
 
 When plan selects `deepagents`, its executor choice does not project Codex MCP
 tools, approval, sandbox, or shell policy. Current `dcode-project` forces
-`--no-mcp`. Keep task scope and Git acceptance executor-neutral; use Codex for
-MCP work until a validated permission projection exists.
+`--no-mcp`. Keep task scope and Git acceptance executor-neutral; call required
+MCP through Codex and pass only validated `codex.mcp.handoff.v1` facts to
+DeepAgents.
 
 Do not load every linked document or skill by default.
 

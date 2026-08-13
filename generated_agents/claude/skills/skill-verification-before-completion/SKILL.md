@@ -47,7 +47,7 @@ Read only what supports current claims:
 - stateful-route evidence for in-scope deep links, refresh, browser Back/Forward, failed mutations, retry, duplicate submission prevention, and optimistic rollback
 - audit rule only when its failure trigger applies
 - publication rules only when reporting publication readiness
-- configured MCP memory only after meaningful retries, debugging, or reusable failure discovery; store lessons only after fresh evidence confirms them
+- configured MCP memory only after meaningful retries, debugging, or reusable failure discovery when active executor exposes it; under DeepAgents, use validated Codex handoff facts and store lessons through Codex after fresh evidence confirms them
 
 Do not require retired architecture-sync scripts, persistent context packs, or missing reconciliation prompts.
 

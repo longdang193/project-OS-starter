@@ -47,12 +47,20 @@ Git owns workspace identity, change evidence, and authorized branch disposition.
 For DeepAgents, use user-local `dcode-project`; it derives ignored project role
 views from `agents/*.toml` and local runtime bindings. Do not track
 `.deepagents/`, invent provider fallback, runtime state, or cleanup commands.
+DeepAgents auto-loads this root `AGENTS.md` and discovers `.agents/skills` as
+project skills. It does not auto-load `.agents/rules`; those are generated
+platform-adapter views. For a detailed rule outside this root prompt, name and
+read its canonical `docs/operating_system/rules/*.md` source in bounded task
+scope. Do not duplicate rules in `.deepagents/AGENTS.md`.
+DeepAgents setup rejects user-local `.deepagents/.mcp.json`; keep direct
+DeepAgents MCP configuration absent so Codex remains sole MCP authority.
 Current launcher forces `--no-mcp` and does not project Codex MCP servers,
 tool allowlists, approval, sandbox, shell, profile, or thread settings.
-DeepAgents built-ins remain executor-local; use Codex for MCP work until a
-validated narrowed bridge exists. Name `low`, `normal`, or `high` in bounded
-DeepAgents `task` delegation; do not use `dcode --agent` or `dcode -r` for
-project coordination.
+Codex controller owns MCP calls and passes only validated
+`codex.mcp.handoff.v1` facts through user-local `dcode-project` handoff files.
+`--mcp-select` narrows provenance only. DeepAgents built-ins remain
+executor-local. Name `low`, `normal`, or `high` in bounded DeepAgents `task`
+delegation; do not use `dcode --agent` or `dcode -r` for project coordination.
 
 ## Project Design Rules
 
@@ -113,7 +121,7 @@ Prefer one consistent system that works for all equivalent cases.
 
 ## Agent Memory
 
-Use configured MCP Memory Server only when current work can benefit from reusable project knowledge. Fetch memory for shared workflows, known invariants, recurring failures, resumed work, or high-risk changes. Store only verified, reusable lessons; never store transient progress, guesses, secrets, personal data, or facts already obvious from authoritative sources.
+Use configured MCP Memory Server only when current work can benefit from reusable project knowledge and active executor exposes it. Fetch memory for shared workflows, known invariants, recurring failures, resumed work, or high-risk changes. For DeepAgents, Codex controller performs required memory calls and passes only validated handoff facts. Store only verified, reusable lessons; never store transient progress, guesses, secrets, personal data, or facts already obvious from authoritative sources.
 
 Memory informs work but never overrides explicit instructions, source code, tests, ADRs, or current governance. If memory tools are unavailable, continue source-first without recreating repository-file memory.
 
