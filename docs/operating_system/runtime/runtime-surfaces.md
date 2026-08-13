@@ -39,4 +39,6 @@ This document records provider-native deployment for rules, skills, root instruc
 - DeepAgents built-ins are executor-local. Current launcher does not project
   Codex MCP servers, tool allowlists, approval, sandbox, shell, profile, or
   thread settings.
+- DeepAgents web search requires its own user-local provider configuration. It
+  is absent by default and never falls back to Codex browser or web MCP tools.
 - Reusable operating methods live in skills; prompts remain wording-only.

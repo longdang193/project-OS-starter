@@ -52,8 +52,10 @@ binding only. It starts `dcode` with `--no-mcp`; Codex MCP servers, their tool
 allowlists, approval policy, sandbox mode, and shell policy do not transfer.
 DeepAgents still has its own built-in filesystem, shell, task, and web tools.
 Treat those as executor-local capabilities, not proof of Codex-equivalent
-containment. Keep DeepAgents work inside trusted one-user workspace, retain
-controller path checks, and verify Git scope before acceptance.
+containment. Web search needs separate DeepAgents provider configuration; its
+absence disables web search and does not fall back to Codex browser or web MCPs.
+Keep DeepAgents work inside trusted one-user workspace, retain controller path
+checks, and verify Git scope before acceptance.
 
 DeepAgents controller may use built-in `task` for a bounded `low`, `normal`, or
 `high` project subagent. Name role in task prompt; do not use `dcode --agent`
