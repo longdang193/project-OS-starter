@@ -1,6 +1,7 @@
 name = "xhigh"
 model_provider = "9router"
 model = "combo-xhigh"
+rank = 40
 description = """
 Highest-capability profile.
 Use for deep reasoning, complex multi-step tasks, or validation of `high` work.

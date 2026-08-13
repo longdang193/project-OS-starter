@@ -50,6 +50,7 @@ def write_role(
     *,
     model_provider: str = "9router",
     model: str | None = None,
+    rank: int = 20,
 ) -> None:
     (root / "agents").mkdir(parents=True, exist_ok=True)
     model = model or f"combo-{name}"
@@ -57,6 +58,7 @@ def write_role(
         f'name = "{name}"\n'
         f'model_provider = "{model_provider}"\n'
         f'model = "{model}"\n'
+        f'rank = {rank}\n'
         'description = "Role description"\n'
         'developer_instructions = "Return ROLE_OK."\n',
         encoding="utf-8",
@@ -192,7 +194,48 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
     monkeypatch.setattr(LAUNCHER.subprocess, "run", fail_dcode)
 
     with pytest.raises(OSError, match="dcode unavailable"):
-        LAUNCHER.main([])
+        LAUNCHER.main(["--role", "normal", "-n", "task"])
+
+    assert not (tmp_path / ".deepagents").exists()
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["-n", "task"], "requires `--role"),
+        (["--role", "missing", "-n", "task"], "Unknown role `missing`"),
+    ],
+)
+def test_main_rejects_missing_or_unknown_role_before_role_view_write(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    argv: list[str],
+    message: str,
+) -> None:
+    write_role(tmp_path, "normal")
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_runtime_binding",
+        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
+    )
+    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        LAUNCHER.main(argv)
 
     assert not (tmp_path / ".deepagents").exists()
 
@@ -229,6 +272,8 @@ def test_launcher_allows_bounded_noninteractive_options() -> None:
     LAUNCHER._reject_unmanaged_runtime_options(
         [
             "--print-config",
+            "--role",
+            "normal",
             "--json",
             "--max-turns",
             "4",
@@ -248,11 +293,29 @@ def test_launcher_rejects_missing_bounded_option_value(argument: str) -> None:
         LAUNCHER._reject_unmanaged_runtime_options([argument])
 
 
-def test_main_forces_no_mcp_and_cleans_role_views(
+@pytest.mark.parametrize(
+    ("role_name", "model", "rank"),
+    [
+        ("low", "combo-low", 10),
+        ("normal", "combo-normal", 20),
+        ("high", "combo-high", 30),
+        ("xhigh", "combo-xhigh", 40),
+    ],
+)
+def test_main_uses_selected_role_model_and_forces_no_mcp(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    role_name: str,
+    model: str,
+    rank: int,
 ) -> None:
-    write_role(tmp_path, "normal")
+    for candidate_name, candidate_model, candidate_rank in [
+        ("low", "combo-low", 10),
+        ("normal", "combo-normal", 20),
+        ("high", "combo-high", 30),
+        ("xhigh", "combo-xhigh", 40),
+    ]:
+        write_role(tmp_path, candidate_name, model=candidate_model, rank=candidate_rank)
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text("", encoding="utf-8")
     monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
@@ -283,17 +346,52 @@ def test_main_forces_no_mcp_and_cleans_role_views(
 
     monkeypatch.setattr(LAUNCHER.subprocess, "run", complete_dcode)
 
-    assert LAUNCHER.main(["--json", "--no-mcp", "-n", "task"]) == 0
+    assert LAUNCHER.main(["--role", role_name, "--json", "--no-mcp", "-n", "task"]) == 0
     assert invoked[0] == [
         "dcode",
         "-M",
-        "openai:combo-high",
+        f"openai:{model}",
         "--json",
         "-n",
         "task",
         "--no-mcp",
     ]
     assert not (tmp_path / ".deepagents").exists()
+
+
+def test_print_config_reports_selected_role_effective_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_role(tmp_path, "normal", model="combo-normal", rank=20)
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_runtime_binding",
+        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
+    )
+    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
+
+    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["selected_role"] == "normal"
+    assert payload["effective_model"] == "openai:combo-normal"
+    assert payload["controller_model"] == "openai:combo-high"
 
 
 def test_role_model_comes_from_canonical_template(tmp_path: Path) -> None:
@@ -312,17 +410,25 @@ def test_role_loader_rejects_mismatched_runtime_provider(tmp_path: Path) -> None
         LAUNCHER._load_roles(tmp_path, "9router")
 
 
+def test_role_loader_rejects_duplicate_ranks(tmp_path: Path) -> None:
+    write_role(tmp_path, "low", rank=10)
+    write_role(tmp_path, "normal", rank=10)
+
+    with pytest.raises(RuntimeError, match="ranks must be unique"):
+        LAUNCHER._load_roles(tmp_path, "9router")
+
+
 def test_canonical_role_hierarchy_is_source_owned() -> None:
     roles = {
-        role["name"]: (role["model_provider"], role["model"])
+        role["name"]: (role["model_provider"], role["model"], role["rank"])
         for role in LAUNCHER._load_roles(ROOT, "9router")
     }
 
     assert roles == {
-        "low": ("9router", "combo-low"),
-        "normal": ("9router", "combo-normal"),
-        "high": ("9router", "combo-high"),
-        "xhigh": ("9router", "combo-xhigh"),
+        "low": ("9router", "combo-low", 10),
+        "normal": ("9router", "combo-normal", 20),
+        "high": ("9router", "combo-high", 30),
+        "xhigh": ("9router", "combo-xhigh", 40),
     }
 
 

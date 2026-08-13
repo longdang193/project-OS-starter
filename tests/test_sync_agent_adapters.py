@@ -146,6 +146,7 @@ def _write_agent_role(path: Path, *, name: str = "normal", extra: str = "") -> N
         f'''name = "{name}"
 model_provider = "9router"
 model = "combo-{name}"
+rank = 20
 description = "Role description"
 developer_instructions = "Return ROLE_OK."
 {extra}''',
@@ -187,11 +188,12 @@ def test_sync_codex_agents_tree_generates_parseable_toml_and_removes_stale_outpu
 @pytest.mark.parametrize(
     ("filename", "content", "message"),
     [
-        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "combo-normal"\ndescription = "x"\n', "developer_instructions"),
-        ("normal.toml", 'name = "wrong"\nmodel_provider = "9router"\nmodel = "combo-normal"\ndescription = "x"\ndeveloper_instructions = "x"\n', "filename must match"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "combo-normal"\nrank = 20\ndescription = "x"\n', "developer_instructions"),
+        ("normal.toml", 'name = "wrong"\nmodel_provider = "9router"\nmodel = "combo-normal"\nrank = 20\ndescription = "x"\ndeveloper_instructions = "x"\n', "filename must match"),
         ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\ndescription = "x"\ndeveloper_instructions = "x"\n', "`model`"),
-        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "x"\ndescription = "x"\ndeveloper_instructions = "x"\nbase_url = "http://127.0.0.1"\n', "runtime-owned keys"),
-        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "combo-normal"\ndescription = "x"\ndeveloper_instructions = "x"\nextra = "x"\n', "unsupported keys"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "combo-normal"\nrank = 0\ndescription = "x"\ndeveloper_instructions = "x"\n', "`rank`"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "x"\nrank = 20\ndescription = "x"\ndeveloper_instructions = "x"\nbase_url = "http://127.0.0.1"\n', "runtime-owned keys"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "combo-normal"\nrank = 20\ndescription = "x"\ndeveloper_instructions = "x"\nextra = "x"\n', "unsupported keys"),
     ],
 )
 def test_load_agent_roles_rejects_invalid_or_runtime_owned_source(
@@ -206,6 +208,14 @@ def test_load_agent_roles_rejects_invalid_or_runtime_owned_source(
 
     with pytest.raises(ValueError, match=message):
         SYNC._load_agent_roles(source.parent, "*.toml")
+
+
+def test_load_agent_roles_rejects_duplicate_ranks(tmp_path: Path) -> None:
+    _write_agent_role(tmp_path / "agents" / "low.toml", name="low")
+    _write_agent_role(tmp_path / "agents" / "normal.toml", name="normal")
+
+    with pytest.raises(ValueError, match="rank.*unique"):
+        SYNC._load_agent_roles(tmp_path / "agents", "*.toml")
 
 
 def test_run_parses_shared_role_source_once_for_codex(

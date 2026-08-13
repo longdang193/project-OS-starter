@@ -53,6 +53,7 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--recursion-limit",
     "--mcp-select",
     "--handoff-file",
+    "--role",
 }
 
 
@@ -139,12 +140,13 @@ def _repo_root() -> Path:
 def _load_roles(
     repo_root: Path,
     runtime_provider: str,
-) -> list[dict[str, str]]:
+) -> list[dict[str, object]]:
     roles_root = repo_root / "agents"
-    roles: list[dict[str, str]] = []
+    roles: list[dict[str, object]] = []
+    ranks: set[int] = set()
     for source in sorted(roles_root.glob("*.toml")):
         values = _load_toml(source, "role template")
-        required = {"name", "model_provider", "model", "description", "developer_instructions"}
+        required = {"name", "model_provider", "model", "rank", "description", "developer_instructions"}
         if set(values) != required:
             raise RuntimeError(f"Unsupported role template fields: {source}")
         name = _required_string(values, "name", str(source))
@@ -155,10 +157,17 @@ def _load_roles(
             raise RuntimeError(
                 f"Role provider `{model_provider}` does not match runtime provider `{runtime_provider}`: {source}"
             )
+        rank = values.get("rank")
+        if isinstance(rank, bool) or not isinstance(rank, int) or rank <= 0:
+            raise RuntimeError(f"Role rank must be a positive integer: {source}")
+        if rank in ranks:
+            raise RuntimeError(f"Role ranks must be unique: {source}")
+        ranks.add(rank)
         roles.append(
             {
                 "name": name,
                 "model_provider": model_provider,
+                "rank": rank,
                 "description": _required_string(values, "description", str(source)),
                 "developer_instructions": _required_string(
                     values, "developer_instructions", str(source)
@@ -175,7 +184,7 @@ def _role_view_path(agents_root: Path, role_name: str) -> Path:
     return agents_root / role_name / "AGENTS.md"
 
 
-def _role_view_content(role: dict[str, str]) -> str:
+def _role_view_content(role: dict[str, object]) -> str:
     model = f"openai:{role['model']}"
     return (
         "---\n"
@@ -187,7 +196,7 @@ def _role_view_content(role: dict[str, str]) -> str:
     )
 
 
-def _owned_views_marker(roles: list[dict[str, str]]) -> str:
+def _owned_views_marker(roles: list[dict[str, object]]) -> str:
     views = {
         role["name"]: _role_view_content(role)
         for role in roles
@@ -198,7 +207,7 @@ def _owned_views_marker(roles: list[dict[str, str]]) -> str:
     ) + "\n"
 
 
-def _read_owned_views(marker: Path, roles: list[dict[str, str]]) -> dict[str, str]:
+def _read_owned_views(marker: Path, roles: list[dict[str, object]]) -> dict[str, str]:
     if marker.is_symlink() or not marker.is_file():
         raise RuntimeError(f"Cannot verify owned DeepAgents role views: {marker}")
     try:
@@ -285,7 +294,7 @@ def _remove_role_views(repo_root: Path, roles: list[dict[str, str]]) -> None:
     _remove_empty_parents(agents_root, repo_root)
 
 
-def _write_role_views(repo_root: Path, roles: list[dict[str, str]]) -> Path:
+def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
     agents_root = repo_root / ".deepagents" / "agents"
     marker = agents_root / _ROLE_VIEWS_MARKER
     if not agents_root.exists():
@@ -416,15 +425,16 @@ def _parse_mcp_selection(values: list[str], capabilities: dict[str, object]) -> 
             selected.add(selector)
     return sorted(selected)
 
-def _controller_options(argv: list[str]) -> tuple[list[str], list[str], str | None]:
+def _controller_options(argv: list[str]) -> tuple[list[str], list[str], str | None, str | None]:
     child: list[str] = []
     selections: list[str] = []
     handoff_file: str | None = None
+    role_name: str | None = None
     index = 0
     while index < len(argv):
         argument = argv[index]
         option, separator, inline_value = argument.partition("=")
-        if option in {"--mcp-select", "--handoff-file"}:
+        if option in {"--mcp-select", "--handoff-file", "--role"}:
             if separator:
                 value = inline_value
             elif index + 1 < len(argv):
@@ -436,6 +446,10 @@ def _controller_options(argv: list[str]) -> tuple[list[str], list[str], str | No
                 raise RuntimeError(f"dcode-project requires a value for `{option}`.")
             if option == "--mcp-select":
                 selections.append(value)
+            elif option == "--role":
+                if role_name is not None:
+                    raise RuntimeError("dcode-project accepts only one `--role`.")
+                role_name = value
             elif handoff_file is not None:
                 raise RuntimeError("dcode-project accepts only one `--handoff-file`.")
             else:
@@ -443,7 +457,7 @@ def _controller_options(argv: list[str]) -> tuple[list[str], list[str], str | No
         else:
             child.append(argument)
         index += 1
-    return child, selections, handoff_file
+    return child, selections, handoff_file, role_name
 
 def _handoff_root() -> Path:
     return Path.home().joinpath(*_HANDOFF_ROOT_PARTS)
@@ -638,7 +652,7 @@ def _reject_conflicting_user_openai_base_url() -> None:
 
 def main(argv: list[str]) -> int:
     _reject_unmanaged_runtime_options(argv)
-    child_argv, selection_values, handoff_file = _controller_options(argv)
+    child_argv, selection_values, handoff_file, role_name = _controller_options(argv)
     config = _load_toml(_config_path(), "dcode-project config")
     repo_root = _repo_root()
     model, base_url, api_key, provider_name = _runtime_binding(config)
@@ -646,28 +660,35 @@ def main(argv: list[str]) -> int:
     capabilities = _mcp_capabilities(codex_config)
     selected = _parse_mcp_selection(selection_values, capabilities)
     roles = _load_roles(repo_root, provider_name)
+    role_by_name = {str(role["name"]): role for role in roles}
+    selected_role = role_by_name.get(role_name) if role_name is not None else None
+    if role_name is not None and selected_role is None:
+        raise RuntimeError(f"Unknown role `{role_name}`.")
     if "--print-config" in child_argv and len(child_argv) == 1:
+        payload: dict[str, object] = {
+            "controller_model": f"openai:{model}",
+            "provider": provider_name,
+            "role_models": {str(role["name"]): f"openai:{role['model']}" for role in roles},
+            "mcp_servers": capabilities["mcp_servers"],
+            "mcp_tools": capabilities["mcp_tools"],
+            "selected_mcp": selected,
+            "runtime_binding_digest": _runtime_binding_digest(
+                provider_name,
+                model,
+                base_url,
+            ),
+            "mcp_capability_digest": capabilities["mcp_capability_digest"],
+            "roles_path": str(repo_root / ".deepagents" / "agents"),
+        }
+        if selected_role is not None:
+            payload["selected_role"] = selected_role["name"]
+            payload["effective_model"] = f"openai:{selected_role['model']}"
         print(
-            json.dumps(
-                {
-                    "controller_model": f"openai:{model}",
-                    "provider": provider_name,
-                    "role_models": {role["name"]: f"openai:{role['model']}" for role in roles},
-                    "mcp_servers": capabilities["mcp_servers"],
-                    "mcp_tools": capabilities["mcp_tools"],
-                    "selected_mcp": selected,
-                    "runtime_binding_digest": _runtime_binding_digest(
-                        provider_name,
-                        model,
-                        base_url,
-                    ),
-                    "mcp_capability_digest": capabilities["mcp_capability_digest"],
-                    "roles_path": str(repo_root / ".deepagents" / "agents"),
-                },
-                sort_keys=True,
-            )
+            json.dumps(payload, sort_keys=True)
         )
         return 0
+    if selected_role is None:
+        raise RuntimeError("dcode-project requires `--role <low|normal|high|xhigh>` for task execution.")
     handoff_stdin: str | None = None
     if handoff_file is not None:
         _, payload = _validate_handoff(handoff_file, capabilities, selected)
@@ -680,7 +701,13 @@ def main(argv: list[str]) -> int:
     _write_role_views(repo_root, roles)
     try:
         completed = subprocess.run(
-            [dcode, "-M", f"openai:{model}", *(arg for arg in child_argv if arg != "--no-mcp"), "--no-mcp"],
+            [
+                dcode,
+                "-M",
+                f"openai:{selected_role['model']}",
+                *(arg for arg in child_argv if arg != "--no-mcp"),
+                "--no-mcp",
+            ],
             env=environment,
             input=handoff_stdin,
             text=handoff_stdin is not None,

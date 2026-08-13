@@ -1,6 +1,7 @@
 name = "normal"
 model_provider = "9router"
 model = "combo-normal"
+rank = 20
 description = """
 Default capability profile.
 Use when current task contract has ordinary reasoning depth, ambiguity, scope, and

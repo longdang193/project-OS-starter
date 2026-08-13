@@ -45,6 +45,7 @@ class AgentRole:
     name: str
     model_provider: str
     model: str
+    rank: int
     description: str
     developer_instructions: str
 
@@ -62,6 +63,7 @@ REQUIRED_AGENT_ROLE_KEYS = {
     "name",
     "model_provider",
     "model",
+    "rank",
     "description",
     "developer_instructions",
 }
@@ -250,6 +252,7 @@ def _normalized_agent_text(value: str) -> str:
 
 def _load_agent_roles(src_root: Path, pattern: str) -> list[AgentRole]:
     roles: list[AgentRole] = []
+    ranks: set[int] = set()
     for source in _iter_matching_files(src_root, pattern):
         try:
             payload = tomllib.loads(source.read_text(encoding="utf-8"))
@@ -277,16 +280,25 @@ def _load_agent_roles(src_root: Path, pattern: str) -> list[AgentRole]:
                     f"Invalid agent role {source.as_posix()}: `{key}` must be a non-empty string."
                 )
             values[key] = _normalized_agent_text(value)
+        rank = payload.get("rank")
+        if isinstance(rank, bool) or not isinstance(rank, int) or rank <= 0:
+            raise ValueError(
+                f"Invalid agent role {source.as_posix()}: `rank` must be a positive integer."
+            )
         if source.stem != values["name"]:
             raise ValueError(
                 f"Invalid agent role {source.as_posix()}: filename must match `name = \"{values['name']}\"`."
             )
+        if rank in ranks:
+            raise ValueError(f"Invalid agent role {source.as_posix()}: `rank` must be unique.")
+        ranks.add(rank)
         roles.append(
             AgentRole(
                 source=source,
                 name=values["name"],
                 model_provider=values["model_provider"],
                 model=values["model"],
+                rank=rank,
                 description=values["description"],
                 developer_instructions=values["developer_instructions"],
             )

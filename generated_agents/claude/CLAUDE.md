@@ -75,11 +75,14 @@ Current launcher forces `--no-mcp` and does not project Codex MCP servers,
 tool allowlists, approval, sandbox, shell, profile, or thread settings.
 Codex controller owns MCP calls and passes only validated
 `codex.mcp.handoff.v1` facts through user-local `dcode-project` handoff files.
-`--mcp-select` narrows provenance only. DeepAgents capabilities depend on launch
-mode and task context; current launcher grants no runtime-authority flags, so
-never assume delegated filesystem, shell, interpreter, web, or MCP access. Name
-`low`, `normal`, `high`, or `xhigh` in bounded DeepAgents `task` delegation; do not use
-`dcode --agent` or `dcode -r` for project coordination.
+`--mcp-select` narrows provenance only. DeepAgents task launch requires
+`dcode-project --role <low|normal|high|xhigh>`; launcher resolves the selected
+canonical source model while top-level Codex model remains controller default.
+DeepAgents capabilities depend on launch mode and task context; current launcher
+grants no runtime-authority flags, so never assume delegated filesystem, shell,
+interpreter, web, or MCP access. Name `low`, `normal`, `high`, or `xhigh` in
+bounded DeepAgents `task` delegation; do not use `dcode --agent` or `dcode -r`
+for project coordination.
 
 ## Project Design Rules
 

@@ -67,10 +67,12 @@ threads, or generated `.deepagents/` files to repository coordination.
 
 ## DeepAgents Tool Boundary
 
-Current `dcode-project` bridges canonical role prompts and active Codex model
-binding, then validates a controller-owned sanitized handoff. It starts `dcode`
-with `--no-mcp`; Codex MCP servers, their tool allowlists, approval policy,
-sandbox mode, and shell policy do not transfer.
+Current `dcode-project` consumes required `--role <low|normal|high|xhigh>`,
+resolves that canonical source role's provider alias and model, then validates a
+controller-owned sanitized handoff. It starts `dcode` with selected source model
+and `--no-mcp`; Codex MCP servers, their tool allowlists, approval policy,
+sandbox mode, and shell policy do not transfer. The top-level Codex model remains
+controller default; it does not select a DeepAgents role model.
 DeepAgents capabilities depend on launch mode and task context. Current
 `dcode-project` does not grant shell, filesystem, interpreter, web, or other
 runtime-authority flags. Never assume a delegated `task` has those capabilities;
@@ -80,8 +82,8 @@ back to Codex browser or web MCPs.
 Keep DeepAgents work inside trusted one-user workspace, retain controller path
 checks, and verify Git scope before acceptance.
 
-DeepAgents controller may use built-in `task` for a bounded `low`, `normal`, or
-`high` project subagent. These are capability profiles, not fixed task roles.
+DeepAgents controller may use built-in `task` for a bounded `low`, `normal`,
+`high`, or `xhigh` project subagent. These are capability profiles, not fixed task roles.
 Controller defines open-ended task function through prompt and selects profile
 from required reasoning depth, ambiguity, scope, risk, and cost. Do not map
 research, debugging, review, design, planning, implementation, validation,
@@ -106,7 +108,8 @@ DeepAgents local runtime state may support temporary diagnostics such as task
 timing or failure analysis. It is not repository coordination state, durable
 acceptance evidence, or required recovery input. Plan plus Git remain SSOT.
 
-`dcode-project` rejects direct model/profile, agent/thread, MCP/hook trust,
+`dcode-project` consumes its own required `--role` selector and rejects direct
+model/profile, agent/thread, MCP/hook trust,
 approval/Yolo, sandbox, shell/filesystem/interpreter, startup, install, and ACP
 flags. It allows only bounded task flags such as `--max-turns`, `--timeout`,
 `--rubric`, `--goal`, and output controls. Codex controller performs MCP calls,
@@ -129,7 +132,8 @@ Install or refresh local DeepAgents runtime:
 Installer writes only `%USERPROFILE%\.local\share\dcode-project\config.toml`
 and `%USERPROFILE%\.local\bin\dcode-project.{cmd,ps1}`. Wrapper resolves current
 Git workspace and runs tracked `scripts/dcode_project.py`. Run `dcode-project`
-from selected repository workspace; do not pass `--model`. Setup fails when
+from selected repository workspace with `--role <low|normal|high|xhigh>`; do not
+pass `--model`. Setup fails when
 `%USERPROFILE%\.deepagents\.mcp.json` exists; remove that direct DeepAgents MCP
 config before setup so Codex config remains sole MCP authority.
 
