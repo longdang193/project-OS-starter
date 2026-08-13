@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: proposed
+status: superseded
 template_id: implementation-plan
 name: deepagents-role-ssot-integration
 targets:
@@ -14,6 +14,10 @@ targets:
 ---
 
 # DeepAgents Role SSOT Integration Plan
+
+> Superseded on August 13, 2026. Canonical role templates now own delegated
+> `model_provider` and `model`; source hierarchy is `xhigh > high > normal > low`.
+> Local configuration owns provider endpoint, credentials, and provider definition only.
 
 ## Goal
 

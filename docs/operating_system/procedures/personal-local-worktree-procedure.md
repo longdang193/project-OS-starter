@@ -44,11 +44,14 @@ Follow
 Start selected local executor only from actual selected-workspace context. If
 context cannot be proved, work directly in selected workspace or `block`.
 
-For delegated roles, `agents/*.toml` owns role prompts. Codex consumes deployed
+For delegated roles, `agents/*.toml` owns role prompts, provider aliases, and
+models. Profile order is `xhigh > high > normal > low`. Codex consumes deployed
 TOML. User-local `dcode-project` materializes ignored `.deepagents/agents/`
-views at launch. It derives `normal` and `low` from active `*-high` controller
-model; use optional local `[roles]` overrides only for a provider without that
-alias pattern. It is not a `dcode --agent` primary profile.
+views at launch with local provider endpoint and credentials. Each role provider
+alias must match active local Codex provider. In validator-executor setups,
+validator profile must rank above executor profile; use `xhigh` to validate
+`high`. Do not use `xhigh` as executor when a separate profile-based validator
+is required. It is not a `dcode --agent` primary profile.
 
 DeepAgents auto-loads root `AGENTS.md` and discovers `.agents/skills` as
 project skills. It does not directly load `.agents/rules`; those are generated

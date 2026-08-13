@@ -44,6 +44,7 @@
     "GEMINI.md",
     "CLAUDE.md",
     ".agents/skills/skill-using-superpowers/SKILL.md",
+    "agents/xhigh.toml",
     "agents/high.toml",
     "agents/normal.toml",
     "agents/low.toml",

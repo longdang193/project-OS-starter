@@ -5,5 +5,7 @@
 # To update: edit canonical source, then run sync.
 
 name = "normal"
+model_provider = "9router"
+model = "combo-normal"
 description = "Default capability profile.\nUse when current task contract has ordinary reasoning depth, ambiguity, scope, and\nrisk, regardless of task function."
 developer_instructions = "Complete delegated task within assigned scope.\n\nReturn concrete findings or completed work to parent. Do not spawn child agents\nunless parent explicitly requests it."

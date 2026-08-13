@@ -144,6 +144,8 @@ def _write_agent_role(path: Path, *, name: str = "normal", extra: str = "") -> N
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         f'''name = "{name}"
+model_provider = "9router"
+model = "combo-{name}"
 description = "Role description"
 developer_instructions = "Return ROLE_OK."
 {extra}''',
@@ -173,6 +175,8 @@ def test_sync_codex_agents_tree_generates_parseable_toml_and_removes_stale_outpu
     assert rendered.startswith("# GENERATED FILE - DO NOT EDIT\n")
     assert tomllib.loads(rendered) == {
         "name": "normal",
+        "model_provider": "9router",
+        "model": "combo-normal",
         "description": "Role description",
         "developer_instructions": "Return ROLE_OK.",
     }
@@ -183,10 +187,11 @@ def test_sync_codex_agents_tree_generates_parseable_toml_and_removes_stale_outpu
 @pytest.mark.parametrize(
     ("filename", "content", "message"),
     [
-        ("normal.toml", 'name = "normal"\ndescription = "x"\n', "developer_instructions"),
-        ("normal.toml", 'name = "wrong"\ndescription = "x"\ndeveloper_instructions = "x"\n', "filename must match"),
-        ("normal.toml", 'name = "normal"\ndescription = "x"\ndeveloper_instructions = "x"\nmodel = "x"\n', "runtime-owned keys"),
-        ("normal.toml", 'name = "normal"\ndescription = "x"\ndeveloper_instructions = "x"\nextra = "x"\n', "unsupported keys"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "combo-normal"\ndescription = "x"\n', "developer_instructions"),
+        ("normal.toml", 'name = "wrong"\nmodel_provider = "9router"\nmodel = "combo-normal"\ndescription = "x"\ndeveloper_instructions = "x"\n', "filename must match"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\ndescription = "x"\ndeveloper_instructions = "x"\n', "`model`"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "x"\ndescription = "x"\ndeveloper_instructions = "x"\nbase_url = "http://127.0.0.1"\n', "runtime-owned keys"),
+        ("normal.toml", 'name = "normal"\nmodel_provider = "9router"\nmodel = "combo-normal"\ndescription = "x"\ndeveloper_instructions = "x"\nextra = "x"\n', "unsupported keys"),
     ],
 )
 def test_load_agent_roles_rejects_invalid_or_runtime_owned_source(

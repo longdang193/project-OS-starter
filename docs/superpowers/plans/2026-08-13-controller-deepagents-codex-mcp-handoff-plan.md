@@ -187,7 +187,7 @@ state; Codex and DeepAgents thread IDs remain runtime-local.
 
 **Steps:**
 - [ ] Step 1: Keep allowlist limited to `--max-turns`, `--timeout`, `--goal`, `--rubric`, `--rubric-max-iterations`, `--recursion-limit`, output controls, task text, and forced `--no-mcp`.
-- [ ] Step 2: Add explicit role selector only if current `dcode` exposes a supported role/config option; otherwise retain role selection through bounded task delegation naming `low`, `normal`, or `high`.
+- [ ] Step 2: Add explicit role selector only if current `dcode` exposes a supported role/config option; otherwise retain role selection through bounded task delegation naming `low`, `normal`, `high`, or `xhigh`.
 - [ ] Step 3: Reject `--model`, `--agent`, `--resume`, MCP config/trust flags, approval/Yolo, sandbox, shell/filesystem/interpreter, install, startup, and ACP controls.
 - [ ] Step 4: Ensure selected MCP IDs/tools affect only controller manifest and handoff provenance, never DeepAgents executable arguments.
 

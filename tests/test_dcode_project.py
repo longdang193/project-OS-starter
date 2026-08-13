@@ -44,10 +44,19 @@ def load_module(name: str, path: Path):
 LAUNCHER = load_module("dcode_project", LAUNCHER_PATH)
 
 
-def write_role(root: Path, name: str) -> None:
+def write_role(
+    root: Path,
+    name: str,
+    *,
+    model_provider: str = "9router",
+    model: str | None = None,
+) -> None:
     (root / "agents").mkdir(parents=True, exist_ok=True)
+    model = model or f"combo-{name}"
     (root / "agents" / f"{name}.toml").write_text(
         f'name = "{name}"\n'
+        f'model_provider = "{model_provider}"\n'
+        f'model = "{model}"\n'
         'description = "Role description"\n'
         'developer_instructions = "Return ROLE_OK."\n',
         encoding="utf-8",
@@ -57,7 +66,7 @@ def write_role(root: Path, name: str) -> None:
 def test_local_role_views_use_canonical_prompt_and_local_model_map(tmp_path: Path) -> None:
     write_role(tmp_path, "normal")
 
-    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
     agents_root = LAUNCHER._write_role_views(tmp_path, roles)
     rendered = (agents_root / "normal" / "AGENTS.md").read_text(encoding="utf-8")
 
@@ -73,7 +82,7 @@ def test_local_role_views_refuse_unowned_directory(tmp_path: Path) -> None:
     unowned.mkdir(parents=True)
     (unowned / "AGENTS.md").write_text("custom\n", encoding="utf-8")
 
-    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
 
     with pytest.raises(RuntimeError, match="user-owned"):
         LAUNCHER._write_role_views(tmp_path, roles)
@@ -83,7 +92,7 @@ def test_local_role_views_replace_empty_retired_directories(tmp_path: Path) -> N
     write_role(tmp_path, "normal")
     (tmp_path / ".deepagents" / "agents" / "normal").mkdir(parents=True)
 
-    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
     agents_root = LAUNCHER._write_role_views(tmp_path, roles)
 
     assert (agents_root / ".dcode-project-owned").exists()
@@ -92,7 +101,7 @@ def test_local_role_views_replace_empty_retired_directories(tmp_path: Path) -> N
 
 def test_local_role_view_cleanup_removes_only_owned_files(tmp_path: Path) -> None:
     write_role(tmp_path, "normal")
-    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
     agents_root = LAUNCHER._write_role_views(tmp_path, roles)
     user_file = agents_root / "normal" / "notes.txt"
     user_file.write_text("retain\n", encoding="utf-8")
@@ -106,7 +115,7 @@ def test_local_role_view_cleanup_removes_only_owned_files(tmp_path: Path) -> Non
 
 def test_local_role_view_cleanup_keeps_unmarked_matching_view(tmp_path: Path) -> None:
     write_role(tmp_path, "normal")
-    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
     agents_root = tmp_path / ".deepagents" / "agents"
     view = agents_root / "normal" / "AGENTS.md"
     view.parent.mkdir(parents=True)
@@ -119,7 +128,7 @@ def test_local_role_view_cleanup_keeps_unmarked_matching_view(tmp_path: Path) ->
 
 def test_local_role_views_refuse_user_file_after_owned_generation(tmp_path: Path) -> None:
     write_role(tmp_path, "normal")
-    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
     agents_root = LAUNCHER._write_role_views(tmp_path, roles)
     (agents_root / "custom.txt").write_text("retain\n", encoding="utf-8")
 
@@ -132,7 +141,7 @@ def test_local_role_view_write_failure_cleans_partial_generated_state(
     tmp_path: Path,
 ) -> None:
     write_role(tmp_path, "normal")
-    roles = LAUNCHER._load_roles(tmp_path, {"normal": "combo-normal"}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
     original_write_text = Path.write_text
 
     def fail_role_view(self: Path, data: str, *args: object, **kwargs: object) -> int:
@@ -160,7 +169,7 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "provider"),
+        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
     )
     monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
     monkeypatch.setattr(
@@ -251,7 +260,7 @@ def test_main_forces_no_mcp_and_cleans_role_views(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "provider"),
+        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
     )
     monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
     monkeypatch.setattr(
@@ -287,24 +296,34 @@ def test_main_forces_no_mcp_and_cleans_role_views(
     assert not (tmp_path / ".deepagents").exists()
 
 
-def test_default_normal_model_follows_active_high_controller(tmp_path: Path) -> None:
-    write_role(tmp_path, "normal")
+def test_role_model_comes_from_canonical_template(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", model="combo-low")
 
-    roles = LAUNCHER._load_roles(tmp_path, {}, "combo-high")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
 
-    assert roles[0]["model"] == "combo-normal"
+    assert roles[0]["model"] == "combo-low"
+    assert roles[0]["model_provider"] == "9router"
 
 
-def test_local_role_loader_rejects_runtime_owned_model(tmp_path: Path) -> None:
-    write_role(tmp_path, "normal")
-    role_path = tmp_path / "agents" / "normal.toml"
-    role_path.write_text(
-        role_path.read_text(encoding="utf-8") + 'model = "combo-normal"\n',
-        encoding="utf-8",
-    )
+def test_role_loader_rejects_mismatched_runtime_provider(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", model_provider="other")
 
-    with pytest.raises(RuntimeError, match="Unsupported role template fields"):
-        LAUNCHER._load_roles(tmp_path, {}, "combo-high")
+    with pytest.raises(RuntimeError, match="does not match runtime provider"):
+        LAUNCHER._load_roles(tmp_path, "9router")
+
+
+def test_canonical_role_hierarchy_is_source_owned() -> None:
+    roles = {
+        role["name"]: (role["model_provider"], role["model"])
+        for role in LAUNCHER._load_roles(ROOT, "9router")
+    }
+
+    assert roles == {
+        "low": ("9router", "combo-low"),
+        "normal": ("9router", "combo-normal"),
+        "high": ("9router", "combo-high"),
+        "xhigh": ("9router", "combo-xhigh"),
+    }
 
 
 def test_runtime_environment_reaches_deepagents_server_child(

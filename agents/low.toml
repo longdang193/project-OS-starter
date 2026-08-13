@@ -1,4 +1,6 @@
 name = "low"
+model_provider = "9router"
+model = "combo-low"
 description = """
 Lower-cost capability profile.
 Use when current task contract is bounded, low-complexity, and low-risk, regardless

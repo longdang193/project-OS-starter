@@ -43,6 +43,8 @@ class Mapping:
 class AgentRole:
     source: Path
     name: str
+    model_provider: str
+    model: str
     description: str
     developer_instructions: str
 
@@ -51,14 +53,18 @@ GENERATED_BY = "scripts/sync_agent_adapters.py"
 ROOT_INSTRUCTION_SOURCE = "docs/operating_system/templates/agents/root-AGENTS.template.md"
 ROOT_INSTRUCTION_DESTINATION = "AGENTS.md"
 FORBIDDEN_AGENT_ROLE_KEYS = {
-    "model",
-    "model_provider",
     "model_reasoning_effort",
     "base_url",
     "api_key",
     "model_providers",
 }
-REQUIRED_AGENT_ROLE_KEYS = {"name", "description", "developer_instructions"}
+REQUIRED_AGENT_ROLE_KEYS = {
+    "name",
+    "model_provider",
+    "model",
+    "description",
+    "developer_instructions",
+}
 
 
 def _render_json_from_yaml(text: str) -> str:
@@ -264,7 +270,7 @@ def _load_agent_roles(src_root: Path, pattern: str) -> list[AgentRole]:
                 f"{', '.join(unexpected_keys)}."
             )
         values: dict[str, str] = {}
-        for key in ("name", "description", "developer_instructions"):
+        for key in ("name", "model_provider", "model", "description", "developer_instructions"):
             value = payload.get(key)
             if not isinstance(value, str) or not _normalized_agent_text(value):
                 raise ValueError(
@@ -279,6 +285,8 @@ def _load_agent_roles(src_root: Path, pattern: str) -> list[AgentRole]:
             AgentRole(
                 source=source,
                 name=values["name"],
+                model_provider=values["model_provider"],
+                model=values["model"],
                 description=values["description"],
                 developer_instructions=values["developer_instructions"],
             )
@@ -294,6 +302,8 @@ def _render_codex_agent(role: AgentRole, *, source_rel: str) -> str:
     return (
         _render_toml_generated_block(source_rel)
         + f"name = {json.dumps(role.name, ensure_ascii=False)}\n"
+        + f"model_provider = {json.dumps(role.model_provider, ensure_ascii=False)}\n"
+        + f"model = {json.dumps(role.model, ensure_ascii=False)}\n"
         + f"description = {json.dumps(role.description, ensure_ascii=False)}\n"
         + "developer_instructions = "
         + json.dumps(role.developer_instructions, ensure_ascii=False)

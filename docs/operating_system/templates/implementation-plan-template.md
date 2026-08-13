@@ -83,7 +83,8 @@ Use `Wave` only when plan truly needs orchestration across multiple related task
 Within each task:
 - `Purpose` owns bounded outcome
 - `Task Function` names current open-ended function without mapping it to a profile
-- `Template Profile` records controller-selected `high`, `normal`, or `low` plus selection basis
+- `Template Profile` records controller-selected `xhigh`, `high`, `normal`, or `low` plus selection basis
+- `Validator Profile` records an optional separate validator and its selection basis
 - `Specification Coverage` maps approved requirements or direct scope
 - `Required Skills` names only methods needed for this task
 - `Files And Symbols` owns exact touched surfaces
@@ -108,8 +109,15 @@ Do not duplicate final artifact verification commands here unless a command is t
 - <task-specific function; do not select from a fixed taxonomy>
 
 **Template Profile:**
-- Controller-selected: `<high | normal | low>`
+- Controller-selected: `<xhigh | high | normal | low>`
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
+
+**Validator Profile (optional):**
+- Controller-selected: `<none | xhigh | high | normal>`
+- Profile order: `xhigh > high > normal > low`
+- In validator-executor setups, validator profile must rank above executor profile.
+  `high` executor therefore uses `xhigh` validator. Do not pair `xhigh` executor
+  with a profile-based validator because no higher profile exists.
 
 **Specification Coverage:**
 - <requirement, decision, invariant, or approved direct scope>
@@ -150,8 +158,13 @@ Do not duplicate final artifact verification commands here unless a command is t
 - <task-specific function; do not select from a fixed taxonomy>
 
 **Template Profile:**
-- Controller-selected: `<high | normal | low>`
+- Controller-selected: `<xhigh | high | normal | low>`
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
+
+**Validator Profile (optional):**
+- Controller-selected: `<none | xhigh | high | normal>`
+- Profile order: `xhigh > high > normal > low`
+- In validator-executor setups, validator profile must rank above executor profile.
 
 **Specification Coverage:**
 - <requirement, decision, invariant, or approved direct scope>

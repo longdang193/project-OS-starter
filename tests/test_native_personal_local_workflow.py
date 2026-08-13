@@ -124,6 +124,27 @@ def test_deepagents_probe_selection_is_documented() -> None:
     assert "executor/profile, exit code" in procedure_text
 
 
+def test_profile_hierarchy_and_validator_rule_are_documented() -> None:
+    root_guidance = (
+        ROOT / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md"
+    ).read_text(encoding="utf-8")
+    procedure_text = (
+        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
+    ).read_text(encoding="utf-8")
+    plan_template = (
+        ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md"
+    ).read_text(encoding="utf-8")
+    subagent_skill = (
+        ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    for text in (root_guidance, procedure_text, plan_template, subagent_skill):
+        assert "`xhigh > high > normal > low`" in text
+        assert "validator profile must rank above executor profile" in text
+
+    assert "<xhigh | high | normal | low>" in plan_template
+
+
 def test_checkpoint_identity_is_derived_from_git_ledger_commit(tmp_path: Path) -> None:
     repository = tmp_path / "repository"
     plan = repository / "docs" / "plans" / "work.md"

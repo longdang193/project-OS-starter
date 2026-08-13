@@ -16,12 +16,15 @@ Scoped `AGENTS.md` files are canonical instructions for their directories.
 `docs/operating_system/rules/` is canonical rule source. Adapter sync mirrors it
 to `.agents/rules/` for supported local runtimes.
 
-`agents/high.toml`, `agents/normal.toml`, and `agents/low.toml` are canonical
-delegated-role templates. Sync renders Codex TOML into
+`agents/xhigh.toml`, `agents/high.toml`, `agents/normal.toml`, and
+`agents/low.toml` are canonical delegated-role templates. They own delegated
+provider alias, model, and prompt. Profile order is `xhigh > high > normal > low`.
+In validator-executor setups, validator profile must rank above executor profile.
+Sync renders Codex TOML into
 `generated_agents/codex/agents/`. User-local `dcode-project` generates ignored
-DeepAgents project views at launch, combining those prompts with local model
-bindings. Keep endpoints, credentials, MCP configuration, and model bindings
-out of role templates and tracked outputs.
+DeepAgents project views at launch. Keep provider endpoints, credentials, MCP
+configuration, and provider definitions out of role templates and tracked
+outputs.
 
 ## Generate
 
@@ -48,8 +51,9 @@ Targets:
 - `~/.gemini`
 
 DeepAgents is not an adapter-sync target. User-local `dcode-project` derives
-ignored project subagents from `agents/*.toml` at launch. Its provider setup,
-credentials, role-model map, and mutable state remain local.
+ignored project subagents from `agents/*.toml` at launch. Its provider endpoint,
+credentials, provider definition, and mutable state remain local. Each source
+role's `model_provider` must match active local Codex provider binding.
 
 Current `dcode-project` forces DeepAgents `--no-mcp` and rejects direct runtime
 authority flags. It does not translate Codex `mcp_servers`, tool allowlists,

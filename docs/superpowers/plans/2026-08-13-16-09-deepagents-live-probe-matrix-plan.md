@@ -21,6 +21,12 @@ only for behavior that mocks cannot prove: installed runtime launch, delegated
 task execution, Git-tracked recovery, concurrency, and cleanup after real child
 completion or failure.
 
+> Profile update, August 13, 2026: source hierarchy is
+> `xhigh > high > normal > low`. Fresh installed-runtime evidence resolves
+> `xhigh` to `openai:combo-xhigh`; a disposable `xhigh` child returned
+> `DEEPAGENTS_XHIGH_SCHEMA_OK` in trace session
+> `019ffbf6-700b-7000-94bf-4c0cbcf7483e` and launcher-owned role views cleaned.
+
 ## Critical Review And Scope Decision
 
 - **Conflict fixed:** Goal says smallest high-value set, while Task 3, Task 4,
@@ -90,10 +96,10 @@ Git, existing tests, plan tasks, and controller output remain SSOT.
 | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | `codex` | none | `tests/test_dcode_project.py`: 42 focused tests pass; launcher handoff moves sanitized facts to stdin and forced `--no-mcp` stays covered. |
 | Task 2 | `completed` | `codex` | none | `tests/test_native_personal_local_workflow.py`: Git checkpoint ancestry and dependency-ready-wave contract pass. |
-| Task 3 | `completed` | `codex + deepagents` | Tasks 1–2 | Disposable fixture: `S1`, `S3`, `S9`, `B8`, `E12` pass; no owned role views remain; timeout exits `124` without workspace mutation. |
+| Task 3 | `completed` | `codex + deepagents` | Tasks 1–2 | Disposable fixture: `S1`, `S3`, `S9`, `B8`, `E12` pass; no owned role views remain; timeout exits `124` without workspace mutation. Fresh `xhigh` schema probe resolved `openai:combo-xhigh`, child exit `0`, returned `DEEPAGENTS_XHIGH_SCHEMA_OK`, and cleaned role views. |
 | Task 4 | `completed` | `codex + deepagents` | Tasks 1–2 | Disposable worktrees: `P2` overlapping writers change disjoint files; `P3` controller fan-in; `P4` final validator passes after fan-in. |
 | Task 5 | `completed` | `codex` | Tasks 3–4 | Added compact procedure selection rule and regression test. |
-| Task 6 | `completed` | `codex` | Task 5 | Focused tests `47 passed`; full suite `129 passed`; contracts and adapter check pass; `git diff --check` passes. User-authorized exact probe-root and handoff cleanup was verified absent. |
+| Task 6 | `completed` | `codex` | Task 5 | Focused tests `25 passed`; full suite `133 passed`; contracts and adapter check pass; `git diff --check` passes. Exact xhigh probe fixture removed after evidence capture. |
 
 ## Task Breakdown
 
@@ -231,7 +237,7 @@ Git, existing tests, plan tasks, and controller output remain SSOT.
 
 **Steps:**
 - [ ] Create one disposable Git fixture with canonical `agents/*.toml`, scoped root and nested `AGENTS.md`, tracked plan, declared task files, and no `.deepagents/` state.
-- [ ] Run read-only summary, one-file edit, two-file edit, new-file, delegated `low`/`normal`/`high` task-function variations, sequential dependency tasks, and post-task independent Codex verification.
+- [ ] Run read-only summary, one-file edit, two-file edit, new-file, delegated `low`/`normal`/`high`/`xhigh` task-function variations, sequential dependency tasks, and post-task independent Codex verification.
 - [ ] Run sanitized Codex MCP handoff using already-configured read-only MCP capability; verify DeepAgents consumes facts under forced `--no-mcp` and cannot call MCP directly.
 - [ ] Force one bounded nonzero or timeout outcome and verify owned role views are cleaned while Git workspace and unowned role content remain preserved.
 - [ ] Run fresh-task recovery using only tracked plan and Git commands; verify correct active task, ancestry, workspace state, and next action.
@@ -425,7 +431,7 @@ Do not run destructive cases against starter or active worktree.
 
 | ID | Base | Variation | Expected Result | Main Risk |
 | --- | --- | --- | --- | --- |
-| V1 | S1 | Run `low`, `normal`, and `high` task prompts | Same scope and acceptance contract | Profile becomes fixed task-function mapping |
+| V1 | S1 | Run `low`, `normal`, `high`, and `xhigh` task prompts | Same scope and acceptance contract | Profile becomes fixed task-function mapping |
 | V2 | S1 | Edit two declared files | Both and only both change | Partial or extra edit |
 | V3 | S1 | Create declared new file | Allowed untracked output detected and accepted | Untracked output ignored |
 | V4 | S1 | Rename declared file | Source and destination reviewed | Only destination reviewed |

@@ -136,45 +136,34 @@ def _repo_root() -> Path:
     return Path(completed.stdout.strip()).resolve()
 
 
-def _default_role_model(role_name: str, controller_model: str) -> str:
-    if role_name == "high":
-        return controller_model
-    match = re.fullmatch(r"(.+)-high", controller_model)
-    if match and role_name in {"normal", "low"}:
-        return f"{match.group(1)}-{role_name}"
-    raise RuntimeError(
-        f"Missing local model binding for role `{role_name}`. Add it under `[roles]` in {_config_path()}."
-    )
-
-
 def _load_roles(
     repo_root: Path,
-    role_models: dict[str, object],
-    controller_model: str,
+    runtime_provider: str,
 ) -> list[dict[str, str]]:
     roles_root = repo_root / "agents"
     roles: list[dict[str, str]] = []
     for source in sorted(roles_root.glob("*.toml")):
         values = _load_toml(source, "role template")
-        required = {"name", "description", "developer_instructions"}
+        required = {"name", "model_provider", "model", "description", "developer_instructions"}
         if set(values) != required:
             raise RuntimeError(f"Unsupported role template fields: {source}")
         name = _required_string(values, "name", str(source))
         if source.stem != name:
             raise RuntimeError(f"Role filename must match name: {source}")
-        model = role_models.get(name)
-        if model is None:
-            model = _default_role_model(name, controller_model)
-        if not isinstance(model, str) or not model.strip():
-            raise RuntimeError(f"Invalid local model binding for role `{name}`.")
+        model_provider = _required_string(values, "model_provider", str(source))
+        if model_provider != runtime_provider:
+            raise RuntimeError(
+                f"Role provider `{model_provider}` does not match runtime provider `{runtime_provider}`: {source}"
+            )
         roles.append(
             {
                 "name": name,
+                "model_provider": model_provider,
                 "description": _required_string(values, "description", str(source)),
                 "developer_instructions": _required_string(
                     values, "developer_instructions", str(source)
                 ),
-                "model": model.strip(),
+                "model": _required_string(values, "model", str(source)),
             }
         )
     if not roles:
@@ -651,15 +640,12 @@ def main(argv: list[str]) -> int:
     _reject_unmanaged_runtime_options(argv)
     child_argv, selection_values, handoff_file = _controller_options(argv)
     config = _load_toml(_config_path(), "dcode-project config")
-    role_models = config.get("roles", {})
-    if not isinstance(role_models, dict):
-        raise RuntimeError("Invalid local `[roles]` configuration.")
     repo_root = _repo_root()
     model, base_url, api_key, provider_name = _runtime_binding(config)
     codex_config = _codex_config(config)
     capabilities = _mcp_capabilities(codex_config)
     selected = _parse_mcp_selection(selection_values, capabilities)
-    roles = _load_roles(repo_root, role_models, model)
+    roles = _load_roles(repo_root, provider_name)
     if "--print-config" in child_argv and len(child_argv) == 1:
         print(
             json.dumps(

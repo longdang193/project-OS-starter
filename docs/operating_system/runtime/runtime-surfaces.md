@@ -9,7 +9,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
-| `agents/{high,normal,low}.toml` | Canonical delegated-role definitions |
+| `agents/{xhigh,high,normal,low}.toml` | Canonical delegated-role definitions |
 
 ## Generated Runtime Outputs
 
@@ -27,13 +27,16 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- |
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding, local secret source, and optional local role-model overrides; validates controller-owned handoff; forces `--no-mcp`. |
+| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; source roles own delegated model aliases; validates controller-owned handoff; forces `--no-mcp`. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 
 ## Policy
 
 - Canonical repo sources remain source of truth.
+- Profile order is `xhigh > high > normal > low`. In validator-executor setups,
+  validator profile must rank above executor profile. `xhigh` is ceiling, so it
+  cannot be executor in a separate profile-based validator pair.
 - Generated runtime outputs remain deployable packaging surfaces.
 - DeepAgents role views are local generated runtime state, not primary profiles or tracked adapter output.
 - DeepAgents auto-loads root `AGENTS.md` and discovers `.agents/skills` as

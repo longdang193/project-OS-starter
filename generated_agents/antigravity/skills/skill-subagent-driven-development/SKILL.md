@@ -35,13 +35,25 @@ ledger and the tool results carry the record.
 - Use `skill-using-git-worktrees` when isolation materially reduces risk; an already-safe workspace does not require a new worktree.
 - Use `skill-dispatching-parallel-agents` instead when independent lanes should run concurrently with disjoint write ownership.
 - When plan selects `deepagents`, delegate through one bounded built-in `task` and
-  name canonical `low`, `normal`, or `high` in its brief. Do not use `dcode
+  name canonical `low`, `normal`, `high`, or `xhigh` in its brief. Do not use `dcode
   --agent`, `dcode -r`, direct model flags, or executor-local approvals as
   project coordination. Current `dcode-project` forces `--no-mcp`; required MCP
   calls stay with Codex; pass only validated `codex.mcp.handoff.v1` facts to
   DeepAgents.
 - Approved plan and settled behavior are required. Return unresolved design to `skill-spec-drafting` or `skill-writing-plans`.
 - Task `Required Skills` determine implementer methods. Do not inject every backend, frontend, contract, or tooling skill into every brief.
+
+## Profile Pairing
+
+Profile order: `xhigh > high > normal > low`.
+
+This skill uses reviewer subagents as validators. In validator-executor setups,
+validator profile must rank above executor profile: `low` executor uses `normal`
+validator, `normal` uses `high`, and `high` uses `xhigh`. Do not dispatch
+`xhigh` as an implementer in this reviewer-executor workflow; no higher profile
+exists for its required validator. Use `xhigh` for validation or use direct
+execution with independent automated evidence when ceiling-level reasoning is
+needed.
 
 ## When to Use
 

@@ -25,7 +25,14 @@ Use only these template profiles:
 
 - `low`: lower-cost profile for bounded, low-complexity, low-risk work.
 - `normal`: default profile for ordinary complexity and risk.
-- `high`: strongest profile for material complexity, ambiguity, or risk.
+- `high`: high-capability profile for material complexity, ambiguity, or risk.
+- `xhigh`: highest-capability profile for deep reasoning, complex multi-step work,
+  or validation of `high` work.
+
+Profile order: `xhigh > high > normal > low`.
+In validator-executor setups, validator profile must rank above executor profile.
+Example: `high` executor requires `xhigh` validator. `xhigh` is profile ceiling;
+do not use it as executor when a separate profile-based validator is required.
 
 Template profile and task function are separate. Task function is open-ended and
 defined by current task contract; it may include debugging, research, plan
@@ -55,7 +62,7 @@ when plan omits executor. Reuse a clean checkout for small reversible work; use
 a native Git worktree only when existing worktree guidance selects isolation.
 Git owns workspace identity, change evidence, and authorized branch disposition.
 For DeepAgents, use user-local `dcode-project`; it derives ignored project role
-views from `agents/*.toml` and local runtime bindings. Do not track
+views from `agents/*.toml` and local provider endpoint and credentials. Do not track
 `.deepagents/`, invent provider fallback, runtime state, or cleanup commands.
 DeepAgents auto-loads this root `AGENTS.md` and discovers `.agents/skills` as
 project skills. It does not auto-load `.agents/rules`; those are generated
@@ -71,7 +78,7 @@ Codex controller owns MCP calls and passes only validated
 `--mcp-select` narrows provenance only. DeepAgents capabilities depend on launch
 mode and task context; current launcher grants no runtime-authority flags, so
 never assume delegated filesystem, shell, interpreter, web, or MCP access. Name
-`low`, `normal`, or `high` in bounded DeepAgents `task` delegation; do not use
+`low`, `normal`, `high`, or `xhigh` in bounded DeepAgents `task` delegation; do not use
 `dcode --agent` or `dcode -r` for project coordination.
 
 ## Project Design Rules
