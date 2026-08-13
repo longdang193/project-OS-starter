@@ -12,7 +12,9 @@ Define durable ownership boundaries for private development, reusable agent meth
 
 ### Starter Kit
 
-`project-OS-starter-kit` is generated consume-only output. Build it from `repo_config/starter-kit-manifest.json`; do not author changes directly in generated output.
+`generated_exports/project-OS-starter-kit` is generated consume-only output.
+Build it from `repo_config/starter-kit-manifest.json`; do not author changes
+directly in generated output or maintain a separate sibling kit copy.
 
 ### Public Repository
 

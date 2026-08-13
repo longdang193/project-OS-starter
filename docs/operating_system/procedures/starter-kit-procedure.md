@@ -37,6 +37,10 @@ generated_exports/project-OS-starter-kit/
 
 Treat that tree as disposable generated output.
 
+Use this generated path directly as starter-kit distribution. Do not maintain or
+sync a separate sibling `project-OS-starter-kit` folder. Rebuild this output
+from `project-OS-starter` before creating or refreshing a consumer repository.
+
 ## Rebuild Steps
 
 1. validate repo config inputs
