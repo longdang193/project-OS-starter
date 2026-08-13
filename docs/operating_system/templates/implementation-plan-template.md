@@ -40,7 +40,9 @@ Describe another concrete implementation result this plan must deliver, such as 
 - Executor: `codex | deepagents` (optional; Codex default; selects local runtime only; current DeepAgents launcher uses no MCP, so required MCP work stays with Codex and passes validated handoff facts)
 - Required skills: `<exact skill names or none>`
 - Isolation: `<current workspace | optional worktree>`
-- Commit policy: `<per-task commits authorized | no commits during execution>`
+- Commit policy: `<verified per-task checkpoint commits preauthorized | no commits during execution>`
+- Preauthorized local actions: `<edits, declared checks, configured MCP reads, approved workspace isolation, bounded DeepAgents execution>`
+- User-approval actions: `<push, merge, publication, external writes, destructive recovery, discard, cleanup>`
 - Parallel ownership: `<disjoint files/symbols or none>`
 - Sequential fallback: `<ordered fallback when parallel work is unsafe>`
 
@@ -53,19 +55,25 @@ thread state never becomes repository state.
 - Coordination owner: `single lead controller`
 - Branch: `<target branch>`
 - Base commit: `<commit>`
-- Active task: `<Task N | none>`
-- Last checkpoint: `<commit | none>`
+- Active task(s): `<Task N[, Task M] | none>`
 - Expected workspace: `<clean or named preserved changes>`
 - Next action: `<one dependency-ready action>`
 - Blockers: `<none or concrete blocker>`
 
-| Task | State | Executor | Depends On | Checkpoint | Evidence |
-| --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | `codex` | none | none | pending |
+| Task | State | Executor | Depends On | Evidence |
+| --- | --- | --- | --- | --- |
+| Task 1 | `pending` | `codex` | none | pending |
 
-Allowed states: `pending`, `active`, `blocked`, `completed`. Exactly one task
-may be `active`. Completed task changes and ledger update share checkpoint commit
-after task-local proof. Commit or push still needs explicit authorization.
+Allowed states: `pending`, `active`, `blocked`, `completed`. `inline sequential`
+and `subagent-ready` modes permit one active task. `parallel-capable` mode may
+have multiple active tasks only in current dependency-ready wave with proven
+independence and declared ownership. One lead controller remains sole ledger
+writer. When `Commit policy` preauthorizes it, completed task changes and ledger
+update share one checkpoint commit after task-local proof. Git owns checkpoint
+identity: derive it from the commit containing the latest ledger transition;
+never copy that commit SHA into the plan. Push, merge,
+publication, external writes, destructive recovery, discard, and cleanup still
+need explicit user authorization.
 
 ## Task Breakdown
 
@@ -74,10 +82,13 @@ Use `Wave` only when plan truly needs orchestration across multiple related task
 
 Within each task:
 - `Purpose` owns bounded outcome
+- `Task Function` names current open-ended function without mapping it to a profile
+- `Template Profile` records controller-selected `high`, `normal`, or `low` plus selection basis
 - `Specification Coverage` maps approved requirements or direct scope
 - `Required Skills` names only methods needed for this task
 - `Files And Symbols` owns exact touched surfaces
 - `Dependencies` owns prerequisites and prior task requirements
+- `Authority` owns task-local preauthorized actions and escalation boundary
 - `Steps` owns execution sequence
 - `Verification` owns task-local proof
 - `Exit Criteria` owns task completion gate
@@ -93,6 +104,13 @@ Do not duplicate final artifact verification commands here unless a command is t
 **Purpose:**
 - <bounded outcome this task delivers>
 
+**Task Function:**
+- <task-specific function; do not select from a fixed taxonomy>
+
+**Template Profile:**
+- Controller-selected: `<high | normal | low>`
+- Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
+
 **Specification Coverage:**
 - <requirement, decision, invariant, or approved direct scope>
 
@@ -106,6 +124,10 @@ Do not duplicate final artifact verification commands here unless a command is t
 
 **Dependencies:**
 - <upstream dependency, source-first fact, or prior task result>
+
+**Authority:**
+- Preauthorized local actions: <subset of plan-level actions>
+- Stop for: <scope or base changes; external or destructive action; none>
 
 **Steps:**
 - [ ] Step 1: <first bounded action>
@@ -124,6 +146,13 @@ Do not duplicate final artifact verification commands here unless a command is t
 **Purpose:**
 - <bounded outcome this task delivers>
 
+**Task Function:**
+- <task-specific function; do not select from a fixed taxonomy>
+
+**Template Profile:**
+- Controller-selected: `<high | normal | low>`
+- Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
+
 **Specification Coverage:**
 - <requirement, decision, invariant, or approved direct scope>
 
@@ -138,6 +167,10 @@ Do not duplicate final artifact verification commands here unless a command is t
 **Dependencies:**
 - Task 1 complete
 - <any additional dependency>
+
+**Authority:**
+- Preauthorized local actions: <subset of plan-level actions>
+- Stop for: <scope or base changes; external or destructive action; none>
 
 **Steps:**
 - [ ] Step 1: <first bounded action>

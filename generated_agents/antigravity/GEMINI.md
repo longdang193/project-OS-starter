@@ -21,11 +21,17 @@ This file is repo-wide instruction layer. More specific directory instructions o
 
 ## Subagent Routing
 
-Use only these agent types:
+Use only these template profiles:
 
-- `low`: small, narrow, low-risk work.
-- `normal`: routine implementation, testing, exploration, and focused analysis.
-- `high`: difficult reasoning, architecture, broad debugging, or high-risk work.
+- `low`: lower-cost profile for bounded, low-complexity, low-risk work.
+- `normal`: default profile for ordinary complexity and risk.
+- `high`: strongest profile for material complexity, ambiguity, or risk.
+
+Template profile and task function are separate. Task function is open-ended and
+defined by current task contract; it may include debugging, research, plan
+review, design exploration, plan writing, implementation, validation,
+orchestration, or another required function. Never maintain a fixed mapping from
+functions to profiles.
 
 When spawning a subagent:
 
@@ -35,14 +41,10 @@ When spawning a subagent:
 - Do not select unnamed or other agent types.
 - Subagents must not spawn other agents unless explicitly requested.
 
-Routing order:
-
-1. Use `low` for clearly bounded work involving one file, one lookup, one localized edit, or one targeted check.
-2. Use `normal` for ordinary delegated work, including focused multi-file implementation.
-3. Use `high` only when work is materially complex, high-risk, architectural, or `normal` could not resolve it.
-4. If scope grows beyond the selected agent, stop and delegate again using the appropriate higher agent type.
-
-Do not use `low` for multi-file implementation, architectural decisions, ambiguous debugging, security-sensitive changes, migrations, or broad refactors.
+Select profile from required reasoning depth, ambiguity, scope, risk, and cost.
+Use lowest profile that can reliably complete current task contract. If scope or
+risk grows beyond selected profile, stop and delegate again using suitable
+profile. Function name alone never determines profile.
 
 ## Native Personal-Local Work
 
@@ -66,9 +68,11 @@ Current launcher forces `--no-mcp` and does not project Codex MCP servers,
 tool allowlists, approval, sandbox, shell, profile, or thread settings.
 Codex controller owns MCP calls and passes only validated
 `codex.mcp.handoff.v1` facts through user-local `dcode-project` handoff files.
-`--mcp-select` narrows provenance only. DeepAgents built-ins remain
-executor-local. Name `low`, `normal`, or `high` in bounded DeepAgents `task`
-delegation; do not use `dcode --agent` or `dcode -r` for project coordination.
+`--mcp-select` narrows provenance only. DeepAgents capabilities depend on launch
+mode and task context; current launcher grants no runtime-authority flags, so
+never assume delegated filesystem, shell, interpreter, web, or MCP access. Name
+`low`, `normal`, or `high` in bounded DeepAgents `task` delegation; do not use
+`dcode --agent` or `dcode -r` for project coordination.
 
 ## Project Design Rules
 

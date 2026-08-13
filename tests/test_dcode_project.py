@@ -418,14 +418,22 @@ def test_handoff_validation_rejects_symlink(
     with pytest.raises(RuntimeError, match="symlink"):
         LAUNCHER._validate_handoff(str(link), capabilities, ["context7.query_docs"])
 
-def test_handoff_instruction_appends_to_existing_task_text(tmp_path: Path) -> None:
+def test_handoff_instruction_moves_validated_payload_to_stdin() -> None:
     argv = ["-n", "caller task", "--no-mcp"]
+    payload = {
+        "schema": "codex.mcp.handoff.v1",
+        "sources": [{"server": "context7", "tool": "resolve_library_id"}],
+        "facts": [{"source": 0, "value": {"official_library_id": "/python/cpython"}}],
+        "constraints": ["Do not call MCP tools."],
+    }
 
-    LAUNCHER._append_handoff_instruction(argv, tmp_path / "handoff.json")
+    task = LAUNCHER._handoff_stdin(argv, payload)
 
-    assert argv[1].startswith("caller task")
-    assert "Read validated Codex MCP handoff file" in argv[1]
-    assert argv.count("-n") == 1
+    assert argv == ["--stdin", "--no-mcp"]
+    assert task.startswith("caller task")
+    assert "Use this validated Codex MCP handoff payload" in task
+    assert '"official_library_id":"/python/cpython"' in task
+    assert "handoff.json" not in task
 
 
 def test_setup_launcher_uses_current_repository_source() -> None:

@@ -39,7 +39,7 @@ If verification is missing, stale, incomplete, or blocked, stop.
 
 Verification makes closure actions eligible. User authorization selects action.
 
-Do not commit, fetch, pull, create branch, rebase, merge, push, create or update pull request, apply or drop stash, delete branch, prune metadata, or remove worktree without explicit authorization for that action.
+Do not commit, fetch, pull, create branch, rebase, merge, push, create or update pull request, apply or drop stash, delete branch, prune metadata, or remove worktree without explicit authorization for that action. Exception: execution may create a verified local checkpoint commit when active approved plan explicitly preauthorizes it; this closing skill does not create that checkpoint.
 
 Never infer a file is “superseded.” Before reconciliation can remove or overwrite
 content, show every overlapping file with hashes and diff summary, then require an

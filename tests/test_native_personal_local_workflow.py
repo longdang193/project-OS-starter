@@ -99,4 +99,60 @@ def test_single_controller_resume_contract_is_documented() -> None:
     assert "Coordination State (Optional)" in template_text
     assert "Executor: `codex | deepagents`" in template_text
     assert "current DeepAgents launcher uses no MCP" in template_text
-    assert "Exactly one task" in template_text
+    assert "Active task(s)" in template_text
+    assert "multiple active tasks" in template_text
+    assert "dependency-ready wave" in template_text
+    assert "Last checkpoint" not in template_text
+    assert "| Checkpoint |" not in template_text
+    assert "git log -1 --format=%H -- <plan-path>" in procedure_text
+    assert "Git owns checkpoint\nidentity" in template_text
+
+
+def test_deepagents_probe_selection_is_documented() -> None:
+    procedure_text = (
+        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
+    ).read_text(encoding="utf-8")
+    procedure_lower = procedure_text.lower()
+
+    assert "## DeepAgents Probe Selection" in procedure_text
+    assert "Routine probes" in procedure_text
+    assert "Extended probes" in procedure_text
+    assert "OS temporary directories" in procedure_text
+    assert "tests own deterministic boundaries" in procedure_lower
+    assert "probes own installed-runtime" in procedure_lower
+    assert "Record probe ID" in procedure_text
+    assert "executor/profile, exit code" in procedure_text
+
+
+def test_checkpoint_identity_is_derived_from_git_ledger_commit(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    plan = repository / "docs" / "plans" / "work.md"
+    plan.parent.mkdir(parents=True)
+    run_git(repository, "init", "-q")
+    run_git(repository, "config", "user.name", "Test User")
+    run_git(repository, "config", "user.email", "test@example.invalid")
+
+    task_file = repository / "task.txt"
+    task_file.write_text("pending\n", encoding="utf-8")
+    plan.write_text("Task 1: active\n", encoding="utf-8")
+    run_git(repository, "add", ".")
+    run_git(repository, "commit", "-qm", "baseline")
+    base = run_git(repository, "rev-parse", "HEAD").stdout.strip()
+
+    task_file.write_text("complete\n", encoding="utf-8")
+    plan.write_text("Task 1: completed\n", encoding="utf-8")
+    run_git(repository, "add", "task.txt", "docs/plans/work.md")
+    run_git(repository, "commit", "-qm", "checkpoint task 1")
+
+    head = run_git(repository, "rev-parse", "HEAD").stdout.strip()
+    checkpoint = run_git(
+        repository,
+        "log",
+        "-1",
+        "--format=%H",
+        "--",
+        "docs/plans/work.md",
+    ).stdout.strip()
+
+    assert checkpoint == head
+    assert run_git(repository, "merge-base", "--is-ancestor", base, checkpoint).returncode == 0

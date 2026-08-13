@@ -185,7 +185,10 @@ When all required plan tasks appear complete:
 4. invoke `skill-verification-before-completion`
 5. let that skill run fresh final proof, reconcile outcomes, tasks, deviations, and repository state, then set final plan status only when it returns `verified`
 
-Commit, push, merge, publish, delete, or clean worktrees only with explicit authorization.
+Create a local checkpoint commit only when active plan `Commit policy` explicitly
+preauthorizes verified per-task checkpoints. Push, merge, publish, delete,
+discard, destructive recovery, or clean worktrees only with explicit user
+authorization.
 
 ## Handoff
 

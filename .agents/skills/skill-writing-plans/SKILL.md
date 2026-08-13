@@ -114,6 +114,12 @@ Also state:
 - shared files or symbols that force serialization
 - sequential fallback when delegation or parallel execution is unavailable
 
+Use existing owners instead of adding parallel-phase metadata: `Mode` and waves
+own parallel grouping; task `Dependencies` and `Files And Symbols` own immutable
+inputs; `Parallel ownership` and task paths own write ownership; dependency order
+owns fan-in barrier; task and final `Verification` own post-fan-in validation.
+This applies equally to Codex and DeepAgents execution.
+
 Do not create a separate orchestration artifact. Plan owns this decision.
 
 ### 6. Build Dependency Order
@@ -151,7 +157,9 @@ Merge tasks when they:
 - exist only to mirror document sections
 
 Use waves only when several tasks share a real prerequisite. Do not use fixed
-task counts or time quotas.
+task counts or time quotas. Tasks in one wave must be mutually independent.
+Dependent review or validation belongs in later wave after all required producer
+tasks complete.
 
 ### 8. Write Task Contracts
 
@@ -161,10 +169,13 @@ Each task must include:
 ### Task N: <bounded outcome>
 
 **Purpose:**
+**Task Function:**
+**Template Profile:**
 **Specification Coverage:**
 **Required Skills:**
 **Files And Symbols:**
 **Dependencies:**
+**Authority:**
 **Steps:**
 **Verification:**
 **Exit Criteria:**
@@ -173,7 +184,12 @@ Each task must include:
 Name exact paths, symbols, commands, expected results, and generated consumers.
 If a symbol does not yet exist, name its intended owner and contract. Steps
 must be executable actions, not restated goals. Add task-level execution mode
-only when it differs from the plan-level `Execution Approach`.
+only when it differs from the plan-level `Execution Approach`. `Authority` names
+task-local preauthorized actions plus stop conditions for external, destructive,
+or scope-changing actions. It never grants permissions beyond active Codex
+configuration. `Task Function` is open-ended. `Template Profile` records
+controller-selected `high`, `normal`, or `low` based on reasoning depth,
+ambiguity, scope, risk, and cost; never define fixed function-to-profile maps.
 
 ### 9. Define Verification Strategy
 

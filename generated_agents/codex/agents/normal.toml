@@ -5,5 +5,5 @@
 # To update: edit canonical source, then run sync.
 
 name = "normal"
-description = "Routine-task specialist.\nUse for implementation, testing, exploration, and focused analysis."
+description = "Default capability profile.\nUse when current task contract has ordinary reasoning depth, ambiguity, scope, and\nrisk, regardless of task function."
 developer_instructions = "Complete delegated task within assigned scope.\n\nReturn concrete findings or completed work to parent. Do not spawn child agents\nunless parent explicitly requests it."

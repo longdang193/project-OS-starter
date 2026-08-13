@@ -1,7 +1,8 @@
 name = "normal"
 description = """
-Routine-task specialist.
-Use for implementation, testing, exploration, and focused analysis.
+Default capability profile.
+Use when current task contract has ordinary reasoning depth, ambiguity, scope, and
+risk, regardless of task function.
 """
 
 developer_instructions = """

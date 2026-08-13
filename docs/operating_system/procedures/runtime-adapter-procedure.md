@@ -54,8 +54,10 @@ credentials, role-model map, and mutable state remain local.
 Current `dcode-project` forces DeepAgents `--no-mcp` and rejects direct runtime
 authority flags. It does not translate Codex `mcp_servers`, tool allowlists,
 approval policy, sandbox mode, shell policy, profiles, or threads. DeepAgents
-built-ins remain executor-local. Call MCP through Codex, then pass only
-validated `codex.mcp.handoff.v1` facts to DeepAgents. Setup rejects a
+capabilities depend on launch mode and task context; current launcher grants no
+runtime-authority flags. Call MCP through Codex, then let `dcode-project`
+validate `codex.mcp.handoff.v1` and inject only sanitized sources, facts, and
+constraints into task text. Setup rejects a
 user-local `~/.deepagents/.mcp.json` to prevent an accidental direct MCP path.
 
 ## Drift Checks

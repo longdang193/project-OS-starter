@@ -10,7 +10,17 @@ permission projection.
 ## Start
 
 Before work, record task objective, repository-relative allowed paths, base
-commit, and declared checks. Missing any item means `block`.
+commit, declared checks, and preauthorized local actions. Missing any item
+means `block`.
+
+Task contract may preauthorize only bounded local actions: edits within allowed
+paths, declared checks, configured Codex MCP calls within existing permissions,
+approved workspace creation or reuse, bounded DeepAgents execution, and verified
+local checkpoint commits. Preauthorization never expands technical permissions.
+Stop for scope, base, workspace, or required-check changes; credentials or
+personal-profile access; external writes not named in contract; push, merge,
+release, publication; destructive Git recovery; discard; cleanup; or worktree
+removal.
 
 Run every controller command with selected absolute workspace:
 
@@ -26,8 +36,8 @@ Follow
 [`skill-using-git-worktrees`](../../../.agents/skills/skill-using-git-worktrees/SKILL.md):
 
 - Reuse clean current checkout for small reversible work.
-- Obtain explicit isolation consent, then create or reuse native Git worktree
-  when current changes, task risk, or concurrent writers require isolation.
+- Create or reuse native Git worktree only when task contract preauthorizes
+  isolation and current changes, task risk, or concurrent writers require it.
 - Record absolute workspace, creation mechanism, branch or detached state,
   base, current `HEAD`, and preserved pre-existing changes.
 
@@ -58,18 +68,40 @@ Current `dcode-project` bridges canonical role prompts and active Codex model
 binding, then validates a controller-owned sanitized handoff. It starts `dcode`
 with `--no-mcp`; Codex MCP servers, their tool allowlists, approval policy,
 sandbox mode, and shell policy do not transfer.
-DeepAgents still has its own built-in filesystem, shell, task, and web tools.
-Treat those as executor-local capabilities, not proof of Codex-equivalent
-containment. Web search needs user-local `TAVILY_API_KEY`; its absence disables
-web search and does not fall back to Codex browser or web MCPs.
+DeepAgents capabilities depend on launch mode and task context. Current
+`dcode-project` does not grant shell, filesystem, interpreter, web, or other
+runtime-authority flags. Never assume a delegated `task` has those capabilities;
+provide required immutable inputs and verify returned evidence. Web search needs
+user-local `TAVILY_API_KEY`; its absence disables web search and does not fall
+back to Codex browser or web MCPs.
 Keep DeepAgents work inside trusted one-user workspace, retain controller path
 checks, and verify Git scope before acceptance.
 
 DeepAgents controller may use built-in `task` for a bounded `low`, `normal`, or
-`high` project subagent. Name role in task prompt; do not use `dcode --agent`
-or `dcode -r` for project coordination. Same role source, Git scope, plan
+`high` project subagent. These are capability profiles, not fixed task roles.
+Controller defines open-ended task function through prompt and selects profile
+from required reasoning depth, ambiguity, scope, risk, and cost. Do not map
+research, debugging, review, design, planning, implementation, validation,
+orchestration, or any other function to one fixed profile. Name function and
+selected profile in task prompt; do not use `dcode --agent` or `dcode -r` for
+project coordination. Same role source, Git scope, plan
 coordination, task evidence, checks, and acceptance rules apply to Codex and
 DeepAgents delegates; executor containment and approval remain distinct.
+
+For DeepAgents parallel preflight followed by sequential final validation, use
+existing plan tasks and waves; do not add a DeepAgents-specific orchestration
+schema. `Execution Approach` selects `parallel-capable`; task `Dependencies` and
+`Files And Symbols` own immutable inputs; `Parallel ownership` and task paths own
+write ownership; wave order and task dependencies form barrier; task and plan
+verification plus `skill-verification-before-completion` own final validation.
+Dispatch independent tasks through `skill-dispatching-parallel-agents`, then run
+dependent final-validation task only after fan-in. Same-workspace final validator
+must not overlap writer. If independence, ordering, or final state cannot be
+proved, use recorded sequential fallback.
+
+DeepAgents local runtime state may support temporary diagnostics such as task
+timing or failure analysis. It is not repository coordination state, durable
+acceptance evidence, or required recovery input. Plan plus Git remain SSOT.
 
 `dcode-project` rejects direct model/profile, agent/thread, MCP/hook trust,
 approval/Yolo, sandbox, shell/filesystem/interpreter, startup, install, and ACP
@@ -79,7 +111,9 @@ then writes handoff under `%USERPROFILE%\.local\share\dcode-project\handoffs`.
 Launch with `--handoff-file <absolute-path>` and optional repeatable
 `--mcp-select <server[.tool][,server[.tool]...]>`; selection narrows provenance
 only and never grants DeepAgents tools. Handoff schema is
-`codex.mcp.handoff.v1`; controller deletes handoff after use. Never pass
+`codex.mcp.handoff.v1`; `dcode-project` validates file, injects only validated
+sanitized sources, facts, and constraints into task text, and never requires
+DeepAgents to open host path. Controller deletes handoff after use. Never pass
 credentials, tool configs, raw headers, cookies, or approval authority through
 task text.
 
@@ -96,6 +130,20 @@ from selected repository workspace; do not pass `--model`. Setup fails when
 `%USERPROFILE%\.deepagents\.mcp.json` exists; remove that direct DeepAgents MCP
 config before setup so Codex config remains sole MCP authority.
 
+## DeepAgents Probe Selection
+
+Routine probes run after launcher or guidance changes: one bounded task, one
+declared failure or timeout cleanup, and controller-owned Git recovery.
+Extended probes run only after parallelism, worktree, runtime-binding, handoff,
+role-generation, or cleanup changes. Tests own deterministic boundaries; live
+probes own installed-runtime, provider, concurrency, and cleanup evidence.
+
+Use OS temporary directories, never starter workspace. Record probe ID,
+temporary workspace, base, executor/profile, exit code, elapsed time, changed
+paths, checks, decision, and notes. Preserve failed-probe evidence. Remove
+only exact resolved probe roots after capture; do not track fixtures, handoffs,
+or `.deepagents/` state.
+
 ## Resume In A New Task
 
 When plan has `Coordination State`, one lead controller resumes only through
@@ -103,22 +151,27 @@ plan plus Git. Do not use Codex thread IDs, DeepAgents thread IDs, or `dcode -r`
 as repository coordination state.
 
 1. Open plan from selected workspace and identify recorded branch, base, active
-   task, last checkpoint, expected workspace, next action, and blockers.
+   task or dependency-ready wave, expected workspace, next action, and blockers.
 2. Run `git rev-parse --show-toplevel`, `git status --short --branch`,
    `git worktree list --porcelain`, and `git rev-parse HEAD`.
 3. Compare current branch, base ancestry, `HEAD`, and workspace changes with
    plan coordination state.
-4. Read task ledger. Resume recorded `active` task, or first dependency-ready
-   `pending` task when no task is active.
-5. Re-run declared proof for last completed task when checkpoint or current
-   changes make prior evidence uncertain.
-6. Record reconciled task, checkpoint, workspace, and next action in plan.
+4. Read task ledger. Resume recorded active task or active dependency-ready wave,
+   or first dependency-ready `pending` task when none is active.
+5. Derive latest checkpoint from Git when needed with
+   `git log -1 --format=%H -- <plan-path>`. Re-run declared proof for last
+   completed task when commit history or current changes make prior evidence
+   uncertain.
+6. Record reconciled task, workspace, evidence summary, and next action in plan.
    Only lead controller updates coordination state or task ledger.
-7. `block` before implementation on plan/Git mismatch, more than one active
-   task, unknown checkpoint, out-of-scope changes, or unresolved blocker.
+7. `block` before implementation on plan/Git mismatch, active tasks outside one
+   declared dependency-ready wave, unknown checkpoint, out-of-scope changes, or
+   unresolved blocker.
 
-Completed task changes and lead-controller ledger update share checkpoint commit
-after task-local proof. Push still requires separate explicit authorization.
+When task contract preauthorizes verified checkpoint commits, completed task
+changes and lead-controller ledger update share one checkpoint commit after
+task-local proof. Git owns checkpoint identity; do not copy the resulting SHA
+into the plan. Push still requires separate explicit authorization.
 
 ## Check And Review
 
@@ -139,15 +192,17 @@ check fails; paths are unsafe or outside scope; a conflict, nested repository,
 or submodule change exists; workspace context is uncertain; or required Git
 evidence is missing.
 
-When checks and scope proof pass, operator records `accept` or `block` in task
+When checks and scope proof pass, controller records `accept` or `block` in task
 handoff. `accept` hands off only to
 [`skill-finishing-a-development-branch`](../../../.agents/skills/skill-finishing-a-development-branch/SKILL.md)
-for explicitly authorized keep, commit, merge, push, discard, or cleanup.
+for user-authorized keep, merge, push, discard, or cleanup. A verified local
+checkpoint commit is permitted only when task contract preauthorized it.
 `block` changes no Git state. Recovery or destructive discard needs separate
 explicit authorization.
 
-Neither disposition commits, merges, pushes, releases, stashes, resets, cleans,
-prunes, removes, or force-removes a worktree.
+Neither disposition commits beyond a task-preauthorized checkpoint, merges,
+pushes, releases, stashes, resets, cleans, prunes, removes, or force-removes a
+worktree.
 
 ## Docker Boundary
 

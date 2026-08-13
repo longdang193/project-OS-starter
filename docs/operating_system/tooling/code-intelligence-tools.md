@@ -95,9 +95,11 @@ for enforceable boundaries.
 
 Tool IDs and permissions belong to active executor. Do not assume a Codex MCP
 tool, allowlist, approval setting, or result shape exists in DeepAgents. Current
-`dcode-project` runs DeepAgents with `--no-mcp`; use DeepAgents native tools for
-bounded trusted-local work. Call required MCP through Codex, write validated
-`codex.mcp.handoff.v1` under the user-local handoff root, then pass its path to
-`dcode-project --handoff-file`. `--mcp-select` narrows Codex provenance only;
+`dcode-project` runs DeepAgents with `--no-mcp`; available native capabilities
+depend on launch mode and task context, and current launcher grants no
+runtime-authority flags. Call required MCP through Codex, write
+`codex.mcp.handoff.v1` under user-local handoff root, then pass its path to
+`dcode-project --handoff-file`; launcher validates file and injects sanitized
+facts into task text. `--mcp-select` narrows Codex provenance only;
 it does not project tools into DeepAgents. Never paste credentials, raw tool
 configuration, cookies, headers, or approval authority into an executor prompt.

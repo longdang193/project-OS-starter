@@ -583,21 +583,30 @@ def _validate_handoff(
         raise RuntimeError("Handoff constraints are invalid.")
     return path, payload
 
-def _append_handoff_instruction(argv: list[str], path: Path) -> None:
+def _handoff_stdin(argv: list[str], payload: dict[str, object]) -> str:
+    delegated_payload = {
+        "schema": payload["schema"],
+        "sources": payload["sources"],
+        "facts": payload["facts"],
+        "constraints": payload.get("constraints", []),
+    }
     instruction = (
-        " Read validated Codex MCP handoff file at "
-        f"{path.absolute()}. Use only its facts; do not call MCP tools."
+        " Use this validated Codex MCP handoff payload: "
+        f"{json.dumps(delegated_payload, separators=(',', ':'), sort_keys=True)}. "
+        "Use only its facts; do not call MCP tools."
     )
     for index, argument in enumerate(argv):
         if argument in {"-n", "--non-interactive"}:
             if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
                 raise RuntimeError("Handoff task text is missing.")
-            argv[index + 1] += instruction
-            return
+            task = argv[index + 1] + instruction
+            argv[index : index + 2] = ["--stdin"]
+            return task
         for option in ("-n=", "--non-interactive="):
             if argument.startswith(option):
-                argv[index] += instruction
-                return
+                task = argument[len(option) :] + instruction
+                argv[index] = "--stdin"
+                return task
     raise RuntimeError("`--handoff-file` requires non-interactive task text via `-n`.")
 
 
@@ -673,9 +682,10 @@ def main(argv: list[str]) -> int:
             )
         )
         return 0
+    handoff_stdin: str | None = None
     if handoff_file is not None:
-        validated_path, _ = _validate_handoff(handoff_file, capabilities, selected)
-        _append_handoff_instruction(child_argv, validated_path)
+        _, payload = _validate_handoff(handoff_file, capabilities, selected)
+        handoff_stdin = _handoff_stdin(child_argv, payload)
     _reject_conflicting_user_openai_base_url()
     dcode = _find_dcode()
     if not dcode:
@@ -686,6 +696,8 @@ def main(argv: list[str]) -> int:
         completed = subprocess.run(
             [dcode, "-M", f"openai:{model}", *(arg for arg in child_argv if arg != "--no-mcp"), "--no-mcp"],
             env=environment,
+            input=handoff_stdin,
+            text=handoff_stdin is not None,
         )
         return completed.returncode
     finally:

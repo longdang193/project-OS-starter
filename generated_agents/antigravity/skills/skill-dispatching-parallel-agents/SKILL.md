@@ -35,9 +35,17 @@ When you have multiple unrelated failures (different test files, different subsy
 - `skill-verification-before-completion` owns fresh final proof after results are integrated.
 - With `deepagents`, built-in `task` is one executor-local delegation path. It
   does not make Codex MCP tools or permissions available. Keep same-workspace
-  tasks sequential; parallel writers still need disjoint paths and isolated Git
-  worktrees. Required MCP calls stay with Codex; pass only validated
+  concurrent writers prohibited; parallel writers still need disjoint paths and
+  isolated Git worktrees. A read-only task may overlap one writer only when it
+  uses immutable inputs and does not inspect changing working-tree state.
+  Required MCP calls stay with Codex; pass only validated
   `codex.mcp.handoff.v1` facts to DeepAgents.
+- For DeepAgents parallel preflight plus sequential final validation, reuse plan
+  waves and task contracts. Parallel wave contains only independent tasks; a
+  read-only preflight uses immutable inputs recorded by task `Dependencies` and
+  `Files And Symbols`. Final validation is a dependent later-wave task after
+  fan-in. Do not run same-workspace final validation concurrently with writer.
+  Codex still owns final Git verification and acceptance.
 
 Use this skill directly for independent investigations, audits, research questions, bounded fixes, or approved multi-lane implementation with disjoint write ownership.
 ## When to Use
