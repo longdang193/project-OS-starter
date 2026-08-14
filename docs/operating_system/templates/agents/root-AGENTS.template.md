@@ -70,6 +70,11 @@ Codex controller owns MCP calls and passes only validated
 `--mcp-select` narrows provenance only. DeepAgents task launch requires
 `dcode-project --role <low|normal|high|xhigh>`; launcher resolves the selected
 canonical source model while top-level Codex model remains controller default.
+Do not pass raw `--stdin` or pipe task text to `dcode-project`; only validated
+`--handoff-file` launches create DeepAgents stdin. DeepAgents built-in file tools
+use virtual `/workspace/...` paths, not Windows host paths. Ask for
+repository-relative `path:line` evidence. When a task needs an acceptance
+decision, require `PASS`, `FAIL`, or `BLOCKED` first.
 DeepAgents capabilities depend on launch mode and task context; current launcher
 grants no runtime-authority flags, so never assume delegated filesystem, shell,
 interpreter, web, or MCP access. Name `low`, `normal`, `high`, or `xhigh` in

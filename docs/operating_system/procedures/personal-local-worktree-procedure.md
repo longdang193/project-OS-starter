@@ -123,6 +123,12 @@ DeepAgents to open host path. Controller deletes handoff after use. Never pass
 credentials, tool configs, raw headers, cookies, or approval authority through
 task text.
 
+Do not pass raw `--stdin` or pipe task text to `dcode-project`; only validated
+`--handoff-file` launches create DeepAgents stdin. DeepAgents built-in file tools
+use virtual `/workspace/...` paths, not Windows host paths. Ask for
+repository-relative `path:line` evidence. When a task needs an acceptance
+decision, require `PASS`, `FAIL`, or `BLOCKED` first.
+
 Install or refresh local DeepAgents runtime:
 
 ```powershell

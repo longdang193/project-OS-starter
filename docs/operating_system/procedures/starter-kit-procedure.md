@@ -20,7 +20,6 @@ Rebuild the starter kit after changing any shipped source-owned surface such as:
 - shipped root instruction docs (`GEMINI.md`, `CLAUDE.md`)
 - `.agents/skills/`
 - shipped `docs/operating_system/` docs
-- shipped `README.md`
 - shipped `repo_config/` starter inputs
 - shipped validator scripts or shipped tests
 - `repo_config/starter-kit-manifest.json`

@@ -40,7 +40,6 @@ CONTENT_SCAN_ROOTS = (
     Path("AGENTS.md"),
     Path("GEMINI.md"),
     Path("CLAUDE.md"),
-    Path("README.md"),
     Path(".agents/skills"),
     Path("docs/operating_system"),
 )

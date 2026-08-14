@@ -39,7 +39,6 @@ _ALLOWED_RUNTIME_FLAGS = {
     "-q",
     "--quiet",
     "--no-stream",
-    "--stdin",
     "--no-mcp",
 }
 _ALLOWED_RUNTIME_VALUE_OPTIONS = {
@@ -69,6 +68,11 @@ def _reject_unmanaged_runtime_options(argv: list[str]) -> None:
     while index < len(argv):
         argument = argv[index]
         option = argument.split("=", 1)[0]
+        if option == "--stdin":
+            raise RuntimeError(
+                "dcode-project does not accept direct `--stdin`; pass a validated "
+                "`--handoff-file <absolute-path>` with `-n <task>`."
+            )
         if option in _ALLOWED_RUNTIME_FLAGS:
             index += 1
             continue

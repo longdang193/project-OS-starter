@@ -268,6 +268,11 @@ def test_launcher_rejects_unmanaged_runtime_options(argument: str) -> None:
         LAUNCHER._reject_unmanaged_runtime_options([argument])
 
 
+def test_launcher_rejects_direct_stdin() -> None:
+    with pytest.raises(RuntimeError, match="does not accept direct `--stdin`.*--handoff-file"):
+        LAUNCHER._reject_unmanaged_runtime_options(["--stdin"])
+
+
 def test_launcher_allows_bounded_noninteractive_options() -> None:
     LAUNCHER._reject_unmanaged_runtime_options(
         [

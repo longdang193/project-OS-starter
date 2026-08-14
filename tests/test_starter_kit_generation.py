@@ -115,6 +115,7 @@ def make_manifest(repo_root: Path) -> Path:
 def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     write_text(repo_root / "AGENTS.md", "# agents\n")
+    write_text(repo_root / "README.md", "# source branding\n")
     write_text(repo_root / "agents" / "normal.toml", 'name = "normal"\n')
     write_text(repo_root / "scripts" / "dcode_project.py", "print('launcher')\n")
     write_text(repo_root / "scripts" / "setup_deepagents_runtime.ps1", "Write-Output launcher\n")
@@ -137,6 +138,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
 
     kit_root = output_root / "project-OS-starter-kit"
     assert (kit_root / "AGENTS.md").exists()
+    assert not (kit_root / "README.md").exists()
     assert (kit_root / "agents" / "normal.toml").exists()
     assert (kit_root / "scripts" / "dcode_project.py").exists()
     assert (kit_root / "scripts" / "setup_deepagents_runtime.ps1").exists()
@@ -173,14 +175,12 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
     repo_root = tmp_path / "repo"
     manifest_path = make_manifest(repo_root)
     kit_root = repo_root / "out" / "project-OS-starter-kit"
-    write_text(kit_root / "AGENTS.md", "# agents\n")
+    write_text(kit_root / "AGENTS.md", "see scripts/deploy_agent_runtime.py\n")
     write_text(kit_root / "GEMINI.md", "# gemini\n")
     write_text(kit_root / "CLAUDE.md", "# claude\n")
     write_text(kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(kit_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(kit_root / "docs" / "superpowers" / "plans" / ".gitkeep", "")
-    write_text(kit_root / "README.md", "see scripts/deploy_agent_runtime.py\n")
-
     errors = VERIFY.validate_starter_kit(kit_root=kit_root, manifest_path=manifest_path)
 
     assert any("Forbidden content reference" in error for error in errors)
