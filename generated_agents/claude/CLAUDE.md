@@ -84,10 +84,15 @@ Do not pass raw `--stdin` or pipe task text to `dcode-project`; only validated
 `--handoff-file` launches create DeepAgents stdin. DeepAgents built-in file tools
 receive exact native file-tool root in every bounded task. On Windows it looks
 like `/Users/<user>/repos/<repo>`; append repository-relative paths to that
-root. Never guess `/workspace/...` or use Windows drive syntax. Ask for
-repository-relative `path:line` evidence. When a task needs an acceptance
-decision, require `PASS`, `FAIL`, or `BLOCKED` first. Do not assume interpreter,
-web, or MCP access; if a task needs unavailable capability, return `BLOCKED`.
+root. Never guess `/workspace/...` or use Windows drive syntax. Read only named
+source, test, and text files with filesystem tools; never read database, binary,
+archive, or runtime artifacts. For SQLite evidence, use launcher-authorized `py`
+with stdlib `sqlite3` read-only URI mode. Run `py` directly; do not prefix it
+with `cd`, shell operators, or wrappers. For `py -c`, use one expression; never
+use `;`. Ask for repository-relative `path:line` evidence. When a task needs an
+acceptance decision, require `PASS`, `FAIL`, or `BLOCKED` first. Do not assume
+interpreter, web, or MCP access; if a task needs unavailable capability, return
+`BLOCKED`.
 Name `low`, `normal`, `high`, or `xhigh` in bounded DeepAgents `task`
 delegation; do not use `dcode --agent` or `dcode -r` for project coordination.
 

@@ -65,7 +65,10 @@ fixed launcher-owned built-ins: filesystem tools plus `git` and `py` shell
 commands; task input cannot widen them. Launcher injects exact native file-tool
 root into every bounded task. On Windows it looks like
 `/Users/<user>/repos/<repo>`; append repository-relative paths. Never guess
-`/workspace/...` or use Windows drive syntax. Call MCP through Codex, then let
+`/workspace/...` or use Windows drive syntax. It also injects filesystem safety:
+read source, test, and text files only; inspect SQLite only through `py` with
+stdlib `sqlite3` read-only URI mode and direct `py` commands only. `py -c` must
+use one expression with no `;`. Call MCP through Codex, then let
 `dcode-project` validate `codex.mcp.handoff.v1` and inject only sanitized
 sources, facts, and constraints into task text. Setup rejects a
 user-local `~/.deepagents/.mcp.json` to prevent an accidental direct MCP path.

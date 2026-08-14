@@ -630,12 +630,24 @@ def _native_file_tool_root(repo_root: Path) -> str:
     return resolved_root.as_posix()
 
 
-def _append_file_tool_root(argv: list[str], repo_root: Path) -> None:
-    context = (
+def _bounded_task_context(repo_root: Path) -> str:
+    return (
         " Native filesystem tool root: "
         f"`{_native_file_tool_root(repo_root)}`. Use this exact prefix for file paths; "
-        "do not use `/workspace/...` or Windows drive syntax."
+        "do not use `/workspace/...` or Windows drive syntax. Read only named source, test, "
+        "and text files with filesystem tools. Never use filesystem tools on database, binary, "
+        "archive, or runtime artifacts; examples: `*.sqlite`, `*.sqlite3`, `*.db`, `*-wal`, "
+        "`*-shm`, `*-journal`, `*.zip`, `*.tar`, `*.gz`, `*.7z`, `*.bin`, `*.exe`, images, "
+        "or media. For SQLite evidence, use launcher-authorized `py` from repository root with "
+        "stdlib `sqlite3` read-only URI mode: "
+        '`sqlite3.connect("file:<repo-relative-path>?mode=ro", uri=True)`. Run `py` directly; '
+        "do not prefix it with `cd`, shell operators, or wrappers. For `py -c`, use one "
+        "expression; never use `;`."
     )
+
+
+def _append_bounded_task_context(argv: list[str], repo_root: Path) -> None:
+    context = _bounded_task_context(repo_root)
     for index, argument in enumerate(argv):
         if argument in {"-n", "--non-interactive"}:
             if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
@@ -724,7 +736,7 @@ def main(argv: list[str]) -> int:
         return 0
     if selected_role is None:
         raise RuntimeError("dcode-project requires `--role <low|normal|high|xhigh>` for task execution.")
-    _append_file_tool_root(child_argv, repo_root)
+    _append_bounded_task_context(child_argv, repo_root)
     handoff_stdin: str | None = None
     if handoff_file is not None:
         _, payload = _validate_handoff(handoff_file, capabilities, selected)

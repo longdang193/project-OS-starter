@@ -141,7 +141,14 @@ receive exact native file-tool root in every bounded task. On Windows it looks
 like `/Users/<user>/repos/<repo>`; append repository-relative paths to that
 root. Never guess `/workspace/...` or use Windows drive syntax. Launcher fixes
 child CWD to Git root and gives DeepAgents built-in filesystem tools plus `git`
-and `py` shell commands. Callers cannot widen those capabilities. Ask for
+and `py` shell commands. Callers cannot widen those capabilities. Read only
+named source, test, and text files with filesystem tools. Never use them on
+database, binary, archive, or runtime artifacts; examples include `*.sqlite`,
+`*.sqlite3`, `*.db`, `*-wal`, `*-shm`, `*-journal`, archives, images, and media.
+For SQLite evidence, use `py` from repository root with stdlib `sqlite3` in
+read-only URI mode: `sqlite3.connect("file:<repo-relative-path>?mode=ro",
+uri=True)`. Run `py` directly; do not prefix it with `cd`, shell operators, or
+wrappers. For `py -c`, use one expression; never use `;`. Ask for
 repository-relative `path:line` evidence. When a task needs an acceptance
 decision, require `PASS`, `FAIL`, or `BLOCKED` first.
 

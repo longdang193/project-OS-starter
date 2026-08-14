@@ -368,7 +368,15 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
         (
             "task Native filesystem tool root: "
             f"`{file_tool_root}`. Use this exact prefix for file paths; do not use "
-            "`/workspace/...` or Windows drive syntax."
+            "`/workspace/...` or Windows drive syntax. Read only named source, test, "
+            "and text files with filesystem tools. Never use filesystem tools on "
+            "database, binary, archive, or runtime artifacts; examples: `*.sqlite`, "
+            "`*.sqlite3`, `*.db`, `*-wal`, `*-shm`, `*-journal`, `*.zip`, `*.tar`, "
+            "`*.gz`, `*.7z`, `*.bin`, `*.exe`, images, or media. For SQLite evidence, "
+            "use launcher-authorized `py` from repository root with stdlib `sqlite3` "
+            "read-only URI mode: `sqlite3.connect(\"file:<repo-relative-path>?mode=ro\", "
+            "uri=True)`. Run `py` directly; do not prefix it with `cd`, shell operators, "
+            "or wrappers. For `py -c`, use one expression; never use `;`."
         ),
         "--no-mcp",
     ]
@@ -576,6 +584,24 @@ def test_handoff_instruction_moves_validated_payload_to_stdin() -> None:
     assert "Use this validated Codex MCP handoff payload" in task
     assert '"official_library_id":"/python/cpython"' in task
     assert "handoff.json" not in task
+
+
+def test_handoff_stdin_preserves_binary_file_safety_context(tmp_path: Path) -> None:
+    argv = ["-n", "caller task", "--no-mcp"]
+    payload = {
+        "schema": "codex.mcp.handoff.v1",
+        "sources": [],
+        "facts": [],
+        "constraints": [],
+    }
+
+    LAUNCHER._append_bounded_task_context(argv, tmp_path)
+    task = LAUNCHER._handoff_stdin(argv, payload)
+
+    assert "Never use filesystem tools on database, binary, archive, or runtime artifacts" in task
+    assert '`sqlite3.connect("file:<repo-relative-path>?mode=ro", uri=True)`' in task
+    assert "Run `py` directly; do not prefix it with `cd`, shell operators, or wrappers" in task
+    assert "For `py -c`, use one expression; never use `;`" in task
 
 
 def test_setup_launcher_uses_current_repository_source() -> None:
