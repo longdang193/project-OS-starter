@@ -54,6 +54,12 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--handoff-file",
     "--role",
 }
+_FIXED_LOCAL_CAPABILITY_OPTIONS = (
+    "--allow-fs-tools",
+    "all",
+    "--shell-allow-list",
+    "git,py",
+)
 
 
 def _config_path() -> Path:
@@ -617,6 +623,31 @@ def _handoff_stdin(argv: list[str], payload: dict[str, object]) -> str:
     raise RuntimeError("`--handoff-file` requires non-interactive task text via `-n`.")
 
 
+def _native_file_tool_root(repo_root: Path) -> str:
+    resolved_root = repo_root.resolve()
+    if resolved_root.drive:
+        return "/" + resolved_root.relative_to(Path(resolved_root.anchor)).as_posix()
+    return resolved_root.as_posix()
+
+
+def _append_file_tool_root(argv: list[str], repo_root: Path) -> None:
+    context = (
+        " Native filesystem tool root: "
+        f"`{_native_file_tool_root(repo_root)}`. Use this exact prefix for file paths; "
+        "do not use `/workspace/...` or Windows drive syntax."
+    )
+    for index, argument in enumerate(argv):
+        if argument in {"-n", "--non-interactive"}:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+                raise RuntimeError("DeepAgents task text is missing.")
+            argv[index + 1] += context
+            return
+        for option in ("-n=", "--non-interactive="):
+            if argument.startswith(option):
+                argv[index] += context
+                return
+
+
 def _find_dcode() -> str | None:
     return shutil.which("dcode") or next(
         (
@@ -693,6 +724,7 @@ def main(argv: list[str]) -> int:
         return 0
     if selected_role is None:
         raise RuntimeError("dcode-project requires `--role <low|normal|high|xhigh>` for task execution.")
+    _append_file_tool_root(child_argv, repo_root)
     handoff_stdin: str | None = None
     if handoff_file is not None:
         _, payload = _validate_handoff(handoff_file, capabilities, selected)
@@ -709,10 +741,12 @@ def main(argv: list[str]) -> int:
                 dcode,
                 "-M",
                 f"openai:{selected_role['model']}",
+                *_FIXED_LOCAL_CAPABILITY_OPTIONS,
                 *(arg for arg in child_argv if arg != "--no-mcp"),
                 "--no-mcp",
             ],
             env=environment,
+            cwd=repo_root,
             input=handoff_stdin,
             text=handoff_stdin is not None,
         )

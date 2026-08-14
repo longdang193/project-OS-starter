@@ -71,8 +71,10 @@ read its canonical `docs/operating_system/rules/*.md` source in bounded task
 scope. Do not duplicate rules in `.deepagents/AGENTS.md`.
 DeepAgents setup rejects user-local `.deepagents/.mcp.json`; keep direct
 DeepAgents MCP configuration absent so Codex remains sole MCP authority.
-Current launcher forces `--no-mcp` and does not project Codex MCP servers,
-tool allowlists, approval, sandbox, shell, profile, or thread settings.
+Current launcher forces `--no-mcp`, binds DeepAgents to selected Git root, and
+does not project Codex MCP servers, approval, sandbox, profile, or thread
+settings. It gives native DeepAgents fixed launcher-owned built-ins: filesystem
+tools plus `git` and `py` shell commands. Task input cannot widen this set.
 Codex controller owns MCP calls and passes only validated
 `codex.mcp.handoff.v1` facts through user-local `dcode-project` handoff files.
 `--mcp-select` narrows provenance only. DeepAgents task launch requires
@@ -80,14 +82,14 @@ Codex controller owns MCP calls and passes only validated
 canonical source model while top-level Codex model remains controller default.
 Do not pass raw `--stdin` or pipe task text to `dcode-project`; only validated
 `--handoff-file` launches create DeepAgents stdin. DeepAgents built-in file tools
-use virtual `/workspace/...` paths, not Windows host paths. Ask for
+receive exact native file-tool root in every bounded task. On Windows it looks
+like `/Users/<user>/repos/<repo>`; append repository-relative paths to that
+root. Never guess `/workspace/...` or use Windows drive syntax. Ask for
 repository-relative `path:line` evidence. When a task needs an acceptance
-decision, require `PASS`, `FAIL`, or `BLOCKED` first.
-DeepAgents capabilities depend on launch mode and task context; current launcher
-grants no runtime-authority flags, so never assume delegated filesystem, shell,
-interpreter, web, or MCP access. Name `low`, `normal`, `high`, or `xhigh` in
-bounded DeepAgents `task` delegation; do not use `dcode --agent` or `dcode -r`
-for project coordination.
+decision, require `PASS`, `FAIL`, or `BLOCKED` first. Do not assume interpreter,
+web, or MCP access; if a task needs unavailable capability, return `BLOCKED`.
+Name `low`, `normal`, `high`, or `xhigh` in bounded DeepAgents `task`
+delegation; do not use `dcode --agent` or `dcode -r` for project coordination.
 
 ## Project Design Rules
 

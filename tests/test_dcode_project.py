@@ -307,7 +307,7 @@ def test_launcher_rejects_missing_bounded_option_value(argument: str) -> None:
         ("xhigh", "combo-xhigh", 40),
     ],
 )
-def test_main_uses_selected_role_model_and_forces_no_mcp(
+def test_main_uses_selected_role_model_and_fixed_local_capabilities(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     role_name: str,
@@ -344,23 +344,35 @@ def test_main_uses_selected_role_model_and_forces_no_mcp(
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
     invoked: list[object] = []
+    invoked_kwargs: dict[str, object] = {}
 
     def complete_dcode(*args: object, **kwargs: object) -> subprocess.CompletedProcess[object]:
         invoked.extend(args)
+        invoked_kwargs.update(kwargs)
         return subprocess.CompletedProcess(args[0], 0)
 
     monkeypatch.setattr(LAUNCHER.subprocess, "run", complete_dcode)
 
     assert LAUNCHER.main(["--role", role_name, "--json", "--no-mcp", "-n", "task"]) == 0
+    file_tool_root = "/" + tmp_path.relative_to(tmp_path.anchor).as_posix()
     assert invoked[0] == [
         "dcode",
         "-M",
         f"openai:{model}",
+        "--allow-fs-tools",
+        "all",
+        "--shell-allow-list",
+        "git,py",
         "--json",
         "-n",
-        "task",
+        (
+            "task Native filesystem tool root: "
+            f"`{file_tool_root}`. Use this exact prefix for file paths; do not use "
+            "`/workspace/...` or Windows drive syntax."
+        ),
         "--no-mcp",
     ]
+    assert invoked_kwargs["cwd"] == tmp_path
     assert not (tmp_path / ".deepagents").exists()
 
 

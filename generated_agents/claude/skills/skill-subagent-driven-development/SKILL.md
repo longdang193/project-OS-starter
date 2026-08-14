@@ -29,6 +29,7 @@ ledger and the tool results carry the record.
 ## Ownership And Preconditions
 
 - `skill-executing-plans` owns general approved-plan execution invariants; this skill specializes that execution through sequential fresh implementers and per-task reviewers.
+- For Git-tracked coordinated work, static Coordination State and task ledger own recovery. Before dispatch, one lead controller reconciles them with plan-plus-Git evidence under `docs/operating_system/procedures/personal-local-worktree-procedure.md`.
 - When dispatching subagents, follow the active `Subagent Routing` policy. Select the agent type explicitly and never override its template model or reasoning effort.
 - Tasks must be separable enough for isolated briefs, but implementers remain sequential in one workspace.
 - Explicit authorization for per-task commits is required because `scripts/review-package` uses recorded commit ranges. Without that authorization, use `skill-executing-plans` directly.
@@ -264,23 +265,16 @@ and is re-read on every later turn. Hand artifacts over as files:
 
 ## Durable Progress
 
-Conversation memory does not survive compaction. In real sessions,
-controllers that lost their place have re-dispatched entire completed task
-sequences — the single most expensive failure observed. Track progress in
-a ledger file, not only in todos.
+Conversation memory does not survive compaction. For Git-tracked coordinated
+work, static plan Coordination State and task ledger plus Git are recovery map.
 
-- At skill start, check for a ledger:
-  `cat "$(git rev-parse --show-toplevel)/.superpowers/sdd/progress.md"`. Tasks listed there
-  as complete are DONE — do not re-dispatch them; resume at the first task
-  not marked complete.
-- When a task's review comes back clean, append one line to the ledger in
-  the same message as your other bookkeeping:
-  `Task N: complete (commits <base7>..<head7>, review clean)`.
-- The ledger is your recovery map: the commits it names exist in git even
-  when your context no longer remembers creating them. After compaction,
-  trust the ledger and `git log` over your own recollection.
-- `git clean -fdx` will destroy the ledger (it's git-ignored scratch); if
-  that happens, recover from `git log`.
+- Before dispatch or resume, one lead controller reconciles branch, base, `HEAD`,
+  status, worktrees, active task, dependencies, proof, and blockers.
+- After task-local proof, only lead controller updates plan state and ledger.
+- Do not create `.superpowers/sdd/progress.md` or recover from Codex or
+  DeepAgents thread/session state.
+- For uncoordinated same-session work, approved plan task state plus Git is
+  sufficient; do not create a second persistent progress ledger.
 
 ## Prompt Templates
 

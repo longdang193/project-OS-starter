@@ -137,7 +137,11 @@ dcode-project --role <role> --handoff-file <absolute-path> -n "<task>"
 
 Do not pass raw `--stdin` or pipe task text to `dcode-project`; only validated
 `--handoff-file` launches create DeepAgents stdin. DeepAgents built-in file tools
-use virtual `/workspace/...` paths, not Windows host paths. Ask for
+receive exact native file-tool root in every bounded task. On Windows it looks
+like `/Users/<user>/repos/<repo>`; append repository-relative paths to that
+root. Never guess `/workspace/...` or use Windows drive syntax. Launcher fixes
+child CWD to Git root and gives DeepAgents built-in filesystem tools plus `git`
+and `py` shell commands. Callers cannot widen those capabilities. Ask for
 repository-relative `path:line` evidence. When a task needs an acceptance
 decision, require `PASS`, `FAIL`, or `BLOCKED` first.
 

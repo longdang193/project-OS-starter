@@ -58,13 +58,16 @@ provider endpoint, credentials, provider definition, and mutable state remain
 local. Each source role's `model_provider` must match active local Codex provider
 binding.
 
-Current `dcode-project` forces DeepAgents `--no-mcp` and rejects direct runtime
-authority flags. It does not translate Codex `mcp_servers`, tool allowlists,
-approval policy, sandbox mode, shell policy, profiles, or threads. DeepAgents
-capabilities depend on launch mode and task context; current launcher grants no
-runtime-authority flags. Call MCP through Codex, then let `dcode-project`
-validate `codex.mcp.handoff.v1` and inject only sanitized sources, facts, and
-constraints into task text. Setup rejects a
+Current `dcode-project` forces DeepAgents `--no-mcp`, fixes child CWD to selected
+Git root, and rejects direct runtime-authority flags. It does not translate Codex
+`mcp_servers`, approval policy, sandbox mode, profiles, or threads. It supplies
+fixed launcher-owned built-ins: filesystem tools plus `git` and `py` shell
+commands; task input cannot widen them. Launcher injects exact native file-tool
+root into every bounded task. On Windows it looks like
+`/Users/<user>/repos/<repo>`; append repository-relative paths. Never guess
+`/workspace/...` or use Windows drive syntax. Call MCP through Codex, then let
+`dcode-project` validate `codex.mcp.handoff.v1` and inject only sanitized
+sources, facts, and constraints into task text. Setup rejects a
 user-local `~/.deepagents/.mcp.json` to prevent an accidental direct MCP path.
 
 ## Drift Checks
