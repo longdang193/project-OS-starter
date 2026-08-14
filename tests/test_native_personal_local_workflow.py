@@ -108,6 +108,25 @@ def test_single_controller_resume_contract_is_documented() -> None:
     assert "Git owns checkpoint\nidentity" in template_text
 
 
+def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
+    procedure_text = (
+        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
+    ).read_text(encoding="utf-8")
+    executing_skill = (
+        ROOT / ".agents" / "skills" / "skill-executing-plans" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    subagent_skill = (
+        ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Git-tracked coordinated work requires" in procedure_text
+    assert 'dcode-project --role <low|normal|high|xhigh> -n "<task>"' in procedure_text
+    assert "Coordination State and task ledger" in executing_skill
+    assert "Coordination State and task ledger" in subagent_skill
+    assert 'cat "$(git rev-parse --show-toplevel)/.superpowers/sdd/progress.md"' not in subagent_skill
+    assert "Do not create `.superpowers/sdd/progress.md`" in subagent_skill
+
+
 def test_deepagents_probe_selection_is_documented() -> None:
     procedure_text = (
         ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"

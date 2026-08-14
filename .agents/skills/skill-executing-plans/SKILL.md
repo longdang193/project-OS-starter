@@ -21,6 +21,7 @@ Before editing, confirm:
 - workspace path, creation mechanism, branch or detached state, base branch, base commit, and current HEAD are understood
 - staged, unstaged, untracked, and unrelated user changes are understood and preserved
 - required credentials, dependencies, and external services for the next task are available, or the plan identifies a safe fallback
+- for Git-tracked coordinated work, static Coordination State and task ledger match current Git evidence before editing; do not recover progress from thread or session state
 
 If the plan has a blocking design gap, stop and return it to `skill-spec-drafting` or `skill-writing-plans`. Do not invent design during execution.
 

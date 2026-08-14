@@ -123,6 +123,18 @@ DeepAgents to open host path. Controller deletes handoff after use. Never pass
 credentials, tool configs, raw headers, cookies, or approval authority through
 task text.
 
+Launch a task without controller facts with:
+
+```powershell
+dcode-project --role <low|normal|high|xhigh> -n "<task>"
+```
+
+When Codex passes validated facts, use:
+
+```powershell
+dcode-project --role <role> --handoff-file <absolute-path> -n "<task>"
+```
+
 Do not pass raw `--stdin` or pipe task text to `dcode-project`; only validated
 `--handoff-file` launches create DeepAgents stdin. DeepAgents built-in file tools
 use virtual `/workspace/...` paths, not Windows host paths. Ask for
@@ -159,9 +171,10 @@ or `.deepagents/` state.
 
 ## Resume In A New Task
 
-When plan has `Coordination State`, one lead controller resumes only through
-plan plus Git. Do not use Codex thread IDs, DeepAgents thread IDs, or `dcode -r`
-as repository coordination state.
+Git-tracked coordinated work requires static `Coordination State` and task ledger
+in its plan. Ordinary uncoordinated personal-local work may omit them. One lead
+controller resumes coordinated work only through plan plus Git. Do not use Codex
+thread IDs, DeepAgents thread IDs, or `dcode -r` as repository coordination state.
 
 1. Open plan from selected workspace and identify recorded branch, base, active
    task or dependency-ready wave, expected workspace, next action, and blockers.
