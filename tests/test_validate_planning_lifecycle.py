@@ -105,3 +105,23 @@ def test_existing_spec_and_linked_plan_pass() -> None:
         assert result.returncode == 0
     finally:
         rmtree(root, ignore_errors=True)
+
+
+def test_readme_pointers_are_not_planning_artifacts() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "specs" / "README.md",
+            "Archived specifications.\n",
+        )
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "README.md",
+            "Archived plans.\n",
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+        assert "passed" in result.stdout.lower()
+    finally:
+        rmtree(root, ignore_errors=True)

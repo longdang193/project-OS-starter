@@ -4,9 +4,8 @@ name: test_native_personal_local_workflow
 type: test
 scope: unit
 domain: docs
-distribution_tier: starter_kit
 covers:
-  - Native personal-local workflow ships through starter guidance
+  - Native personal-local workflow source documentation
 tags:
   - fast
   - ci-safe
@@ -16,7 +15,6 @@ lifecycle:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import subprocess
 
@@ -33,12 +31,11 @@ def run_git(repository: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_native_personal_local_workflow_is_documented_and_shipped() -> None:
+def test_native_personal_local_workflow_is_documented() -> None:
     procedure = ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
     procedure_text = procedure.read_text(encoding="utf-8")
     root_guidance = (ROOT / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    manifest = json.loads((ROOT / "repo_config" / "starter-kit-manifest.json").read_text(encoding="utf-8"))
 
     assert "native-personal-local" in procedure_text
     assert "Git worktree" in procedure_text
@@ -55,8 +52,6 @@ def test_native_personal_local_workflow_is_documented_and_shipped() -> None:
     assert "Codex or DeepAgents" in root_guidance
     assert "native-personal-local" in readme
     assert "Codex or DeepAgents" in readme
-    assert "docs/operating_system" in manifest["copyPaths"]
-    assert "tests/test_native_personal_local_workflow.py" in manifest["copyPaths"]
 
 
 def test_native_git_evidence_exposes_tracked_and_untracked_scope_changes(tmp_path: Path) -> None:

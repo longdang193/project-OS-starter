@@ -31,9 +31,7 @@
     "tests/test_validate_agent_metadata_schema.py",
     "tests/test_validate_learning_materials_format.py",
     "tests/test_validate_planning_lifecycle.py",
-    "tests/test_native_personal_local_workflow.py",
     "tests/test_validate_repo_config.py",
-    "tests/test_validate_repo_contracts.py",
     "tests/test_dcode_project.py",
     "tests/test_validate_template_required_sections.py"
   ],
@@ -53,8 +51,7 @@
     "repo_config/planning_artifact_schema.yaml",
     "repo_config/publication-config.json",
     "requirements.txt",
-    "scripts/validate_repo_contracts.py",
-    "tests/test_validate_repo_contracts.py"
+    "scripts/validate_repo_contracts.py"
   ],
   "forbiddenPaths": [
     ".codex",

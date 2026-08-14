@@ -226,17 +226,30 @@ def _is_metadata_capable(path: Path) -> bool:
 def _analyze_metadata_file(path: Path) -> tuple[bool, bool]:
     text = path.read_text(encoding="utf-8", errors="ignore")
     is_metadata_capable = False
+    metadata_text = ""
     if path.suffix == ".py":
-        is_metadata_capable = "@meta" in "\n".join(text.splitlines()[:30])
+        metadata_text = "\n".join(text.splitlines()[:30])
+        is_metadata_capable = "@meta" in metadata_text
+        if is_metadata_capable:
+            meta_offset = metadata_text.index("@meta")
+            for delimiter in ('"""', "'''"):
+                start = metadata_text.rfind(delimiter, 0, meta_offset)
+                end = metadata_text.find(delimiter, meta_offset)
+                if start != -1 and end != -1:
+                    metadata_text = metadata_text[start:end]
+                    break
     elif path.suffix == ".md":
-        is_metadata_capable = text.startswith("---\n")
+        marker_end = text.find("\n---", 3)
+        is_metadata_capable = text.startswith("---\n") and marker_end != -1
+        if is_metadata_capable:
+            metadata_text = text[: marker_end + 4]
     has_starter_kit_tier = False
     if is_metadata_capable:
         pattern = re.compile(
             rf"^\s*(?:#\s*)?distribution_tier:\s*{re.escape(STARTER_KIT_DISTRIBUTION_TIER)}\s*$",
             re.MULTILINE,
         )
-        has_starter_kit_tier = bool(pattern.search(text))
+        has_starter_kit_tier = bool(pattern.search(metadata_text))
     return is_metadata_capable, has_starter_kit_tier
 
 

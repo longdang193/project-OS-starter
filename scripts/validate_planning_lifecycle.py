@@ -91,7 +91,11 @@ def discover_artifacts(root: Path, artifact_type: str) -> list[Path]:
     if isinstance(globs, list):
         for pattern in globs:
             if isinstance(pattern, str):
-                paths.update(path for path in root.glob(pattern) if path.is_file())
+                paths.update(
+                    path
+                    for path in root.glob(pattern)
+                    if path.is_file() and path.name != "README.md"
+                )
     return sorted(paths)
 
 

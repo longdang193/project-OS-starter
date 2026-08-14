@@ -203,6 +203,30 @@ distribution_tier: starter_kit
     assert any("not included in starter-kit manifest" in issue.message for issue in issues)
 
 
+def test_starter_kit_classification_ignores_tier_literals_outside_metadata(tmp_path: Path) -> None:
+    write_text(
+        tmp_path / "repo_config" / "starter-kit-manifest.json",
+        '{"copyPaths": ["docs"]}\n',
+    )
+    write_text(
+        tmp_path / "tests" / "test_fixture.py",
+        '''"""
+@meta
+name: fixture
+type: test
+"""
+
+TIER_LITERAL = """
+distribution_tier: starter_kit
+"""
+''',
+    )
+
+    issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
+
+    assert issues == []
+
+
 def test_starter_kit_classification_ignores_tmp_tests_tree(tmp_path: Path) -> None:
     write_text(
         tmp_path / "repo_config" / "starter-kit-manifest.json",
