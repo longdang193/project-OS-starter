@@ -217,12 +217,14 @@ def _normalized(text: str) -> str:
 
 
 def _write_text_if_changed(path: Path, rendered: str) -> None:
+    desired = rendered.replace("\r\n", "\n").rstrip("\n") + "\n"
     if path.exists():
-        current = path.read_text(encoding="utf-8")
-        if _normalized(current) == _normalized(rendered):
+        current = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        if current == desired:
             return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(rendered, encoding="utf-8")
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(desired)
 
 def _iter_matching_files(root: Path, pattern: str) -> list[Path]:
     return sorted(path for path in root.glob(pattern) if path.is_file())

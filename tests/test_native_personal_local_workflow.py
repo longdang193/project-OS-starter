@@ -91,7 +91,8 @@ def test_single_controller_resume_contract_is_documented() -> None:
 
     for step in range(1, 8):
         assert f"{step}." in procedure_text
-    assert "Coordination State (Optional)" in template_text
+    assert "## Coordination State" in template_text
+    assert "Coordination State (Optional)" not in template_text
     assert "Executor: `codex | deepagents`" in template_text
     assert "current DeepAgents launcher uses no MCP" in template_text
     assert "Active task(s)" in template_text
@@ -120,6 +121,36 @@ def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
     assert "Coordination State and task ledger" in subagent_skill
     assert 'cat "$(git rev-parse --show-toplevel)/.superpowers/sdd/progress.md"' not in subagent_skill
     assert "Do not create `.superpowers/sdd/progress.md`" in subagent_skill
+
+
+def test_coordination_authority_and_checkpoint_order_are_consistent() -> None:
+    coordination_rule = (
+        ROOT / "docs" / "operating_system" / "rules" / "git-tracked-coordination-rule.md"
+    ).read_text(encoding="utf-8")
+    precedence = (
+        ROOT / "docs" / "operating_system" / "governance" / "precedence.md"
+    ).read_text(encoding="utf-8")
+    executing_skill = (
+        ROOT / ".agents" / "skills" / "skill-executing-plans" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    subagent_skill = (
+        ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Plan owns workflow state" in executing_skill
+    assert "block on mismatch" in executing_skill
+    assert "proposed` to `active" in coordination_rule
+    assert "may weaken a canonical hard invariant" in precedence
+    assert "disposable local mirror" in subagent_skill
+    assert "lead creates the checkpoint commit after acceptance" in subagent_skill
+    assert "progress ledger" not in subagent_skill
+
+
+def test_sdd_shell_helpers_are_lf_normalized() -> None:
+    scripts = ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "scripts"
+
+    for name in ("review-package", "sdd-workspace", "task-brief"):
+        assert b"\r\n" not in (scripts / name).read_bytes()
 
 
 def test_deepagents_probe_selection_is_documented() -> None:

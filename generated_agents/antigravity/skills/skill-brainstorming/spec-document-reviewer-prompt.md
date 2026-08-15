@@ -57,4 +57,3 @@ Task tool (general-purpose):
 ```
 
 **Reviewer returns:** Status, Issues (if any), Recommendations
-

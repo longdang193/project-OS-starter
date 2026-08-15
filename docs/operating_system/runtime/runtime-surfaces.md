@@ -53,5 +53,6 @@ This document records provider-native deployment for rules, skills, root instruc
   exclusions, then injects only sanitized sources, facts, and constraints into
   task text before launching DeepAgents. `--mcp-select` narrows provenance
   only; it does not make MCP tools available inside DeepAgents.
-- DeepAgents web search is executor-local and needs user-local `TAVILY_API_KEY`. It\n  is absent by default and never falls back to Codex browser or web MCP tools.
+- DeepAgents web search is executor-local and needs user-local `TAVILY_API_KEY`.
+  It is absent by default and never falls back to Codex browser or web MCP tools.
 - Reusable operating methods live in skills; prompts remain wording-only.

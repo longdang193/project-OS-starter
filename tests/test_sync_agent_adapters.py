@@ -61,6 +61,14 @@ def _write_yaml(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def test_write_text_if_changed_writes_one_final_newline(tmp_path: Path) -> None:
+    path = tmp_path / "generated.md"
+
+    SYNC._write_text_if_changed(path, "body\n\n")
+
+    assert path.read_bytes() == b"body\n"
+
+
 def test_find_orphan_generated_surfaces_flags_legacy_unowned_files(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     orphan_file = root / "generated_agents" / "gemini" / "prompt_templates" / "legacy.md"
