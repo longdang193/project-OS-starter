@@ -468,6 +468,28 @@ def test_runtime_environment_reaches_deepagents_server_child(
     assert environment["DEEPAGENTS_CODE_OPENAI_BASE_URL"] == "http://127.0.0.1:20128/v1"
     assert environment["DEEPAGENTS_CODE_OPENAI_API_KEY"] == "test-key"
     assert environment["OPENAI_BASE_URL"] == "http://127.0.0.1:20128/v1"
+    assert environment["PYTHONUTF8"] == "1"
+    assert environment["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_runtime_environment_makes_child_subprocess_decoding_utf8() -> None:
+    environment = LAUNCHER._runtime_environment("http://127.0.0.1:20128/v1", "test-key")
+    probe = (
+        "import subprocess, sys; "
+        "result = subprocess.run([sys.executable, '-c', \"print('\\u2190')\"], "
+        "capture_output=True, text=True, check=True); "
+        "print(subprocess._text_encoding()); "
+        "print(result.stdout, end='')"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        env=environment,
+        capture_output=True,
+        check=True,
+    )
+
+    assert completed.stdout.decode("utf-8").replace("\r\n", "\n") == "utf-8\n←\n"
     assert environment["OPENAI_API_KEY"] == "test-key"
 
 def mcp_config() -> dict[str, object]:
