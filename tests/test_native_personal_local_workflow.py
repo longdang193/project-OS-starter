@@ -169,25 +169,42 @@ def test_deepagents_probe_selection_is_documented() -> None:
     assert "executor/profile, exit code" in procedure_text
 
 
-def test_profile_hierarchy_and_validator_rule_are_documented() -> None:
-    root_guidance = (
-        ROOT / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md"
-    ).read_text(encoding="utf-8")
-    procedure_text = (
-        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
-    ).read_text(encoding="utf-8")
-    plan_template = (
-        ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md"
-    ).read_text(encoding="utf-8")
-    subagent_skill = (
-        ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "SKILL.md"
-    ).read_text(encoding="utf-8")
+def test_profile_order_and_independent_validator_selection_are_documented() -> None:
+    policy_paths = (
+        ROOT / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md",
+        ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md",
+        ROOT / ".agents" / "skills" / "skill-writing-plans" / "SKILL.md",
+        ROOT / ".agents" / "skills" / "skill-deepagents-executing-plans" / "SKILL.md",
+        ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "SKILL.md",
+        ROOT / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md",
+        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md",
+        ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md",
+    )
+    policy_texts = tuple(path.read_text(encoding="utf-8") for path in policy_paths)
+    plan_template = policy_texts[1]
 
-    for text in (root_guidance, procedure_text, plan_template, subagent_skill):
+    for text in policy_texts:
         assert "`xhigh > high > normal > low`" in text
-        assert "validator profile must rank above executor profile" in text
+        assert "independently" in text.lower()
+        assert (
+            "lower, equal, or higher" in text.lower()
+            or (
+                "lower, equal, or" in text.lower()
+                and "higher validator profile" in text.lower()
+            )
+            or "no profile-rank relationship is required" in text.lower()
+        )
+        assert "validator profile must rank above executor profile" not in text.lower()
 
     assert "<xhigh | high | normal | low>" in plan_template
+
+
+    assert "- Selection basis: <validation>" in plan_template
+    assert "no profile-rank relationship is required" in plan_template
+
+    xhigh_role = (ROOT / "agents" / "xhigh.toml").read_text(encoding="utf-8")
+    assert "validation of " + chr(96) + "high" + chr(96) + " work" not in xhigh_role
+    assert "demanding validation" in xhigh_role
 
 
 def test_checkpoint_identity_is_derived_from_git_ledger_commit(tmp_path: Path) -> None:

@@ -34,9 +34,10 @@ This document records provider-native deployment for rules, skills, root instruc
 ## Policy
 
 - Canonical repo sources remain source of truth.
-- Profile order is `xhigh > high > normal > low`. In validator-executor setups,
-  validator profile must rank above executor profile. `xhigh` is ceiling, so it
-  cannot be executor in a separate profile-based validator pair.
+- Profile order is `xhigh > high > normal > low`. Select executor and validator
+  profiles independently from their bounded task contracts. A validator may be
+  lower, equal, or higher than its executor when reliable for validation;
+  `xhigh` may execute or validate based on task fitness.
 - Generated runtime outputs remain deployable packaging surfaces.
 - DeepAgents role views are local generated runtime state, not primary profiles or tracked adapter output.
 - DeepAgents auto-loads root `AGENTS.md` and discovers `.agents/skills` as

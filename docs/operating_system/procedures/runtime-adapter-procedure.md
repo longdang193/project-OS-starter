@@ -18,8 +18,10 @@ to `.agents/rules/` for supported local runtimes.
 
 `agents/xhigh.toml`, `agents/high.toml`, `agents/normal.toml`, and
 `agents/low.toml` are canonical delegated-role templates. They own delegated
-provider alias, model, rank, and prompt. Profile order is `xhigh > high > normal > low`.
-In validator-executor setups, validator profile must rank above executor profile.
+ provider alias, model, rank, and prompt. Profile order is `xhigh > high > normal > low`.
+Select executor and validator profiles independently from their bounded task
+contracts. A validator may be lower, equal, or higher than its executor when
+reliable for the validation task.
 Sync renders Codex TOML into
 `generated_agents/codex/agents/`. User-local `dcode-project` generates ignored
 DeepAgents project views at launch. Keep provider endpoints, credentials, MCP
