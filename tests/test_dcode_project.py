@@ -608,6 +608,34 @@ def test_handoff_instruction_moves_validated_payload_to_stdin() -> None:
     assert "handoff.json" not in task
 
 
+def test_handoff_instruction_canonicalizes_provenance_order() -> None:
+    payload_a = {
+        "schema": "codex.mcp.handoff.v1",
+        "sources": [
+            {"server": "serena", "tool": "find_symbol"},
+            {"server": "context7", "tool": "query_docs"},
+        ],
+        "facts": [
+            {"source": 0, "value": "symbol fact"},
+            {"source": 1, "value": {"library": "docs"}},
+        ],
+        "constraints": ["first constraint", "second constraint"],
+    }
+    payload_b = {
+        **payload_a,
+        "sources": [payload_a["sources"][1], payload_a["sources"][0]],
+        "facts": [
+            {"source": 0, "value": {"library": "docs"}},
+            {"source": 1, "value": "symbol fact"},
+        ],
+    }
+
+    task_a = LAUNCHER._handoff_stdin(["-n", "caller task"], payload_a)
+    task_b = LAUNCHER._handoff_stdin(["-n", "caller task"], payload_b)
+
+    assert task_a == task_b
+    assert '"constraints":["first constraint","second constraint"]' in task_a
+
 def test_handoff_stdin_preserves_binary_file_safety_context(tmp_path: Path) -> None:
     argv = ["-n", "caller task", "--no-mcp"]
     payload = {
