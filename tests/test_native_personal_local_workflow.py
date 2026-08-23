@@ -122,6 +122,19 @@ def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
     assert 'cat "$(git rev-parse --show-toplevel)/.superpowers/sdd/progress.md"' not in subagent_skill
     assert "Do not create `.superpowers/sdd/progress.md`" in subagent_skill
 
+def test_sdd_handoffs_keep_external_runtime_evidence_out_of_deepagents_paths() -> None:
+    subagent_skill = (
+        ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    implementer_prompt = (
+        ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "implementer-prompt.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Repository-local report paths only" in subagent_skill
+    assert "Codex validates external or" in subagent_skill
+    assert "sanitized facts or content" in subagent_skill
+    assert "repository-relative report file path" in implementer_prompt
+
 
 def test_coordination_authority_and_checkpoint_order_are_consistent() -> None:
     coordination_rule = (
