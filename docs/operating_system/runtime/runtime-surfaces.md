@@ -27,7 +27,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- |
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects canonical source role model for primary launch; validates controller-owned handoff; forces `--no-mcp`. |
+| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects canonical source role model for primary launch; validates controller-owned handoff; forces `--no-mcp`; pins `deepagents-code 0.1.59`; disables child auto-update. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 
@@ -56,4 +56,7 @@ This document records provider-native deployment for rules, skills, root instruc
   only; it does not make MCP tools available inside DeepAgents.
 - DeepAgents web search is executor-local and needs user-local `TAVILY_API_KEY`.
   It is absent by default and never falls back to Codex browser or web MCP tools.
+- Project `.env` files are untrusted runtime input. Launcher-owned provider
+  environment values win, and project files must not carry credentials or
+  runtime authority.
 - Reusable operating methods live in skills; prompts remain wording-only.

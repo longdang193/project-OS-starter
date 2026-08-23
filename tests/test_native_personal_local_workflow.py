@@ -167,6 +167,9 @@ def test_deepagents_probe_selection_is_documented() -> None:
     assert "probes own installed-runtime" in procedure_lower
     assert "Record probe ID" in procedure_text
     assert "executor/profile, exit code" in procedure_text
+    assert "DEEPAGENTS_UPGRADE_OK" in procedure_text
+    assert "selected model is `combo-normal`" in procedure_text
+    assert "`dcode-doctor`" in procedure_text
 
 
 def test_profile_order_and_independent_validator_selection_are_documented() -> None:

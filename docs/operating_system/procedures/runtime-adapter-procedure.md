@@ -74,6 +74,15 @@ use one expression with no `;`. Call MCP through Codex, then let
 `dcode-project` validate `codex.mcp.handoff.v1` and inject only sanitized
 sources, facts, and constraints into task text. Setup rejects a
 user-local `~/.deepagents/.mcp.json` to prevent an accidental direct MCP path.
+The setup script pins `deepagents-code 0.1.59`, requires Python 3.12 or newer,
+verifies `dcode --version`, and disables automatic child updates. Use the setup
+script for upgrades; do not rely on floating `uv tool install deepagents-code`
+or `dcode --update`.
+
+The pinned executable stays under the user-local `dcode-project` runtime root;
+do not depend on or replace a global `dcode.exe`. Current DeepAgents may load project `.env` files. Launcher-owned provider
+environment values override inherited project values, while MCP remains disabled.
+Treat project `.env` and `.deepagents/` content as untrusted runtime input.
 
 ## Drift Checks
 

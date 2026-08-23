@@ -71,6 +71,9 @@ permissions. Codex controller performs MCP work, writes validated
 `codex.mcp.handoff.v1` under user-local handoff root, then launches DeepAgents
 with `--handoff-file <absolute-path>`. Optional `--mcp-select` narrows
 provenance only; it does not grant DeepAgents MCP access.
+Local setup pins `deepagents-code 0.1.59`, requires Python 3.12 or newer, and
+disables child auto-update. Refresh the runtime through
+`scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
 
 ## Agent Memory
 
