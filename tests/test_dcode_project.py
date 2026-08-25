@@ -338,7 +338,7 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
         assert (tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md").is_file()
         raise OSError("dcode unavailable")
 
-    monkeypatch.setattr(LAUNCHER.subprocess, "run", fail_dcode)
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", fail_dcode)
 
     with pytest.raises(OSError, match="dcode unavailable"):
         LAUNCHER.main(["--role", "normal", "-n", "task"])
@@ -499,12 +499,23 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
     invoked: list[object] = []
     invoked_kwargs: dict[str, object] = {}
 
-    def complete_dcode(*args: object, **kwargs: object) -> subprocess.CompletedProcess[object]:
-        invoked.extend(args)
-        invoked_kwargs.update(kwargs)
-        return subprocess.CompletedProcess(args[0], 0)
+    def complete_dcode(
+        argv: list[str],
+        environment: dict[str, str],
+        repo_root: Path,
+        handoff_stdin: str | None,
+        timeout: float,
+    ) -> int:
+        invoked.append(argv)
+        invoked_kwargs.update(
+            environment=environment,
+            cwd=repo_root,
+            input=handoff_stdin,
+            timeout=timeout,
+        )
+        return 0
 
-    monkeypatch.setattr(LAUNCHER.subprocess, "run", complete_dcode)
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", complete_dcode)
 
     assert LAUNCHER.main(["--role", role_name, "--json", "--no-mcp", "-n", "task"]) == 0
     file_tool_root = "/" + tmp_path.relative_to(tmp_path.anchor).as_posix()

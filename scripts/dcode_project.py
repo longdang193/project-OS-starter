@@ -869,6 +869,42 @@ def _run_tura_worker(
         process.wait()
         raise RuntimeError("Tura worker timed out; child process tree terminated.") from exc
 
+def _run_deepagents_worker(
+    argv: list[str],
+    environment: dict[str, str],
+    repo_root: Path,
+    handoff_stdin: str | None,
+    timeout: float,
+) -> int:
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    popen_kwargs: dict[str, object] = {
+        "cwd": repo_root,
+        "env": environment,
+        "creationflags": creationflags,
+        "stdin": subprocess.PIPE if handoff_stdin is not None else None,
+        "text": handoff_stdin is not None,
+    }
+    if os.name != "nt":
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(argv, **popen_kwargs)
+    try:
+        if handoff_stdin is None:
+            return process.wait(timeout=timeout)
+        process.communicate(input=handoff_stdin, timeout=timeout)
+        return process.returncode
+    except subprocess.TimeoutExpired as exc:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            process.kill()
+        process.wait()
+        raise RuntimeError("DeepAgents worker timed out; child process tree terminated.") from exc
+
 
 def _find_dcode() -> str | None:
     return next(
@@ -1007,21 +1043,21 @@ def main(argv: list[str]) -> int:
     environment = _runtime_environment(base_url, api_key)
     _write_role_views(repo_root, roles)
     try:
-        completed = subprocess.run(
-            [
-                dcode,
-                "-M",
-                f"openai:{selected_role['model']}",
-                *_FIXED_LOCAL_CAPABILITY_OPTIONS,
-                *(arg for arg in child_argv if arg != "--no-mcp"),
-                "--no-mcp",
-            ],
-            env=environment,
-            cwd=repo_root,
-            input=handoff_stdin,
-            text=handoff_stdin is not None,
+        dcode_argv = [
+            dcode,
+            "-M",
+            f"openai:{selected_role['model']}",
+            *_FIXED_LOCAL_CAPABILITY_OPTIONS,
+            *(arg for arg in child_argv if arg != "--no-mcp"),
+            "--no-mcp",
+        ]
+        return _run_deepagents_worker(
+            dcode_argv,
+            environment,
+            repo_root,
+            handoff_stdin,
+            _tura_timeout(child_argv),
         )
-        return completed.returncode
     finally:
         _remove_role_views(repo_root, roles)
 
