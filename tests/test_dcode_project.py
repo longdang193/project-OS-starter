@@ -202,6 +202,40 @@ def test_tura_worker_propagates_opaque_child_status(
     ) == 7
     assert observed["cwd"] == tmp_path
 
+def test_deepagents_worker_reaps_windows_child_tree_after_normal_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeProcess:
+        pid = 42
+        returncode = 0
+
+        def communicate(self, input: str, timeout: float | None = None) -> None:
+            assert input == "handoff"
+            assert timeout == 3
+
+        def wait(self, timeout: float | None = None) -> int:
+            assert timeout == 3
+            return 0
+
+    observed: list[object] = []
+
+    def fake_popen(argv: list[str], **kwargs: object) -> FakeProcess:
+        return FakeProcess()
+
+    def fake_close(job: object | None) -> None:
+        observed.append(job)
+
+    monkeypatch.setattr(LAUNCHER.os, "name", "nt")
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(LAUNCHER, "_create_windows_job", lambda process: "job")
+    monkeypatch.setattr(LAUNCHER, "_close_windows_job", fake_close)
+
+    assert LAUNCHER._run_deepagents_worker(
+        ["dcode", "-n", "task"], {}, tmp_path, "handoff", 3
+    ) == 0
+    assert observed == ["job"]
+
 
 def test_tura_worker_does_not_supply_adapter_cache_key() -> None:
     assert "prompt_cache_key" not in LAUNCHER._tura_worker_argv(

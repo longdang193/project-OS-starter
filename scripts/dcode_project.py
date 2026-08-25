@@ -838,6 +838,86 @@ def _tura_timeout(argv: list[str]) -> float:
         return timeout
     return 120.0
 
+def _create_windows_job(process: subprocess.Popen[object]) -> object | None:
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_longlong),
+            ("PerJobUserTimeLimit", ctypes.c_longlong),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_ulonglong) for name in (
+            "ReadOperationCount",
+            "WriteOperationCount",
+            "OtherOperationCount",
+            "ReadTransferCount",
+            "WriteTransferCount",
+            "OtherTransferCount",
+        )]
+
+    class ExtendedLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", BasicLimitInformation),
+            ("IoInfo", IoCounters),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    job = kernel32.CreateJobObjectW(None, None)
+    process_handle = getattr(process, "_handle", None)
+    if not job or process_handle is None:
+        if job:
+            kernel32.CloseHandle(job)
+        return None
+    limits = ExtendedLimitInformation()
+    limits.BasicLimitInformation.LimitFlags = 0x2000
+    if not kernel32.SetInformationJobObject(
+        job,
+        9,
+        ctypes.byref(limits),
+        ctypes.sizeof(limits),
+    ) or not kernel32.AssignProcessToJobObject(job, process_handle):
+        kernel32.CloseHandle(job)
+        return None
+    return job
+
+def _close_windows_job(job: object | None) -> None:
+    if job is None or os.name != "nt":
+        return
+    import ctypes
+
+    ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(job)
+
+def _kill_windows_process_tree(pid: int) -> None:
+    if os.name != "nt":
+        return
+    subprocess.run(
+        ["taskkill", "/PID", str(pid), "/T", "/F"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=2,
+    )
+
 
 def _run_tura_worker(
     argv: list[str],
@@ -887,23 +967,32 @@ def _run_deepagents_worker(
     if os.name != "nt":
         popen_kwargs["start_new_session"] = True
     process = subprocess.Popen(argv, **popen_kwargs)
+    job = _create_windows_job(process)
+    fallback_kill = False
     try:
         if handoff_stdin is None:
-            return process.wait(timeout=timeout)
-        process.communicate(input=handoff_stdin, timeout=timeout)
-        return process.returncode
-    except subprocess.TimeoutExpired as exc:
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+            return_code = process.wait(timeout=timeout)
         else:
-            process.kill()
+            process.communicate(input=handoff_stdin, timeout=timeout)
+            return_code = process.returncode
+    except subprocess.TimeoutExpired as exc:
+        if job is None and os.name == "nt":
+            _kill_windows_process_tree(process.pid)
+            fallback_kill = True
+        else:
+            if job is None:
+                process.kill()
+            else:
+                _close_windows_job(job)
+                job = None
         process.wait()
         raise RuntimeError("DeepAgents worker timed out; child process tree terminated.") from exc
+    finally:
+        if job is not None:
+            _close_windows_job(job)
+        elif os.name == "nt" and not fallback_kill:
+            _kill_windows_process_tree(process.pid)
+    return return_code
 
 
 def _find_dcode() -> str | None:
