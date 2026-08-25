@@ -38,6 +38,8 @@ Read only what the current task needs:
 - `skill-subagent-driven-development` when approved tasks are separable, same-session sequential delegation is useful, and per-task commits are authorized
 - `skill-deepagents-executing-plans` when the plan selects DeepAgents and bounded
   delegated execution materially benefits the active Git-tracked task
+- `docs/operating_system/planning/planning-dispatch.md` when task executor
+  selection is unclear or the plan mixes `codex`, `deepagents`, and `tura`
 - `skill-dispatching-parallel-agents` when two or more lanes have disjoint write ownership
 - `skill-systematic-debugging` after unexpected failures or unexplained behavior
 - `skill-test-driven-development` for non-trivial behavior changes or bug fixes
@@ -49,6 +51,10 @@ tools, approval, sandbox, or shell policy. Current `dcode-project` forces
 `--no-mcp`. Keep task scope and Git acceptance executor-neutral; call required
 MCP through Codex and pass only validated `codex.mcp.handoff.v1` facts to
 DeepAgents.
+
+When an active task selects `tura`, use the explicit `project-delegate` adapter.
+When it selects `deepagents`, use `dcode-project`. Executor selection does not
+transfer Git coordination, acceptance, or required Codex-owned capabilities.
 
 Do not load every linked document or skill by default.
 
@@ -98,6 +104,10 @@ Choose the smallest unblocked action from approved scope:
 4. focused verification
 5. dependent documentation or generated refresh
 6. task status update
+
+Before dispatch, read the active task ledger `Executor` value. Use direct Codex
+for `codex`, `dcode-project` for `deepagents`, and `project-delegate` for
+`tura`; do not infer executor from profile rank or task-function name.
 
 Keep exactly one local task active unless parallel execution is explicitly justified. Do not invent adjacent cleanup merely because it is nearby.
 

@@ -2,10 +2,12 @@
 
 Use `native-personal-local` for ordinary work by one trusted local OS user.
 Git owns workspace identity and change evidence. Selected local executor is
-Codex or DeepAgents; Codex is default when plan omits executor. Executor choice
-does not change task paths, Git acceptance, or user approval. It can change
-host-enforced tool containment; current DeepAgents containment is not a Codex
-permission projection.
+Codex, DeepAgents, or Tura; Codex is safe default when plan omits executor or
+delegated benefit is unclear. Follow
+`docs/operating_system/planning/planning-dispatch.md` for advisory executor
+selection. Executor choice does not change task paths, Git acceptance, or user
+approval. It can change host-enforced tool containment; current DeepAgents
+containment is not a Codex permission projection.
 
 Git-tracked coordinated work follows
 `docs/operating_system/rules/git-tracked-coordination-rule.md`. This procedure

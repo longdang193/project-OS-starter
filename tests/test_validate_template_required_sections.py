@@ -635,7 +635,8 @@ def test_implementation_plan_template_documents_executor_and_coordination() -> N
         REPO_ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md"
     ).read_text(encoding="utf-8")
 
-    assert "Executor: `codex | deepagents`" in template
+    assert "Default task executor: `codex | deepagents | tura`" in template
+    assert "Task ledger `Executor` values are `codex`, `deepagents`, or `tura`" in template
     assert "Coordination: `git-tracked | none`" in template
     assert "Required when `Execution Approach > Coordination` is `git-tracked`" in template
     assert "current DeepAgents launcher uses no MCP" in template

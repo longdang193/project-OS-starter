@@ -59,7 +59,10 @@ First-hour flow:
 
 Ordinary trusted one-user development uses
 [`native-personal-local`](docs/operating_system/procedures/personal-local-worktree-procedure.md):
-native Git plus Codex or DeepAgents. Codex is default when plan omits executor.
+native Git plus Codex, DeepAgents, or Tura. Executor and profile selection are
+independent; Codex is safe default when plan omits executor or delegated benefit
+is unclear. Follow `docs/operating_system/planning/planning-dispatch.md` for
+advisory executor selection.
 Reuse clean checkout for small reversible work. Use a native Git worktree only
 when existing worktree guidance selects isolation. Git owns workspace identity,
 change evidence, and branch disposition. Shared delegated roles live in

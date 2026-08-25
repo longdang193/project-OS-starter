@@ -31,7 +31,7 @@ def run_git(repository: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_native_personal_local_workflow_is_documented() -> None:
+def test_three_runtime_personal_local_workflow_is_documented() -> None:
     procedure = ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
     procedure_text = procedure.read_text(encoding="utf-8")
     root_guidance = (ROOT / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md").read_text(encoding="utf-8")
@@ -39,7 +39,8 @@ def test_native_personal_local_workflow_is_documented() -> None:
 
     assert "native-personal-local" in procedure_text
     assert "Git worktree" in procedure_text
-    assert "Codex or DeepAgents" in procedure_text
+    assert "Codex, DeepAgents, or Tura" in procedure_text
+    assert "planning/planning-dispatch.md" in procedure_text
     assert "Resume In A New Task" in procedure_text
     assert "dcode -r" in procedure_text
     assert "DeepAgents Tool Boundary" in procedure_text
@@ -49,9 +50,11 @@ def test_native_personal_local_workflow_is_documented() -> None:
     assert "--handoff-file" in procedure_text
     assert "--mcp-select" in procedure_text
     assert "native-personal-local" in root_guidance
-    assert "Codex or DeepAgents" in root_guidance
+    assert "Codex, DeepAgents, or Tura" in root_guidance
+    assert "planning/planning-dispatch.md" in root_guidance
     assert "native-personal-local" in readme
-    assert "Codex or DeepAgents" in readme
+    assert "Codex, DeepAgents, or Tura" in readme
+    assert "planning-dispatch.md" in readme
 
 
 def test_native_git_evidence_exposes_tracked_and_untracked_scope_changes(tmp_path: Path) -> None:
@@ -93,7 +96,10 @@ def test_single_controller_resume_contract_is_documented() -> None:
         assert f"{step}." in procedure_text
     assert "## Coordination State" in template_text
     assert "Coordination State (Optional)" not in template_text
-    assert "Executor: `codex | deepagents`" in template_text
+    assert "Default task executor: `codex | deepagents | tura`" in template_text
+    assert "each Git-tracked task ledger `Executor` value is authoritative" in template_text
+    assert "Task ledger `Executor` values are `codex`, `deepagents`, or `tura`" in template_text
+    assert "`Template Profile` and optional `Validator Profile` remain independent" in template_text
     assert "current DeepAgents launcher uses no MCP" in template_text
     assert "Active task(s)" in template_text
     assert "multiple active tasks" in template_text
@@ -102,6 +108,21 @@ def test_single_controller_resume_contract_is_documented() -> None:
     assert "| Checkpoint |" not in template_text
     assert "git log -1 --format=%H -- <plan-path>" in procedure_text
     assert "Git owns checkpoint\nidentity" in template_text
+
+
+def test_executor_selection_and_task_override_are_documented() -> None:
+    dispatch = (ROOT / "docs" / "operating_system" / "planning" / "planning-dispatch.md").read_text(encoding="utf-8")
+    template = (ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md").read_text(encoding="utf-8")
+
+    assert "## Artifact Selection" in dispatch
+    assert "## Executor Selection" in dispatch
+    assert "`codex`" in dispatch
+    assert "`deepagents`" in dispatch
+    assert "`tura`" in dispatch
+    assert "These are advisory eligibility rules, not a classifier." in dispatch
+    assert "Do not map profile rank" in dispatch
+    assert "`Controller`" not in template
+    assert "`n  `" not in template
 
 
 def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
@@ -117,10 +138,25 @@ def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
 
     assert "Git-tracked coordinated work requires" in procedure_text
     assert 'dcode-project --role <low|normal|high|xhigh> -n "<task>"' in procedure_text
+    assert 'project-delegate --role <low|normal|high|xhigh> -n "<task>"' in procedure_text
+    assert "Codex, DeepAgents, or Tura" in procedure_text
     assert "Coordination State and task ledger" in executing_skill
+    assert "active task ledger `Executor` value" in executing_skill
+    assert "project-delegate` for" in executing_skill
     assert "Coordination State and task ledger" in subagent_skill
     assert 'cat "$(git rev-parse --show-toplevel)/.superpowers/sdd/progress.md"' not in subagent_skill
     assert "Do not create `.superpowers/sdd/progress.md`" in subagent_skill
+
+
+def test_deepagents_internal_writers_remain_task_bounded() -> None:
+    skill = (ROOT / ".agents" / "skills" / "skill-deepagents-executing-plans" / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "Runtime-internal" in skill
+    assert "decomposition never becomes plan-level coordination" in skill
+    assert "Nested writers are allowed" in skill
+    assert "only when dispatch explicitly permits them" in skill
+    assert "permitted nested writer does not create another plan task" in skill
+    assert "read-only decomposition" not in skill
 
 def test_sdd_handoffs_keep_external_runtime_evidence_out_of_deepagents_paths() -> None:
     subagent_skill = (

@@ -1,6 +1,10 @@
 # Planning Dispatch
 
-Use this decision table only when artifact choice is unclear. Create the smallest artifact needed for safe execution.
+Use `Artifact Selection` when artifact choice is unclear. Use `Executor
+Selection` when task runtime choice is unclear. Create the smallest policy or
+artifact needed for safe execution.
+
+## Artifact Selection
 
 | Condition | Action |
 | --- | --- |
@@ -28,3 +32,21 @@ Use this decision table only when artifact choice is unclear. Create the smalles
 
 No artifact is required merely to connect two other artifacts. Source, tests,
 configuration, and validators remain executable truth.
+
+## Executor Selection
+
+Executor and profile selection are independent. Select executor from task
+authority, containment, topology, and expected runtime benefit. Then select the
+lowest profile that can reliably complete that executor's bounded contract.
+
+| Condition | Eligible executor |
+| --- | --- |
+| Codex-owned MCP, connected tools, project coordination, cross-task judgment, or final acceptance is required | `codex` |
+| Task is bounded and runtime-managed batching, dependency execution, or compact execution state is likely to provide material benefit | `tura` |
+| Task is bounded but long-horizon, context-heavy, exploratory, or materially helped by isolated internal contexts | `deepagents` |
+| No delegated executor has clear task-specific benefit or executor fitness is unclear | `codex` |
+
+These are advisory eligibility rules, not a classifier. Do not map profile rank
+or task function permanently to an executor. Do not add automatic executor
+fallback or runtime-internal plan coordination. Use task-specific evidence when
+using `prefer`; otherwise keep Codex as the safe default.

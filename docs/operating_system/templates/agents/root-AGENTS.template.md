@@ -51,9 +51,12 @@ profile. Function name alone never determines profile.
 
 Ordinary trusted one-user work follows `native-personal-local` in
 `docs/operating_system/procedures/personal-local-worktree-procedure.md`:
-native Git plus selected local executor, Codex or DeepAgents. Codex is default
-when plan omits executor. Reuse a clean checkout for small reversible work; use
-a native Git worktree only when existing worktree guidance selects isolation.
+native Git plus selected local executor: Codex, DeepAgents, or Tura. Executor and
+profile selection are independent. Codex is safe default when plan omits executor
+or delegated benefit is unclear. Follow
+`docs/operating_system/planning/planning-dispatch.md` for advisory selection.
+Reuse a clean checkout for small reversible work; use a native Git worktree only
+when existing worktree guidance selects isolation.
 Git owns workspace identity, change evidence, and authorized branch disposition.
 For DeepAgents, use user-local `dcode-project`; it derives ignored project role
 views from `agents/*.toml` and local provider endpoint and credentials. Do not track

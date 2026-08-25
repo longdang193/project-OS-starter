@@ -63,6 +63,13 @@ stop and use `skill-spec-drafting`.
 
 Source and tests remain authoritative when documents or optional tools disagree.
 
+Executor selection follows `docs/operating_system/planning/planning-dispatch.md`.
+Executor and profile selection are independent. A plan may record an optional
+default task executor, but each Git-tracked task records its authoritative
+`codex`, `deepagents`, or `tura` executor in the task ledger. Use Codex when
+controller authority is required or delegated benefit is unclear; use Tura or
+DeepAgents only when task-specific evidence supports that choice.
+
 When a plan names `deepagents` as executor, record only executor choice and
 task role. Do not treat it as a tool-permission grant. Current `dcode-project`
 forces `--no-mcp`; plan required MCP research or verification under Codex, then
@@ -129,6 +136,7 @@ workspace ownership, dependencies, required proof, blockers, and next action.
 Also state:
 
 - required skills per task or lane
+- optional default task executor and authoritative task-ledger executor per task
 - required isolation: current workspace, task-specific isolated worktree, or
   per-writer isolated worktrees
 - commit policy; checkpoint commits are created by the lead after acceptance
@@ -202,7 +210,8 @@ Each task must include:
 **Exit Criteria:**
 ```
 
-Name exact paths, symbols, commands, expected results, and generated consumers.
+Name exact paths, symbols, commands, expected results, generated consumers, and
+the authoritative executor for every Git-tracked task.
 If a symbol does not yet exist, name its intended owner and contract. Steps
 must be executable actions, not restated goals. Add task-level execution mode
 only when it differs from the plan-level `Execution Approach`. `Authority` names

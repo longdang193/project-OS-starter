@@ -38,7 +38,7 @@ Describe another concrete implementation result this plan must deliver, such as 
 
 - Mode: `inline sequential | subagent-ready | parallel-capable`
 - Coordination: `git-tracked | none`
-- Executor: `codex | deepagents` (optional; Codex default; selects local runtime only; current DeepAgents launcher uses no MCP, so required MCP work stays with Codex and passes validated handoff facts)
+- Default task executor: `codex | deepagents | tura` (optional; Codex default; each Git-tracked task ledger `Executor` value is authoritative for that task; current DeepAgents launcher uses no MCP, so required MCP work stays with Codex and passes validated handoff facts)
 - Required skills: `<exact skill names or none>`
 - Isolation: `<current workspace | optional worktree>`
 - Commit policy: `<verified per-task checkpoint commits preauthorized | no commits during execution>`
@@ -77,6 +77,10 @@ never copy that commit SHA into the plan. Push, merge,
 publication, external writes, destructive recovery, discard, and cleanup still
 need explicit user authorization.
 
+Task ledger `Executor` values are `codex`, `deepagents`, or `tura`. A task value
+overrides the optional plan default. Executor choice does not select profile;
+`Template Profile` and optional `Validator Profile` remain independent.
+
 ## Task Breakdown
 
 Use `Task` for directly executable implementation slices.
@@ -85,7 +89,7 @@ Use `Wave` only when plan truly needs orchestration across multiple related task
 Within each task:
 - `Purpose` owns bounded outcome
 - `Task Function` names current open-ended function without mapping it to a profile
-- `Template Profile` records controller-selected `xhigh`, `high`, `normal`, or`n  `low` plus selection basis for delegated work, or `none (lead controller)` for`n  inline controller work
+- `Template Profile` records controller-selected `xhigh`, `high`, `normal`, or `low` plus selection basis for delegated work, or `none (lead controller)` for inline controller work
 - `Validator Profile` records an optional separate validator and its selection basis
 - `Specification Coverage` maps approved requirements or direct scope
 - `Required Skills` names only methods needed for this task
