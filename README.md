@@ -79,6 +79,11 @@ provenance only; it does not grant DeepAgents MCP access.
 Local setup pins `deepagents-code 0.1.59`, requires Python 3.12 or newer, and
 disables child auto-update. Refresh the runtime through
 `scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
+For Tura replacement, keep the configured executable path when possible, check
+its nonsecret identity with `project-delegate --role normal --print-config`,
+and run one bounded TL smoke before treating existing compatibility or
+performance evidence as current. A moved executable needs setup rerun; an
+in-place replacement does not.
 
 ## Agent Memory
 

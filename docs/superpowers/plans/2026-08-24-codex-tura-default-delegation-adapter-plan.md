@@ -1,9 +1,10 @@
 ---
 layer: change
 artifact_type: plan
-status: proposed
+status: superseded
 template_id: implementation-plan
 name: tura-bounded-worker-codex-adapter
+superseded_by: docs/superpowers/plans/2026-08-25-tura-bounded-worker-conformance-and-upgrade-plan.md
 targets:
   - scripts/dcode_project.py
   - scripts/setup_deepagents_runtime.ps1

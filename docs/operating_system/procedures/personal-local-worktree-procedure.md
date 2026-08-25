@@ -107,6 +107,11 @@ Setup probes required public CLI flags once, writes one user-local config, and
 installs `project-delegate`. Restart needs no manual action. Production route is
 `Tura -> LightRSI -> 9router -> provider` through `TURA_PROVIDER_CONFIG`; moving
 the executable requires setup rerun, replacing it at the same path does not.
+After replacing the executable, run
+`project-delegate --role normal --print-config` to capture its nonsecret
+`tura_executable_sha256`, then run one bounded read-only TL smoke. Treat prior
+performance evidence as stale when hash changes; do not add release-specific
+config or adapter code.
 
 Launch with `project-delegate --role <low|normal|high|xhigh> -n "<task>"`.
 Use `dcode-project` when DeepAgents is required explicitly.

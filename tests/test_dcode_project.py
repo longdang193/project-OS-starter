@@ -18,6 +18,7 @@ lifecycle:
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import subprocess
@@ -196,11 +197,80 @@ def test_tura_worker_propagates_opaque_child_status(
         return FakeProcess()
 
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(LAUNCHER, "_create_windows_job", lambda process: "job")
+    monkeypatch.setattr(LAUNCHER, "_close_windows_job", lambda job: None)
 
     assert LAUNCHER._run_tura_worker(
         ["tura", "task"], {"TURA_PROVIDER_CONFIG": "providers.toml"}, tmp_path, 3
     ) == 7
     assert observed["cwd"] == tmp_path
+
+
+@pytest.mark.parametrize("handoff_stdin", [None, "handoff"])
+def test_bounded_worker_preserves_stdin_and_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    handoff_stdin: str | None,
+) -> None:
+    class FakeProcess:
+        returncode = 7
+
+        def communicate(self, input: str, timeout: float | None = None) -> None:
+            assert input == handoff_stdin
+            assert timeout == 3
+
+        def wait(self, timeout: float | None = None) -> int:
+            assert timeout == 3
+            return 7
+
+    observed: dict[str, object] = {}
+
+    def fake_popen(argv: list[str], **kwargs: object) -> FakeProcess:
+        observed.update(argv=argv, kwargs=kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(LAUNCHER.os, "name", "posix")
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
+
+    assert LAUNCHER._run_bounded_worker(
+        ["worker", "task"], {}, tmp_path, handoff_stdin, 3, "worker"
+    ) == 7
+    assert observed["argv"] == ["worker", "task"]
+    assert observed["kwargs"]["stdin"] is (
+        subprocess.PIPE if handoff_stdin is not None else None
+    )
+
+def test_bounded_worker_terminates_timed_out_posix_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeProcess:
+        pid = 42
+
+        def __init__(self) -> None:
+            self.killed = False
+            self.waits = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.waits += 1
+            if self.waits == 1:
+                raise subprocess.TimeoutExpired(["worker"], timeout)
+            return -9
+
+        def kill(self) -> None:
+            self.killed = True
+
+    process = FakeProcess()
+    monkeypatch.setattr(LAUNCHER.os, "name", "posix")
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    with pytest.raises(RuntimeError, match="worker timed out"):
+        LAUNCHER._run_bounded_worker(
+            ["worker"], {}, tmp_path, None, 3, "worker"
+        )
+
+    assert process.killed is True
+    assert process.waits == 2
 
 def test_deepagents_worker_reaps_windows_child_tree_after_normal_exit(
     monkeypatch: pytest.MonkeyPatch,
@@ -618,6 +688,52 @@ def test_print_config_reports_selected_role_effective_model(
     assert payload["selected_role"] == "normal"
     assert payload["effective_model"] == "openai:combo-normal"
     assert payload["controller_model"] == "openai:combo-high"
+
+def test_print_config_reports_tura_executable_hash_without_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_role(tmp_path, "normal")
+    executable = tmp_path / "tura.exe"
+    executable.write_bytes(b"tura-test-binary")
+    provider_config = tmp_path / "providers.toml"
+    provider_config.write_text('api_key = "do-not-print"\n', encoding="utf-8")
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text(
+        "[delegation]\ndefault_executor = \"tura\"\n"
+        f"\n[paths]\ntura_executable = '{executable}'\n"
+        f"tura_provider_config = '{provider_config}'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_runtime_binding",
+        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
+    )
+    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
+
+    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
+
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+    assert payload["tura_executable"] == str(executable)
+    assert payload["tura_executable_sha256"] == hashlib.sha256(
+        b"tura-test-binary"
+    ).hexdigest()
+    assert "do-not-print" not in output
 
 
 def test_role_model_comes_from_canonical_template(tmp_path: Path) -> None:

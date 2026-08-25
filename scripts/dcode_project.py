@@ -409,6 +409,13 @@ def _sha256_json(value: object) -> str:
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 def _runtime_binding_digest(
     provider_name: str,
     model: str,
@@ -919,42 +926,13 @@ def _kill_windows_process_tree(pid: int) -> None:
     )
 
 
-def _run_tura_worker(
-    argv: list[str],
-    environment: dict[str, str],
-    repo_root: Path,
-    timeout: float,
-) -> int:
-    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
-    popen_kwargs: dict[str, object] = {
-        "cwd": repo_root,
-        "env": environment,
-        "creationflags": creationflags,
-    }
-    if os.name != "nt":
-        popen_kwargs["start_new_session"] = True
-    process = subprocess.Popen(argv, **popen_kwargs)
-    try:
-        return process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        else:
-            process.kill()
-        process.wait()
-        raise RuntimeError("Tura worker timed out; child process tree terminated.") from exc
-
-def _run_deepagents_worker(
+def _run_bounded_worker(
     argv: list[str],
     environment: dict[str, str],
     repo_root: Path,
     handoff_stdin: str | None,
     timeout: float,
+    worker_name: str,
 ) -> int:
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
     popen_kwargs: dict[str, object] = {
@@ -979,20 +957,45 @@ def _run_deepagents_worker(
         if job is None and os.name == "nt":
             _kill_windows_process_tree(process.pid)
             fallback_kill = True
+        elif job is None:
+            process.kill()
         else:
-            if job is None:
-                process.kill()
-            else:
-                _close_windows_job(job)
-                job = None
+            _close_windows_job(job)
+            job = None
         process.wait()
-        raise RuntimeError("DeepAgents worker timed out; child process tree terminated.") from exc
+        raise RuntimeError(
+            f"{worker_name} worker timed out; child process tree terminated."
+        ) from exc
     finally:
         if job is not None:
             _close_windows_job(job)
         elif os.name == "nt" and not fallback_kill:
             _kill_windows_process_tree(process.pid)
     return return_code
+
+def _run_tura_worker(
+    argv: list[str],
+    environment: dict[str, str],
+    repo_root: Path,
+    timeout: float,
+) -> int:
+    return _run_bounded_worker(argv, environment, repo_root, None, timeout, "Tura")
+
+def _run_deepagents_worker(
+    argv: list[str],
+    environment: dict[str, str],
+    repo_root: Path,
+    handoff_stdin: str | None,
+    timeout: float,
+) -> int:
+    return _run_bounded_worker(
+        argv,
+        environment,
+        repo_root,
+        handoff_stdin,
+        timeout,
+        "DeepAgents",
+    )
 
 
 def _find_dcode() -> str | None:
@@ -1078,7 +1081,10 @@ def main(argv: list[str]) -> int:
             for key in ("tura_executable", "tura_provider_config"):
                 value = paths.get(key)
                 if isinstance(value, str) and value.strip():
-                    payload[key] = str(Path(value).expanduser())
+                    path = Path(value).expanduser()
+                    payload[key] = str(path)
+                    if key == "tura_executable" and path.is_file():
+                        payload["tura_executable_sha256"] = _sha256_file(path)
         if selected_role is not None:
             payload["selected_role"] = selected_role["name"]
             payload["effective_model"] = f"openai:{selected_role['model']}"

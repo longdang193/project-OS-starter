@@ -68,6 +68,14 @@ exit status. `dcode-project` remains an explicit DeepAgents launcher; no
 recursive or cross-runtime fallback exists. Tura routing uses
 `TURA_PROVIDER_CONFIG` and must remain `Tura -> LightRSI -> 9router -> provider`.
 
+For upgrade admission, run `project-delegate --role normal --print-config` and
+record the reported `tura_executable_sha256` when the executable exists. The
+receipt contains no credentials. Replacing the binary at the configured path
+needs no setup rerun; moving it needs one setup rerun. Run one bounded,
+read-only TL smoke after every binary replacement before reusing compatibility
+or performance evidence. A changed hash invalidates old performance evidence,
+not necessarily the adapter contract.
+
 Current `dcode-project` forces DeepAgents `--no-mcp`, fixes child CWD to selected
 Git root, and rejects direct runtime-authority flags. It does not translate Codex
 `mcp_servers`, approval policy, sandbox mode, profiles, or threads. It supplies
