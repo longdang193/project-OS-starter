@@ -66,6 +66,11 @@ change evidence, and branch disposition. Shared delegated roles live in
 `agents/*.toml`. User-local `dcode-project --role <low|normal|high|xhigh>`
 selects source profile model for primary DeepAgents launch and materializes
 ignored DeepAgents project subagents; they are not `dcode --agent` primary profiles.
+When bounded Tura delegation is installed, use
+`project-delegate --role <low|normal|high|xhigh> -n "<task>"`. Tura uses the
+same tracked roles and TL provider route (`Tura -> LightRSI -> 9router ->
+provider`); Native Codex remains controller and `dcode-project` remains the
+explicit DeepAgents path.
 Current launcher forces `--no-mcp`; it does not mirror Codex MCP tools or
 permissions. Codex controller performs MCP work, writes validated
 `codex.mcp.handoff.v1` under user-local handoff root, then launches DeepAgents

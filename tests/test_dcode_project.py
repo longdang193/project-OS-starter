@@ -66,6 +66,149 @@ def write_role(
     )
 
 
+def tura_config(
+    tmp_path: Path,
+    *,
+    default_executor: str = "tura",
+) -> dict[str, object]:
+    return {
+        "delegation": {"default_executor": default_executor},
+        "paths": {
+            "tura_executable": str(tmp_path / "tura.exe"),
+            "tura_provider_config": str(tmp_path / "providers.toml"),
+        },
+    }
+
+
+def test_executor_resolution_prefers_explicit_then_configured_default(tmp_path: Path) -> None:
+    config = tura_config(tmp_path)
+
+    assert LAUNCHER._resolve_executor(config, "deepagents") == "deepagents"
+    assert LAUNCHER._resolve_executor(config, None) == "tura"
+
+
+@pytest.mark.parametrize(
+    ("config", "explicit", "message"),
+    [
+        ({}, None, "default_executor"),
+        ({"delegation": {"default_executor": "codex"}}, None, "executor"),
+        ({"delegation": {"default_executor": "tura"}}, "codex", "executor"),
+    ],
+)
+def test_executor_resolution_rejects_missing_or_invalid_values(
+    config: dict[str, object],
+    explicit: str | None,
+    message: str,
+) -> None:
+    with pytest.raises(RuntimeError, match=message):
+        LAUNCHER._resolve_executor(config, explicit)
+
+
+def test_controller_options_extracts_executor_once() -> None:
+    child, selections, handoff, role, executor = LAUNCHER._controller_options(
+        ["--executor", "tura", "--role", "normal", "-n", "task"]
+    )
+
+    assert child == ["-n", "task"]
+    assert selections == []
+    assert handoff is None
+    assert role == "normal"
+    assert executor == "tura"
+
+
+def test_tura_argv_contains_bounded_worker_contract(tmp_path: Path) -> None:
+    argv = LAUNCHER._tura_worker_argv(
+        Path("C:/tools/tura.exe"),
+        tmp_path,
+        "combo-normal",
+        "session-a",
+        "inspect files",
+    )
+
+    assert argv[:2] == [str(Path("C:/tools/tura.exe")), "--quiet"]
+    assert "--json" in argv
+    assert "--sandbox" in argv
+    assert "--session-id" in argv
+    assert argv[argv.index("--session-id") + 1] == "session-a"
+    assert argv[argv.index("--agent-id") + 1] == "balanced"
+    assert argv[argv.index("-C") + 1] == str(tmp_path)
+    assert argv[argv.index("-m") + 1] == "openai/combo-normal"
+    assert argv[-1] == "inspect files"
+
+
+def test_tura_task_labels_profile_guidance_and_handoff_once(tmp_path: Path) -> None:
+    argv = ["-n", "inspect files"]
+    payload = {
+        "schema": "codex.mcp.handoff.v1",
+        "sources": [{"server": "context7", "tool": "query_docs"}],
+        "facts": [{"source": 0, "value": "fact"}],
+        "constraints": ["no MCP"],
+    }
+
+    task = LAUNCHER._tura_worker_task(
+        argv,
+        tmp_path,
+        "normal",
+        "Return ROLE_OK.",
+        payload,
+    )
+
+    assert task.count("Return ROLE_OK.") == 1
+    assert task.count('"schema":"codex.mcp.handoff.v1"') == 1
+    assert "Bounded task guidance" in task
+    assert task.count("Project guidance:") == 1
+    assert "AGENTS.md" in task
+    assert ".agents/skills/<name>/SKILL.md" in task
+    assert "inspect files" in task
+    assert "handoff.json" not in task
+
+
+def test_tura_environment_owns_provider_and_workspace_values(tmp_path: Path) -> None:
+    os.environ["OPENAI_BASE_URL"] = "https://direct-provider.invalid/v1"
+    environment = LAUNCHER._tura_worker_environment(
+        "secret", tmp_path / "providers.toml", tmp_path
+    )
+
+    assert environment["OPENAI_API_KEY"] == "secret"
+    assert environment["TURA_PROVIDER_CONFIG"] == str(tmp_path / "providers.toml")
+    assert environment["TURA_PROJECT_ROOT"] == str(tmp_path)
+    assert "OPENAI_BASE_URL" not in environment
+    assert "secret" not in environment.get("TURA_PROVIDER_CONFIG", "")
+    os.environ.pop("OPENAI_BASE_URL", None)
+
+
+def test_tura_worker_propagates_opaque_child_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeProcess:
+        pid = 42
+
+        def wait(self, timeout: float | None = None) -> int:
+            assert timeout == 3
+            return 7
+
+    observed: dict[str, object] = {}
+
+    def fake_popen(argv: list[str], **kwargs: object) -> FakeProcess:
+        observed["argv"] = argv
+        observed.update(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
+
+    assert LAUNCHER._run_tura_worker(
+        ["tura", "task"], {"TURA_PROVIDER_CONFIG": "providers.toml"}, tmp_path, 3
+    ) == 7
+    assert observed["cwd"] == tmp_path
+
+
+def test_tura_worker_does_not_supply_adapter_cache_key() -> None:
+    assert "prompt_cache_key" not in LAUNCHER._tura_worker_argv(
+        Path("tura"), Path("repo"), "combo-low", "session-b", "task"
+    )
+
+
 def test_local_role_views_use_canonical_prompt_and_local_model_map(tmp_path: Path) -> None:
     write_role(tmp_path, "normal")
 
@@ -166,7 +309,10 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
 ) -> None:
     write_role(tmp_path, "normal")
     config_path = tmp_path / "dcode-project.toml"
-    config_path.write_text("", encoding="utf-8")
+    config_path.write_text(
+        '[delegation]\ndefault_executor = "deepagents"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
     monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -215,7 +361,10 @@ def test_main_rejects_missing_or_unknown_role_before_role_view_write(
 ) -> None:
     write_role(tmp_path, "normal")
     config_path = tmp_path / "dcode-project.toml"
-    config_path.write_text("", encoding="utf-8")
+    config_path.write_text(
+        '[delegation]\ndefault_executor = "deepagents"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
     monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -323,7 +472,10 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
     ]:
         write_role(tmp_path, candidate_name, model=candidate_model, rank=candidate_rank)
     config_path = tmp_path / "dcode-project.toml"
-    config_path.write_text("", encoding="utf-8")
+    config_path.write_text(
+        '[delegation]\ndefault_executor = "deepagents"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
     monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -392,7 +544,10 @@ def test_print_config_reports_selected_role_effective_model(
 ) -> None:
     write_role(tmp_path, "normal", model="combo-normal", rank=20)
     config_path = tmp_path / "dcode-project.toml"
-    config_path.write_text("", encoding="utf-8")
+    config_path.write_text(
+        '[delegation]\ndefault_executor = "deepagents"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
     monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -678,6 +833,14 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert "git rev-parse --show-toplevel" in setup
     assert 'Join-Path $repoRoot "scripts\\dcode_project.py"' in setup
     assert 'dcode-project.ps1' in setup
+    assert 'project-delegate.ps1' in setup
+    assert 'TuraExecutable' in setup
+    assert 'TuraProviderConfig' in setup
+    assert 'default_executor' in setup
+    assert '--sandbox' in setup
+    assert 'Tura capability probe failed' in setup
+    assert 'selects DeepAgents; do not pass --executor' in setup
+    assert 'Tura migration:' in setup
     assert 'Join-Path $HOME ".deepagents\\.mcp.json"' in setup
     assert "Direct DeepAgents MCP config detected" in setup
     assert '$DeepAgentsCodeVersion = "0.1.59"' in setup

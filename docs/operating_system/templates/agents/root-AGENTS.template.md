@@ -74,6 +74,13 @@ Codex controller owns MCP calls and passes only validated
 `--mcp-select` narrows provenance only. DeepAgents task launch requires
 `dcode-project --role <low|normal|high|xhigh>`; launcher resolves the selected
 canonical source model while top-level Codex model remains controller default.
+For bounded external delegation, `project-delegate` selects Tura from the same
+tracked role source and user-local config. Native Codex remains controller for
+MCP, approval, Git, verification, and acceptance; Tura receives one bounded
+task, fixed Git root, native `--sandbox`, fresh session id, and opaque JSONL.
+`dcode-project` remains the explicit DeepAgents path and does not route through
+Tura. Tura production routing stays `Tura -> LightRSI -> 9router -> provider`
+through `TURA_PROVIDER_CONFIG`; no direct-provider fallback exists.
 Do not pass raw `--stdin` or pipe task text to `dcode-project`; only validated
 `--handoff-file` launches create DeepAgents stdin. DeepAgents built-in file tools
 receive exact native file-tool root in every bounded task. On Windows it looks

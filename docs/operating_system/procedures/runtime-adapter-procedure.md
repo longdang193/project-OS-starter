@@ -60,6 +60,14 @@ provider endpoint, credentials, provider definition, and mutable state remain
 local. Each source role's `model_provider` must match active local Codex provider
 binding.
 
+`project-delegate` is the one bounded Native Codex-to-Tura adapter. It reuses
+the same role and handoff sources, selects Tura through user-local
+`[delegation].default_executor`, and passes one bounded task with fixed Git root,
+native `--sandbox`, and fresh session id. Tura output remains opaque JSONL plus
+exit status. `dcode-project` remains an explicit DeepAgents launcher; no
+recursive or cross-runtime fallback exists. Tura routing uses
+`TURA_PROVIDER_CONFIG` and must remain `Tura -> LightRSI -> 9router -> provider`.
+
 Current `dcode-project` forces DeepAgents `--no-mcp`, fixes child CWD to selected
 Git root, and rejects direct runtime-authority flags. It does not translate Codex
 `mcp_servers`, approval policy, sandbox mode, profiles, or threads. It supplies

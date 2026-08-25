@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import uuid
 
 
 _ROLE_VIEWS_MARKER = ".dcode-project-owned"
@@ -53,12 +54,19 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--mcp-select",
     "--handoff-file",
     "--role",
+    "--executor",
 }
 _FIXED_LOCAL_CAPABILITY_OPTIONS = (
     "--allow-fs-tools",
     "all",
     "--shell-allow-list",
     "git,py",
+)
+_PROJECT_GUIDANCE_INSTRUCTION = (
+    "Project guidance: read repository root `AGENTS.md` before acting. "
+    "Before modifying any file, read every applicable ancestor `AGENTS.md`. "
+    "Read only explicitly named canonical project skills at "
+    "`.agents/skills/<name>/SKILL.md`; do not scan or copy unrelated skills."
 )
 
 
@@ -435,16 +443,19 @@ def _parse_mcp_selection(values: list[str], capabilities: dict[str, object]) -> 
             selected.add(selector)
     return sorted(selected)
 
-def _controller_options(argv: list[str]) -> tuple[list[str], list[str], str | None, str | None]:
+def _controller_options(
+    argv: list[str],
+) -> tuple[list[str], list[str], str | None, str | None, str | None]:
     child: list[str] = []
     selections: list[str] = []
     handoff_file: str | None = None
     role_name: str | None = None
+    executor: str | None = None
     index = 0
     while index < len(argv):
         argument = argv[index]
         option, separator, inline_value = argument.partition("=")
-        if option in {"--mcp-select", "--handoff-file", "--role"}:
+        if option in {"--mcp-select", "--handoff-file", "--role", "--executor"}:
             if separator:
                 value = inline_value
             elif index + 1 < len(argv):
@@ -460,14 +471,49 @@ def _controller_options(argv: list[str]) -> tuple[list[str], list[str], str | No
                 if role_name is not None:
                     raise RuntimeError("dcode-project accepts only one `--role`.")
                 role_name = value
-            elif handoff_file is not None:
-                raise RuntimeError("dcode-project accepts only one `--handoff-file`.")
-            else:
+            elif option == "--handoff-file":
+                if handoff_file is not None:
+                    raise RuntimeError("dcode-project accepts only one `--handoff-file`.")
                 handoff_file = value
+            elif executor is not None:
+                raise RuntimeError("dcode-project accepts only one `--executor`.")
+            else:
+                executor = value
         else:
             child.append(argument)
         index += 1
-    return child, selections, handoff_file, role_name
+    return child, selections, handoff_file, role_name, executor
+
+
+def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
+    if explicit is not None:
+        selected = explicit.strip().lower()
+    else:
+        delegation = config.get("delegation")
+        if not isinstance(delegation, dict):
+            raise RuntimeError("Missing `[delegation].default_executor` configuration.")
+        value = delegation.get("default_executor")
+        if not isinstance(value, str) or not value.strip():
+            raise RuntimeError("Missing `[delegation].default_executor` configuration.")
+        selected = value.strip().lower()
+    if selected not in {"tura", "deepagents"}:
+        raise RuntimeError(f"Unsupported executor `{selected}`; use `tura` or `deepagents`.")
+    return selected
+
+
+def _tura_worker_paths(config: dict[str, object]) -> tuple[Path, Path]:
+    paths = config.get("paths")
+    if not isinstance(paths, dict):
+        raise RuntimeError("Missing local `[paths]` configuration.")
+    executable = Path(_required_string(paths, "tura_executable", "local paths")).expanduser()
+    provider_config = Path(
+        _required_string(paths, "tura_provider_config", "local paths")
+    ).expanduser()
+    if not executable.is_file():
+        raise RuntimeError(f"Tura executable is missing: {executable}")
+    if not provider_config.is_file():
+        raise RuntimeError(f"Tura provider config is missing: {provider_config}")
+    return executable.resolve(), provider_config.resolve()
 
 def _handoff_root() -> Path:
     return Path.home().joinpath(*_HANDOFF_ROOT_PARTS)
@@ -688,6 +734,142 @@ def _append_bounded_task_context(argv: list[str], repo_root: Path) -> None:
                 return
 
 
+def _task_argument(argv: list[str]) -> str:
+    for index, argument in enumerate(argv):
+        if argument in {"-n", "--non-interactive"}:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+                raise RuntimeError("Tura task text is missing.")
+            return argv[index + 1]
+        for option in ("-n=", "--non-interactive="):
+            if argument.startswith(option):
+                task = argument[len(option) :]
+                if not task:
+                    raise RuntimeError("Tura task text is missing.")
+                return task
+    raise RuntimeError("Tura worker requires non-interactive task text via `-n`.")
+
+
+def _tura_worker_task(
+    argv: list[str],
+    repo_root: Path,
+    role_name: str,
+    developer_instructions: str,
+    payload: dict[str, object],
+) -> str:
+    canonical_payload = _canonicalize_handoff_for_prompt(payload)
+    delegated_payload = {
+        "schema": canonical_payload["schema"],
+        "sources": canonical_payload["sources"],
+        "facts": canonical_payload["facts"],
+        "constraints": canonical_payload.get("constraints", []),
+    }
+    return (
+        "Bounded task guidance for profile `"
+        + role_name
+        + "` (task guidance, not a Tura system/developer message):\n"
+        + developer_instructions.strip()
+        + "\n"
+        + _PROJECT_GUIDANCE_INSTRUCTION
+        + "\n"
+        + _bounded_task_context(repo_root)
+        + "\nCaller task:\n"
+        + _task_argument(argv)
+        + "\nValidated Codex MCP handoff facts (use only these facts; do not call MCP tools):\n"
+        + json.dumps(delegated_payload, separators=(",", ":"), sort_keys=True)
+    )
+
+
+def _tura_worker_argv(
+    executable: Path,
+    repo_root: Path,
+    model: str,
+    session_id: str,
+    task: str,
+) -> list[str]:
+    return [
+        str(executable),
+        "--quiet",
+        "--json",
+        "--sandbox",
+        "--session-id",
+        session_id,
+        "--agent-id",
+        "balanced",
+        "-C",
+        str(repo_root.resolve()),
+        "-m",
+        f"openai/{model}",
+        task,
+    ]
+
+
+def _tura_worker_environment(
+    api_key: str,
+    provider_config: Path,
+    repo_root: Path,
+) -> dict[str, str]:
+    environment = os.environ.copy()
+    for key in ("OPENAI_BASE_URL", "OPENAI_API_BASE", "TURA_PROVIDER_CONFIG", "TURA_PROJECT_ROOT"):
+        environment.pop(key, None)
+    environment["OPENAI_API_KEY"] = api_key
+    environment["TURA_PROVIDER_CONFIG"] = str(provider_config.resolve())
+    environment["TURA_PROJECT_ROOT"] = str(repo_root.resolve())
+    environment["PYTHONUTF8"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
+    return environment
+
+
+def _tura_timeout(argv: list[str]) -> float:
+    for index, argument in enumerate(argv):
+        if argument == "--timeout":
+            if index + 1 >= len(argv):
+                raise RuntimeError("Tura worker requires a value for `--timeout`.")
+            value = argv[index + 1]
+        elif argument.startswith("--timeout="):
+            value = argument.split("=", 1)[1]
+        else:
+            continue
+        try:
+            timeout = float(value)
+        except ValueError as exc:
+            raise RuntimeError("Tura worker timeout must be a positive number.") from exc
+        if timeout <= 0:
+            raise RuntimeError("Tura worker timeout must be a positive number.")
+        return timeout
+    return 120.0
+
+
+def _run_tura_worker(
+    argv: list[str],
+    environment: dict[str, str],
+    repo_root: Path,
+    timeout: float,
+) -> int:
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    popen_kwargs: dict[str, object] = {
+        "cwd": repo_root,
+        "env": environment,
+        "creationflags": creationflags,
+    }
+    if os.name != "nt":
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(argv, **popen_kwargs)
+    try:
+        return process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            process.kill()
+        process.wait()
+        raise RuntimeError("Tura worker timed out; child process tree terminated.") from exc
+
+
 def _find_dcode() -> str | None:
     return next(
         (
@@ -733,9 +915,10 @@ def _reject_conflicting_user_openai_base_url() -> None:
 
 def main(argv: list[str]) -> int:
     _reject_unmanaged_runtime_options(argv)
-    child_argv, selection_values, handoff_file, role_name = _controller_options(argv)
+    child_argv, selection_values, handoff_file, role_name, explicit_executor = _controller_options(argv)
     config = _load_toml(_config_path(), "dcode-project config")
     repo_root = _repo_root()
+    executor = _resolve_executor(config, explicit_executor)
     model, base_url, api_key, provider_name = _runtime_binding(config)
     codex_config = _codex_config(config)
     capabilities = _mcp_capabilities(codex_config)
@@ -753,6 +936,10 @@ def main(argv: list[str]) -> int:
             "mcp_servers": capabilities["mcp_servers"],
             "mcp_tools": capabilities["mcp_tools"],
             "selected_mcp": selected,
+            "default_executor": config.get("delegation", {}).get("default_executor")
+            if isinstance(config.get("delegation"), dict)
+            else None,
+            "selected_executor": executor,
             "runtime_binding_digest": _runtime_binding_digest(
                 provider_name,
                 model,
@@ -761,6 +948,12 @@ def main(argv: list[str]) -> int:
             "mcp_capability_digest": capabilities["mcp_capability_digest"],
             "roles_path": str(repo_root / ".deepagents" / "agents"),
         }
+        paths = config.get("paths")
+        if isinstance(paths, dict):
+            for key in ("tura_executable", "tura_provider_config"):
+                value = paths.get(key)
+                if isinstance(value, str) and value.strip():
+                    payload[key] = str(Path(value).expanduser())
         if selected_role is not None:
             payload["selected_role"] = selected_role["name"]
             payload["effective_model"] = f"openai:{selected_role['model']}"
@@ -770,6 +963,38 @@ def main(argv: list[str]) -> int:
         return 0
     if selected_role is None:
         raise RuntimeError("dcode-project requires `--role <low|normal|high|xhigh>` for task execution.")
+    if executor == "tura":
+        executable, provider_config = _tura_worker_paths(config)
+        if handoff_file is None:
+            handoff_payload: dict[str, object] = {
+                "schema": _HANDOFF_SCHEMA,
+                "sources": [],
+                "facts": [],
+                "constraints": [],
+            }
+        else:
+            _, handoff_payload = _validate_handoff(handoff_file, capabilities, selected)
+        task = _tura_worker_task(
+            child_argv,
+            repo_root,
+            str(selected_role["name"]),
+            str(selected_role["developer_instructions"]),
+            handoff_payload,
+        )
+        session_id = f"dcode-project-{uuid.uuid4().hex}"
+        tura_argv = _tura_worker_argv(
+            executable,
+            repo_root,
+            str(selected_role["model"]),
+            session_id,
+            task,
+        )
+        return _run_tura_worker(
+            tura_argv,
+            _tura_worker_environment(api_key, provider_config, repo_root),
+            repo_root,
+            _tura_timeout(child_argv),
+        )
     _append_bounded_task_context(child_argv, repo_root)
     handoff_stdin: str | None = None
     if handoff_file is not None:

@@ -87,6 +87,30 @@ back to Codex browser or web MCPs.
 Keep DeepAgents work inside trusted one-user workspace, retain controller path
 checks, and verify Git scope before acceptance.
 
+## Bounded Tura Worker
+
+`project-delegate` is the explicit Native Codex adapter for one bounded Tura
+worker. It uses the same `agents/*.toml` role source and controller-validated
+handoff, but Native Codex retains MCP, approval, Git, verification, and
+acceptance. Tura receives fixed Git root, native `--sandbox`, fresh session id,
+and opaque JSONL; it cannot spawn another worker. `dcode-project` remains
+DeepAgents and does not silently switch runtimes.
+
+Tura-enabled setup requires one paired executable/provider-config path:
+
+```powershell
+./scripts/setup_deepagents_runtime.ps1 -SecretFile <local-env-file> `
+  -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>
+```
+
+Setup probes required public CLI flags once, writes one user-local config, and
+installs `project-delegate`. Restart needs no manual action. Production route is
+`Tura -> LightRSI -> 9router -> provider` through `TURA_PROVIDER_CONFIG`; moving
+the executable requires setup rerun, replacing it at the same path does not.
+
+Launch with `project-delegate --role <low|normal|high|xhigh> -n "<task>"`.
+Use `dcode-project` when DeepAgents is required explicitly.
+
 DeepAgents controller may use built-in `task` for a bounded `low`, `normal`,
 `high`, or `xhigh` project subagent. These are capability profiles, not fixed task roles.
 Controller defines open-ended task function through prompt and selects profile
