@@ -52,8 +52,9 @@ Canonical planning and delivery skills are:
 - `skill-plan-document-reviewer`: review specification and plan readiness.
 - `skill-using-git-worktrees`: create optional isolated workspace and record workspace identity.
 - `skill-executing-plans`: execute approved plan tasks with task-local proof.
+- `skill-disposable-artifact-cleanup`: validate and remove exact task-owned disposable artifacts before the final verified snapshot.
 - `skill-verification-before-completion`: reconcile final scope and produce verified, incomplete, or blocked result.
-- `skill-finishing-a-development-branch`: perform explicitly authorized Git disposition and safe workspace cleanup.
+- `skill-finishing-a-development-branch`: perform explicitly authorized Git disposition and safe Git-managed branch/worktree cleanup.
 
 ## Planning Ownership
 

@@ -21,6 +21,13 @@ Execute an approved plan by dispatching a fresh implementer subagent per task, r
 
 **Core principle:** Fresh subagent per task + task review (spec + quality) + broad final review = bounded context with early defect detection
 
+## Disposable Artifacts
+
+When a task creates external temporary output, retain its exact normalized
+absolute path in current task-local state or a validated handoff. Do not put
+machine-local paths in Git-tracked plans. Missing ownership evidence means
+preserve the artifact.
+
 **Narration:** between tool calls, narrate at most one short line — the plan
 ledger and tool results carry the record.
 

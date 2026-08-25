@@ -251,5 +251,6 @@ Continue source-first when optional analysis tools are unavailable.
 - `skill-dispatching-parallel-agents` coordinates independent concurrent write lanes and their fan-out/fan-in method.
 - `skill-systematic-debugging` owns failure diagnosis.
 - `skill-test-driven-development` owns behavior-change proof during implementation.
+- `skill-disposable-artifact-cleanup` may audit task-owned disposable artifacts; invoke its Cleanup Mode only through completion verification.
 - `skill-verification-before-completion` produces final evidence result.
 - `skill-finishing-a-development-branch` performs authorized Git disposition after verified result.

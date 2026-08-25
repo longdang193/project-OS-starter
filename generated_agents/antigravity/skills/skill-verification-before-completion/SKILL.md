@@ -255,4 +255,5 @@ Verification makes Git closure eligible. It does not authorize:
 - `skill-backend-verification` provides task-local direct backend evidence independent of frontend availability.
 - `skill-performance-optimization` defines performance workloads, metrics, targets, and comparison evidence.
 - `skill-full-stack-integration` defines cross-boundary contract, MCP routing, browser evidence, and sidecar lifecycle.
+- `skill-disposable-artifact-cleanup` validates and removes explicitly authorized task-owned disposable artifacts before the final verified snapshot; this skill decides retention dependencies and reruns affected proof but does not delete files itself.
 - `skill-finishing-a-development-branch` performs explicitly authorized Git disposition after `verified` result.
