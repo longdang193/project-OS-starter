@@ -125,6 +125,7 @@ Keep only configuration with an active consumer. `repo_config/` currently owns:
 - `planning_artifact_schema.yaml`
 - `publication-config.json`
 - `starter-kit-manifest.json`
+- `switchyard-routing.toml`
 
 Runtime settings for a particular adopted project belong in that project, not in this starter factory unless shipped behavior actively consumes them.
 

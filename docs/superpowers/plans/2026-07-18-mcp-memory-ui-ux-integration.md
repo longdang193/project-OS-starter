@@ -1,5 +1,6 @@
 ---
 artifact_type: plan
+template_id: implementation-plan
 status: completed
 layer: change
 date: 2026-07-18

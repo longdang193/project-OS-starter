@@ -106,7 +106,7 @@ The full 36-case matrix and quality/cost calibration remain separately gated.
 - Base commit: `6e9b65ab0fb9167f0c8d79280e8467f5ff74720c`
 - Active task(s): none
 - Expected workspace: preserve existing edits to `scripts/validate_template_required_sections.py` and `tests/test_validate_template_required_sections.py`, untracked `db/`, existing Switchyard experiment plan, and this proposed plan
-- Next action: optional 36-case quality/cost calibration under separate approval
+- Next action: none
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |

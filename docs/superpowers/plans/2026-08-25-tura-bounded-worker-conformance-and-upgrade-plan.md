@@ -80,7 +80,7 @@ DeepAgents, or 9router fallback is introduced.
 - Base commit: `9fe07bb`
 - Active task(s): none
 - Expected workspace: plan, shared lifecycle, receipt, and documentation edits; preserved unrelated untracked `db/`
-- Next action: run deterministic suite and bounded live admission probes
+- Next action: none
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |

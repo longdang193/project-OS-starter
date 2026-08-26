@@ -98,7 +98,12 @@ def _coordination_value(text: str, label: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
-def validate_git_coordination(path: Path, payload: dict[str, Any], text: str) -> list[Finding]:
+def validate_git_coordination(
+    path: Path,
+    payload: dict[str, Any],
+    text: str,
+    allowed_executors: set[str],
+) -> list[Finding]:
     if re.search(r"(?im)^-\s*Coordination:\s*`?git-tracked`?\s*$", text) is None:
         return []
 
@@ -147,8 +152,19 @@ def validate_git_coordination(path: Path, payload: dict[str, Any], text: str) ->
                         "coordination_error",
                         rel,
                         f"active task `{row['task']}` depends on non-completed task `{dependency}`",
-                    )
+            )
+        )
+
+    for row in rows:
+        executor = row["executor"].strip().lower()
+        if executor not in allowed_executors:
+            findings.append(
+                Finding(
+                    "coordination_error",
+                    rel,
+                    f"task `{row['task']}` executor must be one of: {', '.join(sorted(allowed_executors))}",
                 )
+            )
 
     for row in rows:
         if row["state"] == "completed" and row["evidence"].lower() in {"", "pending", "none", "n/a"}:
@@ -161,10 +177,12 @@ def validate_git_coordination(path: Path, payload: dict[str, Any], text: str) ->
             )
 
     if payload.get("status") == "completed":
-        if any(row["state"] in {"active", "blocked"} for row in rows):
-            findings.append(Finding("coordination_error", rel, "completed plan cannot have active or blocked tasks"))
-        if (_coordination_value(text, "Blockers") or "").strip("` ").lower() not in {"", "none", "n/a"}:
-            findings.append(Finding("coordination_error", rel, "completed plan cannot have unresolved blockers"))
+        if any(row["state"] != "completed" for row in rows):
+            findings.append(Finding("coordination_error", rel, "completed plan requires every task to be completed"))
+        for label in ("Active task(s)", "Blockers", "Next action"):
+            value = _clean_coordination_cell(_coordination_value(text, label) or "").lower()
+            if value != "none":
+                findings.append(Finding("coordination_error", rel, f"completed plan requires `{label}: none`"))
 
     return findings
 
@@ -269,7 +287,14 @@ def validate_artifact(root: Path, path: Path, artifact_type: str) -> list[Findin
                 )
             )
     if artifact_type == "plan":
-        findings.extend(validate_git_coordination(Path(rel), payload, text))
+        findings.extend(
+            validate_git_coordination(
+                Path(rel),
+                payload,
+                text,
+                set(get_allowed_values(root, "executor", artifact_type)),
+            )
+        )
     return findings
 
 

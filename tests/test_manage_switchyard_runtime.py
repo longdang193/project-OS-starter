@@ -85,6 +85,26 @@ def test_rejects_low_as_automatic_endpoint(tmp_path: Path) -> None:
         MANAGER.load_routing_policy(write_manifest(tmp_path, efficient="low"))
 
 
+def test_static_validation_does_not_require_user_local_codex_config(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", "combo-normal")
+    write_role(tmp_path, "high", "combo-high")
+    write_role(tmp_path, "low", "combo-low")
+    manifest = write_manifest(tmp_path)
+
+    assert MANAGER.main(["validate", "--manifest", str(manifest)]) == 0
+
+
+def test_static_validation_rejects_profile_provider_mismatch(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", "combo-normal")
+    write_role(tmp_path, "high", "combo-high", provider="other")
+    write_role(tmp_path, "low", "combo-low")
+    policy = MANAGER.load_routing_policy(write_manifest(tmp_path))
+    profiles = MANAGER.load_agent_profiles(tmp_path / "agents")
+
+    with pytest.raises(ValueError, match="same model provider"):
+        MANAGER.validate_static_contract(policy, profiles)
+
+
 def test_render_is_deterministic_and_contains_no_secret(tmp_path: Path) -> None:
     resolved = contract(tmp_path)
 

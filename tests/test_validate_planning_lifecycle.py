@@ -55,6 +55,7 @@ def run_validator(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def git_tracked_plan(*, status: str = "active", mode: str = "subagent-ready", ledger: str) -> str:
     return f"""---
 artifact_type: plan
+template_id: implementation-plan
 status: {status}
 layer: change
 parent_spec: none
@@ -125,11 +126,11 @@ def test_existing_spec_and_linked_plan_pass() -> None:
     try:
         write_text(
             root / "docs" / "superpowers" / "specs" / "demo-spec.md",
-            "---\nartifact_type: spec\nstatus: active\nlayer: change\n---\n# Spec\n",
+            "---\nartifact_type: spec\ntemplate_id: detailed-specification\nstatus: active\nlayer: change\n---\n# Spec\n",
         )
         write_text(
             root / "docs" / "superpowers" / "plans" / "demo-plan.md",
-            "---\nartifact_type: plan\nstatus: proposed\nlayer: change\nparent_spec: docs/superpowers/specs/demo-spec.md\n---\n# Plan\n",
+            "---\nartifact_type: plan\ntemplate_id: implementation-plan\nstatus: proposed\nlayer: change\nparent_spec: docs/superpowers/specs/demo-spec.md\n---\n# Plan\n",
         )
         result = run_validator(root)
         assert result.returncode == 0
@@ -245,5 +246,67 @@ def test_completed_task_requires_recorded_evidence() -> None:
 
         assert result.returncode == 1
         assert "completed task `Task 1` requires recorded evidence" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_task_executor_must_use_canonical_value() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            git_tracked_plan(
+                ledger="| Task 1 | `active` | current | obsolete | none | `test-one` | pending |"
+            ),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "task `Task 1` executor must be one of: codex, deepagents, tura" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_completed_plan_requires_terminal_coordination_and_tasks() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            git_tracked_plan(
+                status="completed",
+                ledger="| Task 1 | `pending` | current | codex | none | `test-one` | pending |"
+            )
+            .replace("- Active task(s): `Task 1`", "- Active task(s): `Task 1`")
+            .replace("- Next action: `Complete Task 1`", "- Next action: `Task 1 is next`")
+            .replace("- Blockers: `none`", "- Blockers: `none`")
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "completed plan requires every task to be completed" in result.stdout
+        assert "completed plan requires `Active task(s): none`" in result.stdout
+        assert "completed plan requires `Next action: none`" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_completed_plan_with_terminal_coordination_passes() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            git_tracked_plan(
+                status="completed",
+                ledger="| Task 1 | `completed` | current | codex | none | `test-one` | recorded proof |"
+            )
+            .replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
+            .replace("- Next action: `Complete Task 1`", "- Next action: `none`")
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
     finally:
         rmtree(root, ignore_errors=True)

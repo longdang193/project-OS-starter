@@ -193,15 +193,7 @@ def resolve_routing_contract(
     profiles: dict[str, AgentProfile],
     codex_config: dict[str, object],
 ) -> RoutingContract:
-    try:
-        efficient = profiles[policy.efficient_profile]
-        capable = profiles[policy.capable_profile]
-    except KeyError as exc:
-        raise ValueError(f"Routing policy references missing profile: {exc.args[0]}") from exc
-    if efficient.model_provider != capable.model_provider:
-        raise ValueError("Automatic endpoint profiles must use the same model provider.")
-    if efficient.model == capable.model:
-        raise ValueError("Automatic endpoint profiles must use different model IDs.")
+    efficient, capable = validate_static_contract(policy, profiles)
 
     provider_name = _required_string(codex_config, "model_provider", "Codex config")
     providers = codex_config.get("model_providers")
@@ -222,6 +214,22 @@ def resolve_routing_contract(
         provider_name=provider_name,
         upstream_base_url=_safe_base_url(provider),
     )
+
+
+def validate_static_contract(
+    policy: RoutingPolicy,
+    profiles: dict[str, AgentProfile],
+) -> tuple[AgentProfile, AgentProfile]:
+    try:
+        efficient = profiles[policy.efficient_profile]
+        capable = profiles[policy.capable_profile]
+    except KeyError as exc:
+        raise ValueError(f"Routing policy references missing profile: {exc.args[0]}") from exc
+    if efficient.model_provider != capable.model_provider:
+        raise ValueError("Automatic endpoint profiles must use the same model provider.")
+    if efficient.model == capable.model:
+        raise ValueError("Automatic endpoint profiles must use different model IDs.")
+    return efficient, capable
 
 
 def _toml_string(value: str) -> str:
@@ -505,7 +513,7 @@ def run_smoke(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("render", "check", "deploy", "smoke"))
+    parser.add_argument("command", choices=("validate", "render", "check", "deploy", "smoke"))
     parser.add_argument("--manifest", default="repo_config/switchyard-routing.toml")
     parser.add_argument("--codex-config", default="~/.codex/config.toml")
     parser.add_argument("--codex-home", default="~/.codex")
@@ -531,9 +539,20 @@ def _contract(args: argparse.Namespace) -> tuple[RoutingContract, dict[Path, str
     return contract, _outputs(contract, codex_home, switchyard_home)
 
 
+def _static_contract(args: argparse.Namespace) -> None:
+    manifest = Path(args.manifest).expanduser().resolve()
+    policy = load_routing_policy(manifest)
+    profiles = load_agent_profiles(manifest.parent.parent / "agents")
+    validate_static_contract(policy, profiles)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "validate":
+            _static_contract(args)
+            print("Switchyard static policy validation passed.")
+            return 0
         contract, outputs = _contract(args)
         if args.command == "render":
             for path, content in outputs.items():

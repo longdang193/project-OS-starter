@@ -19,12 +19,14 @@ Canonical source layers live in:
 - `.agents/skills/`
 - `docs/operating_system/templates/agents/`
 - `repo_config/`
-- `configs/`
 - `scripts/`
 
-Generated runtime outputs are downstream artifacts:
+Generated and packaged outputs are downstream artifacts:
 
 - `AGENTS.md`
+- `generated_agents/`
+- `.agents/rules/`
+- `generated_exports/project-OS-starter-kit/`
 
 Do not edit generated outputs directly. Regenerate them from the source layers.
 
@@ -79,8 +81,8 @@ permissions. Codex controller performs MCP work, writes validated
 `codex.mcp.handoff.v1` under user-local handoff root, then launches DeepAgents
 with `--handoff-file <absolute-path>`. Optional `--mcp-select` narrows
 provenance only; it does not grant DeepAgents MCP access.
-Local setup pins `deepagents-code 0.1.59`, requires Python 3.12 or newer, and
-disables child auto-update. Refresh the runtime through
+Local setup defaults to tested `deepagents-code 0.1.59`, requires Python 3.12 or
+newer, and disables child auto-update. Refresh the runtime through
 `scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
 For Tura replacement, keep the configured executable path when possible, check
 its nonsecret identity with `project-delegate --role normal --print-config`,

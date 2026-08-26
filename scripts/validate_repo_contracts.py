@@ -174,10 +174,11 @@ def build_subprocess_steps(
     repo_config_script = str(root / "scripts" / "validate_repo_config.py")
     agent_metadata_schema_script = str(root / "scripts" / "validate_agent_metadata_schema.py")
     env_gitignore_contract_script = str(root / "scripts" / "validate_env_gitignore_contract.py")
+    switchyard_script = root / "scripts" / "manage_switchyard_runtime.py"
 
     steps: list[list[str]] = [
         [python_executable, planning_lifecycle_script],
-        [python_executable, template_sections_script],
+        [python_executable, template_sections_script, "--require-template-selection"],
         [python_executable, learning_format_script],
         [python_executable, prompt_metadata_schema_script],
         [python_executable, agent_metadata_schema_script],
@@ -190,6 +191,16 @@ def build_subprocess_steps(
     if agent_runtime_drift_script.is_file():
         steps.append([python_executable, str(agent_runtime_drift_script), "--skip-deploy-check"])
     steps.append([python_executable, repo_config_script])
+    if switchyard_script.is_file():
+        steps.append(
+            [
+                python_executable,
+                str(switchyard_script),
+                "validate",
+                "--manifest",
+                str(root / "repo_config" / "switchyard-routing.toml"),
+            ]
+        )
     if not fast:
         pytest_targets = [
             "tests/test_validate_repo_config.py",

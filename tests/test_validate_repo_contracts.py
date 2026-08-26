@@ -91,9 +91,18 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
     rendered = [" ".join(step) for step in steps]
 
     assert any("validate_template_required_sections.py" in step for step in rendered)
+    assert any(
+        "validate_template_required_sections.py --require-template-selection" in step
+        for step in rendered
+    )
     assert any("validate_prompt_metadata_schema.py" in step for step in rendered)
     assert any("validate_env_gitignore_contract.py" in step for step in rendered)
     assert any("validate_repo_config.py" in step for step in rendered)
+    assert any(
+        "manage_switchyard_runtime.py validate" in step
+        and "repo_config/switchyard-routing.toml" in step.replace("\\", "/")
+        for step in rendered
+    )
     assert not any("validate_adoption_shape.py" in step for step in rendered)
     assert not any("validate_python_meta_headers.py" in step for step in rendered)
 

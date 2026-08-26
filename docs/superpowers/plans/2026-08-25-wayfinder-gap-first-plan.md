@@ -78,7 +78,7 @@ scope, one-writer control, promotion, handoff, closure, and supersession.
 - Base commit: `0ace823`
 - Active task(s): `none`
 - Expected workspace: preserve current modified and untracked work; add only this plan before RED
-- Next action: `Task 1: run RED baseline against current skill-brainstorming`
+- Next action: `none`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |

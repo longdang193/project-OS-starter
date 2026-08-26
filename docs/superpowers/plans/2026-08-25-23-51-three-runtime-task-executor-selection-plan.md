@@ -157,7 +157,7 @@ runtime implementation unchanged.
 - Base commit: `6e9b65ab0fb9167f0c8d79280e8467f5ff74720c`
 - Active task(s): `none`
 - Expected workspace: preserve modifications to `scripts/validate_template_required_sections.py` and `tests/test_validate_template_required_sections.py`, untracked `db/`, and two untracked Switchyard plans; add only this plan and later plan-approved changes
-- Next action: `none; final verification accepted`
+- Next action: `none`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |

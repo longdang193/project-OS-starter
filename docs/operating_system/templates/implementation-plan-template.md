@@ -10,6 +10,7 @@ required_sections:
 - Completion Criteria
 required_frontmatter:
   artifact_type: plan
+  template_id: implementation-plan
   status: proposed
   layer: change
 distribution_tier: starter_kit
@@ -119,12 +120,10 @@ Do not duplicate final artifact verification commands here unless a command is t
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
 
 **Validator Profile (optional):**
-- Controller-selected: `<none | xhigh | high | normal>`
+- Controller-selected: `<none | low | normal | high | xhigh>`
 - Selection basis: <validation>
 - Select independently from the executor profile; no profile-rank relationship is required.
 - Use literal `<none>` when no validator is assigned; otherwise replace it with `low`, `normal`, `high`, or `xhigh`.
-  `high` executor therefore uses `xhigh` validator. Do not pair `xhigh` executor
-  with a profile-based validator because no higher profile exists.
 
 **Specification Coverage:**
 - <requirement, decision, invariant, or approved direct scope>
