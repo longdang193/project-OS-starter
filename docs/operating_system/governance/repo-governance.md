@@ -63,6 +63,7 @@ Canonical planning and delivery skills are:
 - Brainstorming reports optionally own exploratory options, trade-offs, recommendations, and unresolved questions.
 - Specifications own approved behavior, interfaces, decisions, invariants, acceptance criteria, and validation intent.
 - Plans own ordered implementation tasks, exact files, commands, dependencies, execution approach, parallel-safe lanes, shared-write controls, required skills, and verification.
+- Wayfinding maps own only provisional decision frontiers for explicit multi-session discovery; one writer maintains each map, while specifications and plans own promoted truth and execution details.
 - Execution skills own implementation; verification and branch-finishing skills own evidence and authorized Git disposition.
 - Validators validate artifacts that exist; they do not require a planning ladder.
 
