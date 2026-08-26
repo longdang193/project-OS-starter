@@ -1,0 +1,497 @@
+diff --git a/crates/libsy/src/algorithms/fall_through.rs b/crates/libsy/src/algorithms/fall_through.rs
+index 96a7e50..b00a079 100644
+--- a/crates/libsy/src/algorithms/fall_through.rs
++++ b/crates/libsy/src/algorithms/fall_through.rs
+@@ -33,7 +33,9 @@ use crate::core::algorithm::{
+ use crate::core::classifier::{Classification, Classifier, Score};
+ use crate::core::processor::{Event, Processor};
+ use crate::{LibsyError, Result};
+-use switchyard_protocol::{Context, Decision, Request, Response, RoutingFallbackReason};
++use switchyard_protocol::{
++    Context, Decision, Request, Response, RoutingDecisionEvidence, RoutingFallbackReason,
++};
+ 
+ struct SessionState<S> {
+     state: Arc<AsyncMutex<S>>,
+@@ -59,6 +61,7 @@ pub struct FallThroughDecision {
+     pub reasoning: String,
+     tier: Option<&'static str>,
+     fallback_reason: Option<RoutingFallbackReason>,
++    routing_evidence: Option<RoutingDecisionEvidence>,
+ }
+ 
+ impl Decision for FallThroughDecision {
+@@ -74,6 +77,10 @@ impl Decision for FallThroughDecision {
+         self.fallback_reason
+     }
+ 
++    fn routing_evidence(&self) -> Option<&RoutingDecisionEvidence> {
++        self.routing_evidence.as_ref()
++    }
++
+     fn reasoning(&self) -> Option<&str> {
+         Some(&self.reasoning)
+     }
+@@ -127,6 +134,7 @@ impl<S: Send> Classifier<S> for DefaultTarget {
+ pub struct FallThrough<S = ()> {
+     name: String,
+     decision_reason: fn(&str, &Score) -> String,
++    decision_evidence: Option<fn(&S, &Score) -> Option<RoutingDecisionEvidence>>,
+     processors: Vec<Arc<dyn Processor<S>>>,
+     classifiers: Vec<Arc<dyn Classifier<S>>>,
+     targets: LlmTargetSet,
+@@ -141,6 +149,7 @@ impl FallThrough<()> {
+         Self {
+             name: "fall_through".to_string(),
+             decision_reason: default_decision_reason,
++            decision_evidence: None,
+             processors: Vec::new(),
+             classifiers: Vec::new(),
+             targets,
+@@ -160,6 +169,7 @@ where
+         Self {
+             name: "fall_through".to_string(),
+             decision_reason: default_decision_reason,
++            decision_evidence: None,
+             processors: Vec::new(),
+             classifiers: Vec::new(),
+             targets,
+@@ -181,6 +191,15 @@ where
+         self
+     }
+ 
++    /// Supplies optional evidence for the decision published by this cascade.
++    pub(crate) fn with_decision_evidence(
++        mut self,
++        evidence: fn(&S, &Score) -> Option<RoutingDecisionEvidence>,
++    ) -> Self {
++        self.decision_evidence = Some(evidence);
++        self
++    }
++
+     /// Appends a processor to the head-of-request chain.
+     pub fn with_processor(mut self, processor: Arc<dyn Processor<S>>) -> Self {
+         self.processors.push(processor);
+@@ -253,6 +272,7 @@ where
+                 self.route(&mut state, &ctx, &driver, &mut request).await?
+             }
+         };
++        let decision_evidence = decision.routing_evidence().cloned();
+ 
+         // A classifier that already called a model — because deciding required one, and that
+         // call also answers the turn — hands its response back here, so the turn is not paid
+@@ -276,7 +296,15 @@ where
+                             classifier.target_unavailable(request, target);
+                         }
+                     },
+-                    |from, to, reason| self.fallback_decision(deciding.as_ref(), from, to, reason),
++                    |from, to, reason| {
++                        self.fallback_decision(
++                            deciding.as_ref(),
++                            from,
++                            to,
++                            reason,
++                            decision_evidence.clone(),
++                        )
++                    },
+                 )
+                 .await
+             }
+@@ -298,6 +326,7 @@ where
+         from: &LlmTarget,
+         to: &LlmTarget,
+         reason: RoutingFallbackReason,
++        routing_evidence: Option<RoutingDecisionEvidence>,
+     ) -> Arc<dyn Decision> {
+         let failure = match reason {
+             RoutingFallbackReason::ContextWindow => "exceeded its context window",
+@@ -311,6 +340,7 @@ where
+             ),
+             tier: deciding.routing_tier(&to.semantic_name),
+             fallback_reason: Some(reason),
++            routing_evidence,
+         })
+     }
+ 
+@@ -379,6 +409,9 @@ where
+             reasoning,
+             tier: deciding.routing_tier(&target.semantic_name),
+             fallback_reason: None,
++            routing_evidence: self
++                .decision_evidence
++                .and_then(|evidence| evidence(state, &score)),
+         });
+         driver.info(ctx.clone(), decision.clone()).await?;
+ 
+diff --git a/crates/libsy/src/algorithms/stage.rs b/crates/libsy/src/algorithms/stage.rs
+index c82577c..621732e 100644
+--- a/crates/libsy/src/algorithms/stage.rs
++++ b/crates/libsy/src/algorithms/stage.rs
+@@ -26,10 +26,10 @@ use super::util::stage::{
+ };
+ use super::util::tool_signals::{DEFAULT_RECENT_WINDOW, ToolSignalProcessor};
+ use crate::core::algorithm::{Algorithm, Driver, LlmTarget, LlmTargetSet};
+-use crate::core::classifier::{Classification, Classifier};
+-use crate::core::state::State;
++use crate::core::classifier::{Classification, Classifier, Score};
++use crate::core::state::{State, StateValue};
+ use crate::{LibsyError, Result};
+-use switchyard_protocol::{Context, Request, Response};
++use switchyard_protocol::{Context, Request, Response, RoutingDecisionEvidence};
+ 
+ /// Telemetry name for a router this module assembles.
+ const STAGE_ROUTER: &str = "stage_router";
+@@ -43,6 +43,26 @@ struct SourceStamp {
+     source: DecisionSource,
+ }
+ 
++fn stage_decision_evidence(state: &State, _score: &Score) -> Option<RoutingDecisionEvidence> {
++    let source = match state.extra.get(super::util::stage::DECISION_SOURCE_KEY) {
++        Some(StateValue::String(source)) => Some(source.clone()),
++        _ => None,
++    }?;
++    let score = match state.extra.get(super::util::stage::DECISION_SCORE_KEY) {
++        Some(StateValue::Double(score)) => Some(*score),
++        _ => None,
++    };
++    let threshold = match state.extra.get(super::util::stage::DECISION_THRESHOLD_KEY) {
++        Some(StateValue::Double(threshold)) => Some(*threshold),
++        _ => None,
++    };
++    Some(RoutingDecisionEvidence {
++        source: Some(source),
++        score,
++        threshold,
++    })
++}
++
+ #[async_trait]
+ impl Classifier<State> for SourceStamp {
+     fn routing_tier(&self, selected_model: &str) -> Option<&'static str> {
+@@ -187,6 +207,7 @@ fn build_route(
+     let target_set = LlmTargetSet::new(vec![capable.clone(), efficient.clone()]);
+     let mut router = FallThrough::<State>::new_with_state(target_set)
+         .with_name(STAGE_ROUTER)
++        .with_decision_evidence(stage_decision_evidence)
+         .with_processor(Arc::new(signals))
+         .with_classifier(Arc::new(classifier));
+     if let Some(fallback) = config.llm_fallback {
+diff --git a/crates/libsy/src/algorithms/util/stage.rs b/crates/libsy/src/algorithms/util/stage.rs
+index 24e3ded..8695dcb 100644
+--- a/crates/libsy/src/algorithms/util/stage.rs
++++ b/crates/libsy/src/algorithms/util/stage.rs
+@@ -128,6 +128,10 @@ impl PickerMode {
+ 
+ /// `State.extra` key under which the turn's [`DecisionSource`] is recorded.
+ pub const DECISION_SOURCE_KEY: &str = "decision_source";
++/// `State.extra` key under which the signed routing score is recorded.
++pub const DECISION_SCORE_KEY: &str = "decision_score";
++/// `State.extra` key under which the active routing threshold is recorded.
++pub const DECISION_THRESHOLD_KEY: &str = "decision_threshold";
+ 
+ /// Record which component decided the turn.
+ pub(crate) fn record_decision_source(state: &mut State, source: DecisionSource) {
+@@ -137,6 +141,23 @@ pub(crate) fn record_decision_source(state: &mut State, source: DecisionSource)
+     );
+ }
+ 
++fn record_decision_score(state: &mut State, score: f64, threshold: Option<f64>) {
++    state
++        .extra
++        .insert(DECISION_SCORE_KEY.to_string(), StateValue::Double(score));
++    match threshold {
++        Some(threshold) => {
++            state.extra.insert(
++                DECISION_THRESHOLD_KEY.to_string(),
++                StateValue::Double(threshold),
++            );
++        }
++        None => {
++            state.extra.remove(DECISION_THRESHOLD_KEY);
++        }
++    }
++}
++
+ /// What produced a decision — for stats and explainability.
+ ///
+ /// Each is stamped by the component that knows it, so a turn's final label names
+@@ -486,6 +507,8 @@ impl Classifier<State> for StageClassifier {
+         request: &mut Request,
+         _driver: Option<&Driver>,
+     ) -> Result<(Classification, Option<switchyard_protocol::Response>)> {
++        state.extra.remove(DECISION_SCORE_KEY);
++        state.extra.remove(DECISION_THRESHOLD_KEY);
+         let tool_signals = &state.tool_signals;
+         let Some(signal) = tool_signals else {
+             // No tool activity yet — nothing to score, so the signals have no
+@@ -503,6 +526,12 @@ impl Classifier<State> for StageClassifier {
+             } => {
+                 let target = self.targets.name(tier);
+                 record_decision_source(state, source);
++                record_decision_score(
++                    state,
++                    score,
++                    matches!(source, DecisionSource::Dimensions)
++                        .then_some(self.confidence_threshold),
++                );
+                 // Only a resolved turn routes on this classifier's target, so it
+                 // is the only branch whose tier the signals actually chose — an
+                 // ambiguous turn is decided further down the cascade.
+@@ -516,7 +545,14 @@ impl Classifier<State> for StageClassifier {
+                     None,
+                 ))
+             }
+-            PickOutcome::ConsultClassifier { .. } => Ok((Self::abstain(state), None)),
++            PickOutcome::ConsultClassifier {
++                score,
++                confidence: _,
++                ..
++            } => {
++                record_decision_score(state, score, Some(self.confidence_threshold));
++                Ok((Self::abstain(state), None))
++            }
+         }
+     }
+ }
+@@ -651,6 +687,11 @@ mod tests {
+             state.extra.get(DECISION_SOURCE_KEY),
+             Some(StateValue::String(source)) if source == "override"
+         ));
++        assert_eq!(
++            state.extra.get(DECISION_SCORE_KEY),
++            Some(&StateValue::Double(0.0))
++        );
++        assert!(state.extra.get(DECISION_THRESHOLD_KEY).is_none());
+         Ok(())
+     }
+ 
+@@ -675,6 +716,15 @@ mod tests {
+             }
+             _ => panic!("expected a definite classification"),
+         }
++        assert!(matches!(
++            state.extra.get(DECISION_SOURCE_KEY),
++            Some(StateValue::String(source)) if source == "tests_passed"
++        ));
++        assert_eq!(
++            state.extra.get(DECISION_SCORE_KEY),
++            Some(&StateValue::Double(0.0))
++        );
++        assert!(state.extra.get(DECISION_THRESHOLD_KEY).is_none());
+         Ok(())
+     }
+ 
+diff --git a/crates/libsy/src/core/state.rs b/crates/libsy/src/core/state.rs
+index 01ccb08..f962742 100644
+--- a/crates/libsy/src/core/state.rs
++++ b/crates/libsy/src/core/state.rs
+@@ -8,7 +8,7 @@ use std::collections::HashMap;
+ use crate::algorithms::util::tool_signals::ToolSignals;
+ 
+ /// A value in a session's [`State`].
+-#[derive(Debug, Clone)]
++#[derive(Debug, Clone, PartialEq)]
+ pub enum StateValue {
+     /// Text value.
+     String(String),
+@@ -18,6 +18,8 @@ pub enum StateValue {
+     Int(i32),
+     /// Floating-point value.
+     Scalar(f32),
++    /// Double-precision floating-point value.
++    Double(f64),
+ }
+ 
+ /// Routing facts accumulated across one session's algorithm runs.
+diff --git a/crates/protocol/src/client.rs b/crates/protocol/src/client.rs
+index 131ce00..c0aded4 100644
+--- a/crates/protocol/src/client.rs
++++ b/crates/protocol/src/client.rs
+@@ -119,6 +119,17 @@ pub enum RoutingFallbackReason {
+     Unavailable,
+ }
+ 
++/// Optional evidence explaining how a routing decision was selected.
++#[derive(Clone, Debug, PartialEq)]
++pub struct RoutingDecisionEvidence {
++    /// Stable classifier or fallback category.
++    pub source: Option<String>,
++    /// Signed score, when the routing algorithm produced one.
++    pub score: Option<f64>,
++    /// Active score threshold, when scoring participated.
++    pub threshold: Option<f64>,
++}
++
+ impl RoutingFallbackReason {
+     /// Stable value used by logs and statistics.
+     pub const fn as_str(self) -> &'static str {
+@@ -150,6 +161,10 @@ pub trait Decision: Send + Sync {
+     fn fallback_reason(&self) -> Option<RoutingFallbackReason> {
+         None
+     }
++    /// Optional evidence explaining how this decision was selected.
++    fn routing_evidence(&self) -> Option<&RoutingDecisionEvidence> {
++        None
++    }
+     /// A human-readable explanation of the decision, for logs and traces.
+     fn reasoning(&self) -> Option<&str>;
+     /// Downcast handle: a consumer that knows the algorithm can recover the
+diff --git a/crates/switchyard-server/src/lib.rs b/crates/switchyard-server/src/lib.rs
+index 8f5c034..335c000 100644
+--- a/crates/switchyard-server/src/lib.rs
++++ b/crates/switchyard-server/src/lib.rs
+@@ -672,6 +672,11 @@ async fn handle_llm_request(
+     wire_format: WireFormat,
+     routing_log_context: Option<routing_log::RoutingLogContext>,
+ ) -> Response {
++    let route_name = body
++        .get("model")
++        .and_then(Value::as_str)
++        .filter(|model| *model == "auto");
++    let routing_log_context = routing_log_context.map(|context| context.with_route(route_name));
+     let cache_probe = state.track_cache_eligibility.then(|| prefix_probe(&body));
+     let (route, request) = match resolve_route(&state, metadata, body, wire_format) {
+         Ok(resolved) => resolved,
+@@ -701,8 +706,11 @@ async fn handle_llm_request(
+     // the id the upstream reported.
+     let decision = trace.last();
+     let response = if let Some(decision) = decision {
+-        let routing_log_context = routing_log_context
+-            .map(|context| context.with_fallback_reason(decision.fallback_reason()));
++        let routing_log_context = routing_log_context.map(|context| {
++            context
++                .with_fallback_reason(decision.fallback_reason())
++                .with_decision_evidence(decision.routing_evidence())
++        });
+         let cache_eligible = cache_probe
+             .as_ref()
+             .map(|probe| {
+diff --git a/crates/switchyard-server/src/routing_log.rs b/crates/switchyard-server/src/routing_log.rs
+index c60f47c..784fbe4 100644
+--- a/crates/switchyard-server/src/routing_log.rs
++++ b/crates/switchyard-server/src/routing_log.rs
+@@ -12,7 +12,7 @@ use std::time::SystemTime;
+ 
+ use humantime::format_rfc3339_millis;
+ use serde::{Deserialize, Serialize};
+-use switchyard_protocol::{RoutingFallbackReason, Usage};
++use switchyard_protocol::{RoutingDecisionEvidence, RoutingFallbackReason, Usage};
+ 
+ use crate::usage_metrics::token_usage;
+ use crate::{ServerError, ServerResult};
+@@ -56,6 +56,10 @@ impl RoutingLog {
+             session_id: context.session_id.map(Cow::Owned),
+             model: model.into(),
+             tier: tier.unwrap_or("").into(),
++            route: context.route.map(Cow::Owned),
++            decision_source: context.decision_source.map(Cow::Owned),
++            decision_score: context.decision_score,
++            decision_threshold: context.decision_threshold,
+             fallback_reason: context.fallback_reason.map(Cow::Borrowed),
+             prompt_tokens: usage.prompt_tokens,
+             cached_tokens: usage.cached_tokens,
+@@ -103,6 +107,10 @@ pub(crate) struct RoutingLogContext {
+     trial_id: Option<String>,
+     session_id: Option<String>,
+     fallback_reason: Option<&'static str>,
++    route: Option<String>,
++    decision_source: Option<String>,
++    decision_score: Option<f64>,
++    decision_threshold: Option<f64>,
+ }
+ 
+ impl RoutingLogContext {
+@@ -112,6 +120,10 @@ impl RoutingLogContext {
+             trial_id: nonempty_header(headers, TRIAL_ID_HEADER).map(|s| s.to_string()),
+             session_id: nonempty_header(headers, SESSION_ID_HEADER).map(|s| s.to_string()),
+             fallback_reason: None,
++            route: None,
++            decision_source: None,
++            decision_score: None,
++            decision_threshold: None,
+         }
+     }
+ 
+@@ -119,6 +131,23 @@ impl RoutingLogContext {
+         self.fallback_reason = reason.map(RoutingFallbackReason::as_str);
+         self
+     }
++
++    pub(crate) fn with_route(mut self, route: Option<&str>) -> Self {
++        self.route = route.map(str::to_string);
++        self
++    }
++
++    pub(crate) fn with_decision_evidence(
++        mut self,
++        evidence: Option<&RoutingDecisionEvidence>,
++    ) -> Self {
++        if let Some(evidence) = evidence {
++            self.decision_source = evidence.source.clone();
++            self.decision_score = evidence.score;
++            self.decision_threshold = evidence.threshold;
++        }
++        self
++    }
+ }
+ 
+ /// One appended routing record, and the read schema [`snapshot`] parses back,
+@@ -137,6 +166,14 @@ struct RoutingRecord<'a> {
+     model: Cow<'a, str>,
+     tier: Cow<'a, str>,
+     #[serde(borrow, skip_serializing_if = "Option::is_none")]
++    route: Option<Cow<'a, str>>,
++    #[serde(borrow, skip_serializing_if = "Option::is_none")]
++    decision_source: Option<Cow<'a, str>>,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    decision_score: Option<f64>,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    decision_threshold: Option<f64>,
++    #[serde(borrow, skip_serializing_if = "Option::is_none")]
+     fallback_reason: Option<Cow<'a, str>>,
+     prompt_tokens: u64,
+     cached_tokens: u64,
+@@ -263,4 +300,43 @@ mod tests {
+         assert_eq!(stats.models["unknown"].prompt_tokens, 5);
+         assert!(snapshot(&path, "missing").expect("read log").is_none());
+     }
++
++    #[test]
++    fn append_preserves_optional_decision_evidence() {
++        let dir = tempfile::tempdir().expect("temp dir");
++        let path = dir.path().join("routing.jsonl");
++        let mut log = RoutingLog::new(&path).expect("routing log");
++        let mut headers = http::HeaderMap::new();
++        headers.insert("proxy_x_session_id", "session-1".parse().expect("header"));
++        let evidence = RoutingDecisionEvidence {
++            source: Some("dimensions".to_string()),
++            score: Some(-0.72),
++            threshold: Some(0.5),
++        };
++        log.append(
++            RoutingLogContext::from_headers(&headers)
++                .with_route(Some("auto"))
++                .with_decision_evidence(Some(&evidence)),
++            "combo-normal",
++            Some("weak"),
++            &Usage {
++                input_tokens: Some(12),
++                output_tokens: Some(4),
++                ..Usage::default()
++            },
++        )
++        .expect("append record");
++
++        let record: serde_json::Value =
++            serde_json::from_str(&fs::read_to_string(path).expect("read routing log"))
++                .expect("parse routing record");
++        assert_eq!(record["route"], "auto");
++        assert_eq!(record["decision_source"], "dimensions");
++        assert_eq!(record["decision_score"], -0.72);
++        assert_eq!(record["decision_threshold"], 0.5);
++        assert_eq!(record["model"], "combo-normal");
++        assert_eq!(record["tier"], "weak");
++        assert_eq!(record["prompt_tokens"], 12);
++        assert_eq!(record["completion_tokens"], 4);
++    }
+ }

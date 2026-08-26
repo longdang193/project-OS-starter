@@ -107,6 +107,18 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
     assert not any("validate_python_meta_headers.py" in step for step in rendered)
 
 
+def test_build_subprocess_steps_includes_manager_regressions() -> None:
+    steps = VALIDATOR.build_subprocess_steps(
+        root=REPO_ROOT,
+        python_executable="python",
+        fast=False,
+    )
+
+    rendered = [" ".join(step) for step in steps]
+
+    assert any("tests/test_manage_switchyard_runtime.py" in step for step in rendered)
+
+
 def test_build_subprocess_steps_skips_factory_only_validators_when_absent(tmp_path: Path) -> None:
     scripts = tmp_path / "scripts"
     scripts.mkdir()

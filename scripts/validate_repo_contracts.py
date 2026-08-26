@@ -205,6 +205,7 @@ def build_subprocess_steps(
         pytest_targets = [
             path
             for path in (
+                "tests/test_manage_switchyard_runtime.py",
                 "tests/test_validate_repo_config.py",
                 "tests/test_validate_planning_lifecycle.py",
                 "tests/test_validate_repo_contracts.py",
