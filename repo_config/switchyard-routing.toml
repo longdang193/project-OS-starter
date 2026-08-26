@@ -1,0 +1,15 @@
+policy_version = 1
+switchyard_min_version = "0.2.0"
+efficient_profile = "normal"
+capable_profile = "high"
+route_id = "auto"
+high_control_route_id = "switchyard/high-control"
+picker = "capable_first"
+confidence_threshold = 0.5
+recent_turn_window = 3
+routing_log_fields = [
+  "route",
+  "decision_source",
+  "decision_score",
+  "decision_threshold",
+]

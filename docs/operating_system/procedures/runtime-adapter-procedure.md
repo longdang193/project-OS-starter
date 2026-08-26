@@ -114,6 +114,20 @@ Runtime drift:
 python scripts/validate_agent_runtime_drift.py
 ```
 
+Switchyard auto runtime:
+
+```bash
+py scripts/manage_switchyard_runtime.py check --codex-config "$HOME/.codex/config.toml" --codex-home "$HOME/.codex" --switchyard-home "$HOME/.switchyard"
+py scripts/manage_switchyard_runtime.py deploy --codex-config "$HOME/.codex/config.toml" --codex-home "$HOME/.codex" --switchyard-home "$HOME/.switchyard"
+```
+
+`repo_config/switchyard-routing.toml` owns automatic policy. `agents/*.toml`
+own provider aliases and model IDs. Generated `$HOME/.switchyard/routes.toml`
+and `$CODEX_HOME/auto.config.toml` are runtime outputs; deploy refuses drift
+unless explicit migration uses `--replace-existing`. The generated upstream
+client names `SWITCHYARD_API_KEY` as its credential environment variable but
+never stores its value. `low` remains fixed/manual.
+
 CI-safe (skip home-directory check):
 
 ```bash
