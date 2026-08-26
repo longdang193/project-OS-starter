@@ -250,6 +250,40 @@ Ship safely.
     finally:
         rmtree(root, ignore_errors=True)
 
+
+def test_active_implementation_plan_matches_lifecycle_status() -> None:
+    root = make_test_root()
+    try:
+        seed_template(root)
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "active-plan.md",
+            """---
+artifact_type: plan
+template_id: implementation-plan
+status: active
+---
+
+# Active Plan
+
+## Goal
+Ship safely.
+
+## Implementation Outcomes
+- deliverable one
+
+## Task Breakdown
+- task 1
+
+## Verification
+- pytest -q
+""",
+        )
+        rules, findings = VALIDATOR.discover_template_rules(root)
+        assert findings == []
+        assert VALIDATOR.validate_documents(root, rules, require_template_selection=False) == []
+    finally:
+        rmtree(root, ignore_errors=True)
+
 def test_nested_audit_report_is_discovered_from_template_glob() -> None:
     root = make_test_root()
     try:
