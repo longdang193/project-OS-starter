@@ -24,6 +24,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import shutil
 from typing import Any
 
@@ -46,6 +47,21 @@ REQUIRED_MANIFEST_KEYS = {
     "omitPaths",
     "createEmptyDirs",
 }
+
+CONSUME_ONLY_HEADER = """<!--
+CONSUME-ONLY STARTER KIT FILE
+
+Origin: project-OS-starter.
+Factory adapter and runtime tooling are not included in this starter kit.
+Downstream projects own direct edits to this file.
+-->
+
+"""
+
+_FACTORY_HEADER = re.compile(
+    rb"\A<!--\r?\nGENERATED FILE - DO NOT EDIT\r?\n.*?\r?\n-->\r?\n(?:\r?\n)?",
+    re.DOTALL,
+)
 
 
 def repo_root() -> Path:
@@ -144,6 +160,13 @@ def _destination_relative_path(relative_path: str) -> Path:
     return Path(relative_path)
 
 
+def _rewrite_root_instruction(*, source: Path, destination: Path) -> None:
+    content = source.read_bytes()
+    body = _FACTORY_HEADER.sub(b"", content, count=1)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(CONSUME_ONLY_HEADER.encode("utf-8") + body)
+
+
 def build_starter_kit(*, repo_root: Path, manifest_path: Path, output_root: Path) -> Path:
     manifest = load_manifest(manifest_path)
     kit_root = output_root / manifest.output_root
@@ -156,7 +179,10 @@ def build_starter_kit(*, repo_root: Path, manifest_path: Path, output_root: Path
         if not source.exists():
             raise FileNotFoundError(f"Missing copy path: {relative_path}")
         destination = kit_root / _destination_relative_path(relative_path)
-        _copy_path(source, destination)
+        if destination.name in {"AGENTS.md", "GEMINI.md", "CLAUDE.md"} and source.is_file():
+            _rewrite_root_instruction(source=source, destination=destination)
+        else:
+            _copy_path(source, destination)
 
     _remove_omitted_paths(kit_root=kit_root, omit_paths=manifest.omit_paths)
     _create_empty_dirs(kit_root=kit_root, create_empty_dirs=manifest.create_empty_dirs)

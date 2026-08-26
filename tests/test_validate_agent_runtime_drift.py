@@ -85,3 +85,16 @@ def test_main_runs_default_codex_deploy_target(monkeypatch, tmp_path: Path) -> N
     assert VALIDATOR.main() == 0
     assert len(commands) == 2
     assert commands[1][-3:] == ["--target", "codex", "--check"]
+
+
+def test_main_all_platforms_propagates_selection_to_sync(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        VALIDATOR,
+        "parse_args",
+        lambda: type("Args", (), {"repo_root": str(tmp_path), "skip_deploy_check": True, "all_platforms": True, "platform": []})(),
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(VALIDATOR, "_run", lambda command, cwd: commands.append(command) or 0)
+
+    assert VALIDATOR.main() == 0
+    assert commands[0][-2:] == ["--all-platforms", "--check"]

@@ -10,7 +10,7 @@ artifact needed for safe execution.
 | --- | --- |
 | Local, reversible, design-clear change | Edit directly |
 | Broad problem framing, options, or trade-offs remain | Use `skill-brainstorming`; save a report only when requested |
-| User explicitly invokes wayfinding for a known destination with materially unresolved dependent decisions expected to span multiple sessions | Use `skill-wayfinding` with one validated map and one writer |
+| User explicitly invokes wayfinding for a known destination with materially unresolved dependent decisions expected to span multiple sessions | Use `skill-wayfinding` with one template-validated map and one writer |
 | Behavior, UI intent, interfaces, or invariants need prototype validation | Use `skill-spec-drafting` with `draft-specification`; keep one file |
 | Draft behavior is approved | Promote same file to `detailed-specification` and `status: active` |
 | Behavior, interfaces, or invariants need durable definition without prototype work | Use `skill-spec-drafting` |

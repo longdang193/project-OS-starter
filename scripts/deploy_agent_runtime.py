@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
+import json
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -19,6 +20,7 @@ PLATFORM_TARGETS = {
 }
 
 SHARED_SKILLS_TARGET = Path.home() / ".agents" / "skills"
+SHARED_SKILL_MARKER = ".project-os-managed"
 
 TARGET_ALIASES = {
     "gemini": "antigravity",
@@ -41,6 +43,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Show planned deploy changes without writing.")
     parser.add_argument("--backup", action="store_true", help="Backup overwritten files before deploy.")
     parser.add_argument("--force", action="store_true", help="Allow overwriting runtime files without generated headers.")
+    parser.add_argument(
+        "--adopt-shared-skill",
+        metavar="NAME",
+        help="Explicitly adopt one differing unmarked shared skill.",
+    )
     parser.add_argument(
         "--rewrite-mode",
         choices=["relative", "hardcode"],
@@ -533,24 +540,83 @@ def _repo_skill_names(skills_root: Path) -> set[str]:
     }
 
 
+def _shared_skill_marker(skills_root: Path, skill_name: str) -> dict[str, object]:
+    return {
+        "schema": 1,
+        "source_root": str(skills_root.parent.parent.resolve()),
+        "source_rel": f".agents/skills/{skill_name}",
+    }
+
+
+def _shared_skill_marker_path(target_root: Path, skill_name: str) -> Path:
+    return target_root / skill_name / SHARED_SKILL_MARKER
+
+
+def _read_shared_skill_marker(path: Path) -> dict[str, object] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _shared_skill_is_owned(skills_root: Path, target_root: Path, skill_name: str) -> bool:
+    return _read_shared_skill_marker(_shared_skill_marker_path(target_root, skill_name)) == _shared_skill_marker(
+        skills_root,
+        skill_name,
+    )
+
+
+def _shared_skill_source_files(skills_root: Path, skill_name: str) -> list[Path]:
+    return [
+        src
+        for src in (skills_root / skill_name).rglob("*")
+        if src.is_file() and src.relative_to(skills_root / skill_name).as_posix() != SHARED_SKILL_MARKER
+    ]
+
+
+def _shared_skill_marker_text(skills_root: Path, skill_name: str) -> str:
+    return json.dumps(_shared_skill_marker(skills_root, skill_name), indent=2, sort_keys=True)
+
+
+def _shared_skill_expected_files(skills_root: Path, target_root: Path, skill_name: str) -> set[Path]:
+    expected = {
+        target_root / skill_name / src.relative_to(skills_root / skill_name)
+        for src in _shared_skill_source_files(skills_root, skill_name)
+    }
+    expected.add(_shared_skill_marker_path(target_root, skill_name))
+    return expected
+
+
 def _shared_skill_owned_files(skills_root: Path, target_root: Path) -> set[Path]:
     owned: set[Path] = set()
     for skill_name in _repo_skill_names(skills_root):
-        for src in (skills_root / skill_name).rglob("*"):
-            if not src.is_file():
-                continue
-            owned.add(target_root / skill_name / src.relative_to(skills_root / skill_name))
+        if _shared_skill_is_owned(skills_root, target_root, skill_name):
+            owned.update(_shared_skill_expected_files(skills_root, target_root, skill_name))
     return owned
 
 
 def _shared_skill_stale_files(skills_root: Path, target_root: Path) -> list[Path]:
     stale: list[Path] = []
-    skill_names = _repo_skill_names(skills_root)
-    owned_files = _shared_skill_owned_files(skills_root, target_root)
-    for skill_name in skill_names:
-        deployed_root = target_root / skill_name
-        if not deployed_root.exists():
+    if not target_root.is_dir():
+        return stale
+    source_names = _repo_skill_names(skills_root)
+    for deployed_root in target_root.iterdir():
+        if not deployed_root.is_dir():
             continue
+        skill_name = deployed_root.name
+        marker = _read_shared_skill_marker(deployed_root / SHARED_SKILL_MARKER)
+        if marker is None:
+            continue
+        if marker != _shared_skill_marker(skills_root, skill_name):
+            continue
+        owned_files = (
+            _shared_skill_expected_files(skills_root, target_root, skill_name)
+            if skill_name in source_names
+            else set()
+        )
         for candidate in deployed_root.rglob("*"):
             if candidate.is_file() and candidate not in owned_files:
                 stale.append(candidate)
@@ -560,8 +626,21 @@ def _shared_skill_stale_files(skills_root: Path, target_root: Path) -> list[Path
 def _check_shared_skills(skills_root: Path, target_root: Path) -> list[str]:
     issues: list[str] = []
     for skill_name in sorted(_repo_skill_names(skills_root)):
+        deployed_root = target_root / skill_name
+        if deployed_root.exists() and not _shared_skill_is_owned(skills_root, target_root, skill_name):
+            source_files = _shared_skill_source_files(skills_root, skill_name)
+            if all(
+                (deployed_root / src.relative_to(skills_root / skill_name)).is_file()
+                and _read_text(deployed_root / src.relative_to(skills_root / skill_name)) == _read_text(src)
+                for src in source_files
+            ) and {path.relative_to(deployed_root).as_posix() for path in deployed_root.rglob("*") if path.is_file()} == {
+                src.relative_to(skills_root / skill_name).as_posix() for src in source_files
+            }:
+                continue
+            issues.append(f"Unowned shared skill collision: {deployed_root.as_posix()}")
+            continue
         for src in (skills_root / skill_name).rglob("*"):
-            if not src.is_file():
+            if not src.is_file() or src.name == SHARED_SKILL_MARKER:
                 continue
             dst = target_root / skill_name / src.relative_to(skills_root / skill_name)
             if not dst.exists():
@@ -579,28 +658,52 @@ def _plan_shared_skill_deploy(
     target_root: Path,
     *,
     force: bool,
+    adopt_shared_skill: str | None = None,
 ) -> tuple[list[str], list[str], list[tuple[Path | None, Path, str | None]]]:
     changes: list[str] = []
     issues: list[str] = []
     pairs: list[tuple[Path | None, Path, str | None]] = []
-    for skill_name in sorted(_repo_skill_names(skills_root)):
-        for src in (skills_root / skill_name).rglob("*"):
-            if not src.is_file():
+    source_names = _repo_skill_names(skills_root)
+    if adopt_shared_skill is not None and adopt_shared_skill not in source_names:
+        issues.append(f"Unknown shared skill for adoption: {adopt_shared_skill}")
+    for skill_name in sorted(source_names):
+        source_files = _shared_skill_source_files(skills_root, skill_name)
+        deployed_root = target_root / skill_name
+        owned = _shared_skill_is_owned(skills_root, target_root, skill_name)
+        unmarked_identical = False
+        if deployed_root.exists() and not owned:
+            deployed_files = {
+                path.relative_to(deployed_root).as_posix(): path
+                for path in deployed_root.rglob("*")
+                if path.is_file() and path.name != SHARED_SKILL_MARKER
+            }
+            source_by_relative = {
+                src.relative_to(skills_root / skill_name).as_posix(): src for src in source_files
+            }
+            unmarked_identical = set(deployed_files) == set(source_by_relative) and all(
+                _read_text(deployed_files[relative]) == _read_text(source_by_relative[relative])
+                for relative in source_by_relative
+            )
+            if not unmarked_identical and adopt_shared_skill != skill_name:
+                issues.append(
+                    f"Refusing unowned shared skill collision without --adopt-shared-skill {skill_name}: {deployed_root.as_posix()}"
+                )
                 continue
+        for src in source_files:
             dst = target_root / skill_name / src.relative_to(skills_root / skill_name)
             rendered = _read_text(src)
             if dst.exists():
                 if rendered == _read_text(dst):
                     continue
-                if not force and not _looks_generated(dst):
-                    issues.append(
-                        f"Refusing to overwrite non-generated shared skill file without --force: {dst.as_posix()}"
-                    )
-                    continue
                 changes.append(f"update: {dst.as_posix()}")
             else:
                 changes.append(f"create: {dst.as_posix()}")
             pairs.append((src, dst, rendered))
+        marker_path = _shared_skill_marker_path(target_root, skill_name)
+        marker_text = _shared_skill_marker_text(skills_root, skill_name)
+        if not owned or not marker_path.exists():
+            changes.append(f"{'update' if marker_path.exists() else 'create'}: {marker_path.as_posix()}")
+            pairs.append((None, marker_path, marker_text))
     for stale in _shared_skill_stale_files(skills_root, target_root):
         changes.append(f"remove: {stale.as_posix()}")
         pairs.append((None, stale, None))
@@ -620,6 +723,7 @@ def run() -> int:
             shared_skills_root,
             SHARED_SKILLS_TARGET,
             force=args.force,
+            adopt_shared_skill=args.adopt_shared_skill,
         )
         issues.extend(plan_issues)
         if not plan_issues:
@@ -639,7 +743,10 @@ def run() -> int:
                         backup_path.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(dst, backup_path)
                     if src is None:
-                        dst.unlink(missing_ok=True)
+                        if rendered is None:
+                            dst.unlink(missing_ok=True)
+                        else:
+                            dst.write_text(rendered + "\n", encoding="utf-8")
                         continue
                     dst.write_text(rendered + "\n", encoding="utf-8")
                 print(

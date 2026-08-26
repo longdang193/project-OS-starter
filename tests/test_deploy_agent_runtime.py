@@ -20,6 +20,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+import json
 
 import yaml
 
@@ -309,12 +310,108 @@ def test_shared_skill_deploy_preserves_unrelated_installed_skills(tmp_path: Path
     )
 
     assert issues == []
-    assert len(changes) == 1
+    assert len(changes) == 2
     assert changes[0].startswith("create: ")
     _, destination, rendered = pairs[0]
     assert destination == target_root / "skill-demo" / "SKILL.md"
     assert rendered == "demo skill"
+    assert changes[1] == f"create: {(target_root / 'skill-demo' / DEPLOY.SHARED_SKILL_MARKER).as_posix()}"
     assert all("gitnexus-cli" not in change for change in changes)
+
+
+def test_owned_shared_skill_updates_without_force(tmp_path: Path) -> None:
+    skills_root = tmp_path / "repo" / ".agents" / "skills"
+    target_root = tmp_path / "user-skills"
+    repo_skill = skills_root / "skill-demo"
+    repo_skill.mkdir(parents=True)
+    (repo_skill / "SKILL.md").write_text("new skill\n", encoding="utf-8")
+    deployed_skill = target_root / "skill-demo"
+    deployed_skill.mkdir(parents=True)
+    (deployed_skill / "SKILL.md").write_text("old skill\n", encoding="utf-8")
+    (deployed_skill / DEPLOY.SHARED_SKILL_MARKER).write_text(
+        json.dumps(DEPLOY._shared_skill_marker(skills_root, "skill-demo")),
+        encoding="utf-8",
+    )
+
+    changes, issues, pairs = DEPLOY._plan_shared_skill_deploy(
+        skills_root,
+        target_root,
+        force=False,
+    )
+
+    assert issues == []
+    assert any(destination == deployed_skill / "SKILL.md" for _, destination, _ in pairs)
+
+
+def test_unmarked_differing_skill_requires_shared_skill_adoption(tmp_path: Path) -> None:
+    skills_root = tmp_path / "repo" / ".agents" / "skills"
+    target_root = tmp_path / "user-skills"
+    repo_skill = skills_root / "skill-demo"
+    repo_skill.mkdir(parents=True)
+    (repo_skill / "SKILL.md").write_text("canonical\n", encoding="utf-8")
+    deployed_skill = target_root / "skill-demo"
+    deployed_skill.mkdir(parents=True)
+    (deployed_skill / "SKILL.md").write_text("external\n", encoding="utf-8")
+
+    _, issues, _ = DEPLOY._plan_shared_skill_deploy(
+        skills_root,
+        target_root,
+        force=True,
+    )
+
+    assert any("--adopt-shared-skill" in issue for issue in issues)
+    assert (deployed_skill / "SKILL.md").read_text(encoding="utf-8") == "external\n"
+
+
+def test_identical_unmarked_skill_is_adopted(tmp_path: Path) -> None:
+    skills_root = tmp_path / "repo" / ".agents" / "skills"
+    target_root = tmp_path / "user-skills"
+    repo_skill = skills_root / "skill-demo"
+    repo_skill.mkdir(parents=True)
+    (repo_skill / "SKILL.md").write_text("canonical\n", encoding="utf-8")
+    deployed_skill = target_root / "skill-demo"
+    deployed_skill.mkdir(parents=True)
+    (deployed_skill / "SKILL.md").write_text("canonical\n", encoding="utf-8")
+
+    changes, issues, pairs = DEPLOY._plan_shared_skill_deploy(
+        skills_root,
+        target_root,
+        force=False,
+    )
+
+    assert issues == []
+    assert any(destination == deployed_skill / DEPLOY.SHARED_SKILL_MARKER for _, destination, _ in pairs)
+    assert any(".project-os-managed" in change for change in changes)
+
+
+def test_marker_from_other_repo_cannot_delete_shared_skill(tmp_path: Path) -> None:
+    skills_root = tmp_path / "repo-a" / ".agents" / "skills"
+    target_root = tmp_path / "user-skills"
+    skills_root.mkdir(parents=True)
+    deployed_skill = target_root / "skill-demo"
+    deployed_skill.mkdir(parents=True)
+    (deployed_skill / "SKILL.md").write_text("repo b\n", encoding="utf-8")
+    (deployed_skill / DEPLOY.SHARED_SKILL_MARKER).write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "source_root": str((tmp_path / "repo-b").resolve()),
+                "source_rel": ".agents/skills/skill-demo",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    changes, issues, pairs = DEPLOY._plan_shared_skill_deploy(
+        skills_root,
+        target_root,
+        force=False,
+    )
+
+    assert changes == []
+    assert issues == []
+    assert pairs == []
+    assert deployed_skill.exists()
 
 
 def test_shared_skill_check_detects_missing_and_stale_repo_owned_files(tmp_path: Path) -> None:
@@ -326,6 +423,10 @@ def test_shared_skill_check_detects_missing_and_stale_repo_owned_files(tmp_path:
     deployed_skill = target_root / "skill-demo"
     deployed_skill.mkdir(parents=True)
     (deployed_skill / "extra.md").write_text("stale\n", encoding="utf-8")
+    (deployed_skill / DEPLOY.SHARED_SKILL_MARKER).write_text(
+        json.dumps(DEPLOY._shared_skill_marker(skills_root, "skill-demo")),
+        encoding="utf-8",
+    )
 
     issues = DEPLOY._check_shared_skills(skills_root, target_root)
 

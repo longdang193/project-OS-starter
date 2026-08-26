@@ -69,8 +69,9 @@
   ],
   "omitPaths": [
     "docs/operating_system/manifest.yaml",
-    "docs/operating_system/provider_capabilities.yaml",
     "docs/operating_system/procedures/runtime-adapter-procedure.md",
+    "docs/operating_system/procedures/starter-kit-procedure.md",
+    "docs/operating_system/templates/agents/root-AGENTS.template.md",
     "docs/operating_system/runtime",
     "docs/operating_system/prompt_templates/runtime-deploy-and-verify-prompt.md"
   ],

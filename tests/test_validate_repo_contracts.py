@@ -135,6 +135,19 @@ def test_build_subprocess_steps_includes_manager_regressions() -> None:
     assert any("tests/test_manage_switchyard_runtime.py" in step for step in rendered)
 
 
+def test_build_subprocess_steps_checks_all_adapter_platforms() -> None:
+    steps = VALIDATOR.build_subprocess_steps(
+        root=REPO_ROOT,
+        python_executable="python",
+        fast=True,
+    )
+
+    assert any(
+        "validate_agent_runtime_drift.py --all-platforms --skip-deploy-check" in " ".join(step)
+        for step in steps
+    )
+
+
 def test_build_subprocess_steps_skips_factory_only_validators_when_absent(tmp_path: Path) -> None:
     scripts = tmp_path / "scripts"
     scripts.mkdir()

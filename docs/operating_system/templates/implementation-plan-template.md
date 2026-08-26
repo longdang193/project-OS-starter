@@ -58,7 +58,6 @@ never becomes repository state.
 - Coordination owner: `single lead controller`
 - Branch: `<target branch>`
 - Base commit: `<commit>`
-- Active task(s): `<Task N[, Task M] | none>`
 - Expected workspace: `<clean or named preserved changes>`
 - Next action: `<one dependency-ready action>`
 - Blockers: `<none or concrete blocker>`
@@ -116,7 +115,7 @@ Do not duplicate final artifact verification commands here unless a command is t
 - <task-specific function; do not select from a fixed taxonomy>
 
 **Template Profile:**
-- Controller-selected: `<xhigh | high | normal | low>`
+- Controller-selected: `<none (lead controller) | low | normal | high | xhigh>`
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
 
 **Validator Profile (optional):**
@@ -168,7 +167,7 @@ Do not duplicate final artifact verification commands here unless a command is t
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
 
 **Validator Profile (optional):**
-- Controller-selected: `<none | xhigh | high | normal>`
+- Controller-selected: `<none | low | normal | high | xhigh>`
 - Profile order: `xhigh > high > normal > low`
 - Select executor and validator profiles independently from their bounded task contracts; no profile-rank relationship is required.
 

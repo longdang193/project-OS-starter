@@ -200,7 +200,14 @@ def build_subprocess_steps(
         steps.append([python_executable, str(generated_header_script)])
     agent_runtime_drift_script = root / "scripts" / "validate_agent_runtime_drift.py"
     if agent_runtime_drift_script.is_file():
-        steps.append([python_executable, str(agent_runtime_drift_script), "--skip-deploy-check"])
+        steps.append(
+            [
+                python_executable,
+                str(agent_runtime_drift_script),
+                "--all-platforms",
+                "--skip-deploy-check",
+            ]
+        )
     steps.append([python_executable, repo_config_script])
     if switchyard_script.is_file():
         steps.append(

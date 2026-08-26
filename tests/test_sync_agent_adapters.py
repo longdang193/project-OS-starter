@@ -279,6 +279,18 @@ def test_resolve_platform_selection_all_platforms(tmp_path: Path) -> None:
     assert SYNC._resolve_platform_selection(tmp_path, args) == (set(), "all-platforms")
 
 
+def test_mapping_selection_uses_declared_platform_and_gemini_alias(tmp_path: Path) -> None:
+    mapping_path = tmp_path / "adapters" / "gemini" / "mapping.yaml"
+    mapping_path.parent.mkdir(parents=True)
+    mapping_path.write_text(
+        "platform: antigravity\nmappings: []\n",
+        encoding="utf-8",
+    )
+
+    assert SYNC._mapping_files_for_selection(mapping_path.parents[1], {"antigravity"}) == [mapping_path]
+    assert SYNC._mapping_files_for_selection(mapping_path.parents[1], {"gemini"}) == [mapping_path]
+
+
 def test_sync_root_instruction_generates_and_checks_agents(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     template = root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md"

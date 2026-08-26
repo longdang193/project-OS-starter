@@ -83,6 +83,28 @@ parent_spec: none
 """
 
 
+def modern_plan(*, status: str = "active", execution: str, task_body: str = "") -> str:
+    return f"""---
+artifact_type: plan
+template_id: implementation-plan
+status: {status}
+layer: change
+parent_spec: none
+---
+# Plan
+
+## Execution Approach
+
+{execution}
+
+## Task Breakdown
+
+### Task 1: Example
+
+{task_body}
+"""
+
+
 def test_empty_repo_does_not_require_roadmap() -> None:
     root = make_test_root()
     try:
@@ -130,10 +152,99 @@ def test_existing_spec_and_linked_plan_pass() -> None:
         )
         write_text(
             root / "docs" / "superpowers" / "plans" / "demo-plan.md",
-            "---\nartifact_type: plan\ntemplate_id: implementation-plan\nstatus: proposed\nlayer: change\nparent_spec: docs/superpowers/specs/demo-spec.md\n---\n# Plan\n",
+            "---\nartifact_type: plan\ntemplate_id: implementation-plan\nstatus: proposed\nlayer: change\nparent_spec: docs/superpowers/specs/demo-spec.md\n---\n# Plan\n\n## Execution Approach\n\n- Mode: `inline sequential`\n- Coordination: `none`\n\n## Task Breakdown\n\n### Task 1: Example\n\n**Template Profile:**\n- Controller-selected: `none (lead controller)`\n",
         )
         result = run_validator(root)
         assert result.returncode == 0
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_current_plan_requires_execution_approach() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            "---\nartifact_type: plan\ntemplate_id: implementation-plan\nstatus: active\nlayer: change\nparent_spec: none\n---\n# Plan\n",
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "requires `## Execution Approach`" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_historical_completed_plan_without_modern_fields_passes() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "historical.md",
+            "---\nartifact_type: plan\ntemplate_id: implementation-plan\nstatus: completed\nlayer: change\nparent_spec: none\n---\n# Historical plan\n",
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_current_plan_rejects_unknown_coordination_without_skipping_checks() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            modern_plan(
+                execution="- Mode: `subagent-ready`\n- Coordination: `git-trackedd`",
+                task_body="**Template Profile:**\n- Controller-selected: `none (lead controller)`",
+            ),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "Coordination must be one of: git-tracked, none" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_task_profiles_are_validated_inside_task_section() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            modern_plan(
+                execution="- Mode: `subagent-ready`\n- Coordination: `none`",
+                task_body="**Template Profile:**\n- Controller-selected: `obsolete`",
+            ),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "Template Profile must be one of" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_modern_fields_in_historical_plan_are_validated_when_present() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "historical.md",
+            modern_plan(
+                status="superseded",
+                execution="- Mode: `obsolete`\n- Coordination: `none`",
+                task_body="**Template Profile:**\n- Controller-selected: `none (lead controller)`",
+            ),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "Mode must be one of" in result.stdout
     finally:
         rmtree(root, ignore_errors=True)
 
@@ -268,7 +379,7 @@ def test_task_executor_must_use_canonical_value() -> None:
         rmtree(root, ignore_errors=True)
 
 
-def test_completed_plan_requires_terminal_coordination_and_tasks() -> None:
+def test_historical_completed_plan_preserves_legacy_coordination() -> None:
     root = make_test_root()
     try:
         write_text(
@@ -284,10 +395,8 @@ def test_completed_plan_requires_terminal_coordination_and_tasks() -> None:
 
         result = run_validator(root)
 
-        assert result.returncode == 1
-        assert "completed plan requires every task to be completed" in result.stdout
-        assert "completed plan requires `Active task(s): none`" in result.stdout
-        assert "completed plan requires `Next action: none`" in result.stdout
+        assert result.returncode == 0
+        assert "passed" in result.stdout.lower()
     finally:
         rmtree(root, ignore_errors=True)
 

@@ -16,6 +16,13 @@ Scoped `AGENTS.md` files are canonical instructions for their directories.
 `docs/operating_system/rules/` is canonical rule source. Adapter sync mirrors it
 to `.agents/rules/` for supported local runtimes.
 
+Shared skills deployed to `~/.agents/skills/<skill>` carry a
+`.project-os-managed` JSON marker with schema, source root, and source-relative
+skill path. Deploy updates and removes only markers owned by the current repo.
+Unmarked byte-identical skills are adopted automatically; differing unmarked
+skills require `--adopt-shared-skill <name>`. `--force` remains for provider
+runtime overwrite protection and is not shared-skill adoption authorization.
+
 `agents/xhigh.toml`, `agents/high.toml`, `agents/normal.toml`, and
 `agents/low.toml` are canonical delegated-role templates. They own delegated
  provider alias, model, rank, and prompt. Profile order is `xhigh > high > normal > low`.
@@ -105,13 +112,13 @@ Treat project `.env` and `.deepagents/` content as untrusted runtime input.
 Generated drift:
 
 ```bash
-python scripts/sync_agent_adapters.py --check
+python scripts/sync_agent_adapters.py --all-platforms --check
 ```
 
 Runtime drift:
 
 ```bash
-python scripts/validate_agent_runtime_drift.py
+python scripts/validate_agent_runtime_drift.py --all-platforms
 ```
 
 Switchyard auto runtime:
@@ -136,7 +143,7 @@ the compatibility smoke—not the version field alone—is the compatibility gat
 CI-safe (skip home-directory check):
 
 ```bash
-python scripts/validate_agent_runtime_drift.py --skip-deploy-check
+python scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check
 ```
 
 ## Metadata Schema Validation

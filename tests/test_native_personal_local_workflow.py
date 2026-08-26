@@ -101,7 +101,7 @@ def test_single_controller_resume_contract_is_documented() -> None:
     assert "Task ledger `Executor` values are `codex`, `deepagents`, or `tura`" in template_text
     assert "`Template Profile` and optional `Validator Profile` remain independent" in template_text
     assert "current DeepAgents launcher uses no MCP" in template_text
-    assert "Active task(s)" in template_text
+    assert "Active task(s)" not in template_text
     assert "multiple active tasks" in template_text
     assert "dependency-ready wave" in template_text
     assert "Last checkpoint" not in template_text

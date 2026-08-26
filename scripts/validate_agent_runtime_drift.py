@@ -85,8 +85,12 @@ def main() -> int:
     args = parse_args()
     root = Path(args.repo_root).resolve()
     py = sys.executable
+    sync_command = [py, str(root / "scripts" / "sync_agent_adapters.py")]
+    if args.all_platforms:
+        sync_command.append("--all-platforms")
+    sync_command.append("--check")
     steps = [
-        [py, str(root / "scripts" / "sync_agent_adapters.py"), "--check"],
+        sync_command,
     ]
     if not args.skip_deploy_check:
         selected_platforms, selection_reason = _resolve_platform_selection(root, args)

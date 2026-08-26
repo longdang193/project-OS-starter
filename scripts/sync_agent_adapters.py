@@ -329,7 +329,15 @@ def _mapping_files_for_selection(adapters_root: Path, selected_platforms: set[st
     all_mappings = sorted(adapters_root.glob("*/mapping.yaml"))
     if not selected_platforms:
         return all_mappings
-    return [path for path in all_mappings if path.parent.name in selected_platforms]
+    aliases = {"gemini": "antigravity", "antigravity": "antigravity"}
+    normalized_selection = {aliases.get(platform.lower(), platform.lower()) for platform in selected_platforms}
+    selected: list[Path] = []
+    for path in all_mappings:
+        declared_platform, _ = _load_mapping(path)
+        canonical_platform = aliases.get(declared_platform.lower(), declared_platform.lower())
+        if canonical_platform in normalized_selection:
+            selected.append(path)
+    return selected
 
 
 def _has_explicit_platform_selection(args: argparse.Namespace) -> bool:

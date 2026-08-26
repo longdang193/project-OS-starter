@@ -16,6 +16,11 @@ Define durable ownership boundaries for private development, reusable agent meth
 Build it from `repo_config/starter-kit-manifest.json`; do not author changes
 directly in generated output or maintain a separate sibling kit copy.
 
+When this document is shipped in the starter kit, downstream projects own their
+adopted root instructions, documentation, skills, configuration, and tests.
+Private factory maintenance, adapter generation, and starter rebuild workflows
+remain upstream concerns and are not downstream operating instructions.
+
 ### Public Repository
 
 Public repository receives curated product-facing output through publication procedure. It is not a mirror of private repository.
