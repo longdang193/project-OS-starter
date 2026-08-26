@@ -6,14 +6,14 @@ required_reads: []
 distribution_tier: starter_kit
 ---
 
-# Front-End UI Rule
+# Frontend UI Rule
 
 - Route material frontend and accessibility implementation through this rule. Route material visual or UX judgment through an explicitly selected applicable design skill. When `impeccable` is explicitly selected, use it for its frontend design scope and do not additionally invoke `ui-ux-pro-max` or `skill-distinctive-frontend-design` for the same design decision unless the user requests an independent second review or the scopes are materially different. When no design skill is explicitly selected, preserve existing frontend skill eligibility and routing behavior, including `ui-ux-pro-max` when available and applicable. Existing project design-system sources remain canonical; do not persist a second design-system SSOT without explicit approval.
 - `impeccable` is explicitly selected only when the user directly invokes or requests it, or an approved specification, plan, or current bounded task contract names it as a required skill. Installation, discovery, availability, and generic applicability do not select it.
 - Impeccable is a design method, not repository authority. Project intent, approved behavior, design-system sources, component and state ownership, integration contracts, accessibility requirements, tests, measured performance claims, and final verification remain owned by their existing Project OS sources.
 - Do not create or update `PRODUCT.md`, `DESIGN.md`, or persistent Impeccable-managed state in the starter workflow unless a separate integration decision assigns an owner, lifecycle, and cleanup/update contract. Hooks remain opt-in integration decisions.
 - Impeccable may assist with frontend optimization, but measured performance claims and acceptance evidence remain owned by `skill-performance-optimization`.
-- Skip skill invocation for copy-only edits, mechanical selector changes, or isolated nonvisual front-end logic.
+- Skip skill invocation for copy-only edits, mechanical selector changes, or isolated nonvisual frontend logic.
 - Prefer intrinsic, relational, and bounded layout over fixed coordinates, magic offsets, fixed heights on text-bearing containers, and duplicated calculations. Use Grid, Flexbox, `gap`, `minmax()`, `clamp()`, `auto`, `fr`, `aspect-ratio`, and wrapping where they express the relationship directly.
 - Declare each layout relationship once. Parents own child arrangement; children own internal layout and behavior. Reuse existing components, semantic tokens, typography, spacing, icon family, and interaction patterns, but do not create abstractions or tokens for one-off values.
 - Design components to reflow in narrow containers and under long, localized, missing, or zoomed content. Use container queries when behavior depends on container size; use media queries when behavior depends on viewport or device capability.

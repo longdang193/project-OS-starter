@@ -75,6 +75,7 @@ def make_manifest(repo_root: Path) -> Path:
                 "CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
+                "docs/operating_system/tooling/runtime-tool-resolution.md",
                 "requirements.txt",
                 "docs/superpowers/plans",
             ],
@@ -134,6 +135,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(repo_root / "docs" / "operating_system" / "governance" / "repo-governance.md", "# governance\n")
+    write_text(repo_root / "docs" / "operating_system" / "tooling" / "runtime-tool-resolution.md", "# runtime resolution\n")
     write_text(repo_root / "docs" / "operating_system" / "runtime" / "internal.md", "omit me\n")
     write_text(repo_root / "docs" / "operating_system" / "procedures" / "frontend-backend-integration-mcp-setup.md", "provider setup\n")
     write_text(repo_root / "docs" / "operating_system" / "procedures" / "starter-kit-procedure.md", "factory procedure\n")
@@ -157,6 +159,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     assert (kit_root / "CLAUDE.md").exists()
     assert (kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md").exists()
     assert (kit_root / "repo_config" / "planning_artifact_schema.yaml").exists()
+    assert (kit_root / "docs" / "operating_system" / "tooling" / "runtime-tool-resolution.md").exists()
     assert (kit_root / "requirements.txt").exists()
     assert (kit_root / "docs" / "superpowers" / "plans").is_dir()
     assert not (kit_root / "docs" / "operating_system" / "runtime").exists()
@@ -239,6 +242,7 @@ def test_build_rewrites_root_headers_and_preserves_instruction_bodies(tmp_path: 
     write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(repo_root / "docs" / "operating_system" / "governance" / "repo-governance.md", "# governance\n")
+    write_text(repo_root / "docs" / "operating_system" / "tooling" / "runtime-tool-resolution.md", "# runtime resolution\n")
     manifest_path = make_manifest(repo_root)
 
     BUILD.build_starter_kit(repo_root=repo_root, manifest_path=manifest_path, output_root=repo_root / "out")

@@ -15,6 +15,9 @@ targets:
   - .agents/skills/skill-requesting-code-review/SKILL.md
   - .agents/skills/skill-requesting-code-review/code-reviewer.md
   - .agents/skills/skill-verification-before-completion/SKILL.md
+  - .agents/skills/skill-subagent-driven-development/implementer-prompt.md
+  - .agents/skills/skill-subagent-driven-development/task-reviewer-prompt.md
+  - .agents/skills/skill-brainstorming/spec-document-reviewer-prompt.md
   - tests/test_starter_lifecycle_contract.py
   - generated_agents
   - generated_exports/project-OS-starter-kit
@@ -24,9 +27,10 @@ targets:
 
 ## Execution Evidence
 
-- Result: `verified` on August 26, 2026 at `d4405e8a42352bd958a55eb61f5754a7130baaa8`.
-- Fresh proof: lifecycle and runtime contract tests passed; repository validators, adapter sync check, Starter Kit build/validation, and `git diff --check` passed.
-- Stale-term scan: remaining `general-purpose` text is confined to legacy adapter/reference prompt templates and historical plan wording; reviewer routing uses supported profiles and no rejected lifecycle artifact is active.
+- Reconciliation state: verified at base `HEAD` `01ff90918e0c93c5bfe51ad0bc67ca14c57d2d75` plus current working-tree patch; committed-content equivalence is not claimed.
+- Previous completion record was reopened because active prompt and evidence contracts had drifted after `01ff909`.
+- Co-executed scope: runtime-resolution plan owns `repo_config/starter-kit-manifest.json`; lifecycle verification must not reject that authorized change as unrelated.
+- Fresh proof: repository validators passed; adapter sync check passed; Starter Kit build and validation passed; focused lifecycle/runtime suites passed (`85 passed` across the final validation set); `git diff --check` passed.
 
 ## Goal
 
@@ -48,7 +52,7 @@ Specification drafting, plan writing, full-stack integration, code review, and c
 
 ### Generated and shipped surfaces remain aligned
 
-Canonical docs and skills regenerate provider projections, pass repository contract checks, rebuild the consume-only Starter Kit, and pass focused regression tests. No manifest change or new lifecycle artifact type is introduced.
+Canonical docs and skills regenerate provider projections, pass repository contract checks, rebuild the consume-only Starter Kit, and pass focused regression tests. No new lifecycle artifact type is introduced; authorized manifest changes belong to the runtime-resolution plan.
 
 ## Execution Approach
 
@@ -333,7 +337,7 @@ This plan clarifies lifecycle ownership only. A separate runtime tool-resolution
 - Expected: repository contract validation, focused tests, generated checks, and whitespace validation pass; final diff contains only approved canonical and generated outputs.
 
 **Exit Criteria:**
-- Fresh evidence proves lifecycle ownership, template boundaries, skill routing, generated projections, and Starter Kit output are aligned; plan remains `proposed` until execution and final verification occur.
+- Fresh evidence proves lifecycle ownership, template boundaries, skill routing, generated projections, and Starter Kit output are aligned; plan is `completed`.
 
 ## Verification
 

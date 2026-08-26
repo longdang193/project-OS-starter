@@ -185,7 +185,7 @@ Detailed policy: `docs/operating_system/rules/agent-memory-rule.md`.
 
 For every material backend behavior change, use `skill-backend-verification` whether or not a frontend exists. Prove behavior through direct boundary tests, important success and failure paths, final state or side effects, and fresh automated output. Add contract, real-dependency, representative-operation trace, or performance evidence only when applicable. Frontend and browser evidence never substitute for backend proof.
 
-## Front-End Work
+## Frontend Work
 
 For material frontend or accessibility implementation, follow `docs/operating_system/rules/frontend-ui-rule.md`. For material visual or UX judgment, follow the explicitly selected applicable design skill. Explicitly selected `impeccable` satisfies its overlapping visual/UX-design scope; do not invoke overlapping design skills for another opinion by default. Existing project design-system sources remain canonical. Reuse existing components and design tokens, prefer semantic native controls, and verify affected states, keyboard access, focus, contrast, responsive behavior, reduced motion, and supported themes.
 

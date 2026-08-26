@@ -29,6 +29,9 @@ Capability labels describe needs; they are not a fixed enum or provider registry
 Provider names are runtime facts or explicit method choices, not architecture.
 Keep named providers only for an explicitly selected method, committed repository
 dependency, or required security/runtime boundary.
+Platform adapter maps under `skill-using-superpowers/references/` are explicit
+core-runtime bindings, not generic provider defaults; preserve them only when
+their adapter contract requires them.
 
 ## Evidence Authority
 

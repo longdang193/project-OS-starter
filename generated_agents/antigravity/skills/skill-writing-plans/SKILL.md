@@ -101,13 +101,14 @@ When a spec exists:
 - note open questions that block task design
 - record which requirements need code, configuration, tests, docs, migration, generated refresh, or operational proof
 
-### 3. Inspect Current Repository Truth
+### 3. Reconcile Approved Scope With Repository Truth
 
 - locate exact files, symbols, callers, tests, commands, and generated consumers
 - distinguish canonical inputs from generated outputs
 - inspect existing helpers and patterns before proposing new code
 - identify unrelated working-tree changes that execution must preserve
 - confirm deletion targets have no active consumer
+- for cross-boundary work, map frontend, backend, and shared-contract owners plus applicable evidence; omit non-applicable boundary classes
 
 ### 4. Define Implementation Outcomes
 

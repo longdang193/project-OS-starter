@@ -13,6 +13,7 @@ targets:
   - docs/operating_system/governance/precedence.md
   - docs/operating_system/rules/frontend-ui-rule.md
   - docs/operating_system/rules/frontend-backend-integration-rule.md
+  - docs/operating_system/rules/prompt-cache-contract-rule.md
   - .agents/skills/skill-brainstorming/SKILL.md
   - .agents/skills/skill-distinctive-frontend-design/SKILL.md
   - .agents/skills/skill-frontend-component-engineering/SKILL.md
@@ -43,9 +44,10 @@ targets:
 
 ## Execution Evidence
 
-- Result: `verified` on August 26, 2026 at `d4405e8a42352bd958a55eb61f5754a7130baaa8`.
-- Fresh proof: runtime and lifecycle contract tests passed; repository validators, adapter sync check, Starter Kit build/validation, provider-neutral Starter Kit scan, and `git diff --check` passed.
-- Independent xhigh review initially found missed generic provider references; those canonical sources were patched, regenerated, and revalidated. No required evidence was downgraded.
+- Reconciliation state: verified at base `HEAD` `01ff90918e0c93c5bfe51ad0bc67ca14c57d2d75` plus current working-tree patch; committed-content equivalence is not claimed.
+- Independent review found active prompt drift, stale runtime wording, weak Starter Kit enforcement, and a vendor blacklist test; those issues are in this bounded reconciliation patch.
+- Core-runtime adapter maps remain explicit adapter bindings, not generic provider defaults.
+- Fresh proof: repository validators passed; adapter sync check passed; Starter Kit build and validation passed; focused lifecycle/runtime suites passed (`85 passed` across the final validation set); `git diff --check` passed.
 
 ## Goal
 

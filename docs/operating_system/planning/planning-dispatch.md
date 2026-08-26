@@ -29,20 +29,22 @@ Use these gates only when their trigger applies:
 
 1. Discovery or research when uncertainty exists.
 2. Prototype and iterate when UX or behavior needs validation.
-3. Design review and UX or behavior approval when material design judgment is required.
-4. Detailed specification when durable behavior or contracts need definition.
-5. Repository reconciliation when current source, tests, contracts, or configuration must be checked against approved scope.
-6. Implementation plan when work needs multiple steps, dependencies, or handoffs.
-7. Implementation.
-8. Integration when a boundary is crossed.
-9. Applicable frontend, backend, browser, or end-to-end verification.
-10. Independent review when risk or policy requires it.
-11. Project-owned release/deploy and observe when applicable.
+3. Design review when material design judgment is required.
+4. UX or behavior approval when approval is required.
+5. Detailed specification when durable behavior or contracts need definition.
+6. Repository reconciliation when current source, tests, contracts, or configuration must be checked against approved scope.
+7. Implementation plan when work needs multiple steps, dependencies, or handoffs.
+8. Implementation.
+9. Integration when a boundary is crossed.
+10. Applicable frontend, backend, browser, or end-to-end verification.
+11. Independent review when risk or policy requires it.
+
+Downstream project-owned handoff: Release/Deploy → Observe, when applicable.
 
 Design-clear reversible work may go directly to execution. Material backend
 behavior requires direct backend proof. End-to-end verification applies only to
 cross-boundary journeys. Release/deploy and observe remain project-owned and
-optional; they are not generic lifecycle phases.
+optional; they are not generic lifecycle gates.
 
 ## Artifact Ownership
 

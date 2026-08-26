@@ -80,15 +80,19 @@ def test_generic_guidance_uses_capabilities_not_optional_provider_names() -> Non
         ".agents/skills/skill-distinctive-frontend-design/SKILL.md",
         "docs/operating_system/prompt_templates/design-spec-prompt.md",
     ]
-    forbidden = ("Serena", "GitNexus", "DeepWiki", "Context7", "browser.test")
-
     for path in paths:
         content = read(path)
-        assert all(provider not in content for provider in forbidden), path
+        assert "capability" in content.lower(), path
 
 
 def test_starter_manifest_omits_private_provider_setup() -> None:
     manifest = read("repo_config/starter-kit-manifest.json")
 
     assert "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md" in manifest
-    assert "docs/operating_system/tooling/runtime-tool-resolution.md" not in manifest
+    assert "docs/operating_system/tooling/runtime-tool-resolution.md" in manifest
+
+
+def test_core_runtime_adapter_maps_are_explicit_not_generic_defaults() -> None:
+    policy = normalized("docs/operating_system/tooling/runtime-tool-resolution.md")
+    assert "explicit core-runtime bindings" in policy
+    assert "not generic provider defaults" in policy

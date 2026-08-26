@@ -28,6 +28,13 @@ Subagent (controller-selected profile: low | normal | high | xhigh):
 
     [PLAN_OR_REQUIREMENTS]
 
+    ## Review Context
+
+    **Approved specification or scope:** [SPECIFICATION_OR_APPROVED_SCOPE]
+    **Prototype reference:** [PROTOTYPE_REFERENCE]
+    **Applicable evidence:** [EVIDENCE_CONTEXT]
+    **Approved deviations:** [APPROVED_DEVIATIONS]
+
     ## Git Range to Review
 
     **Base:** [BASE_SHA]

@@ -88,9 +88,7 @@ applicable rows; do not add administrative `Not applicable` rows.
 
 | Boundary | Owner or canonical contract | Required evidence |
 | --- | --- | --- |
-| frontend | <owner or `Not applicable: <reason>`> | <applicable evidence> |
-| backend | <owner or `Not applicable: <reason>`> | <applicable evidence> |
-| shared contract | <owner or `Not applicable: <reason>`> | <applicable evidence> |
+| <frontend, backend, or shared contract> | <owner or canonical contract> | <applicable evidence> |
 
 Prototype references remain validation evidence. Exact files, component
 decomposition, sequencing, commands, rollout steps, and implementation

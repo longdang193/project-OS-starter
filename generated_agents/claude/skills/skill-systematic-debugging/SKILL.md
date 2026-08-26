@@ -93,7 +93,7 @@ You MUST complete each phase before proceeding to the next.
    - Does it happen every time?
    - If not reproducible → gather more data, don't guess
    - For browser-visible failures, use available browser-interaction capability when available to reproduce repeatable flows and capture semantic state
-   - `browser.diagnose` is not available yet; use existing browser-test output and native logs before adding a new diagnostic path
+   - If no suitable browser-diagnostic capability is currently available, use existing browser evidence and native logs before adding a new diagnostic path; otherwise resolve the needed capability through `docs/operating_system/tooling/runtime-tool-resolution.md`
    - Browser replay is diagnostic evidence, not committed regression coverage; preserve the failure in the existing browser test suite before fixing when practical
 
 3. **Check Failure Memory When The Issue Looks Familiar**
