@@ -8,7 +8,11 @@ distribution_tier: starter_kit
 
 # Front-End UI Rule
 
-- Use `ui-ux-pro-max` when available for new screens, substantial restyling, responsive layout, interaction design, accessibility remediation, or visual critique when declared target platform fits skill scope. Existing project design-system sources remain canonical; do not persist a second design-system SSOT without explicit approval.
+- For material visual or UX work, honor an explicitly selected applicable design skill. When `impeccable` is explicitly selected, use it for its frontend design scope and do not additionally invoke `ui-ux-pro-max` or `skill-distinctive-frontend-design` for the same design decision unless the user requests an independent second review or the scopes are materially different. When no design skill is explicitly selected, preserve existing frontend skill eligibility and routing behavior, including `ui-ux-pro-max` when available and applicable. Existing project design-system sources remain canonical; do not persist a second design-system SSOT without explicit approval.
+- `impeccable` is explicitly selected only when the user directly invokes or requests it, or an approved specification, plan, or current bounded task contract names it as a required skill. Installation, discovery, availability, and generic applicability do not select it.
+- Impeccable is a design method, not repository authority. Project intent, approved behavior, design-system sources, component and state ownership, integration contracts, accessibility requirements, tests, measured performance claims, and final verification remain owned by their existing Project OS sources.
+- Impeccable must not create, update, or promote `PRODUCT.md`, `DESIGN.md`, or other persistent Impeccable-managed tool state as repository authority unless a separate integration decision assigns that ownership. This includes workflows such as `init` and `document`. Hooks remain opt-in integration decisions.
+- Impeccable may assist with frontend optimization, but measured performance claims and acceptance evidence remain owned by `skill-performance-optimization`.
 - Skip skill invocation for copy-only edits, mechanical selector changes, or isolated nonvisual front-end logic.
 - Prefer intrinsic, relational, and bounded layout over fixed coordinates, magic offsets, fixed heights on text-bearing containers, and duplicated calculations. Use Grid, Flexbox, `gap`, `minmax()`, `clamp()`, `auto`, `fr`, `aspect-ratio`, and wrapping where they express the relationship directly.
 - Declare each layout relationship once. Parents own child arrangement; children own internal layout and behavior. Reuse existing components, semantic tokens, typography, spacing, icon family, and interaction patterns, but do not create abstractions or tokens for one-off values.
@@ -24,5 +28,5 @@ distribution_tier: starter_kit
 - When `browser.test` is available, use it for repeatable navigation, forms, accessibility snapshots, viewport checks, and screenshots. `browser.diagnose` is not available yet. Browser evidence never replaces committed regression tests.
 - Use Context7 only when active executor exposes it and pinned project sources do not answer version-specific UI framework or accessibility-library behavior. Under DeepAgents, use validated Codex handoff facts.
 - Browser MCP sessions provide live evidence, not durable regression coverage. Preserve important behavior in the existing Playwright Test or end-to-end suite when one exists; do not add a new test framework solely for this rule.
-- Keep detailed style catalogs and checklists inside `ui-ux-pro-max`; do not duplicate them in repository rules or root instructions.
+- Keep detailed command playbooks, style catalogs, and checklists inside the selected design skill; do not duplicate them in repository rules or root instructions.
 - If `ui-ux-pro-max` is unavailable, follow this rule and existing product design system. Do not block safe local fix.

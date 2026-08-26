@@ -8,7 +8,7 @@ distribution_tier: starter_kit
 
 ## Role
 
-Give approved frontend requirements one coherent, recognizable art direction. This skill owns aesthetic commitment; `ui-ux-pro-max` and `docs/operating_system/rules/frontend-ui-rule.md` own UX, accessibility, responsiveness, states, and rendered verification. Existing project design-system sources own durable primitives.
+Give approved frontend requirements one coherent, recognizable art direction. This skill owns aesthetic commitment when selected; `docs/operating_system/rules/frontend-ui-rule.md` owns shared UX, accessibility, responsiveness, states, and rendered-verification routing. Existing project design-system sources own durable primitives.
 
 ## When to Use
 
@@ -23,7 +23,7 @@ Skip for copy changes, mechanical CSS fixes, isolated frontend logic, or product
 ## Core Method
 
 1. Read product purpose, audience, content hierarchy, existing components, and approved design constraints.
-2. Use `ui-ux-pro-max` when declared target platform fits its scope and style, palette, typography, responsive behavior, interaction design, or accessibility guidance remains unresolved. Do not create or persist a second design-system SSOT without approval.
+2. Do not invoke another overlapping frontend design skill merely because it is available. If `impeccable` is explicitly selected, defer overlapping visual/UX guidance to it; otherwise resolve this skill's aesthetic direction under `docs/operating_system/rules/frontend-ui-rule.md`. Do not create or persist a second design-system SSOT without approval.
 3. State one visual concept in one sentence. Reject directions that only say "modern", "clean", or "premium".
 4. Choose one signature device: typography, composition, navigation, illustration, texture, data treatment, or motion.
 5. Reuse existing components and tokens. Change primitives only when the concept cannot work without it.

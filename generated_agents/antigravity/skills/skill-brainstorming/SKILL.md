@@ -28,7 +28,7 @@ This skill produces design artifacts only.
 
 ## Conditional References
 
-- Use `ui-ux-pro-max` when material visual direction, interaction design, responsive behavior, or accessibility behavior is unresolved; skip it for text-only design questions.
+- For unresolved material visual direction, interaction design, responsive behavior, or accessibility behavior, follow `docs/operating_system/rules/frontend-ui-rule.md`. If `impeccable` is explicitly selected, use it without also invoking overlapping design skills; otherwise preserve existing `ui-ux-pro-max` eligibility. Skip design-skill invocation for text-only design questions.
 - Read `docs/operating_system/planning/planning-dispatch.md` to choose the smallest truthful planning tier.
 - Read `docs/operating_system/templates/brainstorming-detailed-report-template.md` only when user requests a saved detailed brainstorming report.
 - Read `docs/operating_system/governance/repo-governance.md` only when ownership or publication boundaries are in scope.

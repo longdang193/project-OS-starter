@@ -187,7 +187,7 @@ For every material backend behavior change, use `skill-backend-verification` whe
 
 ## Front-End Work
 
-For material UI, UX, accessibility, responsive-layout, or visual-design work, use `ui-ux-pro-max` when available and target platform fits its scope. Existing project design-system sources remain canonical. Reuse existing components and design tokens, prefer semantic native controls, and verify affected states, keyboard access, focus, contrast, responsive behavior, reduced motion, and supported themes.
+For material UI, UX, responsive-layout, or visual-design work, follow the selected applicable design skill under `docs/operating_system/rules/frontend-ui-rule.md`. Explicitly selected `impeccable` satisfies its overlapping visual/UX-design scope; do not invoke overlapping design skills for another opinion by default. Preserve existing frontend skill eligibility and routing when Impeccable is not selected. Existing project design-system sources remain canonical. Reuse existing components and design tokens, prefer semantic native controls, and verify affected states, keyboard access, focus, contrast, responsive behavior, reduced motion, and supported themes.
 
 When work crosses frontend behavior and backend contracts or routes, use `skill-full-stack-integration`. Matching `*.integration.md` notes own temporary contract-to-UI mapping, unresolved mismatches, and acceptance evidence, not transport schemas. Canonical schemas, generated clients, backend routes, and tests establish current behavior. Report conflicts and affected owners before implementation.
 

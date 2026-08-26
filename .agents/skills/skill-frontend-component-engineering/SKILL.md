@@ -9,7 +9,7 @@ distribution_tier: starter_kit
 
 ## Role
 
-Implement approved UI behavior using smallest component and state structure with one owner per fact and clear failure behavior. Visual direction, accessibility, responsive layout, and rendered evidence remain in `docs/operating_system/rules/frontend-ui-rule.md` and `skill-distinctive-frontend-design`.
+Implement approved UI behavior using smallest component and state structure with one owner per fact and clear failure behavior. Visual direction, accessibility, responsive layout, and rendered evidence remain in `docs/operating_system/rules/frontend-ui-rule.md` and the selected applicable design skill.
 
 ## When To Use
 
