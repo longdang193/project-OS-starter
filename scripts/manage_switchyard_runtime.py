@@ -41,7 +41,6 @@ SUPPORTED_DECISION_SOURCES = {
 @dataclass(frozen=True)
 class RoutingPolicy:
     policy_version: int
-    switchyard_min_version: str
     efficient_profile: str
     capable_profile: str
     route_id: str
@@ -49,7 +48,6 @@ class RoutingPolicy:
     picker: str
     confidence_threshold: float
     recent_turn_window: int
-    routing_log_fields: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -93,7 +91,6 @@ def load_routing_policy(path: Path) -> RoutingPolicy:
     payload = _load_toml(path, "routing policy")
     allowed = {
         "policy_version",
-        "switchyard_min_version",
         "efficient_profile",
         "capable_profile",
         "route_id",
@@ -101,7 +98,6 @@ def load_routing_policy(path: Path) -> RoutingPolicy:
         "picker",
         "confidence_threshold",
         "recent_turn_window",
-        "routing_log_fields",
     }
     unexpected = sorted(set(payload) - allowed)
     if unexpected:
@@ -110,7 +106,6 @@ def load_routing_policy(path: Path) -> RoutingPolicy:
     policy_version = payload.get("policy_version")
     if policy_version != 1:
         raise ValueError("Routing policy `policy_version` must be 1.")
-    switchyard_min_version = _required_string(payload, "switchyard_min_version", "Routing policy")
     efficient_profile = _required_string(payload, "efficient_profile", "Routing policy")
     capable_profile = _required_string(payload, "capable_profile", "Routing policy")
     route_id = _required_string(payload, "route_id", "Routing policy")
@@ -119,6 +114,10 @@ def load_routing_policy(path: Path) -> RoutingPolicy:
         raise ValueError("Routing policy efficient and capable profiles must differ.")
     if "low" in {efficient_profile, capable_profile}:
         raise ValueError("Routing policy cannot use `low` as an automatic endpoint.")
+    if (efficient_profile, capable_profile) != ("normal", "high"):
+        raise ValueError("Routing policy v1 automatic endpoints must be `normal` and `high`.")
+    if route_id != "auto":
+        raise ValueError("Routing policy v1 route_id must be `auto`.")
     if route_id == high_control_route_id:
         raise ValueError("Routing policy route IDs must differ.")
 
@@ -133,13 +132,8 @@ def load_routing_policy(path: Path) -> RoutingPolicy:
     recent_window = payload.get("recent_turn_window")
     if isinstance(recent_window, bool) or not isinstance(recent_window, int) or recent_window < 1:
         raise ValueError("Routing policy `recent_turn_window` must be a positive integer.")
-    fields = payload.get("routing_log_fields")
-    if not isinstance(fields, list) or tuple(fields) != REQUIRED_LOG_FIELDS:
-        raise ValueError("Routing policy routing-log fields do not match the v1 contract.")
-
     return RoutingPolicy(
         policy_version=1,
-        switchyard_min_version=switchyard_min_version,
         efficient_profile=efficient_profile,
         capable_profile=capable_profile,
         route_id=route_id,
@@ -147,7 +141,6 @@ def load_routing_policy(path: Path) -> RoutingPolicy:
         picker=picker,
         confidence_threshold=float(threshold),
         recent_turn_window=recent_window,
-        routing_log_fields=REQUIRED_LOG_FIELDS,
     )
 
 
@@ -229,6 +222,8 @@ def validate_static_contract(
         raise ValueError("Automatic endpoint profiles must use the same model provider.")
     if efficient.model == capable.model:
         raise ValueError("Automatic endpoint profiles must use different model IDs.")
+    if efficient.rank >= capable.rank:
+        raise ValueError("Automatic endpoint ranks must increase from efficient to capable.")
     return efficient, capable
 
 

@@ -16,34 +16,46 @@ sys.modules[SPEC.name] = MANAGER
 SPEC.loader.exec_module(MANAGER)
 
 
-def write_role(root: Path, name: str, model: str, provider: str = "9router") -> None:
+def write_role(
+    root: Path,
+    name: str,
+    model: str,
+    provider: str = "9router",
+    rank: int | None = None,
+) -> None:
+    if rank is None:
+        rank = {"low": 10, "normal": 20, "high": 30, "xhigh": 40}.get(name, 20)
     agents = root / "agents"
     agents.mkdir(parents=True, exist_ok=True)
     (agents / f"{name}.toml").write_text(
         f'name = "{name}"\n'
         f'model_provider = "{provider}"\n'
         f'model = "{model}"\n'
-        "rank = 20\n"
+        f"rank = {rank}\n"
         'description = "role"\n'
         'developer_instructions = "instructions"\n',
         encoding="utf-8",
     )
 
 
-def write_manifest(root: Path, *, efficient: str = "normal", capable: str = "high") -> Path:
+def write_manifest(
+    root: Path,
+    *,
+    efficient: str = "normal",
+    capable: str = "high",
+    route_id: str = "auto",
+) -> Path:
     path = root / "repo_config" / "switchyard-routing.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "policy_version = 1\n"
-        'switchyard_min_version = "0.2.0"\n'
         f'efficient_profile = "{efficient}"\n'
         f'capable_profile = "{capable}"\n'
-        'route_id = "auto"\n'
+        f'route_id = "{route_id}"\n'
         'high_control_route_id = "switchyard/high-control"\n'
         'picker = "capable_first"\n'
         "confidence_threshold = 0.5\n"
-        "recent_turn_window = 3\n"
-        'routing_log_fields = ["route", "decision_source", "decision_score", "decision_threshold"]\n',
+        "recent_turn_window = 3\n",
         encoding="utf-8",
     )
     return path
@@ -60,8 +72,8 @@ def codex_config(provider: str = "9router", base_url: str = "http://127.0.0.1:17
 
 
 def contract(tmp_path: Path):
-    write_role(tmp_path, "normal", "combo-normal")
-    write_role(tmp_path, "high", "combo-high")
+    write_role(tmp_path, "normal", "combo-normal", rank=20)
+    write_role(tmp_path, "high", "combo-high", rank=30)
     write_role(tmp_path, "low", "combo-low")
     policy = MANAGER.load_routing_policy(write_manifest(tmp_path))
     profiles = MANAGER.load_agent_profiles(tmp_path / "agents")
@@ -83,6 +95,33 @@ def test_rejects_low_as_automatic_endpoint(tmp_path: Path) -> None:
     write_role(tmp_path, "low", "combo-low")
     with pytest.raises(ValueError, match="low"):
         MANAGER.load_routing_policy(write_manifest(tmp_path, efficient="low"))
+
+
+def test_rejects_non_v1_automatic_band(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", "combo-normal")
+    write_role(tmp_path, "high", "combo-high")
+    write_role(tmp_path, "xhigh", "combo-xhigh")
+
+    with pytest.raises(ValueError, match="normal.*high"):
+        MANAGER.load_routing_policy(write_manifest(tmp_path, capable="xhigh"))
+
+
+def test_rejects_non_auto_route_id(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", "combo-normal")
+    write_role(tmp_path, "high", "combo-high")
+
+    with pytest.raises(ValueError, match="auto"):
+        MANAGER.load_routing_policy(write_manifest(tmp_path, route_id="manual"))
+
+
+def test_rejects_inverted_rank_order(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", "combo-normal", rank=30)
+    write_role(tmp_path, "high", "combo-high", rank=20)
+    policy = MANAGER.load_routing_policy(write_manifest(tmp_path))
+    profiles = MANAGER.load_agent_profiles(tmp_path / "agents")
+
+    with pytest.raises(ValueError, match="rank"):
+        MANAGER.validate_static_contract(policy, profiles)
 
 
 def test_static_validation_does_not_require_user_local_codex_config(tmp_path: Path) -> None:
@@ -184,18 +223,3 @@ def test_read_switchyard_row_times_out_without_new_row(tmp_path: Path) -> None:
     path.write_text("{\"old\":true}\n", encoding="utf-8")
     with pytest.raises(TimeoutError, match="No complete"):
         MANAGER.read_switchyard_row(path, path.stat().st_size, timeout_seconds=0.01)
-
-
-def test_probe_runner_waits_for_durable_usage_rows() -> None:
-    runner = Path.home() / ".switchyard" / "run-probes.ps1"
-    text = runner.read_text(encoding="utf-8")
-
-    assert "function Wait-ForNineRouterUsage" in text
-    assert "Wait-ForNineRouterUsage $beforeNineRouter" in text
-
-
-def test_probe_runner_groups_usage_status_values() -> None:
-    runner = Path.home() / ".switchyard" / "run-probes.ps1"
-    text = runner.read_text(encoding="utf-8")
-
-    assert "Group-Object { $_.nine_router_usage_status }" in text

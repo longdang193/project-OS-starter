@@ -128,6 +128,11 @@ unless explicit migration uses `--replace-existing`. The generated upstream
 client names `SWITCHYARD_API_KEY` as its credential environment variable but
 never stores its value. `low` remains fixed/manual.
 
+`auto` is an opt-in runtime routing mode, not a capability or validator profile.
+Policy v1 routes only between `normal` and `high`; no cost-savings claim is
+established. The current runtime uses `capable_first` pending calibration, and
+the compatibility smoke—not the version field alone—is the compatibility gate.
+
 CI-safe (skip home-directory check):
 
 ```bash
