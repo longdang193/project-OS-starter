@@ -43,7 +43,7 @@ Read only what supports current claims:
 - active plan and completion criteria
 - linked specification acceptance criteria and preserved invariants
 - affected validators, tests, schemas, generated procedures, and maintained documentation
-- fresh rendered or browser evidence for material visual changes, following `docs/operating_system/rules/frontend-ui-rule.md` for `browser.test` selection when available and covering relevant viewports, supported themes, affected states, keyboard use, focus, contrast, and reduced motion
+- fresh rendered or browser evidence for material visual changes, following `docs/operating_system/rules/frontend-ui-rule.md` and resolving browser capability through `docs/operating_system/tooling/runtime-tool-resolution.md` when available; cover relevant viewports, supported themes, affected states, keyboard use, focus, contrast, and reduced motion
 - stateful-route evidence for in-scope deep links, refresh, browser Back/Forward, failed mutations, retry, duplicate submission prevention, and optimistic rollback
 - audit rule only when its failure trigger applies
 - publication rules only when reporting publication readiness

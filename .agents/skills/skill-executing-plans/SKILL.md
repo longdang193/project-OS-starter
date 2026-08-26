@@ -58,9 +58,13 @@ transfer Git coordination, acceptance, or required Codex-owned capabilities.
 
 Do not load every linked document or skill by default.
 
-## Code Intelligence
+## Evidence Capability
 
-Use native tools for direct file inspection and local search. Use Serena for exact symbols and references. Use `semble_codebase_search` for unknown-location discovery. Use private read-only GitNexus for broad flows or impact only when available, fresh, and materially useful. Do not query multiple tools for the same fact by default. Source and tests remain authoritative.
+State minimum capability and required evidence before selecting a tool. Prefer
+native source inspection, search, diffs, and tests; resolve unmet capabilities
+through `docs/operating_system/tooling/runtime-tool-resolution.md`. Source and
+tests remain authoritative, and unavailable optional tooling never weakens
+mandatory proof.
 
 Before modifying a shared symbol, route, validator, generator, or orchestration function, inspect its direct consumers and affected tests. Fix root cause at the narrowest shared owner.
 

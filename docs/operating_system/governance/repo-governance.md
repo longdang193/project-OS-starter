@@ -100,11 +100,14 @@ Canonical sources are edited directly; generated surfaces are regenerated.
 
 If generated output conflicts with canonical source, fix source or mapping and regenerate. Never maintain both manually.
 
-## Code Intelligence
+## Runtime Capability Resolution
 
-Use native tools for local work, Serena for exact symbols and references, `semble_codebase_search` for unknown-location code discovery, and `ast_grep_preview` for structural preview when available. Use private read-only GitNexus for broad flows or impact only when available and fresh. Do not query multiple tools for the same fact by default. Source and tests win every conflict; optional tooling never blocks safe work.
-
-Detailed policy lives in `docs/operating_system/tooling/code-intelligence-tools.md`.
+Project OS owns capability requirements, authority and data boundaries, evidence
+requirements, fallback, and stop conditions. Active executors resolve those
+capabilities to currently available tools within existing permissions. Read
+`docs/operating_system/tooling/runtime-tool-resolution.md` for the resolver
+boundary; domain tooling docs own domain-specific capability and evidence needs.
+Source, tests, contracts, and runtime systems remain authoritative.
 
 ## Agent Memory
 

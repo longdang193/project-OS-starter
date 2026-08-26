@@ -1,8 +1,6 @@
 ---
 name: skill-writing-plans
 description: Use when an approved specification or direct approved scope needs an executable multi-step implementation plan.
-required_reads:
-- docs/operating_system/tooling/code-intelligence-tools.md
 distribution_tier: starter_kit
 ---
 
@@ -54,7 +52,7 @@ stop and use `skill-spec-drafting`.
 - Read `docs/operating_system/rules/git-tracked-coordination-rule.md` when
   execution needs durable multi-task coordination or recovery.
 - Read governance only when ownership, generation, publication, or repository boundaries affect execution.
-- Use native tools for local file mapping, Serena for exact symbols and references, `semble_codebase_search` for unknown-location discovery, and private read-only GitNexus for broad flow or impact only when available, fresh, and materially useful. Do not query multiple tools for the same fact by default.
+- State minimum capability and required evidence before selecting a tool. Prefer native tools for local file mapping and source inspection; resolve unmet capabilities through `docs/operating_system/tooling/runtime-tool-resolution.md`. Do not query multiple tools for the same fact by default.
 - Read related execution skills only when the chosen execution approach requires them.
 - Name the selected applicable design skill only for tasks requiring material visual or interaction judgment, and include rendered viewport, theme, and accessibility proof for those tasks.
 - Name `skill-performance-optimization` only for explicit performance requirements or measured regressions. Performance tasks must identify baseline command or evidence source, representative workload and environment, target metric, threshold owner, and regression proof.

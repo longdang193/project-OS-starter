@@ -31,6 +31,8 @@
     "tests/test_validate_agent_metadata_schema.py",
     "tests/test_validate_learning_materials_format.py",
     "tests/test_validate_planning_lifecycle.py",
+    "tests/test_starter_lifecycle_contract.py",
+    "tests/test_runtime_tool_resolution_contract.py",
     "tests/test_validate_repo_config.py",
     "tests/test_dcode_project.py",
     "tests/test_validate_template_required_sections.py"
@@ -71,6 +73,7 @@
     "docs/operating_system/manifest.yaml",
     "docs/operating_system/procedures/runtime-adapter-procedure.md",
     "docs/operating_system/procedures/starter-kit-procedure.md",
+    "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md",
     "docs/operating_system/templates/agents/root-AGENTS.template.md",
     "docs/operating_system/runtime",
     "docs/operating_system/prompt_templates/runtime-deploy-and-verify-prompt.md"

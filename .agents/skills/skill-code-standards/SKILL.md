@@ -42,7 +42,10 @@ When repository convention conflicts with generic advice, preserve repository co
 
 ### 1. Read Existing Contracts
 
-When compatibility depends on an unfamiliar external GitHub repository, consult `docs/operating_system/tooling/code-intelligence-tools.md` before using DeepWiki for advisory orientation. Pinned source remains authoritative.
+When compatibility depends on an unfamiliar external GitHub repository, resolve
+an external-repository evidence capability through
+`docs/operating_system/tooling/runtime-tool-resolution.md`. Pinned source
+remains authoritative.
 
 Before editing:
 

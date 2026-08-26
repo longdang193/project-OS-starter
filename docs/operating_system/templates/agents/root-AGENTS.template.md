@@ -183,16 +183,25 @@ For material frontend or accessibility implementation, follow `docs/operating_sy
 
 When work crosses frontend behavior and backend contracts or routes, use `skill-full-stack-integration`. Matching `*.integration.md` notes own temporary contract-to-UI mapping, unresolved mismatches, and acceptance evidence, not transport schemas. Canonical schemas, generated clients, backend routes, and tests establish current behavior. Report conflicts and affected owners before implementation.
 
-When `browser.test` is available, use it for repeatable user flows, accessibility snapshots, viewport checks, and screenshots. `browser.diagnose` is not available yet. Browser evidence does not replace committed regression tests.
+When browser-interaction capability is available, use it for repeatable user
+flows, accessibility snapshots, viewport checks, and screenshots. Browser
+evidence does not replace committed regression tests. Resolve capability through
+`docs/operating_system/tooling/runtime-tool-resolution.md`.
 
 Skip skill for copy-only edits, mechanical selector changes, or isolated nonvisual logic. If unavailable, follow existing product design system and `docs/operating_system/rules/frontend-ui-rule.md`; do not block safe local fix.
 
-## Code Intelligence
+## Runtime Capability Resolution
 
-Use native code tools for current files and small local changes, Serena for exact symbols and references, `semble_codebase_search` for unknown-location code discovery, and `ast_grep_preview` for structural preview when available. Use private read-only GitNexus only when available and broad flow or impact remains unknown. Use DeepWiki only for advisory orientation in unfamiliar external GitHub repositories. Do not query multiple tools for the same fact by default. Source and tests win every conflict; unavailable tools never block safe source-first work.
+Project OS owns capability requirements, authority and data boundaries, evidence
+requirements, fallback, and stop conditions. Active executor resolves required
+capabilities to currently available tools within existing permissions.
 
-- Serena runs with `--context codex --project-from-cwd`, `no-memories`, and `no-onboarding`. Never commit `.serena/` state.
-- GitNexus remains optional and private-only. Limit use to `query`, `context`, `impact`, and `api_impact`; check freshness before high-trust impact or refactor use; never make refresh a universal completion gate.
-- For DeepWiki, use `read_wiki_structure` before focused `ask_question`; use `read_wiki_contents` only when full generated documentation is required. Hand off to local source and Serena before implementation, and to GitNexus before broad impact or refactoring decisions. Treat unknown-freshness output as advisory and verify against pinned upstream source.
-- Tests and CI own enforcement. `docs/architecture.md` and ADRs own durable architecture intent.
-- Detailed policy: `docs/operating_system/tooling/code-intelligence-tools.md`.
+Prefer native or configured capabilities. Discover tools only for unmet
+capabilities. Resolve one primary provider per capability question, smoke-check
+unfamiliar providers, and never downgrade mandatory evidence to source
+inspection. Source, tests, contracts, and runtime systems remain authoritative.
+
+Do not install, connect, authenticate, or widen data access without approval.
+Do not assume provider names, MCP availability, permission settings, or result
+shapes across executors. Read `docs/operating_system/tooling/runtime-tool-resolution.md`
+when runtime capability selection is material.

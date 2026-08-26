@@ -1,8 +1,6 @@
 ---
 name: skill-wayfinding
 description: Use only when the user explicitly invokes wayfinding for a known destination with materially unresolved dependent decisions expected to span multiple sessions.
-required_reads:
-- docs/operating_system/tooling/code-intelligence-tools.md
 distribution_tier: starter_kit
 ---
 

@@ -83,6 +83,19 @@ Use this template after behavior and design direction are approved. Promote an e
 
 When relevant define inputs, outputs, identity, data grain, schemas, state transitions, defaults, validation, errors, retries, idempotency, ordering, cancellation, fallback, and boundary conversions.
 
+When material, add this optional block inside this section. Include only
+applicable rows; do not add administrative `Not applicable` rows.
+
+| Boundary | Owner or canonical contract | Required evidence |
+| --- | --- | --- |
+| frontend | <owner or `Not applicable: <reason>`> | <applicable evidence> |
+| backend | <owner or `Not applicable: <reason>`> | <applicable evidence> |
+| shared contract | <owner or `Not applicable: <reason>`> | <applicable evidence> |
+
+Prototype references remain validation evidence. Exact files, component
+decomposition, sequencing, commands, rollout steps, and implementation
+mechanisms belong in the implementation plan or source.
+
 ### Constraints and Alternatives
 
 - constraint: <design, operational, compatibility, security, accessibility, or platform constraint>

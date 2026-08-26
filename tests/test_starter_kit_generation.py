@@ -94,6 +94,8 @@ def make_manifest(repo_root: Path) -> Path:
                 "scripts/dcode_project.py",
                 "scripts/setup_deepagents_runtime.ps1",
                 "tests/test_dcode_project.py",
+                "tests/test_starter_lifecycle_contract.py",
+                "tests/test_runtime_tool_resolution_contract.py",
                 "generated_agents/antigravity/GEMINI.md",
                 "generated_agents/claude/CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
@@ -103,6 +105,7 @@ def make_manifest(repo_root: Path) -> Path:
             ],
             "omitPaths": [
                 "docs/operating_system/runtime",
+                "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md",
                 "docs/operating_system/procedures/starter-kit-procedure.md",
                 "docs/operating_system/templates/agents/root-AGENTS.template.md",
             ],
@@ -122,6 +125,8 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     write_text(repo_root / "scripts" / "dcode_project.py", "print('launcher')\n")
     write_text(repo_root / "scripts" / "setup_deepagents_runtime.ps1", "Write-Output launcher\n")
     write_text(repo_root / "tests" / "test_dcode_project.py", "# launcher test\n")
+    write_text(repo_root / "tests" / "test_starter_lifecycle_contract.py", "# lifecycle test\n")
+    write_text(repo_root / "tests" / "test_runtime_tool_resolution_contract.py", "# runtime test\n")
     write_text(repo_root / ".gitignore", ".env\n")
     write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "antigravity" / "GEMINI.md", "# gemini\n")
@@ -130,6 +135,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     write_text(repo_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
     write_text(repo_root / "docs" / "operating_system" / "governance" / "repo-governance.md", "# governance\n")
     write_text(repo_root / "docs" / "operating_system" / "runtime" / "internal.md", "omit me\n")
+    write_text(repo_root / "docs" / "operating_system" / "procedures" / "frontend-backend-integration-mcp-setup.md", "provider setup\n")
     write_text(repo_root / "docs" / "operating_system" / "procedures" / "starter-kit-procedure.md", "factory procedure\n")
     write_text(repo_root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md", "factory template\n")
     write_text(repo_root / ".codex" / "rules" / "bad.rules", "forbidden\n")
@@ -154,6 +160,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     assert (kit_root / "requirements.txt").exists()
     assert (kit_root / "docs" / "superpowers" / "plans").is_dir()
     assert not (kit_root / "docs" / "operating_system" / "runtime").exists()
+    assert not (kit_root / "docs" / "operating_system" / "procedures" / "frontend-backend-integration-mcp-setup.md").exists()
     assert not (kit_root / "docs" / "operating_system" / "procedures" / "starter-kit-procedure.md").exists()
     assert not (kit_root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md").exists()
     assert not (kit_root / ".codex").exists()
@@ -225,6 +232,8 @@ def test_build_rewrites_root_headers_and_preserves_instruction_bodies(tmp_path: 
     write_text(repo_root / "scripts" / "dcode_project.py", "print('launcher')\n")
     write_text(repo_root / "scripts" / "setup_deepagents_runtime.ps1", "Write-Output launcher\n")
     write_text(repo_root / "tests" / "test_dcode_project.py", "# launcher test\n")
+    write_text(repo_root / "tests" / "test_starter_lifecycle_contract.py", "# lifecycle test\n")
+    write_text(repo_root / "tests" / "test_runtime_tool_resolution_contract.py", "# runtime test\n")
     write_text(repo_root / ".gitignore", ".env\n")
     write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
@@ -269,6 +278,8 @@ def test_build_starter_kit_fails_when_generated_root_instruction_missing(tmp_pat
     write_text(repo_root / "scripts" / "dcode_project.py", "print('launcher')\n")
     write_text(repo_root / "scripts" / "setup_deepagents_runtime.ps1", "Write-Output launcher\n")
     write_text(repo_root / "tests" / "test_dcode_project.py", "# launcher test\n")
+    write_text(repo_root / "tests" / "test_starter_lifecycle_contract.py", "# lifecycle test\n")
+    write_text(repo_root / "tests" / "test_runtime_tool_resolution_contract.py", "# runtime test\n")
     write_text(repo_root / ".gitignore", ".env\n")
     write_text(repo_root / "requirements.txt", "pyyaml==6.0.3\n")
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", "# claude\n")

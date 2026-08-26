@@ -96,9 +96,12 @@ Use official MCP Memory Server for verified reusable project knowledge. See `doc
 
 Memory data is private local state outside repository. Source code, tests, ADRs, current governance, and explicit instructions remain authoritative.
 
-## Optional Documentation MCP
+## Optional Documentation Capability
 
-Optional Context7 supports version-specific external-library research when pinned local sources do not answer. It is advisory only. See `docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md` for private Codex setup, smoke test, fallback, and removal.
+Version-specific external-library research is optional, advisory, and resolved
+by the active executor only when pinned local sources do not answer. See
+`docs/operating_system/tooling/runtime-tool-resolution.md` for capability,
+evidence, permission, and fallback boundaries.
 
 ## Customize First
 
