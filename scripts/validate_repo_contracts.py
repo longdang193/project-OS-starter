@@ -161,6 +161,17 @@ def run_step(command: list[str], *, cwd: Path) -> int:
     return completed.returncode
 
 
+def ensure_pytest_basetemp(command: list[str], *, cwd: Path) -> None:
+    try:
+        index = command.index("--basetemp")
+    except ValueError:
+        return
+    basetemp = Path(command[index + 1])
+    if not basetemp.is_absolute():
+        basetemp = cwd / basetemp
+    basetemp.parent.mkdir(parents=True, exist_ok=True)
+
+
 def build_subprocess_steps(
     *,
     root: Path,
@@ -467,6 +478,7 @@ def main(argv: list[str] | None = None) -> int:
         python_executable=sys.executable,
         fast=args.fast,
     ):
+        ensure_pytest_basetemp(step, cwd=root)
         status = run_step(step, cwd=root)
         if status != 0:
             return status

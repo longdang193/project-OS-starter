@@ -81,6 +81,22 @@ def test_main_propagates_subprocess_failure(monkeypatch) -> None:
     assert status == 1
 
 
+def test_main_creates_pytest_basetemp_parent(tmp_path: Path, monkeypatch) -> None:
+    basetemp = tmp_path / ".tmp-tests" / "repo-contract-pytest"
+    monkeypatch.setattr(
+        VALIDATOR,
+        "build_subprocess_steps",
+        lambda *, root, python_executable, fast: [
+            [python_executable, "-m", "pytest", "--basetemp", str(basetemp)]
+        ],
+    )
+    monkeypatch.setattr(VALIDATOR, "run_step", lambda command, cwd: 0)
+
+    assert not basetemp.parent.exists()
+    assert VALIDATOR.main(["--repo-root", str(tmp_path), "--fast"]) == 0
+    assert basetemp.parent.is_dir()
+
+
 def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
     steps = VALIDATOR.build_subprocess_steps(
         root=REPO_ROOT,
