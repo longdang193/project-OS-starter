@@ -203,21 +203,26 @@ def build_subprocess_steps(
         )
     if not fast:
         pytest_targets = [
-            "tests/test_validate_repo_config.py",
-            "tests/test_validate_planning_lifecycle.py",
-            "tests/test_validate_repo_contracts.py",
+            path
+            for path in (
+                "tests/test_validate_repo_config.py",
+                "tests/test_validate_planning_lifecycle.py",
+                "tests/test_validate_repo_contracts.py",
+            )
+            if (root / path).is_file()
         ]
-        steps.append(
-            [
-                python_executable,
-                "-m",
-                "pytest",
-                "--basetemp",
-                pytest_basetemp(".tmp-tests/repo-contract-pytest"),
-                *pytest_targets,
-                "-q",
-            ]
-        )
+        if pytest_targets:
+            steps.append(
+                [
+                    python_executable,
+                    "-m",
+                    "pytest",
+                    "--basetemp",
+                    pytest_basetemp(".tmp-tests/repo-contract-pytest"),
+                    *pytest_targets,
+                    "-q",
+                ]
+            )
     return steps
 
 
