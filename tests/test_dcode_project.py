@@ -1001,6 +1001,8 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert '--sandbox' in setup
     assert 'Tura capability probe failed' in setup
     assert 'selects DeepAgents; do not pass --executor' in setup
+    assert 'project-delegate selects Tura; do not pass --executor' in setup
+    assert 'scripts\\dcode_project.py") --executor tura @DelegateArgs' in setup
     assert 'Tura migration:' in setup
     assert 'Join-Path $HOME ".deepagents\\.mcp.json"' in setup
     assert "Direct DeepAgents MCP config detected" in setup

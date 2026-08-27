@@ -141,11 +141,29 @@ def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
     assert 'project-delegate --role <low|normal|high|xhigh> -n "<task>"' in procedure_text
     assert "Codex, DeepAgents, or Tura" in procedure_text
     assert "Coordination State and task ledger" in executing_skill
-    assert "active task ledger `Executor` value" in executing_skill
+    assert "active task ledger `Executor` and `Template Profile`\nvalues" in executing_skill
     assert "project-delegate` for" in executing_skill
+    assert "profile is `none`" in executing_skill
+    assert "active native Codex subagent capability" in executing_skill
     assert "Coordination State and task ledger" in subagent_skill
+    assert "Codex launches one bounded `dcode-project`\n  task" in subagent_skill
+    assert "## Profile Selection" in subagent_skill
+    assert "Never override the model" in subagent_skill
     assert 'cat "$(git rev-parse --show-toplevel)/.superpowers/sdd/progress.md"' not in subagent_skill
     assert "Do not create `.superpowers/sdd/progress.md`" in subagent_skill
+
+
+def test_runtime_adapter_contract_separates_executor_profile_and_auto() -> None:
+    procedure_text = (
+        ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md"
+    ).read_text(encoding="utf-8")
+
+    assert "wrapper\nrejects `--executor` and forces `--executor tura`" in procedure_text
+    assert "`auto` is eligible only for the Native Codex controller" in procedure_text
+    assert "`auto` answers which eligible fixed model endpoint to" in procedure_text
+    assert "Native Codex delegated worker" in procedure_text
+    assert "DeepAgents task or internal worker" in procedure_text
+    assert "Tura worker" in procedure_text
 
 
 def test_deepagents_internal_writers_remain_task_bounded() -> None:

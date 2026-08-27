@@ -67,12 +67,13 @@ provider endpoint, credentials, provider definition, and mutable state remain
 local. Each source role's `model_provider` must match active local Codex provider
 binding.
 
-`project-delegate` is the one bounded Native Codex-to-Tura adapter. It reuses
-the same role and handoff sources, selects Tura through user-local
-`[delegation].default_executor`, and passes one bounded task with fixed Git root,
-native `--sandbox`, and fresh session id. Tura output remains opaque JSONL plus
-exit status. `dcode-project` remains an explicit DeepAgents launcher; no
-recursive or cross-runtime fallback exists. Tura routing uses
+`project-delegate` is the one bounded Native Codex-to-Tura adapter. Its wrapper
+rejects `--executor` and forces `--executor tura`; `[delegation].default_executor`
+is only an internal launcher fallback. It reuses the same role and handoff
+sources and passes one bounded task with fixed Git root, native `--sandbox`, and
+fresh session id. Tura output remains opaque JSONL plus exit status.
+`dcode-project` remains an explicit DeepAgents launcher; no recursive or
+cross-runtime fallback exists. Tura routing uses
 `TURA_PROVIDER_CONFIG` and must remain `Tura -> LightRSI -> 9router -> provider`.
 
 For upgrade admission, run `project-delegate --role normal --print-config` and
@@ -133,12 +134,31 @@ own provider aliases and model IDs. Generated `$HOME/.switchyard/routes.toml`
 and `$CODEX_HOME/auto.config.toml` are runtime outputs; deploy refuses drift
 unless explicit migration uses `--replace-existing`. The generated upstream
 client names `SWITCHYARD_API_KEY` as its credential environment variable but
-never stores its value. `low` remains fixed/manual.
+never stores its value. `low` and `xhigh` remain fixed/manual. `normal` and
+`high` may be selected directly or serve as the endpoints underneath `auto`.
 
 `auto` is an opt-in runtime routing mode, not a capability or validator profile.
 Policy v1 routes only between `normal` and `high`; no cost-savings claim is
 established. The current runtime uses `capable_first` pending calibration, and
 the compatibility smoke—not the version field alone—is the compatibility gate.
+
+`auto` is eligible only for the Native Codex controller. It changes model
+endpoint selection inside that controller route; it never selects Codex,
+DeepAgents, or Tura and is not consumed by `dcode-project` or
+`project-delegate`. The generated `auto.config.toml` is a separate explicit
+Codex launch overlay; deploying it does not change fixed delegated-role
+bindings.
+
+| Executor or surface | Fixed profiles | `auto` |
+| --- | --- | --- |
+| Native Codex controller | `low`, `normal`, `high`, `xhigh` | yes |
+| Native Codex delegated worker | `low`, `normal`, `high`, `xhigh` | no |
+| DeepAgents task or internal worker | `low`, `normal`, `high`, `xhigh` | no |
+| Tura worker | `low`, `normal`, `high`, `xhigh` | no |
+
+Executor selection answers who executes. Fixed profile selection answers the
+bounded capability tier. `auto` answers which eligible fixed model endpoint to
+use.
 
 CI-safe (skip home-directory check):
 

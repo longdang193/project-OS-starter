@@ -109,9 +109,12 @@ Choose the smallest unblocked action from approved scope:
 5. dependent documentation or generated refresh
 6. task status update
 
-Before dispatch, read the active task ledger `Executor` value. Use direct Codex
-for `codex`, `dcode-project` for `deepagents`, and `project-delegate` for
-`tura`; do not infer executor from profile rank or task-function name.
+Before dispatch, read the active task ledger `Executor` and `Template Profile`
+values. For `codex`, execute inline lead-controller work directly when the
+profile is `none`; when a fixed profile is selected for delegated work, use the
+active native Codex subagent capability. Use `dcode-project` for `deepagents`
+and `project-delegate` for `tura`; do not infer executor from profile rank or
+task-function name, and do not let a profile select an executor.
 
 Keep exactly one local task active unless parallel execution is explicitly justified. Do not invent adjacent cleanup merely because it is nearby.
 

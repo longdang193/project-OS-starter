@@ -1,4 +1,4 @@
-"""Launch DeepAgents with local Codex binding and shared project roles."""
+"""Launch bounded delegated workers with local Codex binding and shared roles."""
 
 from __future__ import annotations
 

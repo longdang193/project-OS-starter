@@ -199,13 +199,18 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$executor = $DelegateArgs | Where-Object { $_ -eq "--executor" -or $_ -like "--executor=*" }
+if ($executor) {
+    Write-Error "project-delegate selects Tura; do not pass --executor. Use dcode-project for DeepAgents."
+    exit 2
+}
 $repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
     Write-Error "project-delegate: run inside a Git repository."
     exit 2
 }
 
-& py -3 (Join-Path $repoRoot "scripts\dcode_project.py") @DelegateArgs
+& py -3 (Join-Path $repoRoot "scripts\dcode_project.py") --executor tura @DelegateArgs
 exit $LASTEXITCODE
 '@
     Set-Content -NoNewline -Encoding utf8 (Join-Path $binRoot "project-delegate.ps1") $delegateWrapper
