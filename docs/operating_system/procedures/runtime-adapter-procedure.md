@@ -23,11 +23,11 @@ Unmarked byte-identical skills are adopted automatically; differing unmarked
 skills require `--adopt-shared-skill <name>`. `--force` remains for provider
 runtime overwrite protection and is not shared-skill adoption authorization.
 
-`agents/*.toml` are canonical delegated-role templates. They own delegated
+`agents/*.toml` is the canonical agent-profile registry. It owns delegated
 provider alias, model, optional rank, and prompt. Positive ranks order only
 ranked profiles; unranked profiles are explicit-only and non-orderable. Current
-ranked general profile order is `xhigh > high > normal > low`; specialized
-profiles may use another name and model.
+ranked profiles are ordered by registry rank; specialized profiles may use
+another name and model.
 Select executor and validator profiles independently from their bounded task
 contracts. A validator may be lower, equal, or higher than its executor when
 reliable for the validation task.

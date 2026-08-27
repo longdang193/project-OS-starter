@@ -6,6 +6,7 @@ A private starter repository for carrying forward the repo operating system with
 
 - `docs/operating_system/`: human-readable repo governance and procedures
 - `.agents/skills/`: canonical project skill source, discovered by Codex and DeepAgents
+- `agents/*.toml`: canonical agent-profile registry
 - `docs/operating_system/templates/agents/`: source templates for generated instruction outputs
 - `repo_config/`: starter-level configuration for shipped starter validation and planning contracts
 - `scripts/`: validation, hooks, and curated repo procedures
@@ -18,6 +19,7 @@ Canonical source layers live in:
 - `docs/operating_system/`
 - `.agents/skills/`
 - `docs/operating_system/templates/agents/`
+- `agents/*.toml`
 - `repo_config/`
 - `scripts/`
 
@@ -67,7 +69,7 @@ is unclear. Follow `docs/operating_system/planning/planning-dispatch.md` for
 advisory executor selection.
 Reuse clean checkout for small reversible work. Use a native Git worktree only
 when existing worktree guidance selects isolation. Git owns workspace identity,
-change evidence, and branch disposition. Shared delegated roles live in
+change evidence, and branch disposition. Shared delegated profiles live in
 `agents/*.toml`; names and models are discovered from this registry. User-local
 `dcode-project --role <profile>`
 selects source profile model for primary DeepAgents launch and materializes

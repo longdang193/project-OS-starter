@@ -50,10 +50,10 @@ Follow
 Start selected local executor only from actual selected-workspace context. If
 context cannot be proved, work directly in selected workspace or `block`.
 
-For delegated roles, `agents/*.toml` owns role prompts, provider aliases, models,
+For delegated profiles, `agents/*.toml` owns profile prompts, provider aliases, models,
 and optional ranks. Positive ranks order only ranked profiles; unranked profiles
-are explicit-only and non-orderable. Current ranked general order is `xhigh >
-high > normal > low`. Codex consumes deployed
+are explicit-only and non-orderable. Ranked profiles are ordered by registry
+rank. Codex consumes deployed
 TOML. User-local `dcode-project` materializes ignored `.deepagents/agents/`
 views at launch with local provider endpoint and credentials. Each role provider
 alias must match active local Codex provider. Select executor and validator

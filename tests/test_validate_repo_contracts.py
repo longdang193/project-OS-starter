@@ -82,6 +82,15 @@ def test_main_propagates_subprocess_failure(monkeypatch) -> None:
 
 
 def test_main_creates_pytest_basetemp_parent(tmp_path: Path, monkeypatch) -> None:
+    write_text(
+        tmp_path / "agents" / "normal.toml",
+        """name = \"normal\"
+model_provider = \"openai\"
+model = \"combo-normal\"
+description = \"normal\"
+developer_instructions = \"normal\"
+""",
+    )
     basetemp = tmp_path / ".tmp-tests" / "repo-contract-pytest"
     monkeypatch.setattr(
         VALIDATOR,
@@ -95,6 +104,16 @@ def test_main_creates_pytest_basetemp_parent(tmp_path: Path, monkeypatch) -> Non
     assert not basetemp.parent.exists()
     assert VALIDATOR.main(["--repo-root", str(tmp_path), "--fast"]) == 0
     assert basetemp.parent.is_dir()
+
+
+def test_profile_registry_validation_rejects_malformed_profile(tmp_path: Path) -> None:
+    write_text(tmp_path / "agents" / "ui.toml", 'name = "ui"\n')
+
+    issues = VALIDATOR.validate_agent_profile_registry(tmp_path)
+
+    assert len(issues) == 1
+    assert issues[0].category == "agent_profile_registry"
+    assert "must be a non-empty string" in issues[0].message
 
 
 def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:

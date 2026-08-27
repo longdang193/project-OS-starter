@@ -56,11 +56,17 @@ task ledger. Git owns workspace and change evidence; executor thread state
 never becomes repository state.
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `<target branch>`
 - Base commit: `<commit>`
 - Expected workspace: `<clean or named preserved changes>`
 - Next action: `<one dependency-ready action>`
 - Blockers: `<none or concrete blocker>`
+
+`Coordination schema: 1` marks modern Git-tracked coordination. Completed plans
+without this marker remain historical compatibility artifacts; marked completed
+plans require terminal task states and recorded proof. Post-verification branch
+disposition may remain in `Next action`.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -163,11 +169,12 @@ Do not duplicate final artifact verification commands here unless a command is t
 - <task-specific function; do not select from a fixed taxonomy>
 
 **Template Profile:**
-- Controller-selected: `<discovered profile>`
+- Controller-selected: `<none (lead controller) | discovered profile>`
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
 
 **Validator Profile (optional):**
 - Controller-selected: `<none | discovered profile>`
+- Selection basis: <validation>
 - Positive `rank` values define order only among ranked profiles; unranked profiles are explicit-only and non-orderable.
 - Select executor and validator profiles independently from their bounded task contracts; no profile-rank relationship is required.
 

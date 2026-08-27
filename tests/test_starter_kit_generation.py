@@ -68,7 +68,7 @@ def make_manifest(repo_root: Path) -> Path:
             "requiredPaths": [
                 ".gitignore",
                 "AGENTS.md",
-                "agents/normal.toml",
+                "agents",
                 "scripts/dcode_project.py",
                 "scripts/setup_deepagents_runtime.ps1",
                 "GEMINI.md",
@@ -185,6 +185,17 @@ def test_validate_starter_kit_reports_missing_required_and_present_forbidden(tmp
     assert any("Missing required path" in error for error in errors)
     assert any("Forbidden path present" in error for error in errors)
     assert any("Omitted path still present" in error for error in errors)
+
+
+def test_validate_starter_kit_rejects_malformed_profile_registry(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    manifest_path = make_manifest(repo_root)
+    kit_root = repo_root / "out" / "project-OS-starter-kit"
+    write_text(kit_root / "agents" / "ui.toml", 'name = "broken"\n')
+
+    errors = VERIFY.validate_starter_kit(kit_root=kit_root, manifest_path=manifest_path)
+
+    assert any("Invalid agent profile registry" in error for error in errors)
 
 
 def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path) -> None:

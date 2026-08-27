@@ -267,7 +267,7 @@ def test_profile_order_and_independent_validator_selection_are_documented() -> N
         )
         assert "validator profile must rank above executor profile" not in text.lower()
 
-    assert "<discovered profile>" in plan_template
+    assert "discovered profile" in plan_template
 
 
     assert "- Selection basis: <validation>" in plan_template

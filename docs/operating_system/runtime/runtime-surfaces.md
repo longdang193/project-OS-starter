@@ -9,7 +9,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
-| `agents/*.toml` | Canonical delegated-role definitions, including optional rank |
+| `agents/*.toml` | Canonical agent-profile registry, including optional rank |
 
 ## Generated Runtime Outputs
 
@@ -34,9 +34,9 @@ This document records provider-native deployment for rules, skills, root instruc
 ## Policy
 
 - Canonical repo sources remain source of truth.
-- Positive `rank` values order only ranked profiles. Current ranked general order
-  is `xhigh > high > normal > low`; unranked profiles are explicit-only and
-  non-orderable. Select executor and validator profiles independently from
+- Positive `rank` values order only ranked profiles. Ranked profiles are ordered
+  by registry rank; unranked profiles are explicit-only and non-orderable. Select
+  executor and validator profiles independently from
   their bounded task contracts. A validator may be lower, equal, or higher than
   its executor when reliable for validation; specialized profiles may execute
   or validate based on task fitness.

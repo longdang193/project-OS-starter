@@ -80,11 +80,12 @@ Fresh generated output is deployed into an isolated temporary Codex home before 
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `main`
 - Base commit: `bacc276872a516a22db3478e8e26ac80d5bb3cf2`
 - Expected workspace: `db/` remains preserved untracked user work; listed targets start unchanged
 - Next action: none; native selector limitation is recorded and direct model fallback is verified
-- Blockers: none for supported runtime capability; current Codex CLI still exposes no discovered `agent_type` selector
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |

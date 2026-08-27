@@ -818,13 +818,10 @@ def test_canonical_role_hierarchy_is_source_owned() -> None:
         for role in LAUNCHER._load_roles(ROOT, "9router")
     }
 
-    assert roles == {
-        "low": ("9router", "combo-low", 10, True),
-        "normal": ("9router", "combo-normal", 20, True),
-        "high": ("9router", "combo-high", 30, True),
-        "xhigh": ("9router", "combo-xhigh", 40, True),
-        "ui": ("9router", "combo-ui", None, True),
-    }
+    source_names = {path.stem for path in (ROOT / "agents").glob("*.toml")}
+
+    assert set(roles) == source_names
+    assert roles["ui"] == ("9router", "combo-ui", None, True)
 
 
 def test_runtime_environment_reaches_deepagents_server_child(

@@ -24,6 +24,7 @@ import argparse
 import hashlib
 from pathlib import Path
 
+from agent_profile_registry import load_agent_profiles
 from build_starter_kit import load_manifest, repo_root
 
 TEXT_FILE_SUFFIXES = {
@@ -210,6 +211,13 @@ def validate_starter_kit(*, kit_root: Path, manifest_path: Path) -> list[str]:
         path = kit_root / empty_dir
         if not path.is_dir():
             errors.append(f"Required empty directory missing: {empty_dir}")
+
+    agents_root = kit_root / "agents"
+    if agents_root.is_dir():
+        try:
+            load_agent_profiles(agents_root)
+        except (OSError, ValueError) as exc:
+            errors.append(f"Invalid agent profile registry: {exc}")
 
     errors.extend(_scan_forbidden_content(kit_root=kit_root))
 
