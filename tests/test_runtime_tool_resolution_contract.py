@@ -18,6 +18,8 @@ lifecycle:
 
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -46,15 +48,18 @@ def test_runtime_policy_assigns_ownership_and_preserves_evidence() -> None:
 
 
 def test_root_and_domain_docs_reference_runtime_policy() -> None:
-    root_template = read("docs/operating_system/templates/agents/root-AGENTS.template.md")
+    root_template_path = "docs/operating_system/templates/agents/root-AGENTS.template.md"
+    if not (REPO_ROOT / root_template_path).is_file():
+        root_template_path = "AGENTS.md"
+    root_instructions = read(root_template_path)
     code_tools = read("docs/operating_system/tooling/code-intelligence-tools.md")
     governance = read("docs/operating_system/governance/repo-governance.md")
 
-    assert "## Runtime Capability Resolution" in root_template
-    assert "runtime-tool-resolution.md" in root_template
+    assert "## Runtime Capability Resolution" in root_instructions
+    assert "runtime-tool-resolution.md" in root_instructions
     assert "runtime-tool-resolution.md" in code_tools
     assert "runtime-tool-resolution.md" in governance
-    assert "## Code Intelligence" not in root_template
+    assert "## Code Intelligence" not in root_instructions
 
 
 def test_generic_skills_do_not_require_provider_specific_code_guidance() -> None:
@@ -86,6 +91,8 @@ def test_generic_guidance_uses_capabilities_not_optional_provider_names() -> Non
 
 
 def test_starter_manifest_omits_private_provider_setup() -> None:
+    if not (REPO_ROOT / "repo_config" / "starter-kit-manifest.json").is_file():
+        pytest.skip("starter-kit-manifest.json is factory-only")
     manifest = read("repo_config/starter-kit-manifest.json")
 
     assert "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md" in manifest
