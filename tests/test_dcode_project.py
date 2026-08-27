@@ -21,6 +21,7 @@ import importlib.util
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -1014,3 +1015,37 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"' in setup
     assert "Python 3.12 or newer" in setup
     assert "version mismatch" in setup
+
+
+def test_generated_project_delegate_guard_returns_contract_exit_code(tmp_path: Path) -> None:
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("PowerShell is required to execute generated wrapper")
+
+    setup = (ROOT / "scripts" / "setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
+    setup = setup.replace("\r\n", "\n")
+    start_marker = "$delegateWrapper = @'\n"
+    end_marker = "\n'@\n"
+    start = setup.index(start_marker) + len(start_marker)
+    end = setup.index(end_marker, start)
+    wrapper_path = tmp_path / "project-delegate.ps1"
+    wrapper_path.write_text(setup[start:end] + "\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(wrapper_path),
+            "--executor",
+            "deepagents",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "project-delegate selects Tura; do not pass --executor" in result.stderr

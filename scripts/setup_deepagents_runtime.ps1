@@ -171,12 +171,12 @@ param(
 $ErrorActionPreference = "Stop"
 $executor = $DcodeArgs | Where-Object { $_ -eq "--executor" -or $_ -like "--executor=*" }
 if ($executor) {
-    Write-Error "dcode-project selects DeepAgents; do not pass --executor. Use project-delegate for Tura."
+    [Console]::Error.WriteLine("dcode-project selects DeepAgents; do not pass --executor. Use project-delegate for Tura.")
     exit 2
 }
 $repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
-    Write-Error "dcode-project: run inside a Git repository."
+    [Console]::Error.WriteLine("dcode-project: run inside a Git repository.")
     exit 2
 }
 
@@ -201,12 +201,12 @@ param(
 $ErrorActionPreference = "Stop"
 $executor = $DelegateArgs | Where-Object { $_ -eq "--executor" -or $_ -like "--executor=*" }
 if ($executor) {
-    Write-Error "project-delegate selects Tura; do not pass --executor. Use dcode-project for DeepAgents."
+    [Console]::Error.WriteLine("project-delegate selects Tura; do not pass --executor. Use dcode-project for DeepAgents.")
     exit 2
 }
 $repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
-    Write-Error "project-delegate: run inside a Git repository."
+    [Console]::Error.WriteLine("project-delegate: run inside a Git repository.")
     exit 2
 }
 
@@ -231,7 +231,7 @@ $ErrorActionPreference = "Stop"
 $env:DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"
 $dcodePath = Join-Path $HOME ".local\share\dcode-project\bin\dcode.exe"
 if (-not (Test-Path $dcodePath -PathType Leaf)) {
-    Write-Error "dcode-doctor: isolated DeepAgents Code executable not found. Run setup_deepagents_runtime.ps1."
+    [Console]::Error.WriteLine("dcode-doctor: isolated DeepAgents Code executable not found. Run setup_deepagents_runtime.ps1.")
     exit 2
 }
 
