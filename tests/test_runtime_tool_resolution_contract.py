@@ -49,7 +49,7 @@ def test_runtime_policy_assigns_ownership_and_preserves_evidence() -> None:
 
 def test_root_and_domain_docs_reference_runtime_policy() -> None:
     root_template_path = "docs/operating_system/templates/agents/root-AGENTS.template.md"
-    if not (REPO_ROOT / root_template_path).is_file():
+    if not (REPO_ROOT / "repo_config" / "starter-kit-manifest.json").is_file():
         root_template_path = "AGENTS.md"
     root_instructions = read(root_template_path)
     code_tools = read("docs/operating_system/tooling/code-intelligence-tools.md")
