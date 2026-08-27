@@ -114,6 +114,17 @@ def test_rejects_non_auto_route_id(tmp_path: Path) -> None:
         MANAGER.load_routing_policy(write_manifest(tmp_path, route_id="manual"))
 
 
+def test_rejects_unranked_automatic_endpoint(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal", "combo-normal", rank=20)
+    write_role(tmp_path, "high", "combo-high", rank=30)
+    high = tmp_path / "agents" / "high.toml"
+    high.write_text(high.read_text(encoding="utf-8").replace("rank = 30\n", ""), encoding="utf-8")
+    policy = MANAGER.load_routing_policy(write_manifest(tmp_path))
+    profiles = MANAGER.load_agent_profiles(tmp_path / "agents")
+
+    with pytest.raises(ValueError, match="rank"):
+        MANAGER.validate_static_contract(policy, profiles)
+
 def test_rejects_inverted_rank_order(tmp_path: Path) -> None:
     write_role(tmp_path, "normal", "combo-normal", rank=30)
     write_role(tmp_path, "high", "combo-high", rank=20)

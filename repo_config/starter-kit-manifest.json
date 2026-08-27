@@ -18,6 +18,7 @@
     "scripts/setup_hooks.ps1",
     "scripts/setup_hooks.sh",
     "scripts/dcode_project.py",
+    "scripts/agent_profile_registry.py",
     "scripts/setup_deepagents_runtime.ps1",
     "scripts/validate_agent_metadata_schema.py",
     "scripts/validate_env_gitignore_contract.py",
@@ -35,6 +36,7 @@
     "tests/test_runtime_tool_resolution_contract.py",
     "tests/test_validate_repo_config.py",
     "tests/test_dcode_project.py",
+    "tests/test_agent_profile_registry.py",
     "tests/test_validate_template_required_sections.py"
   ],
   "requiredPaths": [
@@ -47,6 +49,8 @@
     "agents/high.toml",
     "agents/normal.toml",
     "agents/low.toml",
+    "agents/ui.toml",
+    "scripts/agent_profile_registry.py",
     "docs/operating_system/governance/repo-governance.md",
     "docs/operating_system/tooling/runtime-tool-resolution.md",
     "docs/superpowers/plans",

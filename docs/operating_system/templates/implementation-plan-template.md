@@ -89,7 +89,7 @@ Use `Wave` only when plan truly needs orchestration across multiple related task
 Within each task:
 - `Purpose` owns bounded outcome
 - `Task Function` names current open-ended function without mapping it to a profile
-- `Template Profile` records controller-selected `xhigh`, `high`, `normal`, or `low` plus selection basis for delegated work, or `none (lead controller)` for inline controller work
+- `Template Profile` records one controller-selected discovered profile plus selection basis for delegated work, or `none (lead controller)` for inline controller work
 - `Validator Profile` records an optional separate validator and its selection basis
 - `Specification Coverage` maps approved requirements or direct scope
 - `Required Skills` names only methods needed for this task
@@ -115,14 +115,14 @@ Do not duplicate final artifact verification commands here unless a command is t
 - <task-specific function; do not select from a fixed taxonomy>
 
 **Template Profile:**
-- Controller-selected: `<none (lead controller) | low | normal | high | xhigh>`
+- Controller-selected: `<none (lead controller) | discovered profile>`
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
 
 **Validator Profile (optional):**
-- Controller-selected: `<none | low | normal | high | xhigh>`
+- Controller-selected: `<none | discovered profile>`
 - Selection basis: <validation>
 - Select independently from the executor profile; no profile-rank relationship is required.
-- Use literal `<none>` when no validator is assigned; otherwise replace it with `low`, `normal`, `high`, or `xhigh`.
+- Use literal `<none>` when no validator is assigned; otherwise replace it with a discovered profile name.
 
 **Specification Coverage:**
 - <requirement, decision, invariant, or approved direct scope>
@@ -163,12 +163,12 @@ Do not duplicate final artifact verification commands here unless a command is t
 - <task-specific function; do not select from a fixed taxonomy>
 
 **Template Profile:**
-- Controller-selected: `<xhigh | high | normal | low>`
+- Controller-selected: `<discovered profile>`
 - Selection basis: <reasoning depth, ambiguity, scope, risk, and cost>
 
 **Validator Profile (optional):**
-- Controller-selected: `<none | low | normal | high | xhigh>`
-- Profile order: `xhigh > high > normal > low`
+- Controller-selected: `<none | discovered profile>`
+- Positive `rank` values define order only among ranked profiles; unranked profiles are explicit-only and non-orderable.
 - Select executor and validator profiles independently from their bounded task contracts; no profile-rank relationship is required.
 
 **Specification Coverage:**

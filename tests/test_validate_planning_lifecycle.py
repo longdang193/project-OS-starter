@@ -210,6 +210,25 @@ def test_current_plan_rejects_unknown_coordination_without_skipping_checks() -> 
         rmtree(root, ignore_errors=True)
 
 
+def test_task_profile_names_require_valid_registry_records() -> None:
+    root = make_test_root()
+    try:
+        write_text(root / "agents" / "ui.toml", 'name = "broken"\n')
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            modern_plan(
+                execution="- Mode: `subagent-ready`\n- Coordination: `none`",
+                task_body="**Template Profile:**\n- Controller-selected: `ui`",
+            ),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "Agent profile" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
 def test_task_profiles_are_validated_inside_task_section() -> None:
     root = make_test_root()
     try:

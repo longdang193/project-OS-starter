@@ -68,11 +68,12 @@ advisory executor selection.
 Reuse clean checkout for small reversible work. Use a native Git worktree only
 when existing worktree guidance selects isolation. Git owns workspace identity,
 change evidence, and branch disposition. Shared delegated roles live in
-`agents/*.toml`. User-local `dcode-project --role <low|normal|high|xhigh>`
+`agents/*.toml`; names and models are discovered from this registry. User-local
+`dcode-project --role <profile>`
 selects source profile model for primary DeepAgents launch and materializes
 ignored DeepAgents project subagents; they are not `dcode --agent` primary profiles.
 When bounded Tura delegation is installed, use
-`project-delegate --role <low|normal|high|xhigh> -n "<task>"`. Tura uses the
+`project-delegate --role <profile> -n "<task>"`. Tura uses the
 same tracked roles and TL provider route (`Tura -> LightRSI -> 9router ->
 provider`); Native Codex remains controller and `dcode-project` remains the
 explicit DeepAgents path.

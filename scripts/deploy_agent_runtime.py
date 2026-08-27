@@ -337,7 +337,7 @@ def _looks_generated(path: Path) -> bool:
     stripped = text.lstrip()
     if stripped.startswith("{"):
         return '"_generated": true' in text.lower() and '"_source"' in text and '"_do_not_edit"' in text
-    return "<!--" in text[:256] and "GENERATED FILE - DO NOT EDIT" in text[:512]
+    return "<!--" in text and "GENERATED FILE - DO NOT EDIT" in text
 
 
 RUNTIME_DEPLOY_EXCLUDE_PREFIXES = {

@@ -46,6 +46,17 @@ def load_module(name: str, path: Path):
 DEPLOY = load_module("deploy_agent_runtime", DEPLOY_PATH)
 
 
+def test_looks_generated_accepts_marker_after_long_frontmatter(tmp_path: Path) -> None:
+    runtime_file = tmp_path / "SKILL.md"
+    runtime_file.write_text(
+        "---\n" + "description: " + ("x" * 520) + "\n---\n\n"
+        "<!--\nGENERATED FILE - DO NOT EDIT\n-->\n",
+        encoding="utf-8",
+    )
+
+    assert DEPLOY._looks_generated(runtime_file) is True
+
+
 def extract_frontmatter(rendered: str) -> dict[str, object]:
     if not rendered.startswith("---\n"):
         raise ValueError("Rendered text does not contain YAML frontmatter")

@@ -98,3 +98,16 @@ def test_main_all_platforms_propagates_selection_to_sync(monkeypatch, tmp_path: 
 
     assert VALIDATOR.main() == 0
     assert commands[0][-2:] == ["--all-platforms", "--check"]
+
+
+def test_main_explicit_platform_propagates_selection_to_sync(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        VALIDATOR,
+        "parse_args",
+        lambda: type("Args", (), {"repo_root": str(tmp_path), "skip_deploy_check": False, "all_platforms": False, "platform": ["claude"]})(),
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(VALIDATOR, "_run", lambda command, cwd: commands.append(command) or 0)
+
+    assert VALIDATOR.main() == 0
+    assert commands[0][-3:] == ["--platform", "claude", "--check"]

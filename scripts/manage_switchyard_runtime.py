@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import argparse
+try:
+    from agent_profile_registry import AgentProfile, load_agent_profiles as load_registry_profiles
+except ModuleNotFoundError:
+    from scripts.agent_profile_registry import AgentProfile, load_agent_profiles as load_registry_profiles
 from dataclasses import dataclass
 import json
 import math
@@ -50,13 +54,6 @@ class RoutingPolicy:
     recent_turn_window: int
 
 
-@dataclass(frozen=True)
-class AgentProfile:
-    name: str
-    model_provider: str
-    model: str
-    rank: int
-    source: Path
 
 
 @dataclass(frozen=True)
@@ -145,30 +142,7 @@ def load_routing_policy(path: Path) -> RoutingPolicy:
 
 
 def load_agent_profiles(agents_root: Path) -> dict[str, AgentProfile]:
-    profiles: dict[str, AgentProfile] = {}
-    for source in sorted(agents_root.glob("*.toml")):
-        payload = _load_toml(source, "agent profile")
-        values = {
-            key: _required_string(payload, key, f"Agent profile {source}")
-            for key in ("name", "model_provider", "model")
-        }
-        rank = payload.get("rank")
-        if isinstance(rank, bool) or not isinstance(rank, int) or rank <= 0:
-            raise ValueError(f"Agent profile `{source}` rank must be a positive integer.")
-        if values["name"] != source.stem:
-            raise ValueError(f"Agent profile name does not match filename: {source}")
-        if values["name"] in profiles:
-            raise ValueError(f"Duplicate agent profile: {values['name']}")
-        profiles[values["name"]] = AgentProfile(
-            name=values["name"],
-            model_provider=values["model_provider"],
-            model=values["model"],
-            rank=rank,
-            source=source,
-        )
-    if not profiles:
-        raise ValueError(f"No agent profiles found under: {agents_root}")
-    return profiles
+    return load_registry_profiles(agents_root)
 
 
 def _safe_base_url(provider: dict[str, object]) -> str:
@@ -218,6 +192,8 @@ def validate_static_contract(
         capable = profiles[policy.capable_profile]
     except KeyError as exc:
         raise ValueError(f"Routing policy references missing profile: {exc.args[0]}") from exc
+    if efficient.rank is None or capable.rank is None:
+        raise ValueError("Automatic endpoint profiles must have ranks.")
     if efficient.model_provider != capable.model_provider:
         raise ValueError("Automatic endpoint profiles must use the same model provider.")
     if efficient.model == capable.model:

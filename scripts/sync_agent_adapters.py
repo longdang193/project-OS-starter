@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from dataclasses import dataclass
+from agent_profile_registry import AgentProfile, load_agent_profiles
 import json
 from pathlib import Path
 import sys
@@ -39,35 +40,10 @@ class Mapping:
     include_glob: str | None
 
 
-@dataclass(frozen=True)
-class AgentRole:
-    source: Path
-    name: str
-    model_provider: str
-    model: str
-    rank: int
-    description: str
-    developer_instructions: str
-
-
+AgentRole = AgentProfile
 GENERATED_BY = "scripts/sync_agent_adapters.py"
 ROOT_INSTRUCTION_SOURCE = "docs/operating_system/templates/agents/root-AGENTS.template.md"
 ROOT_INSTRUCTION_DESTINATION = "AGENTS.md"
-FORBIDDEN_AGENT_ROLE_KEYS = {
-    "model_reasoning_effort",
-    "base_url",
-    "api_key",
-    "model_providers",
-}
-REQUIRED_AGENT_ROLE_KEYS = {
-    "name",
-    "model_provider",
-    "model",
-    "rank",
-    "description",
-    "developer_instructions",
-}
-
 
 def _render_json_from_yaml(text: str) -> str:
     payload = yaml.safe_load(text)
@@ -253,60 +229,7 @@ def _normalized_agent_text(value: str) -> str:
 
 
 def _load_agent_roles(src_root: Path, pattern: str) -> list[AgentRole]:
-    roles: list[AgentRole] = []
-    ranks: set[int] = set()
-    for source in _iter_matching_files(src_root, pattern):
-        try:
-            payload = tomllib.loads(source.read_text(encoding="utf-8"))
-        except tomllib.TOMLDecodeError as exc:
-            raise ValueError(f"Invalid TOML agent role {source.as_posix()}: {exc}") from exc
-        if not isinstance(payload, dict):
-            raise ValueError(f"Invalid agent role {source.as_posix()}: TOML root must be a table.")
-        forbidden_keys = sorted(FORBIDDEN_AGENT_ROLE_KEYS & payload.keys())
-        if forbidden_keys:
-            raise ValueError(
-                f"Invalid agent role {source.as_posix()}: runtime-owned keys are forbidden: "
-                f"{', '.join(forbidden_keys)}."
-            )
-        unexpected_keys = sorted(set(payload) - REQUIRED_AGENT_ROLE_KEYS)
-        if unexpected_keys:
-            raise ValueError(
-                f"Invalid agent role {source.as_posix()}: unsupported keys: "
-                f"{', '.join(unexpected_keys)}."
-            )
-        values: dict[str, str] = {}
-        for key in ("name", "model_provider", "model", "description", "developer_instructions"):
-            value = payload.get(key)
-            if not isinstance(value, str) or not _normalized_agent_text(value):
-                raise ValueError(
-                    f"Invalid agent role {source.as_posix()}: `{key}` must be a non-empty string."
-                )
-            values[key] = _normalized_agent_text(value)
-        rank = payload.get("rank")
-        if isinstance(rank, bool) or not isinstance(rank, int) or rank <= 0:
-            raise ValueError(
-                f"Invalid agent role {source.as_posix()}: `rank` must be a positive integer."
-            )
-        if source.stem != values["name"]:
-            raise ValueError(
-                f"Invalid agent role {source.as_posix()}: filename must match `name = \"{values['name']}\"`."
-            )
-        if rank in ranks:
-            raise ValueError(f"Invalid agent role {source.as_posix()}: `rank` must be unique.")
-        ranks.add(rank)
-        roles.append(
-            AgentRole(
-                source=source,
-                name=values["name"],
-                model_provider=values["model_provider"],
-                model=values["model"],
-                rank=rank,
-                description=values["description"],
-                developer_instructions=values["developer_instructions"],
-            )
-        )
-    return roles
-
+    return list(load_agent_profiles(src_root, pattern=pattern).values())
 
 def _expected_codex_agent_paths(roles: list[AgentRole]) -> set[Path]:
     return {Path(f"{role.name}.toml") for role in roles}

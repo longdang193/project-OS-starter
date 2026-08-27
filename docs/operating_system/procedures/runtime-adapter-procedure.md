@@ -23,9 +23,11 @@ Unmarked byte-identical skills are adopted automatically; differing unmarked
 skills require `--adopt-shared-skill <name>`. `--force` remains for provider
 runtime overwrite protection and is not shared-skill adoption authorization.
 
-`agents/xhigh.toml`, `agents/high.toml`, `agents/normal.toml`, and
-`agents/low.toml` are canonical delegated-role templates. They own delegated
- provider alias, model, rank, and prompt. Profile order is `xhigh > high > normal > low`.
+`agents/*.toml` are canonical delegated-role templates. They own delegated
+provider alias, model, optional rank, and prompt. Positive ranks order only
+ranked profiles; unranked profiles are explicit-only and non-orderable. Current
+ranked general profile order is `xhigh > high > normal > low`; specialized
+profiles may use another name and model.
 Select executor and validator profiles independently from their bounded task
 contracts. A validator may be lower, equal, or higher than its executor when
 reliable for the validation task.
@@ -61,11 +63,15 @@ Targets:
 
 DeepAgents is not an adapter-sync target. User-local `dcode-project` derives
 ignored project subagents from `agents/*.toml` at launch. Every task launch
-requires `--role <low|normal|high|xhigh>`; launcher consumes this selector and
+requires `--role <profile>`; launcher consumes this selector and
 uses selected source role's model for its primary `dcode -M` binding. Its
 provider endpoint, credentials, provider definition, and mutable state remain
 local. Each source role's `model_provider` must match active local Codex provider
 binding.
+Profiles may set `deepagents_compatible = false` when their provider model does
+not return the Responses API shape required by DeepAgents; `dcode-project`
+rejects that pairing before child launch, while Tura and native Codex remain
+independent paths.
 
 `project-delegate` is the one bounded Native Codex-to-Tura adapter. Its wrapper
 rejects `--executor` and forces `--executor tura`; `[delegation].default_executor`
@@ -151,14 +157,13 @@ bindings.
 
 | Executor or surface | Fixed profiles | `auto` |
 | --- | --- | --- |
-| Native Codex controller | `low`, `normal`, `high`, `xhigh` | yes |
-| Native Codex delegated worker | `low`, `normal`, `high`, `xhigh` | no |
-| DeepAgents task or internal worker | `low`, `normal`, `high`, `xhigh` | no |
-| Tura worker | `low`, `normal`, `high`, `xhigh` | no |
+| Native Codex controller | discovered profile | yes |
+| Native Codex delegated worker | discovered profile | no |
+| DeepAgents task or internal worker | discovered profile | no |
+| Tura worker | discovered profile | no |
 
-Executor selection answers who executes. Fixed profile selection answers the
-bounded capability tier. `auto` answers which eligible fixed model endpoint to
-use.
+Executor selection answers who executes. Profile selection answers the bounded
+capability contract. `auto` answers which eligible ranked model endpoint to use.
 
 CI-safe (skip home-directory check):
 

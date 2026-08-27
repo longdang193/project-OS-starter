@@ -137,8 +137,8 @@ def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
     ).read_text(encoding="utf-8")
 
     assert "Git-tracked coordinated work requires" in procedure_text
-    assert 'dcode-project --role <low|normal|high|xhigh> -n "<task>"' in procedure_text
-    assert 'project-delegate --role <low|normal|high|xhigh> -n "<task>"' in procedure_text
+    assert 'dcode-project --role <profile> -n "<task>"' in procedure_text
+    assert 'project-delegate --role <profile> -n "<task>"' in procedure_text
     assert "Codex, DeepAgents, or Tura" in procedure_text
     assert "Coordination State and task ledger" in executing_skill
     assert "active task ledger `Executor` and `Template Profile`\nvalues" in executing_skill
@@ -160,7 +160,7 @@ def test_runtime_adapter_contract_separates_executor_profile_and_auto() -> None:
 
     assert "wrapper\nrejects `--executor` and forces `--executor tura`" in procedure_text
     assert "`auto` is eligible only for the Native Codex controller" in procedure_text
-    assert "`auto` answers which eligible fixed model endpoint to" in procedure_text
+    assert "`auto` answers which eligible ranked model endpoint to" in procedure_text
     assert "Native Codex delegated worker" in procedure_text
     assert "DeepAgents task or internal worker" in procedure_text
     assert "Tura worker" in procedure_text
@@ -254,7 +254,8 @@ def test_profile_order_and_independent_validator_selection_are_documented() -> N
     plan_template = policy_texts[1]
 
     for text in policy_texts:
-        assert "`xhigh > high > normal > low`" in text
+        assert "unranked" in text.lower()
+        assert "rank" in text.lower()
         assert "independently" in text.lower()
         assert (
             "lower, equal, or higher" in text.lower()
@@ -266,7 +267,7 @@ def test_profile_order_and_independent_validator_selection_are_documented() -> N
         )
         assert "validator profile must rank above executor profile" not in text.lower()
 
-    assert "<xhigh | high | normal | low>" in plan_template
+    assert "<discovered profile>" in plan_template
 
 
     assert "- Selection basis: <validation>" in plan_template

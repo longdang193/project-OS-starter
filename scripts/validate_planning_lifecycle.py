@@ -44,6 +44,7 @@ from planning_artifact_schema import (
     get_required_fields,
     get_required_values,
 )
+from agent_profile_registry import load_agent_profiles
 
 
 @dataclass(frozen=True)
@@ -127,7 +128,11 @@ def _task_sections(text: str) -> list[tuple[str, str]]:
 
 
 def _profile_names(root: Path) -> set[str]:
-    return {path.stem.lower() for path in (root / "agents").glob("*.toml")}
+    agents_root = root / "agents"
+    if not agents_root.is_dir():
+        return set()
+    return set(load_agent_profiles(agents_root))
+
 
 
 def _validate_single_execution_field(
@@ -201,7 +206,11 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
             )
         )
 
-    profile_names = _profile_names(root)
+    try:
+        profile_names = _profile_names(root)
+    except ValueError as exc:
+        findings.append(Finding("planning_execution_error", rel, str(exc)))
+        profile_names = set()
     template_profiles = profile_names | {"none (lead controller)"}
     validator_profiles = profile_names | {"none"}
     task_sections = _task_sections(text)

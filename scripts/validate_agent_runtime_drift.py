@@ -88,6 +88,9 @@ def main() -> int:
     sync_command = [py, str(root / "scripts" / "sync_agent_adapters.py")]
     if args.all_platforms:
         sync_command.append("--all-platforms")
+    else:
+        for platform in args.platform:
+            sync_command.extend(["--platform", platform])
     sync_command.append("--check")
     steps = [
         sync_command,
