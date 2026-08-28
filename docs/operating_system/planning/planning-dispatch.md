@@ -46,6 +46,15 @@ Approval does not itself authorize draft promotion when an explicitly applicable
 post-approval input remains incomplete. Design Export method selection is
 explicit; named providers are task or runtime facts, not Starter dependencies.
 
+A Design Export gate is complete only when the selected export method provides
+a durable output identity attributable to the current task and requested
+deliverable. Workspace presence, agent prose, inferred deliverable
+classification, evidence from another task or run, and producer self-assessment
+do not establish completion. When independent review is applicable under this
+lifecycle, its PASS must apply to the same task and output identities. If those
+bindings cannot be established, the Design Export gate remains incomplete or
+blocked.
+
 Downstream project-owned handoff: Release/Deploy → Observe, when applicable.
 
 Design-clear reversible work may go directly to execution. Material backend

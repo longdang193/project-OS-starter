@@ -49,6 +49,24 @@ def test_planning_dispatch_owns_conditional_lifecycle() -> None:
     assert "Design Export" not in integration
 
 
+def test_design_export_completion_requires_bound_method_evidence() -> None:
+    dispatch = normalized("docs/operating_system/planning/planning-dispatch.md")
+
+    assert "selected export method provides a durable output identity" in dispatch
+    assert "attributable to the current task and requested deliverable" in dispatch
+    assert "independent review is applicable under this lifecycle" in dispatch
+    assert "PASS must apply to the same task and output identities" in dispatch
+    assert "evidence from another task or run" in dispatch
+    assert "Workspace presence" in dispatch
+    assert "agent prose" in dispatch
+    assert "inferred deliverable classification" in dispatch
+    assert "producer self-assessment" in dispatch
+    assert "incomplete or blocked" in dispatch
+    assert "OpenDesign" not in dispatch
+    assert "studio_create" not in dispatch
+    assert "studio_status" not in dispatch
+
+
 def test_specification_promotion_owners_share_applicable_gate_contract() -> None:
     paths = [
         "docs/operating_system/planning/planning-dispatch.md",
