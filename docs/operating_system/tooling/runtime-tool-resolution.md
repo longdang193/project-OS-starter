@@ -41,6 +41,23 @@ backend proof; it never replaces it. If mandatory evidence cannot be obtained,
 mark affected claim `blocked` or `incomplete`, not verified through weaker
 inspection.
 
+## Long-Running Local Runtimes
+
+- Resolve ephemeral service endpoints through live IPC or a status request; do
+  not hardcode an old port.
+- Treat runtime marker files as discovery hints only. Confirm referenced PID,
+  IPC endpoint, and health response before using them.
+- A successful MCP tool call proves transport only. For asynchronous generation,
+  also record the run ID, wait for terminal state, and verify artifact count or
+  output paths.
+- A runtime owner must not tear down a daemon while owned work is active. If a
+  run ends with a shutdown signal, classify it as lifecycle failure until the
+  owner, parent-process, and explicit-cancel paths are distinguished.
+- `active:false` means no active UI context; it does not prove transport failure.
+- Closed-parent `EPIPE` or missing-pipe errors prove transport instability, not
+  application or project failure. Preserve logs and recover the owner before
+  retrying.
+
 ## Security Boundary
 
 Active executor resolves tools within existing permissions only. Discovery does

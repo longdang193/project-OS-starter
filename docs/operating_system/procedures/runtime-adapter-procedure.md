@@ -16,6 +16,24 @@ Scoped `AGENTS.md` files are canonical instructions for their directories.
 `docs/operating_system/rules/` is canonical rule source. Adapter sync mirrors it
 to `.agents/rules/` for supported local runtimes.
 
+## Runtime Recovery and Proof
+
+For a local MCP or daemon-backed runtime:
+
+1. Discover the live endpoint through its IPC or status channel. Do not trust a
+   stale port, PID, or marker file without probing it.
+2. If IPC is missing or the parent process died, restart the owning runtime and
+   reconnect the client. Do not edit generated runtime files to hide stale
+   state.
+3. Prove transport with one successful tool call. `active:false` alone is not a
+   transport result.
+4. For asynchronous work, preserve the run ID, poll to terminal state, and
+   verify artifacts or output paths. Tool-call success is not completion proof.
+5. If shutdown cancels active work, preserve the run record and lifecycle logs.
+   Fix ownership in the runtime provider; do not patch the consuming project.
+6. Treat closed-parent `EPIPE` and missing-pipe errors as transport incidents.
+   Keep logging best-effort so diagnostic output cannot terminate its owner.
+
 Shared skills deployed to `~/.agents/skills/<skill>` carry a
 `.project-os-managed` JSON marker with schema, source root, and source-relative
 skill path. Deploy updates and removes only markers owned by the current repo.
