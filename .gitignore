@@ -18,3 +18,4 @@ generated_exports/
 *.private.*
 *.local.*
 .deepagents/
+.langgraph_api/

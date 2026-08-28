@@ -16,6 +16,7 @@ lifecycle:
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -55,6 +56,31 @@ def test_three_runtime_personal_local_workflow_is_documented() -> None:
     assert "native-personal-local" in readme
     assert "Codex, DeepAgents, or Tura" in readme
     assert "planning-dispatch.md" in readme
+
+
+def test_deepagents_default_version_matches_runtime_documentation() -> None:
+    setup = (ROOT / "scripts" / "setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
+    match = re.search(r'DeepAgentsCodeVersion = "([^"]+)"', setup)
+    assert match is not None
+    version = match.group(1)
+
+    documented_paths = (
+        ROOT / "README.md",
+        ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md",
+        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md",
+        ROOT / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md",
+    )
+    for path in documented_paths:
+        text = path.read_text(encoding="utf-8")
+        assert (
+            f"deepagents-code {version}" in text
+            or f"default `{version}`" in text
+        )
+
+
+def test_deepagents_runtime_state_is_ignored() -> None:
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".langgraph_api/" in gitignore
 
 
 def test_native_git_evidence_exposes_tracked_and_untracked_scope_changes(tmp_path: Path) -> None:

@@ -27,7 +27,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- |
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects canonical source role model for primary launch; validates controller-owned handoff; forces `--no-mcp`; uses setup-selected `deepagents-code` version (default `0.1.59`); disables child auto-update. |
+| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects canonical source role model for primary launch; validates controller-owned handoff; forces `--no-mcp`; uses setup-selected `deepagents-code` version (default `0.1.64`); disables child auto-update. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 

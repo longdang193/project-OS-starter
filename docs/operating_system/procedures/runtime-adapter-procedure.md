@@ -104,7 +104,7 @@ use one expression with no `;`. Call MCP through Codex, then let
 `dcode-project` validate `codex.mcp.handoff.v1` and inject only sanitized
 sources, facts, and constraints into task text. Setup rejects a
 user-local `~/.deepagents/.mcp.json` to prevent an accidental direct MCP path.
-The setup script defaults to tested `deepagents-code 0.1.59`, requires Python
+The setup script defaults to tested `deepagents-code 0.1.64`, requires Python
 3.12 or newer, verifies `dcode --version`, and disables automatic child updates. Use the setup
 script for upgrades; do not rely on floating `uv tool install deepagents-code`
 or `dcode --update`.
