@@ -40,9 +40,29 @@ def test_planning_dispatch_owns_conditional_lifecycle() -> None:
     assert "End-to-end verification applies only to cross-boundary journeys" in dispatch
     assert "Design review when material design judgment is required" in dispatch
     assert "UX or behavior approval when approval is required" in dispatch
+    assert "Design Export when an applicable owner-approved UX freeze" in dispatch
+    assert "Design Export method selection is explicit" in dispatch
+    assert "all applicable post-approval inputs are complete" in dispatch
     assert "Downstream project-owned handoff: Release/Deploy → Observe" in dispatch
     assert "Lifecycle ownership remains in `docs/operating_system/planning/planning-dispatch.md`." in integration
     assert "## Delivery Lifecycle" not in integration
+    assert "Design Export" not in integration
+
+
+def test_specification_promotion_owners_share_applicable_gate_contract() -> None:
+    paths = [
+        "docs/operating_system/planning/planning-dispatch.md",
+        ".agents/skills/skill-spec-drafting/SKILL.md",
+        "docs/operating_system/templates/draft-specification-template.md",
+        "docs/operating_system/templates/detailed-specification-template.md",
+        "docs/operating_system/prompt_templates/design-spec-prompt.md",
+    ]
+
+    for path in paths:
+        content = normalized(path).lower()
+        assert "applicable" in content, path
+        assert "post-approval" in content, path
+        assert "promot" in content, path
 
 
 def test_specification_templates_keep_boundary_guidance_applicable() -> None:
@@ -55,6 +75,15 @@ def test_specification_templates_keep_boundary_guidance_applicable() -> None:
     assert "Include only applicable rows" in detailed
     assert "<frontend, backend, or shared contract>" in detailed
     assert "| frontend | <owner or `Not applicable: <reason>`>" not in detailed
+
+
+def test_frontend_export_boundary_stays_provider_agnostic() -> None:
+    frontend = normalized("docs/operating_system/rules/frontend-ui-rule.md")
+
+    assert "Curate generated design exports" in frontend
+    assert "surface the conflict for reconciliation" in frontend
+    assert "OpenDesign" not in frontend
+    assert "combo-ui" not in frontend
 
 
 def test_review_and_evidence_language_stays_conditional() -> None:
