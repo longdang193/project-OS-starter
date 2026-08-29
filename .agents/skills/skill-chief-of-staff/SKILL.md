@@ -90,6 +90,15 @@ identity and binding check:
 
 Any mismatch returns `BLOCKED` before write-capable launch.
 
+For Herdr main-agent launch, use the repository-owned
+`scripts/herdr_main_launcher.py`. Pass only selected profile and verified lane
+identity (`session`, `pane`, `cwd`, and expected base). Do not construct
+provider, model, or developer-instruction overrides in CoS; the launcher
+resolves them from `agents/*.toml` and projects them ephemerally into Codex.
+Launcher evidence separates registry/runtime projection, Git identity, Herdr
+observation, and Codex startup facts. Redact developer instructions and record
+their digest instead.
+
 CoS uses only provider-resolved Herdr operations: discover/list, start, prompt,
 wait, read, and retire/stop. Operation names and outputs come from the active
 runtime; CoS must not invent commands, event semantics, subscriptions, or

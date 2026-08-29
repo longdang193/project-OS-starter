@@ -10,6 +10,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
+| `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex agent in Herdr |
 
 ## Generated Runtime Outputs
 
@@ -34,6 +35,8 @@ This document records provider-native deployment for rules, skills, root instruc
 ## Policy
 
 - Canonical repo sources remain source of truth.
+- `agents/*.toml` owns profile/provider/model/instruction facts; `scripts/herdr_main_launcher.py` resolves and projects them; Herdr owns only top-level session/pane lifecycle and observation.
+- Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and Codex startup facts; developer instructions are represented by digest, not raw text.
 - Positive `rank` values order only ranked profiles. Ranked profiles are ordered
   by registry rank; unranked profiles are explicit-only and non-orderable. Select
   executor and validator profiles independently from

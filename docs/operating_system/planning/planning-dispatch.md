@@ -41,6 +41,10 @@ top-level Codex main-agent sessions; it never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
 Tura internal workers, or executor-local reviewers or helpers. `deepagents` and
 `tura` retain their existing peer executor paths.
+For every Herdr main-agent launch, CoS uses
+`scripts/herdr_main_launcher.py` and passes only profile plus verified
+session/pane/worktree identity; the launcher resolves provider, model, and
+developer instructions from `agents/*.toml`.
 
 ## Delivery Lifecycle
 

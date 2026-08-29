@@ -107,6 +107,7 @@ def make_manifest(repo_root: Path) -> Path:
             "omitPaths": [
                 "docs/operating_system/runtime",
                 "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md",
+                "docs/operating_system/procedures/runtime-adapter-procedure.md",
                 "docs/operating_system/procedures/starter-kit-procedure.md",
                 "docs/operating_system/templates/agents/root-AGENTS.template.md",
             ],
@@ -116,6 +117,19 @@ def make_manifest(repo_root: Path) -> Path:
         },
     )
     return manifest_path
+
+
+def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
+    manifest = json.loads(
+        (REPO_ROOT / "repo_config" / "starter-kit-manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert "scripts/herdr_main_launcher.py" in manifest["copyPaths"]
+    assert "tests/test_herdr_main_launcher.py" in manifest["copyPaths"]
+    assert "tests/test_skill_chief_of_staff.py" in manifest["copyPaths"]
+    assert "scripts/herdr_main_launcher.py" in manifest["requiredPaths"]
+    assert "docs/operating_system/runtime" in manifest["omitPaths"]
+    assert "docs/operating_system/procedures/runtime-adapter-procedure.md" in manifest["omitPaths"]
 
 
 def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path) -> None:
