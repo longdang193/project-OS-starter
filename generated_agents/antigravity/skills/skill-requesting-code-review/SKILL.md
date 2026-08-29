@@ -15,7 +15,7 @@ To update: edit canonical source, then run sync.
 
 # Requesting Code Review
 
-Dispatch a code reviewer subagent to catch issues before they cascade. The reviewer gets precisely crafted context for evaluation, never your session's history. This keeps the reviewer focused on the work product, not your thought process, and preserves your own context for continued work.
+Request independent review to catch issues before they cascade. Select review topology from the owning coordination method. The reviewer gets precisely crafted context for evaluation, never the producer session's history. This keeps review focused on the work product and preserves the producer context for continued work.
 
 **Core principle:** Review early, review often.
 
@@ -45,7 +45,14 @@ HEAD_SHA=$(git rev-parse HEAD)
 `APPROVED_BASE` must come from the active plan, caller, or recorded merge base.
 Do not infer a base from commit count; `HEAD~1` can omit multi-commit changes.
 
-**2. Dispatch code reviewer subagent:**
+**2. Select review topology:**
+
+Ordinary execution may dispatch a native reviewer subagent. CoS main-agent
+coordination may dispatch an independent Herdr top-level Codex main agent.
+Neither choice changes the review contract or makes the reviewer a merge
+owner.
+
+**3. Dispatch independent reviewer:**
 
 Dispatch a controller-selected discovered-profile reviewer,
 filling the template at `code-reviewer.md`
@@ -62,7 +69,7 @@ class plus approved deviations.
 - `[BASE_SHA]` - Starting commit
 - `[HEAD_SHA]` - Ending commit
 
-**3. Act on feedback:**
+**4. Act on feedback:**
 - Fix Critical issues immediately
 - Fix Important issues before proceeding
 - Note Minor issues for later

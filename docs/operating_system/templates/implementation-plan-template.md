@@ -45,7 +45,7 @@ Describe another concrete implementation result this plan must deliver, such as 
 - Isolation: `<current workspace | optional worktree>`
 - Commit policy: `<verified per-task checkpoint commits preauthorized | no commits during execution>`
 - Preauthorized local actions: `<edits, declared checks, configured MCP reads, approved workspace isolation, bounded DeepAgents execution>`
-- User-approval actions: `<push, merge, publication, external writes, destructive recovery, discard, cleanup>`
+- User-approval actions: `<push, merge, publication, external writes, destructive recovery, discard, cleanup; exact bounded lane exceptions must be stated in task Authority>`
 - Parallel ownership: `<disjoint files/symbols or none>`
 - Sequential fallback: `<ordered fallback when parallel work is unsafe>`
 
@@ -81,9 +81,13 @@ independence and declared ownership. One lead controller remains sole ledger
 writer. When `Commit policy` preauthorizes it, completed task changes and ledger
 update share one checkpoint commit after task-local proof. Git owns checkpoint
 identity: derive it from the commit containing the latest ledger transition;
-never copy that commit SHA into the plan. Push, merge,
-publication, external writes, destructive recovery, discard, and cleanup still
-need explicit user authorization.
+never copy that commit SHA into the plan. An active plan may preauthorize an
+assigned lane main agent to commit and push its exact lane, create or update
+its PR, perform an assigned review action, merge the exact approved PR into its
+declared base after gates, and clean the retired lane. Direct or exceptional
+base mutation, force push, retargeting, protection bypass, semantic conflict
+resolution, destructive recovery, discard, and unrelated cleanup still need
+explicit user authorization.
 
 Task ledger `Executor` values are `codex`, `deepagents`, or `tura`. A task value
 overrides the optional plan default. Executor choice does not select profile;

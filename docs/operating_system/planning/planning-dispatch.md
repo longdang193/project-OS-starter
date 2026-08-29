@@ -24,6 +24,19 @@ artifact needed for safe execution.
 | Final completion proof is needed | Use `skill-verification-before-completion` |
 | Verified work needs an authorized Git disposition | Use `skill-finishing-a-development-branch` |
 
+## Coordination Method Selection
+
+Select `skill-chief-of-staff` as an optional coordination specialization of
+`skill-executing-plans` only when an approved Git-tracked plan needs sustained
+handoffs, independent top-level Codex main-agent lanes, or cross-task
+coordination. Keep ordinary single-lane work on the existing execution path.
+
+CoS does not add an executor, profile, plan field, or durable state artifact.
+It applies only when the task ledger `Executor` is `codex` and runtime parity,
+plan binding, and lane identity gates pass. Herdr is runtime observation and
+main-agent supervision, not executor selection or task acceptance. `deepagents`
+and `tura` retain their existing peer executor paths.
+
 ## Delivery Lifecycle
 
 Use these gates only when their trigger applies:

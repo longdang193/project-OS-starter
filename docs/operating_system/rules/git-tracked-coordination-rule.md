@@ -27,6 +27,22 @@ For Git-tracked coordinated work:
 - Same-workspace writers execute sequentially.
 - Concurrent writers require isolated Git worktrees, disjoint write ownership,
   and a dependency-ready wave.
+- A write-capable main-agent lane uses one exact branch and isolated worktree.
+  The active plan may grant that agent bounded lane authority for lane commits,
+  lane push, PR create/update, assigned review action, the exact approved PR
+  merge into its declared base after gates, and post-retirement cleanup.
+- Lane commits are implementation artifacts, not coordination checkpoints. The
+  lead remains the sole ledger writer and creates a checkpoint only after
+  accepting proof and updating the ledger.
+- Integration targeting one base branch is serialized. The lead grants one
+  dependency-ready integration action at a time to one designated main agent.
+  Merge requires the expected reviewed head, required proof, clean state, and
+  no post-review lane commit. Direct or exceptional base mutation, force push,
+  PR retargeting, protection bypass, semantic conflict resolution, unrelated
+  mutation, and destructive recovery remain explicitly user-authorized.
+- Before worktree cleanup, retire the associated main-agent process and confirm
+  no live process owns that path. The active agent never removes its own
+  worktree.
 - Task completion requires declared proof accepted by the lead controller.
 - The lead creates an authorized checkpoint commit only after accepting task
   proof and updating the task ledger in the same checkpoint.
