@@ -36,6 +36,8 @@ def test_wayfinding_skill_defines_narrow_manual_gate_and_boundaries() -> None:
         "canonical truth",
         "skill-spec-drafting",
         "skill-writing-plans",
+        "planning-dispatch.md",
+        "next applicable gate",
         "superseded",
     ):
         assert phrase in content, phrase

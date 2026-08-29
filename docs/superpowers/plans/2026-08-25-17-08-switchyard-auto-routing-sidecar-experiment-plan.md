@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: switchyard-auto-routing-sidecar-experiment
 targets:
   - "$CODEX_HOME/auto.config.toml"
@@ -75,6 +76,7 @@ claims remain unverified without provider usage evidence.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `main`
 - Base commit: `f9520e4`
 - Active task(s): none

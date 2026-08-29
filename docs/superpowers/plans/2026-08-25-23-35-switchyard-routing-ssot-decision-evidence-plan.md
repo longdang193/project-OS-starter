@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: switchyard-routing-ssot-decision-evidence
 targets:
   - repo_config/switchyard-routing.toml
@@ -102,6 +103,7 @@ The full 36-case matrix and quality/cost calibration remain separately gated.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `main`
 - Base commit: `6e9b65ab0fb9167f0c8d79280e8467f5ff74720c`
 - Active task(s): none

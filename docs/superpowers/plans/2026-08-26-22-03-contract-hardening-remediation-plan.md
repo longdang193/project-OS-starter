@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: contract-hardening-remediation
 targets:
   - scripts/validate_planning_lifecycle.py
@@ -81,6 +82,7 @@ then provider projections are regenerated and verified through existing checks.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `main`
 - Base commit: `a9bb93abcb34b7381dec16ec44746117c6aaf390`
 - Expected workspace: `declared task files changed; no unrelated changes`

@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: registry-driven-specialized-agent-profile
 targets:
   - agents/*.toml

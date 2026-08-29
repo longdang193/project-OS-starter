@@ -58,24 +58,23 @@ def test_three_runtime_personal_local_workflow_is_documented() -> None:
     assert "planning-dispatch.md" in readme
 
 
-def test_deepagents_default_version_matches_runtime_documentation() -> None:
+def test_deepagents_default_version_has_single_runtime_owner() -> None:
     setup = (ROOT / "scripts" / "setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
     match = re.search(r'DeepAgentsCodeVersion = "([^"]+)"', setup)
     assert match is not None
-    version = match.group(1)
-
-    documented_paths = (
-        ROOT / "README.md",
-        ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md",
-        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md",
-        ROOT / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md",
-    )
-    for path in documented_paths:
-        text = path.read_text(encoding="utf-8")
-        assert (
-            f"deepagents-code {version}" in text
-            or f"default `{version}`" in text
-        )
+    assert match.group(1)
+    assert "version pinned by `scripts/setup_deepagents_runtime.ps1`" in (
+        ROOT / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "version pinned by" in (
+        ROOT / "docs" / "operating_system" / "procedures" / "personal-local-worktree-procedure.md"
+    ).read_text(encoding="utf-8")
+    assert "setup-script-pinned `deepagents-code` version" in (
+        ROOT / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md"
+    ).read_text(encoding="utf-8")
+    assert "setup script owns the tested `deepagents-code` version" in (
+        ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_deepagents_runtime_state_is_ignored() -> None:

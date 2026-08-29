@@ -76,16 +76,15 @@ selects source profile model for primary DeepAgents launch and materializes
 ignored DeepAgents project subagents; they are not `dcode --agent` primary profiles.
 When bounded Tura delegation is installed, use
 `project-delegate --role <profile> -n "<task>"`. Tura uses the
-same tracked roles and TL provider route (`Tura -> LightRSI -> 9router ->
-provider`); Native Codex remains controller and `dcode-project` remains the
+same tracked roles and configured provider route; Native Codex remains controller and `dcode-project` remains the
 explicit DeepAgents path.
 Current launcher forces `--no-mcp`; it does not mirror Codex MCP tools or
 permissions. Codex controller performs MCP work, writes validated
 `codex.mcp.handoff.v1` under user-local handoff root, then launches DeepAgents
 with `--handoff-file <absolute-path>`. Optional `--mcp-select` narrows
 provenance only; it does not grant DeepAgents MCP access.
-Local setup defaults to tested `deepagents-code 0.1.64`, requires Python 3.12 or
-newer, and disables child auto-update. Refresh the runtime through
+Local setup uses the version pinned by `scripts/setup_deepagents_runtime.ps1`,
+requires Python 3.12 or newer, and disables child auto-update. Refresh the runtime through
 `scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
 For Tura replacement, keep the configured executable path when possible, check
 its nonsecret identity with `project-delegate --role normal --print-config`,

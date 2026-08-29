@@ -71,8 +71,6 @@
     ".deepagents"
   ],
   "omitPaths": [
-    "docs/operating_system/manifest.yaml",
-    "docs/operating_system/procedures/runtime-adapter-procedure.md",
     "docs/operating_system/procedures/starter-kit-procedure.md",
     "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md",
     "docs/operating_system/templates/agents/root-AGENTS.template.md",

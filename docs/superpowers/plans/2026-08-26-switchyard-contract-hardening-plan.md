@@ -1,5 +1,6 @@
 ---
 template_id: implementation-plan
+contract_version: "1"
 name: Switchyard auto-routing contract hardening
 artifact_type: plan
 status: completed
@@ -66,6 +67,7 @@ profile guidance, planning schema, and starter-kit contents remain unchanged.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `codex/switchyard-contract-hardening`
 - Base commit: `1231f42755774eb9951eb582219ae0e97ed46cb9`
 - Active task(s): `none`

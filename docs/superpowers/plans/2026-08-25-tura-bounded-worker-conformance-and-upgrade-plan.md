@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: tura-bounded-worker-conformance-and-upgrade
 supersedes: docs/superpowers/plans/2026-08-24-codex-tura-default-delegation-adapter-plan.md
 targets:
@@ -76,6 +77,7 @@ DeepAgents, or 9router fallback is introduced.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `main`
 - Base commit: `9fe07bb`
 - Active task(s): none

@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: three-runtime-task-executor-selection
 targets:
   - docs/operating_system/planning/planning-dispatch.md
@@ -153,6 +154,7 @@ runtime implementation unchanged.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `main`
 - Base commit: `6e9b65ab0fb9167f0c8d79280e8467f5ff74720c`
 - Active task(s): `none`

@@ -77,9 +77,10 @@ Close only when all conditions hold:
 - approved behavior has been promoted once through `skill-spec-drafting`;
 - handoff is recorded.
 
-After closure, invoke `skill-writing-plans` for implementation sequencing and
-stop. Wayfinding does not pre-author plan tasks, dependency order, write
-ownership, executor choice, or verification commands.
+After closure, return to `docs/operating_system/planning/planning-dispatch.md`
+and apply its next applicable gate. If implementation sequencing is needed,
+use `skill-writing-plans`. Wayfinding does not pre-author plan tasks,
+dependency order, write ownership, executor choice, or verification commands.
 
 ## Verification
 

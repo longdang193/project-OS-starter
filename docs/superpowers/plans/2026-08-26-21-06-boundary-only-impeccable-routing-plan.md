@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: boundary-only-impeccable-routing
 targets:
   - docs/operating_system/rules/frontend-ui-rule.md

@@ -3,6 +3,7 @@ layer: change
 artifact_type: plan
 status: completed
 template_id: implementation-plan
+contract_version: "1"
 name: runtime-tool-resolution
 targets:
   - docs/operating_system/tooling/runtime-tool-resolution.md

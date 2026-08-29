@@ -1,5 +1,6 @@
 ---
 template_id: implementation-plan
+contract_version: "1"
 name: SSOT contract enforcement remediation
 artifact_type: plan
 status: completed
@@ -45,6 +46,7 @@ for that command. README and version wording match current executable behavior.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
+- Coordination schema: `1`
 - Branch: `codex/ssot-contract-enforcement`
 - Base commit: `1e4550ce9e55bcf9b7e44d3b523ed9c8deb42f34`
 - Active task(s): `none`
