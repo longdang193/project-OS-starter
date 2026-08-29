@@ -107,7 +107,7 @@ editing generated files directly.
 - Mode: `inline sequential`
 - Coordination: `git-tracked`
 - Default task executor: `codex`
-- Required skills: `skill-code-standards`, `skill-writing-skills`, `skill-executing-plans`, `skill-verification-before-completion`
+- Required skills: `skill-chief-of-staff`, `skill-code-standards`, `skill-writing-skills`, `skill-executing-plans`, `skill-verification-before-completion`
 - Isolation: `current workspace`; preserve existing untracked changes
 - Commit policy: `no commits during execution`
 - Preauthorized local actions: edit declared canonical source and focused tests; regenerate declared adapters; run declared local validators and tests; rebuild disposable Starter output

@@ -55,6 +55,50 @@ def test_redaction_hides_developer_instructions() -> None:
     ]
 
 
+def test_codex_home_rejects_duplicate_stop_hook_scopes(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    project = tmp_path / "project"
+    (project / ".codex").mkdir(parents=True)
+    hooks = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "probe"}]}]}}
+    (codex_home / "hooks.json").write_text(json.dumps(hooks), encoding="utf-8")
+    (project / ".codex" / "hooks.json").write_text(json.dumps(hooks), encoding="utf-8")
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="duplicate Stop-hook scopes"):
+        LAUNCHER._codex_runtime(project, codex_home)
+
+
+def test_main_starts_with_selected_codex_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {"codex": {"codex_home": str(codex_home)}}
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile",
+            "xhigh",
+            "--session",
+            "codex-probe",
+            "--pane",
+            "w1:p5",
+            "--cwd",
+            str(ROOT),
+            "--expected-base",
+            "HEAD",
+        ]
+    ) == 0
+    assert captured["env"]["CODEX_HOME"] == str(codex_home.resolve())
+
+
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:
     fake_profile(tmp_path, "normal", 20)
     fake_profile(tmp_path, "ui", None)
@@ -78,7 +122,7 @@ def test_missing_executable_fails_closed(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_pane_safety_rejects_existing_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     payload = {"result": {"panes": [{"pane_id": "p1", "cwd": str(tmp_path), "agent": "codex"}]}}
-    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command: payload)
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: payload)
 
     with pytest.raises(LAUNCHER.LaunchBlocked, match="already has agent"):
         LAUNCHER._herdr_pane(tmp_path, "session", "p1", "herdr")

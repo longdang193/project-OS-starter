@@ -1,6 +1,6 @@
 ---
 name: skill-chief-of-staff
-description: Use when an approved Git-tracked plan needs sustained top-level coordination across independent Codex main-agent lanes.
+description: "Codex lead only: use when an approved Git-tracked plan lists `skill-chief-of-staff` in Required skills and needs sustained top-level coordination across independent Codex main-agent lanes."
 required_reads:
   - docs/operating_system/rules/git-tracked-coordination-rule.md
 distribution_tier: starter_kit
@@ -26,9 +26,10 @@ approved-plan execution.
 
 ## Activation
 
-Use CoS only when an approved plan needs sustained handoffs, independent
-write-capable lanes, or cross-task coordination. Use ordinary execution for
-single-lane work. CoS activates only under a native Codex lead controller. A
+Use CoS only when an approved plan lists `skill-chief-of-staff` in its
+`Required skills` and needs sustained handoffs, independent write-capable lanes,
+or cross-task coordination. Use ordinary execution for single-lane work. CoS
+activates only under a native Codex lead controller. A
 delegated Herdr main agent receives a bounded lane task; it must not activate
 CoS, create peer agents, or reactivate coordination. CoS applies only to
 `Executor: codex`; `deepagents` uses
@@ -68,8 +69,8 @@ Use runtime resolution rules for capability facts. On relevant Herdr, Codex,
 configuration, provider, or tooling change, verify parity before material
 dispatch:
 
-- expected `herdr` executable and version
-- expected `codex` executable and version
+- discovered `herdr` executable and version, plus required-operation smoke check
+- discovered `codex` executable and version, plus required-operation smoke check
 - `CODEX_HOME`
 - provider and model configuration
 - required MCP and tool surface
@@ -99,13 +100,18 @@ identity and binding check:
 Any mismatch returns `BLOCKED` before write-capable launch.
 
 For Herdr main-agent launch, use the repository-owned
-`scripts/herdr_main_launcher.py`. Pass only selected profile and verified lane
-identity (`session`, `pane`, `cwd`, and expected base). Do not construct
+`scripts/herdr_main_launcher.py`. CoS verifies the full lane contract, including
+branch, `HEAD`, expected base, ownership, and allowed paths. Pass only selected
+profile and verified runtime identity (`session`, `pane`, and `cwd`). The
+launcher verifies runtime projection plus exact pane/cwd identity and reports
+Git facts; it does not enforce the full CoS lane contract. Do not construct
 provider, model, or developer-instruction overrides in CoS; the launcher
 resolves them from `agents/*.toml` and projects them ephemerally into Codex.
 Launcher evidence separates registry/runtime projection, Git identity, Herdr
-observation, and Codex startup facts. Redact developer instructions and record
-their digest instead.
+observation, and launch-request evidence. Redact developer instructions and
+record their digest instead. Record discovered versions and smoke-check required
+operations; compare against a pinned version only when an applicable plan or
+configuration explicitly pins one.
 
 CoS uses only provider-resolved Herdr operations: discover/list, start, prompt,
 wait, read, and retire/stop. Operation names and outputs come from the active
@@ -115,10 +121,10 @@ evidence only.
 
 ## Attention
 
-CoS attention is pull-based on an explicit CoS turn or verified polling or
-subscription mechanism. Herdr lifecycle state is runtime observation only. It
-does not prove task acceptance, update the ledger, or replace plan and Git
-truth.
+CoS attention is pull-based on explicit CoS turns. No polling or subscription
+mechanism is implied by this skill. Herdr lifecycle state is runtime observation
+only. It does not prove task acceptance, update the ledger, or replace plan and
+Git truth.
 
 ### Attention Audit
 
@@ -147,8 +153,11 @@ new profile, hook integration, or persistent heartbeat state.
 
 Select one dependency-ready task. Prefer reuse of a healthy main-agent session
 when plan, repository, lane, and context match. Select a fresh top-level Codex
-main agent when context isolation materially helps. Do not supervise executor-
-local workers inside `deepagents` or `tura`.
+main agent when context isolation materially helps. When resolving a blocker
+becomes a substantial independent detour, park the current lane, dispatch a
+fresh bounded Herdr main agent for that blocker, and merge back only compact
+evidence or result. Do not supervise executor-local workers inside `deepagents`
+or `tura`.
 
 ## Lane Contract
 
@@ -187,6 +196,10 @@ verdict, checks inspected, and known limits. GitHub `APPROVE` occurs only when
 review identity is eligible and repository rules allow it; otherwise use
 `COMMENT` or no GitHub action. Required distinct-identity approval returns
 `BLOCKED`.
+
+Reviewer read-only behavior is instruction-level, not host-enforced by the
+launcher. Capture pre-review and post-review Git state; any unexpected
+modification is a review-boundary violation and an escalation.
 
 For each base branch, grant one dependency-ready integration action at a time
 to one designated main agent. Reuse implementation-main or select a fresh
@@ -227,6 +240,8 @@ files, failed required proof, and unresolved plan or lane identity mismatch.
 
 ## Output
 
-Return selected task, plan binding, lane identity, runtime evidence age, agent
-status, proof decision, blockers, retirement result, and next action. Do not
-claim completion from Herdr status, a lane commit, an open PR, or a merged PR.
+Return selected task, plan binding, lane identity, `attention_result`, optional
+`attention_target`, runtime evidence freshness (`fresh-this-turn` or
+`reused-this-session`, with invalidation reason when reused), agent status, proof
+decision, blockers, retirement result, and next action. Do not claim completion
+from Herdr status, a lane commit, an open PR, or a merged PR.

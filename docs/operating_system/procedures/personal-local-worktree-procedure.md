@@ -225,6 +225,10 @@ Extended probes run only after parallelism, worktree, runtime-binding, handoff,
 role-generation, or cleanup changes. Tests own deterministic boundaries; live
 probes own installed-runtime, provider, concurrency, and cleanup evidence.
 
+Herdr probes pass one disposable `--codex-home` per probe. Keep only one active
+`Stop` hook scope: selected home or probe worktree `.codex/hooks.json`, never
+both.
+
 Use OS temporary directories, never starter workspace. Record probe ID,
 temporary workspace, base, executor/profile, exit code, elapsed time, changed
 paths, checks, decision, and notes. Preserve failed-probe evidence. Remove

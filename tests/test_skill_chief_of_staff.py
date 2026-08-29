@@ -25,8 +25,9 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "plan already bound by the current execution context",
         "exactly one active plan matching the current repository and worktree",
         "otherwise return `BLOCKED`",
-        "expected `herdr` executable and version",
-        "expected `codex` executable and version",
+        "discovered `herdr` executable and version",
+        "discovered `codex` executable and version",
+        "compare against a pinned version only when an applicable plan or",
         "`CODEX_HOME`",
         "required MCP and tool surface",
         "launched process cwd",
@@ -35,8 +36,10 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "agents/*.toml` owns its profile identity",
         "selected profile, resolved model, and Herdr launch binding",
         "scripts/herdr_main_launcher.py",
+        "CoS verifies the full lane contract",
+        "launcher verifies runtime projection plus exact pane/cwd identity",
         "Do not construct\nprovider, model, or developer-instruction overrides in CoS",
-        "Redact developer instructions and record\ntheir digest instead",
+        "Redact developer instructions and\nrecord their digest instead",
         "discover/list, start, prompt,\nwait, read, and retire/stop",
         "DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT |",
         "PASS | FAIL | BLOCKED",
@@ -84,8 +87,18 @@ def test_chief_of_staff_defines_explicit_turn_attention_audit() -> None:
         "Audit outcomes are advisory attention results, not workflow-state transitions.",
         "does not mutate plan, Git, PR state, Herdr, authority, or durable coordination state",
         "V1 has no autonomous wake mechanism, timer, scheduler, helper-agent dispatch, new profile, hook integration, or persistent heartbeat state.",
+        "No polling or subscription mechanism is implied by this skill.",
     ):
         assert text in normalized
+
+
+def test_chief_of_staff_exposes_attention_and_freshness_output_contract() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    normalized = " ".join(skill.split())
+    assert "`attention_result`, optional `attention_target`" in normalized
+    assert "runtime evidence freshness (`fresh-this-turn` or `reused-this-session`" in normalized
+    assert "Reviewer read-only behavior is instruction-level" in skill
+    assert "substantial independent detour, park the current lane" in normalized
 
 
 def test_chief_of_staff_blocks_delegated_reactivation_and_separates_returns() -> None:
@@ -111,7 +124,7 @@ def test_chief_of_staff_uses_herdr_only_for_agent_dispatch() -> None:
 
 def test_executor_skill_keeps_cos_as_codex_coordination_only() -> None:
     skill = read(".agents/skills/skill-executing-plans/SKILL.md")
-    assert "`skill-chief-of-staff` as its coordination method" in skill
+    assert "lists `skill-chief-of-staff` in `Required skills`" in skill
     assert "only a Herdr-\nsupervised top-level Codex\nmain agent" in skill
     assert "CoS must not call `multi_agent_v1`, native Codex subagents" in skill
     assert "`dcode-project` for `deepagents`" in skill
@@ -122,8 +135,10 @@ def test_planning_dispatch_selects_cos_only_for_sustained_codex_coordination() -
     dispatch = read("docs/operating_system/planning/planning-dispatch.md")
     assert "## Coordination Method Selection" in dispatch
     assert "optional coordination specialization of" in dispatch
-    assert "sustained\nhandoffs, independent top-level Codex main-agent lanes" in dispatch
-    assert "does not add an executor, profile, plan field, or durable state artifact" in dispatch
+    assert "lists\n`skill-chief-of-staff` in `Required skills`" in dispatch
+    assert "canonical CoS opt-in signal" in dispatch
+    assert "sustained handoffs,\nindependent top-level Codex main-agent lanes" in dispatch
+    assert "does not add\nan executor, profile, plan field, or durable state artifact" in dispatch
     assert "Herdr is runtime observation and\nmain-agent supervision" in dispatch
     assert "only independent Herdr\ntop-level Codex main-agent sessions" in dispatch
     assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch

@@ -36,7 +36,8 @@ This document records provider-native deployment for rules, skills, root instruc
 
 - Canonical repo sources remain source of truth.
 - `agents/*.toml` owns profile/provider/model/instruction facts; `scripts/herdr_main_launcher.py` resolves and projects them; Herdr owns only top-level session/pane lifecycle and observation.
-- Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and Codex startup facts; developer instructions are represented by digest, not raw text.
+- Herdr probes use one resolved `CODEX_HOME`; the launcher passes it to Herdr and Codex child processes and blocks when project and home `hooks.json` both define `Stop` hooks.
+- Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. Post-start readiness remains a separate CoS/Herdr observation.
 - Positive `rank` values order only ranked profiles. Ranked profiles are ordered
   by registry rank; unranked profiles are explicit-only and non-orderable. Select
   executor and validator profiles independently from

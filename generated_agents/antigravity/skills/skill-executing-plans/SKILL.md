@@ -122,7 +122,7 @@ Before dispatch, read the active task ledger `Executor` and `Template Profile`
 values. For `codex`, execute inline lead-controller work directly when the
 profile is `none`; when a fixed profile is selected for delegated work, use the
 active native Codex subagent capability only when CoS is not selected. When the
-approved plan selects `skill-chief-of-staff` as its coordination method, keep
+approved plan lists `skill-chief-of-staff` in `Required skills`, keep
 this skill as the execution owner and allow CoS to select only a Herdr-
 supervised top-level Codex
 main agent after plan, runtime parity, lane identity,

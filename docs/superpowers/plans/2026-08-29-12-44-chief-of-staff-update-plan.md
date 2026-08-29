@@ -2,7 +2,7 @@
 layer: change
 artifact_type: plan
 contract_version: "1"
-status: active
+status: superseded
 template_id: implementation-plan
 name: chief-of-staff-update
 targets:
