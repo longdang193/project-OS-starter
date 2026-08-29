@@ -25,8 +25,10 @@ approved workspace creation or reuse, bounded DeepAgents execution, and verified
 local checkpoint commits. Preauthorization never expands technical permissions.
 Stop for scope, base, workspace, or required-check changes; credentials or
 personal-profile access; external writes not named in contract; push, merge,
-release, publication; destructive Git recovery; discard; cleanup; or worktree
-removal.
+release, or publication without an exact active-plan lane grant; exceptional
+base mutation, force push, retargeting, protection bypass, semantic conflict
+resolution, destructive Git recovery, discard, cleanup outside that grant, or
+worktree removal.
 
 Run every controller command with selected absolute workspace:
 
@@ -268,7 +270,9 @@ thread IDs, DeepAgents thread IDs, or `dcode -r` as repository coordination stat
 When task contract preauthorizes verified checkpoint commits, completed task
 changes and lead-controller ledger update share one checkpoint commit after
 task-local proof. Git owns checkpoint identity; do not copy the resulting SHA
-into the plan. Push still requires separate explicit authorization.
+into the plan. An exact active-plan lane grant may authorize lane push, PR
+create/update, assigned review action, exact approved PR merge, and cleanup;
+exceptional or destructive actions still require explicit user authorization.
 
 ## Check And Review
 
@@ -292,14 +296,16 @@ evidence is missing.
 When checks and scope proof pass, controller records `accept` or `block` in task
 handoff. `accept` hands off only to
 [`skill-finishing-a-development-branch`](../../../.agents/skills/skill-finishing-a-development-branch/SKILL.md)
-for user-authorized keep, merge, push, discard, or cleanup. A verified local
-checkpoint commit is permitted only when task contract preauthorized it.
+for plan-granted lane publication or integration and user-authorized keep,
+exceptional merge, discard, or cleanup. A verified local checkpoint commit is
+permitted only when task contract preauthorized it.
 `block` changes no Git state. Recovery or destructive discard needs separate
 explicit authorization.
 
 Neither disposition commits beyond a task-preauthorized checkpoint, merges,
 pushes, releases, stashes, resets, cleans, prunes, removes, or force-removes a
-worktree.
+worktree without an applicable active-plan lane grant or explicit user
+authorization.
 
 ## Docker Boundary
 

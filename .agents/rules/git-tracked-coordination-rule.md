@@ -40,8 +40,9 @@ For Git-tracked coordinated work:
   lane push, PR create/update, assigned review action, the exact approved PR
   merge into its declared base after gates, and post-retirement cleanup.
 - Lane commits are implementation artifacts, not coordination checkpoints. The
-  lead remains the sole ledger writer and creates a checkpoint only after
-  accepting proof and updating the ledger.
+  lead remains the sole ledger writer and creates a checkpoint in the lead
+  workspace only after accepting proof and updating the ledger. A lane commit
+  cannot mark its task complete or change coordination state.
 - Integration targeting one base branch is serialized. The lead grants one
   dependency-ready integration action at a time to one designated main agent.
   Merge requires the expected reviewed head, required proof, clean state, and

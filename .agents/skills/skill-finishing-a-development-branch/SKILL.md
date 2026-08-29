@@ -14,7 +14,9 @@ This skill owns Git reconciliation and Git-managed branch/worktree cleanup after
 
 ## Preconditions
 
-Require a fresh `verified` result from `skill-verification-before-completion` containing:
+Require a fresh accepted task-proof handoff for branch or PR publication, and a
+fresh `verified` result from `skill-verification-before-completion` before final
+merge or cleanup. The evidence must contain:
 
 - workspace path and creation mechanism
 - branch or detached state
@@ -141,7 +143,8 @@ Do not choose option for user.
 
 ## 6. Push Branch And Pull Request Path
 
-After explicit selection:
+After explicit selection and an applicable active-plan lane grant or explicit
+user authorization:
 
 1. confirm named branch and committed verified state
 2. confirm remote target
@@ -149,10 +152,18 @@ After explicit selection:
 4. push lane branch
 5. create or update pull request when the active lane grant allows it and support exists
 6. record branch, remote, commit SHA, and pull-request result
-7. record branch, remote, commit SHA, and pull-request result; keep the lane process and worktree available for review fixes and integration
-8. after review and accepted or merged closure, retire the lane main-agent process, confirm no live process owns the worktree, then remove it only when cleanup is granted and safe
+7. keep the lane process and worktree available for review fixes and integration
+8. after whole-plan verification, review acceptance, and expected-head confirmation, retire the lane main-agent process, confirm no live process owns the worktree, then remove it only when cleanup is granted and safe
 
 Do not merge local base first when pull request path is selected.
+
+For remote PR integration, re-read provider PR state immediately before merge.
+Verify PR number, base ref, head ref, expected head SHA, required checks,
+review identity, and mergeability. Merge through the provider's PR operation by
+that exact PR and expected head. If remote head or base differs, stop with
+`reconciliation-required`; never replace remote PR merge with direct base
+mutation. After merge, verify remote base head and record the result before
+cleanup.
 
 ## 7. Local Fast-Forward Merge Path
 

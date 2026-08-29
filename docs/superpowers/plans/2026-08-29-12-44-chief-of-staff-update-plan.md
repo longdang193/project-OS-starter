@@ -2,7 +2,7 @@
 layer: change
 artifact_type: plan
 contract_version: "1"
-status: completed
+status: active
 template_id: implementation-plan
 name: chief-of-staff-update
 targets:
@@ -116,12 +116,12 @@ and starter-kit checks prove canonical/generated alignment.
 ## Coordination State
 
 - Coordination owner: `single lead controller`
-- Coordination schema: `1`
+- Coordination schema: `2`
 - Branch: `main`
 - Base commit: `39984109a0c42fa1f0df13d2ce6e37ccaa51c31b`
 - Expected workspace: `.playwright-mcp/` and `db/` remain preserved untracked changes; plan changes remain separate from those artifacts
-- Next action: commit verified changes
-- Blockers: none
+- Next action: restore Herdr executable visibility, then rerun profile-binding probe and independent review
+- Blockers: Herdr is not available on current `PATH`; exact profile/model/instruction binding, managed probe, and post-patch independent review remain blocked; task-owned `out/` cleanup remains pending separately authorized recursive cleanup
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -129,6 +129,7 @@ and starter-kit checks prove canonical/generated alignment.
 | Task 2 | `completed` | current | `codex` | Task 1 | Git-lane/PR lifecycle tests and diff inspection | `6 passed` |
 | Task 3 | `completed` | current | `codex` | Task 2 | planning guidance test and diff inspection | `5 passed` |
 | Task 4 | `completed` | current | `codex` | Task 3 | adapter sync, starter build, repository contract checks | `81 passed; adapter sync passed; starter output passed; repository contracts passed; planning validator passed` |
+| Task 5 | `completed` | current | `codex` | Task 4 | review-remediation tests, adapter sync, planning validation | `2026-08-29: 102 passed; adapter sync passed; starter build passed; repository contracts passed; planning validator passed; diff check passed` |
 
 ## Task Breakdown
 
@@ -423,6 +424,55 @@ and starter-kit checks prove canonical/generated alignment.
 **Exit Criteria:**
 - Canonical and generated skill files match, starter output contains the skill, all declared checks pass, and no unrelated changes appear.
 
+### Task 5: Close review findings and refresh evidence
+
+**Purpose:**
+- Close profile-binding, authority, PR lifecycle, delegated-reactivation, and plan-evidence gaps without adding runtime state.
+
+**Task Function:**
+- Reconcile canonical coordination contracts and validators against current review findings.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: direct canonical-source patch with repository coordination authority.
+
+**Validator Profile (optional):**
+- Controller-selected: `review`
+- Selection basis: independently inspect lifecycle, authority, and evidence-boundary regressions.
+
+**Specification Coverage:**
+- Native Codex lead-only CoS activation; Herdr-only top-level Codex dispatch; exact profile/model binding; publication versus final integration; ledger/checklist consistency.
+
+**Required Skills:**
+- `skill-code-standards`
+- `skill-verification-before-completion`
+
+**Files And Symbols:**
+- Modify canonical CoS, execution, worktree, finishing, review-request, coordination, planning, and lifecycle-validator sources plus focused tests.
+- Generate adapter surfaces only through `scripts/sync_agent_adapters.py`.
+
+**Dependencies:**
+- Task 4 complete.
+
+**Authority:**
+- Preauthorized local actions: edit declared canonical sources and tests, regenerate adapters, build disposable starter output, and run declared checks.
+- Stop for: provider authentication, external PR mutation, destructive cleanup, preserved untracked artifact changes, or unresolved semantic conflict.
+
+**Steps:**
+- [x] Step 1: Patch canonical CoS activation, profile binding, Herdr operations, return vocabulary, and retirement boundaries.
+- [x] Step 2: Align execution, coordination, personal-local, worktree, finishing, review-request, planning, and template authority text.
+- [x] Step 3: Extend lifecycle validation and focused tests for checklist/evidence consistency.
+- [x] Step 4: Sync adapters, rebuild starter output, refresh command evidence, and reconcile ledger state.
+
+**Verification:**
+- [x] `py scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `py scripts/validate_repo_contracts.py --fast`
+- [x] `py -m pytest tests/test_validate_repo_contracts.py tests/test_skill_chief_of_staff.py tests/test_git_lane_lifecycle.py tests/test_skill_reviewing_pull_requests.py tests/test_native_personal_local_workflow.py tests/test_sync_agent_adapters.py tests/test_starter_kit_generation.py tests/test_validate_agent_metadata_schema.py tests/test_validate_planning_lifecycle.py -q`
+- [x] `git diff --check`
+
+**Exit Criteria:**
+- Canonical contracts, generated adapters, lifecycle validator, tests, and plan state agree; fresh outputs prove no drift and preserved untracked paths remain untouched.
+
 ## Verification
 
 - `py scripts/sync_agent_adapters.py --all-platforms --check`
@@ -438,7 +488,10 @@ and starter-kit checks prove canonical/generated alignment.
 - Focused suite: `81 passed in 5.01s`.
 - Planning lifecycle: `Planning artifact validation passed.`
 - `git diff --check`: no output.
-- Final status: only preserved untracked `.playwright-mcp/` and `db/` remain.
+- Final status: preserved untracked `.playwright-mcp/` and `db/` remain; task-owned `out/` starter output remains pending separately authorized recursive cleanup.
+- Remediation evidence: CoS profile-binding and native-lead gates, Herdr operation boundary, lane checkpoint separation, publication/final-integration split, remote expected-head procedure, and checklist consistency validator are present in canonical sources and synced adapters.
+- Final verification evidence (2026-08-29): `py scripts/validate_planning_lifecycle.py`, adapter drift check, `py scripts/validate_repo_contracts.py --fast`, focused suite, and `git diff --check` passed; current `HEAD` remains `0430dc6164a692a38fce60c353d2de97f29c5572`.
+- Runtime limitation: `herdr --version` and `herdr --help` failed because `herdr` is not recognized in current runtime; no write-capable managed dispatch was attempted.
 
 ## Completion Criteria
 
@@ -453,5 +506,7 @@ The plan is ready for completion verification when:
 7. no autonomous CoS Git/PR/external-write authority, root authority change, executor/profile schema, Herdr state artifact, or unrelated workspace change was introduced
 
 The plan became `active` after explicit execution approval, and the lead
-updated the ledger before each task transition. Fresh command evidence is
-recorded above; no branch disposition was requested.
+updated the ledger before each task transition. Task 5 is complete with fresh
+command evidence; invoke `skill-verification-before-completion` before any
+terminal plan status or branch disposition. No branch disposition was
+requested.

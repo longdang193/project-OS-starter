@@ -33,9 +33,11 @@ coordination. Keep ordinary single-lane work on the existing execution path.
 
 CoS does not add an executor, profile, plan field, or durable state artifact.
 It applies only when the task ledger `Executor` is `codex` and runtime parity,
-plan binding, and lane identity gates pass. Herdr is runtime observation and
-main-agent supervision, not executor selection or task acceptance. CoS dispatches
-only independent Herdr top-level Codex main-agent sessions; it never calls
+plan binding, lane identity, and profile-binding gates pass under a native Codex
+lead controller. Herdr is runtime observation and
+main-agent supervision, not
+executor selection or task acceptance. CoS dispatches only independent Herdr
+top-level Codex main-agent sessions; it never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
 Tura internal workers, or executor-local reviewers or helpers. `deepagents` and
 `tura` retain their existing peer executor paths.

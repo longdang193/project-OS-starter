@@ -20,8 +20,13 @@ approved-plan execution.
 
 Use CoS only when an approved plan needs sustained handoffs, independent
 write-capable lanes, or cross-task coordination. Use ordinary execution for
-single-lane work. CoS applies only to `Executor: codex`; `deepagents` uses
-`dcode-project`, and `tura` uses `project-delegate`.
+single-lane work. CoS activates only under a native Codex lead controller. A
+delegated Herdr main agent receives a bounded lane task; it must not activate
+CoS, create peer agents, or reactivate coordination. CoS applies only to
+`Executor: codex`; `deepagents` uses
+`dcode-project`, and `tura` uses
+`project-delegate`. Other generated adapters may carry this skill, but their
+non-Codex lead must return `BLOCKED` rather than activate it.
 
 ## Conditional References
 
@@ -64,16 +69,32 @@ dispatch:
 - approval policy
 - startup and trust prompts
 
-Reuse parity evidence until one of those inputs changes. Every main-agent
-launch or reuse performs a cheap identity check:
+`Executor Selection` owns executor choice. `Template Profile` selects the
+profile contract; `agents/*.toml` owns its profile identity and model
+capability. Before write-capable dispatch, prove the chain from selected
+`Template Profile` through its canonical `agents/<profile>.toml` entry to the
+resolved Codex model and instruction surface used by Herdr. A missing or
+mismatched link returns `BLOCKED`; CoS must not fall back to native subagents
+or a different profile.
+
+Reuse parity evidence only inside the current lead-controller session until
+one of those inputs changes. Every main-agent launch or reuse performs a cheap
+identity and binding check:
 
 - repository root and Git common directory
 - exact worktree and branch
 - HEAD and expected base
 - lane ownership and allowed paths
 - launched process cwd
+- selected profile, resolved model, and Herdr launch binding
 
 Any mismatch returns `BLOCKED` before write-capable launch.
+
+CoS uses only provider-resolved Herdr operations: discover/list, start, prompt,
+wait, read, and retire/stop. Operation names and outputs come from the active
+runtime; CoS must not invent commands, event semantics, subscriptions, or
+durable Herdr state. Record returned facts in the current turn or plan-owned
+evidence only.
 
 ## Attention
 
@@ -104,6 +125,10 @@ PR merge path, PR retargeting, branch-protection bypass, semantic conflict
 resolution, unrelated branch or worktree mutation, unknown-file discard,
 publication, or scope expansion.
 
+Lane commits remain implementation artifacts. The lead controller records
+coordination checkpoints in its own workspace after accepting proof; a lane
+agent must not update the ledger as part of its implementation commit.
+
 ## Review And Integration
 
 Request review through `skill-requesting-code-review`. CoS dispatches only an
@@ -127,10 +152,17 @@ integration main agent; do not create a permanent integration role. Merge only
 the expected reviewed head with required proof, clean state, and no post-review
 commit. An open or merged PR never completes a task automatically.
 
+Branch and PR publication may occur after accepted lane proof when the active
+plan grants it. Final merge and lane cleanup require whole-plan verification,
+the exact reviewed head, remote expected-head confirmation, and post-merge
+proof. Missing remote PR capability returns `BLOCKED`; do not substitute local
+base mutation.
+
 ## Returns And Retirement
 
-Normalize main-agent returns to `DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT |
-BLOCKED`. CoS acceptance uses `PASS | FAIL | BLOCKED` after checking evidence.
+Normalize main-agent execution returns to `DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED`. Keep review decisions separate: CoS acceptance uses
+`PASS | FAIL | BLOCKED` after checking evidence and never converts execution
+status into a review verdict.
 Route blockers to missing context, failed proof, runtime mismatch, review
 failure, identity limitation, or user-authorized exception.
 

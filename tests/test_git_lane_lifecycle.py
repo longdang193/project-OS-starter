@@ -48,6 +48,7 @@ def test_coordination_preserves_checkpoint_and_serialized_integration_truth() ->
         "no post-review lane commit",
         "retire the associated main-agent process",
         "active agent never removes its own worktree",
+        "A lane commit cannot mark its task complete",
     ):
         assert text in coordination
 
@@ -61,3 +62,11 @@ def test_review_dispatch_is_topology_neutral_and_review_is_head_bound() -> None:
     assert "exact reviewed head" in reviewer
     assert "Project OS review is separate from GitHub review state" in reviewer
     assert "differs from PR author when required" in reviewer
+
+
+def test_finishing_separates_publication_from_final_integration() -> None:
+    finishing = flat(read(".agents/skills/skill-finishing-a-development-branch/SKILL.md"))
+    assert "accepted task-proof handoff for branch or PR publication" in finishing
+    assert "fresh `verified` result" in finishing
+    assert "re-read provider PR state immediately before merge" in finishing
+    assert "reconciliation-required" in finishing

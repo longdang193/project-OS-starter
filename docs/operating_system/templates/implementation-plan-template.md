@@ -57,7 +57,7 @@ task ledger. Git owns workspace and change evidence; executor thread state
 never becomes repository state.
 
 - Coordination owner: `single lead controller`
-- Coordination schema: `1`
+- Coordination schema: `2`
 - Branch: `<target branch>`
 - Base commit: `<commit>`
 - Expected workspace: `<clean or named preserved changes>`
@@ -66,9 +66,11 @@ never becomes repository state.
 
 `contract_version: 1` marks the modern plan contract. Completed plans without
 this marker remain historical compatibility artifacts. `Coordination schema: 1`
-marks modern Git-tracked coordination only; it does not version the plan
-contract. Versioned completed plans require terminal task states and recorded
-proof. Post-verification branch disposition may remain in `Next action`.
+marks compatible Git-tracked coordination. `Coordination schema: 2` additionally
+requires completed task sections and final verification checklists to be fully
+checked, preventing ledger state from outrunning Markdown evidence. Versioned
+completed plans require terminal task states and recorded proof. Post-
+verification branch disposition may remain in `Next action`.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -101,7 +103,7 @@ Use `Wave` only when plan truly needs orchestration across multiple related task
 Within each task:
 - `Purpose` owns bounded outcome
 - `Task Function` names current open-ended function without mapping it to a profile
-- `Template Profile` records one controller-selected discovered profile plus selection basis for delegated work, or `none (lead controller)` for inline controller work
+- `Template Profile` records one controller-selected discovered profile plus selection basis for delegated work, or `none (lead controller)` for inline controller work; when CoS uses Herdr, the selected profile must match `agents/*.toml`, the resolved Codex model, and Herdr launch evidence
 - `Validator Profile` records an optional separate validator and its selection basis
 - `Specification Coverage` maps approved requirements or direct scope
 - `Required Skills` names only methods needed for this task

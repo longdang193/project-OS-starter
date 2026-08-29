@@ -15,7 +15,7 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "`skill-executing-plans` owns\napproved-plan execution" in skill
     assert "CoS has no direct Git or PR authority" in skill
     assert "`deepagents` uses\n`dcode-project`" in skill
-    assert "`tura` uses `project-delegate`" in skill
+    assert "`tura` uses\n`project-delegate`" in skill
 
 
 def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() -> None:
@@ -30,6 +30,11 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "`CODEX_HOME`",
         "required MCP and tool surface",
         "launched process cwd",
+        "native Codex lead controller",
+        "Template Profile` selects the\nprofile contract",
+        "agents/*.toml` owns its profile identity",
+        "selected profile, resolved model, and Herdr launch binding",
+        "discover/list, start, prompt,\nwait, read, and retire/stop",
         "DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT |",
         "PASS | FAIL | BLOCKED",
     ):
@@ -47,9 +52,18 @@ def test_chief_of_staff_preserves_lifecycle_boundaries() -> None:
         "Never let an agent remove the worktree\nfrom which it is running",
         "Do not require, create, or treat `identity.md`",
         "Herdr owns transient\nprocess observation only",
+        "Branch and PR publication may occur after accepted lane proof",
+        "Final merge and lane cleanup require whole-plan verification",
     ):
         assert text in skill
     assert "event-driven" not in skill.lower()
+
+
+def test_chief_of_staff_blocks_delegated_reactivation_and_separates_returns() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    assert "must not activate\nCoS, create peer agents, or reactivate coordination" in skill
+    assert "execution returns to `DONE | DONE_WITH_CONCERNS |" in skill
+    assert "never converts execution\nstatus into a review verdict" in skill
 
 
 def test_chief_of_staff_uses_herdr_only_for_agent_dispatch() -> None:
@@ -69,8 +83,8 @@ def test_chief_of_staff_uses_herdr_only_for_agent_dispatch() -> None:
 def test_executor_skill_keeps_cos_as_codex_coordination_only() -> None:
     skill = read(".agents/skills/skill-executing-plans/SKILL.md")
     assert "`skill-chief-of-staff` as its coordination method" in skill
-    assert "only a Herdr-supervised top-level Codex\nmain agent" in skill
-    assert "CoS must\nnot call `multi_agent_v1`, native Codex subagents" in skill
+    assert "only a Herdr-\nsupervised top-level Codex\nmain agent" in skill
+    assert "CoS must not call `multi_agent_v1`, native Codex subagents" in skill
     assert "`dcode-project` for `deepagents`" in skill
     assert "project-delegate` for `tura`" in skill
 
@@ -82,6 +96,6 @@ def test_planning_dispatch_selects_cos_only_for_sustained_codex_coordination() -
     assert "sustained\nhandoffs, independent top-level Codex main-agent lanes" in dispatch
     assert "does not add an executor, profile, plan field, or durable state artifact" in dispatch
     assert "Herdr is runtime observation and\nmain-agent supervision" in dispatch
-    assert "only independent Herdr top-level Codex main-agent sessions" in dispatch
+    assert "only independent Herdr\ntop-level Codex main-agent sessions" in dispatch
     assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch
     assert "`deepagents` and\n`tura` retain their existing peer executor paths" in dispatch
