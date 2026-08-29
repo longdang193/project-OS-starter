@@ -431,6 +431,15 @@ and starter-kit checks prove canonical/generated alignment.
 - `git diff --check`
 - `git status --short`
 
+### Fresh Evidence (2026-08-29)
+
+- Adapter sync: `Agent adapter outputs are up to date.`
+- Repository contracts: `Repo contract validation passed (hook subset).`
+- Focused suite: `81 passed in 5.01s`.
+- Planning lifecycle: `Planning artifact validation passed.`
+- `git diff --check`: no output.
+- Final status: only preserved untracked `.playwright-mcp/` and `db/` remain.
+
 ## Completion Criteria
 
 The plan is ready for completion verification when:
@@ -444,5 +453,5 @@ The plan is ready for completion verification when:
 7. no autonomous CoS Git/PR/external-write authority, root authority change, executor/profile schema, Herdr state artifact, or unrelated workspace change was introduced
 
 The plan became `active` after explicit execution approval, and the lead
-updated the ledger before each task transition. Fresh completion proof returned
-verified; no branch disposition was requested.
+updated the ledger before each task transition. Fresh command evidence is
+recorded above; no branch disposition was requested.
