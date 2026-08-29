@@ -52,10 +52,25 @@ def test_chief_of_staff_preserves_lifecycle_boundaries() -> None:
     assert "event-driven" not in skill.lower()
 
 
+def test_chief_of_staff_uses_herdr_only_for_agent_dispatch() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    assert "CoS dispatches only an\nindependent Herdr top-level Codex main-agent session." in skill
+    for forbidden in (
+        "`multi_agent_v1`",
+        "native Codex subagents",
+        "DeepAgents internal `task` workers",
+        "Tura internal workers",
+        "executor-local reviewers or helpers",
+    ):
+        assert forbidden in skill
+    assert "Native\nsubagent review remains available only on non-CoS execution paths." in skill
+
+
 def test_executor_skill_keeps_cos_as_codex_coordination_only() -> None:
     skill = read(".agents/skills/skill-executing-plans/SKILL.md")
     assert "`skill-chief-of-staff` as its coordination method" in skill
-    assert "Herdr-supervised top-level Codex main\nagent" in skill
+    assert "only a Herdr-supervised top-level Codex\nmain agent" in skill
+    assert "CoS must\nnot call `multi_agent_v1`, native Codex subagents" in skill
     assert "`dcode-project` for `deepagents`" in skill
     assert "project-delegate` for `tura`" in skill
 
@@ -67,4 +82,6 @@ def test_planning_dispatch_selects_cos_only_for_sustained_codex_coordination() -
     assert "sustained\nhandoffs, independent top-level Codex main-agent lanes" in dispatch
     assert "does not add an executor, profile, plan field, or durable state artifact" in dispatch
     assert "Herdr is runtime observation and\nmain-agent supervision" in dispatch
-    assert "`deepagents`\nand `tura` retain their existing peer executor paths" in dispatch
+    assert "only independent Herdr top-level Codex main-agent sessions" in dispatch
+    assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch
+    assert "`deepagents` and\n`tura` retain their existing peer executor paths" in dispatch

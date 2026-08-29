@@ -106,10 +106,12 @@ publication, or scope expansion.
 
 ## Review And Integration
 
-Request review through `skill-requesting-code-review`. Ordinary execution may
-use a native reviewer subagent; CoS coordination may use an independent Herdr
-top-level Codex main agent. The reviewer receives the bounded contract, not the
-producer session history.
+Request review through `skill-requesting-code-review`. CoS dispatches only an
+independent Herdr top-level Codex main-agent session. CoS never calls
+`multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
+Tura internal workers, or executor-local reviewers or helpers. The reviewer
+receives the bounded contract, not the producer session history. Native
+subagent review remains available only on non-CoS execution paths.
 
 `skill-reviewing-pull-requests` owns independent PR inspection. Project OS
 review is separate from GitHub review state. A review result binds to
