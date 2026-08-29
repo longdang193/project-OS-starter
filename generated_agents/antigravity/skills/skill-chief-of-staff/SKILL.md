@@ -120,6 +120,31 @@ subscription mechanism. Herdr lifecycle state is runtime observation only. It
 does not prove task acceptance, update the ledger, or replace plan and Git
 truth.
 
+### Attention Audit
+
+On each explicit CoS turn with outstanding CoS-coordinated work, after plan binding and before selecting the next action, perform a bounded read-only Attention Audit.
+
+Inspect only currently relevant plan/task, Git/worktree, applicable PR/review, and expected Herdr lane evidence. Do not scan unrelated tasks,
+worktrees, sessions, or pull requests. Do not invent Herdr event semantics.
+
+Audit result: `NO_ACTION | INSPECT | BLOCKED`.
+
+- `NO_ACTION` - evidence is consistent with the current lifecycle phase.
+- `INSPECT` - CoS judgment or an approved in-scope correction is needed.
+- `BLOCKED` - an existing canonical blocking condition prevents safe progress.
+
+Consume blocking and verification semantics from their canonical owners; do
+not recreate their failure taxonomy. Herdr absence alone is not a blocker.
+Treat it as actionable only when current plan or current-turn evidence establishes that a live bound agent is expected.
+
+Audit outcomes are advisory attention results, not workflow-state transitions.
+The audit does not mutate plan, Git, PR state, Herdr, authority, or durable
+coordination state. `attention_target` identifies what CoS should inspect; CoS
+remains the sole next-action selector.
+
+V1 has no autonomous wake mechanism, timer, scheduler, helper-agent dispatch,
+new profile, hook integration, or persistent heartbeat state.
+
 Select one dependency-ready task. Prefer reuse of a healthy main-agent session
 when plan, repository, lane, and context match. Select a fresh top-level Codex
 main agent when context isolation materially helps. Do not supervise executor-

@@ -62,6 +62,32 @@ def test_chief_of_staff_preserves_lifecycle_boundaries() -> None:
     assert "event-driven" not in skill.lower()
 
 
+def test_chief_of_staff_defines_explicit_turn_attention_audit() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    audit = skill.index("### Attention Audit")
+    plan_binding = skill.index("## Plan Binding")
+    next_action = skill.index("Select one dependency-ready task")
+    assert plan_binding < audit < next_action
+    normalized = " ".join(skill.split())
+    for text in (
+        "On each explicit CoS turn with outstanding CoS-coordinated work",
+        "after plan binding and before selecting the next action",
+        "currently relevant plan/task, Git/worktree, applicable PR/review, and expected Herdr lane evidence",
+        "NO_ACTION | INSPECT | BLOCKED",
+        "NO_ACTION` - evidence is consistent with the current lifecycle phase.",
+        "INSPECT` - CoS judgment or an approved in-scope correction is needed.",
+        "BLOCKED` - an existing canonical blocking condition prevents safe progress.",
+        "Consume blocking and verification semantics from their canonical owners",
+        "Herdr absence alone is not a blocker",
+        "current plan or current-turn evidence establishes that a live bound agent is expected",
+        "attention_target",
+        "Audit outcomes are advisory attention results, not workflow-state transitions.",
+        "does not mutate plan, Git, PR state, Herdr, authority, or durable coordination state",
+        "V1 has no autonomous wake mechanism, timer, scheduler, helper-agent dispatch, new profile, hook integration, or persistent heartbeat state.",
+    ):
+        assert text in normalized
+
+
 def test_chief_of_staff_blocks_delegated_reactivation_and_separates_returns() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
     assert "must not activate\nCoS, create peer agents, or reactivate coordination" in skill
