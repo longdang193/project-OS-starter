@@ -32,15 +32,12 @@ the intent layer, with deeper intent docs beside it as needed.
   - what good looks like if the project succeeds
 - [constraints-and-non-goals.md](./constraints-and-non-goals.md)
   - limits, boundaries, and deliberate exclusions
-- [master-workstream-roadmap.md](./master-workstream-roadmap.md)
-  - optional coordination across several outcomes
 
 ## Rules
 
 - keep these docs stable and source-like
 - do not turn them into execution logs or release notes
 - treat them as source material for later README synthesis
-- use `master-workstream-roadmap.md` only when several outcomes need coordinated direction
 - move directly from approved intent to execution when work is local, reversible, and design-clear
 - create a specification or plan only when its owned reasoning or execution detail is needed
 - if a document is really about how the repo should build, govern, or route

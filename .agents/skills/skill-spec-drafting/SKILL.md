@@ -53,7 +53,7 @@ Implementation plan owns exact files, task order, commands, dependencies, rollou
 - Use `docs/operating_system/templates/draft-specification-template.md` when behavior, UI intent, or state transitions still need prototype validation.
 - Save draft under final `docs/superpowers/specs/*.md` path with `template_id: draft-specification` and `status: proposed`.
 - Keep assumptions, open questions, prototype reference, and findings in same file while design remains unsettled.
-- After explicit approval, complete every explicitly applicable post-approval input before promotion. Keep the draft `status: proposed` while required Design Export, roadmap or workstream reconciliation, or other approved inputs remain incomplete. Then replace draft content in place with `docs/operating_system/templates/detailed-specification-template.md`, set `template_id: detailed-specification` and `status: active`, and preserve accepted prototype evidence and approved deferrals.
+- After explicit approval, complete every explicitly applicable post-approval input before promotion. Keep the draft `status: proposed` while required Design Export, affected-scope/spec reconciliation, or other approved inputs remain incomplete. Then replace draft content in place with `docs/operating_system/templates/detailed-specification-template.md`, set `template_id: detailed-specification` and `status: active`, and preserve accepted prototype evidence and approved deferrals.
 - Do not keep parallel permanent draft/final files. Git history preserves draft state.
 - For material backend behavior, define verification claims using `docs/operating_system/rules/backend-verification-rule.md`; frontend proof never replaces backend proof.
 
@@ -130,7 +130,17 @@ Inspect smallest evidence set needed to understand:
 
 Do not design from guessed repository behavior.
 
-### 3. Define Scope And Non-Goals
+### 3. Inspect Current Baseline
+
+When modifying existing behavior, inspect current source, tests, configuration,
+schemas, and maintained documentation before defining the post-change contract.
+Summarize relevant baseline facts in the specification as reviewer context.
+When the accepted outcome remains the same, revise the existing specification
+for narrower scope, implementation learning, or corrected design. Start a new
+specification only for a different problem, independent outcome, or standalone
+scope expansion.
+
+### 4. Define Scope And Non-Goals
 
 State:
 
@@ -143,7 +153,7 @@ State:
 
 Keep one specification coherent. Split unrelated behavior into separate specifications rather than creating one umbrella document.
 
-### 4. Define Required Outcomes
+### 5. Define Required Outcomes
 
 Each required outcome must be observable:
 
@@ -157,7 +167,7 @@ Each required outcome must be observable:
 
 Avoid vague outcomes such as “improve architecture” or “support future extensibility.”
 
-### 5. Define Requirements And Behavioral Contract
+### 6. Define Requirements And Behavioral Contract
 
 For each material requirement define:
 

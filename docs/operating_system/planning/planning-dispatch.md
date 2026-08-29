@@ -18,11 +18,19 @@ artifact needed for safe execution.
 | Approved design or direct approved scope needs multiple implementation steps | Use `skill-writing-plans` |
 | Multi-task execution needs durable resume or delegated checkpoints | Select `git-tracked` coordination |
 | Parallel writers are required | Select `git-tracked` coordination with isolated worktrees and disjoint ownership |
-| Several outcomes need coordinated direction | Use the optional roadmap; create specs or plans only where needed |
+| Several outcomes affect existing specifications or materially change scope or ownership | Reconcile affected specifications before planning; create only the needed specs and plan |
 | Isolation materially reduces execution risk | Use `skill-using-git-worktrees`, then execute plan |
 | Approved plan exists | Use `skill-executing-plans` |
 | Final completion proof is needed | Use `skill-verification-before-completion` |
 | Verified work needs an authorized Git disposition | Use `skill-finishing-a-development-branch` |
+
+## Change Revision
+
+Keep one specification when the accepted outcome remains the same and only
+scope, design, or implementation understanding changes. Revise that
+specification and reconcile its plan. Create a new specification for a
+different problem, independent outcome, or scope expansion that stands alone.
+Do not use an arbitrary overlap threshold.
 
 ## Coordination Method Selection
 
@@ -58,7 +66,7 @@ Use these gates only when their trigger applies:
 3. Design review when material design judgment is required.
 4. UX or behavior approval when approval is required.
 5. Design Export when an applicable owner-approved UX freeze or equivalent approved visual prototype needs durable design inputs.
-6. Roadmap or workstream reconciliation when several outcomes need coordinated direction and the approved UX materially changes ownership or scope.
+6. Affected-scope/spec reconciliation when an approved change materially changes existing specification scope or ownership.
 7. Detailed specification when durable behavior or contracts need definition.
 8. Repository reconciliation when current source, tests, contracts, or configuration must be checked against approved scope.
 9. Implementation plan when work needs multiple steps, dependencies, or handoffs.
@@ -93,7 +101,7 @@ optional; they are not generic lifecycle gates.
 - specifications own approved behavior and design decisions
 - draft specifications temporarily own exploratory behavior, UI intent, assumptions, prototype references, and validation findings; promotion replaces draft content in place
 - implementation plans own exact tasks, files, commands, dependencies, execution approach, shared-write controls, and verification
-- the optional roadmap owns only coordinated direction across several outcomes
+- affected-scope reconciliation records cross-spec impact without introducing another planning artifact
 
 No artifact is required merely to connect two other artifacts. Source, tests,
 configuration, and validators remain executable truth.

@@ -43,6 +43,9 @@ def test_planning_dispatch_owns_conditional_lifecycle() -> None:
     assert "Design Export when an applicable owner-approved UX freeze" in dispatch
     assert "Design Export method selection is explicit" in dispatch
     assert "all applicable post-approval inputs are complete" in dispatch
+    assert "Affected-scope/spec reconciliation" in dispatch
+    assert "optional roadmap" not in dispatch
+    assert "Do not use an arbitrary overlap threshold" in dispatch
     assert "Downstream project-owned handoff: Release/Deploy → Observe" in dispatch
     assert "Lifecycle ownership remains in `docs/operating_system/planning/planning-dispatch.md`." in integration
     assert "planning-dispatch post-approval gates" in integration
@@ -112,6 +115,9 @@ def test_specification_promotion_mapping_preserves_material_draft_evidence() -> 
     assert "semantic rewrite" in skill
     assert "block `status: active`" in skill
     assert "durable approval evidence" in skill
+    assert "affected-scope/spec reconciliation" in skill
+    assert "roadmap or workstream reconciliation" not in skill
+    assert "accepted outcome remains the same" in skill
     assert "owner approval or `Not approved: <reason>`" in draft
     assert "remaining blockers or `None identified`" in draft
     assert "approved deferrals with owner, rationale, trigger, and approval reference" in draft

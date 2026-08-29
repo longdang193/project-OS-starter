@@ -93,7 +93,7 @@ For every required task and criterion classify:
 
 Do not require raw `- [ ]` count to equal zero. Optional, historical, deferred, and not-applicable items may remain when disposition is explicit.
 
-Use existing planning and template validators when planning artifacts changed. Do not duplicate required-section parsing inside skill.
+Use existing planning and template validators when planning artifacts changed. Do not duplicate required-section parsing inside skill. Required maintained-contract updates are implementation scope when named by the plan; verification checks alignment but does not rewrite a contract to make proof pass. The lead controller accepts the reconciled result and performs durable plan/spec status transitions.
 
 ### 4. Map Claims To Evidence
 
