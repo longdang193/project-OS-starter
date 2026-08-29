@@ -20,9 +20,9 @@ stable source docs.
 
 ## Files
 
-This folder should contain at least one Markdown file so project purpose does
-not live only in `README.md`. `README.md` is the recommended anchor file for
-the intent layer, with deeper intent docs beside it as needed.
+Use this optional layer when project purpose needs durable context beyond
+`README.md`. When present, `README.md` is the recommended anchor file, with
+deeper intent docs beside it as needed.
 
 - [project-charter.md](./project-charter.md)
   - core problem, project shape, and enduring promises

@@ -50,28 +50,16 @@ execution waves belong in implementation plan.
 
 ## Design Analysis
 
-### Baseline and Change Summary
+### Change Summary
 
-Use this optional section when modifying existing behavior. It orients
-reviewers; it is not a second contract and has no machine-readable delta
-semantics.
+Use this optional section when it improves review of an existing behavior
+change. It orients reviewers; it is not a second owner for evidence, normative
+requirements, compatibility, or machine-readable delta semantics.
 
-#### Current Baseline
-
-- current behavior:
-- existing contract or source:
-- relevant implementation or test evidence:
-
-#### Change Summary
-
-- added behavior:
-- changed behavior:
-- removed behavior:
+- baseline reference:
+- added, changed, or removed behavior summary:
 - intentionally unchanged behavior:
-
-#### Affected Maintained Contracts
-
-- <contract or path> — <required update or unchanged>
+- affected maintained contracts:
 
 ### Current State and Evidence
 

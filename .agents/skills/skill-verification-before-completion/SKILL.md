@@ -186,6 +186,12 @@ checked box is progress state, not completion proof.
 
 Plan `completed` means implementation and verification are complete. It does not mean branch merged, pushed, published, or cleaned.
 
+When a completed plan has an active `parent_spec`, the lead controller also marks
+that specification `completed` after verification proves the implementation
+against its contract. Plans with no `parent_spec` do not imply a specification
+status transition. Completed and superseded specifications remain historical
+and are not revised in place.
+
 ### 10. Produce Verification Result
 
 Return exactly one result:

@@ -82,9 +82,9 @@ Targets:
 DeepAgents is not an adapter-sync target. User-local `dcode-project` derives
 ignored project subagents from `agents/*.toml` at launch. Every task launch
 requires `--role <profile>`; launcher consumes this selector and
-uses selected source role's model for its primary `dcode -M` binding. Its
+uses the selected profile's model for its primary `dcode -M` binding. Its
 provider endpoint, credentials, provider definition, and mutable state remain
-local. Each source role's `model_provider` must match active local Codex provider
+local. Each selected profile's `model_provider` must match active local Codex provider
 binding.
 Profiles may set `deepagents_compatible = false` when their provider model does
 not return the Responses API shape required by DeepAgents; `dcode-project`

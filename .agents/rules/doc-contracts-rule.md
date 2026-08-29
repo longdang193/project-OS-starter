@@ -18,7 +18,7 @@ To update: edit canonical source, then run sync.
 
 - Edit canonical source, not generated adapter output.
 - README remains orientation, not parallel governance.
-- Historical completed artifacts may reference retired systems.
+- Historical terminal artifacts (`completed` or `superseded`) may preserve clearly historical references to retired systems.
 - Active links and executable commands must resolve.
 - Do not require a spec for design-clear local change.
 - Do not duplicate canonical content across brainstorming reports, specs, or plans.

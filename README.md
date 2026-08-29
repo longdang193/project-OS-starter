@@ -47,15 +47,14 @@ First-hour flow:
    - `usage.md`
    - `pipeline.md`
    - `architecture.md`
-3. keep the required project folders in place:
-   - `docs/intent/`
+3. keep the standard project folders in place:
    - `docs/operating_system/`
    - `docs/superpowers/specs/`
    - `docs/superpowers/plans/`
    - `repo_config/`
    - `scripts/`
    - `tests/`
-4. fill `docs/intent/` before deep procedure docs
+4. create `docs/intent/` when durable project purpose needs more than `README.md`
 5. decide whether the private/public publication procedure applies
 6. review starter governance and shipped root agent docs
 
@@ -76,7 +75,7 @@ selects source profile model for primary DeepAgents launch and materializes
 ignored DeepAgents project subagents; they are not `dcode --agent` primary profiles.
 When bounded Tura delegation is installed, use
 `project-delegate --role <profile> -n "<task>"`. Tura uses the
-same tracked roles and configured provider route; Native Codex remains controller and `dcode-project` remains the
+same profile registry and configured provider route; Native Codex remains controller and `dcode-project` remains the
 explicit DeepAgents path.
 Current launcher forces `--no-mcp`; it does not mirror Codex MCP tools or
 permissions. Codex controller performs MCP work, writes validated
@@ -114,7 +113,7 @@ When bootstrapping a new project, review these first:
 - `docs/usage.md`
 - `docs/pipeline.md`
 - `docs/architecture.md`
-- `docs/intent/README.md`
+- `docs/intent/README.md` when the optional intent layer exists
 - `docs/operating_system/governance/repo-governance.md`
 - `docs/operating_system/templates/agents/*.template.md`
 - `repo_config/planning_artifact_schema.yaml`

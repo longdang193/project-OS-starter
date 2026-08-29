@@ -179,7 +179,7 @@ planning system or unsupported multi-spec linkage.
 - Controller-selected: `none`
 - Selection basis: lifecycle tests, template checks, and final contract validation
 
-**Specification Coverage:** Current-baseline inspection, optional change summary, full post-change contract, same-change revision, affected-scope reconciliation, and maintained-contract ownership.
+**Specification Coverage:** Current-baseline inspection, optional change summary, full post-change contract, same-change revision, scope/ownership reconciliation during specification drafting, and maintained-contract ownership.
 
 **Required Skills:** `skill-code-standards`
 
@@ -290,6 +290,6 @@ The plan is ready for completion verification when:
 7. focused and broad verification commands pass
 8. no unrelated user changes are discarded
 
-Plan remains `proposed` until explicitly approved for execution. No capability
-spec layer, semantic delta validator, automatic fold, OpenSpec runtime, or
-multi-spec linkage is part of this plan.
+Execution was approved and completed; frontmatter status is `completed`. No
+capability spec layer, semantic delta validator, automatic fold, OpenSpec
+runtime, or multi-spec linkage is part of this plan.

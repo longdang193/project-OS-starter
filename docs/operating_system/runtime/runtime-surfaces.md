@@ -28,7 +28,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- |
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects canonical source role model for primary launch; validates controller-owned handoff; forces `--no-mcp`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
+| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects the canonical profile model for primary launch; validates controller-owned handoff; forces `--no-mcp`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 
@@ -45,7 +45,7 @@ This document records provider-native deployment for rules, skills, root instruc
   its executor when reliable for validation; specialized profiles may execute
   or validate based on task fitness.
 - Generated runtime outputs remain deployable packaging surfaces.
-- DeepAgents role views are local generated runtime state, not primary profiles or tracked adapter output.
+- DeepAgents profile views are local generated runtime state, not primary profiles or tracked adapter output.
 - DeepAgents auto-loads root `AGENTS.md` and discovers `.agents/skills` as
   project skills. It does not load `.agents/rules` as direct instructions;
   those files are generated platform-adapter views. Detailed rules remain

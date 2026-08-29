@@ -18,7 +18,7 @@ artifact needed for safe execution.
 | Approved design or direct approved scope needs multiple implementation steps | Use `skill-writing-plans` |
 | Multi-task execution needs durable resume or delegated checkpoints | Select `git-tracked` coordination |
 | Parallel writers are required | Select `git-tracked` coordination with isolated worktrees and disjoint ownership |
-| Several outcomes affect existing specifications or materially change scope or ownership | Reconcile affected specifications before planning; create only the needed specs and plan |
+| A change affects existing specifications, contracts, or ownership boundaries | Reconcile those impacts during specification drafting before planning; create only the needed specification and plan |
 | Isolation materially reduces execution risk | Use `skill-using-git-worktrees`, then execute plan |
 | Approved plan exists | Use `skill-executing-plans` |
 | Final completion proof is needed | Use `skill-verification-before-completion` |
@@ -30,6 +30,9 @@ Keep one specification when the accepted outcome remains the same and only
 scope, design, or implementation understanding changes. Revise that
 specification and reconcile its plan. Create a new specification for a
 different problem, independent outcome, or scope expansion that stands alone.
+Revise only `proposed` or `active` specifications. Treat `completed` and
+`superseded` specifications as historical; use them as baseline evidence for a
+new specification instead of rewriting them.
 Do not use an arbitrary overlap threshold.
 
 ## Coordination Method Selection
@@ -66,14 +69,13 @@ Use these gates only when their trigger applies:
 3. Design review when material design judgment is required.
 4. UX or behavior approval when approval is required.
 5. Design Export when an applicable owner-approved UX freeze or equivalent approved visual prototype needs durable design inputs.
-6. Affected-scope/spec reconciliation when an approved change materially changes existing specification scope or ownership.
-7. Detailed specification when durable behavior or contracts need definition.
-8. Repository reconciliation when current source, tests, contracts, or configuration must be checked against approved scope.
-9. Implementation plan when work needs multiple steps, dependencies, or handoffs.
-10. Implementation.
-11. Integration when a boundary is crossed.
-12. Applicable frontend, backend, browser, or end-to-end verification.
-13. Independent review when risk or policy requires it.
+6. Detailed specification when durable behavior or contracts need definition; specification drafting reconciles affected existing contracts, specifications, and ownership boundaries.
+7. Repository reconciliation when current source, tests, contracts, or configuration must be checked against approved scope.
+8. Implementation plan when work needs multiple steps, dependencies, or handoffs.
+9. Implementation.
+10. Integration when a boundary is crossed.
+11. Applicable frontend, backend, browser, or end-to-end verification.
+12. Independent review when risk or policy requires it.
 
 Approval does not itself authorize draft promotion when an explicitly applicable
 post-approval input remains incomplete. Design Export method selection is
@@ -98,10 +100,9 @@ optional; they are not generic lifecycle gates.
 ## Artifact Ownership
 
 - brainstorming reports own exploration
-- specifications own approved behavior and design decisions
+- specifications own approved behavior, design decisions, and scope/ownership reconciliation for affected maintained contracts
 - draft specifications temporarily own exploratory behavior, UI intent, assumptions, prototype references, and validation findings; promotion replaces draft content in place
 - implementation plans own exact tasks, files, commands, dependencies, execution approach, shared-write controls, and verification
-- affected-scope reconciliation records cross-spec impact without introducing another planning artifact
 
 No artifact is required merely to connect two other artifacts. Source, tests,
 configuration, and validators remain executable truth.
