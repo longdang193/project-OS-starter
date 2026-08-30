@@ -19,6 +19,7 @@ lifecycle:
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import pytest
@@ -49,6 +50,14 @@ BUILD = load_module("build_starter_kit", BUILD_PATH)
 VERIFY = load_module("validate_starter_kit", VERIFY_PATH)
 
 
+def read_source(path: str) -> str:
+    return (REPO_ROOT / path).read_text(encoding="utf-8")
+
+
+def normalized_source(path: str) -> str:
+    return " ".join(read_source(path).split())
+
+
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -57,6 +66,98 @@ def write_text(path: Path, text: str) -> None:
 def write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def test_completed_migration_plan_has_consistent_historical_status() -> None:
+    plan = read_source("docs/superpowers/plans/2026-08-29-openspec-lifecycle-cleanup-plan.md")
+
+    assert "status: completed" in plan
+    assert "Execution was approved and completed" in plan
+    assert "Plan remains `proposed`" not in plan
+
+
+def test_starter_onboarding_matches_optional_intent_and_atomic_kit() -> None:
+    readme = read_source("README.md")
+    intent = read_source("docs/intent/README.md")
+    adoption = read_source("docs/operating_system/adoption/project-adoption-migration-guide.md")
+    manifest = read_source("repo_config/starter-kit-manifest.json")
+
+    assert "standard project folders" in readme
+    assert "create `docs/intent/` when durable project purpose needs more than `README.md`" in readme
+    assert "Use this optional layer" in intent
+    assert "generated Starter kit as the atomic adoption unit" in adoption
+    assert "manual file-by-file copying" in adoption
+    assert '"docs/intent"' not in manifest
+
+
+def test_runtime_docs_use_profile_concept_and_keep_cli_selector_literal() -> None:
+    paths = [
+        "README.md",
+        "docs/operating_system/procedures/personal-local-worktree-procedure.md",
+        "docs/operating_system/procedures/runtime-adapter-procedure.md",
+        "docs/operating_system/runtime/runtime-surfaces.md",
+        "docs/operating_system/templates/agents/root-AGENTS.template.md",
+    ]
+
+    for path in paths:
+        content = read_source(path)
+        assert "role source" not in content, path
+        assert "role provider" not in content, path
+
+    assert "--role <profile>" in read_source("README.md")
+    assert "--role <profile>" in read_source("docs/operating_system/procedures/runtime-adapter-procedure.md")
+
+
+def test_runtime_adapter_procedure_preserves_lifecycle_evidence() -> None:
+    procedure = normalized_source("docs/operating_system/procedures/runtime-adapter-procedure.md")
+
+    assert "## Runtime Recovery and Proof" in procedure
+    assert "Do not trust a stale port, PID, or marker file" in procedure
+    assert "Tool-call success is not completion proof" in procedure
+    assert "preserve the run record and lifecycle logs" in procedure
+    assert "Keep logging best-effort" in procedure
+
+
+def test_starter_manifest_omits_private_provider_setup() -> None:
+    manifest = read_source("repo_config/starter-kit-manifest.json")
+
+    assert "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md" in manifest
+    assert "docs/operating_system/tooling/runtime-tool-resolution.md" in manifest
+
+
+def _literal_read_references(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    references: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Name) or node.func.id not in {"read", "normalized"}:
+            continue
+        if not node.args or not isinstance(node.args[0], ast.Constant):
+            continue
+        if isinstance(node.args[0].value, str):
+            references.add(node.args[0].value)
+    return references
+
+
+def test_shipped_tests_read_only_kit_paths(tmp_path: Path) -> None:
+    manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
+    kit_root = BUILD.build_starter_kit(
+        repo_root=REPO_ROOT,
+        manifest_path=REPO_ROOT / "repo_config" / "starter-kit-manifest.json",
+        output_root=tmp_path,
+    )
+    missing: list[str] = []
+
+    for relative_path in manifest["copyPaths"]:
+        if not relative_path.startswith("tests/") or not relative_path.endswith(".py"):
+            continue
+        test_path = REPO_ROOT / relative_path
+        for referenced_path in _literal_read_references(test_path):
+            if not (kit_root / referenced_path).exists():
+                missing.append(f"{relative_path}: {referenced_path}")
+
+    assert missing == [], "Shipped tests reference paths absent from kit: " + ", ".join(missing)
 
 
 def make_manifest(repo_root: Path) -> Path:
