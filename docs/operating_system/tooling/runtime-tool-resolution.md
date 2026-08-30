@@ -29,6 +29,9 @@ Capability labels describe needs; they are not a fixed enum or provider registry
 Provider names are runtime facts or explicit method choices, not architecture.
 Keep named providers only for an explicitly selected method, committed repository
 dependency, or required security/runtime boundary.
+Do not maintain a generic provider catalog. A provider replacement needs no
+Project OS policy change when the requirement contract, authority boundary, and
+evidence requirement remain satisfied.
 Platform adapter maps under `skill-using-superpowers/references/` are explicit
 core-runtime bindings, not generic provider defaults; preserve them only when
 their adapter contract requires them.
