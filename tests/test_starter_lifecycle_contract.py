@@ -255,6 +255,9 @@ def test_frontend_export_boundary_stays_provider_agnostic() -> None:
 
     assert "Curate generated design exports" in frontend
     assert "surface the conflict for reconciliation" in frontend
+    assert "Optional design-audit methods are advisory evidence only" in frontend
+    assert "Classify material frontend claims before selecting tools" in frontend
+    assert "evidence from one class cannot substitute for another" in frontend
     assert "OpenDesign" not in frontend
     assert "combo-ui" not in frontend
 
