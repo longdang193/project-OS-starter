@@ -54,7 +54,7 @@ def test_chief_of_staff_preserves_lifecycle_boundaries() -> None:
         "merge the exact approved PR into its\ndeclared base after gates pass",
         "Project OS\nreview is separate from GitHub review state",
         "Required distinct-identity approval returns\n`BLOCKED`",
-        "retire or stop the\nHerdr main-agent session",
+        "retire or stop the\nHerdr top-level lane",
         "Never let an agent remove the worktree\nfrom which it is running",
         "Do not require, create, or treat `identity.md`",
         "Herdr owns transient\nprocess observation only",
@@ -147,17 +147,17 @@ def test_chief_of_staff_exposes_attention_and_freshness_output_contract() -> Non
 
 def test_chief_of_staff_blocks_delegated_reactivation_and_separates_returns() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
-    assert "must not activate\nCoS, create peer agents, or reactivate coordination" in skill
+    assert "must not\nactivate CoS, create peer agents, or reactivate coordination" in skill
     assert "execution returns to `DONE | DONE_WITH_CONCERNS |" in skill
     assert "never converts execution\nstatus into a review verdict" in skill
 
 
-def test_chief_of_staff_uses_herdr_only_for_agent_dispatch() -> None:
+def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
-    assert "CoS dispatches only an\nindependent Herdr top-level Codex main-agent session." in skill
-    assert "Every CoS main-agent dispatch\ngoes through Herdr" in skill
+    assert "CoS may dispatch only top-level implementation lanes through Herdr." in skill
+    assert "Every CoS lane dispatch goes through Herdr" in skill
     assert "`py -B scripts/herdr_main_launcher.py ...`" in skill
-    assert "Monitor\nmain-agent progress in the Herdr terminal" in skill
+    assert "Monitor only the\ntop-level lane and wrapper" in skill
     assert "never invokes subagents directly" in skill
     for forbidden in (
         "`multi_agent_v1`",
@@ -170,10 +170,10 @@ def test_chief_of_staff_uses_herdr_only_for_agent_dispatch() -> None:
     assert "Native\nsubagent review remains available only on non-CoS execution paths." in skill
 
 
-def test_executor_skill_keeps_cos_as_codex_coordination_only() -> None:
+def test_executor_skill_keeps_cos_as_codex_controlled() -> None:
     skill = read(".agents/skills/skill-executing-plans/SKILL.md")
     assert "lists `skill-chief-of-staff` in `Required skills`" in skill
-    assert "only a Herdr-\nsupervised top-level Codex\nmain agent" in skill
+    assert "only a Herdr-\nsupervised top-level Codex main agent or bounded DeepAgents pane process" in skill
     assert "CoS must not call `multi_agent_v1`, native Codex subagents" in skill
     assert "`dcode-project` for `deepagents`" in skill
     assert "project-delegate` for `tura`" in skill
@@ -187,10 +187,10 @@ def test_planning_dispatch_selects_cos_only_for_sustained_codex_coordination() -
     assert "canonical CoS opt-in signal" in dispatch
     assert "sustained handoffs,\nindependent top-level Codex main-agent lanes" in dispatch
     assert "does not add\nan executor, profile, plan field, or durable state artifact" in dispatch
-    assert "Herdr is runtime observation and\nmain-agent supervision" in dispatch
-    assert "only independent Herdr\ntop-level Codex main-agent sessions" in dispatch
+    assert "Herdr is\nruntime observation and top-level lane supervision" in dispatch
+    assert "only independent Herdr top-level lanes" in dispatch
     assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch
-    assert "`deepagents` and\n`tura` retain their existing peer executor paths" in dispatch
+    assert "`tura` retains\nits existing peer executor path" in dispatch
 
 
 def test_planning_dispatch_defines_observable_level_2_readiness() -> None:

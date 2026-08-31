@@ -39,6 +39,15 @@ dispatched task contract and applicable worker or validator skills.
 - Agent output is a claim until Codex reconciles Plan plus Git and accepts
   required proof.
 
+## Outer Return Contract
+
+The top-level DeepAgents dispatch brief returns exactly one of
+`DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED`. This is a semantic
+claim, not process evidence. Codex reconciles it with Git, plan state, Herdr
+outer-pane evidence, and `dcode-project` worker wait, exit, timeout, and
+descendant-cleanup evidence before acceptance. DeepAgents internal `task`
+workers remain executor-local and opaque.
+
 ## Preconditions
 
 Before dispatch, Codex must:

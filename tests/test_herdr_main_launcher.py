@@ -55,6 +55,132 @@ def test_redaction_hides_developer_instructions() -> None:
     ]
 
 
+def test_redaction_hides_deepagents_task() -> None:
+    redacted = LAUNCHER._redacted_arguments(["-n", "private task"])
+
+    assert redacted == [
+        "-n",
+        f"task=<sha256:{LAUNCHER._sha256_text('private task')}>",
+    ]
+
+
+def test_powershell_literal_escapes_apostrophes() -> None:
+    assert LAUNCHER._powershell_literal("worker's task") == "'worker''s task'"
+
+
+def test_resolve_launch_builds_deepagents_pane_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"),
+        "normal",
+        "9router",
+        "combo-normal",
+        20,
+        True,
+        "test",
+        "do not modify files",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda cwd, session, pane, herdr, **kwargs: {
+            "pane": {"cwd": str(cwd)},
+            "process_info": {},
+        },
+    )
+
+    command, evidence = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="deepagents-probe",
+        pane="w1:p1",
+        cwd=ROOT,
+        expected_base="HEAD",
+        executor="deepagents",
+        task="Return exactly DEEPAGENTS_ADAPTER_OK",
+    )
+
+    assert command == [
+        "herdr.exe",
+        "--session",
+        "deepagents-probe",
+        "pane",
+        "run",
+        "w1:p1",
+        "dcode-project",
+        "--role",
+        "normal",
+        "--json",
+        "--quiet",
+        "--no-mcp",
+        "--max-turns",
+        "4",
+        "--timeout",
+        "120",
+        "-n",
+        "'Return exactly DEEPAGENTS_ADAPTER_OK'",
+    ]
+    assert evidence["registry_launcher"]["executor"] == "deepagents"
+    assert "--executor" not in command
+    assert evidence["registry_launcher"]["redacted_runtime_argv"][-1].startswith(
+        "task=<sha256:"
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"task": None},
+        {"task": " "},
+        {"task": "x" * (LAUNCHER._MAX_TASK_LENGTH + 1)},
+    ],
+)
+def test_deepagents_task_is_required_and_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, str | None],
+) -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="task text"):
+        LAUNCHER.resolve_launch(
+            profile_name="normal",
+            session="session",
+            pane="pane",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="deepagents",
+            **kwargs,
+        )
+
+
+def test_deepagents_rejects_incompatible_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("review.toml"),
+        "review",
+        "9router",
+        "combo-review",
+        None,
+        False,
+        "test",
+        "review only",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="not compatible"):
+        LAUNCHER.resolve_launch(
+            profile_name="review",
+            session="session",
+            pane="pane",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="deepagents",
+            task="task",
+        )
+
+
 def test_codex_home_rejects_duplicate_stop_hook_scopes(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()

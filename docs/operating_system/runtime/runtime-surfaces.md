@@ -10,7 +10,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
-| `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex agent in Herdr |
+| `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex or DeepAgents implementation lane through Herdr |
 
 ## Generated Runtime Outputs
 
@@ -35,7 +35,7 @@ This document records provider-native deployment for rules, skills, root instruc
 ## Policy
 
 - Canonical repo sources remain source of truth.
-- `agents/*.toml` owns profile/provider/model/instruction facts; `scripts/herdr_main_launcher.py` resolves and projects them; Herdr owns only top-level session/pane lifecycle and observation.
+- `agents/*.toml` owns profile/provider/model/instruction facts; `scripts/herdr_main_launcher.py` resolves and projects them; Herdr owns top-level session/pane lifecycle and outer observation, while `dcode-project` owns DeepAgents worker lifecycle.
 - Herdr probes use one resolved `CODEX_HOME`; the launcher passes it to Herdr and Codex child processes and blocks when project and home `hooks.json` both define `Stop` hooks.
 - Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. Post-start readiness remains a separate CoS/Herdr observation.
 - Positive `rank` values order only ranked profiles. Ranked profiles are ordered

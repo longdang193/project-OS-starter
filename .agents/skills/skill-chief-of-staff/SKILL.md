@@ -34,18 +34,21 @@ CoS must not activate for PR, release, incident, specification, research, or
 cross-repository work in V2.
 
 CoS activates only under a native Codex lead controller. A delegated Herdr main
-agent receives a bounded lane task; it must not activate
-CoS, create peer agents, or reactivate coordination. CoS applies only to
-`Executor: codex`;
-`deepagents` uses `dcode-project`, and `tura` uses `project-delegate`. Other
-generated adapters may carry this skill, but their non-Codex lead must return
-`BLOCKED` rather than activate it.
+agent or DeepAgents pane process receives a bounded lane task; it must not
+activate CoS, create peer agents, or reactivate coordination. CoS applies to
+`Executor: codex | deepagents` for implementation lanes; `codex` uses Herdr
+agent start and `deepagents` uses `dcode-project` through Herdr pane run.
+Review and integration remain Codex-only. `tura` uses `project-delegate` on
+its existing peer executor path. Other generated adapters may carry this
+skill, but their non-Codex lead must return `BLOCKED` rather than activate it.
 
-CoS may invoke only top-level Codex main agents. Every CoS main-agent dispatch
-goes through Herdr; CoS never invokes subagents directly. Use the repository
-Herdr command `py -B scripts/herdr_main_launcher.py ...` for dispatch. Monitor
-main-agent progress in the Herdr terminal through provider-resolved wait/read
-operations; do not monitor or supervise executor-local subagents from CoS.
+CoS may dispatch only top-level implementation lanes through Herdr. Codex lanes
+use top-level Codex main agents; DeepAgents lanes use the bounded
+`dcode-project` pane process. Every CoS lane dispatch goes through Herdr; CoS
+never invokes subagents directly. Use the repository Herdr command
+`py -B scripts/herdr_main_launcher.py ...` for dispatch. Monitor only the
+top-level lane and wrapper through provider-resolved wait/read operations; do
+not monitor or supervise executor-local subagents from CoS.
 
 ## Conditional References
 
@@ -182,7 +185,7 @@ identity and binding check:
 
 Any mismatch returns `BLOCKED` before write-capable launch.
 
-For Herdr main-agent launch, use the repository-owned
+For Herdr top-level lane launch, use the repository-owned
 `scripts/herdr_main_launcher.py`. CoS verifies the full lane contract, including
 branch, `HEAD`, expected base, ownership, and allowed paths. Pass only selected
 profile and verified runtime identity (`session`, `pane`, and `cwd`). The
@@ -200,14 +203,16 @@ CoS uses only provider-resolved Herdr operations: discover/list, start, prompt,
 wait, read, and retire/stop. Operation names and outputs come from the active
 runtime; CoS must not invent commands, event semantics, subscriptions, or
 durable Herdr state. Record returned facts in the current turn or plan-owned
-evidence only.
+evidence only. For DeepAgents, Herdr owns outer pane evidence while
+`dcode-project` owns worker wait, timeout, exit propagation, and descendant
+cleanup; reconcile both before acceptance.
 For plan-bound execution, select one dependency-ready task. Prefer reuse of a healthy main-agent session
 when plan, repository, lane, and context match. Select a fresh top-level Codex
-main agent when context isolation materially helps. When resolving a blocker
-becomes a substantial independent detour, park the current lane, dispatch a
-fresh bounded Herdr main agent for that blocker, and merge back only compact
-evidence or result. Do not supervise executor-local workers inside `deepagents`
-or `tura`.
+main agent or bounded DeepAgents pane process when context isolation materially
+helps. When resolving a blocker becomes a substantial independent detour, park
+the current lane, dispatch a fresh bounded Herdr lane for that blocker, and
+merge back only compact evidence or result. Do not supervise executor-local
+workers inside `deepagents` or `tura`.
 
 ## Lane Contract (plan-bound execution)
 
@@ -265,14 +270,14 @@ base mutation.
 
 ## Returns And Retirement (plan-bound execution)
 
-Normalize main-agent execution returns to `DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED`. Keep review decisions separate: CoS acceptance uses
+Normalize implementation-lane execution returns to `DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED`. Keep review decisions separate: CoS acceptance uses
 `PASS | FAIL | BLOCKED` after checking evidence and never converts execution
 status into a review verdict.
 Route blockers to missing context, failed proof, runtime mismatch, review
 failure, identity limitation, or user-authorized exception.
 
 After accepted or merged lane work, prevent new writes, retire or stop the
-Herdr main-agent session, confirm no live process owns the worktree, then invoke
+Herdr top-level lane, confirm no live process owns the worktree, then invoke
 `skill-finishing-a-development-branch`. Never let an agent remove the worktree
 from which it is running.
 

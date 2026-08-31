@@ -124,9 +124,9 @@ profile is `none`; when a fixed profile is selected for delegated work, use the
 active native Codex subagent capability only when CoS is not selected. When the
 approved plan lists `skill-chief-of-staff` in `Required skills`, keep
 this skill as the execution owner and allow CoS to select only a Herdr-
-supervised top-level Codex
-main agent after plan, runtime parity, lane identity,
-and profile-binding gates pass; CoS must not fall back to native subagents.
+supervised top-level Codex main agent or bounded DeepAgents pane process after
+plan, runtime parity, lane identity, and profile-binding gates pass; CoS must
+not fall back to native subagents.
 CoS must not call `multi_agent_v1`, native Codex subagents, DeepAgents internal
 `task` workers, Tura internal workers, or executor-local reviewers or helpers.
 `Executor Selection` owns executor choice, while `Template Profile` and

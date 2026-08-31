@@ -45,15 +45,16 @@ ordinary single-lane work on the existing execution path.
 
 The `Required skills` entry is the canonical CoS opt-in signal. CoS does not add
 an executor, profile, plan field, or durable state artifact.
-It applies only when the task ledger `Executor` is `codex` and runtime parity,
-plan binding, lane identity, and profile-binding gates pass under a native Codex
-lead controller. Herdr is runtime observation and
-main-agent supervision, not
-executor selection or task acceptance. CoS dispatches only independent Herdr
-top-level Codex main-agent sessions; it never calls
+It applies when the task ledger `Executor` is `codex` or `deepagents` for
+implementation lanes and runtime parity, plan binding, lane identity, and
+profile-binding gates pass under a native Codex lead controller. Herdr is
+runtime observation and top-level lane supervision, not executor selection or
+task acceptance. CoS dispatches only independent Herdr top-level lanes;
+Codex uses a main-agent session and DeepAgents uses a bounded `dcode-project`
+pane process. It never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
-Tura internal workers, or executor-local reviewers or helpers. `deepagents` and
-`tura` retain their existing peer executor paths.
+Tura internal workers, or executor-local reviewers or helpers. `tura` retains
+its existing peer executor path. Review and integration remain Codex-only.
 For every Herdr main-agent launch, CoS verifies branch, `HEAD`, expected base,
 lane ownership, and allowed paths. It uses `scripts/herdr_main_launcher.py` for
 runtime projection, exact session/pane/cwd checks, and Git-fact reporting; the
