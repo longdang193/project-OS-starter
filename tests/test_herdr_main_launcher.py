@@ -110,7 +110,8 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "pane",
         "run",
         "w1:p1",
-        "dcode-project",
+        "&",
+        "'dcode-project.exe'",
         "--role",
         "normal",
         "--json",
@@ -128,6 +129,68 @@ def test_resolve_launch_builds_deepagents_pane_command(
     assert evidence["registry_launcher"]["redacted_runtime_argv"][-1].startswith(
         "task=<sha256:"
     )
+
+
+def test_deepagents_profile_binding_uses_lane_worktree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    lane_root = tmp_path / "lane"
+    lane_root.mkdir()
+    lead_profile = LAUNCHER.AgentProfile(
+        ROOT / "agents" / "normal.toml",
+        "normal",
+        "9router",
+        "model-A",
+        20,
+        True,
+        "lead",
+        "lead instructions",
+    )
+    lane_profile = LAUNCHER.AgentProfile(
+        lane_root / "agents" / "normal.toml",
+        "normal",
+        "9router",
+        "model-B",
+        20,
+        True,
+        "lane",
+        "lane instructions",
+    )
+    seen_roots: list[Path] = []
+
+    def select_profile(agents_root: Path, name: str) -> LAUNCHER.AgentProfile:
+        seen_roots.append(agents_root)
+        return lane_profile if agents_root == lane_root / "agents" else lead_profile
+
+    monkeypatch.setattr(LAUNCHER, "_profile", select_profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda cwd, session, pane, herdr, **kwargs: {
+            "pane": {"cwd": str(cwd)},
+            "process_info": {},
+        },
+    )
+
+    command, evidence = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="deepagents-probe",
+        pane="w1:p1",
+        cwd=lane_root,
+        expected_base="HEAD",
+        executor="deepagents",
+        task="lane task",
+    )
+
+    assert seen_roots == [lane_root / "agents"]
+    assert evidence["registry_launcher"]["model"] == "model-B"
+    assert evidence["registry_launcher"]["profile_source"] == str(lane_profile.source)
+    assert command[6] == "&"
+    assert command[7] == "'dcode-project.exe'"
 
 
 @pytest.mark.parametrize(

@@ -97,7 +97,7 @@ directly.
 - Branch: `main`
 - Base commit: `5b7a84c247da4c754ad6ecd14a559d8da638bb06`
 - Expected workspace: clean tracked state with preserved untracked `.playwright-mcp/`, `db/`, and `out/`
-- Next action: Run final completion verification and inspect declared diff
+- Next action: none — implementation verified and completed
 - Blockers: none
 - Execution evidence (2026-08-31): `herdr 0.8.2`; Herdr pane run/read/process-info works for normal and bounded long-running commands; process-info reports outer shell identity only; `pane close` returned success and captured descendant PID was not live afterward. Herdr still exposes no child PID, exit-code, or stop-result fields, so split ownership remains required. `dcode-project --print-config --role normal` passed without exposing credentials; `tests/test_dcode_project.py` passed 73 tests. Launcher dry-runs passed for Codex and DeepAgents. Fresh mixed smoke returned `DEEPAGENTS_ADAPTER_SMOKE_OK` and `CODEX_ADAPTER_SMOKE_OK`; Git stayed unchanged and `.deepagents/` was absent after retirement.
 
@@ -377,4 +377,4 @@ The plan is ready for completion verification when:
 9. Canonical sources and all generated fan-out pass sync and repository validation.
 10. `skill-verification-before-completion` returns `verified` before plan status changes from `active` to `completed`; no commit, push, merge, or publication occurs under this plan.
 
-This plan stays `active` until execution and final verification complete.
+This plan is `completed`; implementation and final verification are complete.

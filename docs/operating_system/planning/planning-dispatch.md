@@ -40,7 +40,7 @@ Do not use an arbitrary overlap threshold.
 Select `skill-chief-of-staff` as an optional coordination specialization of
 `skill-executing-plans` only when an approved Git-tracked plan lists
 `skill-chief-of-staff` in `Required skills` and needs sustained handoffs,
-independent top-level Codex main-agent lanes, or cross-task coordination. Keep
+independent top-level implementation lanes, or cross-task coordination. Keep
 ordinary single-lane work on the existing execution path.
 
 The `Required skills` entry is the canonical CoS opt-in signal. CoS does not add

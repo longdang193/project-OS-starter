@@ -1,6 +1,6 @@
 ---
 name: skill-chief-of-staff
-description: "Codex lead only: use when canonical work needs sustained top-level coordination across independent Codex main-agent lanes."
+description: "Codex lead only: use when canonical work needs sustained top-level coordination across independent implementation lanes."
 required_reads: []
 distribution_tier: starter_kit
 ---
@@ -18,7 +18,7 @@ To update: edit canonical source, then run sync.
 ## Role
 
 Coordinate canonical work without becoming its owner. CoS owns work binding,
-situational synthesis, attention selection, top-level Codex main-agent choice,
+situational synthesis, attention selection, top-level implementation executor choice,
 lane briefing, evidence reconciliation, blocker routing, retirement, and
 escalation. `skill-executing-plans` owns
 approved-plan execution.
@@ -159,26 +159,32 @@ execution owner.
 
 ## Runtime Gates (plan-bound execution)
 
-Use runtime resolution rules for capability facts. On relevant Herdr, Codex,
-configuration, provider, or tooling change, verify parity before material
-dispatch:
+Use runtime resolution rules for capability facts. Verify common gates before
+material dispatch, then executor-specific gates for each implementation lane:
 
+Common:
 - discovered `herdr` executable and version, plus required-operation smoke check
+- exact repository, worktree, branch, `HEAD`, and expected-base identity
+- selected profile source, provider/model binding, and instruction digest
+
+Codex implementation lane:
 - discovered `codex` executable and version, plus required-operation smoke check
 - `CODEX_HOME`
-- provider and model configuration
-- required MCP and tool surface
-- sandbox behavior
-- approval policy
-- startup and trust prompts
+- required MCP/tool surface, sandbox, approval, startup, and trust prompts
+
+DeepAgents implementation lane:
+- discovered `dcode-project` executable and exact launch path
+- selected profile compatibility and wrapper runtime binding
+- no-MCP boundary
+- bounded worker wait, timeout, exit, and descendant-cleanup evidence
 
 `Executor Selection` owns executor choice. `Template Profile` selects the
 profile contract; `agents/*.toml` owns its profile identity and model
 capability. Before write-capable dispatch, prove the chain from selected
 `Template Profile` through its canonical `agents/<profile>.toml` entry to the
-resolved Codex model and instruction surface used by Herdr. A missing or
-mismatched link returns `BLOCKED`; CoS must not fall back to native subagents
-or a different profile.
+executor-specific runtime binding and instruction surface used by the lane. A
+missing or mismatched link returns `BLOCKED`; CoS must not fall back to native
+subagents or a different profile.
 
 Reuse parity evidence only inside the current lead-controller session until
 one of those inputs changes. Every main-agent launch or reuse performs a cheap
@@ -265,8 +271,10 @@ launcher. Capture pre-review and post-review Git state; any unexpected
 modification is a review-boundary violation and an escalation.
 
 For each base branch, grant one dependency-ready integration action at a time
-to one designated main agent. Reuse implementation-main or select a fresh
-integration main agent; do not create a permanent integration role. Merge only
+to one designated Codex main agent. Reuse `implementation-main` only when its
+executor is `codex` and its bound lane identity matches; otherwise select a
+fresh independent Codex integration main agent. Do not create a permanent
+integration role. Merge only
 the expected reviewed head with required proof, clean state, and no post-review
 commit. An open or merged PR never completes a task automatically.
 

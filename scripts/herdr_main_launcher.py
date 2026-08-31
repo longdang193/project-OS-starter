@@ -1,4 +1,4 @@
-"""Launch one registry-bound top-level Codex agent through Herdr."""
+"""Launch one registry-bound top-level implementation lane through Herdr."""
 
 from __future__ import annotations
 
@@ -255,8 +255,8 @@ def resolve_launch(
             )
         if "\r" in task or "\n" in task:
             raise LaunchBlocked("DeepAgents task text cannot contain newlines.")
-    repo_root = Path(__file__).resolve().parents[1]
-    selected = _profile(repo_root / "agents", profile_name)
+    lane_root = cwd.resolve()
+    selected = _profile(lane_root / "agents", profile_name)
     if executor == "deepagents" and not selected.deepagents_compatible:
         raise LaunchBlocked(
             f"Profile is not compatible with DeepAgents: {selected.name}"
@@ -291,7 +291,8 @@ def resolve_launch(
         ]
     else:
         runtime_arguments = [
-            "dcode-project",
+            "&",
+            _powershell_literal(str(dcode)),
             "--role",
             selected.name,
             "--json",

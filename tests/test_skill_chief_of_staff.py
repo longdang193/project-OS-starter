@@ -27,9 +27,11 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "otherwise return `BLOCKED`",
         "discovered `herdr` executable and version",
         "discovered `codex` executable and version",
+        "DeepAgents implementation lane",
+        "bounded worker wait, timeout, exit, and descendant-cleanup evidence",
         "compare against a pinned version only when an applicable plan or",
         "`CODEX_HOME`",
-        "required MCP and tool surface",
+        "required MCP/tool surface",
         "launched process cwd",
         "native Codex lead controller",
         "Template Profile` selects the\nprofile contract",
@@ -168,6 +170,7 @@ def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
     ):
         assert forbidden in skill
     assert "Native\nsubagent review remains available only on non-CoS execution paths." in skill
+    assert "Reuse `implementation-main` only when its\nexecutor is `codex`" in skill
 
 
 def test_executor_skill_keeps_cos_as_codex_controlled() -> None:
@@ -179,13 +182,13 @@ def test_executor_skill_keeps_cos_as_codex_controlled() -> None:
     assert "project-delegate` for `tura`" in skill
 
 
-def test_planning_dispatch_selects_cos_only_for_sustained_codex_coordination() -> None:
+def test_planning_dispatch_selects_cos_for_sustained_implementation_coordination() -> None:
     dispatch = read("docs/operating_system/planning/planning-dispatch.md")
     assert "## Coordination Method Selection" in dispatch
     assert "optional coordination specialization of" in dispatch
     assert "lists\n`skill-chief-of-staff` in `Required skills`" in dispatch
     assert "canonical CoS opt-in signal" in dispatch
-    assert "sustained handoffs,\nindependent top-level Codex main-agent lanes" in dispatch
+    assert "sustained handoffs,\nindependent top-level implementation lanes" in dispatch
     assert "does not add\nan executor, profile, plan field, or durable state artifact" in dispatch
     assert "Herdr is\nruntime observation and top-level lane supervision" in dispatch
     assert "only independent Herdr top-level lanes" in dispatch

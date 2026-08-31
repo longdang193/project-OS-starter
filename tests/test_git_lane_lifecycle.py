@@ -35,7 +35,7 @@ def test_lane_authority_allows_exact_pr_merge_but_not_exceptional_mutation() -> 
         "merging another lane",
     ):
         assert text in finishing
-    assert "An active plan may preauthorize an assigned lane main agent" in template
+    assert "An active plan may preauthorize an assigned implementation lane" in template
     assert "merge the exact approved PR into its declared base after gates" in template
 
 
