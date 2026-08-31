@@ -60,6 +60,9 @@ This document records provider-native deployment for rules, skills, root instruc
   exclusions, then injects only sanitized sources, facts, and constraints into
   task text before launching DeepAgents. `--mcp-select` narrows provenance
   only; it does not make MCP tools available inside DeepAgents.
+- MCP escalation is controller-mediated: pre-dispatch facts use one handoff;
+  mid-task requests return `NEEDS_CONTEXT`, then CoS refreshes the handoff and
+  retries the same plan task.
 - DeepAgents web search is executor-local and needs user-local `TAVILY_API_KEY`.
   It is absent by default and never falls back to Codex browser or web MCP tools.
 - Project `.env` files are untrusted runtime input. Launcher-owned provider
