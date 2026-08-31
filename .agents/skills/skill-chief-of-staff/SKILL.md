@@ -10,9 +10,9 @@ distribution_tier: starter_kit
 ## Role
 
 Coordinate canonical work without becoming its owner. CoS owns work binding,
-situational synthesis, attention selection, top-level implementation executor choice,
-lane briefing, evidence reconciliation, blocker routing, retirement, and
-escalation. `skill-executing-plans` owns
+situational synthesis, attention selection, top-level implementation lane selection
+and dispatch, lane briefing, evidence reconciliation, blocker routing, retirement,
+and escalation. `skill-executing-plans` owns
 approved-plan execution.
 CoS coordinates work; it does not own work execution or canonical work truth.
 
@@ -33,14 +33,16 @@ independent write-capable lanes, or cross-task coordination.
 CoS must not activate for PR, release, incident, specification, research, or
 cross-repository work in V2.
 
-CoS activates only under a native Codex lead controller. A delegated Herdr main
-agent or DeepAgents pane process receives a bounded lane task; it must not
+CoS activates only under a native Codex lead controller. A delegated Herdr top-level implementation lane receives a bounded task; it must not
 activate CoS, create peer agents, or reactivate coordination. CoS applies to
 `Executor: codex | deepagents` for implementation lanes; `codex` uses Herdr
 agent start and `deepagents` uses `dcode-project` through Herdr pane run.
 Review and integration remain Codex-only. `tura` uses `project-delegate` on
 its existing peer executor path. Other generated adapters may carry this
 skill, but their non-Codex lead must return `BLOCKED` rather than activate it.
+
+Apply the CoS Executor Eligibility contract from
+`docs/operating_system/planning/planning-dispatch.md`.
 
 CoS may dispatch only top-level implementation lanes through Herdr. Codex lanes
 use top-level Codex main agents; DeepAgents lanes use the bounded
@@ -179,7 +181,7 @@ missing or mismatched link returns `BLOCKED`; CoS must not fall back to native
 subagents or a different profile.
 
 Reuse parity evidence only inside the current lead-controller session until
-one of those inputs changes. Every main-agent launch or reuse performs a cheap
+one of those inputs changes. Every top-level lane launch, and every Codex session reuse, performs a cheap
 identity and binding check:
 
 - repository root and Git common directory
@@ -191,14 +193,16 @@ identity and binding check:
 
 Any mismatch returns `BLOCKED` before write-capable launch.
 
-For Herdr top-level lane launch, use the repository-owned
+For each Herdr top-level implementation-lane launch, use the repository-owned
 `scripts/herdr_main_launcher.py`. CoS verifies the full lane contract, including
-branch, `HEAD`, expected base, ownership, and allowed paths. Pass only selected
-profile and verified runtime identity (`session`, `pane`, and `cwd`). The
-launcher verifies runtime projection plus exact pane/cwd identity and reports
-Git facts; it does not enforce the full CoS lane contract. Do not construct
-provider, model, or developer-instruction overrides in CoS; the launcher
-resolves them from `agents/*.toml` and projects them ephemerally into Codex.
+branch, `HEAD`, expected base, ownership, and allowed paths. Pass `--profile`,
+`--executor`, `--session`, `--pane`, `--cwd`, and `--expected-base`; pass
+`--task` for `deepagents`. The launcher verifies runtime projection plus exact
+pane/cwd identity and reports Git facts; it does not enforce the full CoS lane
+contract. Do not construct provider, model, or developer-instruction overrides
+in CoS. For `codex`, the launcher projects the bound profile directly; for
+`deepagents`, it passes the bound profile to `dcode-project`, which resolves and
+projects the runtime.
 Launcher evidence separates registry/runtime projection, Git identity, Herdr
 observation, and launch-request evidence. Redact developer instructions and
 record their digest instead. Record discovered versions and smoke-check required
@@ -212,25 +216,26 @@ durable Herdr state. Record returned facts in the current turn or plan-owned
 evidence only. For DeepAgents, Herdr owns outer pane evidence while
 `dcode-project` owns worker wait, timeout, exit propagation, and descendant
 cleanup; reconcile both before acceptance.
-For plan-bound execution, select one dependency-ready task. Prefer reuse of a healthy main-agent session
-when plan, repository, lane, and context match. Select a fresh top-level Codex
-main agent or bounded DeepAgents pane process when context isolation materially
-helps. When resolving a blocker becomes a substantial independent detour, park
+For plan-bound execution, select one dependency-ready task. Prefer reuse of a healthy
+Codex session when plan, repository, lane, and context match. Select a fresh
+top-level Codex implementation lane or bounded DeepAgents pane process when
+context isolation materially helps. When resolving a blocker becomes a substantial independent detour, park
 the current lane, dispatch a fresh bounded Herdr lane for that blocker, and
 merge back only compact evidence or result. Do not supervise executor-local
 workers inside `deepagents` or `tura`.
 
 ## Lane Contract (plan-bound execution)
 
-Activate task and record ownership before launch. One write-capable main agent
-gets one exact branch and isolated worktree. Use existing worktree, parallel-
-write, review, verification, and finishing owners.
+Activate task and record ownership before launch. One write-capable Herdr
+implementation lane gets one exact branch and isolated worktree. Use existing
+worktree, parallel-write, review, verification, and finishing owners.
 
-CoS has no direct Git or PR authority. An approved plan may grant the assigned
-main agent bounded authority to create or reuse its lane, commit lane-owned
-changes, push only its lane branch, create or update its PR, respond to review
-comments, submit an assigned review, merge the exact approved PR into its
-declared base after gates pass, and clean its verified-clean merged lane.
+CoS has no direct Git or PR authority. An approved plan may grant an assigned
+implementation lane bounded authority to create or reuse its lane, commit
+lane-owned changes, push only its lane branch, create or update its PR, and clean
+its verified-clean retired lane. Only an assigned Codex implementation lane may
+submit an assigned review or merge the exact approved PR into its declared base
+after gates pass.
 
 Never grant force push, direct or exceptional base mutation outside the exact
 PR merge path, PR retargeting, branch-protection bypass, semantic conflict

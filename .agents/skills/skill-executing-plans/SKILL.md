@@ -216,10 +216,11 @@ When all required plan tasks appear complete:
 Create a local checkpoint commit only when active plan `Commit policy` explicitly
 preauthorizes verified per-task checkpoints. The lead creates it after accepting
 task proof and updating the task ledger, so implementation and accepted workflow
-state share one checkpoint. An exact active-plan lane grant may authorize lane
-push, PR create/update, assigned review action, exact approved PR merge, and
-post-retirement cleanup. Branch or PR publication may follow accepted lane
-proof; final merge and cleanup require whole-plan verification. Exceptional or
+state share one checkpoint. An exact active-plan lane grant may authorize implementation-lane push, PR
+create/update, and post-retirement cleanup. Only a Codex implementation lane may
+receive assigned review or exact approved PR merge authority. Branch or PR
+publication may follow accepted lane proof; final merge and cleanup require
+whole-plan verification. Exceptional or
 destructive actions still require explicit user authorization.
 
 ## Handoff

@@ -12,13 +12,13 @@ def flat(text: str) -> str:
     return " ".join(text.split())
 
 
-def test_write_capable_main_agents_have_mandatory_isolated_lanes() -> None:
+def test_write_capable_implementation_lanes_have_mandatory_isolated_lanes() -> None:
     worktree = flat(read(".agents/skills/skill-using-git-worktrees/SKILL.md"))
     coordination = flat(read("docs/operating_system/rules/git-tracked-coordination-rule.md"))
-    assert "For a write-capable Herdr main-agent lane, isolation is mandatory" in worktree
+    assert "For a write-capable Herdr implementation lane, isolation is mandatory" in worktree
     assert "explicit approved-plan lane grant" in worktree
     assert "launched process cwd" in worktree
-    assert "A write-capable main-agent lane uses one exact branch and isolated worktree" in coordination
+    assert "A write-capable coordinated implementation lane uses one exact branch and isolated worktree" in coordination
 
 
 def test_lane_authority_allows_exact_pr_merge_but_not_exceptional_mutation() -> None:
@@ -26,7 +26,7 @@ def test_lane_authority_allows_exact_pr_merge_but_not_exceptional_mutation() -> 
     template = flat(read("docs/operating_system/templates/implementation-plan-template.md"))
     for text in (
         "exact lane: branch/worktree creation or reuse, lane commits, lane push",
-        "exact approved PR merge into declared base after gates",
+        "exact approved PR merge authority",
         "Direct or exceptional base mutation",
         "force push",
         "PR retargeting",
@@ -36,17 +36,17 @@ def test_lane_authority_allows_exact_pr_merge_but_not_exceptional_mutation() -> 
     ):
         assert text in finishing
     assert "An active plan may preauthorize an assigned implementation lane" in template
-    assert "merge the exact approved PR into its declared base after gates" in template
+    assert "Only a Codex implementation lane may perform an assigned review action or merge the exact approved PR into its declared base after gates" in template
 
 
 def test_coordination_preserves_checkpoint_and_serialized_integration_truth() -> None:
     coordination = flat(read("docs/operating_system/rules/git-tracked-coordination-rule.md"))
     for text in (
         "Lane commits are implementation artifacts, not coordination checkpoints",
-        "one dependency-ready integration action at a time to one designated main agent",
+        "one dependency-ready integration action at a time to one designated Codex integration lane",
         "expected reviewed head",
         "no post-review lane commit",
-        "retire the associated main-agent process",
+        "retire the associated top-level lane process",
         "active agent never removes its own worktree",
         "A lane commit cannot mark its task complete",
     ):
@@ -70,3 +70,18 @@ def test_finishing_separates_publication_from_final_integration() -> None:
     assert "fresh `verified` result" in finishing
     assert "re-read provider PR state immediately before merge" in finishing
     assert "reconciliation-required" in finishing
+
+
+
+def test_executor_authority_is_codex_only_across_live_contracts() -> None:
+    paths = (
+        ".agents/skills/skill-chief-of-staff/SKILL.md",
+        ".agents/skills/skill-executing-plans/SKILL.md",
+        ".agents/skills/skill-finishing-a-development-branch/SKILL.md",
+        "docs/operating_system/procedures/personal-local-worktree-procedure.md",
+        "docs/operating_system/rules/git-tracked-coordination-rule.md",
+        "docs/operating_system/templates/implementation-plan-template.md",
+    )
+    for path in paths:
+        text = " ".join(read(path).split())
+        assert "Codex implementation lane may" in text
