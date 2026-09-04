@@ -1,0 +1,7 @@
+{
+  "id": "lightrsi-codex-hook-portable",
+  "version": "1.0.0",
+  "targetRepository": "https://github.com/zjunlp/LightRSI.git",
+  "baseCommit": "c0d86ae519d0eb4f1c3e3fefdd22b696a9e70c33",
+  "patch": "lightrsi-codex-hook-portable.patch"
+}
