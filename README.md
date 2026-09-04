@@ -85,6 +85,10 @@ provenance only; it does not grant DeepAgents MCP access.
 CoS may run from a native Codex session and dispatch through Herdr. The launcher
 verifies target lane readiness, Git/cwd identity, runtime/profile binding, and
 task delivery. It does not attest controller identity or own lane authority.
+CoS assigns top-level MAIN AGENTS through Herdr. MAIN AGENTS own assigned lanes
+and may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
+those lanes. Sub-agents remain subordinate and may not spawn peer MAIN AGENTS
+or activate CoS. Review and integration remain Codex-only.
 Before local dispatch, verify deployed Codex runtime parity with
 `py -B scripts/validate_agent_runtime_drift.py`. Launcher and test files own
 task-delivery mechanics; missing or failed final delivery evidence blocks

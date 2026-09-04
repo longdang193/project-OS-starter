@@ -56,13 +56,16 @@ For `plan-bound-execution`, it applies when the task ledger `Executor` is
 binding, lane identity, and profile-binding gates pass under a native Codex lead
 controller. Herdr is
 runtime observation and top-level lane supervision, not executor selection or
-task acceptance. CoS dispatches only independent Herdr top-level main-agent
+task acceptance. CoS dispatches only independent Herdr top-level MAIN AGENT
 lanes;
 Codex uses a main-agent session and DeepAgents uses a bounded `dcode-project`
 pane process. It never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
 Tura internal workers, or executor-local reviewers or helpers. `tura` retains
-its existing peer executor path. Review and integration remain Codex-only.
+its existing peer executor path. Each MAIN AGENT owns its assigned lane and may
+spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside that lane.
+Sub-agents remain subordinate and must not spawn peer MAIN AGENTS or activate
+CoS. Review and integration remain Codex-only.
 For every Herdr top-level CoS lane launch, CoS verifies branch, `HEAD`, expected
 base, lane ownership, and allowed paths. Use `scripts/herdr_main_launcher.py`
 for runtime projection and task delivery. The launcher and its tests own runtime

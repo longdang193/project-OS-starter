@@ -23,7 +23,8 @@ and dispatch, lane briefing, evidence reconciliation, blocker routing, retiremen
 and escalation. `skill-executing-plans` owns
 approved-plan execution.
 CoS coordinates work; it does not own work execution or canonical work truth.
-Top-level main agents are CoS execution lanes; executor-local subagents are not.
+Top-level MAIN AGENTS are CoS execution lanes; sub-agents are subordinate lane
+workers.
 
 ## Activation
 
@@ -42,18 +43,22 @@ independent write-capable lanes, or cross-task coordination.
 CoS must not activate for PR, release, incident, specification, research, or
 cross-repository work.
 
-CoS activates only under a native Codex lead controller. A delegated Herdr top-level implementation lane receives a bounded task; it must not
-activate CoS, create peer agents, or reactivate coordination. CoS applies to
-`Executor: codex | deepagents` for implementation lanes; `codex` uses Herdr
-agent start and `deepagents` uses `dcode-project` through Herdr pane run.
-Review and integration remain Codex-only. `tura` uses `project-delegate` on
-its existing peer executor path. Other generated adapters may carry this
-skill, but their non-Codex lead must return `BLOCKED` rather than activate it.
+CoS activates only under a native Codex lead controller. CoS assigns top-level
+MAIN AGENTS through Herdr. Each MAIN AGENT receives a bounded task and owns
+execution, evidence, Git state, and lifecycle for its assigned lane. A MAIN
+AGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
+that lane. Sub-agents must not spawn peer MAIN AGENTS, activate CoS, or
+reactivate coordination. CoS applies to `Executor: codex | deepagents` for
+implementation lanes; `codex` uses Herdr agent start and `deepagents` uses
+`dcode-project` through Herdr pane run. Review and integration remain Codex-only.
+`tura` uses `project-delegate` on its existing peer executor path. Other
+generated adapters may carry this skill, but their non-Codex lead must return
+`BLOCKED` rather than activate it.
 
 Apply the CoS Executor Eligibility contract from
 `docs/operating_system/planning/planning-dispatch.md`.
 
-CoS may dispatch only top-level CoS lanes through Herdr. Codex lanes
+CoS may dispatch only top-level MAIN AGENT lanes through Herdr. Codex lanes
 use top-level Codex main agents; DeepAgents lanes use the bounded
 `dcode-project` pane process. Every CoS lane dispatch goes through Herdr; CoS
 never invokes subagents directly. Use the repository Herdr command
@@ -277,11 +282,12 @@ agent must not update the ledger as part of its implementation commit.
 ## Review And Integration (plan-bound execution)
 
 Request review through `skill-requesting-code-review`. CoS dispatches only an
-independent Herdr top-level Codex main-agent session. CoS never calls
+independent Herdr top-level Codex MAIN AGENT session. CoS never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
-Tura internal workers, or executor-local reviewers or helpers. The reviewer
-receives the bounded contract, not the producer session history. Native
-subagent review remains available only on non-CoS execution paths.
+Tura internal workers, or executor-local reviewers or helpers directly. MAIN
+AGENTS may use those sub-agent paths when needed for assigned lane work. The
+reviewer receives the bounded contract, not the producer session history.
+Independent review and integration remain Codex-only.
 
 `skill-reviewing-pull-requests` owns independent PR inspection. Project OS
 review is separate from GitHub review state. A review result binds to
