@@ -196,9 +196,11 @@ def test_deepagents_internal_writers_remain_task_bounded() -> None:
 
     assert "Runtime-internal" in skill
     assert "decomposition never becomes plan-level coordination" in skill
-    assert "Nested writers are allowed" in skill
-    assert "only when dispatch explicitly permits them" in skill
-    assert "permitted nested writer does not create another plan task" in skill
+    normalized = " ".join(skill.split())
+    assert "Nested writers remain inside active task workspace" in normalized
+    assert "MAIN AGENT may spawn DeepAgents sub-agents when needed within its assigned lane" in normalized
+    assert "MAIN AGENTS may use nested delegation when needed within assigned lane scope" in normalized
+    assert "Sub-agents must not spawn peer MAIN AGENTS, activate CoS" in normalized
     assert "read-only decomposition" not in skill
 
 def test_sdd_handoffs_keep_external_runtime_evidence_out_of_deepagents_paths() -> None:

@@ -14,7 +14,7 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "required_reads: []" in skill
     assert "`skill-executing-plans` owns\napproved-plan execution" in skill
     assert "CoS has no direct Git or PR authority" in skill
-    assert "`deepagents` uses `dcode-project`" in skill
+    assert "`deepagents` uses `dcode-project`" in " ".join(skill.split())
     assert "`tura` uses `project-delegate`" in skill
     assert "top-level lane selection" in skill
 
@@ -41,7 +41,9 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "CoS may be invoked from a native Codex session",
         "verifies target lane readiness, Git/cwd identity,\nruntime/profile binding, and task delivery",
         "does not attest CoS controller\nidentity or own lane authority",
-        "Top-level main agents are CoS execution lanes; executor-local subagents are not.",
+        "Top-level MAIN AGENTS are CoS execution lanes; sub-agents are subordinate lane\nworkers.",
+        "CoS assigns top-level\nMAIN AGENTS through Herdr.",
+        "MAIN\nAGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed",
         "Before local dispatch, run\n`py -B scripts/validate_agent_runtime_drift.py`",
         "`--skip-deploy-check` is CI-only",
         "CoS verifies the full lane contract",
@@ -169,14 +171,14 @@ def test_chief_of_staff_exposes_attention_and_freshness_output_contract() -> Non
 
 def test_chief_of_staff_blocks_delegated_reactivation_and_separates_returns() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
-    assert "must not\nactivate CoS, create peer agents, or reactivate coordination" in skill
+    assert "Sub-agents must not spawn peer MAIN AGENTS, activate CoS, or\nreactivate coordination" in skill
     assert "execution returns to `DONE | DONE_WITH_CONCERNS |" in skill
     assert "never converts execution\nstatus into a review verdict" in skill
 
 
 def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
-    assert "CoS may dispatch only top-level CoS lanes through Herdr." in skill
+    assert "CoS may dispatch only top-level MAIN AGENT lanes through Herdr." in skill
     assert "Every CoS lane dispatch goes through Herdr" in skill
     assert "`scripts/herdr_main_launcher.py`" in skill
     assert "Monitor only the\ntop-level lane and wrapper" in skill
@@ -190,7 +192,7 @@ def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
         "executor-local reviewers or helpers",
     ):
         assert forbidden in skill
-    assert "Native\nsubagent review remains available only on non-CoS execution paths." in skill
+    assert "Independent review and integration remain Codex-only." in skill
     assert "Reuse `implementation-main` only when its\nexecutor is `codex`" in skill
 
 
@@ -215,9 +217,23 @@ def test_planning_dispatch_selects_cos_for_sustained_implementation_coordination
     assert "Advisory mode needs no plan or" in dispatch
     assert "does not add an executor, profile, plan field, or durable state artifact" in " ".join(dispatch.split())
     assert "Herdr is\nruntime observation and top-level lane supervision" in dispatch
-    assert "only independent Herdr top-level main-agent\nlanes" in dispatch
+    assert "only independent Herdr top-level MAIN AGENT\nlanes" in dispatch
     assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch
     assert "`tura` retains\nits existing peer executor path" in dispatch
+
+
+def test_main_agents_can_delegate_without_granting_peer_authority() -> None:
+    template = read("AGENTS.md")
+    execution = read(".agents/skills/skill-executing-plans/SKILL.md")
+    deepagents = read(".agents/skills/skill-deepagents-executing-plans/SKILL.md")
+    for text in (
+        "MAIN AGENTS own assigned lanes and may spawn Native Codex, DeepAgents, or Tura",
+        "Sub-agents remain subordinate to their parent lane",
+        "Assigned MAIN AGENTS may spawn Native Codex, DeepAgents, or Tura",
+        "must not spawn peer MAIN AGENTS or activate CoS",
+        "MAIN AGENTS may use nested delegation when needed within assigned lane scope",
+    ):
+        assert text in " ".join((template + execution + deepagents).split())
 
 
 def test_planning_dispatch_defines_observable_level_2_readiness() -> None:

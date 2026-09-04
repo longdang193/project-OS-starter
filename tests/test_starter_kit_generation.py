@@ -226,9 +226,12 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
     )
 
     assert "scripts/herdr_main_launcher.py" in manifest["copyPaths"]
+    assert "scripts/opendesign_profile_adapter.py" in manifest["copyPaths"]
     assert "tests/test_herdr_main_launcher.py" in manifest["copyPaths"]
+    assert "tests/test_opendesign_profile_adapter.py" in manifest["copyPaths"]
     assert "tests/test_skill_chief_of_staff.py" in manifest["copyPaths"]
     assert "scripts/herdr_main_launcher.py" in manifest["requiredPaths"]
+    assert "scripts/opendesign_profile_adapter.py" in manifest["requiredPaths"]
     assert "docs/operating_system/runtime" in manifest["omitPaths"]
     assert "docs/operating_system/procedures/runtime-adapter-procedure.md" in manifest["omitPaths"]
 

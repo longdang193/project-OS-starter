@@ -20,6 +20,7 @@
     "scripts/dcode_project.py",
     "scripts/agent_profile_registry.py",
     "scripts/herdr_main_launcher.py",
+    "scripts/opendesign_profile_adapter.py",
     "scripts/setup_deepagents_runtime.ps1",
     "scripts/validate_agent_metadata_schema.py",
     "scripts/validate_env_gitignore_contract.py",
@@ -39,6 +40,7 @@
     "tests/test_dcode_project.py",
     "tests/test_agent_profile_registry.py",
     "tests/test_herdr_main_launcher.py",
+    "tests/test_opendesign_profile_adapter.py",
     "tests/test_skill_chief_of_staff.py",
     "tests/test_validate_template_required_sections.py"
   ],
@@ -51,6 +53,7 @@
     "agents",
     "scripts/agent_profile_registry.py",
     "scripts/herdr_main_launcher.py",
+    "scripts/opendesign_profile_adapter.py",
     "docs/operating_system/governance/repo-governance.md",
     "docs/operating_system/tooling/runtime-tool-resolution.md",
     "docs/superpowers/plans",
