@@ -10,7 +10,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
-| `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex or DeepAgents implementation lane through Herdr |
+| `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex or DeepAgents lane through Herdr |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
 
 ## Generated Runtime Outputs
@@ -38,7 +38,7 @@ This document records provider-native deployment for rules, skills, root instruc
 - Canonical repo sources remain source of truth.
 - `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, it binds the exact lane profile and `dcode-project` resolves and projects that profile into DeepAgents. Herdr owns top-level session/pane lifecycle and outer observation, while `dcode-project` owns DeepAgents worker lifecycle. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
 - Codex Herdr probes use one resolved `CODEX_HOME`; the launcher passes it to Herdr and Codex child processes and blocks when project and home `hooks.json` both define `Stop` hooks.
-- Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. For Codex, post-start task delivery is a separate Herdr prompt step and evidence; `assignment_request.status=pending` is intent only, and readiness alone is not assignment. CoS accepts final `assignment.status=delivered` with `prompt_accepted=true` and `wait=settled`; the launcher does not use `--until working` because that can match unrelated active work.
+- Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. The launcher and its tests own task-delivery mechanics; CoS accepts only final delivery evidence, never readiness or intent alone. The launcher does not use `--until working` because that can match unrelated active work.
 - Positive `rank` values order only ranked profiles. Ranked profiles are ordered
   by registry rank; unranked profiles are explicit-only and non-orderable. Select
   executor and validator profiles independently from
@@ -62,8 +62,9 @@ This document records provider-native deployment for rules, skills, root instruc
   task text before launching DeepAgents. `--mcp-select` narrows provenance
   only; it does not make MCP tools available inside DeepAgents.
 - MCP escalation is controller-mediated: pre-dispatch facts use one handoff;
-  mid-task requests return `NEEDS_CONTEXT`, then CoS refreshes the handoff and
-  retries the same plan task.
+  mid-task requests return `NEEDS_CONTEXT`, then the outer Codex controller
+  refreshes the handoff and retries the same plan task. When CoS is active, CoS
+  coordinates that refresh and retry.
 - DeepAgents web search is executor-local and needs user-local `TAVILY_API_KEY`.
   It is absent by default and never falls back to Codex browser or web MCP tools.
 - Project `.env` files are untrusted runtime input. Launcher-owned provider

@@ -26,7 +26,7 @@ def test_lane_authority_allows_exact_pr_merge_but_not_exceptional_mutation() -> 
     template = flat(read("docs/operating_system/templates/implementation-plan-template.md"))
     for text in (
         "exact lane: branch/worktree creation or reuse, lane commits, lane push",
-        "exact approved PR merge authority",
+        "designated Codex integration action owns an exact approved PR merge",
         "Direct or exceptional base mutation",
         "force push",
         "PR retargeting",
@@ -36,7 +36,8 @@ def test_lane_authority_allows_exact_pr_merge_but_not_exceptional_mutation() -> 
     ):
         assert text in finishing
     assert "An active plan may preauthorize an assigned implementation lane" in template
-    assert "Only a Codex implementation lane may perform an assigned review action or merge the exact approved PR into its declared base after gates" in template
+    assert "Independent Codex review lanes own assigned review actions" in template
+    assert "A designated Codex integration action owns an exact approved PR merge" in template
 
 
 def test_coordination_preserves_checkpoint_and_serialized_integration_truth() -> None:
@@ -84,4 +85,5 @@ def test_executor_authority_is_codex_only_across_live_contracts() -> None:
     )
     for path in paths:
         text = " ".join(read(path).split())
-        assert "Codex implementation lane may" in text
+        assert "Independent Codex review lanes own assigned review actions" in text
+        assert "designated Codex integration action owns an exact approved PR merge" in text
