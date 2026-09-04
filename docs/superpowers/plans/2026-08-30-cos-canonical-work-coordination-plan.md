@@ -120,7 +120,7 @@ Starter, repository-contract, focused-test, and diff checks.
 - [x] Step 5: Run `py -3 -m pytest tests/test_skill_chief_of_staff.py -q` and reconcile failures without weakening preserved gates.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_skill_chief_of_staff.py -q`
+- [x] `py -3 -m pytest tests/test_skill_chief_of_staff.py -q`
 - Expected: focused CoS contract suite passes.
 
 **Exit Criteria:**
@@ -175,12 +175,12 @@ Starter, repository-contract, focused-test, and diff checks.
 - [x] Step 7: Confirm tracked diff scope and untracked declared spec/plan scope with `git status --short`; preserve `.playwright-mcp/`, `db/`, and `out/`.
 
 **Verification:**
-- [ ] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
-- [ ] `py -3 scripts/build_starter_kit.py --output-root generated_exports`
-- [ ] `py -3 scripts/validate_starter_kit.py`
-- [ ] `py -3 scripts/validate_repo_contracts.py --fast`
-- [ ] `py -3 -m pytest tests/test_skill_chief_of_staff.py -q`
-- [ ] `git diff --check`
+- [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `py -3 scripts/build_starter_kit.py --output-root generated_exports`
+- [x] `py -3 scripts/validate_starter_kit.py`
+- [x] `py -3 scripts/validate_repo_contracts.py --fast`
+- [x] `py -3 -m pytest tests/test_skill_chief_of_staff.py -q`
+- [x] `git diff --check`
 - Expected: all commands exit 0; only declared files change; preserved untracked paths remain untouched.
 
 **Exit Criteria:**

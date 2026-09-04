@@ -82,6 +82,11 @@ permissions. Codex controller performs MCP work, writes validated
 `codex.mcp.handoff.v1` under user-local handoff root, then launches DeepAgents
 with `--handoff-file <absolute-path>`. Optional `--mcp-select` narrows
 provenance only; it does not grant DeepAgents MCP access.
+CoS may run from a native Codex session and dispatch through Herdr. The launcher
+proves Herdr authority with exact session, pane, process, cwd, and Git checks;
+`HERDR_ENV` is not required or used as attestation. Before local dispatch,
+verify deployed runtime parity with
+`py -B scripts/validate_agent_runtime_drift.py --all-platforms`.
 Local setup uses the version pinned by `scripts/setup_deepagents_runtime.ps1`,
 requires Python 3.12 or newer, and disables child auto-update. Refresh the runtime through
 `scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
