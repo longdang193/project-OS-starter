@@ -46,8 +46,9 @@ dispatched task contract and applicable worker or validator skills.
 - If mid-task MCP data is missing, stale, or requires live refresh, return
   `NEEDS_CONTEXT` with the missing capability, required facts, and freshness
   requirement.
-- CoS performs the MCP call, validates the result, writes a fresh handoff, and
-  retries the same plan task.
+- The outer Codex controller performs the MCP call, validates the result, writes
+  a fresh handoff, and retries the same plan task. When CoS is active, CoS
+  coordinates that refresh and retry.
 - CoS does not advance the task ledger from `NEEDS_CONTEXT`.
 - Acceptance requires handoff identity, capability digest, freshness, and
   returned evidence.

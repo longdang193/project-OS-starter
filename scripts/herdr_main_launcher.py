@@ -1,4 +1,4 @@
-"""Launch one registry-bound top-level implementation lane through Herdr."""
+"""Launch one registry-bound top-level lane through Herdr."""
 
 from __future__ import annotations
 

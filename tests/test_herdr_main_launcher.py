@@ -17,11 +17,6 @@ LAUNCHER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(LAUNCHER)
 
 
-@pytest.fixture(autouse=True)
-def herdr_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HERDR_ENV", "1")
-
-
 def fake_profile(tmp_path: Path, name: str, rank: int | None) -> None:
     agents = tmp_path / "agents"
     agents.mkdir(exist_ok=True)
