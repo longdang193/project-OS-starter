@@ -60,7 +60,14 @@ For every Herdr top-level implementation-lane launch, CoS verifies branch,
 `HEAD`, expected base, lane ownership, and allowed paths. It uses `scripts/herdr_main_launcher.py` for
 runtime projection, exact session/pane/cwd checks, and Git-fact reporting; the
 launcher resolves provider, model, and developer instructions from
-`agents/*.toml`.
+`agents/*.toml`. Every launch passes bounded `--task` text. For Codex,
+`agent start` is readiness only; the launcher must then deliver that task with
+`herdr agent prompt ... --wait`. Assignment is unproven until prompt delivery
+evidence exists. The launcher's `assignment_request.status=pending` is intent;
+CoS accepts only final `assignment.status=delivered` with
+`prompt_accepted=true` and `wait=settled`, and treats
+`assignment.status=failed` or missing final evidence as `BLOCKED`. Do not use
+`--until working`; it can match unrelated active work.
 
 ## Level-2 Readiness Evidence
 

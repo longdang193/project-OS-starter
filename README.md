@@ -87,6 +87,13 @@ proves Herdr authority with exact session, pane, process, cwd, and Git checks;
 `HERDR_ENV` is not required or used as attestation. Before local dispatch,
 verify deployed runtime parity with
 `py -B scripts/validate_agent_runtime_drift.py --all-platforms`.
+Every launch also requires bounded `--task` text. For Codex, `agent start` only
+proves readiness; launcher then sends task through `herdr agent prompt ...
+--wait`. A selected profile or started process without prompt delivery is not
+an assignment. Treat launcher `assignment_request.status=pending` as intent;
+accept only final `assignment.status=delivered` with `prompt_accepted=true` and
+`wait=settled`. Do not use `--until working`; it can match unrelated active
+work.
 Local setup uses the version pinned by `scripts/setup_deepagents_runtime.ps1`,
 requires Python 3.12 or newer, and disables child auto-update. Refresh the runtime through
 `scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
