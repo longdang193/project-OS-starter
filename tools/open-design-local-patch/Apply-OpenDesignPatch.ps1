@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PatchVersion = "2026-09-04.6"
+$PatchVersion = "2026-09-05.5"
 
 function Read-Utf8([string]$Path) {
     return [IO.File]::ReadAllText($Path, [Text.UTF8Encoding]::new($false))
@@ -17,15 +17,18 @@ function Write-Utf8([string]$Path, [string]$Text) {
 }
 
 function Replace-Once([string]$Text, [string]$Name, [string]$Old, [string]$New, [string]$Marker) {
-    if ($Text.Contains($Marker)) {
+    $normalizedOld = $Old.Replace("`r`n", "`n").Replace("`r", "`n")
+    $normalizedNew = $New.Replace("`r`n", "`n").Replace("`r", "`n")
+    $normalizedMarker = $Marker.Replace("`r`n", "`n").Replace("`r", "`n")
+    if ($Text.Contains($normalizedMarker)) {
         Write-Verbose "$Name already patched"
         return $Text
     }
-    $count = ([regex]::Matches($Text, [regex]::Escape($Old))).Count
+    $count = ([regex]::Matches($Text, [regex]::Escape($normalizedOld))).Count
     if ($count -ne 1) {
         throw "$Name anchor mismatch: expected 1 match, got $count"
     }
-    return $Text.Replace($Old, $New)
+    return $Text.Replace($normalizedOld, $normalizedNew)
 }
 
 function Find-Bundle([string]$Directory, [string]$Pattern, [string[]]$Anchors) {
@@ -515,7 +518,7 @@ async function withMcpBootstrapLock(env, action, timeoutMs) {
   }, timeoutMs);
 '@ "return await withMcpBootstrapLock"
     }
-    if (-not $text.Contains("const postSpawnEnv")) {
+    if (-not $text.Contains("const postSpawnIpcPath")) {
         $text = Replace-Once $text "bootstrap isolated post-spawn polling" @'
     await spawnBootstrap(currentPlan);
     const deadline = Date.now() + timeoutMs;
@@ -524,15 +527,34 @@ async function withMcpBootstrapLock(env, action, timeoutMs) {
       daemonUrl = registeredBootstrapTarget ? await discoverTargetDaemonUrl(env, 300) : await resolveDaemonUrl2({
 '@ @'
     await spawnBootstrap(currentPlan);
-    const postSpawnEnv = env.OD_MCP_BOOTSTRAP_IPC_PATH == null || env.OD_MCP_BOOTSTRAP_IPC_PATH.length === 0 ? env : {
+    const configuredBootstrapIpcPath = env.OD_MCP_BOOTSTRAP_IPC_PATH;
+    const currentIpcPath = env[SIDECAR_ENV.IPC_PATH];
+    const postSpawnIpcPath = configuredBootstrapIpcPath != null && configuredBootstrapIpcPath.length > 0 ? configuredBootstrapIpcPath : currentIpcPath != null && currentIpcPath.endsWith("-daemon") && !currentIpcPath.endsWith("-headless-daemon") ? `${currentIpcPath.slice(0, -"-daemon".length)}-headless-daemon` : currentIpcPath;
+    const postSpawnEnv = postSpawnIpcPath == null || postSpawnIpcPath.length === 0 ? env : {
       ...env,
-      [SIDECAR_ENV.IPC_PATH]: env.OD_MCP_BOOTSTRAP_IPC_PATH
+      [SIDECAR_ENV.IPC_PATH]: postSpawnIpcPath
     };
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       await sleep(DEFAULT_BOOTSTRAP_POLL_MS);
       daemonUrl = registeredBootstrapTarget ? await discoverTargetDaemonUrl(postSpawnEnv, 300) : await resolveDaemonUrl2({
 '@ "const postSpawnEnv"
+    }
+    if (-not $text.Contains("const postSpawnIpcPath") -and $text.Contains("const postSpawnEnv")) {
+        $text = Replace-Once $text "bootstrap isolated post-spawn polling upgrade" @'
+    const postSpawnEnv = env.OD_MCP_BOOTSTRAP_IPC_PATH == null || env.OD_MCP_BOOTSTRAP_IPC_PATH.length === 0 ? env : {
+      ...env,
+      [SIDECAR_ENV.IPC_PATH]: env.OD_MCP_BOOTSTRAP_IPC_PATH
+    };
+'@ @'
+    const configuredBootstrapIpcPath = env.OD_MCP_BOOTSTRAP_IPC_PATH;
+    const currentIpcPath = env[SIDECAR_ENV.IPC_PATH];
+    const postSpawnIpcPath = configuredBootstrapIpcPath != null && configuredBootstrapIpcPath.length > 0 ? configuredBootstrapIpcPath : currentIpcPath != null && currentIpcPath.endsWith("-daemon") && !currentIpcPath.endsWith("-headless-daemon") ? `${currentIpcPath.slice(0, -"-daemon".length)}-headless-daemon` : currentIpcPath;
+    const postSpawnEnv = postSpawnIpcPath == null || postSpawnIpcPath.length === 0 ? env : {
+      ...env,
+      [SIDECAR_ENV.IPC_PATH]: postSpawnIpcPath
+    };
+'@ "const postSpawnIpcPath"
     }
     return $text
 }
