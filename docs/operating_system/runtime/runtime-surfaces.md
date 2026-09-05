@@ -19,7 +19,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- | --- | --- |
 | Codex | `generated_agents/codex/AGENTS.md` | none | `generated_agents/codex/skills/<skill>/SKILL.md` | none |
 | Codex delegated roles | `generated_agents/codex/agents/<role>.toml` | none | none | Deployed to `~/.codex/agents/` |
-| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime only; no MCP projection |
+| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime; MCP opt-in through explicit `--mcp-select`; default `--no-mcp`; temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; project MCP configs remain untouched and untrusted |
 | Claude | `generated_agents/claude/CLAUDE.md` | `.agents/rules/*.md` | `generated_agents/claude/skills/<skill>/SKILL.md` | none |
 | Antigravity/Gemini | `generated_agents/antigravity/GEMINI.md` | `.agents/rules/*.md` | `generated_agents/antigravity/skills/<skill>/SKILL.md` | none |
 
@@ -29,7 +29,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- |
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects the canonical profile model for primary launch; validates controller-owned handoff; forces `--no-mcp`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
+| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects the canonical profile model for primary launch; validates controller-owned handoff; projects approved Codex `[mcp_servers]` only with explicit `--mcp-select`; keeps `--no-mcp` by default; uses temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 
@@ -52,15 +52,21 @@ This document records provider-native deployment for rules, skills, root instruc
   those files are generated platform-adapter views. Detailed rules remain
   canonical under `docs/operating_system/rules/` and are read when task scope
   requires them.
-- DeepAgents built-ins are executor-local. Current launcher does not project
-  Codex MCP servers, tool allowlists, approval, sandbox, shell, profile, or
-  thread settings.
-- Codex controller owns MCP calls and writes `codex.mcp.handoff.v1` under
+- DeepAgents built-ins are executor-local. Launcher projects approved Codex
+  `[mcp_servers]` only with explicit `--mcp-select <server[.tool][,server[.tool]...]>`;
+  no selection keeps child `--no-mcp`. Selecting a server exposes its exposed
+  tools; selecting a tool narrows access. Approval, sandbox, shell, profile, and
+  thread settings remain separate.
+- Direct MCP uses temporary launcher-owned config under isolated child
+  `DEEPAGENTS_HOME`; no per-task `.mcp.json` or `--trust-project-mcp`, and project
+  MCP configs remain untouched and untrusted. MCP `env` and `headers` values must
+  be `${VAR}` references. Raw credentials and config secrets stay out of task
+  text, logs, and tracked files.
+- Codex controller owns handoff facts and writes `codex.mcp.handoff.v1` under
   `%USERPROFILE%\.local\share\dcode-project\handoffs`; `dcode-project` validates
   handoff path, age, schema, source IDs, capability digest, and sensitive-field
   exclusions, then injects only sanitized sources, facts, and constraints into
-  task text before launching DeepAgents. `--mcp-select` narrows provenance
-  only; it does not make MCP tools available inside DeepAgents.
+  task text. Handoff remains facts and provenance, not tool access.
 - MCP escalation is controller-mediated: pre-dispatch facts use one handoff;
   mid-task requests return `NEEDS_CONTEXT`, then the outer Codex controller
   refreshes the handoff and retries the same plan task. When CoS is active, CoS

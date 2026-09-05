@@ -55,6 +55,23 @@ DeepAgents project views at launch. Keep provider endpoints, credentials, MCP
 configuration, and provider definitions out of role templates and tracked
 outputs.
 
+## DeepAgents MCP Projection
+
+DeepAgents may use MCP only through explicit launcher selection. Pass
+`--mcp-select <server[.tool][,server[.tool]...]>` to project approved Codex
+`[mcp_servers]`; no selection keeps the child on `--no-mcp`. Selecting a server
+exposes all tools exposed by that server. Selecting a tool limits access to that
+tool. Direct mode needs no per-task `.mcp.json`: launcher writes temporary
+launcher-owned config, isolates child state with `DEEPAGENTS_HOME`, and removes
+it after launch. Project MCP configs stay untouched and untrusted; never pass
+`--trust-project-mcp`.
+
+MCP `headers` values must be `${VAR}` references. MCP `env` values may be
+`${VAR}` references or non-sensitive literals. Raw credentials,
+config secrets, and tool configuration never enter task text, logs, or tracked
+files. `codex.mcp.handoff.v1` carries validated facts and provenance only; it
+does not grant MCP tool access.
+
 ## Generate
 
 ```bash
@@ -129,7 +146,9 @@ or `dcode --update`.
 
 The pinned executable stays under the user-local `dcode-project` runtime root;
 do not depend on or replace a global `dcode.exe`. Current DeepAgents may load project `.env` files. Launcher-owned provider
-environment values override inherited project values, while MCP remains disabled.
+environment values override inherited project values. Setup applies a narrow
+local compatibility patch for Windows MCP config resolution; direct MCP remains
+disabled unless `--mcp-select` is explicit.
 Treat project `.env` and `.deepagents/` content as untrusted runtime input.
 
 ## Drift Checks

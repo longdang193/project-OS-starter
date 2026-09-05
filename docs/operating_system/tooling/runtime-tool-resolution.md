@@ -74,10 +74,15 @@ become executable policy, canonical contracts, architecture, or instructions.
 ## Executor Boundary
 
 Do not assume MCP availability, approval settings, permission flags, result
-shapes, or tool IDs across executors. DeepAgents remains `--no-mcp`; Codex owns
-MCP calls and passes only validated `codex.mcp.handoff.v1` facts through the
-approved handoff path. Runtime resolution never adds direct DeepAgents MCP
-configuration.
+shapes, or tool IDs across executors. DeepAgents MCP is opt-in through explicit
+`--mcp-select <server[.tool][,server[.tool]...]>`; no selection keeps `--no-mcp`.
+Launcher projects approved Codex `[mcp_servers]` into temporary launcher-owned
+config under isolated child `DEEPAGENTS_HOME`. No per-task `.mcp.json` or
+`--trust-project-mcp`; project MCP configs stay untouched and untrusted. MCP
+`headers` values must be `${VAR}` references. `env` values may be `${VAR}`
+references or non-sensitive literals. Raw credentials and
+config secrets stay out of task text, logs, and tracked files.
+`codex.mcp.handoff.v1` carries facts and provenance only, not tool access.
 
 ## Fallback
 
