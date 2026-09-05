@@ -7,7 +7,7 @@ param(
     [string]$UvPath = (Join-Path $HOME ".local\bin\uv.exe"),
     [string]$TuraExecutable,
     [string]$TuraProviderConfig,
-    [string]$DeepAgentsCodeVersion = "0.1.65",
+    [string]$DeepAgentsCodeVersion = "0.1.66",
     [switch]$SkipInstall,
     [switch]$ResetConfig
 )
@@ -75,7 +75,7 @@ if (-not $SkipInstall) {
     & $UvPath tool install --reinstall `
         "deepagents-code==$DeepAgentsCodeVersion" `
         --with "langgraph-api==0.13.0" `
-        --with "langgraph-runtime-inmem==0.33.2" `
+        --with "langgraph-runtime-inmem==0.33.3" `
         --with "uvicorn==0.51.0"
     if ($LASTEXITCODE -ne 0) {
         throw "DeepAgents Code installation failed."

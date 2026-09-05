@@ -482,14 +482,15 @@ def _native_mcp_config(
                 raise RuntimeError(f"Unsupported Codex MCP server field: {key}")
             if key == "startup_timeout_sec":
                 if (
-                    not isinstance(value, int)
-                    or isinstance(value, bool)
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
                     or value < 0
+                    or (isinstance(value, float) and not value.is_integer())
                 ):
                     raise RuntimeError(
                         "Native MCP `startup_timeout_sec` must be a nonnegative integer."
                     )
-                definition[key] = value
+                definition[key] = int(value)
                 continue
             if key in {"env", "headers"}:
                 if not isinstance(value, dict):

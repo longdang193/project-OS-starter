@@ -1058,6 +1058,20 @@ def test_native_mcp_config_rejects_invalid_startup_timeout(value: object) -> Non
         LAUNCHER._native_mcp_config(config, ["context7.query_docs"])
 
 
+def test_native_mcp_config_normalizes_integral_float_startup_timeout() -> None:
+    config = {
+        "mcp_servers": {
+            "serena": {
+                "startup_timeout_sec": 120.0,
+            }
+        }
+    }
+
+    projected = LAUNCHER._native_mcp_config(config, ["serena"])
+
+    assert projected["mcpServers"]["serena"]["startup_timeout_sec"] == 120
+
+
 def _prepare_deepagents_main(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1391,10 +1405,10 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert "DEEPAGENTS_HOME" in setup
     assert "GetUnresolvedProviderPathFromPSPath" in setup
     assert "Direct DeepAgents MCP config detected" in setup
-    assert '$DeepAgentsCodeVersion = "0.1.65"' in setup
+    assert '$DeepAgentsCodeVersion = "0.1.66"' in setup
     assert 'deepagents-code==$DeepAgentsCodeVersion' in setup
     assert 'langgraph-api==0.13.0' in setup
-    assert 'langgraph-runtime-inmem==0.33.2' in setup
+    assert 'langgraph-runtime-inmem==0.33.3' in setup
     assert 'uvicorn==0.51.0' in setup
     assert '$env:UV_TOOL_DIR = $deepAgentsToolRoot' in setup
     assert '$env:UV_TOOL_BIN_DIR = $deepAgentsBinRoot' in setup
