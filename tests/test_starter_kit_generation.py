@@ -107,6 +107,17 @@ def test_runtime_docs_use_profile_concept_and_keep_cli_selector_literal() -> Non
     assert "--role <profile>" in read_source("README.md")
     assert "--role <profile>" in read_source("docs/operating_system/procedures/runtime-adapter-procedure.md")
 
+    readme = normalized_source("README.md")
+    integration = normalized_source("docs/operating_system/tooling/frontend-backend-integration-tools.md")
+    procedure = normalized_source("docs/operating_system/procedures/runtime-adapter-procedure.md")
+    assert "caller passes explicit `--mcp-select" in readme
+    assert "MCP `headers` values must be `${VAR}` references" in readme
+    assert "MCP `env` values may be `${VAR}` references or non-sensitive literals" in readme
+    assert "MCP `headers` values must be `${VAR}` references" in integration
+    assert "MCP `env` values may be `${VAR}` references or non-sensitive literals" in integration
+    assert "`--print-config` may omit it" in procedure
+    assert "Launcher prefers the pinned executable" in procedure
+
 
 def test_runtime_adapter_procedure_preserves_lifecycle_evidence() -> None:
     procedure = normalized_source("docs/operating_system/procedures/runtime-adapter-procedure.md")
@@ -227,11 +238,17 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
 
     assert "scripts/herdr_main_launcher.py" in manifest["copyPaths"]
     assert "scripts/opendesign_profile_adapter.py" in manifest["copyPaths"]
+    assert "scripts/setup_deepagents_runtime.ps1" in manifest["copyPaths"]
+    assert "scripts/patch_deepagents_runtime.py" in manifest["copyPaths"]
+    assert "tests/test_deepagents_runtime_patch.py" in manifest["copyPaths"]
     assert "tests/test_herdr_main_launcher.py" in manifest["copyPaths"]
     assert "tests/test_opendesign_profile_adapter.py" in manifest["copyPaths"]
     assert "tests/test_skill_chief_of_staff.py" in manifest["copyPaths"]
     assert "scripts/herdr_main_launcher.py" in manifest["requiredPaths"]
     assert "scripts/opendesign_profile_adapter.py" in manifest["requiredPaths"]
+    assert "scripts/setup_deepagents_runtime.ps1" in manifest["requiredPaths"]
+    assert "scripts/patch_deepagents_runtime.py" in manifest["requiredPaths"]
+    assert "scripts/dcode_project.py" in manifest["requiredPaths"]
     assert "docs/operating_system/runtime" in manifest["omitPaths"]
     assert "docs/operating_system/procedures/runtime-adapter-procedure.md" in manifest["omitPaths"]
 

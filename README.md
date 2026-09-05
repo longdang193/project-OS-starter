@@ -78,13 +78,14 @@ When bounded Tura delegation is installed, use
 same profile registry and configured provider route; Native Codex remains controller and `dcode-project` remains the
 explicit DeepAgents path.
 DeepAgents MCP is opt-in. Launcher projects Codex `[mcp_servers]` only when the
-task has explicit `--mcp-select <server[.tool][,server[.tool]...]>`; no selection
+caller passes explicit `--mcp-select <server[.tool][,server[.tool]...]>`; no selection
 keeps child `--no-mcp`. Selecting a server exposes all tools exposed by that
 approved server; selecting a tool narrows access. Direct mode creates temporary
 launcher-owned config under isolated child `DEEPAGENTS_HOME`; no per-task
 `.mcp.json`, `--trust-project-mcp`, or project-config mutation. Project MCP
-configs remain untouched and untrusted. MCP `env` and `headers` values must be
-`${VAR}` references. Raw credentials and config secrets never enter task text,
+configs remain untouched and untrusted. MCP `headers` values must be `${VAR}`
+references. MCP `env` values may be `${VAR}` references or non-sensitive literals.
+Raw credentials and config secrets never enter task text,
 logs, or tracked files. `codex.mcp.handoff.v1` remains validated facts and
 provenance, not tool access.
 CoS may run from a native Codex session and dispatch through Herdr. The launcher

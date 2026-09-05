@@ -103,8 +103,9 @@ Targets:
 - `~/.gemini`
 
 DeepAgents is not an adapter-sync target. User-local `dcode-project` derives
-ignored project subagents from `agents/*.toml` at launch. Every task launch
-requires `--role <profile>`; launcher consumes this selector and
+ignored project subagents from `agents/*.toml` at launch. Every task execution
+launch requires `--role <profile>`; `--print-config` may omit it. Launcher
+consumes this selector and
 uses the selected profile's model for its primary `dcode -M` binding. Its
 provider endpoint, credentials, provider definition, and mutable state remain
 local. Each selected profile's `model_provider` must match active local Codex provider
@@ -150,8 +151,9 @@ The setup script owns the tested `deepagents-code` version, requires Python
 script for upgrades; do not rely on floating `uv tool install deepagents-code`
 or `dcode --update`.
 
-The pinned executable stays under the user-local `dcode-project` runtime root;
-do not depend on or replace a global `dcode.exe`. Current DeepAgents may load project `.env` files. Launcher-owned provider
+Launcher prefers the pinned executable under the user-local `dcode-project`
+runtime root, then falls back to user-local or `PATH` `dcode`. Current
+DeepAgents may load project `.env` files. Launcher-owned provider
 environment values override inherited project values. Setup applies a narrow
 local compatibility patch for Windows MCP config resolution and one unannotated
 read-only Playwright probe; direct MCP remains disabled unless `--mcp-select`
