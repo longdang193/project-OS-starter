@@ -11,6 +11,11 @@ Start OpenDesign through the patched launcher after installation or update:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/open-design-local-patch/Start-OpenDesignPatched.ps1
 ```
 
+Launcher no longer force-stops an existing OpenDesign process. If an existing
+desktop owner restart would interrupt a queued or running run, restart is
+deferred and the new launcher exits; retry after that run reaches a terminal
+state.
+
 Verify Codex sees the configured server:
 
 ```powershell

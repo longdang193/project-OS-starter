@@ -40,6 +40,9 @@ def test_open_design_overlay_uses_symbol_discovery_and_shared_markers() -> None:
     assert 'const handleConsoleStreamError' in updater
     assert 'const safeConsoleWrite' in updater
     assert 'safeConsoleWrite(originalConsole.error, args);' in updater
+    assert "function hasActivePackagedRun" in updater
+    assert "readdir" in updater
+    assert "reason=active-run" in updater
 
 
 def test_open_design_launcher_patches_before_starting_app() -> None:
@@ -51,8 +54,8 @@ def test_open_design_launcher_patches_before_starting_app() -> None:
     assert "Open Design.exe" in launcher
     assert 'OD_DESKTOP_LOG_ECHO' in launcher
     assert '$env:OD_DESKTOP_LOG_ECHO = "0"' in launcher
-    assert "Get-Process -Name 'Open Design'" in launcher
-    assert "Stop-Process -Force" in launcher
+    assert "Get-Process -Name 'Open Design'" not in launcher
+    assert "Stop-Process -Force" not in launcher
 
 
 def test_installed_packaged_logger_uses_safe_writes() -> None:
@@ -64,5 +67,7 @@ def test_installed_packaged_logger_uses_safe_writes() -> None:
     assert "resolvePackagedHeadlessRuntimeNamespace" in source
     assert "OD_MCP_BOOTSTRAP_IPC_PATH" in source
     assert 'let echo = process.env[DESKTOP_LOG_ECHO_ENV] === "1" && process.stdout.isTTY === true;' in source
+    assert "function hasActivePackagedRun" in source
+    assert "reason=active-run" in source
     logger = source[source.index("function createPackagedDesktopLogger") : source.index("function attachPackagedDesktopProcessLogging")]
     assert "safeConsoleWrite(originalConsole.error, args);" in logger

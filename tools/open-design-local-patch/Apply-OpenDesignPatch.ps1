@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PatchVersion = "2026-09-05.5"
+$PatchVersion = "2026-09-05.6"
 
 function Read-Utf8([string]$Path) {
     return [IO.File]::ReadAllText($Path, [Text.UTF8Encoding]::new($false))
@@ -418,6 +418,47 @@ function createHeadlessStamp(namespace) {
     mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace),
     nodeCommand: activeConfig.nodeCommand,
 '@ "mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace)"
+
+    $text = Replace-Once $text "packaged active run guard" @'
+async function restartExistingDesktop(input) {
+'@ @'
+async function hasActivePackagedRun(dataRoot) {
+  if (typeof dataRoot !== "string" || dataRoot.length === 0)
+    return false;
+  let entries;
+  try {
+    entries = await readdir(join14(dataRoot, "runs"), { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory())
+      continue;
+    try {
+      const state = JSON.parse(await readFile(join14(dataRoot, "runs", entry.name, "state.json"), "utf8"));
+      if (state?.status === "queued" || state?.status === "running")
+        return true;
+    } catch {
+    }
+  }
+  return false;
+}
+async function restartExistingDesktop(input) {
+'@ "function hasActivePackagedRun"
+
+    $text = Replace-Once $text "shared active run restart guard" @'
+async function restartExistingDesktop(input) {
+  try {
+'@ @'
+async function restartExistingDesktop(input) {
+  if (await hasActivePackagedRun(input.paths?.dataRoot)) {
+    const message = `inspect-found-existing restart=deferred reason=active-run pid=${input.pid ?? "unknown"}`;
+    await writeLauncherAfterQuitLog(input.paths, message);
+    input.logger.info?.(`[open-design launcher] ${message}`);
+    return false;
+  }
+  try {
+'@ "restart=deferred reason=active-run"
     return $text
 }
 
@@ -616,19 +657,26 @@ $serverPatched = $serverAfter -ne ($serverBefore.Replace("`r
 $bootstrapPatched = $bootstrapAfter -ne ($bootstrapBefore.Replace("`r`n", "`n").Replace("`r", "`n"))
 
 if ($VerifyOnly) {
-    if (-not $packagedMainAfter.Contains("const safeConsoleWrite") -or -not $serverAfter.Contains("function isManifestBackedMarkdownPath") -or -not $serverAfter.Contains("allowManifestEntryOverride") -or -not $bootstrapAfter.Contains("function withMcpBootstrapLock")) {
+    if (-not $packagedMainAfter.Contains("const safeConsoleWrite") -or -not $packagedMainAfter.Contains("function hasActivePackagedRun") -or -not $packagedMainAfter.Contains("reason=active-run") -or -not $serverAfter.Contains("function isManifestBackedMarkdownPath") -or -not $serverAfter.Contains("allowManifestEntryOverride") -or -not $bootstrapAfter.Contains("function withMcpBootstrapLock")) {
         throw "OpenDesign local patch is not applied."
     }
     Write-Output "OpenDesign local patch verified: $version"
     exit 0
 }
 
-if ($packagedMainPatched) { Write-Utf8 $packagedMain.FullName $packagedMainAfter }
-if ($serverPatched) { Write-Utf8 $server.FullName $serverAfter }
-if ($bootstrapPatched) { Write-Utf8 $bootstrap.FullName $bootstrapAfter }
-Invoke-NodeCheck $packagedMain.FullName
-Invoke-NodeCheck $server.FullName
-Invoke-NodeCheck $bootstrap.FullName
+try {
+    if ($packagedMainPatched) { Write-Utf8 $packagedMain.FullName $packagedMainAfter }
+    if ($serverPatched) { Write-Utf8 $server.FullName $serverAfter }
+    if ($bootstrapPatched) { Write-Utf8 $bootstrap.FullName $bootstrapAfter }
+    Invoke-NodeCheck $packagedMain.FullName
+    Invoke-NodeCheck $server.FullName
+    Invoke-NodeCheck $bootstrap.FullName
+} catch {
+    Copy-Item -LiteralPath $packagedMainBackup -Destination $packagedMain.FullName -Force
+    Copy-Item -LiteralPath $serverBackup -Destination $server.FullName -Force
+    Copy-Item -LiteralPath $bootstrapBackup -Destination $bootstrap.FullName -Force
+    throw
+}
 
 $marker = [ordered]@{
     patchVersion = $PatchVersion
