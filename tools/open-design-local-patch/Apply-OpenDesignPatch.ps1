@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PatchVersion = "2026-09-04.5"
+$PatchVersion = "2026-09-04.6"
 
 function Read-Utf8([string]$Path) {
     return [IO.File]::ReadAllText($Path, [Text.UTF8Encoding]::new($false))
@@ -123,6 +123,25 @@ function isTrackedRunFile(name, fullPath = name) {
 
     $text = Replace-Once $text "diff markdown classification" '    if (isArtifactPath(classifyPath)) {' '    if (isArtifactPath(classifyPath) || isManifestBackedMarkdownPath(classifyPath)) {' 'isManifestBackedMarkdownPath(classifyPath)'
     $text = Replace-Once $text "event markdown classification" '  return collectWrittenPathsMatching(events, isArtifactPath).size;' '  return collectWrittenPathsMatching(events, (filePath2) => isArtifactPath(filePath2) || isManifestBackedMarkdownPath(filePath2)).size;' 'isManifestBackedMarkdownPath(filePath2)'
+    $text = Replace-Once $text "MCP bootstrap namespace forwarding" @'
+    const mcpBootstrapArgs = process.env.OD_MCP_BOOTSTRAP_ARGS;
+    if (mcpBootstrapArgs != null && mcpBootstrapArgs.length > 0) {
+      sidecarEnv.OD_MCP_BOOTSTRAP_ARGS = mcpBootstrapArgs;
+    }
+'@ @'
+    const mcpBootstrapArgs = process.env.OD_MCP_BOOTSTRAP_ARGS;
+    if (mcpBootstrapArgs != null && mcpBootstrapArgs.length > 0) {
+      sidecarEnv.OD_MCP_BOOTSTRAP_ARGS = mcpBootstrapArgs;
+    }
+    const mcpBootstrapIpcPath = process.env.OD_MCP_BOOTSTRAP_IPC_PATH;
+    if (mcpBootstrapIpcPath != null && mcpBootstrapIpcPath.length > 0) {
+      sidecarEnv.OD_MCP_BOOTSTRAP_IPC_PATH = mcpBootstrapIpcPath;
+    }
+    const packagedRuntimeNamespace = process.env.OD_PACKAGED_RUNTIME_NAMESPACE;
+    if (packagedRuntimeNamespace != null && packagedRuntimeNamespace.length > 0) {
+      sidecarEnv.OD_PACKAGED_RUNTIME_NAMESPACE = packagedRuntimeNamespace;
+    }
+'@ "OD_PACKAGED_RUNTIME_NAMESPACE"
     $text = Replace-Once $text "ledger markdown classification" '    if (isArtifactPath(path106))' '    if (isArtifactPath(path106) || isManifestBackedMarkdownPath(path106))' 'isManifestBackedMarkdownPath(path106)'
 
     $text = Replace-Once $text "deliverable selector" @'
@@ -206,8 +225,8 @@ function Patch-PackagedMain([string]$Path) {
     $text = (Read-Utf8 $Path).Replace("`r`n", "`n").Replace("`r", "`n")
     if ($text.Contains("const safeConsoleWrite")) {
         Write-Verbose "packaged logger EPIPE guard already patched"
-        return $text.Replace('let echo = process.env[DESKTOP_LOG_ECHO_ENV] !== "0";', 'let echo = process.env[DESKTOP_LOG_ECHO_ENV] === "1" && process.stdout.isTTY === true;')
-    }
+        $text = $text.Replace('let echo = process.env[DESKTOP_LOG_ECHO_ENV] !== "0";', 'let echo = process.env[DESKTOP_LOG_ECHO_ENV] === "1" && process.stdout.isTTY === true;')
+    } else {
     if (-not $text.Contains("const handleConsoleStreamError")) {
         $text = Replace-Once $text "packaged logger EPIPE guard" @'
 function createPackagedDesktopLogger(paths) {
@@ -239,8 +258,8 @@ function createPackagedDesktopLogger(paths) {
   process.stdout.on("error", handleConsoleStreamError);
   process.stderr.on("error", handleConsoleStreamError);
 '@ "const handleConsoleStreamError"
-    }
-    if (-not $text.Contains("const safeConsoleWrite")) {
+      }
+      if (-not $text.Contains("const safeConsoleWrite")) {
         $text = Replace-Once $text "packaged logger safe writer" @'
   let echo = process.env[DESKTOP_LOG_ECHO_ENV] === "1" && process.stdout.isTTY === true;
   const handleConsoleStreamError = (error) => {
@@ -278,8 +297,8 @@ function createPackagedDesktopLogger(paths) {
   process.stdout.on("error", handleConsoleStreamError);
   process.stderr.on("error", handleConsoleStreamError);
 '@ "const safeConsoleWrite"
-    }
-    $text = Replace-Once $text "packaged logger safe console writes" @'
+      }
+      $text = Replace-Once $text "packaged logger safe console writes" @'
   console.log = (...args) => {
     logger.info("console.log", { args });
     if (echo) originalConsole.log(...args);
@@ -314,6 +333,88 @@ function createPackagedDesktopLogger(paths) {
     safeConsoleWrite(originalConsole.error, args);
   };
 '@ "safeConsoleWrite(originalConsole.error, args)"
+    }
+
+    $text = Replace-Once $text "packaged runtime data namespace signature" 'function resolvePackagedDataRoot(config, namespace, env = {}) {' 'function resolvePackagedDataRoot(config, dataNamespace, env = {}) {' 'resolvePackagedDataRoot(config, dataNamespace'
+    $text = Replace-Once $text "packaged runtime data namespace comparison" 'if (scopedNamespace !== namespace) {' 'if (scopedNamespace !== dataNamespace) {' 'scopedNamespace !== dataNamespace'
+    $text = Replace-Once $text "packaged runtime data namespace message" '`Active namespace: ${namespace}`' '`Active data namespace: ${dataNamespace}`' 'Active data namespace'
+    $text = Replace-Once $text "packaged runtime data namespace scoped path" 'return join42(expanded, "namespaces", namespace, "data");' 'return join42(expanded, "namespaces", dataNamespace, "data");' 'namespaces", dataNamespace'
+    $text = Replace-Once $text "packaged runtime data namespace root" 'return join42(config.namespaceBaseRoot, namespace, "data");' 'return join42(config.namespaceBaseRoot, dataNamespace, "data");' 'namespaceBaseRoot, dataNamespace'
+    $text = Replace-Once $text "packaged runtime namespace paths signature" 'function resolvePackagedNamespacePaths(config, namespace = config.namespace, env = {}) {' 'function resolvePackagedNamespacePaths(config, runtimeNamespace = config.namespace, env = {}, dataNamespace = runtimeNamespace) {' 'dataNamespace = runtimeNamespace'
+    $text = Replace-Once $text "packaged runtime namespace paths normalization" @'
+  const normalizedNamespace = normalizeNamespace(namespace);
+  const namespaceRoot = join42(config.namespaceBaseRoot, normalizedNamespace);
+  const dataRoot = resolvePackagedDataRoot(config, normalizedNamespace, env);
+'@ @'
+  const normalizedRuntimeNamespace = normalizeNamespace(runtimeNamespace);
+  const normalizedDataNamespace = normalizeNamespace(dataNamespace);
+  const namespaceRoot = join42(config.namespaceBaseRoot, normalizedRuntimeNamespace);
+  const dataRoot = resolvePackagedDataRoot(config, normalizedDataNamespace, env);
+'@ "normalizedDataNamespace"
+
+    $text = Replace-Once $text "headless runtime namespace resolver" @'
+function createHeadlessStamp(namespace) {
+'@ @'
+function resolvePackagedHeadlessRuntimeNamespace(dataNamespace, env = process.env) {
+  const configured = env.OD_PACKAGED_RUNTIME_NAMESPACE?.trim();
+  if (configured != null && configured.length > 0)
+    return normalizeNamespace(configured);
+  return normalizeNamespace(`${dataNamespace}-headless`);
+}
+function createHeadlessStamp(namespace) {
+'@ "resolvePackagedHeadlessRuntimeNamespace"
+
+    $text = Replace-Once $text "headless runtime path selection" @'
+  const initialPaths = resolvePackagedNamespacePaths(
+    config,
+    config.namespace,
+    process.env
+  );
+'@ @'
+  const runtimeNamespace = resolvePackagedHeadlessRuntimeNamespace(config.namespace);
+  const initialPaths = resolvePackagedNamespacePaths(
+    config,
+    runtimeNamespace,
+    process.env,
+    config.namespace
+  );
+'@ "const runtimeNamespace = resolvePackagedHeadlessRuntimeNamespace(config.namespace)"
+    $text = Replace-Once $text "headless runtime stamp" '  const stamp = createHeadlessStamp(config.namespace);' '  const stamp = createHeadlessStamp(runtimeNamespace);' 'createHeadlessStamp(runtimeNamespace)'
+    $text = Replace-Once $text "headless bootstrap namespace" @'
+      mcpBootstrapArgs: mcpBootstrap.args,
+      mcpBootstrapCommand: mcpBootstrap.command,
+      nodeCommand: activeConfig.nodeCommand,
+'@ @'
+      mcpBootstrapArgs: mcpBootstrap.args,
+      mcpBootstrapCommand: mcpBootstrap.command,
+      mcpBootstrapRuntimeNamespace: runtimeNamespace,
+      nodeCommand: activeConfig.nodeCommand,
+'@ "mcpBootstrapRuntimeNamespace: runtimeNamespace"
+
+    $text = Replace-Once $text "packaged bootstrap namespace env" @'
+    ...options.mcpBootstrapArgs == null ? {} : { OD_MCP_BOOTSTRAP_ARGS: JSON.stringify(options.mcpBootstrapArgs) },
+'@ @'
+    ...options.mcpBootstrapArgs == null ? {} : { OD_MCP_BOOTSTRAP_ARGS: JSON.stringify(options.mcpBootstrapArgs) },
+    ...options.mcpBootstrapRuntimeNamespace == null || options.mcpBootstrapRuntimeNamespace.length === 0 ? {} : {
+      OD_MCP_BOOTSTRAP_IPC_PATH: resolveAppIpcPath({
+        app: APP_KEYS.DAEMON,
+        contract: OPEN_DESIGN_SIDECAR_CONTRACT,
+        namespace: options.mcpBootstrapRuntimeNamespace
+      }),
+      OD_PACKAGED_RUNTIME_NAMESPACE: options.mcpBootstrapRuntimeNamespace
+    },
+'@ "OD_MCP_BOOTSTRAP_IPC_PATH"
+
+    $text = Replace-Once $text "desktop bootstrap namespace" @'
+    mcpBootstrapArgs: mcpBootstrap.args,
+    mcpBootstrapCommand: mcpBootstrap.command,
+    nodeCommand: activeConfig.nodeCommand,
+'@ @'
+    mcpBootstrapArgs: mcpBootstrap.args,
+    mcpBootstrapCommand: mcpBootstrap.command,
+    mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace),
+    nodeCommand: activeConfig.nodeCommand,
+'@ "mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace)"
     return $text
 }
 
@@ -413,6 +514,25 @@ async function withMcpBootstrapLock(env, action, timeoutMs) {
     throw new Error(`OpenDesign was launched headlessly but its daemon did not become ready within ${timeoutMs}ms.`);
   }, timeoutMs);
 '@ "return await withMcpBootstrapLock"
+    }
+    if (-not $text.Contains("const postSpawnEnv")) {
+        $text = Replace-Once $text "bootstrap isolated post-spawn polling" @'
+    await spawnBootstrap(currentPlan);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await sleep(DEFAULT_BOOTSTRAP_POLL_MS);
+      daemonUrl = registeredBootstrapTarget ? await discoverTargetDaemonUrl(env, 300) : await resolveDaemonUrl2({
+'@ @'
+    await spawnBootstrap(currentPlan);
+    const postSpawnEnv = env.OD_MCP_BOOTSTRAP_IPC_PATH == null || env.OD_MCP_BOOTSTRAP_IPC_PATH.length === 0 ? env : {
+      ...env,
+      [SIDECAR_ENV.IPC_PATH]: env.OD_MCP_BOOTSTRAP_IPC_PATH
+    };
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await sleep(DEFAULT_BOOTSTRAP_POLL_MS);
+      daemonUrl = registeredBootstrapTarget ? await discoverTargetDaemonUrl(postSpawnEnv, 300) : await resolveDaemonUrl2({
+'@ "const postSpawnEnv"
     }
     return $text
 }

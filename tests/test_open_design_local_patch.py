@@ -13,6 +13,10 @@ def test_open_design_overlay_uses_symbol_discovery_and_shared_markers() -> None:
     assert "function validateRunDeliverable" in updater
     assert "mcp-bootstrap-*.mjs" in updater
     assert "function ensureMcpDaemonUrl" in updater
+    assert "OD_MCP_BOOTSTRAP_IPC_PATH" in updater
+    assert "OD_PACKAGED_RUNTIME_NAMESPACE" in updater
+    assert "resolvePackagedHeadlessRuntimeNamespace" in updater
+    assert "mcpBootstrapRuntimeNamespace" in updater
     assert "OpenDesign-patch-backups" in updater
     assert "function Get-Sha256" in updater
     assert "Get-FileHash" not in updater
@@ -52,6 +56,8 @@ def test_installed_packaged_logger_uses_safe_writes() -> None:
         return
     source = bundle.read_text(encoding="utf-8")
     assert "const safeConsoleWrite" in source
+    assert "resolvePackagedHeadlessRuntimeNamespace" in source
+    assert "OD_MCP_BOOTSTRAP_IPC_PATH" in source
     assert 'let echo = process.env[DESKTOP_LOG_ECHO_ENV] === "1" && process.stdout.isTTY === true;' in source
     logger = source[source.index("function createPackagedDesktopLogger") : source.index("function attachPackagedDesktopProcessLogging")]
     assert "safeConsoleWrite(originalConsole.error, args);" in logger
