@@ -66,6 +66,12 @@ launcher-owned config, isolates child state with `DEEPAGENTS_HOME`, and removes
 it after launch. Project MCP configs stay untouched and untrusted; never pass
 `--trust-project-mcp`.
 
+Headless `-n` runs MCP tools automatically only when their protocol metadata
+proves read-only. Other MCP calls fail closed because no approval UI exists.
+The local compatibility patch permits only `playwright_browser_tabs` with
+`action=list`; navigation, tab changes, form actions, uploads, and script
+execution remain blocked.
+
 MCP `headers` values must be `${VAR}` references. MCP `env` values may be
 `${VAR}` references or non-sensitive literals. Raw credentials,
 config secrets, and tool configuration never enter task text, logs, or tracked
@@ -125,7 +131,7 @@ read-only TL smoke after every binary replacement before reusing compatibility
 or performance evidence. A changed hash invalidates old performance evidence,
 not necessarily the adapter contract.
 
-Current `dcode-project` forces DeepAgents `--no-mcp`, fixes child CWD to selected
+Current `dcode-project` defaults DeepAgents to `--no-mcp`, fixes child CWD to selected
 Git root, and rejects direct runtime-authority flags. It does not translate Codex
 `mcp_servers`, approval policy, sandbox mode, profiles, or threads. It supplies
 fixed launcher-owned built-ins: filesystem tools plus `git` and `py` shell
@@ -147,8 +153,9 @@ or `dcode --update`.
 The pinned executable stays under the user-local `dcode-project` runtime root;
 do not depend on or replace a global `dcode.exe`. Current DeepAgents may load project `.env` files. Launcher-owned provider
 environment values override inherited project values. Setup applies a narrow
-local compatibility patch for Windows MCP config resolution; direct MCP remains
-disabled unless `--mcp-select` is explicit.
+local compatibility patch for Windows MCP config resolution and one unannotated
+read-only Playwright probe; direct MCP remains disabled unless `--mcp-select`
+is explicit.
 Treat project `.env` and `.deepagents/` content as untrusted runtime input.
 
 ## Drift Checks

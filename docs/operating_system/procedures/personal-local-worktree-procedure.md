@@ -86,6 +86,9 @@ explicit selection. A selected server exposes all tools exposed by
 that server; a selected tool narrows access. Codex approval, sandbox, shell,
 and Git policy do not transfer. The top-level Codex model remains controller
 default; it does not select a DeepAgents profile model.
+Headless `-n` auto-runs only MCP tools with coherent read-only annotations.
+Unannotated or mutating MCP calls fail closed; the local Playwright exception
+allows only `playwright_browser_tabs` with `action=list`.
 DeepAgents capabilities depend on launch mode and task context. Current
 `dcode-project` supplies a fixed launcher-owned bounded tool surface; callers
 cannot widen it through task text or runtime-authority flags. Never assume a

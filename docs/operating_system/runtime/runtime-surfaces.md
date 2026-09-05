@@ -57,6 +57,9 @@ This document records provider-native deployment for rules, skills, root instruc
   no selection keeps child `--no-mcp`. Selecting a server exposes its exposed
   tools; selecting a tool narrows access. Approval, sandbox, shell, profile, and
   thread settings remain separate.
+- Headless `-n` auto-runs MCP tools only when read-only metadata is coherent;
+  unannotated and mutating calls fail closed. Local compatibility permits only
+  `playwright_browser_tabs` with `action=list`.
 - Direct MCP uses temporary launcher-owned config under isolated child
   `DEEPAGENTS_HOME`; no per-task `.mcp.json` or `--trust-project-mcp`, and project
   MCP configs remain untouched and untrusted. MCP `env` and `headers` values must

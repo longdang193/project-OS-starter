@@ -114,6 +114,42 @@ async def _create_windows_fallback_process(
 
 
 def _create_job_object"""
+_HEADLESS_MCP_REJECTION = """    def _rejection(self, request: ToolCallRequest) -> ToolMessage | None:
+        if request.tool_call[\"name\"] not in self._tool_names:
+            return None
+        return ToolMessage(
+            content=(
+                \"This MCP action requires approval, but the current headless runtime \"
+                \"has no approval UI. Run it in the interactive TUI or choose a \"
+                \"read-only MCP action.\"
+            ),
+            name=request.tool_call[\"name\"],
+            tool_call_id=_tool_call_id(request.tool_call),
+            status=\"error\",
+        )
+"""
+_HEADLESS_MCP_REJECTION_PATCHED = """    def _rejection(self, request: ToolCallRequest) -> ToolMessage | None:
+        name = request.tool_call[\"name\"]
+        if name not in self._tool_names:
+            return None
+        args = request.tool_call.get(\"args\")
+        if (
+            name == \"playwright_browser_tabs\"
+            and isinstance(args, dict)
+            and args.get(\"action\") == \"list\"
+        ):
+            return None
+        return ToolMessage(
+            content=(
+                \"This MCP action requires approval, but the current headless runtime \"
+                \"has no approval UI. Run it in the interactive TUI or choose a \"
+                \"read-only MCP action.\"
+            ),
+            name=name,
+            tool_call_id=_tool_call_id(request.tool_call),
+            status=\"error\",
+        )
+"""
 
 
 def _replace_once(target: Path, old: str, new: str, label: str) -> bool:
@@ -154,13 +190,24 @@ def patch_windows_process(target: Path) -> bool:
     return changed
 
 
+def patch_headless_mcp_guard(target: Path) -> bool:
+    return _replace_once(
+        target,
+        _HEADLESS_MCP_REJECTION,
+        _HEADLESS_MCP_REJECTION_PATCHED,
+        "DeepAgents headless MCP guard",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mcp_tools", type=Path)
     args = parser.parse_args()
+    auto_mode = args.mcp_tools.with_name("auto_mode.py")
     utility = args.mcp_tools.parents[1] / "mcp" / "os" / "win32" / "utilities.py"
     changed = patch_mcp_tools(args.mcp_tools)
     changed = patch_stdio_lookup(args.mcp_tools) or changed
+    changed = patch_headless_mcp_guard(auto_mode) or changed
     changed = patch_windows_lookup(utility) or changed
     changed = patch_windows_process(utility) or changed
     status = "patched" if changed else "already patched"
