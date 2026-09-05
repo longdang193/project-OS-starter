@@ -3,6 +3,23 @@
 `project-OS-starter` owns local overlays that must survive OpenDesign updates.
 Each overlay is keyed by exact target Git `HEAD`; unknown bases stop without changes.
 
+## OpenDesign MCP recovery
+
+Start OpenDesign through the patched launcher after installation or update:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/open-design-local-patch/Start-OpenDesignPatched.ps1
+```
+
+Verify Codex sees the configured server:
+
+```powershell
+codex mcp get open-design
+```
+
+If daemon and web pipes exist but MCP reports `Transport closed`, reload Codex
+app-server. Do not change project artifacts or run state.
+
 ## LightMem2 Codex hook overlay
 
 Apply and install login-time reconciliation:

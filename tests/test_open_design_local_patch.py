@@ -17,6 +17,11 @@ def test_open_design_overlay_uses_symbol_discovery_and_shared_markers() -> None:
     assert "OD_PACKAGED_RUNTIME_NAMESPACE" in updater
     assert "resolvePackagedHeadlessRuntimeNamespace" in updater
     assert "mcpBootstrapRuntimeNamespace" in updater
+    assert "postSpawnIpcPath" in updater
+    assert "-headless-daemon" in updater
+    assert "const postSpawnIpcPath" in updater
+    assert "bootstrap isolated post-spawn polling upgrade" in updater
+    assert '$normalizedOld = $Old.Replace("`r`n", "`n").Replace("`r", "`n")' in updater
     assert "OpenDesign-patch-backups" in updater
     assert "function Get-Sha256" in updater
     assert "Get-FileHash" not in updater
