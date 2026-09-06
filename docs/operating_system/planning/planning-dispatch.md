@@ -218,12 +218,16 @@ reconciliation.
 Plan task `Authority` is durable maximum authority. CoS may assign a transient
 Runtime Grant that narrows runtime resources and capability exposure; MAIN AGENT
 owns tactical choices inside its grant. Runtime v1 exposes only enforceable
-resource values: `turns` and `wall_clock_seconds`, each `native` or a positive
-integer. Delegation and parallelism remain policy-level autonomy until an
-executor can enforce those limits.
+resource values: `turns` and `wall_clock_seconds`. Codex turns remain `native`;
+numeric Codex wall-clock values use the Herdr outer watchdog. DeepAgents may
+use native or explicit numeric values for both fields. Delegation and
+parallelism remain policy-level autonomy until an executor can enforce those
+limits.
 
 DeepAgents direct MCP projection remains default-deny. Runtime Tool Resolution
 owns capability requirements and the adapter resolves them to concrete
 executor selectors. Concrete selectors belong in launch evidence, not a new
 durable Project-OS registry. Strict requests unsupported by an executor return
-`BLOCKED`; prompt wording is not runtime enforcement.
+`BLOCKED`; prompt wording is not runtime enforcement. A Codex watchdog timeout
+must close the assigned pane, verify no foreground executor remains, preserve
+partial Git/filesystem state, and report `TIMEOUT` or `BLOCKED`, never success.

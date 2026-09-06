@@ -84,7 +84,7 @@ authority remains `Plan Lane Authority ⊆ task Authority`.
 
 Runtime v1 supports only enforceable resource values:
 
-- turns: `native` or positive integer;
+- turns: `native` for Codex; `native` or positive integer for DeepAgents;
 - wall-clock seconds: `native` or positive integer;
 - capability exposure intent resolved through Runtime Tool Resolution.
 
@@ -96,8 +96,10 @@ enforcement mode, and a transient `grant_digest` in launch evidence.
 Grant changes never hot-mutate a live runtime. CoS must retire the current
 top-level lane, prove no live process owns its worktree, reconcile plan plus
 Git, then redispatch the same plan task with a newly computed transient grant.
-DeepAgents direct MCP projection remains default-deny. Codex strict limits that
-the runtime cannot enforce remain `native` or return `BLOCKED`.
+DeepAgents direct MCP projection remains default-deny. Codex turn limits remain
+`native`; numeric Codex wall-clock limits use the Herdr outer watchdog, which
+closes the assigned pane on deadline and verifies pane/process retirement before
+returning `TIMEOUT`. Unsupported strict limits return `BLOCKED`.
 
 CoS may dispatch only top-level MAIN AGENT lanes through Herdr. Codex lanes
 use top-level Codex main agents; DeepAgents lanes use the bounded

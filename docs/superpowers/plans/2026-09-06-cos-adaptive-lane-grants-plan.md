@@ -65,8 +65,11 @@ Every launch reports requested value, effective value, and enforcement mode:
 
 DeepAgents keeps native inner execution budgets when no explicit grant exists.
 Explicit `--max-turns` and `--timeout` values are projected only when granted.
-Strict Codex turn limits remain `native` or fail closed; prompt text is never
-treated as runtime enforcement. Existing MCP default-deny behavior remains.
+Strict Codex turn limits remain `native`; numeric Codex wall-clock grants use
+the Herdr outer watchdog. The launcher closes the assigned pane on deadline,
+verifies pane/process retirement, preserves partial state, and reports
+`TIMEOUT` or `BLOCKED` rather than success. Prompt text is never treated as
+runtime enforcement. Existing MCP default-deny behavior remains.
 
 ### Safe grant adjustment
 
@@ -270,7 +273,9 @@ are refreshed from canonical sources only.
 
 **Verification:**
 - [x] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_dcode_project.py -q`
-- Expected: focused tests prove native defaults, explicit DeepAgents limits, DeepAgents direct-MCP default-deny, approved selection, unsupported Codex bounds, redaction, and cleanup behavior.
+- Expected: focused tests prove native defaults, explicit DeepAgents limits,
+  Codex native turns plus outer-watchdog wall-clock cleanup, DeepAgents
+  direct-MCP default-deny, approved selection, redaction, and cleanup behavior.
 
 **Exit Criteria:**
 - Launcher and wrapper expose only defined, enforceable grants and report actual enforcement without changing default execution behavior.

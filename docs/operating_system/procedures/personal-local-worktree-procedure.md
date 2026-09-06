@@ -187,11 +187,14 @@ controller. Upgrade smoke probes may pass explicit shorter bounds because they
 are bounded compatibility checks, not normal task execution.
 
 An optional CoS Runtime Grant may project explicit DeepAgents `--max-turns` or
-`--timeout` values. Native defaults remain unchanged. Strict wall-clock requests
-above Herdr's 1800-second watchdog fail closed. DeepAgents direct MCP projection
-remains default-deny unless approved selectors are passed through the launcher;
-concrete selectors and the transient `grant_digest` belong to launch evidence,
-not tracked plan or runtime state.
+`--timeout` values. Native defaults remain unchanged. Codex keeps native turn
+limits; numeric Codex wall-clock grants use Herdr's outer watchdog. On deadline,
+the launcher closes the assigned pane, verifies executor retirement, preserves
+partial Git/filesystem state, and returns `TIMEOUT` or `BLOCKED`, never success.
+Strict DeepAgents wall-clock requests above Herdr's 1800-second watchdog fail
+closed. DeepAgents direct MCP projection remains default-deny unless approved
+selectors are passed through the launcher; concrete selectors and the transient
+`grant_digest` belong to launch evidence, not tracked plan or runtime state.
 
 `dcode-project` also leaves its wrapper timeout unset for DeepAgents unless the
 caller passes `--timeout`; an explicit value is enforced by both the native

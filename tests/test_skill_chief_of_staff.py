@@ -25,7 +25,7 @@ def test_chief_of_staff_defines_transient_runtime_grant_boundary() -> None:
     normalized = " ".join(skill.split())
     for text in (
         "transient Runtime Grant",
-        "turns: `native` or positive integer",
+        "turns: `native` for Codex; `native` or positive integer for DeepAgents",
         "wall-clock seconds: `native` or positive integer",
         "MAIN AGENT owns tactical choices inside its grant",
         "grant_digest",

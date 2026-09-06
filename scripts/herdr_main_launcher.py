@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 from typing import Any
 
 try:
@@ -28,6 +29,8 @@ _CODEX_PROMPT_TIMEOUT_MS = "30000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
+_CODEX_WATCHDOG_GRACE_SECONDS = 5.0
+_WATCHDOG_TIMEOUT_EXIT_CODE = 124
 _NATIVE_GRANT_VALUE = "native"
 
 
@@ -278,6 +281,8 @@ def _codex_assignment_command(
     session: str,
     agent_name: str,
     task: str,
+    *,
+    timeout_ms: int | None = None,
 ) -> list[str]:
     return [
         herdr,
@@ -289,7 +294,7 @@ def _codex_assignment_command(
         task,
         "--wait",
         "--timeout",
-        _CODEX_PROMPT_TIMEOUT_MS,
+        str(timeout_ms or _CODEX_PROMPT_TIMEOUT_MS),
     ]
 
 
@@ -319,8 +324,6 @@ def _normalize_runtime_grant(
     )
     if executor == "codex" and turns != _NATIVE_GRANT_VALUE:
         raise LaunchBlocked("Codex strict turn budget is unsupported; use `native`.")
-    if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE:
-        raise LaunchBlocked("Codex strict wall-clock budget is unsupported; use `native`.")
     if (
         executor == "deepagents"
         and wall_clock_seconds != _NATIVE_GRANT_VALUE
@@ -339,15 +342,125 @@ def _normalize_runtime_grant(
             "requested": wall_clock_seconds,
             "effective": wall_clock_seconds,
             "enforcement": (
-                "runtime"
+                "outer-watchdog"
+                if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE
+                else "runtime"
                 if wall_clock_seconds != _NATIVE_GRANT_VALUE
                 else "native"
             ),
         },
         "outer_watchdog_seconds": (
-            int(_DEEPAGENTS_RUN_TIMEOUT) if executor == "deepagents" else None
+            int(wall_clock_seconds)
+            if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE
+            else int(_DEEPAGENTS_RUN_TIMEOUT)
+            if executor == "deepagents"
+            else None
         ),
         "mcp_select": list(mcp_select or []),
+    }
+
+
+def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
+    registry = evidence.get("registry_launcher")
+    grant = registry.get("runtime_grant") if isinstance(registry, dict) else None
+    wall_clock = grant.get("wall_clock_seconds") if isinstance(grant, dict) else None
+    requested = wall_clock.get("requested") if isinstance(wall_clock, dict) else None
+    return requested if isinstance(requested, int) else None
+
+
+def _terminate_codex_lane(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    close_result = _run(
+        [herdr, "--session", session, "pane", "close", pane],
+        env=env,
+    )
+    if close_result.returncode:
+        detail = close_result.stderr.strip() or close_result.stdout.strip()
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": False,
+            "detail": detail or f"pane close failed ({close_result.returncode})",
+        }
+
+    list_result = _run(
+        [herdr, "--session", session, "pane", "list"],
+        env=env,
+    )
+    if list_result.returncode:
+        detail = list_result.stderr.strip() or list_result.stdout.strip()
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": False,
+            "detail": detail or f"pane list failed ({list_result.returncode})",
+        }
+    try:
+        payload = json.loads(list_result.stdout)
+        panes = _result(payload, "panes")
+    except (LaunchBlocked, json.JSONDecodeError) as exc:
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": False,
+            "detail": f"termination verification failed: {exc}",
+        }
+    if not isinstance(panes, list):
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "termination verification returned invalid panes",
+        }
+    selected = next((item for item in panes if item.get("pane_id") == pane), None)
+    if not isinstance(selected, dict):
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": True,
+            "state": "pane-closed",
+        }
+
+    process_result = _run(
+        [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+        env=env,
+    )
+    if process_result.returncode:
+        detail = process_result.stderr.strip() or process_result.stdout.strip()
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": False,
+            "detail": detail or f"process verification failed ({process_result.returncode})",
+        }
+    try:
+        process_payload = json.loads(process_result.stdout)
+        process_info = _result(process_payload, "process_info")
+    except (LaunchBlocked, json.JSONDecodeError) as exc:
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": False,
+            "detail": f"process verification failed: {exc}",
+        }
+    foreground = process_info.get("foreground_processes", [])
+    shell_names = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
+    remaining = [
+        str(process.get("name", "unknown"))
+        for process in foreground
+        if str(process.get("name", "")).lower() not in shell_names
+    ]
+    return {
+        "requested": True,
+        "action": "pane-close",
+        "verified": not remaining,
+        "state": "shell-only" if not remaining else "processes-remain",
+        "remaining_foreground_processes": remaining,
     }
 
 
@@ -445,6 +558,12 @@ def resolve_launch(
             _powershell_literal(task.strip()),
         ]
         command = [herdr, "--session", session, "pane", "run", pane, *runtime_arguments]
+    codex_watchdog = runtime_grant["wall_clock_seconds"]["requested"]
+    codex_prompt_timeout_ms = (
+        codex_watchdog * 1000
+        if executor == "codex" and codex_watchdog != _NATIVE_GRANT_VALUE
+        else None
+    )
     evidence = {
         "registry_launcher": {
             "profile": selected.name,
@@ -496,7 +615,13 @@ def resolve_launch(
             "required": True,
             "delivery": "herdr_agent_prompt" if executor == "codex" else "inline_pane_run",
             "redacted_prompt_argv": _redacted_arguments(
-                _codex_assignment_command(herdr, session, agent_name, task_text)
+                _codex_assignment_command(
+                    herdr,
+                    session,
+                    agent_name,
+                    task_text,
+                    timeout_ms=codex_prompt_timeout_ms,
+                )
             ) if executor == "codex" else None,
         },
     }
@@ -588,17 +713,77 @@ def main(argv: list[str] | None = None) -> int:
         if args.executor == "codex":
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
+            watchdog_seconds = _codex_watchdog_seconds(evidence)
             assignment = _codex_assignment_command(
                 herdr,
                 args.session,
                 agent_name,
                 args.task,
+                timeout_ms=(watchdog_seconds * 1000 if watchdog_seconds is not None else None),
             )
-            assignment_result = _run(
-                assignment,
-                env=environment,
-                timeout=_CODEX_ASSIGNMENT_TIMEOUT,
-            )
+            assignment_started = time.monotonic()
+            assignment_timed_out = False
+            assignment_result: subprocess.CompletedProcess[str] | None = None
+            try:
+                assignment_result = _run(
+                    assignment,
+                    env=environment,
+                    timeout=(
+                        watchdog_seconds + _CODEX_WATCHDOG_GRACE_SECONDS
+                        if watchdog_seconds is not None
+                        else _CODEX_ASSIGNMENT_TIMEOUT
+                    ),
+                )
+            except LaunchBlocked as exc:
+                if watchdog_seconds is None or "Command timed out after" not in str(exc):
+                    raise
+                assignment_timed_out = True
+            elapsed_seconds = time.monotonic() - assignment_started
+            if (
+                assignment_result is not None
+                and watchdog_seconds is not None
+                and assignment_result.returncode != 0
+                and (
+                    elapsed_seconds >= max(0, watchdog_seconds - 1)
+                    or "timeout" in (
+                        assignment_result.stdout + assignment_result.stderr
+                    ).lower()
+                )
+            ):
+                assignment_timed_out = True
+            if assignment_timed_out:
+                cleanup = _terminate_codex_lane(
+                    herdr,
+                    args.session,
+                    args.pane,
+                    env=environment,
+                )
+                cleanup_verified = bool(cleanup.get("verified"))
+                status = "TIMEOUT" if cleanup_verified else "BLOCKED"
+                print(json.dumps({
+                    "assignment": {
+                        "agent_name": agent_name,
+                        "exit_code": (
+                            _WATCHDOG_TIMEOUT_EXIT_CODE
+                            if cleanup_verified
+                            else 2
+                        ),
+                        "phase": "prompt",
+                        "prompt_accepted": False,
+                        "session": args.session,
+                        "status": status,
+                        "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
+                        "watchdog": {
+                            "requested_seconds": watchdog_seconds,
+                            "enforcement": "outer-watchdog",
+                            "elapsed_seconds": round(elapsed_seconds, 3),
+                            "termination": cleanup,
+                        },
+                    }
+                }, sort_keys=True))
+                return _WATCHDOG_TIMEOUT_EXIT_CODE if cleanup_verified else 2
+            if assignment_result is None:
+                raise LaunchBlocked("Codex assignment produced no result.")
             if assignment_result.stdout:
                 print(assignment_result.stdout, end="")
             if assignment_result.stderr:

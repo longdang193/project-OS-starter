@@ -98,6 +98,11 @@ def test_codex_assignment_command_prompts_started_agent() -> None:
             "30000",
     ]
 
+    bounded = LAUNCHER._codex_assignment_command(
+        "herdr.exe", "session", "xhigh-main", "assign lane", timeout_ms=600000,
+    )
+    assert bounded[-1] == "600000"
+
 
 def test_powershell_literal_escapes_apostrophes() -> None:
     assert LAUNCHER._powershell_literal("worker's task") == "'worker''s task'"
@@ -165,6 +170,7 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "-n",
         "'Return exactly DEEPAGENTS_ADAPTER_OK'",
     ]
+
     assert evidence["registry_launcher"]["executor"] == "deepagents"
     assert "--executor" not in command
     assert evidence["registry_launcher"]["redacted_runtime_argv"][-1].startswith(
@@ -233,6 +239,22 @@ def test_normalize_runtime_grant_rejects_unsupported_codex_turn_limit() -> None:
             grant_wall_clock_seconds="native",
             mcp_select=[],
         )
+
+
+def test_normalize_runtime_grant_allows_codex_wall_clock_watchdog() -> None:
+    grant = LAUNCHER._normalize_runtime_grant(
+        executor="codex",
+        grant_turns="native",
+        grant_wall_clock_seconds="600",
+        mcp_select=[],
+    )
+
+    assert grant["wall_clock_seconds"] == {
+        "requested": 600,
+        "effective": 600,
+        "enforcement": "outer-watchdog",
+    }
+    assert grant["outer_watchdog_seconds"] == 600
 
 
 def test_normalize_runtime_grant_rejects_wall_clock_above_watchdog() -> None:
@@ -550,6 +572,72 @@ def test_main_starts_with_selected_codex_home(
         "task_sha256": LAUNCHER._sha256_text("assign lane"),
         "wait": "settled",
     }
+
+
+def test_main_times_out_codex_and_verifies_termination(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "runtime_grant": {
+                "wall_clock_seconds": {
+                    "requested": 8,
+                    "effective": 8,
+                    "enforcement": "outer-watchdog",
+                }
+            },
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {"executable": "herdr.exe", "agent_name": "xhigh-main"},
+    }
+    calls = 0
+    cleanup = {
+        "requested": True,
+        "action": "pane-close",
+        "verified": True,
+        "state": "pane-closed",
+    }
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: cleanup)
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise LAUNCHER.LaunchBlocked("Command timed out after 13s: herdr.exe")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+            "--grant-wall-clock-seconds", "8",
+        ]
+    ) == 124
+    output = capsys.readouterr().out.splitlines()
+    result = json.loads(output[-1])["assignment"]
+    assert {key: value for key, value in result.items() if key != "watchdog"} == {
+        "agent_name": "xhigh-main",
+        "exit_code": 124,
+        "phase": "prompt",
+        "prompt_accepted": False,
+        "session": "codex-probe",
+        "status": "TIMEOUT",
+        "task_sha256": LAUNCHER._sha256_text("assign lane"),
+    }
+    watchdog = result["watchdog"]
+    assert watchdog["requested_seconds"] == 8
+    assert watchdog["enforcement"] == "outer-watchdog"
+    assert watchdog["elapsed_seconds"] >= 0
+    assert watchdog["termination"] == cleanup
 
 
 def test_main_reports_failed_assignment_after_start(
