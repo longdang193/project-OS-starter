@@ -77,8 +77,10 @@ When bounded Tura delegation is installed, use
 `project-delegate --role <profile> -n "<task>"`. Tura uses the
 same profile registry and configured provider route; Native Codex remains controller and `dcode-project` remains the
 explicit DeepAgents path.
-DeepAgents MCP is opt-in. Launcher projects Codex `[mcp_servers]` only when the
-caller passes explicit `--mcp-select <server[.tool][,server[.tool]...]>`; no selection
+DeepAgents MCP is opt-in through explicit Herdr selection. Herdr accepts
+`--mcp-select <server[.tool][,server[.tool]...]>` and forwards it to
+`dcode-project`; `dcode-project` validates selection against approved Codex
+`[mcp_servers]`. No selection
 keeps child `--no-mcp`. Selecting a server exposes all tools exposed by that
 approved server; selecting a tool narrows access. Direct mode creates temporary
 launcher-owned config under isolated child `DEEPAGENTS_HOME`; no per-task
@@ -95,6 +97,11 @@ CoS assigns top-level MAIN AGENTS through Herdr. MAIN AGENTS own assigned lanes
 and may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
 those lanes. Sub-agents remain subordinate and may not spawn peer MAIN AGENTS
 or activate CoS. Review and integration remain Codex-only.
+Herdr controller visibility is pull-based: use `agent get`/`agent read` for
+Codex and `pane process-info`/`pane read` for DeepAgents. Tura uses its own
+`dcode-project`/`project-delegate` wrapper. Missing or unchanged output is
+`unknown` or `stuck_suspected`, not completion; no observer daemon, heartbeat
+store, automatic retry, or raw-output ledger exists.
 Before local dispatch, verify deployed Codex runtime parity with
 `py -B scripts/validate_agent_runtime_drift.py`. Launcher and test files own
 task-delivery mechanics; missing or failed final delivery evidence blocks

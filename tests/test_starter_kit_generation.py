@@ -110,11 +110,18 @@ def test_runtime_docs_use_profile_concept_and_keep_cli_selector_literal() -> Non
     readme = normalized_source("README.md")
     integration = normalized_source("docs/operating_system/tooling/frontend-backend-integration-tools.md")
     procedure = normalized_source("docs/operating_system/procedures/runtime-adapter-procedure.md")
-    assert "caller passes explicit `--mcp-select" in readme
+    surfaces = normalized_source("docs/operating_system/runtime/runtime-surfaces.md")
+    root_template = normalized_source("docs/operating_system/templates/agents/root-AGENTS.template.md")
+    assert "DeepAgents MCP is opt-in through explicit Herdr selection" in readme
+    assert "Herdr accepts `--mcp-select" in readme
     assert "MCP `headers` values must be `${VAR}` references" in readme
     assert "MCP `env` values may be `${VAR}` references or non-sensitive literals" in readme
     assert "MCP `headers` values must be `${VAR}` references" in integration
     assert "MCP `env` values may be `${VAR}` references or non-sensitive literals" in integration
+    assert "DeepAgents may use MCP only through explicit Herdr selection" in procedure
+    assert "Herdr accepts `--mcp-select" in procedure
+    assert "Herdr accepts explicit `--mcp-select" in surfaces
+    assert "Herdr forwards explicit `--mcp-select` to `dcode-project`" in root_template
     assert "`--print-config` may omit it" in procedure
     assert "Launcher prefers the pinned executable" in procedure
 

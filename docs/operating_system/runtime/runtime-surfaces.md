@@ -19,7 +19,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | --- | --- | --- | --- | --- |
 | Codex | `generated_agents/codex/AGENTS.md` | none | `generated_agents/codex/skills/<skill>/SKILL.md` | none |
 | Codex delegated roles | `generated_agents/codex/agents/<role>.toml` | none | none | Deployed to `~/.codex/agents/` |
-| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime; MCP opt-in through explicit `--mcp-select`; default `--no-mcp`; temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; project MCP configs remain untouched and untrusted |
+| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime; Herdr-owned MCP selection through explicit `--mcp-select`; default `--no-mcp`; temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; project MCP configs remain untouched and untrusted |
 | Claude | `generated_agents/claude/CLAUDE.md` | `.agents/rules/*.md` | `generated_agents/claude/skills/<skill>/SKILL.md` | none |
 | Antigravity/Gemini | `generated_agents/antigravity/GEMINI.md` | `.agents/rules/*.md` | `generated_agents/antigravity/skills/<skill>/SKILL.md` | none |
 
@@ -39,6 +39,7 @@ This document records provider-native deployment for rules, skills, root instruc
 - `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, it binds the exact lane profile and `dcode-project` resolves and projects that profile into DeepAgents. Herdr owns top-level session/pane lifecycle and outer observation, while `dcode-project` owns DeepAgents worker lifecycle. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
 - Codex Herdr probes use one resolved `CODEX_HOME`; the launcher passes it to Herdr and Codex child processes and blocks when project and home `hooks.json` both define `Stop` hooks.
 - Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. The launcher and its tests own task-delivery mechanics; CoS accepts only final delivery evidence, never readiness or intent alone. The launcher does not use `--until working` because that can match unrelated active work.
+- Herdr observation is pull-based and transient: Codex uses `agent get`/`agent read`, while DeepAgents uses `pane process-info`/`pane read`; Tura uses its own `dcode-project`/`project-delegate` wrapper. Initial or stale state is `unknown`, and silence may become `stuck_suspected` only as controller evidence. Observation never auto-kills, retries, advances, or stores raw output.
 - Positive `rank` values order only ranked profiles. Ranked profiles are ordered
   by registry rank; unranked profiles are explicit-only and non-orderable. Select
   executor and validator profiles independently from
@@ -52,11 +53,12 @@ This document records provider-native deployment for rules, skills, root instruc
   those files are generated platform-adapter views. Detailed rules remain
   canonical under `docs/operating_system/rules/` and are read when task scope
   requires them.
-- DeepAgents built-ins are executor-local. Launcher projects approved Codex
-  `[mcp_servers]` only with explicit `--mcp-select <server[.tool][,server[.tool]...]>`;
-  no selection keeps child `--no-mcp`. Selecting a server exposes its exposed
-  tools; selecting a tool narrows access. Approval, sandbox, shell, profile, and
-  thread settings remain separate.
+- DeepAgents built-ins are executor-local. Herdr accepts explicit
+  `--mcp-select <server[.tool][,server[.tool]...]>` and forwards it to
+  `dcode-project`, which validates selection against approved Codex
+  `[mcp_servers]`; no selection keeps child `--no-mcp`. Selecting a server
+  exposes its tools; selecting a tool narrows access. Approval, sandbox, shell,
+  profile, and thread settings remain separate.
 - Headless `-n` auto-runs MCP tools only when read-only metadata is coherent;
   unannotated and mutating calls fail closed. Local compatibility permits only
   `playwright_browser_tabs` with `action=list`.

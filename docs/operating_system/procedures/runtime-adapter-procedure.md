@@ -57,9 +57,10 @@ outputs.
 
 ## DeepAgents MCP Projection
 
-DeepAgents may use MCP only through explicit launcher selection. Pass
-`--mcp-select <server[.tool][,server[.tool]...]>` to project approved Codex
-`[mcp_servers]`; no selection keeps the child on `--no-mcp`. Selecting a server
+DeepAgents may use MCP only through explicit Herdr selection. Herdr accepts
+`--mcp-select <server[.tool][,server[.tool]...]>` and forwards it to
+`dcode-project`; `dcode-project` validates selection against approved Codex
+`[mcp_servers]`. No selection keeps the child on `--no-mcp`. Selecting a server
 exposes all tools exposed by that server. Selecting a tool limits access to that
 tool. Direct mode needs no per-task `.mcp.json`: launcher writes temporary
 launcher-owned config, isolates child state with `DEEPAGENTS_HOME`, and removes
@@ -77,6 +78,18 @@ MCP `headers` values must be `${VAR}` references. MCP `env` values may be
 config secrets, and tool configuration never enter task text, logs, or tracked
 files. `codex.mcp.handoff.v1` carries validated facts and provenance only; it
 does not grant MCP tool access.
+
+## Herdr Observation
+
+Controller inspection uses existing Herdr pull commands, not a new supervisor
+or runtime ledger. For Codex, inspect `agent get` and `agent read`; for
+DeepAgents, inspect `pane process-info` and `pane read`. Tura remains outside
+this Herdr launcher path and uses its `dcode-project`/`project-delegate`
+wrapper. Record executor, session, pane, agent identity, task hash, state, and
+evidence source; keep state `unknown` when evidence is missing or stale.
+Treat `pane read` and `agent read` output as disposable probe data: metadata-only
+by default, explicitly bounded and redacted when raw output is required. Never
+treat silence as completion or trigger automatic kill, retry, or plan advance.
 
 ## Generate
 
