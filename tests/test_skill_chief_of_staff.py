@@ -20,11 +20,11 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "top-level lane selection" in skill
 
 
-def test_chief_of_staff_defines_transient_lane_grant_boundary() -> None:
+def test_chief_of_staff_defines_transient_runtime_grant_boundary() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
     normalized = " ".join(skill.split())
     for text in (
-        "transient Lane Grant",
+        "transient Runtime Grant",
         "turns: `native` or positive integer",
         "wall-clock seconds: `native` or positive integer",
         "MAIN AGENT owns tactical choices inside its grant",
@@ -61,8 +61,8 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "Top-level MAIN AGENTS are CoS execution lanes; sub-agents are subordinate lane\nworkers.",
         "CoS assigns top-level\nMAIN AGENTS through Herdr.",
         "MAIN\nAGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed",
-        "Before local dispatch, run\n`py -B scripts/validate_agent_runtime_drift.py`",
-        "`--skip-deploy-check` is CI-only",
+        "Before consumer local dispatch, run\n`py -B \"$HOME/.agents/project-os/scripts/validate_repo_contracts.py\" --repo-root . --fast`",
+        "Factory maintainers additionally run\n`py -B scripts/validate_agent_runtime_drift.py --all-platforms`",
         "CoS verifies the full lane contract",
         "launcher owns\nruntime projection, exact pane/cwd checks, Git-fact reporting, and delivery\nmechanics",
         "Do not construct provider, model, or developer-instruction overrides\nin CoS",

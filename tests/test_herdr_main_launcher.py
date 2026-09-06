@@ -225,9 +225,9 @@ def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     assert evidence["deepagents"]["mcp_selection"] == ["context7.query_docs"]
 
 
-def test_normalize_lane_grant_rejects_unsupported_codex_turn_limit() -> None:
+def test_normalize_runtime_grant_rejects_unsupported_codex_turn_limit() -> None:
     with pytest.raises(LAUNCHER.LaunchBlocked, match="turn budget"):
-        LAUNCHER._normalize_lane_grant(
+        LAUNCHER._normalize_runtime_grant(
             executor="codex",
             grant_turns="8",
             grant_wall_clock_seconds="native",
@@ -235,9 +235,9 @@ def test_normalize_lane_grant_rejects_unsupported_codex_turn_limit() -> None:
         )
 
 
-def test_normalize_lane_grant_rejects_wall_clock_above_watchdog() -> None:
+def test_normalize_runtime_grant_rejects_wall_clock_above_watchdog() -> None:
     with pytest.raises(LAUNCHER.LaunchBlocked, match="1800"):
-        LAUNCHER._normalize_lane_grant(
+        LAUNCHER._normalize_runtime_grant(
             executor="deepagents",
             grant_turns="native",
             grant_wall_clock_seconds="1801",
@@ -245,7 +245,7 @@ def test_normalize_lane_grant_rejects_wall_clock_above_watchdog() -> None:
         )
 
 
-def test_resolve_launch_projects_deepagents_lane_grant(
+def test_resolve_launch_projects_deepagents_runtime_grant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     profile = LAUNCHER.AgentProfile(
@@ -286,7 +286,7 @@ def test_resolve_launch_projects_deepagents_lane_grant(
     assert command[command.index("--max-turns") + 1] == "8"
     assert "--timeout" in command
     assert command[command.index("--timeout") + 1] == "600"
-    assert evidence["registry_launcher"]["lane_grant"] == {
+    assert evidence["registry_launcher"]["runtime_grant"] == {
         "turns": {"requested": 8, "effective": 8, "enforcement": "runtime"},
         "wall_clock_seconds": {
             "requested": 600,

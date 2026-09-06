@@ -25,7 +25,7 @@ approved workspace creation or reuse, bounded DeepAgents execution, and verified
 local checkpoint commits. Preauthorization never expands technical permissions.
 Stop for scope, base, workspace, or required-check changes; credentials or
 personal-profile access; external writes not named in contract; push, merge,
-release, or publication without an exact active-plan lane grant; exceptional
+release, or publication without exact active-plan lane authority; exceptional
 base mutation, force push, retargeting, protection bypass, semantic conflict
 resolution, destructive Git recovery, discard, cleanup outside that grant, or
 worktree removal.
@@ -186,7 +186,7 @@ DeepAgents keeps control of its native execution budget. Herdr retains one
 controller. Upgrade smoke probes may pass explicit shorter bounds because they
 are bounded compatibility checks, not normal task execution.
 
-An optional CoS Lane Grant may project explicit DeepAgents `--max-turns` or
+An optional CoS Runtime Grant may project explicit DeepAgents `--max-turns` or
 `--timeout` values. Native defaults remain unchanged. Strict wall-clock requests
 above Herdr's 1800-second watchdog fail closed. DeepAgents direct MCP projection
 remains default-deny unless approved selectors are passed through the launcher;
@@ -312,7 +312,7 @@ thread IDs, DeepAgents thread IDs, or `dcode -r` as repository coordination stat
 When task contract preauthorizes verified checkpoint commits, completed task
 changes and lead-controller ledger update share one checkpoint commit after
 task-local proof. Git owns checkpoint identity; do not copy the resulting SHA
-into the plan. An exact active-plan lane grant may authorize implementation-lane
+into the plan. Exact active-plan lane authority may authorize implementation-lane
 push, PR create/update, and cleanup. Implementation lanes may implement, commit,
 push, and manage their assigned PR when granted. Independent Codex review lanes
 own assigned review actions. A designated Codex integration action owns an exact
@@ -349,7 +349,7 @@ explicit authorization.
 
 Neither disposition commits beyond a task-preauthorized checkpoint, merges,
 pushes, releases, stashes, resets, cleans, prunes, removes, or force-removes a
-worktree without an applicable active-plan lane grant or explicit user
+worktree without applicable active-plan lane authority or explicit user
 authorization.
 
 ## Docker Boundary

@@ -61,7 +61,7 @@ If already in suitable isolated workspace, reuse it. Do not create nested worktr
 
 ## 2. Obtain Isolation Consent
 
-Use an explicit approved-plan lane grant, user instruction, or repository
+Use explicit approved-plan lane authority, user instruction, or repository
 instruction when available. Otherwise ask before creating worktree. A plan
 grant applies only to the exact named repository, branch, worktree, and lane.
 

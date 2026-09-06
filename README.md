@@ -47,13 +47,15 @@ First-hour flow:
    - `usage.md`
    - `pipeline.md`
    - `architecture.md`
-3. keep the standard project folders in place:
-   - `docs/operating_system/`
+3. keep project-local folders in place:
    - `docs/superpowers/specs/`
    - `docs/superpowers/plans/`
    - `repo_config/`
-   - `scripts/`
+   - project-specific `scripts/`
    - `tests/`
+   - project code
+   Shared operating-system docs, reusable scripts, and skills stay under
+   `~/.agents/project-os/` and `~/.agents/skills/`.
 4. create `docs/intent/` when durable project purpose needs more than `README.md`
 5. decide whether the private/public publication procedure applies
 6. review starter governance and shipped root agent docs
@@ -75,8 +77,8 @@ selects source profile model for primary DeepAgents launch and materializes
 ignored DeepAgents project subagents; they are not `dcode --agent` primary profiles.
 When bounded Tura delegation is installed, use
 `project-delegate --role <profile> -n "<task>"`. Tura uses the
-same profile registry and configured provider route; Native Codex remains controller and `dcode-project` remains the
-explicit DeepAgents path.
+same profile registry and configured provider route; Native Codex remains controller.
+DeepAgents uses `dcode-project`.
 DeepAgents MCP is opt-in through explicit Herdr selection. Herdr accepts
 `--mcp-select <server[.tool][,server[.tool]...]>` and forwards it to
 `dcode-project`; `dcode-project` validates selection against approved Codex
@@ -98,14 +100,16 @@ and may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
 those lanes. Sub-agents remain subordinate and may not spawn peer MAIN AGENTS
 or activate CoS. Review and integration remain Codex-only.
 Herdr controller visibility is pull-based: use `agent get`/`agent read` for
-Codex and `pane process-info`/`pane read` for DeepAgents. Tura uses its own
-`dcode-project`/`project-delegate` wrapper. Missing or unchanged output is
+Codex and `pane process-info`/`pane read` for DeepAgents. Tura uses
+`project-delegate` outside the Herdr main-lane path. Missing or unchanged output is
 `unknown` or `stuck_suspected`, not completion; no observer daemon, heartbeat
 store, automatic retry, or raw-output ledger exists.
-Before local dispatch, verify deployed Codex runtime parity with
-`py -B scripts/validate_agent_runtime_drift.py`. Launcher and test files own
-task-delivery mechanics; missing or failed final delivery evidence blocks
-assignment.
+Before consumer local dispatch, run shared Project OS contract validation with
+`py -B "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast`.
+Factory maintainers additionally run
+`py -B scripts/validate_agent_runtime_drift.py --all-platforms`.
+Launcher and test files own task-delivery mechanics; missing or failed final
+delivery evidence blocks assignment.
 Local setup uses the version pinned by `scripts/setup_deepagents_runtime.ps1`,
 requires Python 3.12 or newer, and disables child auto-update. Refresh the runtime through
 `scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
@@ -158,13 +162,13 @@ surfaces.
 Use the curated publication script to prepare a public-safe export:
 
 ```powershell
-.\scripts\publish_public_repo.ps1
+& "$HOME/.agents/project-os/scripts/publish_public_repo.ps1"
 ```
 
 Push to the configured public remote when ready:
 
 ```powershell
-.\scripts\publish_public_repo.ps1 -Push
+& "$HOME/.agents/project-os/scripts/publish_public_repo.ps1" -Push
 ```
 
 The default starter config keeps operating-system docs, skills, adapter sources, generated agent files, and other private-only materials out of the public mirror.

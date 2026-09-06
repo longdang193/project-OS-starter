@@ -85,8 +85,9 @@ config secrets stay out of task text, logs, and tracked files.
 `codex.mcp.handoff.v1` carries facts and provenance only, not tool access.
 
 Herdr controller observation stays pull-based. Use `agent get`/`agent read` for
-Codex and `pane process-info`/`pane read` for DeepAgents; Tura uses its own
-wrapper path. Normalize evidence fields, not transport internals. Missing,
+Codex and `pane process-info`/`pane read` for DeepAgents; Tura uses
+`project-delegate` outside the Herdr main-lane path. Normalize evidence fields,
+not transport internals. Missing,
 unchanged, or timed-out reads produce `unknown` or `stuck_suspected`; they do
 not prove completion and do not authorize kill, retry, or plan advancement.
 Keep raw terminal output out of durable evidence unless an explicit disposable

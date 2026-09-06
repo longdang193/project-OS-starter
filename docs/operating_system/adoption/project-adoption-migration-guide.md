@@ -6,7 +6,7 @@ Prefer the generated Starter kit as the atomic adoption unit:
 2. Copy that generated kit into the new repository without mixing in source-only factory files.
 3. Preserve product code and tests, then replace starter identity and project-specific docs.
 4. Remove optional layers only when their references and consumers are removed together.
-5. Run `py -3 scripts/validate_repo_contracts.py --fast` from the adopted repository.
+5. Run `py -3 "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast` from the adopted repository.
 
 Code discovery remains source-first. Describe required capability and evidence
 before selecting a runtime tool. Resolve unmet capabilities through

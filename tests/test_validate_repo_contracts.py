@@ -271,7 +271,7 @@ distribution_tier: starter_kit
 
     issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
 
-    assert any("not included in starter-kit manifest" in issue.message for issue in issues)
+    assert any("not included in starter-kit distribution manifest" in issue.message for issue in issues)
 
 
 def test_starter_kit_classification_ignores_tier_literals_outside_metadata(tmp_path: Path) -> None:

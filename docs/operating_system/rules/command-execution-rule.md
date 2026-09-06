@@ -24,8 +24,8 @@ prevent destructive execution without explicit approval flow.
 - `git branch --show-current`
 - `python -m py_compile`
 - `pytest`
-- `scripts/validate_repo_contracts.py --fast`
-- `scripts/publish_public_repo.ps1`
+- `~/.agents/project-os/scripts/validate_repo_contracts.py --repo-root . --fast`
+- `~/.agents/project-os/scripts/publish_public_repo.ps1`
 
 ## Prompt Before Execute
 
@@ -33,8 +33,8 @@ prevent destructive execution without explicit approval flow.
 - `git push --force-with-lease`
 - `docker compose up -d --build`
 - recursive delete or move operations
-- `scripts/publish_public_repo.ps1 -Push`
+- `~/.agents/project-os/scripts/publish_public_repo.ps1 -Push`
 
 ## Forbidden
 
-- Ad hoc publication to the public repo outside `scripts/publish_public_repo.ps1 -Push`
+- Ad hoc publication to the public repo outside `~/.agents/project-os/scripts/publish_public_repo.ps1 -Push`

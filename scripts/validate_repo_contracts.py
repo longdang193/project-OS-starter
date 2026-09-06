@@ -344,7 +344,7 @@ def _has_starter_kit_distribution_tier_from_analysis(analysis: tuple[bool, bool]
     return analysis[1]
 
 
-def _manifest_owned_paths(root: Path, manifest: dict) -> set[str]:
+def _manifest_distributed_paths(root: Path, manifest: dict) -> set[str]:
     declared: list[str] = []
     copy_paths = manifest.get("copyPaths", [])
     if isinstance(copy_paths, list):
@@ -370,7 +370,7 @@ def sync_starter_kit_distribution_tier(root: Path) -> int:
     if manifest is None:
         return 0
 
-    in_kit = _manifest_owned_paths(root, manifest)
+    distributed_paths = _manifest_distributed_paths(root, manifest)
 
     patched = 0
     for rel in sorted(in_kit):
@@ -417,9 +417,9 @@ def validate_starter_kit_classification(root: Path) -> list[ValidationIssue]:
     if manifest is None:
         return issues
 
-    in_kit = _manifest_owned_paths(root, manifest)
+    distributed_paths = _manifest_distributed_paths(root, manifest)
 
-    for rel in sorted(in_kit):
+    for rel in sorted(distributed_paths):
         if rel.startswith("docs/operating_system/templates/"):
             continue
         file_path = root / rel
@@ -448,7 +448,7 @@ def validate_starter_kit_classification(root: Path) -> list[ValidationIssue]:
         if not analysis[0]:
             continue
         rel = relative_path(path, root)
-        if rel in in_kit:
+        if rel in distributed_paths:
             continue
         if _has_starter_kit_distribution_tier_from_analysis(analysis):
             issues.append(
@@ -457,7 +457,7 @@ def validate_starter_kit_classification(root: Path) -> list[ValidationIssue]:
                     path=rel,
                     message=(
                         "file declares starter-kit distribution tier but is not included "
-                        "in starter-kit manifest copyPaths"
+                        "in starter-kit distribution manifest"
                     ),
                 )
             )

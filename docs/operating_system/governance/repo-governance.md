@@ -140,7 +140,10 @@ Runtime settings for a particular adopted project belong in that project, not in
 
 ## Validation and Closeout
 
-Use `scripts/validate_repo_contracts.py` as canonical repository contract command. Run focused checks first, then broad checks appropriate to changed scope.
+Use the local `scripts/validate_repo_contracts.py` when present; otherwise use
+`~/.agents/project-os/scripts/validate_repo_contracts.py --repo-root .` as the
+canonical repository contract command. Run focused checks first, then broad
+checks appropriate to changed scope.
 
 When changing agent sources or generated adapter ownership:
 

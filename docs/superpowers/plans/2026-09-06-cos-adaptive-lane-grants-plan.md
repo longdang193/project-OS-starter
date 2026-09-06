@@ -3,7 +3,7 @@ layer: change
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 name: cos-adaptive-lane-grants
 parent_spec: none
 targets:
@@ -20,17 +20,17 @@ targets:
   - generated_agents/
 ---
 
-# CoS Adaptive Lane Grants
+# CoS Adaptive Runtime Grants
 
 ## Goal
 
-Add bounded, transient CoS-selected lane grants without creating a second
+Add bounded, transient CoS-selected runtime grants without creating a second
 authority or runtime-state system. Preserve native DeepAgents budgets by
 default, expose only enforceable runtime controls, and make task `Authority`
 the validated ceiling for adaptive execution.
 
 The reviewed verdict is directionally correct but incomplete: the repository
-has the authority and tactical-autonomy foundations, while Lane Grant remains
+has the authority and tactical-autonomy foundations, while Runtime Grant remains
 design-only. Implementation must define grant fields, enforcement evidence,
 safe redispatch, validator behavior, runtime projection, and generated-surface
 reconciliation before enabling adaptive execution.
@@ -44,7 +44,7 @@ contract with explicit preauthorized actions and stop conditions. Completed
 plans, including historical `contract_version: "1"` plans, are not
 retroactively checked against this wording.
 
-### Transient Lane Grant contract
+### Transient Runtime Grant contract
 
 CoS may assign a transient subset of task authority containing only defined
 resource and capability fields. No persistent grant registry, YAML state file,
@@ -99,17 +99,18 @@ are refreshed from canonical sources only.
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
 - Branch: `main`
-- Base commit: `ea8e9021c7e5c19d3fdc1513b3f299869e9d194a`
-- Expected workspace: preserve existing modifications in `docs/operating_system/procedures/personal-local-worktree-procedure.md`, `scripts/dcode_project.py`, and `tests/test_dcode_project.py`; preserve untracked `.playwright-mcp/`, `db/`, and `out/`; do not reset, clean, or overwrite them
-- Next action: resolve unrelated planning-validator drift and obtain a current-worktree Herdr probe
-- Blockers: full repository planning validation fails on unrelated untracked `2026-09-06-shared-project-os-assets-plan.md`; no Herdr pane currently targets this worktree, so fresh runtime delivery proof remains unavailable
+- Base commit: `48c26be`
+- Reconciled at commit: `48c26be`
+- Expected workspace: preserve untracked `.playwright-mcp/` and `db/`; do not reset, clean, or overwrite them
+- Next action: run fresh completion verification for this reconciled historical plan
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current | `codex` | none | baseline and contract decision | reviewed verdict patched plan; Git status, source review, contract fields and redispatch rules recorded |
 | Task 2 | `completed` | current | `codex` | Task 1 | validator regression proof | `26 passed`; proposed/active Authority enforced; completed legacy wording preserved |
 | Task 3 | `completed` | current | `codex` | Task 1 | runtime projection proof | `31 passed`; Herdr projection and fail-closed bounds covered; wrapper verify-only |
-| Task 4 | `blocked` | current | `codex` | Tasks 2-3 | canonical guidance proof | canonical docs and mirrors synchronized; global planning validator blocked by unrelated plan drift |
+| Task 4 | `completed` | current | `codex` | Tasks 2-3 | canonical guidance proof | canonical docs and mirrors synchronized; consumer/runtime boundary reconciled |
 
 ## Task Breakdown
 
@@ -131,7 +132,7 @@ are refreshed from canonical sources only.
 
 **Specification Coverage:**
 - Plan Authority is the maximum ceiling.
-- `subordinate grant ⊆ MAIN AGENT grant ⊆ task Authority`.
+- `Worker Runtime Grant ⊆ Main Runtime Grant`; `Plan Lane Authority ⊆ task Authority`.
 - Profile files remain capability identity, not runtime policy.
 - Grant changes use retire-and-redispatch, not hot mutation.
 - Runtime session state never becomes recovery truth.
@@ -323,7 +324,7 @@ are refreshed from canonical sources only.
 
 **Verification:**
 - [x] `py -3 -m pytest tests/test_skill_chief_of_staff.py -q`
-- [ ] Run planning contract tests plus `py -3 scripts/validate_planning_lifecycle.py`; blocked by unrelated `2026-09-06-shared-project-os-assets-plan.md` profile drift.
+- [x] Run planning contract tests plus `py -3 scripts/validate_planning_lifecycle.py` after reconciling current plan state.
 - Expected: canonical guidance matches launcher behavior and no stale fixed-budget claim remains.
 
 **Exit Criteria:**
@@ -342,7 +343,7 @@ are refreshed from canonical sources only.
 
 The plan is ready for completion verification when:
 
-1. the Authority contract and Lane Grant fields have one canonical owner;
+1. the Authority contract and Runtime Grant fields have one canonical owner;
 2. validator behavior covers proposed, active, malformed, and completed plans;
 3. launcher and wrapper behavior preserves native defaults and reports real enforcement;
 4. redispatch cannot duplicate active work or bypass plan/Git reconciliation;

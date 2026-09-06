@@ -305,7 +305,7 @@ def _parse_grant_value(value: str | int | None, label: str) -> int | str:
     return parsed
 
 
-def _normalize_lane_grant(
+def _normalize_runtime_grant(
     *,
     executor: str,
     grant_turns: str | int | None,
@@ -369,7 +369,7 @@ def resolve_launch(
     if executor not in _EXECUTORS:
         raise LaunchBlocked(f"Unsupported executor: {executor}")
     task_text = _validate_task(task)
-    lane_grant = _normalize_lane_grant(
+    runtime_grant = _normalize_runtime_grant(
         executor=executor,
         grant_turns=grant_turns,
         grant_wall_clock_seconds=grant_wall_clock_seconds,
@@ -379,9 +379,9 @@ def resolve_launch(
         json.dumps(
             {
                 "executor": executor,
-                "turns": lane_grant["turns"]["requested"],
-                "wall_clock_seconds": lane_grant["wall_clock_seconds"]["requested"],
-                "mcp_select": lane_grant["mcp_select"],
+                "turns": runtime_grant["turns"]["requested"],
+                "wall_clock_seconds": runtime_grant["wall_clock_seconds"]["requested"],
+                "mcp_select": runtime_grant["mcp_select"],
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -430,11 +430,11 @@ def resolve_launch(
             selected.name,
             "--json",
             "--quiet",
-            *(["--max-turns", str(lane_grant["turns"]["requested"])]
-              if lane_grant["turns"]["requested"] != _NATIVE_GRANT_VALUE
+            *(["--max-turns", str(runtime_grant["turns"]["requested"])]
+              if runtime_grant["turns"]["requested"] != _NATIVE_GRANT_VALUE
               else []),
-            *(["--timeout", str(lane_grant["wall_clock_seconds"]["requested"])]
-              if lane_grant["wall_clock_seconds"]["requested"] != _NATIVE_GRANT_VALUE
+            *(["--timeout", str(runtime_grant["wall_clock_seconds"]["requested"])]
+              if runtime_grant["wall_clock_seconds"]["requested"] != _NATIVE_GRANT_VALUE
               else []),
             *sum(
                 (["--mcp-select", _powershell_literal(value)] for value in (mcp_select or [])),
@@ -461,7 +461,7 @@ def resolve_launch(
             "redacted_runtime_argv": _redacted_arguments(runtime_arguments),
             "assignment_task_sha256": _sha256_text(task_text),
             "grant_digest": grant_digest,
-            "lane_grant": lane_grant,
+            "runtime_grant": runtime_grant,
         },
         "git": git,
         "herdr": {

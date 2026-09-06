@@ -16,7 +16,7 @@ def test_write_capable_implementation_lanes_have_mandatory_isolated_lanes() -> N
     worktree = flat(read(".agents/skills/skill-using-git-worktrees/SKILL.md"))
     coordination = flat(read("docs/operating_system/rules/git-tracked-coordination-rule.md"))
     assert "For a write-capable Herdr implementation lane, isolation is mandatory" in worktree
-    assert "explicit approved-plan lane grant" in worktree
+    assert "explicit approved-plan lane authority" in worktree
     assert "launched process cwd" in worktree
     assert "A write-capable coordinated implementation lane uses one exact branch and isolated worktree" in coordination
 

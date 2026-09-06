@@ -74,12 +74,13 @@ independent blocker. Task-local uncertainty stays within the lane when it can
 be resolved without changing contract, ownership, authority, or proof. CoS
 acceptance remains required for task completion.
 
-## Adaptive Lane Grant
+## Adaptive Runtime Grant
 
-CoS may assign a transient Lane Grant after successful top-level lane
-assignment. The grant narrows task Authority and runtime resources; it never
+CoS may assign a transient Runtime Grant after successful top-level lane
+assignment. The grant narrows runtime resources and capability exposure; it never
 expands ownership, allowed paths, dependencies, or proof obligations. The
-durable invariant is `subordinate grant ⊆ MAIN AGENT grant ⊆ task Authority`.
+runtime invariant is `Worker Runtime Grant ⊆ Main Runtime Grant`; durable
+authority remains `Plan Lane Authority ⊆ task Authority`.
 
 Runtime v1 supports only enforceable resource values:
 
@@ -108,10 +109,11 @@ not monitor or supervise executor-local subagents from CoS.
 CoS may be invoked from a native Codex session. Before Herdr control, use the
 repository launcher; it verifies target lane readiness, Git/cwd identity,
 runtime/profile binding, and task delivery. It does not attest CoS controller
-identity or own lane authority. Before local dispatch, run
-`py -B scripts/validate_agent_runtime_drift.py`; a failed check
-returns `BLOCKED`. `--skip-deploy-check` is CI-only and never satisfies local
-CoS dispatch.
+identity or own lane authority. Before consumer local dispatch, run
+`py -B "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast`;
+a failed check returns `BLOCKED`. Factory maintainers additionally run
+`py -B scripts/validate_agent_runtime_drift.py --all-platforms`; that adapter
+drift check is not a consumer dependency.
 
 ## Conditional References
 

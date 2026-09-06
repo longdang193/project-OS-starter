@@ -55,7 +55,7 @@ When verified work used DeepAgents or another delegated executor:
 ## Authorization Rule
 
 Verification makes closure actions eligible. For an assigned lane, an explicit
-active-plan lane grant selects bounded lifecycle actions. User authorization
+active-plan lane authority selects bounded lifecycle actions. User authorization
 remains required for exceptional or destructive actions.
 
 Do not commit, fetch, pull, create branch, rebase, merge, push, create or update pull request, apply or drop stash, delete branch, prune metadata, or remove worktree without explicit authorization for that action. An active approved plan may grant an assigned implementation lane bounded authority for its exact lane: branch/worktree creation or reuse, lane commits, lane push, PR create/update, and cleanup after retirement and clean-state proof. Implementation lanes may implement, commit, push, and manage their assigned PR when granted. Independent Codex review lanes own assigned review actions. A designated Codex integration action owns an exact approved PR merge after review and verification gates pass. Direct or exceptional base mutation, force push, PR retargeting, branch-protection bypass, semantic conflict resolution, unrelated branch/worktree mutation, destructive recovery, unknown-file discard, and merging another lane remain user-authorized.
@@ -128,7 +128,7 @@ If verified in-scope changes are uncommitted:
 
 1. show exact staged, unstaged, and untracked scope
 2. preserve unrelated changes
-3. use the active plan lane grant when present; otherwise request commit authorization and message
+3. use active plan lane authority when present; otherwise request commit authorization and message
 4. stage only approved files
 5. commit
 6. inspect hook output and repository state
@@ -152,14 +152,14 @@ Do not choose option for user.
 
 ## 6. Push Branch And Pull Request Path
 
-After explicit selection and an applicable active-plan lane grant or explicit
+After explicit selection and applicable active-plan lane authority or explicit
 user authorization:
 
 1. confirm named branch and committed verified state
 2. confirm remote target
 3. request network authorization when required
 4. push lane branch
-5. create or update pull request when the active lane grant allows it and support exists
+5. create or update pull request when active lane authority allows it and support exists
 6. record branch, remote, commit SHA, and pull-request result
 7. keep the lane process and worktree available for review fixes and integration
 8. after whole-plan verification, review acceptance, and expected-head confirmation, retire the top-level lane process, confirm no live process owns the worktree, then remove it only when cleanup is granted and safe

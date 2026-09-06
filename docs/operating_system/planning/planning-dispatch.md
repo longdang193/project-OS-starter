@@ -213,11 +213,11 @@ When a dependency-ready task selects `tura`, CoS does not translate or reroute
 it; the existing Tura path owns execution. CoS resumes from plan and Git after
 reconciliation.
 
-### Lane Grant Boundary
+### Runtime Grant Boundary
 
 Plan task `Authority` is durable maximum authority. CoS may assign a transient
-Lane Grant that narrows resources and capability exposure; MAIN AGENT owns
-tactical choices inside its grant. Runtime v1 exposes only enforceable
+Runtime Grant that narrows runtime resources and capability exposure; MAIN AGENT
+owns tactical choices inside its grant. Runtime v1 exposes only enforceable
 resource values: `turns` and `wall_clock_seconds`, each `native` or a positive
 integer. Delegation and parallelism remain policy-level autonomy until an
 executor can enforce those limits.

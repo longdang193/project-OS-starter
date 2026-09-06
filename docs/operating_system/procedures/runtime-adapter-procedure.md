@@ -84,8 +84,8 @@ does not grant MCP tool access.
 Controller inspection uses existing Herdr pull commands, not a new supervisor
 or runtime ledger. For Codex, inspect `agent get` and `agent read`; for
 DeepAgents, inspect `pane process-info` and `pane read`. Tura remains outside
-this Herdr launcher path and uses its `dcode-project`/`project-delegate`
-wrapper. Record executor, session, pane, agent identity, task hash, state, and
+this Herdr launcher path and uses `project-delegate`. Record executor, session,
+pane, agent identity, task hash, state, and
 evidence source; keep state `unknown` when evidence is missing or stale.
 Treat `pane read` and `agent read` output as disposable probe data: metadata-only
 by default, explicitly bounded and redacted when raw output is required. Never
@@ -175,16 +175,25 @@ Treat project `.env` and `.deepagents/` content as untrusted runtime input.
 
 ## Drift Checks
 
+Adapter generation and adapter drift checks apply only to the source repository;
+consumer projects use shared Project OS contract validation instead.
+
 Generated drift:
 
 ```bash
 python scripts/sync_agent_adapters.py --all-platforms --check
 ```
 
-Runtime drift:
+Factory adapter drift:
 
 ```bash
 python scripts/validate_agent_runtime_drift.py --all-platforms
+```
+
+Consumer contract validation uses the shared Project OS validator:
+
+```bash
+python "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast
 ```
 
 Switchyard auto runtime:
@@ -224,7 +233,7 @@ bindings.
 Executor selection answers who executes. Profile selection answers the bounded
 capability contract. `auto` answers which eligible ranked model endpoint to use.
 
-CI-safe (skip home-directory check):
+Factory CI-safe adapter check (skip home-directory check):
 
 ```bash
 python scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check

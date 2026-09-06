@@ -70,7 +70,8 @@
       "scripts/validate_prompt_metadata_schema.py",
       "scripts/validate_repo_config.py",
       "scripts/validate_repo_contracts.py",
-      "scripts/validate_template_required_sections.py"
+      "scripts/validate_template_required_sections.py",
+      "scripts/publish_public_repo.ps1"
     ]
   }
 }

@@ -17,14 +17,14 @@ Do not develop normally in the public repo.
 3. run the curated export:
 
 ```powershell
-.\scripts\publish_public_repo.ps1
+& "$HOME/.agents/project-os/scripts/publish_public_repo.ps1"
 ```
 
 4. inspect the export
 5. publish intentionally:
 
 ```powershell
-.\scripts\publish_public_repo.ps1 -Push
+& "$HOME/.agents/project-os/scripts/publish_public_repo.ps1" -Push
 ```
 
 ## Single-Field DAG Resolver Contract (`publicPaths`)

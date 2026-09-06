@@ -74,7 +74,9 @@ Case-by-case review. Examples:
 - denylisted paths must not appear in export
 - forbidden metadata markers (example: `repo: private`) must fail export
 - forbidden filename markers (example: `.private.`, `.local.`) must fail export
-- `distribution_tier: starter_kit` is classification metadata only, not secrecy marker
+- `distribution_tier: starter_kit` is classification metadata only, not secrecy marker;
+  `copyPaths` and `sharedPaths` in `starter-kit-manifest.json` define whether
+  classified assets are copied into each kit or deployed to the shared runtime.
 - missing/malformed boundary policy must fail closed
 
 ## Public README Rule

@@ -81,7 +81,8 @@ def test_starter_onboarding_matches_optional_intent_and_atomic_kit() -> None:
     adoption = read_source("docs/operating_system/adoption/project-adoption-migration-guide.md")
     manifest = read_source("repo_config/starter-kit-manifest.json")
 
-    assert "standard project folders" in readme
+    assert "project-local folders" in readme
+    assert "Shared operating-system docs, reusable scripts, and skills stay under" in readme
     assert "create `docs/intent/` when durable project purpose needs more than `README.md`" in readme
     assert "Use this optional layer" in intent
     assert "generated Starter kit as the atomic adoption unit" in adoption
@@ -211,6 +212,7 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
     assert "scripts/opendesign_profile_adapter.py" in manifest["sharedPaths"]["scripts"]
     assert "scripts/setup_deepagents_runtime.ps1" in manifest["sharedPaths"]["scripts"]
     assert "scripts/patch_deepagents_runtime.py" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/publish_public_repo.ps1" in manifest["sharedPaths"]["scripts"]
     assert not any(path == "tests" or path.startswith("tests/") for path in manifest["copyPaths"])
     assert "tests" in manifest["forbiddenPaths"]
     assert not any(path == ".agents/skills" or path.startswith(".agents/skills/") for path in manifest["copyPaths"])
