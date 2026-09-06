@@ -8,7 +8,7 @@ runtime, rules, skills, root instructions, and hooks.
 | Source | Role |
 | --- | --- |
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |
-| `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
+| `.agents/skills/*/SKILL.md` | Canonical reusable method authoring in this repository |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `~/.agents/project-os/docs/operating_system/` | User-global deployed operating-system docs |
 | `~/.agents/project-os/scripts/` | User-global deployed reusable Project OS scripts |
@@ -22,7 +22,7 @@ runtime, rules, skills, root instructions, and hooks.
 | --- | --- | --- | --- | --- |
 | Codex | `generated_agents/codex/AGENTS.md` | none | `generated_agents/codex/skills/<skill>/SKILL.md` | none |
 | Codex delegated roles | `generated_agents/codex/agents/<role>.toml` | none | none | Deployed to `~/.codex/agents/` |
-| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime; Herdr-owned MCP selection through explicit `--mcp-select`; default `--no-mcp`; temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; project MCP configs remain untouched and untrusted |
+| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `~/.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime; Herdr-owned MCP selection through explicit `--mcp-select`; default `--no-mcp`; temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; project MCP configs remain untouched and untrusted |
 | Claude | `generated_agents/claude/CLAUDE.md` | `.agents/rules/*.md` | `generated_agents/claude/skills/<skill>/SKILL.md` | none |
 | Antigravity/Gemini | `generated_agents/antigravity/GEMINI.md` | `.agents/rules/*.md` | `generated_agents/antigravity/skills/<skill>/SKILL.md` | none |
 
@@ -56,8 +56,8 @@ runtime, rules, skills, root instructions, and hooks.
   or validate based on task fitness.
 - Generated runtime outputs remain deployable packaging surfaces.
 - DeepAgents profile views are local generated runtime state, not primary profiles or tracked adapter output.
-- DeepAgents auto-loads root `AGENTS.md` and discovers `.agents/skills` as
-  project skills. It does not load `.agents/rules` as direct instructions;
+- DeepAgents auto-loads root `AGENTS.md` and discovers shared skills from
+  `~/.agents/skills`. It does not load `.agents/rules` as direct instructions;
   those files are generated platform-adapter views. Detailed rules remain
   canonical under `docs/operating_system/rules/` and are read when task scope
   requires them.

@@ -639,7 +639,7 @@ def _shared_skill_marker_text(skills_root: Path, skill_name: str) -> str:
 def _shared_asset_paths(root: Path) -> dict[str, list[str]]:
     manifest = json.loads((root / "repo_config" / "starter-kit-manifest.json").read_text(encoding="utf-8"))
     shared_paths = manifest.get("sharedPaths")
-    if not isinstance(shared_paths, dict) or set(shared_paths) != {"docs", "scripts"}:
+    if not isinstance(shared_paths, dict) or not {"docs", "scripts"}.issubset(shared_paths):
         raise ValueError("Starter-kit manifest sharedPaths must contain docs and scripts bundles.")
     return {
         bundle_name: [str(path) for path in shared_paths[bundle_name]]

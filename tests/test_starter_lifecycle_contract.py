@@ -1,6 +1,5 @@
 """
 @meta
-# distribution_tier: starter_kit
 name: test_starter_lifecycle_contract
 type: test
 scope: unit

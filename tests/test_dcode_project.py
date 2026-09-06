@@ -4,7 +4,6 @@ name: test_dcode_project
 type: test
 scope: unit
 domain: runtime
-distribution_tier: starter_kit
 covers:
   - User-local DeepAgents launcher materializes role views from canonical templates
   - Local role-model binding selects each delegated tier

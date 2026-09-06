@@ -94,7 +94,7 @@ _PROJECT_GUIDANCE_INSTRUCTION = (
     "Project guidance: read repository root `AGENTS.md` before acting. "
     "Before modifying any file, read every applicable ancestor `AGENTS.md`. "
     "Read only explicitly named canonical project skills at "
-    "`.agents/skills/<name>/SKILL.md`; do not scan or copy unrelated skills."
+    "`~/.agents/skills/<name>/SKILL.md`; do not scan or copy unrelated skills."
 )
 
 

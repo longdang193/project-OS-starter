@@ -5,7 +5,7 @@ A private starter repository for carrying forward the repo operating system with
 ## What This Repo Owns
 
 - `docs/operating_system/`: human-readable repo governance and procedures
-- `.agents/skills/`: canonical project skill source, discovered by Codex and DeepAgents
+- `.agents/skills/`: canonical skill authoring source; consumers use deployed `~/.agents/skills/`
 - `agents/*.toml`: canonical agent-profile registry
 - `docs/operating_system/templates/agents/`: source templates for generated instruction outputs
 - `repo_config/`: starter-level configuration for shipped starter validation and planning contracts

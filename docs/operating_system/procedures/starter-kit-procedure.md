@@ -17,8 +17,8 @@ py -3 scripts/deploy_agent_runtime.py --target all
 
 This writes marker-owned files under `~/.agents/project-os` and
 `~/.agents/skills`. Consumer projects keep only project state and local
-contracts. Do not copy `docs/operating_system` or shared scripts into each
-consumer project.
+contracts. Do not copy `docs/operating_system`, shared scripts, or
+`.agents/skills` into each consumer project.
 
 Do not edit generated `project-OS-starter-kit` output directly.
 
@@ -31,10 +31,9 @@ Rebuild the starter kit after changing any shipped source-owned surface such as:
 
 - `AGENTS.md`
 - shipped root instruction docs (`GEMINI.md`, `CLAUDE.md`)
-- `.agents/skills/`
 - shared `docs/operating_system/` docs
 - shipped `repo_config/` starter inputs
-- shipped validator scripts or shipped tests
+- shipped validator scripts
 - `repo_config/starter-kit-manifest.json`
 - `scripts/build_starter_kit.py`
 - `scripts/validate_starter_kit.py`
@@ -83,6 +82,8 @@ Before treating a rebuild as ready, confirm:
 - generated root contains shipped `AGENTS.md`, `GEMINI.md`, and `CLAUDE.md`
 - required starter directories exist under `docs/superpowers/`
 - shared docs/scripts are absent from generated kit output and present in the global installation
+- local `.agents/skills/` is absent from generated kit output and shared skills are present under `~/.agents/skills`
+- consumer test files and the `tests/` directory are absent from generated kit output
 - forbidden factory-only paths are absent
 - forbidden source-only references do not appear in shipped human-facing docs,
   skills

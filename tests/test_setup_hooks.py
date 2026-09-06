@@ -4,7 +4,6 @@ name: test_setup_hooks
 type: test
 scope: unit
 domain: docs
-distribution_tier: starter_kit
 covers:
   - Local hook setup scripts install the canonical repo-contract validator entrypoint.
 tags:

@@ -19,7 +19,6 @@ lifecycle:
 
 from __future__ import annotations
 
-import ast
 import importlib.util
 import json
 import pytest
@@ -144,41 +143,16 @@ def test_starter_manifest_omits_private_provider_setup() -> None:
     assert "docs/operating_system/tooling/runtime-tool-resolution.md" not in manifest["copyPaths"]
 
 
-def _literal_read_references(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    references: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if not isinstance(node.func, ast.Name) or node.func.id not in {"read", "normalized"}:
-            continue
-        if not node.args or not isinstance(node.args[0], ast.Constant):
-            continue
-        if isinstance(node.args[0].value, str):
-            references.add(node.args[0].value)
-    return references
-
-
-def test_shipped_tests_read_only_kit_paths(tmp_path: Path) -> None:
+def test_canonical_manifest_excludes_consumer_tests() -> None:
     manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
-    kit_root = BUILD.build_starter_kit(
-        repo_root=REPO_ROOT,
-        manifest_path=REPO_ROOT / "repo_config" / "starter-kit-manifest.json",
-        output_root=tmp_path,
-    )
-    missing: list[str] = []
+    assert not any(path == "tests" or path.startswith("tests/") for path in manifest["copyPaths"])
+    assert "tests" in manifest["forbiddenPaths"]
 
-    for relative_path in manifest["copyPaths"]:
-        if not relative_path.startswith("tests/") or not relative_path.endswith(".py"):
-            continue
-        test_path = REPO_ROOT / relative_path
-        for referenced_path in _literal_read_references(test_path):
-            if referenced_path.startswith("docs/operating_system/"):
-                continue
-            if not (kit_root / referenced_path).exists():
-                missing.append(f"{relative_path}: {referenced_path}")
 
-    assert missing == [], "Shipped tests reference paths absent from kit: " + ", ".join(missing)
+def test_canonical_manifest_excludes_local_consumer_skills() -> None:
+    manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
+    assert not any(path == ".agents/skills" or path.startswith(".agents/skills/") for path in manifest["copyPaths"])
+    assert ".agents/skills" in manifest["sharedPaths"]["skills"]
 
 
 def make_manifest(repo_root: Path) -> Path:
@@ -193,7 +167,6 @@ def make_manifest(repo_root: Path) -> Path:
                 "agents",
                 "GEMINI.md",
                 "CLAUDE.md",
-                ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
                 "requirements.txt",
                 "docs/superpowers/plans",
@@ -203,20 +176,15 @@ def make_manifest(repo_root: Path) -> Path:
                 "adapters",
                 "scripts/sync_agent_adapters.py",
                 "scripts/deploy_agent_runtime.py",
-                "tests/test_sync_agent_adapters.py",
-                "tests/test_deploy_agent_runtime.py",
+                "tests",
                 ".deepagents",
             ],
             "copyPaths": [
                 ".gitignore",
                 "AGENTS.md",
                 "agents",
-                "tests/test_dcode_project.py",
-                "tests/test_starter_lifecycle_contract.py",
-                "tests/test_runtime_tool_resolution_contract.py",
                 "generated_agents/antigravity/GEMINI.md",
                 "generated_agents/claude/CLAUDE.md",
-                ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
                 "requirements.txt",
             ],
@@ -225,6 +193,7 @@ def make_manifest(repo_root: Path) -> Path:
                 "docs/superpowers/plans",
             ],
             "sharedPaths": {
+                "skills": [".agents/skills"],
                 "docs": ["docs/operating_system"],
                 "scripts": ["scripts/dcode_project.py"],
             },
@@ -242,10 +211,10 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
     assert "scripts/opendesign_profile_adapter.py" in manifest["sharedPaths"]["scripts"]
     assert "scripts/setup_deepagents_runtime.ps1" in manifest["sharedPaths"]["scripts"]
     assert "scripts/patch_deepagents_runtime.py" in manifest["sharedPaths"]["scripts"]
-    assert "tests/test_deepagents_runtime_patch.py" in manifest["copyPaths"]
-    assert "tests/test_herdr_main_launcher.py" in manifest["copyPaths"]
-    assert "tests/test_opendesign_profile_adapter.py" in manifest["copyPaths"]
-    assert "tests/test_skill_chief_of_staff.py" in manifest["copyPaths"]
+    assert not any(path == "tests" or path.startswith("tests/") for path in manifest["copyPaths"])
+    assert "tests" in manifest["forbiddenPaths"]
+    assert not any(path == ".agents/skills" or path.startswith(".agents/skills/") for path in manifest["copyPaths"])
+    assert ".agents/skills" in manifest["sharedPaths"]["skills"]
     assert "scripts/herdr_main_launcher.py" not in manifest["requiredPaths"]
     assert "docs/operating_system" not in manifest["copyPaths"]
 
@@ -289,11 +258,12 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     assert (kit_root / ".gitignore").exists()
     assert (kit_root / "GEMINI.md").exists()
     assert (kit_root / "CLAUDE.md").exists()
-    assert (kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md").exists()
+    assert not (kit_root / ".agents" / "skills").exists()
     assert (kit_root / "repo_config" / "planning_artifact_schema.yaml").exists()
     assert not (kit_root / "docs" / "operating_system").exists()
     assert (kit_root / "requirements.txt").exists()
     assert (kit_root / "docs" / "superpowers" / "plans").is_dir()
+    assert not (kit_root / "tests").exists()
     assert not (kit_root / ".codex").exists()
     assert not (kit_root / "adapters").exists()
     assert not (kit_root / "scripts" / "sync_agent_adapters.py").exists()
@@ -305,6 +275,8 @@ def test_validate_starter_kit_reports_missing_required_and_present_forbidden(tmp
     kit_root = repo_root / "out" / "project-OS-starter-kit"
     write_text(kit_root / "AGENTS.md", "# agents\n")
     write_text(kit_root / "GEMINI.md", "# gemini\n")
+    write_text(kit_root / "tests" / "stale.py", "stale\n")
+    write_text(kit_root / ".agents" / "skills" / "stale" / "SKILL.md", "stale\n")
     write_text(kit_root / ".codex" / "rules" / "bad.rules", "forbidden\n")
     write_text(kit_root / "docs" / "operating_system" / "runtime" / "internal.md", "should not exist\n")
 
@@ -312,6 +284,8 @@ def test_validate_starter_kit_reports_missing_required_and_present_forbidden(tmp
 
     assert any("Missing required path" in error for error in errors)
     assert any("Forbidden path present" in error for error in errors)
+    assert "Forbidden path present: tests" in errors
+    assert "Shared path copied into starter kit: .agents/skills" in errors
     assert any("Shared path copied into starter kit" in error for error in errors)
 
 

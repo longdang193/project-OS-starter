@@ -164,10 +164,12 @@ def validate_starter_kit_manifest(payload: Any, errors: list[str]) -> None:
     for key in (REQUIRED_STARTER_KIT_KEYS - {"outputRoot"}) & set(payload.keys()):
         if key == "sharedPaths":
             value = payload[key]
-            if not isinstance(value, dict) or set(value) != {"docs", "scripts"}:
-                errors.append("Starter-kit manifest key `sharedPaths` must contain only `docs` and `scripts` lists.")
+            if not isinstance(value, dict) or set(value) != {"docs", "scripts", "skills"}:
+                errors.append(
+                    "Starter-kit manifest key `sharedPaths` must contain only `docs`, `scripts`, and `skills` lists."
+                )
                 continue
-            for bundle_name in ("docs", "scripts"):
+            for bundle_name in ("docs", "scripts", "skills"):
                 bundle_paths = value[bundle_name]
                 if not isinstance(bundle_paths, list) or not all(
                     isinstance(item, str) and item.strip() for item in bundle_paths
@@ -183,14 +185,16 @@ def validate_starter_kit_manifest(payload: Any, errors: list[str]) -> None:
             errors.append(f"Starter-kit manifest key `{key}` must be a list of strings.")
 
     shared_paths = payload.get("sharedPaths")
-    if isinstance(shared_paths, dict) and all(isinstance(shared_paths.get(name), list) for name in ("docs", "scripts")):
+    if isinstance(shared_paths, dict) and all(
+        isinstance(shared_paths.get(name), list) for name in ("docs", "scripts", "skills")
+    ):
         other_paths = [
             item
             for key in ("copyPaths", "requiredPaths", "omitPaths", "createEmptyDirs")
             for item in payload.get(key, [])
             if isinstance(item, str)
         ]
-        for bundle_name in ("docs", "scripts"):
+        for bundle_name in ("docs", "scripts", "skills"):
             for shared_path in shared_paths[bundle_name]:
                 if not isinstance(shared_path, str):
                     continue

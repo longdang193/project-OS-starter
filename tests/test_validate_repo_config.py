@@ -1,6 +1,5 @@
 """
 @meta
-# distribution_tier: starter_kit
 type: test
 scope: unit
 domain: config
@@ -47,6 +46,7 @@ def valid_starter_kit_manifest() -> dict[str, object]:
         "sharedPaths": {
             "docs": ["docs/operating_system"],
             "scripts": ["scripts/validate_repo_contracts.py"],
+            "skills": [".agents/skills"],
         },
     }
 

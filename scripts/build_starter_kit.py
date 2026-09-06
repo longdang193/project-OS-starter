@@ -105,7 +105,7 @@ def _validate_shared_paths(value: Any) -> dict[str, list[str]]:
     if not isinstance(value, dict):
         raise ValueError("Manifest key `sharedPaths` must be an object.")
     shared_paths: dict[str, list[str]] = {}
-    for bundle_name in ("docs", "scripts"):
+    for bundle_name in ("docs", "scripts", "skills"):
         shared_paths[bundle_name] = _validate_string_list(
             value.get(bundle_name),
             key=f"sharedPaths.{bundle_name}",

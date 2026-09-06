@@ -1,6 +1,5 @@
 """
 @meta
-# distribution_tier: starter_kit
 name: test_validate_planning_lifecycle
 type: test
 scope: unit

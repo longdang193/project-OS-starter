@@ -1,6 +1,5 @@
 """
 @meta
-# distribution_tier: starter_kit
 name: test_runtime_tool_resolution_contract
 type: test
 scope: unit

@@ -41,7 +41,7 @@ git -C $workspace worktree list --porcelain
 ```
 
 Follow
-[`skill-using-git-worktrees`](../../../.agents/skills/skill-using-git-worktrees/SKILL.md):
+`~/.agents/skills/skill-using-git-worktrees/SKILL.md`:
 
 - Reuse clean current checkout for small reversible work.
 - Create or reuse native Git worktree only when task contract preauthorizes
@@ -63,10 +63,10 @@ profiles independently from their bounded task contracts; a lower, equal, or
 higher validator profile is valid when reliable for the validation task. It is
 not a `dcode --agent` primary profile.
 
-DeepAgents auto-loads root `AGENTS.md` and discovers `.agents/skills` as
-project skills. It does not directly load `.agents/rules`; those are generated
-adapter views, not DeepAgents instruction inputs. When delegated work needs a
-detailed rule beyond root instructions, name and read canonical
+DeepAgents auto-loads root `AGENTS.md` and discovers shared skills from
+`~/.agents/skills`. It does not directly load `.agents/rules`; those are
+generated adapter views, not DeepAgents instruction inputs. When delegated work
+needs a detailed rule beyond root instructions, name and read canonical
 `docs/operating_system/rules/<rule>.md` in task scope. Do not create a duplicate
 `.deepagents/AGENTS.md` rule bundle.
 
@@ -340,7 +340,7 @@ evidence is missing.
 
 When checks and scope proof pass, controller records `accept` or `block` in task
 handoff. `accept` hands off only to
-[`skill-finishing-a-development-branch`](../../../.agents/skills/skill-finishing-a-development-branch/SKILL.md)
+`~/.agents/skills/skill-finishing-a-development-branch/SKILL.md`
 for plan-granted lane publication or integration and user-authorized keep,
 exceptional merge, discard, or cleanup. A verified local checkpoint commit is
 permitted only when task contract preauthorized it.

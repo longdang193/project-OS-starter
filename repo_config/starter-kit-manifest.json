@@ -2,7 +2,6 @@
   "outputRoot": "project-OS-starter-kit",
   "copyPaths": [
     "agents",
-    ".agents/skills",
     ".gitignore",
     "AGENTS.md",
     "generated_agents/antigravity/GEMINI.md",
@@ -13,29 +12,13 @@
     "scripts/new_audit.ps1",
     "scripts/new_brainstorming_report.ps1",
     "scripts/setup_hooks.ps1",
-    "scripts/setup_hooks.sh",
-    "tests/test_setup_hooks.py",
-    "tests/test_validate_agent_metadata_schema.py",
-    "tests/test_validate_learning_materials_format.py",
-    "tests/test_validate_planning_lifecycle.py",
-    "tests/test_starter_lifecycle_contract.py",
-    "tests/test_runtime_tool_resolution_contract.py",
-    "tests/test_validate_repo_config.py",
-    "tests/test_dcode_project.py",
-    "tests/test_deepagents_runtime_patch.py",
-    "tests/test_agent_profile_registry.py",
-    "tests/test_herdr_main_launcher.py",
-    "tests/test_opendesign_profile_adapter.py",
-    "tests/test_skill_chief_of_staff.py",
-    "tests/test_validate_template_required_sections.py",
-    "tests/project_os_test_paths.py"
+    "scripts/setup_hooks.sh"
   ],
   "requiredPaths": [
     ".gitignore",
     "AGENTS.md",
     "GEMINI.md",
     "CLAUDE.md",
-    ".agents/skills/skill-using-superpowers/SKILL.md",
     "agents",
     "docs/superpowers/plans",
     "docs/superpowers/specs",
@@ -55,6 +38,7 @@
     "scripts/validate_generated_header_format.py",
     "tests/test_sync_agent_adapters.py",
     "tests/test_deploy_agent_runtime.py",
+    "tests",
     ".deepagents"
   ],
   "omitPaths": [
@@ -64,6 +48,9 @@
     "docs/superpowers/specs"
   ],
   "sharedPaths": {
+    "skills": [
+      ".agents/skills"
+    ],
     "docs": [
       "docs/operating_system"
     ],
