@@ -42,6 +42,10 @@ try:
     from agent_profile_registry import load_agent_profiles
 except ModuleNotFoundError:
     from scripts.agent_profile_registry import load_agent_profiles
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
 
 STARTER_KIT_CLASSIFICATION_ENFORCEMENT = "fail"
 STARTER_KIT_DISTRIBUTION_TIER = "starter_kit"
@@ -52,10 +56,6 @@ class ValidationIssue:
     category: str
     path: str
     message: str
-
-
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
 
 
 def relative_path(path: Path, root: Path) -> str:
@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo-root",
-        default=str(repo_root()),
+        default=None,
         help="Repository root. Defaults to this script's repository.",
     )
     parser.add_argument(
@@ -183,22 +183,29 @@ def build_subprocess_steps(
     python_executable: str,
     fast: bool,
 ) -> list[list[str]]:
-    planning_lifecycle_script = str(root / "scripts" / "validate_planning_lifecycle.py")
-    template_sections_script = str(root / "scripts" / "validate_template_required_sections.py")
-    learning_format_script = str(root / "scripts" / "validate_learning_materials_format.py")
-    prompt_metadata_schema_script = str(root / "scripts" / "validate_prompt_metadata_schema.py")
-    repo_config_script = str(root / "scripts" / "validate_repo_config.py")
-    agent_metadata_schema_script = str(root / "scripts" / "validate_agent_metadata_schema.py")
-    env_gitignore_contract_script = str(root / "scripts" / "validate_env_gitignore_contract.py")
+    project_scripts_root = root / "scripts"
+    shared_scripts_root = Path(__file__).resolve().parent
+
+    def script_path(name: str) -> Path:
+        project_path = project_scripts_root / name
+        return project_path if project_path.is_file() else shared_scripts_root / name
+
+    planning_lifecycle_script = str(script_path("validate_planning_lifecycle.py"))
+    template_sections_script = str(script_path("validate_template_required_sections.py"))
+    learning_format_script = str(script_path("validate_learning_materials_format.py"))
+    prompt_metadata_schema_script = str(script_path("validate_prompt_metadata_schema.py"))
+    repo_config_script = str(script_path("validate_repo_config.py"))
+    agent_metadata_schema_script = str(script_path("validate_agent_metadata_schema.py"))
+    env_gitignore_contract_script = str(script_path("validate_env_gitignore_contract.py"))
     switchyard_script = root / "scripts" / "manage_switchyard_runtime.py"
 
     steps: list[list[str]] = [
-        [python_executable, planning_lifecycle_script],
-        [python_executable, template_sections_script, "--require-template-selection"],
-        [python_executable, learning_format_script],
-        [python_executable, prompt_metadata_schema_script],
-        [python_executable, agent_metadata_schema_script],
-        [python_executable, env_gitignore_contract_script],
+        [python_executable, planning_lifecycle_script, "--repo-root", str(root)],
+        [python_executable, template_sections_script, "--repo-root", str(root), "--require-template-selection"],
+        [python_executable, learning_format_script, "--repo-root", str(root)],
+        [python_executable, prompt_metadata_schema_script, "--repo-root", str(root)],
+        [python_executable, agent_metadata_schema_script, "--repo-root", str(root)],
+        [python_executable, env_gitignore_contract_script, "--repo-root", str(root)],
     ]
     generated_header_script = root / "scripts" / "validate_generated_header_format.py"
     if generated_header_script.is_file():
@@ -213,7 +220,7 @@ def build_subprocess_steps(
                 "--skip-deploy-check",
             ]
         )
-    steps.append([python_executable, repo_config_script])
+    steps.append([python_executable, repo_config_script, "--repo-root", str(root)])
     if switchyard_script.is_file():
         steps.append(
             [
@@ -337,27 +344,33 @@ def _has_starter_kit_distribution_tier_from_analysis(analysis: tuple[bool, bool]
     return analysis[1]
 
 
+def _manifest_owned_paths(root: Path, manifest: dict) -> set[str]:
+    declared: list[str] = []
+    copy_paths = manifest.get("copyPaths", [])
+    if isinstance(copy_paths, list):
+        declared.extend(item for item in copy_paths if isinstance(item, str))
+    shared_paths = manifest.get("sharedPaths", {})
+    if isinstance(shared_paths, dict):
+        for bundle_paths in shared_paths.values():
+            if isinstance(bundle_paths, list):
+                declared.extend(item for item in bundle_paths if isinstance(item, str))
+    owned: set[str] = set()
+    for item in declared:
+        rel = item.replace("\\", "/")
+        target = root / rel
+        if target.is_file():
+            owned.add(rel)
+        elif target.is_dir():
+            owned.update(relative_path(file, root) for file in target.rglob("*") if file.is_file())
+    return owned
+
+
 def sync_starter_kit_distribution_tier(root: Path) -> int:
     manifest = _load_starter_kit_manifest(root)
     if manifest is None:
         return 0
 
-    copy_paths = manifest.get("copyPaths", [])
-    if not isinstance(copy_paths, list):
-        return 0
-
-    in_kit: set[str] = set()
-    for item in copy_paths:
-        if not isinstance(item, str):
-            continue
-        rel = item.replace("\\", "/")
-        target = root / rel
-        if target.is_file():
-            in_kit.add(rel)
-        elif target.is_dir():
-            for file in target.rglob("*"):
-                if file.is_file():
-                    in_kit.add(relative_path(file, root))
+    in_kit = _manifest_owned_paths(root, manifest)
 
     patched = 0
     for rel in sorted(in_kit):
@@ -404,22 +417,7 @@ def validate_starter_kit_classification(root: Path) -> list[ValidationIssue]:
     if manifest is None:
         return issues
 
-    copy_paths = manifest.get("copyPaths", [])
-    if not isinstance(copy_paths, list):
-        return issues
-
-    in_kit: set[str] = set()
-    for item in copy_paths:
-        if not isinstance(item, str):
-            continue
-        rel = item.replace("\\", "/")
-        target = root / rel
-        if target.is_file():
-            in_kit.add(rel)
-        elif target.is_dir():
-            for file in target.rglob("*"):
-                if file.is_file():
-                    in_kit.add(relative_path(file, root))
+    in_kit = _manifest_owned_paths(root, manifest)
 
     for rel in sorted(in_kit):
         if rel.startswith("docs/operating_system/templates/"):
@@ -478,7 +476,11 @@ def report_issues(issues: list[ValidationIssue]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    root = Path(args.repo_root).resolve()
+    try:
+        root = resolve_repo_root(args.repo_root)
+    except RuntimeError as exc:
+        print(f"Repository contract validation blocked: {exc}")
+        return 2
 
     profile_issues = validate_agent_profile_registry(root)
     if profile_issues:

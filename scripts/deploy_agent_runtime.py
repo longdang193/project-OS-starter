@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
+import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import subprocess
 
 import yaml
 
@@ -21,6 +23,8 @@ PLATFORM_TARGETS = {
 
 SHARED_SKILLS_TARGET = Path.home() / ".agents" / "skills"
 SHARED_SKILL_MARKER = ".project-os-managed"
+SHARED_ASSETS_TARGET = Path.home() / ".agents" / "project-os"
+SHARED_ASSET_MARKER = ".project-os-managed"
 
 TARGET_ALIASES = {
     "gemini": "antigravity",
@@ -49,6 +53,11 @@ def parse_args() -> argparse.Namespace:
         help="Explicitly adopt one differing unmarked shared skill.",
     )
     parser.add_argument(
+        "--adopt-shared-asset",
+        choices=["docs", "scripts"],
+        help="Explicitly adopt one differing unmarked shared asset bundle.",
+    )
+    parser.add_argument(
         "--rewrite-mode",
         choices=["relative", "hardcode"],
         default="relative",
@@ -59,6 +68,15 @@ def parse_args() -> argparse.Namespace:
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n")
+
+
+SHARED_ASSET_TEXT_SUFFIXES = {".md", ".py", ".ps1", ".sh", ".yaml", ".yml", ".json", ".toml"}
+
+
+def _shared_asset_equal(source: Path, destination: Path) -> bool:
+    if source.suffix.lower() in SHARED_ASSET_TEXT_SUFFIXES:
+        return _read_text(source) == _read_text(destination)
+    return source.read_bytes() == destination.read_bytes()
 
 
 def _looks_like_repo_relative_path(value: str) -> bool:
@@ -98,6 +116,28 @@ def _runtime_absolute_string(target_root: Path, relative_path: str) -> str:
     return str((target_root / _runtime_relative_path(relative_path)).resolve())
 
 
+def _shared_asset_path(repo_root: Path, relative_path: str) -> str | None:
+    manifest_path = repo_root / "repo_config" / "starter-kit-manifest.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        shared_paths = json.loads(manifest_path.read_text(encoding="utf-8")).get("sharedPaths", {})
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
+    normalized = PurePosixPath(relative_path.replace("\\", "/"))
+    for bundle_name in ("docs", "scripts"):
+        for source_rel in shared_paths.get(bundle_name, []):
+            source_path = PurePosixPath(str(source_rel).replace("\\", "/"))
+            if normalized != source_path and source_path not in normalized.parents:
+                continue
+            marker = _read_json_marker(SHARED_ASSETS_TARGET / bundle_name / SHARED_ASSET_MARKER)
+            if not marker or marker.get("bundle") != bundle_name or marker.get("source_root") != str(repo_root.resolve()):
+                return None
+            relative_target = normalized.relative_to(bundle_name)
+            return str((SHARED_ASSETS_TARGET / bundle_name / Path(str(relative_target))).resolve())
+    return None
+
+
 def _rewrite_command_to_absolute_repo_path(command: str, root: Path) -> str:
     match = re.match(r'^(python|py)\s+([^"\s][^\s]*)$', command.strip())
     if not match:
@@ -110,7 +150,9 @@ def _rewrite_command_to_absolute_repo_path(command: str, root: Path) -> str:
 
 def _rewrite_frontmatter_lists(
     meta: dict[str, object],
+    repo_root: Path,
     target_root: Path,
+    current_runtime_dir: Path,
     *,
     rewrite_mode: str,
 ) -> dict[str, object]:
@@ -122,7 +164,12 @@ def _rewrite_frontmatter_lists(
         if not isinstance(value, list):
             continue
         rewritten[key] = [
-            _runtime_absolute_string(target_root, item)
+            _absolute_text_path(
+                item,
+                repo_root=repo_root,
+                target_root=target_root,
+                current_runtime_dir=current_runtime_dir,
+            )
             if isinstance(item, str) and _looks_like_repo_relative_path(item)
             else item
             for item in value
@@ -142,9 +189,15 @@ def _absolute_text_path(
     normalized_text = str(normalized)
     meaningful_parts = [part for part in normalized.parts if part not in {"."}]
     if meaningful_parts and meaningful_parts[0] == "scripts":
+        shared_path = _shared_asset_path(repo_root, "/".join(meaningful_parts))
+        if shared_path is not None:
+            return shared_path
         return _repo_absolute_string(repo_root, "/".join(meaningful_parts))
     if meaningful_parts and meaningful_parts[0] == "docs":
-        return _runtime_absolute_string(target_root, "/".join(meaningful_parts))
+        shared_path = _shared_asset_path(repo_root, "/".join(meaningful_parts))
+        if shared_path is not None:
+            return shared_path
+        return _repo_absolute_string(repo_root, "/".join(meaningful_parts))
     if meaningful_parts and meaningful_parts[0] in {
         "skills",
         "references",
@@ -272,7 +325,9 @@ def _rewrite_text_runtime_paths(
             if isinstance(payload, dict):
                 rewritten_payload = _rewrite_frontmatter_lists(
                     payload,
+                    repo_root,
                     target_root,
+                    current_runtime_dir,
                     rewrite_mode=rewrite_mode,
                 )
                 frontmatter = yaml.safe_dump(rewritten_payload, sort_keys=False, allow_unicode=False).strip()
@@ -581,6 +636,163 @@ def _shared_skill_marker_text(skills_root: Path, skill_name: str) -> str:
     return json.dumps(_shared_skill_marker(skills_root, skill_name), indent=2, sort_keys=True)
 
 
+def _shared_asset_paths(root: Path) -> dict[str, list[str]]:
+    manifest = json.loads((root / "repo_config" / "starter-kit-manifest.json").read_text(encoding="utf-8"))
+    shared_paths = manifest.get("sharedPaths")
+    if not isinstance(shared_paths, dict) or set(shared_paths) != {"docs", "scripts"}:
+        raise ValueError("Starter-kit manifest sharedPaths must contain docs and scripts bundles.")
+    return {
+        bundle_name: [str(path) for path in shared_paths[bundle_name]]
+        for bundle_name in ("docs", "scripts")
+    }
+
+
+def _is_shared_asset_ignored(path: Path) -> bool:
+    return "__pycache__" in path.parts or path.suffix.lower() in {".pyc", ".pyo"}
+
+
+def _shared_asset_entries(root: Path, bundle_name: str) -> list[tuple[Path, Path]]:
+    bundle_root = SHARED_ASSETS_TARGET / bundle_name
+    entries: list[tuple[Path, Path]] = []
+    for source_rel in _shared_asset_paths(root)[bundle_name]:
+        source = root / source_rel
+        destination_rel = PurePosixPath(source_rel.replace("\\", "/")).relative_to(bundle_name)
+        destination = bundle_root / Path(str(destination_rel))
+        if source.is_dir():
+            entries.extend(
+                (path, destination / path.relative_to(source))
+                for path in source.rglob("*")
+                if path.is_file() and not _is_shared_asset_ignored(path)
+            )
+        elif source.is_file():
+            entries.append((source, destination))
+        else:
+            raise FileNotFoundError(f"Missing shared asset path: {source_rel}")
+    return entries
+
+
+def _shared_asset_source_digest(entries: list[tuple[Path, Path]]) -> str:
+    digest = hashlib.sha256()
+    for source, destination in sorted(entries, key=lambda pair: pair[1].as_posix()):
+        digest.update(destination.relative_to(SHARED_ASSETS_TARGET).as_posix().encode("utf-8"))
+        digest.update(source.read_bytes())
+    return digest.hexdigest()
+
+
+def _shared_asset_marker(root: Path, bundle_name: str, entries: list[tuple[Path, Path]]) -> dict[str, object]:
+    try:
+        source_revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+    except OSError:
+        source_revision = ""
+    return {
+        "schema": 1,
+        "bundle": bundle_name,
+        "source_root": str(root.resolve()),
+        "source_paths": _shared_asset_paths(root)[bundle_name],
+        "source_revision": source_revision or "uncommitted",
+        "source_digest": _shared_asset_source_digest(entries),
+    }
+
+
+def _shared_asset_marker_path(bundle_name: str) -> Path:
+    return SHARED_ASSETS_TARGET / bundle_name / SHARED_ASSET_MARKER
+
+
+def _shared_asset_owned(marker: dict[str, object] | None, expected: dict[str, object]) -> bool:
+    if marker is None:
+        return False
+    return all(marker.get(key) == expected.get(key) for key in ("bundle", "source_root", "source_paths"))
+
+
+def _read_json_marker(path: Path) -> dict[str, object] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _shared_asset_plan(
+    root: Path,
+    bundle_name: str,
+    *,
+    adopt: bool,
+) -> tuple[list[str], list[str], list[tuple[Path | None, Path, str | None]]]:
+    entries = _shared_asset_entries(root, bundle_name)
+    target_root = SHARED_ASSETS_TARGET / bundle_name
+    marker_path = _shared_asset_marker_path(bundle_name)
+    marker = _read_json_marker(marker_path)
+    expected_marker = _shared_asset_marker(root, bundle_name, entries)
+    expected_files = {destination for _, destination in entries} | {marker_path}
+    changes: list[str] = []
+    issues: list[str] = []
+    pairs: list[tuple[Path | None, Path, str | None]] = []
+    if target_root.exists() and not _shared_asset_owned(marker, expected_marker):
+        deployed_files = {path for path in target_root.rglob("*") if path.is_file() and path != marker_path}
+        expected_sources = {destination: source for source, destination in entries}
+        identical = deployed_files == set(expected_sources) and all(
+            _shared_asset_equal(source, destination)
+            for source, destination in entries
+            if destination.is_file()
+        )
+        if not identical and not adopt:
+            issues.append(
+                f"Refusing unowned shared asset collision without --adopt-shared-asset {bundle_name}: {target_root.as_posix()}"
+            )
+            return changes, issues, pairs
+    for source, destination in entries:
+        if destination.exists() and _shared_asset_equal(source, destination):
+            continue
+        changes.append(f"{'update' if destination.exists() else 'create'}: {destination.as_posix()}")
+        pairs.append((source, destination, source.read_text(encoding="utf-8") if source.suffix.lower() in {".md", ".py", ".ps1", ".sh", ".yaml", ".yml", ".json", ".toml"} else None))
+    marker_text = json.dumps(expected_marker, indent=2, sort_keys=True)
+    if marker != expected_marker:
+        changes.append(f"{'update' if marker_path.exists() else 'create'}: {marker_path.as_posix()}")
+        pairs.append((None, marker_path, marker_text))
+    if target_root.is_dir():
+        for stale in sorted(path for path in target_root.rglob("*") if path.is_file() and path not in expected_files):
+            if _is_shared_asset_ignored(stale):
+                continue
+            changes.append(f"remove: {stale.as_posix()}")
+            pairs.append((None, stale, None))
+    return changes, issues, pairs
+
+
+def _check_shared_assets(root: Path) -> list[str]:
+    issues: list[str] = []
+    for bundle_name in ("docs", "scripts"):
+        try:
+            entries = _shared_asset_entries(root, bundle_name)
+        except (FileNotFoundError, ValueError) as exc:
+            issues.append(str(exc))
+            continue
+        target_root = SHARED_ASSETS_TARGET / bundle_name
+        marker_path = _shared_asset_marker_path(bundle_name)
+        marker = _read_json_marker(marker_path)
+        expected = {destination for _, destination in entries} | {marker_path}
+        if marker is None:
+            issues.append(f"Missing shared asset marker: {marker_path.as_posix()}")
+        for source, destination in entries:
+            if not destination.is_file():
+                issues.append(f"Missing deployed shared asset file: {destination.as_posix()}")
+            elif not _shared_asset_equal(source, destination):
+                issues.append(f"Deployed shared asset drift: {destination.as_posix()}")
+        if target_root.is_dir():
+            for stale in sorted(path for path in target_root.rglob("*") if path.is_file() and path not in expected):
+                if _is_shared_asset_ignored(stale):
+                    continue
+                issues.append(f"Stale deployed shared asset file: {stale.as_posix()}")
+    return issues
+
+
 def _shared_skill_expected_files(skills_root: Path, target_root: Path, skill_name: str) -> set[Path]:
     expected = {
         target_root / skill_name / src.relative_to(skills_root / skill_name)
@@ -717,8 +929,41 @@ def run() -> int:
     issues: list[str] = []
     shared_skills_root = root / ".agents" / "skills"
     if args.check:
+        issues.extend(_check_shared_assets(root))
         issues.extend(_check_shared_skills(shared_skills_root, SHARED_SKILLS_TARGET))
     else:
+        for bundle_name in ("docs", "scripts"):
+            changes, plan_issues, pairs = _shared_asset_plan(
+                root,
+                bundle_name,
+                adopt=args.adopt_shared_asset == bundle_name,
+            )
+            issues.extend(plan_issues)
+            if plan_issues:
+                continue
+            if args.dry_run:
+                print(f"[dry-run] shared {bundle_name} -> {(SHARED_ASSETS_TARGET / bundle_name).as_posix()}")
+                for change in changes:
+                    print(f"- {change}")
+                continue
+            backup_root: Path | None = None
+            if args.backup:
+                stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+                backup_root = SHARED_ASSETS_TARGET / ".backups" / stamp / bundle_name
+            for source, destination, rendered in pairs:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if backup_root is not None and destination.exists():
+                    backup_path = backup_root / destination.relative_to(SHARED_ASSETS_TARGET)
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(destination, backup_path)
+                if source is None:
+                    if rendered is None:
+                        destination.unlink(missing_ok=True)
+                    else:
+                        destination.write_text(rendered + "\n", encoding="utf-8")
+                else:
+                    destination.write_text(rendered if rendered is not None else source.read_text(encoding="utf-8"), encoding="utf-8")
+            print(f"Deployed shared {bundle_name} -> {(SHARED_ASSETS_TARGET / bundle_name).as_posix()} ({len(pairs)} changed)")
         changes, plan_issues, pairs = _plan_shared_skill_deploy(
             shared_skills_root,
             SHARED_SKILLS_TARGET,

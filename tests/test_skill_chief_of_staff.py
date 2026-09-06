@@ -1,11 +1,12 @@
 from pathlib import Path
 
+from project_os_test_paths import runtime_doc
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def read(path: str) -> str:
-    return (ROOT / path).read_text(encoding="utf-8")
+    return runtime_doc(path).read_text(encoding="utf-8")
 
 
 def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:

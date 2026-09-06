@@ -1,8 +1,10 @@
 from pathlib import Path
 import importlib.util
 
+from project_os_test_paths import runtime_script
+
 ROOT=Path(__file__).resolve().parents[1]
-spec=importlib.util.spec_from_file_location('agent_schema',ROOT/'scripts/validate_agent_metadata_schema.py')
+spec=importlib.util.spec_from_file_location('agent_schema',runtime_script('validate_agent_metadata_schema.py'))
 module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 
 def test_agent_metadata_matches_lean_schema():

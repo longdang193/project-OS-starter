@@ -24,9 +24,12 @@ import uuid
 from pathlib import Path
 from shutil import rmtree
 
+from project_os_test_paths import add_runtime_import_roots, runtime_doc, runtime_script
+
+add_runtime_import_roots()
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VALIDATOR_PATH = REPO_ROOT / "scripts" / "validate_template_required_sections.py"
-SCHEMA_HELPER_PATH = REPO_ROOT / "scripts" / "planning_artifact_schema.py"
+VALIDATOR_PATH = runtime_script("validate_template_required_sections.py")
+SCHEMA_HELPER_PATH = runtime_script("planning_artifact_schema.py")
 
 
 def load_module(name: str, path: Path):
@@ -648,8 +651,8 @@ Replaced by current plan.
 
 def test_shipped_planning_templates_cover_schema_required_frontmatter() -> None:
     templates = {
-        "plan": REPO_ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md",
-        "spec": REPO_ROOT / "docs" / "operating_system" / "templates" / "detailed-specification-template.md",
+        "plan": runtime_doc("docs/operating_system/templates/implementation-plan-template.md"),
+        "spec": runtime_doc("docs/operating_system/templates/detailed-specification-template.md"),
     }
 
     for artifact_type, template_path in templates.items():
@@ -666,7 +669,7 @@ def test_shipped_planning_templates_cover_schema_required_frontmatter() -> None:
 
 def test_implementation_plan_template_documents_executor_and_coordination() -> None:
     template = (
-        REPO_ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md"
+        runtime_doc("docs/operating_system/templates/implementation-plan-template.md")
     ).read_text(encoding="utf-8")
 
     assert "Default task executor: `codex | deepagents | tura`" in template

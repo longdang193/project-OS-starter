@@ -4,9 +4,23 @@ from pathlib import Path
 import re
 import yaml
 
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
+
 SKILL_ALLOWED={"name","description","required_reads","distribution_tier"}
 SKILL_REFERENCE_RE=re.compile(r"`(skill-[a-z0-9]+(?:-[a-z0-9]+)*)`")
 RULE_REFERENCE_RE=re.compile(r"`(docs/operating_system/rules/[A-Za-z0-9._/-]+\.md)`")
+
+
+def _resolve_runtime_reference(root: Path, relative_path: str) -> Path:
+    local_path = root / relative_path
+    if local_path.is_file():
+        return local_path
+    if relative_path.startswith("docs/operating_system/"):
+        return Path.home() / ".agents" / "project-os" / relative_path
+    return local_path
 
 def _meta(path: Path):
     text=path.read_text(encoding="utf-8",errors="ignore")
@@ -32,7 +46,7 @@ def validate(root: Path) -> list[str]:
         elif len(reads)>1: findings.append(f"{path}: more than one unconditional required read")
         else:
             for read in reads:
-                if not (root/read).exists(): findings.append(f"{path}: missing required read {read}")
+                if not _resolve_runtime_reference(root, read).is_file(): findings.append(f"{path}: missing required read {read}")
     skill_names={path.parent.name for path in skills}
     reference_paths=set((root/".agents/skills").rglob("*.md"))
     reference_paths.update((root/"docs/operating_system/rules").glob("*.md"))
@@ -49,14 +63,19 @@ def validate(root: Path) -> list[str]:
                 if line[:match.start()].rstrip().lower().endswith(" not"): continue
                 if skill_name not in skill_names: findings.append(f"{rel}:{line_number}: missing skill reference {skill_name}")
             for rule_path in RULE_REFERENCE_RE.findall(line):
-                if not (root/rule_path).is_file(): findings.append(f"{rel}:{line_number}: missing rule reference {rule_path}")
+                if not _resolve_runtime_reference(root, rule_path).is_file(): findings.append(f"{rel}:{line_number}: missing rule reference {rule_path}")
     return findings
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description="Validate lean skill metadata.")
-    parser.add_argument("--repo-root",default=str(Path(__file__).resolve().parents[1]))
+    parser.add_argument("--repo-root")
     args=parser.parse_args(argv)
-    findings=validate(Path(args.repo_root))
+    try:
+        root = resolve_repo_root(args.repo_root)
+    except RuntimeError as exc:
+        print(f"Agent metadata validation blocked: {exc}")
+        return 2
+    findings=validate(root)
     if findings:
         print("Agent metadata validation failed:")
         for finding in findings: print(f"- {finding}")

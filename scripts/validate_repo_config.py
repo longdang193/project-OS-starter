@@ -23,10 +23,15 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
+
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
 
 
 REQUIRED_PUBLICATION_KEYS = {
@@ -49,6 +54,7 @@ REQUIRED_STARTER_KIT_KEYS = {
     "copyPaths",
     "requiredPaths",
     "forbiddenPaths",
+    "sharedPaths",
 }
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,15 +100,7 @@ def infer_repo_root(
     publication_config: Path,
     starter_kit_manifest: Path,
 ) -> Path:
-    if repo_root_arg:
-        return Path(repo_root_arg).resolve()
-
-    for candidate in (publication_config, starter_kit_manifest):
-        parts = candidate.resolve().parts
-        if len(parts) >= 2 and parts[-2] == "repo_config":
-            return candidate.resolve().parent.parent
-
-    return Path.cwd().resolve()
+    return resolve_repo_root(repo_root_arg)
 
 
 def validate_publication_config(payload: Any, errors: list[str]) -> None:
@@ -136,6 +134,17 @@ def validate_publication_config(payload: Any, errors: list[str]) -> None:
             errors.append(f"Publication config key `{key}` must be a boolean.")
 
 
+def _paths_overlap(left: str, right: str) -> bool:
+    left_path = Path(left.replace("\\", "/")).as_posix().rstrip("/")
+    right_path = Path(right.replace("\\", "/")).as_posix().rstrip("/")
+    return left_path == right_path or left_path.startswith(right_path + "/") or right_path.startswith(left_path + "/")
+
+
+def _is_safe_relative_path(value: str) -> bool:
+    path = PurePosixPath(value.replace("\\", "/"))
+    return not path.is_absolute() and ".." not in path.parts
+
+
 def validate_starter_kit_manifest(payload: Any, errors: list[str]) -> None:
     if not isinstance(payload, dict):
         errors.append("Starter-kit manifest must be a JSON object.")
@@ -153,11 +162,48 @@ def validate_starter_kit_manifest(payload: Any, errors: list[str]) -> None:
         errors.append("Starter-kit manifest key `outputRoot` must be a non-empty string.")
 
     for key in (REQUIRED_STARTER_KIT_KEYS - {"outputRoot"}) & set(payload.keys()):
+        if key == "sharedPaths":
+            value = payload[key]
+            if not isinstance(value, dict) or set(value) != {"docs", "scripts"}:
+                errors.append("Starter-kit manifest key `sharedPaths` must contain only `docs` and `scripts` lists.")
+                continue
+            for bundle_name in ("docs", "scripts"):
+                bundle_paths = value[bundle_name]
+                if not isinstance(bundle_paths, list) or not all(
+                    isinstance(item, str) and item.strip() for item in bundle_paths
+                ):
+                    errors.append(
+                        f"Starter-kit manifest key `sharedPaths.{bundle_name}` must be a list of strings."
+                    )
+            continue
         value = payload[key]
         if not isinstance(value, list) or not all(
             isinstance(item, str) and item.strip() for item in value
         ):
             errors.append(f"Starter-kit manifest key `{key}` must be a list of strings.")
+
+    shared_paths = payload.get("sharedPaths")
+    if isinstance(shared_paths, dict) and all(isinstance(shared_paths.get(name), list) for name in ("docs", "scripts")):
+        other_paths = [
+            item
+            for key in ("copyPaths", "requiredPaths", "omitPaths", "createEmptyDirs")
+            for item in payload.get(key, [])
+            if isinstance(item, str)
+        ]
+        for bundle_name in ("docs", "scripts"):
+            for shared_path in shared_paths[bundle_name]:
+                if not isinstance(shared_path, str):
+                    continue
+                if not _is_safe_relative_path(shared_path):
+                    errors.append(f"Starter-kit shared path must be relative and stay under repo root: {shared_path}")
+
+        for bundle_paths in shared_paths.values():
+            for shared_path in bundle_paths:
+                for other_path in other_paths:
+                    if _paths_overlap(shared_path, other_path):
+                        errors.append(
+                            f"Starter-kit shared path overlaps another manifest path: {shared_path} vs {other_path}"
+                        )
 
 
 
@@ -188,9 +234,19 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    publication_config_path = Path(args.publication_config).resolve()
-    starter_kit_manifest_path = Path(args.starter_kit_manifest).resolve()
-    repo_root = infer_repo_root(args.repo_root, publication_config_path, starter_kit_manifest_path)
+    try:
+        repo_root = infer_repo_root(args.repo_root, Path(args.publication_config), Path(args.starter_kit_manifest))
+    except RuntimeError as exc:
+        print(f"Repo config validation blocked: {exc}")
+        return 2
+    publication_config_path = Path(args.publication_config)
+    if not publication_config_path.is_absolute():
+        publication_config_path = repo_root / publication_config_path
+    publication_config_path = publication_config_path.resolve()
+    starter_kit_manifest_path = Path(args.starter_kit_manifest)
+    if not starter_kit_manifest_path.is_absolute():
+        starter_kit_manifest_path = repo_root / starter_kit_manifest_path
+    starter_kit_manifest_path = starter_kit_manifest_path.resolve()
 
     errors: list[str] = []
 

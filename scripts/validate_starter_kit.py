@@ -194,6 +194,14 @@ def compare_tree_parity(*, expected_root: Path, actual_root: Path) -> list[str]:
 def validate_starter_kit(*, kit_root: Path, manifest_path: Path) -> list[str]:
     manifest = load_manifest(manifest_path)
     errors: list[str] = []
+    source_root = manifest_path.resolve().parents[1]
+
+    for bundle_name, shared_paths in manifest.shared_paths.items():
+        for shared_path in shared_paths:
+            if not (source_root / shared_path).exists():
+                errors.append(f"Missing shared source path: {shared_path}")
+            if (kit_root / shared_path).exists():
+                errors.append(f"Shared path copied into starter kit: {shared_path}")
 
     for required_path in manifest.required_paths:
         if not (kit_root / required_path).exists():

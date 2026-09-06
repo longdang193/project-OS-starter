@@ -1,5 +1,8 @@
 from pathlib import Path
 
+from project_os_test_paths import add_runtime_import_roots
+
+add_runtime_import_roots()
 from scripts.patch_deepagents_runtime import (
     patch_headless_mcp_guard,
     patch_mcp_tools,

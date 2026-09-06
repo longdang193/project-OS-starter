@@ -137,10 +137,11 @@ def test_runtime_adapter_procedure_preserves_lifecycle_evidence() -> None:
 
 
 def test_starter_manifest_omits_private_provider_setup() -> None:
-    manifest = read_source("repo_config/starter-kit-manifest.json")
+    manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
 
-    assert "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md" in manifest
-    assert "docs/operating_system/tooling/runtime-tool-resolution.md" in manifest
+    assert "docs/operating_system" in manifest["sharedPaths"]["docs"]
+    assert "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md" not in manifest["copyPaths"]
+    assert "docs/operating_system/tooling/runtime-tool-resolution.md" not in manifest["copyPaths"]
 
 
 def _literal_read_references(path: Path) -> set[str]:
@@ -172,6 +173,8 @@ def test_shipped_tests_read_only_kit_paths(tmp_path: Path) -> None:
             continue
         test_path = REPO_ROOT / relative_path
         for referenced_path in _literal_read_references(test_path):
+            if referenced_path.startswith("docs/operating_system/"):
+                continue
             if not (kit_root / referenced_path).exists():
                 missing.append(f"{relative_path}: {referenced_path}")
 
@@ -188,13 +191,10 @@ def make_manifest(repo_root: Path) -> Path:
                 ".gitignore",
                 "AGENTS.md",
                 "agents",
-                "scripts/dcode_project.py",
-                "scripts/setup_deepagents_runtime.ps1",
                 "GEMINI.md",
                 "CLAUDE.md",
                 ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
-                "docs/operating_system/tooling/runtime-tool-resolution.md",
                 "requirements.txt",
                 "docs/superpowers/plans",
             ],
@@ -211,8 +211,6 @@ def make_manifest(repo_root: Path) -> Path:
                 ".gitignore",
                 "AGENTS.md",
                 "agents",
-                "scripts/dcode_project.py",
-                "scripts/setup_deepagents_runtime.ps1",
                 "tests/test_dcode_project.py",
                 "tests/test_starter_lifecycle_contract.py",
                 "tests/test_runtime_tool_resolution_contract.py",
@@ -221,18 +219,15 @@ def make_manifest(repo_root: Path) -> Path:
                 ".agents/skills/skill-spec-drafting/SKILL.md",
                 "repo_config/planning_artifact_schema.yaml",
                 "requirements.txt",
-                "docs/operating_system",
             ],
-            "omitPaths": [
-                "docs/operating_system/runtime",
-                "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md",
-                "docs/operating_system/procedures/runtime-adapter-procedure.md",
-                "docs/operating_system/procedures/starter-kit-procedure.md",
-                "docs/operating_system/templates/agents/root-AGENTS.template.md",
-            ],
+            "omitPaths": [],
             "createEmptyDirs": [
                 "docs/superpowers/plans",
             ],
+            "sharedPaths": {
+                "docs": ["docs/operating_system"],
+                "scripts": ["scripts/dcode_project.py"],
+            },
         },
     )
     return manifest_path
@@ -243,21 +238,16 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
         (REPO_ROOT / "repo_config" / "starter-kit-manifest.json").read_text(encoding="utf-8")
     )
 
-    assert "scripts/herdr_main_launcher.py" in manifest["copyPaths"]
-    assert "scripts/opendesign_profile_adapter.py" in manifest["copyPaths"]
-    assert "scripts/setup_deepagents_runtime.ps1" in manifest["copyPaths"]
-    assert "scripts/patch_deepagents_runtime.py" in manifest["copyPaths"]
+    assert "scripts/herdr_main_launcher.py" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/opendesign_profile_adapter.py" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/setup_deepagents_runtime.ps1" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/patch_deepagents_runtime.py" in manifest["sharedPaths"]["scripts"]
     assert "tests/test_deepagents_runtime_patch.py" in manifest["copyPaths"]
     assert "tests/test_herdr_main_launcher.py" in manifest["copyPaths"]
     assert "tests/test_opendesign_profile_adapter.py" in manifest["copyPaths"]
     assert "tests/test_skill_chief_of_staff.py" in manifest["copyPaths"]
-    assert "scripts/herdr_main_launcher.py" in manifest["requiredPaths"]
-    assert "scripts/opendesign_profile_adapter.py" in manifest["requiredPaths"]
-    assert "scripts/setup_deepagents_runtime.ps1" in manifest["requiredPaths"]
-    assert "scripts/patch_deepagents_runtime.py" in manifest["requiredPaths"]
-    assert "scripts/dcode_project.py" in manifest["requiredPaths"]
-    assert "docs/operating_system/runtime" in manifest["omitPaths"]
-    assert "docs/operating_system/procedures/runtime-adapter-procedure.md" in manifest["omitPaths"]
+    assert "scripts/herdr_main_launcher.py" not in manifest["requiredPaths"]
+    assert "docs/operating_system" not in manifest["copyPaths"]
 
 
 def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path) -> None:
@@ -294,20 +284,16 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     assert (kit_root / "AGENTS.md").exists()
     assert not (kit_root / "README.md").exists()
     assert (kit_root / "agents" / "normal.toml").exists()
-    assert (kit_root / "scripts" / "dcode_project.py").exists()
-    assert (kit_root / "scripts" / "setup_deepagents_runtime.ps1").exists()
+    assert not (kit_root / "scripts" / "dcode_project.py").exists()
+    assert not (kit_root / "scripts" / "setup_deepagents_runtime.ps1").exists()
     assert (kit_root / ".gitignore").exists()
     assert (kit_root / "GEMINI.md").exists()
     assert (kit_root / "CLAUDE.md").exists()
     assert (kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md").exists()
     assert (kit_root / "repo_config" / "planning_artifact_schema.yaml").exists()
-    assert (kit_root / "docs" / "operating_system" / "tooling" / "runtime-tool-resolution.md").exists()
+    assert not (kit_root / "docs" / "operating_system").exists()
     assert (kit_root / "requirements.txt").exists()
     assert (kit_root / "docs" / "superpowers" / "plans").is_dir()
-    assert not (kit_root / "docs" / "operating_system" / "runtime").exists()
-    assert not (kit_root / "docs" / "operating_system" / "procedures" / "frontend-backend-integration-mcp-setup.md").exists()
-    assert not (kit_root / "docs" / "operating_system" / "procedures" / "starter-kit-procedure.md").exists()
-    assert not (kit_root / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md").exists()
     assert not (kit_root / ".codex").exists()
     assert not (kit_root / "adapters").exists()
     assert not (kit_root / "scripts" / "sync_agent_adapters.py").exists()
@@ -326,7 +312,7 @@ def test_validate_starter_kit_reports_missing_required_and_present_forbidden(tmp
 
     assert any("Missing required path" in error for error in errors)
     assert any("Forbidden path present" in error for error in errors)
-    assert any("Omitted path still present" in error for error in errors)
+    assert any("Shared path copied into starter kit" in error for error in errors)
 
 
 def test_validate_starter_kit_rejects_malformed_profile_registry(tmp_path: Path) -> None:

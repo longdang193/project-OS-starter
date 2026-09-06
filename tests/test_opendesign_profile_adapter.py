@@ -6,14 +6,16 @@ import sys
 
 import pytest
 
+from project_os_test_paths import add_runtime_import_roots, runtime_script
 
+add_runtime_import_roots()
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_ROOT = ROOT / "scripts"
+SCRIPTS_ROOT = runtime_script("opendesign_profile_adapter.py").parent
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
 SPEC = importlib.util.spec_from_file_location(
-    "opendesign_profile_adapter", SCRIPTS_ROOT / "opendesign_profile_adapter.py"
+    "opendesign_profile_adapter", runtime_script("opendesign_profile_adapter.py")
 )
 assert SPEC is not None and SPEC.loader is not None
 ADAPTER = importlib.util.module_from_spec(SPEC)

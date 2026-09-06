@@ -7,10 +7,12 @@ import subprocess
 
 import pytest
 
+from project_os_test_paths import add_runtime_import_roots, runtime_script
 
+add_runtime_import_roots()
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = importlib.util.spec_from_file_location(
-    "herdr_main_launcher", ROOT / "scripts" / "herdr_main_launcher.py"
+    "herdr_main_launcher", runtime_script("herdr_main_launcher.py")
 )
 assert SPEC is not None and SPEC.loader is not None
 LAUNCHER = importlib.util.module_from_spec(SPEC)

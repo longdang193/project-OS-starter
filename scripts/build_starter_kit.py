@@ -37,6 +37,7 @@ class StarterKitManifest:
     forbidden_paths: list[str]
     omit_paths: list[str]
     create_empty_dirs: list[str]
+    shared_paths: dict[str, list[str]]
 
 
 REQUIRED_MANIFEST_KEYS = {
@@ -46,6 +47,7 @@ REQUIRED_MANIFEST_KEYS = {
     "forbiddenPaths",
     "omitPaths",
     "createEmptyDirs",
+    "sharedPaths",
 }
 
 CONSUME_ONLY_HEADER = """<!--
@@ -99,6 +101,46 @@ def _validate_string_list(value: Any, *, key: str) -> list[str]:
     return [item.strip() for item in value]
 
 
+def _validate_shared_paths(value: Any) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        raise ValueError("Manifest key `sharedPaths` must be an object.")
+    shared_paths: dict[str, list[str]] = {}
+    for bundle_name in ("docs", "scripts"):
+        shared_paths[bundle_name] = _validate_string_list(
+            value.get(bundle_name),
+            key=f"sharedPaths.{bundle_name}",
+        )
+    unexpected = set(value) - set(shared_paths)
+    if unexpected:
+        raise ValueError(
+            "Manifest key `sharedPaths` has unexpected bundles: "
+            + ", ".join(sorted(unexpected))
+        )
+    return shared_paths
+
+
+def _path_overlaps(left: str, right: str) -> bool:
+    left_path = Path(left.replace("\\", "/")).as_posix().rstrip("/")
+    right_path = Path(right.replace("\\", "/")).as_posix().rstrip("/")
+    return left_path == right_path or left_path.startswith(right_path + "/") or right_path.startswith(left_path + "/")
+
+
+def _validate_shared_path_ownership(manifest: StarterKitManifest) -> None:
+    shared_paths = [path for paths in manifest.shared_paths.values() for path in paths]
+    for shared_path in shared_paths:
+        for other_path in [
+            *manifest.copy_paths,
+            *manifest.required_paths,
+            *manifest.forbidden_paths,
+            *manifest.omit_paths,
+            *manifest.create_empty_dirs,
+        ]:
+            if _path_overlaps(shared_path, other_path):
+                raise ValueError(
+                    f"Shared path overlaps another manifest path: {shared_path} vs {other_path}"
+                )
+
+
 def load_manifest(manifest_path: Path) -> StarterKitManifest:
     payload = _load_json(manifest_path)
     if not isinstance(payload, dict):
@@ -118,6 +160,7 @@ def load_manifest(manifest_path: Path) -> StarterKitManifest:
         forbidden_paths=_validate_string_list(payload.get("forbiddenPaths"), key="forbiddenPaths"),
         omit_paths=_validate_string_list(payload.get("omitPaths"), key="omitPaths"),
         create_empty_dirs=_validate_string_list(payload.get("createEmptyDirs"), key="createEmptyDirs"),
+        shared_paths=_validate_shared_paths(payload.get("sharedPaths")),
     )
 
 
@@ -169,6 +212,7 @@ def _rewrite_root_instruction(*, source: Path, destination: Path) -> None:
 
 def build_starter_kit(*, repo_root: Path, manifest_path: Path, output_root: Path) -> Path:
     manifest = load_manifest(manifest_path)
+    _validate_shared_path_ownership(manifest)
     kit_root = output_root / manifest.output_root
     if kit_root.exists():
         shutil.rmtree(kit_root)
@@ -183,6 +227,11 @@ def build_starter_kit(*, repo_root: Path, manifest_path: Path, output_root: Path
             _rewrite_root_instruction(source=source, destination=destination)
         else:
             _copy_path(source, destination)
+
+    for bundle_paths in manifest.shared_paths.values():
+        for relative_path in bundle_paths:
+            if not _resolve_under(repo_root, relative_path).exists():
+                raise FileNotFoundError(f"Missing shared path: {relative_path}")
 
     _remove_omitted_paths(kit_root=kit_root, omit_paths=manifest.omit_paths)
     _create_empty_dirs(kit_root=kit_root, create_empty_dirs=manifest.create_empty_dirs)

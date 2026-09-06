@@ -11,6 +11,13 @@ This file is repo-wide instruction layer. More specific directory instructions o
 - Never expose private governance, credentials, agent memory, or internal tooling through public publication.
 - For generated agent surfaces, edit canonical sources, then run required sync and verification commands.
 
+## Project OS Installation
+
+- Shared Project OS runtime docs and approved reusable scripts live at `~/.agents/project-os`.
+- Shared reusable skills live at `~/.agents/skills`.
+- Resolve `docs/operating_system/...` and approved `scripts/...` references from the shared Project OS installation when those paths are absent in the project.
+- Keep project-specific `docs/intent/`, `docs/superpowers/`, `repo_config/`, code, tests, and scripts in this repository.
+
 ## Subagent Routing
 
 Discover profiles from `agents/*.toml`. Positive `rank` values identify ranked

@@ -122,7 +122,8 @@ DeepAgents and does not silently switch runtimes.
 Tura-enabled setup requires one paired executable/provider-config path:
 
 ```powershell
-./scripts/setup_deepagents_runtime.ps1 -SecretFile <local-env-file> `
+$projectOsScripts = Join-Path $HOME ".agents\project-os\scripts"
+& (Join-Path $projectOsScripts "setup_deepagents_runtime.ps1") -SecretFile <local-env-file> `
   -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>
 ```
 
@@ -229,7 +230,8 @@ decision, require `PASS`, `FAIL`, or `BLOCKED` first.
 Install or refresh local DeepAgents runtime:
 
 ```powershell
-./scripts/setup_deepagents_runtime.ps1 -SecretFile <local-env-file>
+$projectOsScripts = Join-Path $HOME ".agents\project-os\scripts"
+& (Join-Path $projectOsScripts "setup_deepagents_runtime.ps1") -SecretFile <local-env-file>
 ```
 
 Installer writes `%USERPROFILE%\.local\share\dcode-project\` runtime state
@@ -238,10 +240,10 @@ and `%USERPROFILE%\.local\bin\dcode-project.{cmd,ps1}` plus
 `project-delegate.{cmd,ps1}`. The pinned DeepAgents
 tool stays isolated under the runtime root, so concurrent repositories do not
 replace one shared `dcode.exe`. Wrapper resolves current Git workspace and runs
-tracked `scripts/dcode_project.py`. Run `dcode-project`
+shared `~/.agents/project-os/scripts/dcode_project.py`. Run `dcode-project`
 from selected repository workspace with `--role <profile>`; do not
 pass `--model`. Setup uses the version pinned by
-`scripts/setup_deepagents_runtime.ps1`, requires Python 3.12 or newer, verifies
+`~/.agents/project-os/scripts/setup_deepagents_runtime.ps1`, requires Python 3.12 or newer, verifies
 the installed `dcode` version, and disables child auto-update.
 Setup fails when the configured `DEEPAGENTS_HOME` path contains `.mcp.json`;
 the default is `%USERPROFILE%\.deepagents`. Remove that direct DeepAgents MCP

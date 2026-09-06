@@ -26,6 +26,11 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
 import re
 from typing import Any
 
@@ -83,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo-root",
-        default=str(Path(__file__).resolve().parents[1]),
+        default=None,
         help="Repository root. Defaults to this script's repository.",
     )
     parser.add_argument(
@@ -384,7 +389,11 @@ def report(findings: list[Finding]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    root = Path(args.repo_root).resolve()
+    try:
+        root = resolve_repo_root(args.repo_root)
+    except RuntimeError as exc:
+        print(f"Template validation blocked: {exc}")
+        return 2
     rules, metadata_findings = discover_template_rules(root)
     findings = [
         *metadata_findings,

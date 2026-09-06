@@ -18,12 +18,13 @@ lifecycle:
 
 from pathlib import Path
 
+from project_os_test_paths import runtime_doc
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def read(path: str) -> str:
-    return (REPO_ROOT / path).read_text(encoding="utf-8")
+    return runtime_doc(path).read_text(encoding="utf-8")
 
 
 def normalized(path: str) -> str:

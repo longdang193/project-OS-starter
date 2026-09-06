@@ -22,9 +22,10 @@ import uuid
 from pathlib import Path
 from shutil import rmtree
 
+from project_os_test_paths import runtime_script
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VALIDATOR = REPO_ROOT / "scripts" / "validate_repo_config.py"
+VALIDATOR = runtime_script("validate_repo_config.py")
 
 
 def run_validator(*args: str) -> subprocess.CompletedProcess[str]:
@@ -43,6 +44,10 @@ def valid_starter_kit_manifest() -> dict[str, object]:
         "copyPaths": ["AGENTS.md"],
         "requiredPaths": ["repo_config/planning_artifact_schema.yaml"],
         "forbiddenPaths": [".codex"],
+        "sharedPaths": {
+            "docs": ["docs/operating_system"],
+            "scripts": ["scripts/validate_repo_contracts.py"],
+        },
     }
 
 
@@ -94,6 +99,8 @@ def test_validator_fails_when_publication_config_is_missing_required_keys() -> N
             str(publication_config),
             "--starter-kit-manifest",
             str(starter_kit_manifest),
+            "--repo-root",
+            str(test_root),
         )
 
         assert result.returncode == 1
@@ -117,6 +124,8 @@ def test_validator_allows_missing_starter_kit_manifest_file() -> None:
             str(publication_config),
             "--starter-kit-manifest",
             str(test_root / "repo_config" / "starter-kit-manifest.json"),
+            "--repo-root",
+            str(test_root),
         )
 
         assert result.returncode == 0

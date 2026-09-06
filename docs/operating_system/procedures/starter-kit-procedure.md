@@ -1,11 +1,24 @@
 # Starter-Kit Procedure
 
-This document defines how maintainers rebuild, validate, and review the
-generated `project-OS-starter-kit` from source.
+This document defines how maintainers deploy the user-global Project OS runtime
+and rebuild, validate, and review the thin generated `project-OS-starter-kit`
+from source.
 
 ## Rule
 
 `project-OS-starter` is the only source of truth.
+
+Deploy reusable Project OS docs, scripts, and skills once per user before
+creating or refreshing consumer projects:
+
+```powershell
+py -3 scripts/deploy_agent_runtime.py --target all
+```
+
+This writes marker-owned files under `~/.agents/project-os` and
+`~/.agents/skills`. Consumer projects keep only project state and local
+contracts. Do not copy `docs/operating_system` or shared scripts into each
+consumer project.
 
 Do not edit generated `project-OS-starter-kit` output directly.
 
@@ -19,7 +32,7 @@ Rebuild the starter kit after changing any shipped source-owned surface such as:
 - `AGENTS.md`
 - shipped root instruction docs (`GEMINI.md`, `CLAUDE.md`)
 - `.agents/skills/`
-- shipped `docs/operating_system/` docs
+- shared `docs/operating_system/` docs
 - shipped `repo_config/` starter inputs
 - shipped validator scripts or shipped tests
 - `repo_config/starter-kit-manifest.json`
@@ -42,15 +55,17 @@ from `project-OS-starter` before creating or refreshing a consumer repository.
 
 ## Rebuild Steps
 
-1. validate repo config inputs
-2. rebuild the kit
-3. validate generated kit shape and content
-4. inspect generated diff before publishing or copying elsewhere
+1. deploy shared Project OS runtime from canonical source
+2. validate repo config inputs
+3. rebuild the thin kit
+4. validate generated kit shape and content
+5. inspect generated diff before publishing or copying elsewhere
 
 Commands:
 
 ```powershell
 py -3 scripts/validate_repo_config.py
+py -3 scripts/deploy_agent_runtime.py --target all
 py -3 scripts/build_starter_kit.py
 py -3 scripts/validate_starter_kit.py
 ```
@@ -67,6 +82,7 @@ Before treating a rebuild as ready, confirm:
 
 - generated root contains shipped `AGENTS.md`, `GEMINI.md`, and `CLAUDE.md`
 - required starter directories exist under `docs/superpowers/`
+- shared docs/scripts are absent from generated kit output and present in the global installation
 - forbidden factory-only paths are absent
 - forbidden source-only references do not appear in shipped human-facing docs,
   skills

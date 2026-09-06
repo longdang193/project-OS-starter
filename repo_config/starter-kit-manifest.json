@@ -5,7 +5,6 @@
     ".agents/skills",
     ".gitignore",
     "AGENTS.md",
-    "docs/operating_system",
     "generated_agents/antigravity/GEMINI.md",
     "generated_agents/claude/CLAUDE.md",
     "requirements.txt",
@@ -13,24 +12,8 @@
     "repo_config/publication-config.json",
     "scripts/new_audit.ps1",
     "scripts/new_brainstorming_report.ps1",
-    "scripts/planning_artifact_schema.py",
-    "scripts/publish_public_repo.ps1",
     "scripts/setup_hooks.ps1",
     "scripts/setup_hooks.sh",
-    "scripts/dcode_project.py",
-    "scripts/agent_profile_registry.py",
-    "scripts/herdr_main_launcher.py",
-    "scripts/opendesign_profile_adapter.py",
-    "scripts/setup_deepagents_runtime.ps1",
-    "scripts/patch_deepagents_runtime.py",
-    "scripts/validate_agent_metadata_schema.py",
-    "scripts/validate_env_gitignore_contract.py",
-    "scripts/validate_learning_materials_format.py",
-    "scripts/validate_planning_lifecycle.py",
-    "scripts/validate_prompt_metadata_schema.py",
-    "scripts/validate_repo_config.py",
-    "scripts/validate_repo_contracts.py",
-    "scripts/validate_template_required_sections.py",
     "tests/test_setup_hooks.py",
     "tests/test_validate_agent_metadata_schema.py",
     "tests/test_validate_learning_materials_format.py",
@@ -44,7 +27,8 @@
     "tests/test_herdr_main_launcher.py",
     "tests/test_opendesign_profile_adapter.py",
     "tests/test_skill_chief_of_staff.py",
-    "tests/test_validate_template_required_sections.py"
+    "tests/test_validate_template_required_sections.py",
+    "tests/project_os_test_paths.py"
   ],
   "requiredPaths": [
     ".gitignore",
@@ -53,20 +37,11 @@
     "CLAUDE.md",
     ".agents/skills/skill-using-superpowers/SKILL.md",
     "agents",
-    "scripts/agent_profile_registry.py",
-    "scripts/herdr_main_launcher.py",
-    "scripts/opendesign_profile_adapter.py",
-    "scripts/setup_deepagents_runtime.ps1",
-    "scripts/patch_deepagents_runtime.py",
-    "scripts/dcode_project.py",
-    "docs/operating_system/governance/repo-governance.md",
-    "docs/operating_system/tooling/runtime-tool-resolution.md",
     "docs/superpowers/plans",
     "docs/superpowers/specs",
     "repo_config/planning_artifact_schema.yaml",
     "repo_config/publication-config.json",
-    "requirements.txt",
-    "scripts/validate_repo_contracts.py"
+    "requirements.txt"
   ],
   "forbiddenPaths": [
     ".codex",
@@ -83,15 +58,32 @@
     ".deepagents"
   ],
   "omitPaths": [
-    "docs/operating_system/procedures/runtime-adapter-procedure.md",
-    "docs/operating_system/procedures/starter-kit-procedure.md",
-    "docs/operating_system/procedures/frontend-backend-integration-mcp-setup.md",
-    "docs/operating_system/templates/agents/root-AGENTS.template.md",
-    "docs/operating_system/runtime",
-    "docs/operating_system/prompt_templates/runtime-deploy-and-verify-prompt.md"
   ],
   "createEmptyDirs": [
     "docs/superpowers/plans",
     "docs/superpowers/specs"
-  ]
+  ],
+  "sharedPaths": {
+    "docs": [
+      "docs/operating_system"
+    ],
+    "scripts": [
+    "scripts/planning_artifact_schema.py",
+      "scripts/project_root.py",
+      "scripts/dcode_project.py",
+      "scripts/agent_profile_registry.py",
+      "scripts/herdr_main_launcher.py",
+      "scripts/opendesign_profile_adapter.py",
+      "scripts/setup_deepagents_runtime.ps1",
+      "scripts/patch_deepagents_runtime.py",
+      "scripts/validate_agent_metadata_schema.py",
+      "scripts/validate_env_gitignore_contract.py",
+      "scripts/validate_learning_materials_format.py",
+      "scripts/validate_planning_lifecycle.py",
+      "scripts/validate_prompt_metadata_schema.py",
+      "scripts/validate_repo_config.py",
+      "scripts/validate_repo_contracts.py",
+      "scripts/validate_template_required_sections.py"
+    ]
+  }
 }

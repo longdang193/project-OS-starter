@@ -1,6 +1,7 @@
 # Runtime Surfaces
 
-This document records provider-native deployment for rules, skills, root instructions, and hooks.
+This document records provider-native deployment for the user-global Project OS
+runtime, rules, skills, root instructions, and hooks.
 
 ## Canonical Sources
 
@@ -9,6 +10,8 @@ This document records provider-native deployment for rules, skills, root instruc
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
+| `~/.agents/project-os/docs/operating_system/` | User-global deployed operating-system docs |
+| `~/.agents/project-os/scripts/` | User-global deployed reusable Project OS scripts |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
 | `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex or DeepAgents lane through Herdr |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
@@ -28,6 +31,7 @@ This document records provider-native deployment for rules, skills, root instruc
 | Provider | Deploy root | Notes |
 | --- | --- | --- |
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
+| Shared Project OS runtime | `~/.agents/project-os` | Marker-owned sync of approved docs/scripts; one installation serves local projects. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
 | DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects the canonical profile model for primary launch; validates controller-owned handoff; projects approved Codex `[mcp_servers]` only with explicit `--mcp-select`; keeps `--no-mcp` by default; uses temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
@@ -36,6 +40,10 @@ This document records provider-native deployment for rules, skills, root instruc
 ## Policy
 
 - Canonical repo sources remain source of truth.
+- `~/.agents/project-os` is one user-global installation, not project state. Do not place plans, specs, project intent, project config, product code, or project tests there.
+- `deploy_agent_runtime.py` syncs approved shared docs/scripts and records ownership metadata. `--check` reports missing, stale, drifted, or foreign-owned bundle files.
+- Globalized scripts resolve project root from explicit `--repo-root`, then Git top-level, and block when neither exists.
+- Project-local paths remain fallback when the shared installation is absent or marker ownership fails.
 - `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, it binds the exact lane profile and `dcode-project` resolves and projects that profile into DeepAgents. Herdr owns top-level session/pane lifecycle and outer observation, while `dcode-project` owns DeepAgents worker lifecycle. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
 - Codex Herdr probes use one resolved `CODEX_HOME`; the launcher passes it to Herdr and Codex child processes and blocks when project and home `hooks.json` both define `Stop` hooks.
 - Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. The launcher and its tests own task-delivery mechanics; CoS accepts only final delivery evidence, never readiness or intent alone. The launcher does not use `--until working` because that can match unrelated active work.

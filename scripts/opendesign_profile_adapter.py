@@ -11,6 +11,10 @@ try:
     from agent_profile_registry import AgentProfile, load_agent_profiles
 except ModuleNotFoundError:
     from scripts.agent_profile_registry import AgentProfile, load_agent_profiles
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
 
 
 DEFAULT_AGENT = "codex"
@@ -78,8 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agents-root",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "agents",
+        default=None,
     )
+    parser.add_argument("--repo-root")
     parser.add_argument("--request-id")
     return parser
 
@@ -87,8 +92,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        agents_root = args.agents_root or (resolve_repo_root(args.repo_root) / "agents")
+    except RuntimeError as exc:
+        print(f"OpenDesign profile projection blocked: {exc}", file=sys.stderr)
+        return 2
+    try:
         request = build_start_run_request(
-            agents_root=args.agents_root,
+            agents_root=agents_root,
             profile_name=args.profile,
             project=args.project,
             task=args.task,

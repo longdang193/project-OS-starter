@@ -25,6 +25,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
+
 
 REQUIRED_ENTRIES = (".env", ".env.*", "*.private.*", "*.local.*")
 EXAMPLE_ALLOWLIST_ENTRY = "!.env.example"
@@ -36,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo-root",
-        default=str(Path(__file__).resolve().parents[1]),
+        default=None,
         help="Repository root path.",
     )
     return parser
@@ -76,7 +81,11 @@ def validate_env_gitignore_contract(root: Path) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    root = Path(args.repo_root).resolve()
+    try:
+        root = resolve_repo_root(args.repo_root)
+    except RuntimeError as exc:
+        print(f"Environment contract validation blocked: {exc}")
+        return 2
 
     issues = validate_env_gitignore_contract(root)
     if issues:

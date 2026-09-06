@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from project_os_test_paths import add_runtime_import_roots
+
+add_runtime_import_roots()
 from scripts.validate_learning_materials_format import validate_card_blocks
 
 

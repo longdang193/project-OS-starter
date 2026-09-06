@@ -127,7 +127,9 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
 
     assert any("validate_template_required_sections.py" in step for step in rendered)
     assert any(
-        "validate_template_required_sections.py --require-template-selection" in step
+        "validate_template_required_sections.py" in step
+        and "--repo-root" in step
+        and "--require-template-selection" in step
         for step in rendered
     )
     assert any("validate_prompt_metadata_schema.py" in step for step in rendered)

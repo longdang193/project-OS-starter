@@ -6,14 +6,15 @@ import sys
 
 import pytest
 
+from project_os_test_paths import runtime_script
 
 ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_ROOT = ROOT / "scripts"
+SCRIPTS_ROOT = runtime_script("agent_profile_registry.py").parent
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
 SPEC = importlib.util.spec_from_file_location(
-    "agent_profile_registry", SCRIPTS_ROOT / "agent_profile_registry.py"
+    "agent_profile_registry", runtime_script("agent_profile_registry.py")
 )
 assert SPEC is not None and SPEC.loader is not None
 REGISTRY = importlib.util.module_from_spec(SPEC)

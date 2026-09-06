@@ -19,6 +19,10 @@ try:
     from agent_profile_registry import load_agent_profiles
 except ModuleNotFoundError:
     from scripts.agent_profile_registry import load_agent_profiles
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
 
 
 
@@ -168,15 +172,7 @@ def _read_env_value(path: Path, key: str) -> str:
 
 
 def _repo_root() -> Path:
-    completed = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if completed.returncode:
-        raise RuntimeError("Run dcode-project inside a Git repository.")
-    return Path(completed.stdout.strip()).resolve()
+    return resolve_repo_root()
 
 
 def _load_roles(

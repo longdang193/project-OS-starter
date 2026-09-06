@@ -3,6 +3,11 @@ import argparse
 from pathlib import Path
 import yaml
 
+try:
+    from project_root import resolve_repo_root
+except ModuleNotFoundError:
+    from scripts.project_root import resolve_repo_root
+
 REQUIRED = {"name", "description"}
 ALLOWED = REQUIRED | {"distribution_tier"}
 
@@ -27,9 +32,14 @@ def validate(root: Path) -> list[str]:
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description="Validate lean prompt metadata.")
-    parser.add_argument("--repo-root",default=str(Path(__file__).resolve().parents[1]))
+    parser.add_argument("--repo-root")
     args=parser.parse_args(argv)
-    findings=validate(Path(args.repo_root))
+    try:
+        root = resolve_repo_root(args.repo_root)
+    except RuntimeError as exc:
+        print(f"Prompt metadata validation blocked: {exc}")
+        return 2
+    findings=validate(root)
     if findings:
         print("Prompt metadata validation failed:")
         for finding in findings: print(f"- {finding}")

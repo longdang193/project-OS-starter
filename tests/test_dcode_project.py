@@ -29,9 +29,11 @@ from pathlib import Path
 
 import pytest
 
+from project_os_test_paths import add_runtime_import_roots, runtime_script
 
+add_runtime_import_roots()
 ROOT = Path(__file__).resolve().parent.parent
-LAUNCHER_PATH = ROOT / "scripts" / "dcode_project.py"
+LAUNCHER_PATH = runtime_script("dcode_project.py")
 
 
 def load_module(name: str, path: Path):
@@ -1399,7 +1401,7 @@ def test_handoff_stdin_preserves_binary_file_safety_context(tmp_path: Path) -> N
 
 
 def test_setup_launcher_uses_current_repository_source() -> None:
-    setup = (ROOT / "scripts" / "setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
+    setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
 
     assert "Copy-Item" not in setup
     assert "git rev-parse --show-toplevel" in setup
@@ -1438,7 +1440,7 @@ def test_generated_project_delegate_guard_returns_contract_exit_code(tmp_path: P
     if powershell is None:
         pytest.skip("PowerShell is required to execute generated wrapper")
 
-    setup = (ROOT / "scripts" / "setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
+    setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
     setup = setup.replace("\r\n", "\n")
     start_marker = "$delegateWrapper = @'\n"
     end_marker = "\n'@\n"

@@ -180,20 +180,20 @@ and `skills/demo/SKILL.md`.
     )
     frontmatter = extract_frontmatter(rendered)
 
-    required_read_path = DEPLOY._runtime_absolute_string(target_root, "docs/operating_system/governance/repo-governance.md")
-    required_output_path = DEPLOY._runtime_absolute_string(target_root, "docs/superpowers/plans/demo-plan.md")
+    required_read_path = DEPLOY._repo_absolute_string(root, "docs/operating_system/governance/repo-governance.md")
+    required_output_path = DEPLOY._repo_absolute_string(root, "docs/superpowers/plans/demo-plan.md")
     required_read_yaml = required_read_path.replace("\\", "\\\\")
     required_output_yaml = required_output_path.replace("\\", "\\\\")
     assert f'- "{required_read_yaml}"' in rendered
     assert f'- "{required_output_yaml}"' in rendered
     assert frontmatter["hooks"]["pre"] == ["python scripts/run_central_config_checks.py"]
     assert frontmatter["required_reads"] == [required_read_path]
-    must_read_doc_path = DEPLOY._runtime_absolute_string(
-        target_root,
+    must_read_doc_path = DEPLOY._repo_absolute_string(
+        root,
         "docs/operating_system/prompt_templates/implementation-next-action-gate-prompt.md",
     )
     must_read_script_path = DEPLOY._repo_absolute_string(root, "scripts/get_gitnexus_freshness.ps1")
-    link_doc_path = DEPLOY._runtime_absolute_string(target_root, "docs/project-plan-guide.md")
+    link_doc_path = DEPLOY._repo_absolute_string(root, "docs/project-plan-guide.md")
     link_skill_path = str((runtime_skill_dir / "implementer-prompt.md").resolve())
     assert f"`{must_read_doc_path}`" in rendered
     assert f"`{must_read_script_path}`" in rendered
@@ -245,7 +245,7 @@ tags: []
     assert len(pairs) == 1
     _, destination, rendered = pairs[0]
     frontmatter = extract_frontmatter(rendered)
-    required_read_path = DEPLOY._runtime_absolute_string(target_root, "docs/operating_system/governance/repo-governance.md")
+    required_read_path = DEPLOY._repo_absolute_string(root, "docs/operating_system/governance/repo-governance.md")
     required_read_yaml = required_read_path.replace("\\", "\\\\")
     assert destination == target_root / "skills" / "demo" / "SKILL.md"
     assert f'- "{required_read_yaml}"' in rendered
@@ -443,3 +443,111 @@ def test_shared_skill_check_detects_missing_and_stale_repo_owned_files(tmp_path:
 
     assert f"Missing deployed shared skill file: {(deployed_skill / 'SKILL.md').as_posix()}" in issues
     assert f"Stale deployed shared skill file: {(deployed_skill / 'extra.md').as_posix()}" in issues
+
+
+def _shared_asset_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "repo"
+    (root / "repo_config").mkdir(parents=True)
+    (root / "docs" / "operating_system").mkdir(parents=True)
+    (root / "scripts").mkdir(parents=True)
+    (root / "docs" / "operating_system" / "rule.md").write_text("rule\n", encoding="utf-8")
+    (root / "scripts" / "tool.py").write_text("print('tool')\n", encoding="utf-8")
+    (root / "repo_config" / "starter-kit-manifest.json").write_text(
+        json.dumps(
+            {
+                "sharedPaths": {
+                    "docs": ["docs/operating_system"],
+                    "scripts": ["scripts/tool.py"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def _apply_shared_pairs(pairs: list[tuple[Path | None, Path, str | None]]) -> None:
+    for source, destination, rendered in pairs:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source is None:
+            destination.write_text(rendered + "\n", encoding="utf-8")
+        else:
+            destination.write_text(rendered or source.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def test_shared_assets_deploy_and_update_without_adoption(tmp_path: Path, monkeypatch) -> None:
+    root = _shared_asset_repo(tmp_path)
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", tmp_path / "global" / "project-os")
+
+    changes, issues, pairs = DEPLOY._shared_asset_plan(root, "docs", adopt=False)
+    assert issues == []
+    assert any("operating_system/rule.md" in change for change in changes)
+    _apply_shared_pairs(pairs)
+
+    (root / "docs" / "operating_system" / "rule.md").write_text("updated\n", encoding="utf-8")
+    _, issues, pairs = DEPLOY._shared_asset_plan(root, "docs", adopt=False)
+    assert issues == []
+    assert any(destination.name == "rule.md" for _, destination, _ in pairs)
+
+
+def test_unowned_shared_asset_collision_requires_adoption(tmp_path: Path, monkeypatch) -> None:
+    root = _shared_asset_repo(tmp_path)
+    target = tmp_path / "global" / "project-os"
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", target)
+    collision = target / "docs" / "operating_system" / "rule.md"
+    collision.parent.mkdir(parents=True)
+    collision.write_text("external\n", encoding="utf-8")
+
+    _, issues, pairs = DEPLOY._shared_asset_plan(root, "docs", adopt=False)
+    assert pairs == []
+    assert any("--adopt-shared-asset docs" in issue for issue in issues)
+
+
+def test_shared_asset_check_detects_missing_and_stale_files(tmp_path: Path, monkeypatch) -> None:
+    root = _shared_asset_repo(tmp_path)
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", tmp_path / "global" / "project-os")
+    _, issues, pairs = DEPLOY._shared_asset_plan(root, "scripts", adopt=False)
+    assert issues == []
+    _apply_shared_pairs(pairs)
+    target_root = DEPLOY.SHARED_ASSETS_TARGET / "scripts"
+    (target_root / "stale.py").write_text("stale\n", encoding="utf-8")
+    (target_root / "__pycache__").mkdir()
+    (target_root / "__pycache__" / "tool.cpython-313.pyc").write_bytes(b"cache")
+    (target_root / "tool.py").unlink()
+
+    issues = DEPLOY._check_shared_assets(root)
+    assert f"Missing deployed shared asset file: {(target_root / 'tool.py').as_posix()}" in issues
+    assert f"Stale deployed shared asset file: {(target_root / 'stale.py').as_posix()}" in issues
+    assert not any("__pycache__" in issue for issue in issues)
+
+
+def test_shared_asset_check_ignores_text_line_ending_changes(tmp_path: Path, monkeypatch) -> None:
+    root = _shared_asset_repo(tmp_path)
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", tmp_path / "global" / "project-os")
+    _, issues, pairs = DEPLOY._shared_asset_plan(root, "docs", adopt=False)
+    assert issues == []
+    _apply_shared_pairs(pairs)
+    _, issues, pairs = DEPLOY._shared_asset_plan(root, "scripts", adopt=False)
+    assert issues == []
+    _apply_shared_pairs(pairs)
+    (DEPLOY.SHARED_ASSETS_TARGET / "docs" / "operating_system" / "rule.md").write_bytes(b"rule\r\n")
+
+    assert DEPLOY._check_shared_assets(root) == []
+
+
+def test_runtime_paths_use_owned_global_shared_asset(tmp_path: Path, monkeypatch) -> None:
+    root = _shared_asset_repo(tmp_path)
+    target = tmp_path / "global" / "project-os"
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", target)
+    _, issues, pairs = DEPLOY._shared_asset_plan(root, "docs", adopt=False)
+    assert issues == []
+    _apply_shared_pairs(pairs)
+
+    rendered = DEPLOY._absolute_text_path(
+        "docs/operating_system/rule.md",
+        repo_root=root,
+        target_root=tmp_path / "runtime",
+        current_runtime_dir=tmp_path / "runtime" / "skills" / "demo",
+    )
+
+    assert rendered == str((target / "docs" / "operating_system" / "rule.md").resolve())

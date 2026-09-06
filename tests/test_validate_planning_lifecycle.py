@@ -24,8 +24,10 @@ import subprocess
 import sys
 import uuid
 
+from project_os_test_paths import runtime_script
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VALIDATOR = REPO_ROOT / "scripts" / "validate_planning_lifecycle.py"
+VALIDATOR = runtime_script("validate_planning_lifecycle.py")
 
 
 def make_test_root() -> Path:
