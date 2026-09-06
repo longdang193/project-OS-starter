@@ -74,6 +74,30 @@ independent blocker. Task-local uncertainty stays within the lane when it can
 be resolved without changing contract, ownership, authority, or proof. CoS
 acceptance remains required for task completion.
 
+## Adaptive Lane Grant
+
+CoS may assign a transient Lane Grant after successful top-level lane
+assignment. The grant narrows task Authority and runtime resources; it never
+expands ownership, allowed paths, dependencies, or proof obligations. The
+durable invariant is `subordinate grant ⊆ MAIN AGENT grant ⊆ task Authority`.
+
+Runtime v1 supports only enforceable resource values:
+
+- turns: `native` or positive integer;
+- wall-clock seconds: `native` or positive integer;
+- capability exposure intent resolved through Runtime Tool Resolution.
+
+MAIN AGENT owns tactical choices inside its grant. Delegation and parallelism
+remain policy-level autonomy until an executor can enforce those limits. The
+launcher records concrete selectors, requested values, effective values,
+enforcement mode, and a transient `grant_digest` in launch evidence.
+
+Grant changes never hot-mutate a live runtime. CoS must retire the current
+top-level lane, prove no live process owns its worktree, reconcile plan plus
+Git, then redispatch the same plan task with a newly computed transient grant.
+DeepAgents direct MCP projection remains default-deny. Codex strict limits that
+the runtime cannot enforce remain `native` or return `BLOCKED`.
+
 CoS may dispatch only top-level MAIN AGENT lanes through Herdr. Codex lanes
 use top-level Codex main agents; DeepAgents lanes use the bounded
 `dcode-project` pane process. Every CoS lane dispatch goes through Herdr; CoS

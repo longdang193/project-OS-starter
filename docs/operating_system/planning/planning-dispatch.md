@@ -212,3 +212,18 @@ For mixed plans, CoS coordinates only eligible `codex` and `deepagents` lanes.
 When a dependency-ready task selects `tura`, CoS does not translate or reroute
 it; the existing Tura path owns execution. CoS resumes from plan and Git after
 reconciliation.
+
+### Lane Grant Boundary
+
+Plan task `Authority` is durable maximum authority. CoS may assign a transient
+Lane Grant that narrows resources and capability exposure; MAIN AGENT owns
+tactical choices inside its grant. Runtime v1 exposes only enforceable
+resource values: `turns` and `wall_clock_seconds`, each `native` or a positive
+integer. Delegation and parallelism remain policy-level autonomy until an
+executor can enforce those limits.
+
+DeepAgents direct MCP projection remains default-deny. Runtime Tool Resolution
+owns capability requirements and the adapter resolves them to concrete
+executor selectors. Concrete selectors belong in launch evidence, not a new
+durable Project-OS registry. Strict requests unsupported by an executor return
+`BLOCKED`; prompt wording is not runtime enforcement.

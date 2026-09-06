@@ -19,6 +19,22 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "top-level lane selection" in skill
 
 
+def test_chief_of_staff_defines_transient_lane_grant_boundary() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    normalized = " ".join(skill.split())
+    for text in (
+        "transient Lane Grant",
+        "turns: `native` or positive integer",
+        "wall-clock seconds: `native` or positive integer",
+        "MAIN AGENT owns tactical choices inside its grant",
+        "grant_digest",
+        "retire the current top-level lane",
+        "DeepAgents direct MCP projection remains default-deny",
+        "Delegation and parallelism remain policy-level autonomy",
+    ):
+        assert text in normalized
+
+
 def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
     for text in (

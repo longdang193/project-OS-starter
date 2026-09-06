@@ -33,6 +33,14 @@ For Git-tracked coordinated work:
 - Runtime threads, agent sessions, DeepAgents task state, Codex task IDs,
   `dcode -r`, temporary todos, and memory are never repository coordination
   state.
+- A transient Lane Grant may narrow task resources and capability exposure but
+  never expand task Authority, ownership, allowed paths, or proof obligations.
+  The durable invariant is `subordinate grant ⊆ MAIN AGENT grant ⊆ task Authority`.
+- Launcher evidence may include a transient `grant_digest` and launch-attempt
+  identity. These are runtime evidence, not coordination state or recovery truth.
+- Grant changes use retire-and-redispatch: retire the current lane, prove no
+  live process owns its worktree, reconcile plan plus Git, then launch the same
+  plan task with a newly computed transient grant.
 - Resume only by reconciling plan plus Git.
 - Block on plan/Git mismatch, unknown checkpoint, invalid active-task state,
   out-of-scope changes, unresolved blockers, or unsafe workspace identity.

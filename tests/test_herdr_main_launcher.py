@@ -223,6 +223,80 @@ def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     assert evidence["deepagents"]["mcp_selection"] == ["context7.query_docs"]
 
 
+def test_normalize_lane_grant_rejects_unsupported_codex_turn_limit() -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="turn budget"):
+        LAUNCHER._normalize_lane_grant(
+            executor="codex",
+            grant_turns="8",
+            grant_wall_clock_seconds="native",
+            mcp_select=[],
+        )
+
+
+def test_normalize_lane_grant_rejects_wall_clock_above_watchdog() -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="1800"):
+        LAUNCHER._normalize_lane_grant(
+            executor="deepagents",
+            grant_turns="native",
+            grant_wall_clock_seconds="1801",
+            mcp_select=[],
+        )
+
+
+def test_resolve_launch_projects_deepagents_lane_grant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"),
+        "normal",
+        "9router",
+        "combo-normal",
+        20,
+        True,
+        "test",
+        "do not modify files",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda cwd, session, pane, herdr, **kwargs: {
+            "pane": {"cwd": str(cwd)},
+            "process_info": {},
+        },
+    )
+
+    command, evidence = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="deepagents-probe",
+        pane="w1:p1",
+        cwd=ROOT,
+        expected_base="HEAD",
+        executor="deepagents",
+        grant_turns="8",
+        grant_wall_clock_seconds="600",
+        task="Return exactly GRANT_OK",
+    )
+
+    assert "--max-turns" in command
+    assert command[command.index("--max-turns") + 1] == "8"
+    assert "--timeout" in command
+    assert command[command.index("--timeout") + 1] == "600"
+    assert evidence["registry_launcher"]["lane_grant"] == {
+        "turns": {"requested": 8, "effective": 8, "enforcement": "runtime"},
+        "wall_clock_seconds": {
+            "requested": 600,
+            "effective": 600,
+            "enforcement": "runtime",
+        },
+        "outer_watchdog_seconds": 1800,
+        "mcp_select": [],
+    }
+    assert len(evidence["registry_launcher"]["grant_digest"]) == 64
+
+
 def test_resolve_launch_quotes_mcp_selectors_for_powershell(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

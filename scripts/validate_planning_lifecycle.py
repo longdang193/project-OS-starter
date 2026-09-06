@@ -128,6 +128,26 @@ def _task_sections(text: str) -> list[tuple[str, str]]:
     ]
 
 
+def _validate_task_authority(path: Path, task_name: str, task_text: str) -> list[Finding]:
+    rel = path.as_posix()
+    findings: list[Finding] = []
+    authority_headers = re.findall(r"(?im)^\*\*Authority:\*\*\s*$", task_text)
+    if len(authority_headers) != 1:
+        findings.append(Finding("planning_execution_error", rel, f"{task_name} requires `Authority`"))
+        return findings
+    for label in ("Preauthorized local actions", "Stop for"):
+        values = _field_values(task_text, label)
+        if len(values) != 1 or not values[0].strip("` <>"):
+            findings.append(
+                Finding(
+                    "planning_execution_error",
+                    rel,
+                    f"{task_name} Authority requires `{label}`",
+                )
+            )
+    return findings
+
+
 def _unchecked_checklist_items(text: str) -> list[str]:
     return re.findall(r"(?im)^\s*-\s*\[\s\]\s+(.+?)\s*$", text)
 
@@ -249,6 +269,7 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
     task_sections = _task_sections(text)
     if enforce_contract and not task_sections:
         findings.append(Finding("planning_execution_error", rel, "requires at least one `### Task N` section"))
+    require_task_authority = current and coordination == "git-tracked"
     for task_name, task_text in task_sections:
         for label, allowed, required in (
             ("Template Profile", template_profiles, enforce_contract),
@@ -274,6 +295,8 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
                         f"{task_name} {label} must be one of: {', '.join(sorted(allowed))}",
                     )
                 )
+        if require_task_authority:
+            findings.extend(_validate_task_authority(path, task_name, task_text))
 
     if current and "Active task(s)" in text:
         findings.append(Finding("planning_execution_error", rel, "current plans must derive active state from the task ledger; remove `Active task(s)`"))

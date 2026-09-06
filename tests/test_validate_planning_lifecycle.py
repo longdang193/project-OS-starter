@@ -93,6 +93,10 @@ parent_spec: none
 **Template Profile:**
 - Controller-selected: `none (lead controller)`
 
+**Authority:**
+- Preauthorized local actions: local test actions
+- Stop for: scope or base changes
+
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 {ledger}
@@ -244,6 +248,65 @@ def test_current_plan_rejects_unknown_coordination_without_skipping_checks() -> 
 
         assert result.returncode == 1
         assert "Coordination must be one of: git-tracked, none" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_active_git_tracked_plan_requires_task_authority() -> None:
+    root = make_test_root()
+    try:
+        plan = git_tracked_plan(
+            ledger="| Task 1 | `active` | current | codex | none | `test-one` | pending |",
+        ).replace(
+            "**Authority:**\n- Preauthorized local actions: local test actions\n- Stop for: scope or base changes\n\n",
+            "",
+        ).replace("- Active task(s): `Task 1`\n", "")
+        write_text(root / "docs" / "superpowers" / "plans" / "demo-plan.md", plan)
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "Task 1 requires `Authority`" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_active_git_tracked_plan_requires_exact_authority_fields() -> None:
+    root = make_test_root()
+    try:
+        plan = git_tracked_plan(
+            ledger="| Task 1 | `active` | current | codex | none | `test-one` | pending |",
+        ).replace(
+            "- Preauthorized local actions: local test actions",
+            "- Preauthorized: legacy wording",
+        ).replace("- Active task(s): `Task 1`\n", "")
+        write_text(root / "docs" / "superpowers" / "plans" / "demo-plan.md", plan)
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "requires `Preauthorized local actions`" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_completed_git_tracked_plan_keeps_legacy_authority_wording() -> None:
+    root = make_test_root()
+    try:
+        plan = git_tracked_plan(
+            status="completed",
+            coordination_schema=1,
+            ledger="| Task 1 | `completed` | current | codex | none | `test-one` | recorded proof |",
+        ).replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
+        plan = plan.replace(
+            "- Preauthorized local actions: local test actions",
+            "- Preauthorized: legacy wording",
+        )
+        write_text(root / "docs" / "superpowers" / "plans" / "demo-plan.md", plan)
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
     finally:
         rmtree(root, ignore_errors=True)
 

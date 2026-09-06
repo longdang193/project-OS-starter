@@ -28,6 +28,7 @@ _CODEX_PROMPT_TIMEOUT_MS = "30000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
+_NATIVE_GRANT_VALUE = "native"
 
 
 def _herdr_environment() -> dict[str, str]:
@@ -292,6 +293,64 @@ def _codex_assignment_command(
     ]
 
 
+def _parse_grant_value(value: str | int | None, label: str) -> int | str:
+    if value is None or (isinstance(value, str) and value.strip().lower() == _NATIVE_GRANT_VALUE):
+        return _NATIVE_GRANT_VALUE
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise LaunchBlocked(f"{label} must be `native` or a positive integer.") from exc
+    if parsed <= 0:
+        raise LaunchBlocked(f"{label} must be `native` or a positive integer.")
+    return parsed
+
+
+def _normalize_lane_grant(
+    *,
+    executor: str,
+    grant_turns: str | int | None,
+    grant_wall_clock_seconds: str | int | None,
+    mcp_select: list[str] | None,
+) -> dict[str, Any]:
+    turns = _parse_grant_value(grant_turns, "Grant turns")
+    wall_clock_seconds = _parse_grant_value(
+        grant_wall_clock_seconds,
+        "Grant wall-clock seconds",
+    )
+    if executor == "codex" and turns != _NATIVE_GRANT_VALUE:
+        raise LaunchBlocked("Codex strict turn budget is unsupported; use `native`.")
+    if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE:
+        raise LaunchBlocked("Codex strict wall-clock budget is unsupported; use `native`.")
+    if (
+        executor == "deepagents"
+        and wall_clock_seconds != _NATIVE_GRANT_VALUE
+        and wall_clock_seconds > int(_DEEPAGENTS_RUN_TIMEOUT)
+    ):
+        raise LaunchBlocked(
+            "DeepAgents wall-clock budget cannot exceed the 1800-second Herdr watchdog."
+        )
+    return {
+        "turns": {
+            "requested": turns,
+            "effective": turns,
+            "enforcement": "runtime" if turns != _NATIVE_GRANT_VALUE else "native",
+        },
+        "wall_clock_seconds": {
+            "requested": wall_clock_seconds,
+            "effective": wall_clock_seconds,
+            "enforcement": (
+                "runtime"
+                if wall_clock_seconds != _NATIVE_GRANT_VALUE
+                else "native"
+            ),
+        },
+        "outer_watchdog_seconds": (
+            int(_DEEPAGENTS_RUN_TIMEOUT) if executor == "deepagents" else None
+        ),
+        "mcp_select": list(mcp_select or []),
+    }
+
+
 def resolve_launch(
     *,
     profile_name: str,
@@ -301,6 +360,8 @@ def resolve_launch(
     expected_base: str,
     executor: str = "codex",
     mcp_select: list[str] | None = None,
+    grant_turns: str | int | None = None,
+    grant_wall_clock_seconds: str | int | None = None,
     task: str | None = None,
     name: str | None = None,
     codex_home: Path | None = None,
@@ -308,6 +369,24 @@ def resolve_launch(
     if executor not in _EXECUTORS:
         raise LaunchBlocked(f"Unsupported executor: {executor}")
     task_text = _validate_task(task)
+    lane_grant = _normalize_lane_grant(
+        executor=executor,
+        grant_turns=grant_turns,
+        grant_wall_clock_seconds=grant_wall_clock_seconds,
+        mcp_select=mcp_select,
+    )
+    grant_digest = _sha256_text(
+        json.dumps(
+            {
+                "executor": executor,
+                "turns": lane_grant["turns"]["requested"],
+                "wall_clock_seconds": lane_grant["wall_clock_seconds"]["requested"],
+                "mcp_select": lane_grant["mcp_select"],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
     if executor == "deepagents" and not selected.deepagents_compatible:
@@ -351,6 +430,12 @@ def resolve_launch(
             selected.name,
             "--json",
             "--quiet",
+            *(["--max-turns", str(lane_grant["turns"]["requested"])]
+              if lane_grant["turns"]["requested"] != _NATIVE_GRANT_VALUE
+              else []),
+            *(["--timeout", str(lane_grant["wall_clock_seconds"]["requested"])]
+              if lane_grant["wall_clock_seconds"]["requested"] != _NATIVE_GRANT_VALUE
+              else []),
             *sum(
                 (["--mcp-select", _powershell_literal(value)] for value in (mcp_select or [])),
                 [],
@@ -375,6 +460,8 @@ def resolve_launch(
             ],
             "redacted_runtime_argv": _redacted_arguments(runtime_arguments),
             "assignment_task_sha256": _sha256_text(task_text),
+            "grant_digest": grant_digest,
+            "lane_grant": lane_grant,
         },
         "git": git,
         "herdr": {
@@ -437,6 +524,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-base", required=True)
     parser.add_argument("--executor", choices=sorted(_EXECUTORS), default="codex")
     parser.add_argument("--mcp-select", action="append", default=[])
+    parser.add_argument("--grant-turns", default=_NATIVE_GRANT_VALUE)
+    parser.add_argument("--grant-wall-clock-seconds", default=_NATIVE_GRANT_VALUE)
     parser.add_argument("--task", required=True)
     parser.add_argument("--name")
     parser.add_argument("--codex-home", type=Path)
@@ -455,6 +544,8 @@ def main(argv: list[str] | None = None) -> int:
             expected_base=args.expected_base,
             executor=args.executor,
             mcp_select=args.mcp_select,
+            grant_turns=args.grant_turns,
+            grant_wall_clock_seconds=args.grant_wall_clock_seconds,
             task=args.task,
             name=args.name,
             codex_home=args.codex_home,

@@ -49,6 +49,11 @@ Describe another concrete implementation result this plan must deliver, such as 
 - Parallel ownership: `<disjoint files/symbols or none>`
 - Sequential fallback: `<ordered fallback when parallel work is unsafe>`
 
+For proposed and active Git-tracked plans, each task `Authority` section uses
+exactly one non-empty `Preauthorized local actions` line and one non-empty
+`Stop for` line. Completed plans are historical and are not retroactively
+validated against this wording.
+
 ## Coordination State
 
 Required when `Execution Approach > Coordination` is `git-tracked`. Omit for
