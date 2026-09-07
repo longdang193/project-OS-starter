@@ -368,6 +368,51 @@ def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
     return requested if isinstance(requested, int) else None
 
 
+_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
+
+
+def _process_ids(processes: Any, *, require_non_shell: bool) -> set[int]:
+    if not isinstance(processes, list) or not processes:
+        raise LaunchBlocked("termination verification returned empty process information")
+    process_ids: set[int] = set()
+
+    def collect(process: Any) -> None:
+        if not isinstance(process, dict):
+            raise LaunchBlocked("termination verification returned invalid process information")
+        pid = process.get("pid")
+        if not isinstance(pid, int) or pid <= 0:
+            raise LaunchBlocked("termination verification returned process without pid")
+        if str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES:
+            process_ids.add(pid)
+        children = process.get("children", [])
+        if not isinstance(children, list):
+            raise LaunchBlocked("termination verification returned invalid child processes")
+        for child in children:
+            collect(child)
+
+    for process in processes:
+        collect(process)
+    if require_non_shell and not process_ids:
+        raise LaunchBlocked("termination verification found no launch-owned process")
+    return process_ids
+
+
+def _process_ids_alive(process_ids: set[int]) -> set[int]:
+    alive: set[int] = set()
+    for pid in process_ids:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            alive.add(pid)
+        except OSError:
+            alive.add(pid)
+        else:
+            alive.add(pid)
+    return alive
+
+
 def _terminate_codex_lane(
     herdr: str,
     session: str,
@@ -375,6 +420,33 @@ def _terminate_codex_lane(
     *,
     env: dict[str, str],
 ) -> dict[str, Any]:
+    before_result = _run(
+        [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+        env=env,
+    )
+    if before_result.returncode:
+        detail = before_result.stderr.strip() or before_result.stdout.strip()
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": detail or f"pre-close process verification failed ({before_result.returncode})",
+        }
+    try:
+        before_payload = json.loads(before_result.stdout)
+        before_info = _result(before_payload, "process_info")
+        if not isinstance(before_info, dict):
+            raise LaunchBlocked("termination verification returned invalid process information")
+        before_processes = before_info.get("foreground_processes")
+        before_ids = _process_ids(before_processes, require_non_shell=True)
+    except (LaunchBlocked, json.JSONDecodeError) as exc:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": f"pre-close process verification failed: {exc}",
+        }
+
     close_result = _run(
         [herdr, "--session", session, "pane", "close", pane],
         env=env,
@@ -419,11 +491,21 @@ def _terminate_codex_lane(
         }
     selected = next((item for item in panes if item.get("pane_id") == pane), None)
     if not isinstance(selected, dict):
+        remaining_ids = sorted(_process_ids_alive(before_ids))
+        if remaining_ids:
+            return {
+                "requested": True,
+                "action": "pane-close",
+                "verified": False,
+                "state": "processes-remain",
+                "remaining_process_ids": remaining_ids,
+            }
         return {
             "requested": True,
             "action": "pane-close",
             "verified": True,
             "state": "pane-closed",
+            "verified_process_ids": sorted(before_ids),
         }
 
     process_result = _run(
@@ -441,6 +523,8 @@ def _terminate_codex_lane(
     try:
         process_payload = json.loads(process_result.stdout)
         process_info = _result(process_payload, "process_info")
+        if not isinstance(process_info, dict):
+            raise LaunchBlocked("termination verification returned invalid process information")
     except (LaunchBlocked, json.JSONDecodeError) as exc:
         return {
             "requested": True,
@@ -448,8 +532,17 @@ def _terminate_codex_lane(
             "verified": False,
             "detail": f"process verification failed: {exc}",
         }
-    foreground = process_info.get("foreground_processes", [])
-    shell_names = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
+    foreground = process_info.get("foreground_processes")
+    try:
+        after_ids = _process_ids(foreground, require_non_shell=False)
+    except LaunchBlocked as exc:
+        return {
+            "requested": True,
+            "action": "pane-close",
+            "verified": False,
+            "detail": str(exc),
+        }
+    shell_names = _SHELL_PROCESS_NAMES
     remaining = [
         str(process.get("name", "unknown"))
         for process in foreground
@@ -458,9 +551,10 @@ def _terminate_codex_lane(
     return {
         "requested": True,
         "action": "pane-close",
-        "verified": not remaining,
+        "verified": not remaining and not (before_ids & after_ids),
         "state": "shell-only" if not remaining else "processes-remain",
         "remaining_foreground_processes": remaining,
+        "remaining_process_ids": sorted(before_ids & after_ids),
     }
 
 

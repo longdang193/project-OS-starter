@@ -750,3 +750,73 @@ def test_main_dry_run_emits_json_and_does_not_start(monkeypatch: pytest.MonkeyPa
         ]
     ) == 0
     assert json.loads(capsys.readouterr().out) == evidence
+
+
+def test_terminate_codex_lane_blocks_empty_preclose_process_info(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+            "",
+        )
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+    )
+
+    assert result["verified"] is False
+    assert "empty process information" in result["detail"]
+    assert len(calls) == 1
+
+
+def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_info = {
+        "result": {
+            "process_info": {
+                "foreground_processes": [
+                    {
+                        "pid": 101,
+                        "name": "codex.exe",
+                        "children": [{"pid": 102, "name": "node.exe"}],
+                    }
+                ]
+            }
+        }
+    }
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps(process_info), "")
+        if "close" in command:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102})
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+    )
+
+    assert result["verified"] is False
+    assert result["state"] == "processes-remain"
+    assert result["remaining_process_ids"] == [102]
+    assert len(commands) == 3

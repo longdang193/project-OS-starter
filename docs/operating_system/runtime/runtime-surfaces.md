@@ -64,9 +64,12 @@ runtime, rules, skills, root instructions, and hooks.
 - DeepAgents built-ins are executor-local. Herdr accepts explicit
   `--mcp-select <server[.tool][,server[.tool]...]>` and forwards it to
   `dcode-project`, which validates selection against approved Codex
-  `[mcp_servers]`; no selection keeps child `--no-mcp`. Selecting a server
-  exposes its tools; selecting a tool narrows access. Approval, sandbox, shell,
-  profile, and thread settings remain separate.
+   `[mcp_servers]`; no selection keeps child `--no-mcp`. Selecting a server
+   exposes its tools; selecting a tool narrows access. Approval, sandbox, shell,
+   profile, and thread settings remain separate.
+- `dcode-project` owns DeepAgents capability validation and child projection;
+  Herdr only forwards approved selectors or the default `--no-mcp`. Unsupported
+  selectors fail before lane retirement.
 - Headless `-n` auto-runs MCP tools only when read-only metadata is coherent;
   unannotated and mutating calls fail closed. Local compatibility permits only
   `playwright_browser_tabs` with `action=list`.

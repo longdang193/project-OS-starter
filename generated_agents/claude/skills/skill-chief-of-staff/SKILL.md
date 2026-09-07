@@ -226,6 +226,11 @@ task ledger, dependencies, and ownership before dispatch. Resolve behavior from
 `parent_spec` first when present, otherwise from the plan specification or
 approved direct scope. Missing, stale, mismatched, or ambiguous binding blocks.
 
+Runtime replacement must carry the same repository identity, plan path, and
+plain `Task N` reference. Launch evidence may echo that binding but must not
+create a launcher-owned fallback identity. Recheck binding, HEAD, worktree, and
+task ownership before retirement and before replacement dispatch.
+
 Plan-bound execution mode uses the existing runtime, lane, review, integration,
 retirement, and durable-truth rules below. Select one dependency-ready task only
 in `plan-bound-execution`. `skill-executing-plans` remains the sole approved-plan
