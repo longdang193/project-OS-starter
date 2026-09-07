@@ -26,7 +26,7 @@ For Git-tracked coordinated work:
   dependencies, authority, and Git workspace is the durable coordination
   claim. Subordinate delegation may narrow that claim but never expand its
   ownership, authority, or allowed paths.
-- Plan `Coordination State` and task ledger are the static coordination SSOT.
+- Plan `Coordination State` and task ledger are the durable Git-tracked coordination SSOT.
 - One lead controller is the sole writer of coordination state.
 - When coordinated execution begins, the lead changes plan status from
   `proposed` to `active` before activating the first task.

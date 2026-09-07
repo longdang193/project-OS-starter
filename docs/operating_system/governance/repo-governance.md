@@ -17,9 +17,10 @@ Build it from `repo_config/starter-kit-manifest.json`; do not author changes
 directly in generated output or maintain a separate sibling kit copy.
 
 When this document is shipped in the starter kit, downstream projects own their
-adopted root instructions, documentation, skills, configuration, and tests.
-Private factory maintenance, adapter generation, and starter rebuild workflows
-remain upstream concerns and are not downstream operating instructions.
+adopted root instructions, project-local documentation, configuration, code, and
+tests. Shared Project OS docs, scripts, and skills remain upstream-authored and
+user-global. Private factory maintenance, adapter generation, and starter rebuild
+workflows remain upstream concerns and are not downstream operating instructions.
 
 ### Public Repository
 

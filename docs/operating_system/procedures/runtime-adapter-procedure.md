@@ -102,6 +102,7 @@ Outputs:
 - `generated_agents/codex/`
 - `generated_agents/claude/`
 - `generated_agents/antigravity/`
+- `.agents/rules/`
 
 ## Deploy
 

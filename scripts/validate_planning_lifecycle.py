@@ -212,6 +212,14 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
     modern_completed = status == "completed" and bool(contract_version)
     enforce_contract = current or modern_completed
     findings: list[Finding] = []
+    if current and re.search(r"(?im)^\s*-\s*Validator executor\s*:", text):
+        findings.append(
+            Finding(
+                "planning_execution_error",
+                rel,
+                "use `Validator Profile` instead of `Validator executor`; executors are codex, deepagents, or tura",
+            )
+        )
     if current and not contract_version:
         findings.append(Finding("planning_execution_error", rel, "requires `contract_version: 1`"))
     if contract_version and contract_version != MODERN_PLAN_CONTRACT_VERSION:

@@ -273,6 +273,67 @@ def validate_agent_profile_registry(root: Path) -> list[ValidationIssue]:
     return []
 
 
+def validate_ssot_contracts(root: Path) -> list[ValidationIssue]:
+    paths = {
+        "runtime": root / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md",
+        "tooling": root / "docs" / "operating_system" / "tooling" / "runtime-tool-resolution.md",
+        "adoption": root / "docs" / "operating_system" / "adoption" / "project-adoption-migration-guide.md",
+        "governance": root / "docs" / "operating_system" / "governance" / "repo-governance.md",
+        "coordination": root / "docs" / "operating_system" / "rules" / "git-tracked-coordination-rule.md",
+        "adapter": root / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md",
+    }
+    if not all(path.is_file() for path in paths.values()):
+        return []
+
+    texts = {name: path.read_text(encoding="utf-8", errors="ignore") for name, path in paths.items()}
+    normalized = {name: " ".join(text.split()) for name, text in texts.items()}
+    issues: list[ValidationIssue] = []
+
+    def add_issue(name: str, message: str) -> None:
+        issues.append(ValidationIssue("ssot_drift", paths[name].relative_to(root).as_posix(), message))
+
+    def require(name: str, marker: str, message: str, *, use_normalized: bool = False) -> None:
+        if marker not in (normalized[name] if use_normalized else texts[name]):
+            add_issue(name, message)
+
+    authoring_match = re.search(
+        r"(?ms)^## Authoring SSOT\s*$\n(.*?)(?=^## |\Z)",
+        texts["runtime"],
+    )
+    if authoring_match is None:
+        add_issue("runtime", "requires `## Authoring SSOT`")
+    elif "~/.agents/project-os/" in authoring_match.group(1):
+        add_issue("runtime", "deployed `~/.agents/project-os/` paths must not be listed under authoring SSOT")
+    require("runtime", "## Deployed Runtime Projections", "requires `## Deployed Runtime Projections`")
+    require("runtime", "MCP `headers` values must be `${VAR}` references", "headers policy must require `${VAR}` references", use_normalized=True)
+    require("runtime", "MCP `env` values may be `${VAR}` references or non-sensitive literals", "env policy must allow `${VAR}` references or non-sensitive literals", use_normalized=True)
+    if "MCP `env` and `headers` values must be `${VAR}` references" in normalized["runtime"]:
+        add_issue("runtime", "runtime policy must not require `${VAR}` references for `env` values")
+    require("tooling", "`headers` values must be `${VAR}` references", "tool-resolution SSOT must define headers policy", use_normalized=True)
+    require("tooling", "`env` values may be `${VAR}` references or non-sensitive literals", "tool-resolution SSOT must define env policy", use_normalized=True)
+
+    adoption_markers = (
+        "py -3 scripts/deploy_agent_runtime.py --target all",
+        "py -3 scripts/deploy_agent_runtime.py --target all --check",
+        "Build and validate generated Starter kit",
+        "validate_repo_contracts.py",
+    )
+    adoption_positions = [texts["adoption"].find(marker) for marker in adoption_markers]
+    if any(position == -1 for position in adoption_positions) or adoption_positions != sorted(adoption_positions):
+        add_issue("adoption", "adoption order must deploy and validate shared runtime before Starter kit adoption")
+
+    for marker in (
+        "downstream projects own their adopted root instructions, project-local documentation, configuration, code, and tests",
+        "Shared Project OS docs, scripts, and skills remain upstream-authored and user-global",
+    ):
+        if marker not in normalized["governance"]:
+            add_issue("governance", "downstream ownership must keep project-local state separate from shared runtime assets")
+            break
+    require("coordination", "durable Git-tracked coordination SSOT", "coordination SSOT must be durable and Git-tracked, not static")
+    require("adapter", "- `.agents/rules/`", "adapter outputs must include `.agents/rules/`")
+    return issues
+
+
 def _is_metadata_capable(path: Path) -> bool:
     analysis = _analyze_metadata_file(path)
     return analysis[0]
@@ -485,6 +546,10 @@ def main(argv: list[str] | None = None) -> int:
     profile_issues = validate_agent_profile_registry(root)
     if profile_issues:
         return report_issues(profile_issues)
+
+    ssot_issues = validate_ssot_contracts(root)
+    if ssot_issues:
+        return report_issues(ssot_issues)
 
     if args.sync_starter_kit_tier:
         patched = sync_starter_kit_distribution_tier(root)

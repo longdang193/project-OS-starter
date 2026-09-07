@@ -500,6 +500,46 @@ def test_task_executor_must_use_canonical_value() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_current_plan_rejects_validator_executor_label() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            modern_plan(
+                execution="- Mode: `subagent-ready`\n- Coordination: `none`\n- Validator executor: `review`",
+                task_body="**Template Profile:**\n- Controller-selected: `none (lead controller)`",
+            ),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "use `Validator Profile` instead of `Validator executor`" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_completed_plan_allows_historical_validator_executor_label() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            git_tracked_plan(
+                status="completed",
+                coordination_schema=1,
+                ledger="| Task 1 | `completed` | current | codex | none | `test-one` | recorded proof |",
+            ).replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
+            .replace("- Next action: `Complete Task 1`", "- Next action: `none`")
+            .replace("- Coordination: `git-tracked`", "- Coordination: `git-tracked`\n- Validator executor: `review`"),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_historical_completed_plan_preserves_legacy_coordination() -> None:
     root = make_test_root()
     try:

@@ -16,6 +16,7 @@ lifecycle:
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +67,27 @@ def test_validator_fast_mode_passes_for_current_repo() -> None:
 
     assert result.returncode == 0
     assert "repo contract validation passed" in result.stdout.lower()
+
+
+def test_ssot_contracts_pass_for_current_repo() -> None:
+    assert VALIDATOR.validate_ssot_contracts(REPO_ROOT) == []
+
+
+def test_ssot_contracts_reject_runtime_policy_drift(tmp_path: Path) -> None:
+    shutil.copytree(REPO_ROOT / "docs" / "operating_system", tmp_path / "docs" / "operating_system")
+    runtime_path = tmp_path / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md"
+    runtime_path.write_text(
+        runtime_path.read_text(encoding="utf-8").replace(
+            "MCP `env` values may be `${VAR}` references or\n  non-sensitive literals.",
+            "MCP `env` and `headers` values must be `${VAR}` references.",
+        ),
+        encoding="utf-8",
+    )
+
+    issues = VALIDATOR.validate_ssot_contracts(tmp_path)
+
+    assert any(issue.path.endswith("runtime-surfaces.md") for issue in issues)
+    assert any("env policy" in issue.message for issue in issues)
 
 
 def test_main_propagates_subprocess_failure(monkeypatch) -> None:

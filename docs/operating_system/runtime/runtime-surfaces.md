@@ -3,18 +3,23 @@
 This document records provider-native deployment for the user-global Project OS
 runtime, rules, skills, root instructions, and hooks.
 
-## Canonical Sources
+## Authoring SSOT
 
 | Source | Role |
 | --- | --- |
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring in this repository |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
-| `~/.agents/project-os/docs/operating_system/` | User-global deployed operating-system docs |
-| `~/.agents/project-os/scripts/` | User-global deployed reusable Project OS scripts |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
 | `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex or DeepAgents lane through Herdr |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
+
+## Deployed Runtime Projections
+
+| Projection | Role |
+| --- | --- |
+| `~/.agents/project-os/docs/operating_system/` | User-global deployed operating-system docs |
+| `~/.agents/project-os/scripts/` | User-global deployed reusable Project OS scripts |
 
 ## Generated Runtime Outputs
 
@@ -75,8 +80,9 @@ runtime, rules, skills, root instructions, and hooks.
   `playwright_browser_tabs` with `action=list`.
 - Direct MCP uses temporary launcher-owned config under isolated child
   `DEEPAGENTS_HOME`; no per-task `.mcp.json` or `--trust-project-mcp`, and project
-  MCP configs remain untouched and untrusted. MCP `env` and `headers` values must
-  be `${VAR}` references. Raw credentials and config secrets stay out of task
+  MCP configs remain untouched and untrusted. MCP `headers` values must be
+  `${VAR}` references. MCP `env` values may be `${VAR}` references or
+  non-sensitive literals. Raw credentials and config secrets stay out of task
   text, logs, and tracked files.
 - Codex controller owns handoff facts and writes `codex.mcp.handoff.v1` under
   `%USERPROFILE%\.local\share\dcode-project\handoffs`; `dcode-project` validates

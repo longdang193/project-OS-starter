@@ -1,12 +1,14 @@
 # Project Adoption Migration
 
-Prefer the generated Starter kit as the atomic adoption unit:
+Bootstrap shared runtime before adopting generated Starter kit:
 
-1. Build and validate generated Starter kit from the source repository.
-2. Copy that generated kit into the new repository without mixing in source-only factory files.
-3. Preserve product code and tests, then replace starter identity and project-specific docs.
-4. Remove optional layers only when their references and consumers are removed together.
-5. Run `py -3 "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast` from the adopted repository.
+1. Deploy shared Project OS runtime from the source repository with `py -3 scripts/deploy_agent_runtime.py --target all`.
+2. Validate deployment with `py -3 scripts/deploy_agent_runtime.py --target all --check`.
+3. Build and validate generated Starter kit from the source repository.
+4. Copy that generated kit into the new repository without mixing in source-only factory files.
+5. Preserve product code and tests, then replace starter identity and project-specific docs.
+6. Remove optional layers only when their references and consumers are removed together.
+7. Run `py -3 "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast` from the adopted repository.
 
 Code discovery remains source-first. Describe required capability and evidence
 before selecting a runtime tool. Resolve unmet capabilities through

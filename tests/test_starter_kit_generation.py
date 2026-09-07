@@ -85,7 +85,8 @@ def test_starter_onboarding_matches_optional_intent_and_atomic_kit() -> None:
     assert "Shared operating-system docs, reusable scripts, and skills stay under" in readme
     assert "create `docs/intent/` when durable project purpose needs more than `README.md`" in readme
     assert "Use this optional layer" in intent
-    assert "generated Starter kit as the atomic adoption unit" in adoption
+    assert "Bootstrap shared runtime before adopting generated Starter kit" in adoption
+    assert adoption.index("Deploy shared Project OS runtime") < adoption.index("Build and validate generated Starter kit")
     assert "manual file-by-file copying" in adoption
     assert '"docs/intent"' not in manifest
 
