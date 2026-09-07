@@ -125,7 +125,8 @@ values. For `codex`, execute inline lead-controller work directly when the
 profile is `none`; when a fixed profile is selected for delegated work, use the
 active native Codex subagent capability for ordinary execution. A Herdr-
 supervised MAIN AGENT may also use native child delegation for assigned lane
-work. When the approved plan lists `skill-chief-of-staff` in `Required skills`, keep
+work. The current Runtime Grant must set `delegation.child_agents: allow` for
+that delegation. When the approved plan lists `skill-chief-of-staff` in `Required skills`, keep
 this skill as the execution owner and allow CoS to select only a Herdr-
 supervised top-level Codex main agent or bounded DeepAgents pane process after
 plan, runtime parity, lane identity, and profile-binding gates pass; CoS must
@@ -133,8 +134,8 @@ not fall back to native subagents.
 CoS must not call `multi_agent_v1`, native Codex subagents, DeepAgents internal
 `task` workers, Tura internal workers, or executor-local reviewers or helpers
 directly. Assigned MAIN AGENTS may spawn Native Codex, DeepAgents, or Tura
-sub-agents when needed within their lanes; those sub-agents must not spawn peer
-MAIN AGENTS or activate CoS.
+sub-agents when needed within their lanes when `delegation.child_agents: allow`;
+those sub-agents must not spawn peer MAIN AGENTS or activate CoS.
 `Executor Selection` owns executor choice, while `Template Profile` and
 `agents/*.toml` own profile/model capability; Herdr launch must prove the same
 resolved binding. Use `dcode-project` for `deepagents` and `project-delegate` for `tura`;

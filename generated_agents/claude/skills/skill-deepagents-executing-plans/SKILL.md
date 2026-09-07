@@ -104,7 +104,8 @@ One `dcode-project` invocation equals one active plan task. Runtime-internal
 decomposition never becomes plan-level coordination. Nested writers remain
 inside active task workspace, authority, dependencies, and declared write
 ownership. A MAIN AGENT may spawn DeepAgents sub-agents when needed within its
-assigned lane; child workers do not gain peer or coordination authority.
+assigned lane when its Runtime Grant permits delegation; child workers do not
+gain peer or coordination authority.
 
 Every dispatch states:
 
@@ -142,7 +143,8 @@ The plan wins when a dispatch brief conflicts with plan state.
   runtime concurrency capability.
 - Spawn a debugger only after evidence-backed failure.
 - Spawn an independent validator only when validation materially benefits.
-- MAIN AGENTS may use nested delegation when needed within assigned lane scope.
+- MAIN AGENTS may use nested delegation when needed within assigned lane scope
+  when `delegation.child_agents: allow`.
 - Sub-agents must not spawn peer MAIN AGENTS, activate CoS, or create another
   plan task or coordination ledger entry.
 - Read `skill-subagent-driven-development` only when its bounded delegation

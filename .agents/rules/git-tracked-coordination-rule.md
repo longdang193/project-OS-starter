@@ -34,7 +34,9 @@ For Git-tracked coordinated work:
   `dcode -r`, temporary todos, and memory are never repository coordination
   state.
 - A transient Runtime Grant may narrow runtime resources and capability exposure
-  but never expand task Authority, ownership, allowed paths, or proof obligations.
+  and may carry `delegation.child_agents: deny | allow`, but never expand task
+  Authority, ownership, allowed paths, or proof obligations. Child workers
+  inherit a subset of the parent grant and cannot increase it.
   The runtime invariant is `Worker Runtime Grant ⊆ Main Runtime Grant`; the
   durable authority invariant is `Plan Lane Authority ⊆ task Authority`.
 - Launcher evidence may include a transient `grant_digest` and launch-attempt

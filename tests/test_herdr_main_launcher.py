@@ -241,6 +241,30 @@ def test_normalize_runtime_grant_rejects_unsupported_codex_turn_limit() -> None:
         )
 
 
+@pytest.mark.parametrize("child_agents", ["allow", "deny", None])
+def test_normalize_runtime_grant_projects_child_agent_authority(child_agents: str | None) -> None:
+    grant = LAUNCHER._normalize_runtime_grant(
+        executor="codex",
+        grant_turns="native",
+        grant_wall_clock_seconds="native",
+        mcp_select=[],
+        grant_child_agents=child_agents,
+    )
+
+    assert grant["delegation"]["child_agents"] == (child_agents or "deny")
+
+
+def test_normalize_runtime_grant_rejects_invalid_child_agent_authority() -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="child_agents"):
+        LAUNCHER._normalize_runtime_grant(
+            executor="codex",
+            grant_turns="native",
+            grant_wall_clock_seconds="native",
+            mcp_select=[],
+            grant_child_agents="maybe",
+        )
+
+
 def test_normalize_runtime_grant_allows_codex_wall_clock_watchdog() -> None:
     grant = LAUNCHER._normalize_runtime_grant(
         executor="codex",
@@ -317,6 +341,7 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         },
         "outer_watchdog_seconds": 1800,
         "mcp_select": [],
+        "delegation": {"child_agents": "deny"},
     }
     assert len(evidence["registry_launcher"]["grant_digest"]) == 64
 

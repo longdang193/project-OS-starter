@@ -32,6 +32,7 @@ _CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
 _CODEX_WATCHDOG_GRACE_SECONDS = 5.0
 _WATCHDOG_TIMEOUT_EXIT_CODE = 124
 _NATIVE_GRANT_VALUE = "native"
+_CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 
 
 def _herdr_environment() -> dict[str, str]:
@@ -310,12 +311,20 @@ def _parse_grant_value(value: str | int | None, label: str) -> int | str:
     return parsed
 
 
+def _parse_child_agent_grant(value: str | None) -> str:
+    grant = "deny" if value is None else value.strip().lower()
+    if grant not in _CHILD_AGENT_GRANT_VALUES:
+        raise LaunchBlocked("Grant child_agents must be `deny` or `allow`.")
+    return grant
+
+
 def _normalize_runtime_grant(
     *,
     executor: str,
     grant_turns: str | int | None,
     grant_wall_clock_seconds: str | int | None,
     mcp_select: list[str] | None,
+    grant_child_agents: str | None = None,
 ) -> dict[str, Any]:
     turns = _parse_grant_value(grant_turns, "Grant turns")
     wall_clock_seconds = _parse_grant_value(
@@ -332,6 +341,7 @@ def _normalize_runtime_grant(
         raise LaunchBlocked(
             "DeepAgents wall-clock budget cannot exceed the 1800-second Herdr watchdog."
         )
+    child_agents = _parse_child_agent_grant(grant_child_agents)
     return {
         "turns": {
             "requested": turns,
@@ -357,6 +367,7 @@ def _normalize_runtime_grant(
             else None
         ),
         "mcp_select": list(mcp_select or []),
+        "delegation": {"child_agents": child_agents},
     }
 
 
@@ -569,6 +580,7 @@ def resolve_launch(
     mcp_select: list[str] | None = None,
     grant_turns: str | int | None = None,
     grant_wall_clock_seconds: str | int | None = None,
+    grant_child_agents: str | None = None,
     task: str | None = None,
     name: str | None = None,
     codex_home: Path | None = None,
@@ -581,6 +593,7 @@ def resolve_launch(
         grant_turns=grant_turns,
         grant_wall_clock_seconds=grant_wall_clock_seconds,
         mcp_select=mcp_select,
+        grant_child_agents=grant_child_agents,
     )
     grant_digest = _sha256_text(
         json.dumps(
@@ -589,6 +602,7 @@ def resolve_launch(
                 "turns": runtime_grant["turns"]["requested"],
                 "wall_clock_seconds": runtime_grant["wall_clock_seconds"]["requested"],
                 "mcp_select": runtime_grant["mcp_select"],
+                "delegation": runtime_grant["delegation"],
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -745,6 +759,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mcp-select", action="append", default=[])
     parser.add_argument("--grant-turns", default=_NATIVE_GRANT_VALUE)
     parser.add_argument("--grant-wall-clock-seconds", default=_NATIVE_GRANT_VALUE)
+    parser.add_argument("--grant-child-agents", choices=["allow", "deny"], default="deny")
     parser.add_argument("--task", required=True)
     parser.add_argument("--name")
     parser.add_argument("--codex-home", type=Path)
@@ -765,6 +780,7 @@ def main(argv: list[str] | None = None) -> int:
             mcp_select=args.mcp_select,
             grant_turns=args.grant_turns,
             grant_wall_clock_seconds=args.grant_wall_clock_seconds,
+            grant_child_agents=args.grant_child_agents,
             task=args.task,
             name=args.name,
             codex_home=args.codex_home,

@@ -218,11 +218,14 @@ reconciliation.
 Plan task `Authority` is durable maximum authority. CoS may assign a transient
 Runtime Grant that narrows runtime resources and capability exposure; MAIN AGENT
 owns tactical choices inside its grant. Runtime v1 exposes only enforceable
-resource values: `turns` and `wall_clock_seconds`. Codex turns remain `native`;
+resource values: `turns` and `wall_clock_seconds`, plus policy authority
+`delegation.child_agents` as `deny | allow`. The default is `deny`; CoS-assigned
+MAIN AGENTS may receive `allow`, while ordinary, review, and integration lanes
+default to `deny`. Codex turns remain `native`;
 numeric Codex wall-clock values use the Herdr outer watchdog. DeepAgents may
 use native or explicit numeric values for both fields. Delegation and
-parallelism remain policy-level autonomy until an executor can enforce those
-limits.
+parallelism remain policy-level autonomy; Herdr records child-agent authority
+in launch evidence but does not enforce executor-local spawning.
 
 DeepAgents direct MCP projection remains default-deny. Runtime Tool Resolution
 owns capability requirements and the adapter resolves them to concrete

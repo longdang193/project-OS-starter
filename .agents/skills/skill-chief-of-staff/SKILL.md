@@ -39,7 +39,8 @@ CoS activates only under a native Codex lead controller. CoS assigns top-level
 MAIN AGENTS through Herdr. Each MAIN AGENT receives a bounded task and owns
 execution, evidence, lane-local Git state, and lifecycle for its assigned lane. A MAIN
 AGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
-that lane. Sub-agents must not spawn peer MAIN AGENTS, activate CoS, or
+that lane when `delegation.child_agents: allow`. Sub-agents must not spawn peer
+MAIN AGENTS, activate CoS, or
 reactivate coordination. CoS applies to `Executor: codex | deepagents` for
 implementation lanes; `codex` uses Herdr agent start and `deepagents` uses
 `dcode-project` through Herdr pane run. Review and integration remain Codex-only.
@@ -56,8 +57,8 @@ After successful assignment, a MAIN AGENT executes autonomously inside its
 assigned task contract. It may choose implementation details, inspect direct
 consumers, use applicable skills and tools, debug and retry, run task-local
 verification, modify lane-owned files, and spawn Native Codex, DeepAgents, or
-Tura sub-agents when needed. Delegation inside lane scope does not need a
-separate CoS approval.
+Tura sub-agents when needed when its Runtime Grant permits delegation.
+Delegation inside lane scope does not need a separate CoS approval.
 
 A subordinate worker inherits a subset of its parent task's scope, authority,
 allowed paths, dependencies, and proof obligations. Delegation may narrow but
@@ -87,6 +88,11 @@ Runtime v1 supports only enforceable resource values:
 - turns: `native` for Codex; `native` or positive integer for DeepAgents;
 - wall-clock seconds: `native` or positive integer;
 - capability exposure intent resolved through Runtime Tool Resolution.
+
+The grant also carries policy authority `delegation.child_agents: deny | allow`.
+It defaults to `deny`; CoS-assigned MAIN AGENTS may receive `allow`. The
+launcher records this authority in evidence, but executor-local spawning remains
+policy-enforced until an executor provides a direct enforcement hook.
 
 MAIN AGENT owns tactical choices inside its grant. Delegation and parallelism
 remain policy-level autonomy until an executor can enforce those limits. The
