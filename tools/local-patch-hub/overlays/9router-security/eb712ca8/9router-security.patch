@@ -1,0 +1,809 @@
+diff --git a/open-sse/handlers/chatCore.js b/open-sse/handlers/chatCore.js
+index d5dcf2d8..5292b93d 100644
+--- a/open-sse/handlers/chatCore.js
++++ b/open-sse/handlers/chatCore.js
+@@ -62,7 +62,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
+   const { provider, model } = modelInfo;
+   const requestStartTime = Date.now();
+   // Stable per-session color so all lines of one CLI conversation share a tag
+-  const sessionSeed = (() => {
++  const sessionSeed = clientRawRequest?.serverRequestId || (() => {
+     try {
+       return resolveSessionId({ headers: clientRawRequest?.headers, body, connectionId, scope: provider });
+     } catch {
+@@ -448,7 +448,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
+   // Provider returned error
+   if (!providerResponse.ok) {
+     trackPendingRequest(model, provider, connectionId, false, true);
+-    const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
++    const diagnostics = await parseUpstreamError(providerResponse, executor);
++    const { statusCode, message, resetsAtMs } = diagnostics;
+     appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
+     saveRequestDetail(buildRequestDetail({
+       provider, model, connectionId,
+@@ -467,7 +468,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
+       log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
+     }
+     reqLogger.logError(new Error(message), finalBody || translatedBody);
+-    return createErrorResult(statusCode, errMsg, resetsAtMs);
++    return createErrorResult(statusCode, errMsg, resetsAtMs, diagnostics);
+   }
+ 
+   const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log };
+diff --git a/open-sse/utils/error.js b/open-sse/utils/error.js
+index 315723e3..64a14efa 100644
+--- a/open-sse/utils/error.js
++++ b/open-sse/utils/error.js
+@@ -6,19 +6,21 @@ import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+  * @param {string} message - Error message
+  * @returns {object} Error response object
+  */
+-export function buildErrorBody(statusCode, message) {
++export function buildErrorBody(statusCode, message, diagnostics = {}) {
+   const errorInfo = ERROR_TYPES[statusCode] || 
+     (statusCode >= 500 
+       ? { type: "server_error", code: "internal_server_error" }
+       : { type: "invalid_request_error", code: "" });
+ 
+-  return {
+-    error: {
++  const error = {
+       message: message || DEFAULT_ERROR_MESSAGES[statusCode] || "An error occurred",
+       type: errorInfo.type,
+       code: errorInfo.code
+-    }
+   };
++  for (const key of ["type", "param", "code", "request_id"]) {
++    if (diagnostics[key]) error[key] = diagnostics[key];
++  }
++  return { error };
+ }
+ 
+ /**
+@@ -27,8 +29,8 @@ export function buildErrorBody(statusCode, message) {
+  * @param {string} message - Error message
+  * @returns {Response} HTTP Response object
+  */
+-export function errorResponse(statusCode, message) {
+-  return new Response(JSON.stringify(buildErrorBody(statusCode, message)), {
++export function errorResponse(statusCode, message, diagnostics = {}) {
++  return new Response(JSON.stringify(buildErrorBody(statusCode, message, diagnostics)), {
+     status: statusCode,
+     headers: {
+       "Content-Type": "application/json",
+@@ -53,7 +55,7 @@ export async function writeStreamError(writer, statusCode, message) {
+  * Parse upstream provider error response
+  * @param {Response} response - Fetch response from provider
+  * @param {object} [executor] - Optional executor with parseError() override for provider-specific parsing
+- * @returns {Promise<{statusCode: number, message: string, resetsAtMs?: number}>}
++ * @returns {Promise<{statusCode: number, message: string, type?: string, param?: string, code?: string, request_id?: string, resetsAtMs?: number}>}
+  */
+ export async function parseUpstreamError(response, executor = null) {
+   let bodyText = "";
+@@ -68,24 +70,51 @@ export async function parseUpstreamError(response, executor = null) {
+     try {
+       const parsed = executor.parseError(response, bodyText);
+       if (parsed && typeof parsed === "object") {
+-        const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
+-        return { statusCode: parsed.status || response.status, message: msg, resetsAtMs: parsed.resetsAtMs };
++        const msg = safeDiagnostic(parsed.message) || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
++        return {
++          statusCode: parsed.status || response.status,
++          message: msg,
++          type: safeDiagnostic(parsed.type),
++          param: safeDiagnostic(parsed.param),
++          code: safeDiagnostic(parsed.code),
++          request_id: safeRequestId(response, parsed.request_id),
++          resetsAtMs: parsed.resetsAtMs
++        };
+       }
+     } catch { /* fall through to default parsing */ }
+   }
+ 
+   let message = "";
++  let diagnostics = {};
+   try {
+     const json = JSON.parse(bodyText);
+-    message = json.error?.message || json.message || json.error || bodyText;
++    const source = json.error && typeof json.error === "object" ? json.error : json;
++    diagnostics = {
++      type: safeDiagnostic(source?.type),
++      param: safeDiagnostic(source?.param),
++      code: safeDiagnostic(source?.code),
++      request_id: safeRequestId(response, source?.request_id || json.request_id)
++    };
++    message = source?.message || json.message || (typeof json.error === "string" ? json.error : "");
+   } catch {
+-    message = bodyText;
++    message = "";
+   }
+ 
+-  const messageStr = typeof message === "string" ? message : JSON.stringify(message);
++  const messageStr = safeDiagnostic(message);
+   const finalMessage = messageStr || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
+ 
+-  return { statusCode: response.status, message: finalMessage };
++  return { statusCode: response.status, message: finalMessage, ...diagnostics };
++}
++
++function safeDiagnostic(value) {
++  if (typeof value !== "string") return undefined;
++  return value.replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]").replace(/[\r\n\0]/g, " ").trim().slice(0, 500) || undefined;
++}
++
++function safeRequestId(response, value) {
++  const headerId = response?.headers?.get("x-request-id") || response?.headers?.get("request-id") || response?.headers?.get("x-correlation-id");
++  const candidate = safeDiagnostic(value || headerId);
++  return candidate && /^[A-Za-z0-9._:-]{1,128}$/.test(candidate) ? candidate : undefined;
+ }
+ 
+ /**
+@@ -95,13 +124,13 @@ export async function parseUpstreamError(response, executor = null) {
+  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
+  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
+  */
+-export function createErrorResult(statusCode, message, resetsAtMs) {
++export function createErrorResult(statusCode, message, resetsAtMs, diagnostics = {}) {
+   return {
+     success: false,
+     status: statusCode,
+     error: message,
+     resetsAtMs,
+-    response: errorResponse(statusCode, message)
++    response: errorResponse(statusCode, message, diagnostics)
+   };
+ }
+ 
+diff --git a/open-sse/utils/requestLogger.js b/open-sse/utils/requestLogger.js
+index 010153d3..f093890b 100644
+--- a/open-sse/utils/requestLogger.js
++++ b/open-sse/utils/requestLogger.js
+@@ -69,25 +69,26 @@ function writeJsonFile(sessionPath, filename, data) {
+   }
+ }
+ 
+-// Mask sensitive data in headers (DISABLED - keep full token for testing)
+-function maskSensitiveHeaders(headers) {
++// Mask sensitive data in headers
++export function maskSensitiveHeaders(headers) {
+   if (!headers) return {};
+-  return { ...headers };
+-  
+-  // Old masking code (disabled):
+-  // const masked = { ...headers };
+-  // const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
+-  // 
+-  // for (const key of Object.keys(masked)) {
+-  //   const lowerKey = key.toLowerCase();
+-  //   if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
+-  //     const value = masked[key];
+-  //     if (value && value.length > 20) {
+-  //       masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
+-  //     }
+-  //   }
+-  // }
+-  // return masked;
++  const masked = {};
++  const sensitiveKeys = ["authorization", "api-key", "apikey", "cookie", "token", "credential", "secret"];
++  const entries = typeof headers.entries === "function" ? headers.entries() : Object.entries(headers);
++  for (const [key, value] of entries) {
++    masked[key] = sensitiveKeys.some((part) => key.toLowerCase().includes(part)) ? "[REDACTED]" : value;
++  }
++  return masked;
++}
++
++export function safePayloadMetadata(value) {
++  if (value === null || value === undefined) return { present: false };
++  if (typeof value === "string" || value instanceof Uint8Array) return { present: true, type: "bytes", size: value.length };
++  return { present: true, type: Array.isArray(value) ? "array" : typeof value };
++}
++
++function safeChunkMetadata(chunk) {
++  return JSON.stringify({ size: typeof chunk === "string" || chunk instanceof Uint8Array ? chunk.length : 0 }) + "\n";
+ }
+ 
+ // No-op logger when logging is disabled
+@@ -132,7 +133,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+         timestamp: new Date().toISOString(),
+         endpoint,
+         headers: maskSensitiveHeaders(headers),
+-        body
++        body: safePayloadMetadata(body)
+       });
+     },
+     
+@@ -141,7 +142,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+       writeJsonFile(sessionPath, "2_req_source.json", {
+         timestamp: new Date().toISOString(),
+         headers: maskSensitiveHeaders(headers),
+-        body
++        body: safePayloadMetadata(body)
+       });
+     },
+     
+@@ -149,7 +150,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+     logOpenAIRequest(body) {
+       writeJsonFile(sessionPath, "3_req_openai.json", {
+         timestamp: new Date().toISOString(),
+-        body
++        body: safePayloadMetadata(body)
+       });
+     },
+     
+@@ -159,7 +160,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+         timestamp: new Date().toISOString(),
+         url,
+         headers: maskSensitiveHeaders(headers),
+-        body
++        body: safePayloadMetadata(body)
+       });
+     },
+     
+@@ -170,8 +171,8 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+         timestamp: new Date().toISOString(),
+         status,
+         statusText,
+-        headers: headers ? (typeof headers.entries === "function" ? Object.fromEntries(headers.entries()) : headers) : {},
+-        body
++        headers: maskSensitiveHeaders(headers),
++        body: safePayloadMetadata(body)
+       });
+     },
+     
+@@ -180,7 +181,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+       if (!fs || !sessionPath) return;
+       try {
+         const filePath = path.join(sessionPath, "5_res_provider.txt");
+-        fs.appendFileSync(filePath, chunk);
++        fs.appendFileSync(filePath, safeChunkMetadata(chunk));
+       } catch (err) {
+         // Ignore append errors
+       }
+@@ -191,7 +192,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+       if (!fs || !sessionPath) return;
+       try {
+         const filePath = path.join(sessionPath, "6_res_openai.txt");
+-        fs.appendFileSync(filePath, chunk);
++        fs.appendFileSync(filePath, safeChunkMetadata(chunk));
+       } catch (err) {
+         // Ignore append errors
+       }
+@@ -201,7 +202,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+     logConvertedResponse(body) {
+       writeJsonFile(sessionPath, "7_res_client.json", {
+         timestamp: new Date().toISOString(),
+-        body
++        body: safePayloadMetadata(body)
+       });
+     },
+     
+@@ -210,19 +211,17 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
+       if (!fs || !sessionPath) return;
+       try {
+         const filePath = path.join(sessionPath, "7_res_client.txt");
+-        fs.appendFileSync(filePath, chunk);
++        fs.appendFileSync(filePath, safeChunkMetadata(chunk));
+       } catch (err) {
+         // Ignore append errors
+       }
+     },
+     
+     // 6. Log error
+-    logError(error, requestBody = null) {
++    logError(error) {
+       writeJsonFile(sessionPath, "6_error.json", {
+         timestamp: new Date().toISOString(),
+-        error: error?.message || String(error),
+-        stack: error?.stack,
+-        requestBody
++        errorType: error?.name || "Error"
+       });
+     }
+   };
+@@ -248,9 +247,7 @@ export function logError(provider, { error, url, model, requestBody }) {
+       provider,
+       model,
+       url,
+-      error: error?.message || String(error),
+-      stack: error?.stack,
+-      requestBody
++      errorType: error?.name || "Error"
+     };
+     
+     fs.appendFileSync(logPath, JSON.stringify(logEntry) + "\n");
+diff --git a/src/app/api/v1/responses/route.js b/src/app/api/v1/responses/route.js
+index dbc38b54..ca01773a 100644
+--- a/src/app/api/v1/responses/route.js
++++ b/src/app/api/v1/responses/route.js
+@@ -1,6 +1,9 @@
+ import { handleChat } from "@/sse/handlers/chat.js";
++import { correlateResponse, sanitizeErrorResponse } from "@/sse/utils/requestCorrelation.js";
+ import { initTranslators } from "open-sse/translator/index.js";
+ 
++export { sanitizeErrorResponse };
++
+ let initialized = false;
+ 
+ async function ensureInitialized() {
+@@ -25,6 +28,14 @@ export async function OPTIONS() {
+  * Now handled by translator pattern (openai-responses format auto-detected)
+  */
+ export async function POST(request) {
+-  await ensureInitialized();
+-  return await handleChat(request);
++  const serverRequestId = crypto.randomUUID();
++  try {
++    await ensureInitialized();
++    return await handleChat(request, null, serverRequestId);
++  } catch {
++    return correlateResponse(new Response(JSON.stringify({ error: { message: "Responses request failed", type: "server_error", code: "internal_server_error" } }), {
++      status: 500,
++      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
++    }), serverRequestId);
++  }
+ }
+diff --git a/src/lib/db/repos/requestDetailsRepo.js b/src/lib/db/repos/requestDetailsRepo.js
+index f7273831..34396fb6 100644
+--- a/src/lib/db/repos/requestDetailsRepo.js
++++ b/src/lib/db/repos/requestDetailsRepo.js
+@@ -77,12 +77,8 @@ function generateDetailId(model) {
+   return `${timestamp}-${random}-${modelPart}`;
+ }
+ 
+-function truncateField(obj, maxSize) {
+-  const str = JSON.stringify(obj || {});
+-  if (str.length > maxSize) {
+-    return { _truncated: true, _originalSize: str.length, _preview: str.substring(0, 200) };
+-  }
+-  return obj || {};
++function redactPayload(value) {
++  return value === undefined || value === null ? {} : { redacted: true };
+ }
+ 
+ async function flushToDatabase() {
+@@ -111,10 +107,10 @@ async function flushToDatabase() {
+             status: item.status || null,
+             latency: item.latency || {},
+             tokens: item.tokens || {},
+-            request: truncateField(item.request, config.maxJsonSize),
+-            providerRequest: truncateField(item.providerRequest, config.maxJsonSize),
+-            providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
+-            response: truncateField(item.response, config.maxJsonSize),
++            request: redactPayload(item.request),
++            providerRequest: redactPayload(item.providerRequest),
++            providerResponse: redactPayload(item.providerResponse),
++            response: redactPayload(item.response),
+             pxpipe: item.pxpipe || undefined,
+           };
+ 
+diff --git a/src/mitm/logger.js b/src/mitm/logger.js
+index 5e53210e..050f4bec 100644
+--- a/src/mitm/logger.js
++++ b/src/mitm/logger.js
+@@ -1,6 +1,5 @@
+ const fs = require("fs");
+ const path = require("path");
+-const zlib = require("zlib");
+ const { DATA_DIR } = require("./paths");
+ const { LOG_BLACKLIST_URL_PARTS } = require("./config");
+ 
+@@ -24,7 +23,7 @@ function clearDumpDir() {
+   } catch { /* ignore */ }
+ }
+ 
+-const EMPTY_BODY_RE = /^\s*(\{\s*\}|\[\s*\]|null)?\s*$/;
++const SENSITIVE_HEADER_RE = /authorization|api[-_]?key|cookie|token|credential|secret/i;
+ 
+ function slugify(s, max = 80) {
+   return String(s).replace(/[^a-zA-Z0-9]/g, "_").substring(0, max);
+@@ -35,67 +34,62 @@ function isBlacklisted(url) {
+   return LOG_BLACKLIST_URL_PARTS.some(part => url.includes(part));
+ }
+ 
+-// Decode body buffer based on content-encoding header
+-function decodeBody(buf, encoding) {
+-  if (!buf || buf.length === 0) return buf;
+-  try {
+-    const enc = (encoding || "").toLowerCase();
+-    if (enc.includes("gzip")) return zlib.gunzipSync(buf);
+-    if (enc.includes("br")) return zlib.brotliDecompressSync(buf);
+-    if (enc.includes("deflate")) return zlib.inflateSync(buf);
+-  } catch { /* return raw on failure */ }
+-  return buf;
++function safeUrl(url) {
++  if (!url) return "";
++  try { return new URL(url, "https://mitm.local").pathname; } catch { return String(url).split("?")[0]; }
++}
++
++function maskSensitiveHeaders(headers) {
++  if (!headers || typeof headers !== "object") return {};
++  return Object.fromEntries(Object.entries(headers).map(([key, value]) => [
++    key,
++    SENSITIVE_HEADER_RE.test(key) ? "[REDACTED]" : value
++  ]));
++}
++
++function bodyMetadata(body) {
++  const bytes = Buffer.isBuffer(body) ? body.length : Buffer.byteLength(String(body || ""), "utf8");
++  return { present: bytes > 0, bytes };
+ }
+ 
+-// Save raw request: method + url + headers + body
++// Save request metadata without payload content.
+ function dumpRequest(req, bodyBuffer, tag = "raw") {
+   if (isBlacklisted(req.url)) return null;
+   try {
+     const ts = new Date().toISOString().replace(/[:.]/g, "-");
+-    const slug = slugify((req.headers.host || "") + req.url);
++    const url = safeUrl(req.url);
++    const slug = slugify((req.headers?.host || "") + url);
+     const file = path.join(DUMP_DIR, `${ts}_${tag}_${slug}.req.json`);
+-    let parsed = null;
+-    try { parsed = JSON.parse(bodyBuffer.toString()); } catch { /* not JSON */ }
+     fs.writeFileSync(file, JSON.stringify({
+       method: req.method,
+-      url: req.url,
+-      host: req.headers.host,
+-      headers: req.headers,
+-      body: parsed ?? bodyBuffer.toString("utf8")
++      url,
++      host: req.headers?.host,
++      headers: maskSensitiveHeaders(req.headers),
++      body: bodyMetadata(bodyBuffer)
+     }, null, 2));
+     return file;
+   } catch { return null; }
+ }
+ 
+-// Buffer-based response dumper — collects chunks then decodes + writes once on end()
+-// Trade-off: holds response in RAM, but enables gzip/br decoding for readable output.
++// Response dumper — records response metadata without retaining stream content.
+ function createResponseDumper(req, tag = "raw") {
+   if (isBlacklisted(req.url)) return null;
+   const ts = new Date().toISOString().replace(/[:.]/g, "-");
+-  const slug = slugify((req.headers.host || "") + req.url);
++  const url = safeUrl(req.url);
++  const slug = slugify((req.headers?.host || "") + url);
+   const file = path.join(DUMP_DIR, `${ts}_${tag}_${slug}.res.txt`);
+   let status = 0;
+   let headers = {};
+-  const chunks = [];
++  let responseBytes = 0;
+   return {
+     writeHeader: (s, h) => { status = s; headers = h || {}; },
+     writeChunk: (chunk) => {
+       if (chunk == null) return;
+-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
++      responseBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), "utf8");
+     },
+     end: () => {
+       try {
+-        const raw = Buffer.concat(chunks);
+-        const enc = headers["content-encoding"] || headers["Content-Encoding"];
+-        const decoded = decodeBody(raw, enc);
+-        const text = decoded.toString("utf8");
+-        // Skip empty / trivially-empty bodies
+-        if (EMPTY_BODY_RE.test(text)) return;
+-        // Strip content-encoding since body is now decoded
+-        const cleanHeaders = { ...headers };
+-        delete cleanHeaders["content-encoding"];
+-        delete cleanHeaders["Content-Encoding"];
+-        const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(cleanHeaders, null, 2)}\n---BODY---\n${text}`;
++        const out = `STATUS: ${status}\nURL: ${url}\nHEADERS: ${JSON.stringify(maskSensitiveHeaders(headers), null, 2)}\n---BODY-METADATA---\n${JSON.stringify({ present: responseBytes > 0, bytes: responseBytes })}`;
+         fs.writeFileSync(file, out);
+       } catch { /* ignore */ }
+     },
+diff --git a/src/sse/handlers/chat.js b/src/sse/handlers/chat.js
+index 7aa530d3..bec5108b 100644
+--- a/src/sse/handlers/chat.js
++++ b/src/sse/handlers/chat.js
+@@ -19,6 +19,7 @@ import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "o
+ import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
+ import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
+ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
++import { correlateResponse } from "../utils/requestCorrelation.js";
+ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+ import * as log from "../utils/logger.js";
+ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+@@ -30,7 +31,16 @@ import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
+  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
+  * Format detection and translation handled by translator
+  */
+-export async function handleChat(request, clientRawRequest = null) {
++export async function handleChat(request, clientRawRequest = null, serverRequestId = crypto.randomUUID()) {
++  try {
++    const response = await handleChatInternal(request, clientRawRequest, serverRequestId);
++    return correlateResponse(response, serverRequestId);
++  } catch {
++    return correlateResponse(errorResponse(HTTP_STATUS.SERVER_ERROR, "Chat request failed"), serverRequestId);
++  }
++}
++
++async function handleChatInternal(request, clientRawRequest = null, serverRequestId) {
+   let body;
+   try {
+     body = await request.json();
+@@ -45,8 +55,11 @@ export async function handleChat(request, clientRawRequest = null) {
+     clientRawRequest = {
+       endpoint: url.pathname,
+       body,
+-      headers: Object.fromEntries(request.headers.entries())
++      headers: Object.fromEntries(request.headers.entries()),
++      serverRequestId
+     };
++  } else {
++    clientRawRequest = { ...clientRawRequest, serverRequestId };
+   }
+   // Claude Code marks a 1M-context request as `<model>[1m]`; the marker matches
+   // no combo, alias or provider/model pair, so it must not reach resolution.
+diff --git a/src/sse/utils/requestCorrelation.js b/src/sse/utils/requestCorrelation.js
+new file mode 100644
+index 00000000..0c196377
+--- /dev/null
++++ b/src/sse/utils/requestCorrelation.js
+@@ -0,0 +1,47 @@
++const SAFE_UPSTREAM_ID = /^[A-Za-z0-9._:-]{1,128}$/;
++
++function safeText(value) {
++  return typeof value === "string"
++    ? value.replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]").replace(/[\r\n\0]/g, " ").trim().slice(0, 500)
++    : "";
++}
++
++function safeUpstreamId(value) {
++  const candidate = safeText(value);
++  return candidate && SAFE_UPSTREAM_ID.test(candidate) ? candidate : "";
++}
++
++function responseOptions(response, headers) {
++  return {
++    status: response.status,
++    statusText: response.statusText,
++    headers,
++  };
++}
++
++export async function sanitizeErrorResponse(response, serverRequestId = crypto.randomUUID()) {
++  const headers = new Headers(response.headers);
++  headers.set("x-request-id", serverRequestId);
++  let source;
++  try { source = await response.clone().json(); } catch { source = null; }
++  const sourceError = source?.error && typeof source.error === "object" && !Array.isArray(source.error) ? source.error : {};
++  const error = { message: safeText(sourceError.message) || "Upstream request failed" };
++  for (const key of ["type", "param", "code"]) {
++    const value = safeText(sourceError[key]);
++    if (value) error[key] = value;
++  }
++  error.request_id = serverRequestId;
++  const upstreamRequestId = safeUpstreamId(sourceError.upstream_request_id || sourceError.request_id);
++  if (upstreamRequestId && upstreamRequestId !== serverRequestId) error.upstream_request_id = upstreamRequestId;
++  headers.delete("content-length");
++
++  return new Response(JSON.stringify({ error }), responseOptions(response, headers));
++}
++
++export async function correlateResponse(response, serverRequestId = crypto.randomUUID()) {
++  if (!(response instanceof Response)) return response;
++  if (response.status >= 400) return sanitizeErrorResponse(response, serverRequestId);
++  const headers = new Headers(response.headers);
++  headers.set("x-request-id", serverRequestId);
++  return new Response(response.body, responseOptions(response, headers));
++}
+diff --git a/tests/unit/chat-request-correlation.test.js b/tests/unit/chat-request-correlation.test.js
+new file mode 100644
+index 00000000..9241fae6
+--- /dev/null
++++ b/tests/unit/chat-request-correlation.test.js
+@@ -0,0 +1,18 @@
++import { describe, expect, it } from "vitest";
++
++const { handleChat } = await import("../../src/sse/handlers/chat.js");
++
++describe("chat request correlation boundary", () => {
++  it("adds trusted request ID to invalid requests", async () => {
++    const response = await handleChat(new Request("http://localhost/v1/chat/completions", {
++      method: "POST",
++      body: "not-json",
++    }));
++    const body = await response.json();
++    const requestId = body.error.request_id;
++
++    expect(response.status).toBe(400);
++    expect(response.headers.get("x-request-id")).toBe(requestId);
++    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
++  });
++});
+diff --git a/tests/unit/mitm-logger-redaction.test.js b/tests/unit/mitm-logger-redaction.test.js
+new file mode 100644
+index 00000000..54613518
+--- /dev/null
++++ b/tests/unit/mitm-logger-redaction.test.js
+@@ -0,0 +1,68 @@
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { createRequire } from "node:module";
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++
++const require = createRequire(import.meta.url);
++const originalDataDir = process.env.DATA_DIR;
++let tempDir;
++let logger;
++
++beforeAll(() => {
++  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-mitm-redaction-"));
++  process.env.DATA_DIR = tempDir;
++  logger = require("../../src/mitm/logger.js");
++  logger.clearDumpDir();
++});
++
++afterAll(() => {
++  logger?.clearDumpDir?.();
++  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
++  if (originalDataDir === undefined) delete process.env.DATA_DIR;
++  else process.env.DATA_DIR = originalDataDir;
++});
++
++describe("MITM logger redaction", () => {
++  const request = {
++    method: "POST",
++    url: "/v1/chat/completions?token=url-secret",
++    headers: {
++      host: "provider.example",
++      authorization: "Bearer header-secret",
++      cookie: "session=cookie-secret",
++      "content-type": "application/json",
++    },
++  };
++
++  it("writes request metadata without body or sensitive headers", () => {
++    const file = logger.dumpRequest(request, Buffer.from(JSON.stringify({ prompt: "request-secret" })), "test");
++    const output = fs.readFileSync(file, "utf8");
++
++    expect(output).not.toContain("request-secret");
++    expect(output).not.toContain("header-secret");
++    expect(output).not.toContain("cookie-secret");
++    expect(output).not.toContain("url-secret");
++    const parsed = JSON.parse(output);
++    expect(parsed.body.present).toBe(true);
++    expect(parsed.body.bytes).toBeGreaterThan(0);
++    expect(parsed.headers.authorization).toBe("[REDACTED]");
++  });
++
++  it("writes response metadata without stream content or sensitive headers", () => {
++    const dumper = logger.createResponseDumper(request, "test");
++    dumper.writeHeader(200, {
++      authorization: "Bearer response-header-secret",
++      "content-type": "text/event-stream",
++    });
++    dumper.writeChunk("response-secret");
++    dumper.end();
++    const output = fs.readFileSync(dumper.file, "utf8");
++
++    expect(output).not.toContain("response-secret");
++    expect(output).not.toContain("response-header-secret");
++    expect(output).toContain('"present":true');
++    expect(output).toContain('"bytes":15');
++    expect(output).toContain('"authorization": "[REDACTED]"');
++  });
++});
+diff --git a/tests/unit/request-correlation.test.js b/tests/unit/request-correlation.test.js
+new file mode 100644
+index 00000000..5dc599c0
+--- /dev/null
++++ b/tests/unit/request-correlation.test.js
+@@ -0,0 +1,34 @@
++import { describe, expect, it } from "vitest";
++import { correlateResponse } from "../../src/sse/utils/requestCorrelation.js";
++
++describe("server request correlation", () => {
++  it("overwrites spoofable request IDs and preserves upstream ID separately", async () => {
++    const response = await correlateResponse(
++      new Response(JSON.stringify({ error: { message: "bad", request_id: "client-spoof" } }), { status: 400 }),
++      "server-123"
++    );
++    const body = await response.json();
++
++    expect(response.headers.get("x-request-id")).toBe("server-123");
++    expect(body.error.request_id).toBe("server-123");
++    expect(body.error.request_id).not.toBe("client-spoof");
++  });
++
++  it("keeps validated provider ID as upstream_request_id", async () => {
++    const response = await correlateResponse(
++      new Response(JSON.stringify({ error: { message: "bad", request_id: "upstream-123" } }), { status: 502 }),
++      "server-456"
++    );
++
++    expect(await response.json()).toEqual({
++      error: { message: "bad", request_id: "server-456", upstream_request_id: "upstream-123" },
++    });
++  });
++
++  it("adds header without consuming successful response body", async () => {
++    const response = await correlateResponse(new Response("stream-body"), "server-789");
++
++    expect(response.headers.get("x-request-id")).toBe("server-789");
++    expect(await response.text()).toBe("stream-body");
++  });
++});
+diff --git a/tests/unit/request-details-storage-redaction.test.js b/tests/unit/request-details-storage-redaction.test.js
+new file mode 100644
+index 00000000..2a29ee47
+--- /dev/null
++++ b/tests/unit/request-details-storage-redaction.test.js
+@@ -0,0 +1,74 @@
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++
++const originalDataDir = process.env.DATA_DIR;
++const originalRequestLogs = process.env.ENABLE_REQUEST_LOGS;
++const originalBatchSize = process.env.OBSERVABILITY_BATCH_SIZE;
++let tempDir;
++let db;
++let adapter;
++const testDetailId = `redaction-${process.pid}`;
++
++beforeAll(async () => {
++  const sharedState = global._dbAdapter;
++  try { sharedState?.instance?.close?.(); } catch {}
++  if (sharedState) {
++    sharedState.instance = null;
++    sharedState.initPromise = null;
++    sharedState.logged = false;
++  }
++  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-details-redaction-"));
++  process.env.DATA_DIR = tempDir;
++  process.env.ENABLE_REQUEST_LOGS = "true";
++  process.env.OBSERVABILITY_BATCH_SIZE = "1";
++  db = await import("@/lib/db/index.js");
++  await db.initDb();
++  await db.updateSettings({ enableObservability: true, observabilityBatchSize: 1 });
++  adapter = await (await import("@/lib/db/driver.js")).getAdapter();
++});
++
++afterAll(() => {
++  try { adapter?.run?.("DELETE FROM requestDetails WHERE id = ?", [testDetailId]); } catch {}
++  try { adapter?.close?.(); } catch {}
++  if (global._dbAdapter?.instance === adapter) {
++    global._dbAdapter.instance = null;
++    global._dbAdapter.initPromise = null;
++  }
++  if (tempDir) {
++    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
++  }
++  if (originalDataDir === undefined) delete process.env.DATA_DIR;
++  else process.env.DATA_DIR = originalDataDir;
++  if (originalRequestLogs === undefined) delete process.env.ENABLE_REQUEST_LOGS;
++  else process.env.ENABLE_REQUEST_LOGS = originalRequestLogs;
++  if (originalBatchSize === undefined) delete process.env.OBSERVABILITY_BATCH_SIZE;
++  else process.env.OBSERVABILITY_BATCH_SIZE = originalBatchSize;
++});
++
++describe("request detail storage redaction", () => {
++  it("does not persist request or provider payload values", async () => {
++    await db.saveRequestDetail({
++      id: testDetailId,
++      provider: "openai",
++      model: "gpt-test",
++      status: "success",
++      request: { messages: [{ role: "user", content: "user-secret" }] },
++      providerRequest: { input: "provider-secret" },
++      providerResponse: { output: "response-secret" },
++      response: { content: "answer-secret" },
++    });
++    let stored = null;
++    for (let attempt = 0; attempt < 20 && !stored; attempt++) {
++      await new Promise((resolve) => setTimeout(resolve, 25));
++      stored = await db.getRequestDetailById(testDetailId);
++    }
++
++    expect(stored.request).toEqual({ redacted: true });
++    expect(stored.providerRequest).toEqual({ redacted: true });
++    expect(stored.providerResponse).toEqual({ redacted: true });
++    expect(stored.response).toEqual({ redacted: true });
++    expect(JSON.stringify(stored)).not.toMatch(/secret/);
++  });
++});

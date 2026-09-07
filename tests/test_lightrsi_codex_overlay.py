@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCH_ROOT = ROOT / "tools" / "open-design-local-patch"
+PATCH_ROOT = ROOT / "tools" / "local-patch-hub"
 OVERLAY_ROOT = PATCH_ROOT / "overlays" / "lightrsi-codex-hook-portable" / "c0d86ae"
 
 

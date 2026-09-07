@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCH_ROOT = ROOT / "tools" / "open-design-local-patch"
+PATCH_ROOT = ROOT / "tools" / "local-patch-hub"
 
 
 def test_open_design_overlay_uses_symbol_discovery_and_shared_markers() -> None:
