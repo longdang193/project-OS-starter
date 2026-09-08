@@ -540,7 +540,12 @@ def test_main_starts_with_selected_codex_home(
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
         },
         "codex": {"codex_home": str(codex_home)},
-        "herdr": {"executable": "herdr.exe", "agent_name": "xhigh-main"},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
     }
     captured: dict[str, object] = {}
     commands: list[list[str]] = []
@@ -618,7 +623,12 @@ def test_main_times_out_codex_and_verifies_termination(
             },
         },
         "codex": {"codex_home": str(codex_home)},
-        "herdr": {"executable": "herdr.exe", "agent_name": "xhigh-main"},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
     }
     calls = 0
     cleanup = {
@@ -629,7 +639,13 @@ def test_main_times_out_codex_and_verifies_termination(
     }
 
     monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
-    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: cleanup)
+    terminated: list[tuple[object, ...]] = []
+
+    def fake_terminate(*args, **kwargs):
+        terminated.append(args)
+        return cleanup
+
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", fake_terminate)
 
     def fake_run(command, **kwargs):
         nonlocal calls
@@ -642,7 +658,7 @@ def test_main_times_out_codex_and_verifies_termination(
 
     assert LAUNCHER.main(
         [
-            "--profile", "xhigh", "--session", "codex-probe", "--pane", "w1:p5",
+            "--profile", "xhigh", "--session", "auto", "--pane", "auto",
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
             "--grant-wall-clock-seconds", "8",
         ]
@@ -663,6 +679,45 @@ def test_main_times_out_codex_and_verifies_termination(
     assert watchdog["enforcement"] == "outer-watchdog"
     assert watchdog["elapsed_seconds"] >= 0
     assert watchdog["termination"] == cleanup
+    assert terminated == [("herdr.exe", "codex-probe", "w1:p5")]
+
+
+def test_main_auto_codex_uses_resolved_target(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "w1",
+            "pane": "w1:p5",
+        },
+    }
+    commands: list[list[str]] = []
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "auto", "--pane", "auto",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 0
+    assert commands[-1][1:4] == ["--session", "w1", "agent"]
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]["session"] == "w1"
 
 
 def test_main_reports_failed_assignment_after_start(
@@ -677,7 +732,12 @@ def test_main_reports_failed_assignment_after_start(
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
         },
         "codex": {"codex_home": str(codex_home)},
-        "herdr": {"executable": "herdr.exe", "agent_name": "xhigh-main"},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
     }
     calls = 0
 
@@ -751,7 +811,7 @@ def test_target_selector_selects_one_eligible_auto_target(
     assert resolution["mode"] == "auto"
 
 
-def test_target_selector_rejects_ambiguous_auto_targets(
+def test_target_selector_selects_first_deterministic_auto_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -770,8 +830,13 @@ def test_target_selector_rejects_ambiguous_auto_targets(
     )
     monkeypatch.setattr(LAUNCHER, "_herdr_pane", lambda *args, **kwargs: {"pane": {}})
 
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="target_resolution=ambiguous"):
-        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("w1", "w1:p1")
+    assert resolution["status"] == "selected"
+    assert resolution["candidate_count"] == 2
 
 
 def test_target_selector_reports_no_auto_target(
@@ -794,6 +859,22 @@ def test_target_selector_reports_no_auto_target(
     }
 
 
+def test_main_target_resolution_failure_is_not_workflow_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    error = LAUNCHER.TargetResolutionBlocked(
+        "target_resolution=not_found; eligible candidates=0",
+        {"status": "not_found", "mode": "auto", "candidate_count": 0, "candidates": []},
+    )
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (_ for _ in ()).throw(error))
+
+    assert LAUNCHER.main(["--profile", "xhigh", "--session", "auto", "--pane", "auto", "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane"]) == 2
+    captured = capsys.readouterr()
+    assert "TARGET_RESOLUTION:" in captured.err
+    assert "BLOCKED:" not in captured.err
+
+
 def test_deepagents_main_strips_herdr_environment(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -802,7 +883,7 @@ def test_deepagents_main_strips_herdr_environment(
         "registry_launcher": {
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
         },
-        "herdr": {"agent_name": "normal-main"},
+        "herdr": {"agent_name": "normal-main", "session": "session", "pane": "pane"},
     }
     captured: dict[str, object] = {}
     monkeypatch.setenv("HERDR_ENV", "1")

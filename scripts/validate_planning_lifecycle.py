@@ -285,7 +285,7 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
         findings.append(Finding("planning_execution_error", rel, "requires at least one `### Task N` section"))
     require_task_authority = current and coordination == "git-tracked"
     for task_name, task_text in task_sections:
-        unresolved_allowed = task_states.get(task_name) == "pending"
+        unresolved_allowed = task_states.get(task_name) in {"pending", "blocked"}
         for label, allowed, required in (
             ("Template Profile", template_profiles | ({"unresolved"} if unresolved_allowed else set()), enforce_contract),
             ("Validator Profile", validator_profiles, False),
@@ -379,7 +379,7 @@ def validate_git_coordination(
 
     for row in rows:
         executor = row["executor"].strip().lower()
-        allowed_row_executors = allowed_executors | ({"unresolved"} if row["state"] == "pending" else set())
+        allowed_row_executors = allowed_executors | ({"unresolved"} if row["state"] in {"pending", "blocked"} else set())
         if executor not in allowed_row_executors:
             findings.append(
                 Finding(

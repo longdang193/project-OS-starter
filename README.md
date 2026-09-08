@@ -97,8 +97,10 @@ verifies target lane readiness, Git/cwd identity, runtime/profile binding, and
 task delivery. It does not attest controller identity or own lane authority.
 CoS assigns top-level MAIN AGENTS through Herdr. MAIN AGENTS own assigned lanes
 and may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
-those lanes. Sub-agents remain subordinate and may not spawn peer MAIN AGENTS
-or activate CoS. Review and integration remain Codex-only.
+those lanes only when their Runtime Grant includes
+`delegation.child_agents: allow`. Sub-agents remain subordinate and may not
+spawn peer MAIN AGENTS or activate CoS. Review and integration remain
+Codex-only.
 Herdr controller visibility is pull-based: use `agent get`/`agent read` for
 Codex and `pane process-info`/`pane read` for DeepAgents. Tura uses
 `project-delegate` outside the Herdr main-lane path. Missing or unchanged output is

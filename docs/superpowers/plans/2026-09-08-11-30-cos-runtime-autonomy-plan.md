@@ -9,12 +9,16 @@ targets:
   - scripts/validate_planning_lifecycle.py
   - docs/operating_system/templates/implementation-plan-template.md
   - .agents/skills/skill-executing-plans/SKILL.md
+  - .agents/skills/skill-writing-plans/SKILL.md
+  - .agents/skills/skill-deepagents-executing-plans/SKILL.md
   - tests/test_validate_planning_lifecycle.py
   - tests/test_starter_lifecycle_contract.py
   - tests/test_native_personal_local_workflow.py
   - scripts/herdr_main_launcher.py
   - tests/test_herdr_main_launcher.py
   - .agents/skills/skill-chief-of-staff/SKILL.md
+  - docs/operating_system/templates/agents/root-AGENTS.template.md
+  - README.md
   - tests/test_skill_chief_of_staff.py
   - docs/operating_system/planning/planning-dispatch.md
   - docs/operating_system/runtime/runtime-surfaces.md
@@ -25,7 +29,7 @@ targets:
 
 ## Verdict Review
 
-**Review verdict:** ready with required fixes.
+**Review verdict:** required fixes applied and reverified.
 
 The supplied verdict identifies the correct root cause: CoS has runtime-target
 discovery missing, not broad task authority missing. It preserves the stronger
@@ -107,9 +111,9 @@ and `tura`; the plan template documents concrete values.
 `codex | deepagents | tura`, and active, blocked, and completed tasks retain
 concrete resolved values.
 
-**Smallest safe correction:** permit unresolved values only on pending tasks,
-then require CoS to write concrete executor/profile resolution into the same
-task record before activation and launch.
+**Smallest safe correction:** permit unresolved values on pending or blocked
+tasks, then require CoS to write concrete executor/profile resolution into the
+same task record before activation and launch.
 
 ### [P2] Runtime grant durability must remain split by ownership
 
@@ -162,8 +166,8 @@ creation.
 `scripts/herdr_main_launcher.py` accepts `--session auto --pane auto`, discovers
 one eligible existing target for the requested repository cwd, records target
 resolution evidence, and keeps exact session/pane launches unchanged. Zero
-eligible targets and multiple eligible targets remain machine-readable runtime
-outcomes; CoS maps them to its workflow statuses.
+eligible targets remain machine-readable not-found outcomes; multiple eligible
+targets use deterministic selection with candidate evidence.
 
 ### Runtime environment invariant
 
@@ -179,7 +183,7 @@ worktrees, and task authority. Other execution modes remain sequential.
 
 ### Durable dispatch resolution
 
-Pending CoS tasks may hold `Executor: unresolved` and `Template Profile:
+Pending or blocked CoS tasks may hold `Executor: unresolved` and `Template Profile:
 unresolved`. Native Codex CoS resolves pinned or adaptive executor/profile
 values from `planning-dispatch.md`, records concrete values in the same task
 record, and activates the task only after resolution. Effective runtime grants
@@ -216,11 +220,11 @@ regenerated from canonical sources and validated for drift.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | current | `codex` | none | lifecycle validator and template tests | `149 focused tests passed` |
-| Task 2 | `completed` | current | `codex` | Task 1 | focused launcher environment tests | `149 focused tests passed` |
-| Task 3 | `completed` | current | `codex` | Task 2 | target-resolution unit tests and launcher CLI tests | `launcher tests passed; --help passed` |
-| Task 4 | `completed` | current | `codex` | Task 3 | CoS and planning contract tests | `149 focused tests passed` |
-| Task 5 | `completed` | current | `codex` | Task 4 | adapter sync, repository validation, diff checks | `deployment, drift, contracts, and diff checks passed` |
+| Task 1 | `completed` | current | `codex` | none | lifecycle validator and template tests | `152 focused tests passed` |
+| Task 2 | `completed` | current | `codex` | Task 1 | focused launcher environment tests | `152 focused tests passed` |
+| Task 3 | `completed` | current | `codex` | Task 2 | full auto-target Codex prompt/cleanup/evidence tests | `auto-target regressions passed; target-resolution labeling passed` |
+| Task 4 | `completed` | current | `codex` | Task 3 | CoS and planning contract tests | `152 focused tests passed` |
+| Task 5 | `completed` | current | `codex` | Task 4 | adapter sync, repository validation, drift, diff checks | `planning, contracts, drift, and diff checks passed` |
 
 ## Task Breakdown
 
@@ -508,7 +512,8 @@ regenerated from canonical sources and validated for drift.
 
 ## Verification
 
-- `py -m pytest -q tests/test_herdr_main_launcher.py tests/test_skill_chief_of_staff.py tests/test_sync_agent_adapters.py`
+- `py -m pytest -q tests/test_herdr_main_launcher.py tests/test_validate_planning_lifecycle.py tests/test_skill_chief_of_staff.py tests/test_starter_lifecycle_contract.py tests/test_native_personal_local_workflow.py tests/test_sync_agent_adapters.py`
+- `py scripts/validate_planning_lifecycle.py --repo-root .`
 - `py scripts/sync_agent_adapters.py --all-platforms --check`
 - `py -B "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast`
 - `py scripts/validate_agent_runtime_drift.py --all-platforms`
@@ -519,7 +524,7 @@ regenerated from canonical sources and validated for drift.
 The plan is ready for completion verification when:
 
 1. DeepAgents and Codex launcher subprocesses use the same cleaned Herdr environment invariant.
-2. `--session auto --pane auto` resolves exactly one existing eligible target or emits machine-readable not-found/ambiguous evidence.
+2. `--session auto --pane auto` resolves one existing eligible target, emits machine-readable not-found evidence when none exists, and records deterministic candidate selection when several exist.
 3. Explicit session/pane launches retain existing behavior and validation.
 4. CoS may schedule only proven independent waves in `parallel-capable` plans.
 5. CoS read-only observation and launcher-owned mutation are documented symmetrically.
@@ -527,6 +532,6 @@ The plan is ready for completion verification when:
 7. Focused tests, adapter sync, repository validation, drift validation, and diff checks pass.
 8. Existing uncommitted user changes and untracked `.playwright-mcp/` and `db/` remain preserved.
 
-Plan completed after repository implementation, approved global deployment,
-fresh runtime drift validation, repository contract validation, focused tests,
-and diff checks.
+Plan completed after repository implementation, follow-up verdict fixes,
+approved global deployment, fresh runtime drift validation, repository contract
+validation, focused tests, and diff checks.

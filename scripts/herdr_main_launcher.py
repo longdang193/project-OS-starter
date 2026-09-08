@@ -268,25 +268,25 @@ def _resolve_target_selector(
         candidates.append((workspace_id, pane_id))
 
     candidates.sort()
-    if len(candidates) != 1:
-        status = "not_found" if not candidates else "ambiguous"
+    if not candidates:
         raise TargetResolutionBlocked(
-            f"target_resolution={status}; eligible candidates={len(candidates)}",
+            "target_resolution=not_found; eligible candidates=0",
             {
-                "status": status,
+                "status": "not_found",
                 "mode": "auto",
-                "candidate_count": len(candidates),
-                "candidates": [
-                    {"session": candidate_session, "pane": candidate_pane}
-                    for candidate_session, candidate_pane in candidates
-                ],
+                "candidate_count": 0,
+                "candidates": [],
             },
         )
     selected_session, selected_pane = candidates[0]
     return selected_session, selected_pane, {
         "status": "selected",
         "mode": "auto",
-        "candidate_count": 1,
+        "candidate_count": len(candidates),
+        "candidates": [
+            {"session": candidate_session, "pane": candidate_pane}
+            for candidate_session, candidate_pane in candidates
+        ],
         "session": selected_session,
         "pane": selected_pane,
     }
@@ -867,6 +867,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(evidence, sort_keys=True))
         if args.dry_run:
             return 0
+        try:
+            resolved_session = str(evidence["herdr"]["session"])
+            resolved_pane = str(evidence["herdr"]["pane"])
+        except (KeyError, TypeError) as exc:
+            raise LaunchBlocked("Launcher evidence missing resolved Herdr target.") from exc
         if args.executor == "codex":
             codex_evidence = evidence.get("codex")
             if not isinstance(codex_evidence, dict) or not codex_evidence.get("codex_home"):
@@ -893,7 +898,7 @@ def main(argv: list[str] | None = None) -> int:
                     "agent_name": evidence["herdr"]["agent_name"],
                     "exit_code": result.returncode,
                     "phase": "start",
-                    "session": args.session,
+                    "session": resolved_session,
                     "status": "failed",
                     "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
                 }
@@ -905,7 +910,7 @@ def main(argv: list[str] | None = None) -> int:
             watchdog_seconds = _codex_watchdog_seconds(evidence)
             assignment = _codex_assignment_command(
                 herdr,
-                args.session,
+                resolved_session,
                 agent_name,
                 args.task,
                 timeout_ms=(watchdog_seconds * 1000 if watchdog_seconds is not None else None),
@@ -943,8 +948,8 @@ def main(argv: list[str] | None = None) -> int:
             if assignment_timed_out:
                 cleanup = _terminate_codex_lane(
                     herdr,
-                    args.session,
-                    args.pane,
+                    resolved_session,
+                    resolved_pane,
                     env=environment,
                 )
                 cleanup_verified = bool(cleanup.get("verified"))
@@ -959,7 +964,7 @@ def main(argv: list[str] | None = None) -> int:
                         ),
                         "phase": "prompt",
                         "prompt_accepted": False,
-                        "session": args.session,
+                        "session": resolved_session,
                         "status": status,
                         "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
                         "watchdog": {
@@ -983,7 +988,7 @@ def main(argv: list[str] | None = None) -> int:
                     "exit_code": assignment_result.returncode,
                     "phase": "prompt",
                     "prompt_accepted": assignment_result.returncode == 0,
-                    "session": args.session,
+                    "session": resolved_session,
                     "status": "delivered" if assignment_result.returncode == 0 else "failed",
                     "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
                     "wait": "settled" if assignment_result.returncode == 0 else None,
@@ -995,7 +1000,7 @@ def main(argv: list[str] | None = None) -> int:
                 "agent_name": evidence["herdr"]["agent_name"],
                 "exit_code": 0,
                 "phase": "pane_run",
-                "session": args.session,
+                "session": resolved_session,
                 "status": "delivered",
                 "task_accepted": True,
                 "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
@@ -1004,7 +1009,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except TargetResolutionBlocked as exc:
         print(json.dumps({"target_resolution": exc.resolution}, sort_keys=True))
-        print(f"BLOCKED: {exc}", file=sys.stderr)
+        print(f"TARGET_RESOLUTION: {exc}", file=sys.stderr)
         return 2
     except LaunchBlocked as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)

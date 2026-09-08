@@ -535,6 +535,22 @@ def test_pending_task_allows_unresolved_executor_and_profile() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_blocked_task_allows_unresolved_executor_and_profile() -> None:
+    root = make_test_root()
+    try:
+        plan = git_tracked_plan(
+            ledger="| Task 1 | `blocked` | current | unresolved | none | `test-one` | pending |",
+        ).replace("Controller-selected: `none (lead controller)`", "Controller-selected: `unresolved`")
+        plan = plan.replace("- Active task(s): `Task 1`\n", "")
+        write_text(root / "docs" / "superpowers" / "plans" / "demo-plan.md", plan)
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_active_task_rejects_unresolved_executor_and_profile() -> None:
     root = make_test_root()
     try:

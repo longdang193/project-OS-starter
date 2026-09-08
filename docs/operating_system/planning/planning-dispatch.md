@@ -52,9 +52,10 @@ For `plan-bound-execution`, the `Required skills` entry is the canonical CoS
 opt-in signal. CoS does not add an executor, profile, plan field, or durable
 state artifact.
 For `plan-bound-execution`, it applies when the task ledger `Executor` is
-`codex` or `deepagents` for implementation lanes and runtime parity, plan
-binding, lane identity, and profile-binding gates pass under a native Codex lead
-controller. Herdr is
+`codex`, `deepagents`, or unresolved on a pending or blocked implementation
+lane. The native Codex lead resolves executor and profile before activation;
+runtime parity, plan binding, lane identity, and profile-binding gates pass
+before dispatch. Herdr is
 runtime observation and top-level lane supervision, not executor selection or
 task acceptance. CoS dispatches only independent Herdr top-level MAIN AGENT
 lanes;
@@ -184,13 +185,13 @@ or task function permanently to an executor. Do not add automatic executor
 fallback or runtime-internal plan coordination. Use task-specific evidence when
 using `prefer`; otherwise keep Codex as the safe default.
 
-For a pending Git-tracked task with `Executor: unresolved` or
-`Template Profile: unresolved`, resolve executor first from this policy, then
+Pending or blocked Git-tracked tasks may use `Executor: unresolved` or
+`Template Profile: unresolved`. Resolve executor first from this policy, then
 select the lowest reliable profile from `agents/*.toml` independently. Write
 both concrete values into that same task record before changing its state to
-`active`. Never infer executor from profile name or rank. Keep effective
-runtime grants transient in launcher evidence; they do not replace durable task
-resolution.
+`active`. Explicit pins remain constraints. Never infer executor from profile
+name or rank. Keep effective runtime grants transient in launcher evidence; they
+do not replace durable task resolution.
 
 ### Interactive Use
 

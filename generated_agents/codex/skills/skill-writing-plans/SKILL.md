@@ -63,10 +63,11 @@ Source and tests remain authoritative when documents or optional tools disagree.
 
 Executor selection follows `docs/operating_system/planning/planning-dispatch.md`.
 Executor and profile selection are independent. A plan may record an optional
-default task executor, but each Git-tracked task records its authoritative
-`codex`, `deepagents`, or `tura` executor in the task ledger. Use Codex when
-controller authority is required or delegated benefit is unclear; use Tura or
-DeepAgents only when task-specific evidence supports that choice.
+default task executor, and pending or blocked Git-tracked tasks may keep
+`Executor: unresolved` until the lead controller resolves them before
+activation. Use Codex when controller authority is required or delegated
+benefit is unclear; use Tura or DeepAgents only when task-specific evidence
+supports that choice.
 
 When a plan names `deepagents` as executor, record only executor choice and
 task role. Do not treat it as a tool-permission grant. DeepAgents MCP is opt-in

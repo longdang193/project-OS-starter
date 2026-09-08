@@ -63,8 +63,9 @@ workers remain executor-local and opaque.
 Before dispatch, Codex must:
 
 1. complete `skill-executing-plans` readiness and Plan-plus-Git reconciliation;
-2. confirm exactly one eligible active task; the outer Codex controller owns
-   any dependency-ready wave and dispatches each task separately;
+2. confirm one eligible active task for this worker within the current task or
+   dependency-ready wave; the outer Codex controller owns wave selection and
+   dispatches each task separately;
 3. verify workspace, branch, base ancestry, `HEAD`, status, and worktrees;
 4. confirm task scope, write ownership, dependencies, required proof, and
    preserved existing changes;

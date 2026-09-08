@@ -11,7 +11,7 @@ runtime, rules, skills, root instructions, and hooks.
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring in this repository |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
-| `scripts/herdr_main_launcher.py` | Canonical runtime projection from a selected profile to one top-level Codex or DeepAgents lane through Herdr |
+| `scripts/herdr_main_launcher.py` | Canonical existing-target resolution and runtime projection for one top-level Codex or DeepAgents Herdr lane |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
 
 ## Deployed Runtime Projections

@@ -85,8 +85,8 @@ acceptance remains required for task completion.
 
 ## Adaptive Runtime Grant
 
-CoS may assign a transient Runtime Grant after successful top-level lane
-assignment. The grant narrows runtime resources and capability exposure; it never
+CoS computes a transient Runtime Grant before top-level lane dispatch. The grant
+narrows runtime resources and capability exposure; it never
 expands ownership, allowed paths, dependencies, or proof obligations. The
 runtime invariant is `Worker Runtime Grant ⊆ Main Runtime Grant`; durable
 authority remains `Plan Lane Authority ⊆ task Authority`.
@@ -318,20 +318,22 @@ runtime projection, exact pane/cwd checks, Git-fact reporting, and delivery
 mechanics. Do not construct provider, model, or developer-instruction overrides
 in CoS; consume launcher evidence and apply CoS acceptance policy.
 
-CoS uses only provider-resolved Herdr operations: discover/list, start, prompt,
-wait, read, and retire/stop. Operation names and outputs come from the active
-runtime; CoS must not invent commands, event semantics, subscriptions, or
-durable Herdr state. Record returned facts in the current turn or plan-owned
-evidence only. For DeepAgents, Herdr owns outer pane evidence while
-`dcode-project` owns worker wait, timeout, exit propagation, and descendant
-cleanup; reconcile both before acceptance.
-For plan-bound execution, select one dependency-ready task. Prefer reuse of a healthy
-Codex session when plan, repository, lane, and context match. Select a fresh
-top-level Codex implementation lane or bounded DeepAgents pane process when
-context isolation materially helps. When resolving a blocker becomes a substantial independent detour, park
-the current lane, dispatch a fresh bounded Herdr lane for that blocker, and
-merge back only compact evidence or result. Do not supervise executor-local
-workers inside `deepagents` or `tura`.
+CoS observes provider-resolved Herdr operations through discover/list, wait, and
+read. The repository launcher owns target resolution, runtime projection,
+start, prompt delivery, timeout cleanup, and launcher-owned retirement. CoS
+must not invent commands, event semantics, subscriptions, or durable Herdr
+state. Record returned facts in the current turn or plan-owned evidence only.
+For DeepAgents, Herdr owns outer pane evidence while `dcode-project` owns
+worker wait, timeout, exit propagation, and descendant cleanup; reconcile both
+before acceptance.
+Under Plan Binding, select the next action: reuse a healthy Codex session when
+plan, repository, lane, and context match; dispatch one dependency-ready task;
+or dispatch one dependency-ready wave only when the plan is
+`parallel-capable` and every task has independent ownership and proof. When
+resolving a blocker becomes a substantial independent detour, park the current
+lane, dispatch a fresh bounded Herdr lane for that blocker, and merge back only
+compact evidence or result. Do not supervise executor-local workers inside
+`deepagents` or `tura`.
 
 ## Lane Contract (plan-bound execution)
 
