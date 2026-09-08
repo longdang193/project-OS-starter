@@ -168,7 +168,7 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "--quiet",
         "--no-mcp",
         "-n",
-        "'Return exactly DEEPAGENTS_ADAPTER_OK'",
+        "'Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]'",
     ]
 
     assert evidence["registry_launcher"]["executor"] == "deepagents"
@@ -325,6 +325,7 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         executor="deepagents",
         grant_turns="8",
         grant_wall_clock_seconds="600",
+        grant_child_agents="allow",
         task="Return exactly GRANT_OK",
     )
 
@@ -341,9 +342,10 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         },
         "outer_watchdog_seconds": 1800,
         "mcp_select": [],
-        "delegation": {"child_agents": "deny"},
+        "delegation": {"child_agents": "allow"},
     }
     assert len(evidence["registry_launcher"]["grant_digest"]) == 64
+    assert command[-1] == "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]'"
 
 
 def test_resolve_launch_quotes_mcp_selectors_for_powershell(
@@ -538,6 +540,7 @@ def test_main_starts_with_selected_codex_home(
     evidence = {
         "registry_launcher": {
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "runtime_grant": {"delegation": {"child_agents": "allow"}},
         },
         "codex": {"codex_home": str(codex_home)},
         "herdr": {
@@ -585,7 +588,7 @@ def test_main_starts_with_selected_codex_home(
             "agent",
             "prompt",
             "xhigh-main",
-            "assign lane",
+            "assign lane [Runtime Grant: delegation.child_agents = allow]",
             "--wait",
             "--timeout",
             "30000",

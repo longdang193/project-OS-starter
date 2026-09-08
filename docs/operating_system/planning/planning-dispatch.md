@@ -238,9 +238,10 @@ resource values: `turns` and `wall_clock_seconds`, plus policy authority
 MAIN AGENTS may receive `allow`, while ordinary, review, and integration lanes
 default to `deny`. Codex turns remain `native`;
 numeric Codex wall-clock values use the Herdr outer watchdog. DeepAgents may
-use native or explicit numeric values for both fields. Delegation and
-parallelism remain policy-level autonomy; Herdr records child-agent authority
-in launch evidence but does not enforce executor-local spawning.
+use native or explicit numeric values for both fields. The launcher projects
+child-agent authority into the bounded task brief for the assigned MAIN AGENT.
+Delegation and parallelism remain policy-level autonomy; Herdr records the
+authority in launch evidence but does not enforce executor-local spawning.
 
 DeepAgents direct MCP projection remains default-deny. Runtime Tool Resolution
 owns capability requirements and the adapter resolves them to concrete

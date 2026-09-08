@@ -15,8 +15,9 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "required_reads: []" in skill
     assert "`skill-executing-plans` owns\napproved-plan execution" in skill
     assert "CoS has no direct Git or PR authority" in skill
-    assert "`deepagents` uses `dcode-project`" in " ".join(skill.split())
-    assert "`tura` uses `project-delegate`" in skill
+    normalized = " ".join(skill.split())
+    assert "`deepagents` uses a CoS-managed `dcode-project`" in normalized
+    assert "`tura` is not a CoS MAIN lane" in skill
     assert "top-level lane selection" in skill
 
 
@@ -228,11 +229,12 @@ def test_git_tracked_coordination_claim_cannot_expand_through_delegation() -> No
 
 def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
-    assert "CoS may dispatch only top-level MAIN AGENT lanes through Herdr." in skill
-    assert "Every CoS lane dispatch goes through Herdr" in skill
+    normalized = " ".join(skill.split())
+    assert "CoS may dispatch only top-level `codex` and `deepagents` MAIN AGENT lanes through Herdr." in normalized
+    assert "Every CoS-managed lane dispatch goes through Herdr" in normalized
     assert "`scripts/herdr_main_launcher.py`" in skill
     assert "Monitor only the\ntop-level lane and wrapper" in skill
-    assert "never invokes subagents directly" in skill
+    assert "CoS never invokes subagents directly" in normalized
     assert "The launcher owns\nruntime projection, exact pane/cwd checks, Git-fact reporting, and delivery\nmechanics" in skill
     for forbidden in (
         "`multi_agent_v1`",

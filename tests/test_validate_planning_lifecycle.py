@@ -568,6 +568,25 @@ def test_active_task_rejects_unresolved_executor_and_profile() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_current_git_tracked_plan_rejects_default_executor() -> None:
+    root = make_test_root()
+    try:
+        plan = git_tracked_plan(
+            ledger="| Task 1 | `active` | current | codex | none | `test-one` | pending |",
+        ).replace(
+            "- Coordination: `git-tracked`",
+            "- Coordination: `git-tracked`\n- Default task executor: `codex`",
+        )
+        write_text(root / "docs" / "superpowers" / "plans" / "demo-plan.md", plan)
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "remove `Default task executor`" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_completed_plan_allows_historical_validator_executor_label() -> None:
     root = make_test_root()
     try:

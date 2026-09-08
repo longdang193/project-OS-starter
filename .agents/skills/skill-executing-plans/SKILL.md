@@ -118,7 +118,8 @@ same task record before changing state to `active`. When CoS is active, CoS
 performs that resolution as the lead controller's coordination specialization.
 Active and completed rows must contain concrete values. For `codex`, execute inline lead-controller work directly when the
 profile is `none`; when a fixed profile is selected for delegated work, use the
-active native Codex subagent capability for ordinary execution. A Herdr-
+active native Codex subagent capability for ordinary execution when CoS is not
+active for top-level plan execution. A Herdr-
 supervised MAIN AGENT may also use native child delegation for assigned lane
 work. The current Runtime Grant must set `delegation.child_agents: allow` for
 that delegation. When the approved plan lists `skill-chief-of-staff` in `Required skills`, keep

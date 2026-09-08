@@ -115,9 +115,11 @@ Each agent gets:
 
 For parallel writers, record the dependency-ready wave, branch and isolated
 worktree for each writer, exact disjoint write ownership, and required lane
-proof in the active plan. Then use the platform-native parallel dispatch
-facility. Issue all independent spawn calls in the same round when supported;
-dispatching one and waiting before the next is sequential.
+proof in the active plan. Under plan-bound CoS, acquire and deliver Herdr MAIN
+AGENT lanes sequentially; workers execute concurrently after assignments
+settle. Outside CoS, or inside an assigned MAIN AGENT lane, use the
+platform-native parallel dispatch facility and issue independent spawn calls in
+the same round when supported.
 
 ```text
 Subagent: "Fix agent-tool-abort.test.ts failures"

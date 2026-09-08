@@ -348,6 +348,14 @@ def _validate_task(task: str | None) -> str:
     return task.strip()
 
 
+def _project_runtime_grant(task: str, runtime_grant: dict[str, Any]) -> str:
+    delegation = runtime_grant.get("delegation")
+    child_agents = delegation.get("child_agents") if isinstance(delegation, dict) else None
+    if child_agents not in _CHILD_AGENT_GRANT_VALUES:
+        raise LaunchBlocked("Runtime Grant is missing valid delegation.child_agents.")
+    return f"{task} [Runtime Grant: delegation.child_agents = {child_agents}]"
+
+
 def _codex_assignment_command(
     herdr: str,
     session: str,
@@ -666,6 +674,7 @@ def resolve_launch(
         mcp_select=mcp_select,
         grant_child_agents=grant_child_agents,
     )
+    delivery_task = _project_runtime_grant(task_text, runtime_grant)
     grant_digest = _sha256_text(
         json.dumps(
             {
@@ -741,7 +750,7 @@ def resolve_launch(
             ),
             *([] if direct_mcp else ["--no-mcp"]),
             "-n",
-            _powershell_literal(task.strip()),
+            _powershell_literal(delivery_task),
         ]
         command = [herdr, "--session", session, "pane", "run", pane, *runtime_arguments]
     codex_watchdog = runtime_grant["wall_clock_seconds"]["requested"]
@@ -767,6 +776,7 @@ def resolve_launch(
             "assignment_task_sha256": _sha256_text(task_text),
             "grant_digest": grant_digest,
             "runtime_grant": runtime_grant,
+            "delivery_task_sha256": _sha256_text(delivery_task),
         },
         "git": git,
         "herdr": {
@@ -908,11 +918,24 @@ def main(argv: list[str] | None = None) -> int:
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
             watchdog_seconds = _codex_watchdog_seconds(evidence)
+            registry_launcher = evidence.get("registry_launcher", {})
+            runtime_grant = (
+                registry_launcher.get("runtime_grant")
+                if isinstance(registry_launcher, dict)
+                else None
+            )
+            delivery_task = _validate_task(args.task)
+            if (
+                isinstance(runtime_grant, dict)
+                and isinstance(runtime_grant.get("delegation"), dict)
+                and "child_agents" in runtime_grant["delegation"]
+            ):
+                delivery_task = _project_runtime_grant(delivery_task, runtime_grant)
             assignment = _codex_assignment_command(
                 herdr,
                 resolved_session,
                 agent_name,
-                args.task,
+                delivery_task,
                 timeout_ms=(watchdog_seconds * 1000 if watchdog_seconds is not None else None),
             )
             assignment_started = time.monotonic()

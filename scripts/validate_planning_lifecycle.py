@@ -261,7 +261,15 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
 
     executor_values = _field_values(section or "", "Default task executor")
     allowed_executors = set(get_allowed_values(root, "executor", "plan"))
-    if len(executor_values) > 1:
+    if current and coordination == "git-tracked" and executor_values:
+        findings.append(
+            Finding(
+                "planning_execution_error",
+                rel,
+                "remove `Default task executor`; Git-tracked plans use the task-ledger `Executor` field",
+            )
+        )
+    elif len(executor_values) > 1:
         findings.append(Finding("planning_execution_error", rel, "`Default task executor` must appear at most once in `## Execution Approach`"))
     elif executor_values and executor_values[0].lower() not in allowed_executors:
         findings.append(

@@ -36,6 +36,10 @@ ledger and tool results carry the record.
 ## Ownership And Preconditions
 
 - `skill-executing-plans` owns general approved-plan execution invariants; this skill specializes that execution through sequential fresh implementers and per-task reviewers.
+- Do not use this skill as the top-level execution topology while plan-bound
+  CoS is active. A MAIN AGENT may reuse its bounded worker/review patterns
+  inside its assigned lane when delegation is permitted; those workers never
+  become plan-level lanes or ledger writers.
 - For Git-tracked coordinated work, static Coordination State and task ledger own recovery. Before dispatch, one lead controller reconciles them with plan-plus-Git evidence under `docs/operating_system/procedures/personal-local-worktree-procedure.md`.
 - When dispatching subagents, follow the active `Subagent Routing` policy. Select the agent type explicitly and never override its template model or reasoning effort.
 - Tasks must be separable enough for isolated briefs, but implementers remain sequential in one workspace.
@@ -143,11 +147,12 @@ Before dispatching Task 1, scan the plan once for conflicts:
 - anything the plan explicitly mandates that the review rubric treats as a
   defect (a test that asserts nothing, verbatim duplication of a logic block)
 
-Present everything you find to your human partner as one batched question —
-each finding beside the plan text that mandates it, asking which governs —
-before execution begins, not one interrupt per discovery mid-plan. If the
-scan is clean, proceed without comment. The review loop remains the net for
-conflicts that only emerge from implementation.
+Reconcile harmless path, command, or ordering drift in the plan and continue.
+Present conflicts affecting scope, architecture, interfaces, invariants,
+acceptance criteria, user-visible behavior, or authority to your human partner
+as one batched question before execution begins. If the scan is clean, proceed
+without comment. The review loop remains the net for conflicts that only emerge
+from implementation.
 
 ## Profile Selection
 
@@ -172,7 +177,9 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 1. If it's a context problem, provide more context and re-dispatch with the same model
 2. If the task requires more reasoning, re-dispatch with a more capable model
 3. If the task is too large, break it into smaller pieces
-4. If the plan itself is wrong, escalate to the human
+4. If the plan itself is wrong, reconcile harmless drift and continue; if the
+   correction changes scope, architecture, interfaces, invariants, acceptance
+   criteria, user-visible behavior, or authority, escalate to the human
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
@@ -223,11 +230,13 @@ final whole-branch review. When you fill a reviewer template:
   findings in the plan task ledger as you go, and point the final
   whole-branch review at that list so it can triage which must be fixed
   before merge. A roll-up nobody reads is a silent discard.
-- A finding labeled plan-mandated — or any finding that conflicts with
-  what the plan's text requires — is the human's decision, like any plan
-  contradiction: present the finding and the plan text, ask which governs.
-  Do not dismiss the finding because the plan mandates it, and do not
-  dispatch a fix that contradicts the plan without asking.
+- A finding labeled plan-mandated — or any finding that conflicts with what the
+  plan's text requires — is a human decision only when resolving it changes
+  scope, architecture, interfaces, invariants, acceptance criteria,
+  user-visible behavior, or authority. Reconcile harmless path, command, or
+  ordering drift directly in the plan and continue. Do not dismiss a material
+  finding because the plan mandates it, and do not dispatch a fix that changes
+  approved behavior without asking.
 - The final whole-branch review gets a package too: run
   `scripts/review-package MERGE_BASE HEAD` (MERGE_BASE = the commit the
   branch started from, e.g. `git merge-base main HEAD`) and include the

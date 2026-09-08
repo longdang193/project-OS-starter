@@ -47,9 +47,11 @@ canonical CoS Executor Eligibility contract in
 
 After resolution:
 
-- `codex` uses Herdr agent start.
-- `deepagents` uses `dcode-project` through Herdr pane run.
-- `tura` uses `project-delegate` on its existing peer executor path.
+- `codex` uses a CoS-managed Herdr MAIN AGENT.
+- `deepagents` uses a CoS-managed `dcode-project` MAIN lane through Herdr.
+- `tura` is not a CoS MAIN lane; `skill-executing-plans` returns it to the
+  existing `project-delegate` path, then CoS resumes after plan and Git
+  reconciliation.
 
 Review and integration remain Codex-only. Other
 generated adapters may carry this skill, but their non-Codex lead must return
@@ -98,8 +100,9 @@ Runtime v1 supports only enforceable resource values:
 
 The grant also carries policy authority `delegation.child_agents: deny | allow`.
 It defaults to `deny`; CoS-assigned MAIN AGENTS may receive `allow`. The
-launcher records this authority in evidence, but executor-local spawning remains
-policy-enforced until an executor provides a direct enforcement hook.
+launcher records this authority in evidence and projects it into the bounded
+task brief, but executor-local spawning remains policy-enforced until an
+executor provides a direct enforcement hook.
 
 MAIN AGENT owns tactical choices inside its grant. Delegation and parallelism
 remain policy-level autonomy until an executor can enforce those limits. The
@@ -114,10 +117,11 @@ DeepAgents direct MCP projection remains default-deny. Codex turn limits remain
 closes the assigned pane on deadline and verifies pane/process retirement before
 returning `TIMEOUT`. Unsupported strict limits return `BLOCKED`.
 
-CoS may dispatch only top-level MAIN AGENT lanes through Herdr. Codex lanes
-use top-level Codex main agents; DeepAgents lanes use the bounded
-`dcode-project` pane process. Every CoS lane dispatch goes through Herdr; CoS
-never invokes subagents directly. Use the repository Herdr command
+CoS may dispatch only top-level `codex` and `deepagents` MAIN AGENT lanes through
+Herdr. Codex lanes use top-level Codex main agents; DeepAgents lanes use the
+bounded `dcode-project` pane process. Every CoS-managed lane dispatch goes
+through Herdr; Tura remains outside this path, and CoS never invokes subagents
+directly. Use the repository Herdr command
 `py -B scripts/herdr_main_launcher.py ...` for dispatch. Monitor only the
 top-level lane and wrapper through provider-resolved wait/read operations; do
 not monitor or supervise executor-local subagents from CoS.

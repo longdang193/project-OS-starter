@@ -136,7 +136,7 @@ workspace ownership, dependencies, required proof, blockers, and next action.
 Also state:
 
 - required skills per task or lane
-- optional default task executor and authoritative task-ledger executor per task
+- authoritative task-ledger `Executor` per Git-tracked task
 - required isolation: current workspace, task-specific isolated worktree, or
   per-writer isolated worktrees
 - commit policy; checkpoint commits are created by the lead after acceptance

@@ -194,7 +194,8 @@ partial Git/filesystem state, and returns `TIMEOUT` or `BLOCKED`, never success.
 Strict DeepAgents wall-clock requests above Herdr's 1800-second watchdog fail
 closed. DeepAgents direct MCP projection remains default-deny unless approved
 selectors are passed through the launcher; concrete selectors and the transient
-`grant_digest` belong to launch evidence, not tracked plan or runtime state.
+`grant_digest` and the projected child-agent authority belong to launch
+evidence and the bounded task brief, not tracked plan or runtime state.
 
 `dcode-project` also leaves its wrapper timeout unset for DeepAgents unless the
 caller passes `--timeout`; an explicit value is enforced by both the native

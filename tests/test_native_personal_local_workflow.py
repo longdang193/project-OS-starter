@@ -193,6 +193,7 @@ def test_cos_ssot_invariants_stay_symmetric() -> None:
     template = (ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md").read_text(encoding="utf-8")
     executing = (ROOT / ".agents" / "skills" / "skill-executing-plans" / "SKILL.md").read_text(encoding="utf-8")
     writing = (ROOT / ".agents" / "skills" / "skill-writing-plans" / "SKILL.md").read_text(encoding="utf-8")
+    parallel = (ROOT / ".agents" / "skills" / "skill-dispatching-parallel-agents" / "SKILL.md").read_text(encoding="utf-8")
     dispatch = (ROOT / "docs" / "operating_system" / "planning" / "planning-dispatch.md").read_text(encoding="utf-8")
     root_guidance = (ROOT / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md").read_text(encoding="utf-8")
     cos = (ROOT / ".agents" / "skills" / "skill-chief-of-staff" / "SKILL.md").read_text(encoding="utf-8")
@@ -204,6 +205,8 @@ def test_cos_ssot_invariants_stay_symmetric() -> None:
     assert "pending or blocked tasks may use `unresolved`" in template
     assert "Pending or blocked rows may contain `unresolved`" in executing
     assert "For pending or blocked Git-tracked tasks" in writing
+    assert "optional default task executor" not in writing
+    assert "authoritative task-ledger `Executor` per Git-tracked task" in writing
     assert "the lead controller" in template
     assert "the lead controller" in executing
     assert "CoS must resolve" not in template
@@ -215,6 +218,17 @@ def test_cos_ssot_invariants_stay_symmetric() -> None:
     assert "CoS implementation-lane eligibility follows the" in cos
     assert "implementation lanes;" not in cos
     assert "complete each lane's start and delivery claim before launching the next lane" in " ".join(cos.split())
+    assert "tura` is not a CoS MAIN lane" in cos
+    assert "Every CoS-managed lane dispatch goes through Herdr" in " ".join(cos.split())
+    assert "Under plan-bound CoS, acquire and deliver Herdr MAIN" in parallel
+    assert "Outside CoS, or inside an assigned MAIN AGENT lane" in parallel
+    assert "Ordinary lead-controller delegation follows task `Authority`" in root_guidance
+    assert "Runtime Grant child-agent authority applies to nested delegation" in " ".join(root_guidance.split())
+    assert "when CoS is not active for top-level plan execution" in " ".join(executing.split())
+    subagent = (ROOT / ".agents" / "skills" / "skill-subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Do not use this skill as the top-level execution topology" in subagent
+    assert "Reconcile harmless path, command, or ordering drift" in subagent
+    assert "human decision only when resolving it changes" in subagent
     for text in (runtime_surfaces, runtime_procedure):
         normalized = " ".join(text.split())
         assert "sorts candidates deterministically" in normalized
