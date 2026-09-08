@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PatchVersion = "2026-09-05.6"
+$PatchVersion = "2026-09-08.2"
 
 function Read-Utf8([string]$Path) {
     return [IO.File]::ReadAllText($Path, [Text.UTF8Encoding]::new($false))
@@ -651,6 +651,235 @@ async function runPackagedHeadless(config, request = {
         $text = Replace-Once $text "main headless runtime config (0.22.0)" '    await runPackagedHeadless2(config, headlessRequest);' '    await runPackagedHeadless2(namespaceConfig, headlessRequest);' 'runPackagedHeadless2(namespaceConfig'
       }
     }
+    $text = Replace-Once $text "packaged config channel resolution (0.22.0)" @'
+  const namespace = normalizeNamespace(
+    process.env[PACKAGED_NAMESPACE_ENV] ?? raw.namespace ?? SIDECAR_DEFAULTS.namespace
+  );
+'@ @'
+  const namespace = normalizeNamespace(
+    process.env[PACKAGED_NAMESPACE_ENV] ?? raw.namespace ?? SIDECAR_DEFAULTS.namespace
+  );
+  const channel = cleanOptionalString(raw.channel) ?? releaseChannelFromNamespace(namespace);
+  if (channel == null || !isReleaseChannel(channel))
+    throw new Error(`packaged config has no supported release channel for namespace ${namespace}`);
+'@ "const channel = cleanOptionalString(raw.channel) ?? releaseChannelFromNamespace(namespace)"
+    $text = Replace-Once $text "packaged config channel return (0.22.0)" @'
+  return {
+    amrProfile: resolvePackagedAmrProfile(raw.amrProfile),
+'@ @'
+  return {
+    channel,
+    amrProfile: resolvePackagedAmrProfile(raw.amrProfile),
+'@ "    channel,`n    amrProfile: resolvePackagedAmrProfile(raw.amrProfile)"
+
+    $text = Replace-Once $text "daemon sidecar channel propagation" @'
+      app: APP_KEYS.DAEMON,
+      entryPath: daemonSidecarEntry,
+'@ @'
+      app: APP_KEYS.DAEMON,
+      channel: options.channel,
+      entryPath: daemonSidecarEntry,
+'@ "channel: options.channel,`n      entryPath: daemonSidecarEntry"
+    $text = Replace-Once $text "web sidecar channel propagation" @'
+        app: APP_KEYS.WEB,
+        entryPath: webSidecarEntry,
+'@ @'
+        app: APP_KEYS.WEB,
+        channel: options.channel,
+        entryPath: webSidecarEntry,
+'@ "channel: options.channel,`n        entryPath: webSidecarEntry"
+    if ($text.Contains("startSidecars: async () => await startPackagedSidecars(runtime, paths, {")) {
+      $text = Replace-Once $text "headless sidecar channel propagation" @'
+    startSidecars: async () => await startPackagedSidecars(runtime, paths, {
+      appVersion: activeConfig.appVersion,
+'@ @'
+    startSidecars: async () => await startPackagedSidecars(runtime, paths, {
+      channel: activeConfig.channel,
+      appVersion: activeConfig.appVersion,
+'@ "channel: activeConfig.channel,`n      appVersion: activeConfig.appVersion"
+    }
+    $text = Replace-Once $text "desktop sidecar channel propagation" @'
+  const sidecars = await startPackagedSidecars(runtime, paths, {
+    appVersion: activeConfig.appVersion,
+'@ @'
+  const sidecars = await startPackagedSidecars(runtime, paths, {
+    channel: activeConfig.channel,
+    appVersion: activeConfig.appVersion,
+'@ "channel: activeConfig.channel,`n    appVersion: activeConfig.appVersion"
+
+    if (-not $text.Contains("function resolvePackagedSidecarIpcPath")) {
+      $text = Replace-Once $text "packaged sidecar private IPC resolver (0.22.0)" @'
+async function spawnSidecarChild(options) {
+'@ @'
+function resolvePackagedSidecarIpcPath(stamp) {
+  const principal = process.platform === "win32" ? userInfo().username : String(process.getuid?.() ?? process.env.USER ?? "unknown");
+  const stampKey = ["channel", "namespace", "source", "mode", "app"].map((field) => `${field}=${stamp[field]}`).join("\n");
+  const digest = createHash("sha256").update(`${principal}\n${stampKey}`).digest("hex").slice(0, 32);
+  return process.platform === "win32" ? `\\\\.\\pipe\\open-design-sidecar-${digest}` : join(tmpdir(), `od-sidecar-${principal}`, `${digest}.sock`);
+}
+async function spawnSidecarChild(options) {
+'@ "function resolvePackagedSidecarIpcPath"
+    }
+    $text = Replace-Once $text "packaged sidecar private IPC path" @'
+  const ipcPath = resolveAppIpcPath({
+    app: options.app,
+    contract: OPEN_DESIGN_SIDECAR_CONTRACT,
+    namespace: options.runtime.namespace
+  });
+'@ @'
+  const ipcPath = resolvePackagedSidecarIpcPath({
+    app: options.app,
+    channel: options.channel,
+    mode: SIDECAR_MODES.RUNTIME,
+    namespace: options.runtime.namespace,
+    source: options.runtime.source
+  });
+'@ "resolvePackagedSidecarIpcPath({"
+    $text = Replace-Once $text "packaged sidecar status request" @'
+        const status = await requestJsonIpc(
+          ipcPath,
+          { type: SIDECAR_MESSAGES.STATUS },
+          { timeoutMs: 800 }
+        );
+'@ @'
+        const status = await requestJsonIpc(
+          ipcPath,
+          { type: "sidecar:status" },
+          { timeoutMs: 800 }
+        );
+'@ "{ type: `"sidecar:status`" },`n          { timeoutMs: 800 }"
+    $text = Replace-Once $text "packaged sidecar existing status request" @'
+    status = await requestJsonIpc(
+      ipcPath,
+      { type: SIDECAR_MESSAGES.STATUS },
+      { timeoutMs: 350 }
+    );
+'@ @'
+    status = await requestJsonIpc(
+      ipcPath,
+      { type: "sidecar:status" },
+      { timeoutMs: 350 }
+    );
+'@ "status = await requestJsonIpc(`n      ipcPath,`n      { type: `"sidecar:status`" },"
+    $text = Replace-Once $text "packaged sidecar existing stop request" '    await requestJsonIpc(ipcPath, { type: SIDECAR_MESSAGES.SHUTDOWN }, { timeoutMs: 800 });' '    await requestJsonIpc(ipcPath, { type: "sidecar:stop" }, { timeoutMs: 800 });' 'await requestJsonIpc(ipcPath, { type: "sidecar:stop" }, { timeoutMs: 800 });'
+    $text = Replace-Once $text "packaged sidecar child stop request" @'
+      child.ipcPath,
+      { type: SIDECAR_MESSAGES.SHUTDOWN },
+      { timeoutMs: 1200 }
+'@ @'
+      child.ipcPath,
+      { type: "sidecar:stop" },
+      { timeoutMs: 1200 }
+'@ "{ type: `"sidecar:stop`" },`n      { timeoutMs: 1200 }"
+    $text = Replace-Once $text "packaged web URL sidecar invoke" @'
+    {
+      input: { url: webUrl },
+      type: SIDECAR_MESSAGES.REGISTER_WEB_URL
+    },
+'@ @'
+    {
+      action: SIDECAR_MESSAGES.REGISTER_WEB_URL,
+      app: APP_KEYS.DAEMON,
+      input: { url: webUrl },
+      type: "sidecar:invoke"
+    },
+'@ "type: `"sidecar:invoke`""
+    $text = Replace-Once $text "packaged child inspect channel" @'
+  const existingDesktop = await inspectExistingDesktopForLauncher(namespace, {
+'@ @'
+  const existingDesktop = await inspectExistingDesktopForLauncher(namespace, {
+    channel: namespaceConfig.channel,
+'@ "channel: namespaceConfig.channel"
+    $text = Replace-Once $text "packaged child inspect IPC path" @'
+    const sidecarIpcPath = resolveAppIpcPath({
+      app: app32,
+      contract: OPEN_DESIGN_SIDECAR_CONTRACT,
+      namespace
+    });
+'@ @'
+    const sidecarIpcPath = resolvePackagedSidecarIpcPath({
+      app: app32,
+      channel: options.channel,
+      mode: SIDECAR_MODES.RUNTIME,
+      namespace,
+      source: SIDECAR_SOURCES.PACKAGED
+    });
+'@ "resolvePackagedSidecarIpcPath({`n      app: app32"
+    $text = Replace-Once $text "packaged child inspect status request" @'
+    const sidecarStatus = await requestIpc(
+      sidecarIpcPath,
+      { type: SIDECAR_MESSAGES.STATUS },
+      { timeoutMs: 350 }
+    ).catch(() => null);
+'@ @'
+    const sidecarStatus = await requestIpc(
+      sidecarIpcPath,
+      { type: "sidecar:status" },
+      { timeoutMs: 350 }
+    ).catch(() => null);
+'@ "const sidecarStatus = await requestIpc(`n      sidecarIpcPath,`n      { type: `"sidecar:status`" },"
+
+    if ($text.Contains("const supervisedContext = JSON.stringify({")) {
+      if ($text.Contains("      channel: stamp.channel,")) {
+        $text = Replace-Once $text "supervised sidecar context channel" '      channel: stamp.channel,' '      channel: options.channel,' "      channel: options.channel,`n      mode: stamp.mode,"
+      }
+      $text = Replace-Once $text "supervised sidecar context fields" @'
+  const supervisedContext = JSON.stringify({
+    generationPid: process.pid,
+    resources: {
+      dataRoot: options.paths.dataRoot,
+      ownerPid: null,
+      port: 0,
+      runtimeRoot: options.paths.runtimeRoot
+    },
+    stamp
+  });
+'@ @'
+  const supervisedContext = JSON.stringify({
+    generationPid: process.pid,
+    resources: {
+      dataRoot: options.paths.dataRoot,
+      ownerPid: null,
+      port: 0,
+      runtimeRoot: options.paths.runtimeRoot
+    },
+    stamp: {
+      app: stamp.app,
+      channel: options.channel,
+      mode: stamp.mode,
+      namespace: stamp.namespace,
+      source: stamp.source
+    }
+  });
+'@ "app: stamp.app"
+    } else {
+      $text = Replace-Once $text "supervised sidecar context handoff" @'
+  const child = spawn3(
+    command,
+    [options.entryPath, ...createProcessStampArgs(stamp, OPEN_DESIGN_SIDECAR_CONTRACT)],
+'@ @'
+  const supervisedContext = JSON.stringify({
+    generationPid: process.pid,
+    resources: {
+      dataRoot: options.paths.dataRoot,
+      ownerPid: null,
+      port: 0,
+      runtimeRoot: options.paths.runtimeRoot
+    },
+    stamp: {
+      app: stamp.app,
+      channel: options.channel,
+      mode: stamp.mode,
+      namespace: stamp.namespace,
+      source: stamp.source
+    }
+  });
+  childEnv.OD_SIDECAR_SUPERVISED_CONTEXT = supervisedContext;
+  const child = spawn3(
+    command,
+    [options.entryPath, ...createProcessStampArgs(stamp, OPEN_DESIGN_SIDECAR_CONTRACT)],
+'@ "app: stamp.app"
+    }
 
     $text = Replace-Once $text "packaged active run guard" @'
 async function restartExistingDesktop(input) {
@@ -697,12 +926,22 @@ async function restartExistingDesktop(input) {
 
 function Patch-Bootstrap([string]$Path) {
     $text = (Read-Utf8 $Path).Replace("`r`n", "`n").Replace("`r", "`n")
+    $text = Replace-Once $text "bootstrap shared sidecar env import" @'
+import {
+  APP_KEYS
+} from "./chunk-UZPD62PF.mjs";
+'@ @'
+import {
+  APP_KEYS,
+  SIDECAR_ENV
+} from "./chunk-UZPD62PF.mjs";
+'@ "  SIDECAR_ENV"
     if (-not $text.Contains("function withMcpBootstrapLock")) {
         $text = Replace-Once $text "bootstrap imports" 'import { createRequire as __odCreateRequire } from "node:module"; const require = __odCreateRequire(import.meta.url);' @'
 import { createRequire as __odCreateRequire } from "node:module"; const require = __odCreateRequire(import.meta.url);
 import { createHash } from "node:crypto";
 import { open, rm, stat } from "node:fs/promises";
-'@ "import { createHash } from \"node:crypto\";"
+'@ "import { createHash } from `"node:crypto`";"
         $text = Replace-Once $text "bootstrap path imports" 'import { isAbsolute } from "node:path";' @'
 import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";

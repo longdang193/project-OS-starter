@@ -47,6 +47,14 @@ def test_open_design_overlay_uses_symbol_discovery_and_shared_markers() -> None:
     assert "function runPackagedHeadless(config, request" in updater
     assert "headless runtime namespace resolver (0.22.0)" in updater
     assert "headless runtime namespace fallback" in updater
+    assert "function resolvePackagedSidecarIpcPath" in updater
+    assert 'type: "sidecar:status"' in updater
+    assert 'type: "sidecar:stop"' in updater
+    assert 'type: "sidecar:invoke"' in updater
+    assert "channel: activeConfig.channel" in updater
+    assert "channel: options.channel" in updater
+    assert "app: stamp.app" in updater
+    assert "APP_KEYS,\n  SIDECAR_ENV\n} from \"./chunk-UZPD62PF.mjs\";" in updater
     assert 'if (-not $text.Contains("function resolvePackagedHeadlessRuntimeNamespace"))' in updater
 
 
@@ -73,6 +81,23 @@ def test_installed_packaged_logger_uses_safe_writes() -> None:
     assert 'let echo = process.env[DESKTOP_LOG_ECHO_ENV] === "1" && process.stdout.isTTY === true;' in source
     assert "function hasActivePackagedRun" in source
     assert "reason=active-run" in source
+    assert "OD_SIDECAR_SUPERVISED_CONTEXT" in source
+    assert "resolvePackagedSidecarIpcPath" in source
+    assert 'type: "sidecar:status"' in source
+    assert 'type: "sidecar:stop"' in source
+    assert 'type: "sidecar:invoke"' in source
+    assert "channel: options.channel" in source
+    bootstrap = next(bundle.parent.joinpath("daemon", "chunks").glob("mcp-bootstrap-*.mjs"), None)
+    assert bootstrap is not None
+    bootstrap_source = bootstrap.read_text(encoding="utf-8")
+    assert "APP_KEYS,\n  SIDECAR_ENV\n} from \"./chunk-UZPD62PF.mjs\";" in bootstrap_source
+    context_start = source.index("const supervisedContext = JSON.stringify({")
+    context_end = source.index("childEnv.OD_SIDECAR_SUPERVISED_CONTEXT", context_start)
+    context = source[context_start:context_end]
+    assert "stamp" in context
+    assert "ipc" not in context
+    assert "app: stamp.app" in context
+    assert "source: stamp.source" in context
     logger = source[source.index("function createPackagedDesktopLogger") : source.index("function attachPackagedDesktopProcessLogging")]
     assert "safeConsoleWrite(originalConsole.error, args);" in logger
     server = next(bundle.parent.joinpath("daemon", "chunks").glob("server-*.mjs"), None)

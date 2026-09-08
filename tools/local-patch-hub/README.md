@@ -22,6 +22,15 @@ Verify Codex sees the configured server:
 codex mcp get open-design
 ```
 
+After installing or updating OpenDesign, refresh Codex registration from the
+running local daemon. Use its current URL from OpenDesign MCP settings:
+
+```powershell
+$exe = Join-Path $env:LOCALAPPDATA "Programs\Open Design\Open Design.exe"
+$cli = Join-Path $env:LOCALAPPDATA "Programs\Open Design\resources\app\prebundled\daemon\daemon-cli.mjs"
+& $exe $cli mcp install codex --json --daemon-url <running-daemon-url>
+```
+
 If daemon and web pipes exist but MCP reports `Transport closed`, reload Codex
 app-server. Do not change project artifacts or run state.
 
