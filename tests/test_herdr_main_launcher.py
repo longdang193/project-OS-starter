@@ -1065,7 +1065,7 @@ def test_target_selector_requires_both_auto_values() -> None:
         LAUNCHER._resolve_target_selector(ROOT, "auto", "w1:p5", "herdr.exe")
 
 
-def test_target_selector_selects_one_eligible_auto_target(
+def test_target_selector_uses_default_session_for_workspace_qualified_pane(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -1076,8 +1076,8 @@ def test_target_selector_selects_one_eligible_auto_target(
                 "snapshot": {
                     "panes": [
                         {
-                            "workspace_id": "w1",
-                            "pane_id": "w1:p5",
+                            "workspace_id": "wG",
+                            "pane_id": "wG:p1",
                             "cwd": str(ROOT),
                         }
                     ]
@@ -1085,13 +1085,20 @@ def test_target_selector_selects_one_eligible_auto_target(
             }
         },
     )
-    monkeypatch.setattr(LAUNCHER, "_herdr_pane", lambda *args, **kwargs: {"pane": {}})
+    inspected_sessions: list[str] = []
+
+    def inspect_candidate(*args, **kwargs):
+        inspected_sessions.append(args[1])
+        return {"pane": {}}
+
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", inspect_candidate)
 
     session, pane, resolution = LAUNCHER._resolve_target_selector(
         ROOT, "auto", "auto", "herdr.exe",
     )
 
-    assert (session, pane) == ("w1", "w1:p5")
+    assert (session, pane) == ("default", "wG:p1")
+    assert inspected_sessions == ["default"]
     assert resolution["status"] == "selected"
     assert resolution["mode"] == "auto"
 
@@ -1119,7 +1126,7 @@ def test_target_selector_selects_first_deterministic_auto_target(
         ROOT, "auto", "auto", "herdr.exe",
     )
 
-    assert (session, pane) == ("w1", "w1:p1")
+    assert (session, pane) == ("default", "w1:p1")
     assert resolution["status"] == "selected"
     assert resolution["candidate_count"] == 2
 
@@ -1149,10 +1156,10 @@ def test_target_selector_reuses_snapshot_and_keeps_rejection_reasons(
         ROOT, "auto", "auto", "herdr.exe",
     )
 
-    assert (session, pane) == ("w2", "w2:p1")
+    assert (session, pane) == ("default", "w2:p1")
     assert len(calls) == 1
     assert resolution["rejections"] == [{
-        "session": "w1",
+        "session": "default",
         "pane": "w1:p1",
         "reason": "Pane already has agent state: w1:p1",
     }]

@@ -45,6 +45,7 @@ _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
 _CODEX_WATCHDOG_GRACE_SECONDS = 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
+_HERDR_DEFAULT_SESSION = "default"
 _WATCHDOG_TIMEOUT_EXIT_CODE = 124
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
@@ -322,6 +323,7 @@ def _resolve_target_selector(
 
     candidates: list[tuple[str, str]] = []
     rejections: list[dict[str, str]] = []
+    control_session = _HERDR_DEFAULT_SESSION
     for item in panes:
         workspace_id = item.get("workspace_id")
         pane_id = item.get("pane_id")
@@ -336,7 +338,7 @@ def _resolve_target_selector(
         try:
             _herdr_pane(
                 cwd,
-                workspace_id,
+                control_session,
                 pane_id,
                 herdr,
                 executor=executor,
@@ -345,9 +347,9 @@ def _resolve_target_selector(
                 timeout=remaining_timeout(),
             )
         except TargetCandidateRejected as exc:
-            rejections.append({"session": workspace_id, "pane": pane_id, "reason": str(exc)})
+            rejections.append({"session": control_session, "pane": pane_id, "reason": str(exc)})
         else:
-            candidates.append((workspace_id, pane_id))
+            candidates.append((control_session, pane_id))
 
     candidates.sort()
     if not candidates:

@@ -91,10 +91,13 @@ Treat `pane read` and `agent read` output as disposable probe data: metadata-onl
 by default, explicitly bounded and redacted when raw output is required. Never
 treat silence as completion or trigger automatic kill, retry, or plan advance.
 Native Codex CoS may use `--session auto --pane auto` through the repository
-launcher. The launcher discovers all eligible existing matching-cwd panes with
-no agent state and shell-only foreground process, sorts candidates
-deterministically, and selects the first. Candidate evidence records the full
-eligible set; no matching target returns `target_resolution:not_found`, while
+launcher. The launcher discovers all eligible existing matching-cwd panes from
+the default Herdr server, validates workspace-qualified pane IDs, and uses the
+default server session for target commands; workspace IDs are not session
+names. It filters panes with no agent state and shell-only foreground process,
+sorts candidates deterministically, and selects the first. Candidate evidence
+records the full eligible set; no matching target returns
+`target_resolution:not_found`, while
 candidate rejection or incomplete discovery remains observable as `blocked` or
 `incomplete`. Mixed
 exact/`auto` selectors fail closed. `HERDR_ENV` is not a CoS dispatch gate and
