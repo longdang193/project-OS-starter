@@ -121,8 +121,7 @@ def test_single_controller_resume_contract_is_documented() -> None:
         assert f"{step}." in procedure_text
     assert "## Coordination State" in template_text
     assert "Coordination State (Optional)" not in template_text
-    assert "Default task executor: `codex | deepagents | tura`" in template_text
-    assert "each Git-tracked task ledger `Executor` value is authoritative" in template_text
+    assert "The task ledger is the sole durable executor choice for Git-tracked plans." in template_text
     assert "Task ledger `Executor` values are `codex`, `deepagents`, or `tura`" in template_text
     assert "`Template Profile` and optional `Validator Profile` remain independent" in " ".join(template_text.split())
     assert "Active task(s)" not in template_text
@@ -201,12 +200,21 @@ def test_cos_ssot_invariants_stay_symmetric() -> None:
     runtime_procedure = (ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md").read_text(encoding="utf-8")
     plan = (ROOT / "docs" / "superpowers" / "plans" / "2026-09-08-11-30-cos-runtime-autonomy-plan.md").read_text(encoding="utf-8")
 
-    assert "pending or blocked rows may use `unresolved`" in template
+    template = " ".join(template.split())
+    assert "pending or blocked tasks may use `unresolved`" in template
     assert "Pending or blocked rows may contain `unresolved`" in executing
     assert "For pending or blocked Git-tracked tasks" in writing
+    assert "the lead controller" in template
+    assert "the lead controller" in executing
+    assert "CoS must resolve" not in template
+    assert "CoS must resolve" not in executing
+    assert "Default task executor:" not in template
+    assert "| Task 1 | `pending` | current | `unresolved` |" in template
     assert "the current Runtime Grant sets `delegation.child_agents: allow`" in dispatch
     assert root_guidance.count("`delegation.child_agents: allow`") == 1
     assert "CoS implementation-lane eligibility follows the" in cos
+    assert "implementation lanes;" not in cos
+    assert "complete each lane's start and delivery claim before launching the next lane" in " ".join(cos.split())
     for text in (runtime_surfaces, runtime_procedure):
         normalized = " ".join(text.split())
         assert "sorts candidates deterministically" in normalized
@@ -214,6 +222,9 @@ def test_cos_ssot_invariants_stay_symmetric() -> None:
         assert "ambiguity fail closed" not in text
     assert "`target_resolution.status` as `selected` or `not_found`" in plan
     assert "never guesses among multiple targets" not in plan
+    assert "pending or blocked" in plan
+    assert "active and completed" in plan
+    assert "active/blocked/completed unresolved tasks fail" not in plan
 
 
 def test_deepagents_internal_writers_remain_task_bounded() -> None:

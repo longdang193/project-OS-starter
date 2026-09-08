@@ -43,10 +43,15 @@ that lane when `delegation.child_agents: allow`. Sub-agents must not spawn peer
 MAIN AGENTS, activate CoS, or
 reactivate coordination. CoS implementation-lane eligibility follows the
 canonical CoS Executor Eligibility contract in
-`docs/operating_system/planning/planning-dispatch.md`. After resolution,
-implementation lanes; `codex` uses Herdr agent start and `deepagents` uses
-`dcode-project` through Herdr pane run. Review and integration remain Codex-only.
-`tura` uses `project-delegate` on its existing peer executor path. Other
+`docs/operating_system/planning/planning-dispatch.md`.
+
+After resolution:
+
+- `codex` uses Herdr agent start.
+- `deepagents` uses `dcode-project` through Herdr pane run.
+- `tura` uses `project-delegate` on its existing peer executor path.
+
+Review and integration remain Codex-only. Other
 generated adapters may carry this skill, but their non-Codex lead must return
 `BLOCKED` rather than activate it.
 
@@ -328,6 +333,11 @@ resolving a blocker becomes a substantial independent detour, park the current
 lane, dispatch a fresh bounded Herdr lane for that blocker, and merge back only
 compact evidence or result. Do not supervise executor-local workers inside
 `deepagents` or `tura`.
+
+For `auto`/`auto` Herdr fan-out, acquire targets sequentially: complete each
+lane's start and delivery claim before launching the next lane. Monitor all
+assigned workers concurrently only after acquisition completes. Do not add a
+reservation registry; launcher discovery remains the target-selection source.
 
 ## Lane Contract (plan-bound execution)
 

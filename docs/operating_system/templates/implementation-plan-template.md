@@ -40,7 +40,6 @@ Describe another concrete implementation result this plan must deliver, such as 
 
 - Mode: `inline sequential | subagent-ready | parallel-capable`
 - Coordination: `git-tracked | none`
-- Default task executor: `codex | deepagents | tura` (optional; Codex default; each Git-tracked task ledger `Executor` value is authoritative for that task; pending or blocked rows may use `unresolved` until CoS resolves them before activation; active and completed rows require `codex`, `deepagents`, or `tura`; DeepAgents MCP is opt-in through explicit `--mcp-select` against approved Codex `[mcp_servers]`; no selection keeps `--no-mcp`; direct config is temporary launcher-owned state under isolated child `DEEPAGENTS_HOME`; project MCP config remains untouched and untrusted; `codex.mcp.handoff.v1` carries facts and provenance, not tool access)
 - Required skills: `<exact skill names or none>`
 - Isolation: `<current workspace | optional worktree>`
 - Commit policy: `<verified per-task checkpoint commits preauthorized | no commits during execution>`
@@ -79,7 +78,7 @@ verification branch disposition may remain in `Next action`.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | current | `codex` | none | `<command>` | pending |
+| Task 1 | `pending` | current | `unresolved` | none | `<command>` | pending |
 
 Allowed states: `pending`, `active`, `blocked`, `completed`. `inline sequential`
 and `subagent-ready` modes permit one active task. `parallel-capable` mode may
@@ -100,9 +99,9 @@ explicit user authorization.
 
 Task ledger `Executor` values are `codex`, `deepagents`, or `tura`; pending or
 blocked tasks may use `unresolved` until the lead controller resolves them.
-A task value overrides the optional plan default. Executor choice does not
-select profile; `Template Profile` and optional `Validator Profile` remain
-independent.
+The task ledger is the sole durable executor choice for Git-tracked plans.
+Executor choice does not select profile; `Template Profile` and optional
+`Validator Profile` remain independent.
 
 ## Task Breakdown
 
@@ -112,7 +111,7 @@ Use `Wave` only when plan truly needs orchestration across multiple related task
 Within each task:
 - `Purpose` owns bounded outcome
 - `Task Function` names current open-ended function without mapping it to a profile
-- `Template Profile` records `unresolved` for routine pending or blocked work until the lead controller resolves it, or records one controller-selected discovered profile plus selection basis for delegated work; use `none (lead controller)` for inline controller work; when CoS uses Herdr, the selected profile must match `agents/*.toml`, the executor-specific runtime binding, and Herdr launch evidence
+- `Template Profile` records `unresolved` for routine pending or blocked work until the lead controller resolves it, or records one controller-selected discovered profile plus selection basis for delegated work; use `none (lead controller)` for inline controller work; when CoS is active, it performs resolution as the lead controller's coordination specialization; when CoS uses Herdr, the selected profile must match `agents/*.toml`, the executor-specific runtime binding, and Herdr launch evidence
 - `Validator Profile` records an optional separate validator and its selection basis
 - `Specification Coverage` maps approved requirements or direct scope
 - `Required Skills` names only methods needed for this task

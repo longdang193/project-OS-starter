@@ -277,15 +277,15 @@ regenerated from canonical sources and validated for drift.
 - Stop for: adding `unresolved` to the executor schema enum, adding a second state file, changing Runtime Grant durability, or changing completed-plan compatibility semantics.
 
 **Steps:**
-- [x] Step 1: Permit `unresolved` for `Executor` and `Template Profile` only when the task ledger row is `pending`.
-- [x] Step 2: Require concrete executor/profile values for `active`, `blocked`, and `completed` rows; retain explicit pins and `none (lead controller)`.
-- [x] Step 3: Document that CoS resolves executor/profile through `planning-dispatch.md`, writes them into the same task record before activation, and leaves effective grants in launcher evidence.
+- [x] Step 1: Permit `unresolved` for `Executor` and `Template Profile` when the task ledger row is `pending` or `blocked`.
+- [x] Step 2: Require concrete executor/profile values for `active` and `completed` rows; retain explicit pins and `none (lead controller)`.
+- [x] Step 3: Document that the lead controller resolves executor/profile through `planning-dispatch.md`; when CoS is active, CoS performs that resolution, writes values into the same task record before activation, and leaves effective grants in launcher evidence.
 - [x] Step 4: Update execution guidance to resolve pending values before launcher dispatch without allowing profile selection to choose an executor.
 - [x] Step 5: Add regression tests for pending unresolved, active unresolved rejection, explicit pins, and unchanged executor enum.
 
 **Verification:**
 - [x] `py -m pytest -q tests/test_validate_planning_lifecycle.py tests/test_starter_lifecycle_contract.py tests/test_native_personal_local_workflow.py`
-- Expected: pending unresolved tasks pass; active/blocked/completed unresolved tasks fail; existing historical plans retain compatibility.
+- Expected: pending/blocked unresolved tasks pass; active/completed unresolved tasks fail; existing historical plans retain compatibility.
 
 **Exit Criteria:**
 - Plan validation and execution guidance support one unresolved-then-resolved task record without introducing new durable state.
