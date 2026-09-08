@@ -118,6 +118,18 @@ def test_run_converts_timeout_to_launch_blocked(monkeypatch: pytest.MonkeyPatch)
         LAUNCHER._run(["herdr", "api", "snapshot"], timeout=2.0)
 
 
+def test_run_decodes_subprocess_output_as_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*args, **kwargs):
+        assert kwargs["encoding"] == "utf-8"
+        return subprocess.CompletedProcess(args[0], 0, stdout="✓", stderr="")
+
+    monkeypatch.setattr(LAUNCHER.subprocess, "run", fake_run)
+
+    result = LAUNCHER._run(["herdr", "api", "snapshot"])
+
+    assert result.stdout == "✓"
+
+
 def test_resolve_launch_builds_deepagents_pane_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

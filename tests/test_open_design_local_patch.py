@@ -14,6 +14,7 @@ def test_open_design_overlay_uses_symbol_discovery_and_shared_markers() -> None:
     assert "mcp-bootstrap-*.mjs" in updater
     assert "function ensureMcpDaemonUrl" in updater
     assert "OD_MCP_BOOTSTRAP_IPC_PATH" in updater
+    assert "package.json" in updater
     assert "OD_PACKAGED_RUNTIME_NAMESPACE" in updater
     assert "resolvePackagedHeadlessRuntimeNamespace" in updater
     assert "mcpBootstrapRuntimeNamespace" in updater
@@ -43,6 +44,10 @@ def test_open_design_overlay_uses_symbol_discovery_and_shared_markers() -> None:
     assert "function hasActivePackagedRun" in updater
     assert "readdir" in updater
     assert "reason=active-run" in updater
+    assert "function runPackagedHeadless(config, request" in updater
+    assert "headless runtime namespace resolver (0.22.0)" in updater
+    assert "headless runtime namespace fallback" in updater
+    assert 'if (-not $text.Contains("function resolvePackagedHeadlessRuntimeNamespace"))' in updater
 
 
 def test_open_design_launcher_patches_before_starting_app() -> None:
@@ -65,9 +70,12 @@ def test_installed_packaged_logger_uses_safe_writes() -> None:
     source = bundle.read_text(encoding="utf-8")
     assert "const safeConsoleWrite" in source
     assert "resolvePackagedHeadlessRuntimeNamespace" in source
-    assert "OD_MCP_BOOTSTRAP_IPC_PATH" in source
     assert 'let echo = process.env[DESKTOP_LOG_ECHO_ENV] === "1" && process.stdout.isTTY === true;' in source
     assert "function hasActivePackagedRun" in source
     assert "reason=active-run" in source
     logger = source[source.index("function createPackagedDesktopLogger") : source.index("function attachPackagedDesktopProcessLogging")]
     assert "safeConsoleWrite(originalConsole.error, args);" in logger
+    server = next(bundle.parent.joinpath("daemon", "chunks").glob("server-*.mjs"), None)
+    assert server is not None
+    server_source = server.read_text(encoding="utf-8")
+    assert "OD_MCP_BOOTSTRAP_IPC_PATH" in server_source

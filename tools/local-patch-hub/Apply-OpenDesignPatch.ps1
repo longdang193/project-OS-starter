@@ -56,6 +56,149 @@ function Backup-Once([string]$Path, [string]$Directory) {
 
 function Patch-Server([string]$Path) {
     $text = (Read-Utf8 $Path).Replace("`r`n", "`n").Replace("`r", "`n")
+    if ($text.Contains("function isArtifactPath(path112)")) {
+        $text = Replace-Once $text "manifest markdown classifier (0.22.0)" @'
+function isArtifactPath(path112) {
+  const lower = path112.toLowerCase();
+  const dot = lower.lastIndexOf(".");
+  if (dot < 0)
+    return false;
+  return ARTIFACT_EXTENSIONS.has(lower.slice(dot));
+}
+'@ @'
+function isArtifactPath(path112) {
+  const lower = path112.toLowerCase();
+  const dot = lower.lastIndexOf(".");
+  if (dot < 0)
+    return false;
+  return ARTIFACT_EXTENSIONS.has(lower.slice(dot));
+}
+function isManifestBackedMarkdownPath(filePath2) {
+  const lower = filePath2.toLowerCase();
+  if (!lower.endsWith(".md"))
+    return false;
+  try {
+    const manifest = JSON.parse(fs24.readFileSync(`${filePath2}.artifact.json`, "utf8"));
+    return manifest?.version === 1 && manifest?.kind === "markdown-document" && manifest?.renderer === "markdown" && manifest?.status === "complete";
+  } catch {
+    return false;
+  }
+}
+'@ "function isManifestBackedMarkdownPath"
+        $text = Replace-Once $text "tracked file classifier (0.22.0)" @'
+function isTrackedRunFile(name) {
+  return isArtifactPath(name) || isDesignSystemFile(name) || isRenderDependencyPath(name);
+}
+'@ @'
+function isTrackedRunFile(name, fullPath = name) {
+  return isArtifactPath(name) || isManifestBackedMarkdownPath(fullPath) || isDesignSystemFile(name) || isRenderDependencyPath(name);
+}
+'@ "function isTrackedRunFile(name, fullPath = name)"
+        $text = Replace-Once $text "sync snapshot path (0.22.0)" @'
+      } else if (entry.isFile()) {
+        const tracked = isTrackedRunFile(entry.name);
+        if (tracked ? trackedCount >= MAX_FILES : otherCount >= MAX_OTHER_FILES)
+          continue;
+        const full = path42.join(dir, entry.name);
+'@ @'
+      } else if (entry.isFile()) {
+        const full = path42.join(dir, entry.name);
+        const tracked = isTrackedRunFile(entry.name, full);
+        if (tracked ? trackedCount >= MAX_FILES : otherCount >= MAX_OTHER_FILES)
+          continue;
+'@ "isTrackedRunFile(entry.name, full)"
+        $text = Replace-Once $text "async snapshot path (0.22.0)" @'
+      } else if (entry.isFile()) {
+        const tracked = isTrackedRunFile(entry.name);
+        if (tracked ? trackedCount >= MAX_FILES : otherCount >= MAX_OTHER_FILES)
+          continue;
+        files.push({ full: path42.join(dir, entry.name), tracked });
+'@ @'
+      } else if (entry.isFile()) {
+        const full = path42.join(dir, entry.name);
+        const tracked = isTrackedRunFile(entry.name, full);
+        if (tracked ? trackedCount >= MAX_FILES : otherCount >= MAX_OTHER_FILES)
+          continue;
+        files.push({ full, tracked });
+'@ "files.push({ full, tracked })"
+        $text = Replace-Once $text "diff markdown classification (0.22.0)" '    if (isArtifactPath(classifyPath)) {' '    if (isArtifactPath(classifyPath) || isManifestBackedMarkdownPath(classifyPath)) {' 'isManifestBackedMarkdownPath(classifyPath)'
+        $text = Replace-Once $text "event markdown classification (0.22.0)" '  return collectWrittenPathsMatching(events, isArtifactPath).size;' '  return collectWrittenPathsMatching(events, (filePath2) => isArtifactPath(filePath2) || isManifestBackedMarkdownPath(filePath2)).size;' 'isManifestBackedMarkdownPath(filePath2)'
+        $text = Replace-Once $text "ledger markdown classification (0.22.0)" '    if (isArtifactPath(path112))' '    if (isArtifactPath(path112) || isManifestBackedMarkdownPath(path112))' 'isManifestBackedMarkdownPath(path112)'
+        $text = Replace-Once $text "deliverable selector (0.22.0)" @'
+function matchesAcceptedKinds(acceptedKinds, fileKind) {
+  return !acceptedKinds || acceptedKinds.has(fileKind);
+}
+'@ @'
+function matchesAcceptedKinds(acceptedKinds, fileKind) {
+  return !acceptedKinds || acceptedKinds.has(fileKind);
+}
+function selectRunDeliverableEntry(files, declared, touchedPaths, metadata) {
+  const declaredEntry = declared ? files.find((file) => filePath(file) === declared) ?? null : null;
+  const touched = touchedPaths instanceof Set ? touchedPaths : new Set(touchedPaths ?? []);
+  const allowManifestEntryOverride = projectKind(metadata) !== "prototype";
+  if (allowManifestEntryOverride) {
+    const touchedArtifact = files.find((file) => {
+      const entry = filePath(file);
+      const manifest = file.artifactManifest;
+      return touched.has(entry) && manifest?.entry === entry && manifest?.status === "complete";
+    });
+    if (touchedArtifact)
+      return touchedArtifact;
+  }
+  return declaredEntry ?? inferredEntry(files, acceptedDeliverableKinds(metadata));
+}
+'@ "function selectRunDeliverableEntry"
+        $text = Replace-Once $text "deliverable touched set (0.22.0)" @'
+  const acceptedKinds = acceptedDeliverableKinds(input2.projectMetadata);
+  const declared = safeRelativeFile(input2.projectMetadata?.entryFile);
+  const selected = declared ? files.find((file) => filePath(file) === declared) ?? null : inferredEntry(files, acceptedKinds);
+'@ @'
+  const acceptedKinds = acceptedDeliverableKinds(input2.projectMetadata);
+  const declared = safeRelativeFile(input2.projectMetadata?.entryFile);
+  const touched = input2.touchedPaths ? new Set(input2.touchedPaths.flatMap((candidate) => {
+    if (typeof candidate !== "string" || !candidate)
+      return [];
+    const absolute = path43.isAbsolute(candidate) ? path43.resolve(candidate) : path43.resolve(projectRoot, candidate);
+    const relative3 = path43.relative(projectRoot, absolute);
+    if (!relative3 || relative3.startsWith("..") || path43.isAbsolute(relative3))
+      return [];
+    return [relative3.replaceAll(path43.sep, "/")];
+  })) : null;
+  const selected = selectRunDeliverableEntry(files, declared, touched, input2.projectMetadata);
+'@ "selectRunDeliverableEntry(files, declared, touched, input2.projectMetadata)"
+        $text = Replace-Once $text "manifest artifact facts (0.22.0)" @'
+  const facts = {
+    entryFile,
+    artifactKind: selected.kind
+  };
+'@ @'
+  const selectedArtifactManifest = selected.artifactManifest;
+  const facts = {
+    entryFile,
+    artifactKind: selectedArtifactManifest?.kind ?? selected.kind
+  };
+'@ "const selectedArtifactManifest"
+        $text = Replace-Once $text "MCP bootstrap namespace forwarding (0.22.0)" @'
+    const mcpBootstrapArgs = process.env.OD_MCP_BOOTSTRAP_ARGS;
+    if (mcpBootstrapArgs != null && mcpBootstrapArgs.length > 0) {
+      sidecarEnv.OD_MCP_BOOTSTRAP_ARGS = mcpBootstrapArgs;
+    }
+'@ @'
+    const mcpBootstrapArgs = process.env.OD_MCP_BOOTSTRAP_ARGS;
+    if (mcpBootstrapArgs != null && mcpBootstrapArgs.length > 0) {
+      sidecarEnv.OD_MCP_BOOTSTRAP_ARGS = mcpBootstrapArgs;
+    }
+    const mcpBootstrapIpcPath = process.env.OD_MCP_BOOTSTRAP_IPC_PATH;
+    if (mcpBootstrapIpcPath != null && mcpBootstrapIpcPath.length > 0) {
+      sidecarEnv.OD_MCP_BOOTSTRAP_IPC_PATH = mcpBootstrapIpcPath;
+    }
+    const packagedRuntimeNamespace = process.env.OD_PACKAGED_RUNTIME_NAMESPACE;
+    if (packagedRuntimeNamespace != null && packagedRuntimeNamespace.length > 0) {
+      sidecarEnv.OD_PACKAGED_RUNTIME_NAMESPACE = packagedRuntimeNamespace;
+    }
+'@ "OD_PACKAGED_RUNTIME_NAMESPACE"
+        return $text
+    }
     $text = Replace-Once $text "manifest markdown classifier" @'
 function isArtifactPath(path106) {
   const lower = path106.toLowerCase();
@@ -355,6 +498,7 @@ function createPackagedDesktopLogger(paths) {
   const dataRoot = resolvePackagedDataRoot(config, normalizedDataNamespace, env);
 '@ "normalizedDataNamespace"
 
+    if ($text.Contains("function createHeadlessStamp(namespace)")) {
     $text = Replace-Once $text "headless runtime namespace resolver" @'
 function createHeadlessStamp(namespace) {
 '@ @'
@@ -418,6 +562,95 @@ function createHeadlessStamp(namespace) {
     mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace),
     nodeCommand: activeConfig.nodeCommand,
 '@ "mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace)"
+
+    } else {
+      Write-Verbose "OpenDesign 0.22.0 namespace fallback"
+      $text = Replace-Once $text "headless bootstrap namespace (0.22.0)" '            requireDesktopAuth: false,' ('            mcpBootstrapRuntimeNamespace: runtimeNamespace,' + "`n" + '            requireDesktopAuth: false,') 'mcpBootstrapRuntimeNamespace: runtimeNamespace'
+      $text = Replace-Once $text "desktop bootstrap namespace (0.22.0)" '    requireDesktopAuth: true,' ('    mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace),' + "`n" + '    requireDesktopAuth: true,') 'mcpBootstrapRuntimeNamespace: resolvePackagedHeadlessRuntimeNamespace(namespace)'
+      if (-not $text.Contains("function resolvePackagedHeadlessRuntimeNamespace")) {
+      $text = Replace-Once $text "headless runtime namespace resolver (0.22.0)" @'
+async function runPackagedHeadless(config, request = {
+'@ @'
+function resolvePackagedHeadlessRuntimeNamespace(dataNamespace, env = process.env) {
+  const configured = env.OD_PACKAGED_RUNTIME_NAMESPACE?.trim();
+  if (configured != null && configured.length > 0)
+    return normalizeNamespace(configured);
+  const normalized = normalizeNamespace(dataNamespace);
+  return normalized.endsWith("-headless") ? normalized : normalizeNamespace(`${normalized}-headless`);
+}
+async function runPackagedHeadless(config, request = {
+'@ "headless runtime namespace fallback"
+      }
+      $text = Replace-Once $text "headless runtime path selection (0.22.0)" @'
+  const initialPaths = resolvePackagedNamespacePaths(
+    config,
+    config.namespace,
+    process.env
+  );
+'@ @'
+  const runtimeNamespace = resolvePackagedHeadlessRuntimeNamespace(config.namespace);
+  const runtimeConfig = runtimeNamespace === config.namespace ? config : { ...config, namespace: runtimeNamespace };
+  const initialPaths = resolvePackagedNamespacePaths(
+    runtimeConfig,
+    runtimeNamespace,
+    process.env,
+    config.namespace
+  );
+'@ "const runtimeConfig = runtimeNamespace"
+      $text = Replace-Once $text "headless runtime launcher config (0.22.0)" '  const launcherRuntime = await resolvePackagedLauncherRuntime(config, initialPaths);' '  const launcherRuntime = await resolvePackagedLauncherRuntime(runtimeConfig, initialPaths);' 'resolvePackagedLauncherRuntime(runtimeConfig'
+      $text = Replace-Once $text "headless runtime stamp (0.22.0)" @'
+    mode: "headless",
+    namespace: config.namespace,
+    source: argvStamp?.source ?? SIDECAR_SOURCES.PACKAGED
+'@ @'
+    mode: "headless",
+    namespace: runtimeNamespace,
+    source: argvStamp?.source ?? SIDECAR_SOURCES.PACKAGED
+'@ @'
+    mode: "headless",
+    namespace: runtimeNamespace,
+    source: argvStamp?.source ?? SIDECAR_SOURCES.PACKAGED
+'@
+      $text = Replace-Once $text "headless runtime state namespace (0.22.0)" @'
+    base: paths.runtimeRoot,
+    mode: "headless",
+    namespace: config.namespace,
+    source: stamp.source
+'@ @'
+    base: paths.runtimeRoot,
+    mode: "headless",
+    namespace: runtimeNamespace,
+    source: stamp.source
+'@
+      $text = Replace-Once $text "main runtime namespace selection (0.22.0)" @'
+  const namespace = convergedArgvStamp?.namespace ?? config.namespace;
+  const namespaceConfig = namespace === config.namespace ? config : { ...config, namespace };
+  const initialPaths = resolvePackagedNamespacePaths(namespaceConfig, namespace, process.env);
+'@ @'
+  const namespace = convergedArgvStamp?.namespace ?? config.namespace;
+  const runtimeNamespace = headlessRequest.headless ? resolvePackagedHeadlessRuntimeNamespace(namespace) : namespace;
+  const namespaceConfig = runtimeNamespace === config.namespace ? config : { ...config, namespace: runtimeNamespace };
+  const initialPaths = resolvePackagedNamespacePaths(namespaceConfig, runtimeNamespace, process.env, namespace);
+'@ "runtimeNamespace = headlessRequest.headless"
+      $text = Replace-Once $text "main launch stamp namespace (0.22.0)" @'
+    mode: headlessRequest.headless ? "headless" : SIDECAR_MODES.RUNTIME,
+    namespace,
+    source: convergedArgvStamp?.source ?? SIDECAR_SOURCES.PACKAGED
+'@ @'
+    mode: headlessRequest.headless ? "headless" : SIDECAR_MODES.RUNTIME,
+    namespace: runtimeNamespace,
+    source: convergedArgvStamp?.source ?? SIDECAR_SOURCES.PACKAGED
+'@ @'
+    mode: headlessRequest.headless ? "headless" : SIDECAR_MODES.RUNTIME,
+    namespace: runtimeNamespace,
+    source: convergedArgvStamp?.source ?? SIDECAR_SOURCES.PACKAGED
+'@
+      if ($text.Contains('    await runPackagedHeadless(config, headlessRequest);')) {
+        $text = Replace-Once $text "main headless runtime config (0.22.0)" '    await runPackagedHeadless(config, headlessRequest);' '    await runPackagedHeadless(namespaceConfig, headlessRequest);' 'runPackagedHeadless(namespaceConfig'
+      } else {
+        $text = Replace-Once $text "main headless runtime config (0.22.0)" '    await runPackagedHeadless2(config, headlessRequest);' '    await runPackagedHeadless2(namespaceConfig, headlessRequest);' 'runPackagedHeadless2(namespaceConfig'
+      }
+    }
 
     $text = Replace-Once $text "packaged active run guard" @'
 async function restartExistingDesktop(input) {
@@ -632,7 +865,12 @@ if (-not (Test-Path -LiteralPath $chunks -PathType Container)) { throw "OpenDesi
 $packagedMain = Find-Bundle $prebundled "packaged-main.mjs" @("function createPackagedDesktopLogger")
 $server = Find-Bundle $chunks "server-*.mjs" @("function diffRunArtifacts", "function validateRunDeliverable")
 $bootstrap = Find-Bundle $chunks "mcp-bootstrap-*.mjs" @("function ensureMcpDaemonUrl")
-$version = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
+$packageJson = Join-Path $InstallRoot "resources\app\package.json"
+$version = $null
+if (Test-Path -LiteralPath $packageJson -PathType Leaf) {
+    try { $version = (Get-Content -LiteralPath $packageJson -Raw | ConvertFrom-Json).version } catch { }
+}
+if (-not $version) { $version = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion }
 if (-not $version) { $version = "unknown" }
 $backupDir = Join-Path $BackupRoot $version
 
