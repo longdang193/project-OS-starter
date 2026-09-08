@@ -23,6 +23,14 @@ class LaunchBlocked(RuntimeError):
     """Raised when a required runtime binding is unavailable or mismatched."""
 
 
+class CommandTransportTimeout(LaunchBlocked):
+    """Raised when a launcher subprocess times out before returning a result."""
+
+
+class TargetCandidateRejected(LaunchBlocked):
+    """Raised when one auto-discovery candidate fails eligibility checks."""
+
+
 class TargetResolutionBlocked(LaunchBlocked):
     def __init__(self, message: str, resolution: dict[str, Any]) -> None:
         super().__init__(message)
@@ -36,9 +44,12 @@ _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
 _CODEX_WATCHDOG_GRACE_SECONDS = 5.0
+_TARGET_DISCOVERY_TIMEOUT = 5.0
 _WATCHDOG_TIMEOUT_EXIT_CODE = 124
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
+_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
+_DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 
 
 def _herdr_environment() -> dict[str, str]:
@@ -65,7 +76,7 @@ def _run(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
-        raise LaunchBlocked(
+        raise CommandTransportTimeout(
             f"Command timed out after {timeout:g}s: {' '.join(command)}"
         ) from exc
 
@@ -75,16 +86,20 @@ def _run_checked(
     *,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
+    timeout: float = _HERDR_COMMAND_TIMEOUT,
 ) -> str:
-    result = _run(command, cwd=cwd, env=env)
+    result = _run(command, cwd=cwd, env=env, timeout=timeout)
     if result.returncode:
         detail = result.stderr.strip() or result.stdout.strip()
         raise LaunchBlocked(f"Command failed ({result.returncode}): {' '.join(command)}: {detail}")
     return result.stdout.strip()
 
 
-def _json_command(command: list[str], *, env: dict[str, str] | None = None) -> dict[str, Any]:
-    output = _run_checked(command, env=env)
+def _json_command(
+    command: list[str], *, env: dict[str, str] | None = None,
+    timeout: float = _HERDR_COMMAND_TIMEOUT,
+) -> dict[str, Any]:
+    output = _run_checked(command, env=env, timeout=timeout)
     try:
         payload = json.loads(output)
     except json.JSONDecodeError as exc:
@@ -194,36 +209,60 @@ def _herdr_pane(
     pane: str,
     herdr: str,
     *,
+    executor: str = "codex",
     env: dict[str, str] | None = None,
+    panes: list[Any] | None = None,
+    timeout: float = _HERDR_COMMAND_TIMEOUT,
 ) -> dict[str, Any]:
-    panes = _result(_json_command([herdr, "--session", session, "pane", "list"], env=env), "panes")
+    if panes is None:
+        panes = _result(
+            _json_command(
+                [herdr, "--session", session, "pane", "list"],
+                env=env,
+                timeout=timeout,
+            ),
+            "panes",
+        )
     if not isinstance(panes, list):
         raise LaunchBlocked("Herdr pane list is not an array.")
+    if any(not isinstance(item, dict) for item in panes):
+        raise LaunchBlocked("Herdr pane list contains invalid entries.")
     selected = next((item for item in panes if item.get("pane_id") == pane), None)
     if not isinstance(selected, dict):
-        raise LaunchBlocked(f"Pane is unavailable in session `{session}`: {pane}")
+        raise TargetCandidateRejected(f"Pane is unavailable in session `{session}`: {pane}")
     pane_cwd = Path(str(selected.get("cwd", ""))).resolve()
     if pane_cwd != cwd.resolve():
-        raise LaunchBlocked(f"Pane cwd mismatch: expected {cwd}, got {pane_cwd}")
+        raise TargetCandidateRejected(f"Pane cwd mismatch: expected {cwd}, got {pane_cwd}")
     if selected.get("agent") or selected.get("agent_status") not in (None, "unknown"):
-        raise LaunchBlocked(f"Pane already has agent state: {pane}")
+        raise TargetCandidateRejected(f"Pane already has agent state: {pane}")
 
     process_payload = _json_command(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
         env=env,
+        timeout=timeout,
     )
     process_info = _result(process_payload, "process_info")
-    foreground = process_info.get("foreground_processes", [])
+    if not isinstance(process_info, dict):
+        raise TargetCandidateRejected("Herdr pane process information is invalid.")
+    if "foreground_processes" not in process_info:
+        raise TargetCandidateRejected("Herdr pane process information is incomplete.")
+    foreground = process_info["foreground_processes"]
     if not isinstance(foreground, list):
-        raise LaunchBlocked("Herdr pane process information is invalid.")
-    shell_names = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
-    conflicting = [
-        process.get("name", "unknown")
-        for process in foreground
-        if str(process.get("name", "")).lower() not in shell_names
-    ]
+        raise TargetCandidateRejected("Herdr pane process information is invalid.")
+    shell_names = (
+        _DEEPAGENTS_SHELL_PROCESS_NAMES
+        if executor == "deepagents"
+        else _SHELL_PROCESS_NAMES
+    )
+    conflicting: list[str] = []
+    for process in foreground:
+        if not isinstance(process, dict):
+            raise TargetCandidateRejected("Herdr pane process information is invalid.")
+        process_name = str(process.get("name", "unknown"))
+        if process_name.lower() not in shell_names:
+            conflicting.append(process_name)
     if conflicting:
-        raise LaunchBlocked(f"Pane has conflicting foreground process: {', '.join(conflicting)}")
+        raise TargetCandidateRejected(f"Pane has conflicting foreground process: {', '.join(conflicting)}")
     return {"pane": selected, "process_info": process_info}
 
 
@@ -233,6 +272,7 @@ def _resolve_target_selector(
     pane: str,
     herdr: str,
     *,
+    executor: str = "codex",
     env: dict[str, str] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     if (session == "auto") != (pane == "auto"):
@@ -246,36 +286,79 @@ def _resolve_target_selector(
             "pane": pane,
         }
 
-    snapshot = _result(_json_command([herdr, "api", "snapshot"], env=env), "snapshot")
+    deadline = time.monotonic() + _TARGET_DISCOVERY_TIMEOUT
+
+    def remaining_timeout() -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TargetResolutionBlocked(
+                "target discovery deadline expired",
+                {"status": "incomplete", "mode": "auto", "failure_kind": "deadline"},
+            )
+        return remaining
+
+    try:
+        snapshot = _result(
+            _json_command(
+                [herdr, "api", "snapshot"],
+                env=env,
+                timeout=remaining_timeout(),
+            ),
+            "snapshot",
+        )
+    except CommandTransportTimeout as exc:
+        raise TargetResolutionBlocked(
+            "target discovery transport timed out",
+            {"status": "incomplete", "mode": "auto", "failure_kind": "transport_timeout"},
+        ) from exc
     panes = snapshot.get("panes") if isinstance(snapshot, dict) else None
     if not isinstance(panes, list):
         raise LaunchBlocked("Herdr snapshot is missing panes.")
+    if any(not isinstance(item, dict) for item in panes):
+        raise LaunchBlocked("Herdr snapshot contains malformed pane entries.")
+    if any(not isinstance(item.get("cwd"), str) or not item["cwd"] for item in panes):
+        raise LaunchBlocked("Herdr snapshot contains pane entry without cwd.")
 
     candidates: list[tuple[str, str]] = []
+    rejections: list[dict[str, str]] = []
     for item in panes:
-        if not isinstance(item, dict):
-            continue
         workspace_id = item.get("workspace_id")
         pane_id = item.get("pane_id")
         if not isinstance(workspace_id, str) or not isinstance(pane_id, str):
-            continue
+            raise LaunchBlocked("Herdr snapshot contains pane entry without workspace_id/pane_id.")
         if Path(str(item.get("cwd", ""))).resolve() != cwd.resolve():
             continue
+        session_panes = [
+            candidate for candidate in panes
+            if candidate.get("workspace_id") == workspace_id
+        ]
         try:
-            _herdr_pane(cwd, workspace_id, pane_id, herdr, env=env)
-        except LaunchBlocked:
-            continue
-        candidates.append((workspace_id, pane_id))
+            _herdr_pane(
+                cwd,
+                workspace_id,
+                pane_id,
+                herdr,
+                executor=executor,
+                env=env,
+                panes=session_panes,
+                timeout=remaining_timeout(),
+            )
+        except TargetCandidateRejected as exc:
+            rejections.append({"session": workspace_id, "pane": pane_id, "reason": str(exc)})
+        else:
+            candidates.append((workspace_id, pane_id))
 
     candidates.sort()
     if not candidates:
+        status = "blocked" if rejections else "not_found"
         raise TargetResolutionBlocked(
-            "target_resolution=not_found; eligible candidates=0",
+            f"target_resolution={status}; eligible candidates=0",
             {
-                "status": "not_found",
+                "status": status,
                 "mode": "auto",
                 "candidate_count": 0,
                 "candidates": [],
+                "rejections": rejections,
             },
         )
     selected_session, selected_pane = candidates[0]
@@ -283,6 +366,7 @@ def _resolve_target_selector(
         "status": "selected",
         "mode": "auto",
         "candidate_count": len(candidates),
+        "rejections": rejections,
         "candidates": [
             {"session": candidate_session, "pane": candidate_pane}
             for candidate_session, candidate_pane in candidates
@@ -456,9 +540,6 @@ def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
     wall_clock = grant.get("wall_clock_seconds") if isinstance(grant, dict) else None
     requested = wall_clock.get("requested") if isinstance(wall_clock, dict) else None
     return requested if isinstance(requested, int) else None
-
-
-_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 
 
 def _process_ids(processes: Any, *, require_non_shell: bool) -> set[int]:
@@ -709,9 +790,10 @@ def resolve_launch(
         session,
         pane,
         herdr,
+        executor=executor,
         env=environment,
     )
-    pane_state = _herdr_pane(cwd, session, pane, herdr, env=environment)
+    pane_state = _herdr_pane(cwd, session, pane, herdr, executor=executor, env=environment)
     agent_name = name or f"{selected.name}-main"
     if executor == "codex":
         runtime_arguments = _codex_arguments(selected, cwd)
@@ -795,6 +877,8 @@ def resolve_launch(
             "pane": pane,
             "agent_name": agent_name,
             "task_sha256": _sha256_text(task_text),
+            "delivery_task_sha256": _sha256_text(delivery_task),
+            "grant_digest": grant_digest,
             "state": "unknown",
             "source": "herdr.agent" if executor == "codex" else "herdr.pane_process",
             "read_commands": (
@@ -816,7 +900,7 @@ def resolve_launch(
                     herdr,
                     session,
                     agent_name,
-                    task_text,
+                    delivery_task,
                     timeout_ms=codex_prompt_timeout_ms,
                 )
             ) if executor == "codex" else None,
@@ -882,6 +966,17 @@ def main(argv: list[str] | None = None) -> int:
             resolved_pane = str(evidence["herdr"]["pane"])
         except (KeyError, TypeError) as exc:
             raise LaunchBlocked("Launcher evidence missing resolved Herdr target.") from exc
+        registry_launcher = evidence.get("registry_launcher")
+        if not isinstance(registry_launcher, dict):
+            raise LaunchBlocked("Launcher evidence missing registry binding.")
+        assignment_task_sha256 = registry_launcher.get("assignment_task_sha256")
+        if not isinstance(assignment_task_sha256, str):
+            raise LaunchBlocked("Launcher evidence missing assignment task identity.")
+        delivery_task_sha256 = registry_launcher.get(
+            "delivery_task_sha256",
+            assignment_task_sha256,
+        )
+        grant_digest = registry_launcher.get("grant_digest")
         if args.executor == "codex":
             codex_evidence = evidence.get("codex")
             if not isinstance(codex_evidence, dict) or not codex_evidence.get("codex_home"):
@@ -889,15 +984,35 @@ def main(argv: list[str] | None = None) -> int:
             environment = _codex_environment(Path(str(codex_evidence["codex_home"])))
         else:
             environment = _herdr_environment()
-        result = _run(
-            command,
-            env=environment,
-            timeout=(
-                _DEEPAGENTS_RUN_TIMEOUT
-                if args.executor == "deepagents"
-                else _HERDR_COMMAND_TIMEOUT
-            ),
-        )
+        try:
+            result = _run(
+                command,
+                env=environment,
+                timeout=(
+                    _DEEPAGENTS_RUN_TIMEOUT
+                    if args.executor == "deepagents"
+                    else _HERDR_COMMAND_TIMEOUT
+                ),
+            )
+        except CommandTransportTimeout:
+            print(json.dumps({
+                "assignment": {
+                    "agent_name": evidence["herdr"]["agent_name"],
+                    "delivery_state": "delivery_uncertain",
+                    "delivery_certainty": "unknown",
+                    "delivery_task_sha256": delivery_task_sha256,
+                    "exit_code": 2,
+                    "failure_kind": "transport_timeout",
+                    "grant_digest": grant_digest,
+                    "phase": "pane_run" if args.executor == "deepagents" else "start",
+                    "prompt_accepted": None,
+                    "reconciliation_required": True,
+                    "session": resolved_session,
+                    "status": "uncertain",
+                    "task_sha256": assignment_task_sha256,
+                }
+            }, sort_keys=True))
+            return 2
         if result.stdout:
             print(result.stdout, end="")
         if result.stderr:
@@ -906,11 +1021,17 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
+                    "delivery_state": "delivery_failed",
+                    "delivery_certainty": "not_delivered",
+                    "delivery_task_sha256": delivery_task_sha256,
                     "exit_code": result.returncode,
-                    "phase": "start",
+                    "failure_kind": "command_exit",
+                    "phase": "pane_run" if args.executor == "deepagents" else "start",
+                    "reconciliation_required": True,
                     "session": resolved_session,
                     "status": "failed",
-                    "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
+                    "grant_digest": grant_digest,
+                    "task_sha256": assignment_task_sha256,
                 }
             }, sort_keys=True))
             return result.returncode
@@ -918,7 +1039,6 @@ def main(argv: list[str] | None = None) -> int:
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
             watchdog_seconds = _codex_watchdog_seconds(evidence)
-            registry_launcher = evidence.get("registry_launcher", {})
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)
@@ -931,6 +1051,11 @@ def main(argv: list[str] | None = None) -> int:
                 and "child_agents" in runtime_grant["delegation"]
             ):
                 delivery_task = _project_runtime_grant(delivery_task, runtime_grant)
+            delivery_task_sha256 = registry_launcher.get(
+                "delivery_task_sha256",
+                _sha256_text(delivery_task),
+            )
+            grant_digest = registry_launcher.get("grant_digest")
             assignment = _codex_assignment_command(
                 herdr,
                 resolved_session,
@@ -939,7 +1064,8 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_ms=(watchdog_seconds * 1000 if watchdog_seconds is not None else None),
             )
             assignment_started = time.monotonic()
-            assignment_timed_out = False
+            watchdog_expired = False
+            transport_timeout: CommandTransportTimeout | None = None
             assignment_result: subprocess.CompletedProcess[str] | None = None
             try:
                 assignment_result = _run(
@@ -951,24 +1077,40 @@ def main(argv: list[str] | None = None) -> int:
                         else _CODEX_ASSIGNMENT_TIMEOUT
                     ),
                 )
-            except LaunchBlocked as exc:
-                if watchdog_seconds is None or "Command timed out after" not in str(exc):
-                    raise
-                assignment_timed_out = True
+            except CommandTransportTimeout as exc:
+                transport_timeout = exc
             elapsed_seconds = time.monotonic() - assignment_started
             if (
                 assignment_result is not None
                 and watchdog_seconds is not None
                 and assignment_result.returncode != 0
-                and (
-                    elapsed_seconds >= max(0, watchdog_seconds - 1)
-                    or "timeout" in (
-                        assignment_result.stdout + assignment_result.stderr
-                    ).lower()
-                )
+                and elapsed_seconds >= watchdog_seconds
             ):
-                assignment_timed_out = True
-            if assignment_timed_out:
+                watchdog_expired = True
+            if transport_timeout is not None:
+                if watchdog_seconds is not None and elapsed_seconds >= watchdog_seconds:
+                    watchdog_expired = True
+                else:
+                    launcher = evidence["registry_launcher"]
+                    print(json.dumps({
+                        "assignment": {
+                    "agent_name": agent_name,
+                    "delivery_state": "delivery_uncertain",
+                    "delivery_certainty": "unknown",
+                    "delivery_task_sha256": delivery_task_sha256,
+                    "exit_code": 2,
+                    "failure_kind": "transport_timeout",
+                    "grant_digest": grant_digest,
+                    "phase": "prompt",
+                    "prompt_accepted": None,
+                    "reconciliation_required": True,
+                    "session": resolved_session,
+                    "status": "uncertain",
+                    "task_sha256": assignment_task_sha256,
+                        }
+                    }, sort_keys=True))
+                    return 2
+            if watchdog_expired:
                 cleanup = _terminate_codex_lane(
                     herdr,
                     resolved_session,
@@ -980,16 +1122,22 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
+                        "delivery_state": "watchdog_expired",
+                        "delivery_certainty": "unknown",
+                        "delivery_task_sha256": delivery_task_sha256,
                         "exit_code": (
                             _WATCHDOG_TIMEOUT_EXIT_CODE
                             if cleanup_verified
                             else 2
                         ),
                         "phase": "prompt",
-                        "prompt_accepted": False,
+                        "prompt_accepted": None,
                         "session": resolved_session,
                         "status": status,
-                        "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
+                        "task_sha256": assignment_task_sha256,
+                        "failure_kind": "watchdog_expired",
+                        "grant_digest": grant_digest,
+                        "reconciliation_required": False,
                         "watchdog": {
                             "requested_seconds": watchdog_seconds,
                             "enforcement": "outer-watchdog",
@@ -1008,25 +1156,58 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({
                 "assignment": {
                     "agent_name": agent_name,
+                    "delivery_state": (
+                        "delivered" if assignment_result.returncode == 0 else "delivery_failed"
+                    ),
+                    "delivery_certainty": (
+                        "confirmed" if assignment_result.returncode == 0 else "not_delivered"
+                    ),
+                    "delivery_task_sha256": delivery_task_sha256,
                     "exit_code": assignment_result.returncode,
+                    "failure_kind": None if assignment_result.returncode == 0 else "command_exit",
+                    "grant_digest": grant_digest,
                     "phase": "prompt",
                     "prompt_accepted": assignment_result.returncode == 0,
                     "session": resolved_session,
                     "status": "delivered" if assignment_result.returncode == 0 else "failed",
-                    "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
+                    "task_sha256": assignment_task_sha256,
+                    "reconciliation_required": assignment_result.returncode != 0,
                     "wait": "settled" if assignment_result.returncode == 0 else None,
                 }
             }, sort_keys=True))
             return assignment_result.returncode
+        if result.returncode:
+            print(json.dumps({
+                "assignment": {
+                    "agent_name": evidence["herdr"]["agent_name"],
+                    "delivery_state": "delivery_failed",
+                    "delivery_certainty": "not_delivered",
+                    "delivery_task_sha256": delivery_task_sha256,
+                    "exit_code": result.returncode,
+                    "failure_kind": "command_exit",
+                    "grant_digest": grant_digest,
+                    "phase": "pane_run",
+                    "reconciliation_required": True,
+                    "session": resolved_session,
+                    "status": "failed",
+                    "task_sha256": assignment_task_sha256,
+                }
+            }, sort_keys=True))
+            return result.returncode
         print(json.dumps({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],
+                "delivery_state": "delivered",
+                "delivery_certainty": "confirmed",
+                "delivery_task_sha256": delivery_task_sha256,
                 "exit_code": 0,
+                "grant_digest": grant_digest,
                 "phase": "pane_run",
                 "session": resolved_session,
                 "status": "delivered",
                 "task_accepted": True,
-                "task_sha256": evidence["registry_launcher"]["assignment_task_sha256"],
+                "task_sha256": assignment_task_sha256,
+                "reconciliation_required": False,
             }
         }, sort_keys=True))
         return 0

@@ -199,8 +199,16 @@ if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
     [Console]::Error.WriteLine("dcode-project: run inside a Git repository.")
     exit 2
 }
+$launcher = Join-Path $repoRoot "scripts\dcode_project.py"
+if (-not (Test-Path $launcher -PathType Leaf)) {
+    $launcher = Join-Path $HOME ".agents\project-os\scripts\dcode_project.py"
+}
+if (-not (Test-Path $launcher -PathType Leaf)) {
+    [Console]::Error.WriteLine("dcode-project: shared or repository-local dcode_project.py not found.")
+    exit 2
+}
 
-& py -3 (Join-Path $repoRoot "scripts\dcode_project.py") --executor deepagents @DcodeArgs
+& py -3 $launcher --executor deepagents @DcodeArgs
 exit $LASTEXITCODE
 '@
 Set-Content -NoNewline -Encoding utf8 (Join-Path $binRoot "dcode-project.ps1") $wrapper
@@ -229,8 +237,16 @@ if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
     [Console]::Error.WriteLine("project-delegate: run inside a Git repository.")
     exit 2
 }
+$launcher = Join-Path $repoRoot "scripts\dcode_project.py"
+if (-not (Test-Path $launcher -PathType Leaf)) {
+    $launcher = Join-Path $HOME ".agents\project-os\scripts\dcode_project.py"
+}
+if (-not (Test-Path $launcher -PathType Leaf)) {
+    [Console]::Error.WriteLine("project-delegate: shared or repository-local dcode_project.py not found.")
+    exit 2
+}
 
-& py -3 (Join-Path $repoRoot "scripts\dcode_project.py") --executor tura @DelegateArgs
+& py -3 $launcher --executor tura @DelegateArgs
 exit $LASTEXITCODE
 '@
     Set-Content -NoNewline -Encoding utf8 (Join-Path $binRoot "project-delegate.ps1") $delegateWrapper

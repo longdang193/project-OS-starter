@@ -1405,6 +1405,8 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert "Copy-Item" not in setup
     assert "git rev-parse --show-toplevel" in setup
     assert 'Join-Path $repoRoot "scripts\\dcode_project.py"' in setup
+    assert 'Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"' in setup
+    assert setup.index('$launcher = Join-Path $repoRoot "scripts\\dcode_project.py"') < setup.index('$launcher = Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"')
     assert 'dcode-project.ps1' in setup
     assert 'project-delegate.ps1' in setup
     assert 'TuraExecutable' in setup
@@ -1414,7 +1416,7 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'Tura capability probe failed' in setup
     assert 'selects DeepAgents; do not pass --executor' in setup
     assert 'project-delegate selects Tura; do not pass --executor' in setup
-    assert 'scripts\\dcode_project.py") --executor tura @DelegateArgs' in setup
+    assert '& py -3 $launcher --executor tura @DelegateArgs' in setup
     assert 'Tura migration:' in setup
     assert "DEEPAGENTS_HOME" in setup
     assert "GetUnresolvedProviderPathFromPSPath" in setup
@@ -1466,3 +1468,61 @@ def test_generated_project_delegate_guard_returns_contract_exit_code(tmp_path: P
 
     assert result.returncode == 2
     assert "project-delegate selects Tura; do not pass --executor" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("wrapper_name", "executor"),
+    [("dcode-project", "deepagents"), ("project-delegate", "tura")],
+)
+def test_generated_wrappers_prefer_local_launcher_and_fallback_to_shared(
+    tmp_path: Path,
+    wrapper_name: str,
+    executor: str,
+) -> None:
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    py_launcher = shutil.which("py")
+    if powershell is None or py_launcher is None:
+        pytest.skip("PowerShell and the py launcher are required")
+
+    repo = tmp_path / "consumer repo with spaces"
+    (repo / "scripts").mkdir(parents=True)
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    fake_home = tmp_path / "home with spaces"
+    shared = fake_home / ".agents" / "project-os" / "scripts"
+    shared.mkdir(parents=True)
+    setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8").replace("\r\n", "\n")
+    variable = "$wrapper" if wrapper_name == "dcode-project" else "$delegateWrapper"
+    start = setup.index(f"{variable} = @'\n") + len(f"{variable} = @'\n")
+    end = setup.index("\n'@\n", start)
+    wrapper_path = tmp_path / f"{wrapper_name}.ps1"
+    wrapper_path.write_text(setup[start:end] + "\n", encoding="utf-8")
+
+    (repo / "scripts" / "dcode_project.py").write_text(
+        "import sys; print(' '.join(sys.argv[1:])); raise SystemExit(7)\n",
+        encoding="utf-8",
+    )
+    (shared / "dcode_project.py").write_text(
+        "import sys; print('shared:' + ' '.join(sys.argv[1:])); raise SystemExit(8)\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment.update({"HOME": str(fake_home), "USERPROFILE": str(fake_home)})
+
+    def run_wrapper() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(wrapper_path), "probe"],
+            cwd=repo,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    local_result = run_wrapper()
+    assert local_result.returncode == 7
+    assert f"--executor {executor} probe" in local_result.stdout
+
+    (repo / "scripts" / "dcode_project.py").unlink()
+    shared_result = run_wrapper()
+    assert shared_result.returncode == 8
+    assert f"shared:--executor {executor} probe" in shared_result.stdout

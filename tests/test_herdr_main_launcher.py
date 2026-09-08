@@ -114,7 +114,7 @@ def test_run_converts_timeout_to_launch_blocked(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(LAUNCHER.subprocess, "run", timeout_run)
 
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="timed out after 2s"):
+    with pytest.raises(LAUNCHER.CommandTransportTimeout, match="timed out after 2s"):
         LAUNCHER._run(["herdr", "api", "snapshot"], timeout=2.0)
 
 
@@ -185,6 +185,10 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "source": "herdr.pane_process",
         "state": "unknown",
         "task_sha256": LAUNCHER._sha256_text("Return exactly DEEPAGENTS_ADAPTER_OK"),
+        "delivery_task_sha256": LAUNCHER._sha256_text(
+            "Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
+        ),
+        "grant_digest": evidence["registry_launcher"]["grant_digest"],
     }
     assert LAUNCHER._DEEPAGENTS_RUN_TIMEOUT == 1800.0
 
@@ -346,6 +350,62 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
     }
     assert len(evidence["registry_launcher"]["grant_digest"]) == 64
     assert command[-1] == "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]'"
+
+
+def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"),
+        "normal",
+        "9router",
+        "combo-normal",
+        20,
+        True,
+        "test",
+        "do not modify files",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_runtime",
+        lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
+    )
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda cwd, session, pane, herdr, **kwargs: {
+            "pane": {"cwd": str(cwd)},
+            "process_info": {"foreground_processes": []},
+        },
+    )
+
+    _, evidence = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="codex-probe",
+        pane="w1:p1",
+        cwd=ROOT,
+        expected_base="HEAD",
+        executor="codex",
+        grant_child_agents="allow",
+        task="original task",
+    )
+
+    delivery_task = "original task [Runtime Grant: delegation.child_agents = allow]"
+    prompt_argv = evidence["assignment_request"]["redacted_prompt_argv"]
+    assert f"task=<sha256:{LAUNCHER._sha256_text(delivery_task)}>" in prompt_argv
+    assert evidence["registry_launcher"]["assignment_task_sha256"] == LAUNCHER._sha256_text(
+        "original task"
+    )
+    assert evidence["registry_launcher"]["delivery_task_sha256"] == LAUNCHER._sha256_text(
+        delivery_task
+    )
 
 
 def test_resolve_launch_quotes_mcp_selectors_for_powershell(
@@ -597,9 +657,17 @@ def test_main_starts_with_selected_codex_home(
     output = capsys.readouterr().out.splitlines()
     assert json.loads(output[-1])["assignment"] == {
         "agent_name": "xhigh-main",
+        "delivery_state": "delivered",
+        "delivery_certainty": "confirmed",
+        "delivery_task_sha256": LAUNCHER._sha256_text(
+            "assign lane [Runtime Grant: delegation.child_agents = allow]"
+        ),
         "exit_code": 0,
+        "failure_kind": None,
+        "grant_digest": None,
         "phase": "prompt",
         "prompt_accepted": True,
+        "reconciliation_required": False,
         "session": "codex-probe",
         "status": "delivered",
         "task_sha256": LAUNCHER._sha256_text("assign lane"),
@@ -655,9 +723,11 @@ def test_main_times_out_codex_and_verifies_termination(
         calls += 1
         if calls == 1:
             return subprocess.CompletedProcess(command, 0, "", "")
-        raise LAUNCHER.LaunchBlocked("Command timed out after 13s: herdr.exe")
+        raise LAUNCHER.CommandTransportTimeout("Command timed out after 13s: herdr.exe")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    times = iter([0.0, 9.0])
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
 
     assert LAUNCHER.main(
         [
@@ -670,9 +740,15 @@ def test_main_times_out_codex_and_verifies_termination(
     result = json.loads(output[-1])["assignment"]
     assert {key: value for key, value in result.items() if key != "watchdog"} == {
         "agent_name": "xhigh-main",
+        "delivery_state": "watchdog_expired",
+        "delivery_certainty": "unknown",
+        "delivery_task_sha256": LAUNCHER._sha256_text("assign lane"),
         "exit_code": 124,
+        "failure_kind": "watchdog_expired",
+        "grant_digest": None,
         "phase": "prompt",
-        "prompt_accepted": False,
+        "prompt_accepted": None,
+        "reconciliation_required": False,
         "session": "codex-probe",
         "status": "TIMEOUT",
         "task_sha256": LAUNCHER._sha256_text("assign lane"),
@@ -683,6 +759,194 @@ def test_main_times_out_codex_and_verifies_termination(
     assert watchdog["elapsed_seconds"] >= 0
     assert watchdog["termination"] == cleanup
     assert terminated == [("herdr.exe", "codex-probe", "w1:p5")]
+
+
+def test_main_transport_timeout_marks_delivery_uncertain_without_termination(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "delivery_task_sha256": LAUNCHER._sha256_text(
+                "assign lane [Runtime Grant: delegation.child_agents = deny]"
+            ),
+            "grant_digest": "grant-digest",
+            "runtime_grant": {"delegation": {"child_agents": "deny"}},
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
+    }
+    calls = 0
+    terminated: list[tuple[object, ...]] = []
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: terminated.append(args))
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise LAUNCHER.CommandTransportTimeout("Command timed out before acceptance")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 2
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["delivery_state"] == "delivery_uncertain"
+    assert result["delivery_certainty"] == "unknown"
+    assert result["failure_kind"] == "transport_timeout"
+    assert result["prompt_accepted"] is None
+    assert result["reconciliation_required"] is True
+    assert terminated == []
+
+
+def test_main_reports_deepagents_pane_run_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 9, "", "pane failed"),
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(tmp_path), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 9
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["phase"] == "pane_run"
+    assert result["delivery_state"] == "delivery_failed"
+    assert result["delivery_certainty"] == "not_delivered"
+    assert result["failure_kind"] == "command_exit"
+
+
+def test_main_immediate_transport_timeout_does_not_expire_long_grant(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "runtime_grant": {"wall_clock_seconds": {"requested": 600}},
+        },
+        "codex": {"codex_home": str(tmp_path)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "session",
+            "pane": "pane",
+        },
+    }
+    calls = 0
+    terminated: list[tuple[object, ...]] = []
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: terminated.append(args))
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise LAUNCHER.CommandTransportTimeout("assignment timeout")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    times = iter([0.0, 1.0])
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+            "--grant-wall-clock-seconds", "600",
+        ]
+    ) == 2
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["delivery_state"] == "delivery_uncertain"
+    assert result["delivery_certainty"] == "unknown"
+    assert terminated == []
+
+
+def test_main_watchdog_cleanup_failure_blocks_timeout_completion(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "runtime_grant": {"wall_clock_seconds": {"requested": 3}},
+        },
+        "codex": {"codex_home": str(tmp_path)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "session",
+            "pane": "pane",
+        },
+    }
+    calls = 0
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_terminate_codex_lane",
+        lambda *args, **kwargs: {"requested": True, "verified": False, "state": "processes-remain"},
+    )
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise LAUNCHER.CommandTransportTimeout("assignment timeout")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    times = iter([0.0, 4.0])
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+            "--grant-wall-clock-seconds", "3",
+        ]
+    ) == 2
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["delivery_state"] == "watchdog_expired"
+    assert result["status"] == "BLOCKED"
+    assert result["exit_code"] == 2
+    assert result["watchdog"]["termination"]["verified"] is False
 
 
 def test_main_auto_codex_uses_resolved_target(
@@ -762,8 +1026,14 @@ def test_main_reports_failed_assignment_after_start(
     output = capsys.readouterr().out.splitlines()
     assert json.loads(output[-1])["assignment"] == {
         "agent_name": "xhigh-main",
+        "delivery_state": "delivery_failed",
+        "delivery_certainty": "not_delivered",
+        "delivery_task_sha256": LAUNCHER._sha256_text("assign lane"),
         "exit_code": 7,
+        "failure_kind": "command_exit",
         "phase": "start",
+        "grant_digest": None,
+        "reconciliation_required": True,
         "session": "codex-probe",
         "status": "failed",
         "task_sha256": LAUNCHER._sha256_text("assign lane"),
@@ -842,6 +1112,87 @@ def test_target_selector_selects_first_deterministic_auto_target(
     assert resolution["candidate_count"] == 2
 
 
+def test_target_selector_reuses_snapshot_and_keeps_rejection_reasons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    panes = [
+        {"workspace_id": "w1", "pane_id": "w1:p1", "cwd": str(ROOT)},
+        {"workspace_id": "w2", "pane_id": "w2:p1", "cwd": str(ROOT)},
+    ]
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: calls.append(command) or {"result": {"snapshot": {"panes": panes}}},
+    )
+
+    def inspect_candidate(*args, **kwargs):
+        if args[2] == "w1:p1":
+            raise LAUNCHER.TargetCandidateRejected("Pane already has agent state: w1:p1")
+        return {"pane": panes[1]}
+
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", inspect_candidate)
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("w2", "w2:p1")
+    assert len(calls) == 1
+    assert resolution["rejections"] == [{
+        "session": "w1",
+        "pane": "w1:p1",
+        "reason": "Pane already has agent state: w1:p1",
+    }]
+
+
+def test_target_selector_reports_incomplete_discovery_on_transport_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: (_ for _ in ()).throw(
+            LAUNCHER.CommandTransportTimeout("snapshot timeout")
+        ),
+    )
+
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert error.value.resolution["status"] == "incomplete"
+    assert error.value.resolution["failure_kind"] == "transport_timeout"
+
+
+def test_target_selector_rejects_malformed_snapshot_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {"result": {"snapshot": {"panes": [None]}}},
+    )
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="malformed pane entries"):
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+
+def test_target_selector_deadline_is_not_reported_as_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = iter([0.0, 6.0])
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(clock))
+
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert error.value.resolution == {
+        "status": "incomplete",
+        "mode": "auto",
+        "failure_kind": "deadline",
+    }
+
+
 def test_target_selector_reports_no_auto_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -857,9 +1208,10 @@ def test_target_selector_reports_no_auto_target(
     assert error.value.resolution == {
         "status": "not_found",
         "mode": "auto",
-        "candidate_count": 0,
-        "candidates": [],
-    }
+            "candidate_count": 0,
+            "candidates": [],
+            "rejections": [],
+        }
 
 
 def test_main_target_resolution_failure_is_not_workflow_blocked(
@@ -936,6 +1288,75 @@ def test_pane_safety_rejects_existing_agent(monkeypatch: pytest.MonkeyPatch, tmp
 
     with pytest.raises(LAUNCHER.LaunchBlocked, match="already has agent"):
         LAUNCHER._herdr_pane(tmp_path, "session", "p1", "herdr")
+
+
+def test_pane_safety_rejects_missing_process_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    responses = iter([
+        {"result": {"panes": [{"pane_id": "p1", "cwd": str(tmp_path)}]}},
+        {"result": {"process_info": {}}},
+    ])
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="incomplete"):
+        LAUNCHER._herdr_pane(tmp_path, "session", "p1", "herdr")
+
+
+def test_deepagents_pane_requires_powershell_shell(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    responses = iter([
+        {"result": {"panes": [{"pane_id": "p1", "cwd": str(tmp_path)}]}},
+        {"result": {"process_info": {"foreground_processes": [{"name": "cmd.exe"}]}}},
+    ])
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="cmd.exe"):
+        LAUNCHER._herdr_pane(
+            tmp_path,
+            "session",
+            "p1",
+            "herdr",
+            executor="deepagents",
+        )
+
+
+def test_resolve_launch_rechecks_selected_target_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"), "normal", "9router", "combo-normal", 20, True, "test", "test",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "herdr")
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_resolve_target_selector",
+        lambda *args, **kwargs: ("session", "pane", {"status": "selected"}),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            LAUNCHER.TargetCandidateRejected("Pane already has agent state: pane")
+        ),
+    )
+
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="already has agent state"):
+        LAUNCHER.resolve_launch(
+            profile_name="normal",
+            session="auto",
+            pane="auto",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="deepagents",
+            task="assign lane",
+        )
 
 
 def test_git_identity_rejects_non_root_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

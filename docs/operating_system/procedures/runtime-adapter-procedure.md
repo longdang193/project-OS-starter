@@ -94,9 +94,23 @@ Native Codex CoS may use `--session auto --pane auto` through the repository
 launcher. The launcher discovers all eligible existing matching-cwd panes with
 no agent state and shell-only foreground process, sorts candidates
 deterministically, and selects the first. Candidate evidence records the full
-eligible set; no eligible target returns `target_resolution:not_found`. Mixed
+eligible set; no matching target returns `target_resolution:not_found`, while
+candidate rejection or incomplete discovery remains observable as `blocked` or
+`incomplete`. Mixed
 exact/`auto` selectors fail closed. `HERDR_ENV` is not a CoS dispatch gate and
 is removed from launcher child environments.
+
+## Delivery Reconciliation
+
+Launcher delivery evidence distinguishes `delivered`, `delivery_failed`,
+`delivery_uncertain`, and `watchdog_expired`. Transport timeout or missing
+observation produces `delivery_uncertain`; it does not prove execution failure
+and does not authorize automatic kill or replay. Reconcile the existing lane
+through Herdr observation before retrying any uncertain write-capable delivery.
+Replay requires plausible transient failure, an idempotent operation, and
+fresh evidence that the original delivery did not succeed. The launcher keeps
+the original task hash, projected Runtime Grant digest, and delivery-task hash
+together so the observed lane can be matched to the exact task brief.
 
 ## Generate
 

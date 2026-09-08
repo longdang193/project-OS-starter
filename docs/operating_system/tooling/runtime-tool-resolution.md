@@ -16,6 +16,19 @@ Before selecting a tool, record:
 
 Capability labels describe needs; they are not a fixed enum or provider registry.
 
+## Evidence Reuse
+
+Within one explicit controller turn, reuse successful
+immutable capability evidence when its executable, schema, provider metadata,
+and configuration digest remain unchanged. This includes executable
+version/hash, immutable CLI help output, static schemas, and provider
+capability metadata.
+
+Never reuse mutable execution identity merely from a prior turn: pane or
+process state, task assignment, Git HEAD or base, worktree state, lane
+ownership, task authority, or delivery state must be checked fresh. Immutable
+capability evidence is cacheable; mutable execution identity is fresh.
+
 ## Resolution Order
 
 1. Use native or already configured capability.

@@ -46,6 +46,18 @@ def test_runtime_policy_assigns_ownership_and_preserves_evidence() -> None:
     assert "authority boundary" in policy
     assert "evidence requirement" in policy
     assert "capability registry" not in policy.lower()
+    assert "## Evidence Reuse" in policy
+    assert "Immutable capability evidence is cacheable" in policy
+    assert "mutable execution identity is fresh" in policy
+
+
+def test_runtime_adapter_owns_delivery_reconciliation_policy() -> None:
+    procedure = normalized("docs/operating_system/procedures/runtime-adapter-procedure.md")
+
+    assert "## Delivery Reconciliation" in procedure
+    assert "delivery_uncertain" in procedure
+    assert "does not authorize automatic kill or replay" in procedure
+    assert "projected Runtime Grant digest" in procedure
 
 
 def test_root_and_domain_docs_reference_runtime_policy() -> None:
