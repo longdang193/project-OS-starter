@@ -177,7 +177,6 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "--role",
         "normal",
         "--json",
-        "--quiet",
         "--no-mcp",
         "-n",
         "'Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]'",
@@ -1257,11 +1256,28 @@ def test_deepagents_main_strips_herdr_environment(
         "registry_launcher": {
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
         },
-        "herdr": {"agent_name": "normal-main", "session": "session", "pane": "pane"},
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
     }
     captured: dict[str, object] = {}
     monkeypatch.setenv("HERDR_ENV", "1")
     monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "report_present": True,
+            "report_sha256": "report",
+            "report_chars": 1,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+        },
+    )
 
     def fake_run(command, **kwargs):
         captured.update(kwargs)
@@ -1277,7 +1293,110 @@ def test_deepagents_main_strips_herdr_environment(
         ]
     ) == 0
     assert "HERDR_ENV" not in captured["env"]
-    assert json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]["status"] == "delivered"
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]["status"] == "completed"
+
+
+def test_deepagents_main_blocks_delivery_without_completion_report(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "no-report",
+            "report_present": False,
+            "report_sha256": LAUNCHER._sha256_text(""),
+            "report_chars": 0,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+        },
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 2
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["delivery_state"] == "delivered"
+    assert assignment["status"] == "no-report"
+    assert assignment["task_accepted"] is False
+    assert assignment["reconciliation_required"] is True
+
+
+def test_deepagents_task_state_requires_report_for_completion() -> None:
+    assert LAUNCHER._deepagents_task_state(
+        [{"name": "powershell.exe"}],
+        "Running task non-interactively...\n[OK] Task completed\n",
+    ) == "completed"
+    assert LAUNCHER._deepagents_task_state(
+        [{"name": "powershell.exe"}],
+        "Running task non-interactively...\n",
+    ) == "no-report"
+    assert LAUNCHER._deepagents_task_state(
+        [{"name": "python.exe"}],
+        "Running task non-interactively...\n",
+    ) == "running"
+
+
+def test_deepagents_task_state_detects_failure_report() -> None:
+    assert LAUNCHER._deepagents_task_state(
+        [{"name": "powershell.exe"}],
+        "[FAIL] Task failed\n",
+    ) == "failed"
+
+
+def test_deepagents_completion_waits_for_delayed_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_info = json.dumps({
+        "result": {
+            "process_info": {
+                "foreground_processes": [{"name": "powershell.exe"}],
+            },
+        },
+    })
+    responses = iter([
+        subprocess.CompletedProcess([], 0, process_info, ""),
+        subprocess.CompletedProcess([], 0, json.dumps({"result": "Running task..."}), ""),
+        subprocess.CompletedProcess([], 0, process_info, ""),
+        subprocess.CompletedProcess([], 0, json.dumps({"result": "[OK] Task completed"}), ""),
+    ])
+    clock = [0.0]
+    sleeps: list[float] = []
+    monkeypatch.setattr(LAUNCHER, "_run", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: (sleeps.append(seconds), clock.__setitem__(0, clock[0] + seconds)))
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+    )
+
+    assert evidence["state"] == "completed"
+    assert sleeps
 
 
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:

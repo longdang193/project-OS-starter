@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -42,6 +43,8 @@ _MAX_TASK_LENGTH = 4096
 _CODEX_PROMPT_TIMEOUT_MS = "30000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
+_DEEPAGENTS_COMPLETION_WAIT_SECONDS = 60.0
+_DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
 _CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
 _CODEX_WATCHDOG_GRACE_SECONDS = 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
@@ -51,6 +54,12 @@ _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
+_DEEPAGENTS_COMPLETION_PATTERN = re.compile(
+    r"(?im)^\s*(?:\[OK\]\s*)?Task completed\b|^\s*COMPLETED\b"
+)
+_DEEPAGENTS_FAILURE_PATTERN = re.compile(
+    r"(?im)^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
+)
 
 
 def _herdr_environment() -> dict[str, str]:
@@ -587,6 +596,123 @@ def _process_ids_alive(process_ids: set[int]) -> set[int]:
     return alive
 
 
+def _deepagents_task_state(foreground_processes: list[Any], pane_output: str) -> str:
+    if _DEEPAGENTS_FAILURE_PATTERN.search(pane_output):
+        return "failed"
+    if _DEEPAGENTS_COMPLETION_PATTERN.search(pane_output):
+        return "completed"
+    if any(
+        str(process.get("name", "")).lower() not in _DEEPAGENTS_SHELL_PROCESS_NAMES
+        for process in foreground_processes
+        if isinstance(process, dict)
+    ):
+        return "running"
+    return "no-report"
+
+
+def _pane_output(result: subprocess.CompletedProcess[str]) -> str:
+    output = result.stdout.strip()
+    if not output:
+        return ""
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return output
+    result_payload = payload.get("result") if isinstance(payload, dict) else None
+    if isinstance(result_payload, str):
+        return result_payload.strip()
+    if isinstance(result_payload, dict):
+        for key in ("text", "output", "content"):
+            value = result_payload.get(key)
+            if isinstance(value, str):
+                return value.strip()
+    return output
+
+
+def _deepagents_completion_snapshot(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    process_result = _run(
+        [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+        env=env,
+    )
+    read_result = _run(
+        [
+            herdr,
+            "--session",
+            session,
+            "pane",
+            "read",
+            pane,
+            "--source",
+            "recent-unwrapped",
+            "--lines",
+            "200",
+            "--format",
+            "text",
+        ],
+        env=env,
+    )
+    pane_output = _pane_output(read_result)
+    foreground: list[Any] = []
+    observation_error: str | None = None
+    if process_result.returncode:
+        observation_error = "pane process-info failed"
+    else:
+        try:
+            process_payload = json.loads(process_result.stdout)
+            process_info = _result(process_payload, "process_info")
+            foreground_value = process_info.get("foreground_processes") if isinstance(process_info, dict) else None
+            if not isinstance(foreground_value, list):
+                observation_error = "pane process-info returned invalid foreground_processes"
+            else:
+                foreground = foreground_value
+        except (LaunchBlocked, json.JSONDecodeError) as exc:
+            observation_error = str(exc)
+    if read_result.returncode:
+        observation_error = observation_error or "pane read failed"
+    state = _deepagents_task_state(foreground, pane_output)
+    return {
+        "state": state,
+        "report_present": state in {"completed", "failed"},
+        "report_sha256": _sha256_text(pane_output),
+        "report_chars": len(pane_output),
+        "foreground_processes": [
+            str(process.get("name", "unknown"))
+            for process in foreground
+            if isinstance(process, dict)
+        ],
+        "observation_error": observation_error,
+    }
+
+
+def _deepagents_completion_evidence(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    started = time.monotonic()
+    while True:
+        evidence = _deepagents_completion_snapshot(
+            herdr,
+            session,
+            pane,
+            env=env,
+        )
+        if evidence["state"] in {"completed", "failed"}:
+            return evidence
+        remaining = _DEEPAGENTS_COMPLETION_WAIT_SECONDS - (time.monotonic() - started)
+        if remaining <= 0:
+            return evidence
+        time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
+
+
 def _terminate_codex_lane(
     herdr: str,
     session: str,
@@ -822,7 +948,6 @@ def resolve_launch(
             "--role",
             selected.name,
             "--json",
-            "--quiet",
             *(["--max-turns", str(runtime_grant["turns"]["requested"])]
               if runtime_grant["turns"]["requested"] != _NATIVE_GRANT_VALUE
               else []),
@@ -1197,23 +1322,33 @@ def main(argv: list[str] | None = None) -> int:
                 }
             }, sort_keys=True))
             return result.returncode
+        completion = _deepagents_completion_evidence(
+            str(evidence["herdr"]["executable"]),
+            resolved_session,
+            resolved_pane,
+            env=environment,
+        )
+        task_state = str(completion["state"])
+        completed = task_state == "completed"
         print(json.dumps({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],
+                "completion": completion,
                 "delivery_state": "delivered",
                 "delivery_certainty": "confirmed",
                 "delivery_task_sha256": delivery_task_sha256,
-                "exit_code": 0,
+                "exit_code": 0 if completed else 2,
+                "failure_kind": None if completed else task_state,
                 "grant_digest": grant_digest,
                 "phase": "pane_run",
+                "reconciliation_required": not completed,
                 "session": resolved_session,
-                "status": "delivered",
-                "task_accepted": True,
+                "status": task_state,
+                "task_accepted": completed,
                 "task_sha256": assignment_task_sha256,
-                "reconciliation_required": False,
             }
         }, sort_keys=True))
-        return 0
+        return 0 if completed else 2
     except TargetResolutionBlocked as exc:
         print(json.dumps({"target_resolution": exc.resolution}, sort_keys=True))
         print(f"TARGET_RESOLUTION: {exc}", file=sys.stderr)

@@ -898,9 +898,12 @@ def _native_file_tool_root(repo_root: Path) -> str:
 
 
 def _bounded_task_context(repo_root: Path) -> str:
+    host_root = repo_root.resolve()
+    tool_root = _native_file_tool_root(repo_root)
     return (
-        " Native filesystem tool root: "
-        f"`{_native_file_tool_root(repo_root)}`. Use this exact prefix for file paths; "
+        f" Host repository root: `{host_root}`. Native filesystem tool root: `{tool_root}`. "
+        "Use host root for Git and shell commands; use tool root for filesystem tool paths. "
+        "These roots refer to the same checkout. "
         "do not use `/workspace/...` or Windows drive syntax. Read only named source, test, "
         "and text files with filesystem tools. Never use filesystem tools on database, binary, "
         "archive, or runtime artifacts; examples: `*.sqlite`, `*.sqlite3`, `*.db`, `*-wal`, "

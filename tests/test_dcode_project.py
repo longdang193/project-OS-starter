@@ -694,9 +694,12 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
         "--json",
         "-n",
         (
-            "task Native filesystem tool root: "
-            f"`{file_tool_root}`. Use this exact prefix for file paths; do not use "
-            "`/workspace/...` or Windows drive syntax. Read only named source, test, "
+            "task Host repository root: "
+            f"`{tmp_path}`. Native filesystem tool root: "
+            f"`{file_tool_root}`. Use host root for Git and shell commands; use tool root "
+            "for filesystem tool paths. These roots refer to the same checkout. do not use "
+            "`/workspace/...` or Windows drive syntax. "
+            "Read only named source, test, "
             "and text files with filesystem tools. Never use filesystem tools on "
             "database, binary, archive, or runtime artifacts; examples: `*.sqlite`, "
             "`*.sqlite3`, `*.db`, `*-wal`, `*-shm`, `*-journal`, `*.zip`, `*.tar`, "
@@ -1397,6 +1400,13 @@ def test_handoff_stdin_preserves_binary_file_safety_context(tmp_path: Path) -> N
     assert '`sqlite3.connect("file:<repo-relative-path>?mode=ro", uri=True)`' in task
     assert "Run `py` directly; do not prefix it with `cd`, shell operators, or wrappers" in task
     assert "For `py -c`, use one expression; never use `;`" in task
+
+
+def test_bounded_task_context_exposes_host_and_tool_roots(tmp_path: Path) -> None:
+    context = LAUNCHER._bounded_task_context(tmp_path)
+
+    assert f"Host repository root: `{tmp_path.resolve()}`" in context
+    assert "Native filesystem tool root:" in context
 
 
 def test_setup_launcher_uses_current_repository_source() -> None:
