@@ -124,7 +124,7 @@ def test_single_controller_resume_contract_is_documented() -> None:
     assert "Default task executor: `codex | deepagents | tura`" in template_text
     assert "each Git-tracked task ledger `Executor` value is authoritative" in template_text
     assert "Task ledger `Executor` values are `codex`, `deepagents`, or `tura`" in template_text
-    assert "`Template Profile` and optional `Validator Profile` remain independent" in template_text
+    assert "`Template Profile` and optional `Validator Profile` remain independent" in " ".join(template_text.split())
     assert "Active task(s)" not in template_text
     assert "multiple active tasks" in template_text
     assert "dependency-ready wave" in template_text
@@ -188,6 +188,32 @@ def test_runtime_adapter_contract_separates_executor_profile_and_auto() -> None:
     assert "Native Codex delegated worker" in procedure_text
     assert "DeepAgents task or internal worker" in procedure_text
     assert "Tura worker" in procedure_text
+
+
+def test_cos_ssot_invariants_stay_symmetric() -> None:
+    template = (ROOT / "docs" / "operating_system" / "templates" / "implementation-plan-template.md").read_text(encoding="utf-8")
+    executing = (ROOT / ".agents" / "skills" / "skill-executing-plans" / "SKILL.md").read_text(encoding="utf-8")
+    writing = (ROOT / ".agents" / "skills" / "skill-writing-plans" / "SKILL.md").read_text(encoding="utf-8")
+    dispatch = (ROOT / "docs" / "operating_system" / "planning" / "planning-dispatch.md").read_text(encoding="utf-8")
+    root_guidance = (ROOT / "docs" / "operating_system" / "templates" / "agents" / "root-AGENTS.template.md").read_text(encoding="utf-8")
+    cos = (ROOT / ".agents" / "skills" / "skill-chief-of-staff" / "SKILL.md").read_text(encoding="utf-8")
+    runtime_surfaces = (ROOT / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md").read_text(encoding="utf-8")
+    runtime_procedure = (ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md").read_text(encoding="utf-8")
+    plan = (ROOT / "docs" / "superpowers" / "plans" / "2026-09-08-11-30-cos-runtime-autonomy-plan.md").read_text(encoding="utf-8")
+
+    assert "pending or blocked rows may use `unresolved`" in template
+    assert "Pending or blocked rows may contain `unresolved`" in executing
+    assert "For pending or blocked Git-tracked tasks" in writing
+    assert "the current Runtime Grant sets `delegation.child_agents: allow`" in dispatch
+    assert root_guidance.count("`delegation.child_agents: allow`") == 1
+    assert "CoS implementation-lane eligibility follows the" in cos
+    for text in (runtime_surfaces, runtime_procedure):
+        normalized = " ".join(text.split())
+        assert "sorts candidates deterministically" in normalized
+        assert "target_resolution:not_found" in text
+        assert "ambiguity fail closed" not in text
+    assert "`target_resolution.status` as `selected` or `not_found`" in plan
+    assert "never guesses among multiple targets" not in plan
 
 
 def test_deepagents_internal_writers_remain_task_bounded() -> None:

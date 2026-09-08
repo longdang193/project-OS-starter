@@ -108,8 +108,8 @@ against discovered profiles and task executors against `codex`, `deepagents`,
 and `tura`; the plan template documents concrete values.
 
 **Preserve:** `unresolved` is a lifecycle marker only. The executor enum remains
-`codex | deepagents | tura`, and active, blocked, and completed tasks retain
-concrete resolved values.
+`codex | deepagents | tura`, and active and completed tasks retain concrete
+resolved values.
 
 **Smallest safe correction:** permit unresolved values on pending or blocked
 tasks, then require CoS to write concrete executor/profile resolution into the
@@ -383,23 +383,23 @@ regenerated from canonical sources and validated for drift.
 
 **Authority:**
 - Preauthorized local actions: add existing-target discovery, deterministic filtering, evidence, and tests; run read-only Herdr discovery probes.
-- Stop for: session/pane creation or deletion, runtime schema changes not supported by installed Herdr, ambiguous target selection, or worktree selection beyond requested `--cwd`.
+- Stop for: session/pane creation or deletion, runtime schema changes not supported by installed Herdr, or worktree selection beyond requested `--cwd`.
 
 **Steps:**
 - [x] Step 1: Accept `auto` as a selector value while retaining required `--session` and `--pane` arguments; reject mixed exact/`auto` pairs before Herdr mutation.
 - [x] Step 2: Add launcher-owned discovery using Herdr runtime topology: exact resolved pane cwd, no agent state, and shell-only foreground process.
-- [x] Step 3: Sort candidates deterministically by session and pane ID; select exactly one candidate and preserve explicit target behavior byte-for-byte where practical.
-- [x] Step 4: Emit `target_resolution.status` as `selected`, `not_found`, or `ambiguous`, with candidate count and selected target when applicable. Keep workflow mapping out of launcher internals.
+- [x] Step 3: Sort candidates deterministically by session and pane ID; select the first candidate and preserve explicit target behavior byte-for-byte where practical.
+- [x] Step 4: Emit `target_resolution.status` as `selected` or `not_found`, with `candidate_count`, full `candidates[]`, and selected target when applicable. Keep workflow mapping out of launcher internals.
 - [x] Step 5: Add tests for explicit/explicit, auto/auto selected, zero candidates, multiple candidates, mixed selectors, cwd mismatch, agent occupancy, and conflicting foreground process.
 
 **Verification:**
 - [x] `py -m pytest -q tests/test_herdr_main_launcher.py`
-- Expected: target resolution tests prove fail-closed selection and explicit-target compatibility.
+- Expected: target resolution tests prove deterministic selection, not-found handling, and explicit-target compatibility.
 - [x] `py -B scripts/herdr_main_launcher.py --help`
 - Expected: help documents `auto` selector support without adding session/pane creation flags.
 
 **Exit Criteria:**
-- Launcher can resolve one existing eligible target from native CoS context and never guesses among multiple targets.
+- Launcher can resolve one existing eligible target from native CoS context through deterministic candidate selection and records the full candidate set.
 
 ### Task 4: Expand CoS scheduling and ownership guidance
 

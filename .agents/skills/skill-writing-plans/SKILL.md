@@ -210,16 +210,23 @@ Each task must include:
 **Exit Criteria:**
 ```
 
-Name exact paths, symbols, commands, expected results, generated consumers, and
-the authoritative executor for every Git-tracked task.
+Name exact paths, symbols, commands, expected results, and generated consumers.
+For pending or blocked Git-tracked tasks, pin `Executor` only when approved
+scope or runtime requirements require a specific executor; otherwise record
+`unresolved`. Explicit pins are constraints. The lead controller resolves
+unresolved values through Planning Dispatch before activation.
 If a symbol does not yet exist, name its intended owner and contract. Steps
 must be executable actions, not restated goals. Add task-level execution mode
 only when it differs from the plan-level `Execution Approach`. `Authority` names
 task-local preauthorized actions plus stop conditions for external, destructive,
 or scope-changing actions. It never grants permissions beyond active Codex
-configuration. `Task Function` is open-ended. `Template Profile` records
-controller-selected discovered profile based on reasoning depth, ambiguity,
-scope, risk, and cost; never define fixed function-to-profile maps. Positive
+configuration. `Task Function` is open-ended. For pending or blocked tasks,
+pin `Template Profile` only when task requirements require a specific profile;
+otherwise record `unresolved`. Explicit pins are constraints. The lead
+controller resolves unresolved values through Planning Dispatch before
+activation. For resolved tasks, `Template Profile` records the controller-
+selected discovered profile based on reasoning depth, ambiguity, scope, risk,
+and cost; never define fixed function-to-profile maps. Positive
 `rank` values order only ranked profiles; unranked profiles are explicit-only
 and non-orderable. In validator-executor
 setups, select executor and validator profiles independently from their bounded

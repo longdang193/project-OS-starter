@@ -64,9 +64,10 @@ pane process. It never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
 Tura internal workers, or executor-local reviewers or helpers. `tura` retains
 its existing peer executor path. Each MAIN AGENT owns its assigned lane and may
-spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside that lane.
-Sub-agents remain subordinate and must not spawn peer MAIN AGENTS or activate
-CoS. Review and integration remain Codex-only.
+autonomously spawn subordinate Native Codex, DeepAgents, or Tura agents when
+the current Runtime Grant sets `delegation.child_agents: allow`. Sub-agents
+remain subordinate and must not spawn peer MAIN AGENTS or activate CoS. Review
+and integration remain Codex-only.
 For every Herdr top-level CoS lane launch, CoS verifies branch, `HEAD`, expected
 base, lane ownership, and allowed paths. Use `scripts/herdr_main_launcher.py`
 for runtime projection and task delivery. The launcher and its tests own runtime
