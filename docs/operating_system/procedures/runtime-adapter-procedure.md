@@ -90,6 +90,11 @@ evidence source; keep state `unknown` when evidence is missing or stale.
 Treat `pane read` and `agent read` output as disposable probe data: metadata-only
 by default, explicitly bounded and redacted when raw output is required. Never
 treat silence as completion or trigger automatic kill, retry, or plan advance.
+Native Codex CoS may use `--session auto --pane auto` through the repository
+launcher. The launcher selects exactly one existing matching-cwd pane with no
+agent state and shell-only foreground process; mixed selectors, no match, and
+ambiguity fail closed. `HERDR_ENV` is not a CoS dispatch gate and is removed
+from launcher child environments.
 
 ## Generate
 

@@ -23,6 +23,12 @@ class LaunchBlocked(RuntimeError):
     """Raised when a required runtime binding is unavailable or mismatched."""
 
 
+class TargetResolutionBlocked(LaunchBlocked):
+    def __init__(self, message: str, resolution: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.resolution = resolution
+
+
 _EXECUTORS = {"codex", "deepagents"}
 _MAX_TASK_LENGTH = 4096
 _CODEX_PROMPT_TIMEOUT_MS = "30000"
@@ -219,6 +225,71 @@ def _herdr_pane(
     if conflicting:
         raise LaunchBlocked(f"Pane has conflicting foreground process: {', '.join(conflicting)}")
     return {"pane": selected, "process_info": process_info}
+
+
+def _resolve_target_selector(
+    cwd: Path,
+    session: str,
+    pane: str,
+    herdr: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> tuple[str, str, dict[str, Any]]:
+    if (session == "auto") != (pane == "auto"):
+        raise LaunchBlocked("`--session auto` and `--pane auto` must be used together.")
+    if session != "auto":
+        return session, pane, {
+            "status": "selected",
+            "mode": "exact",
+            "candidate_count": 1,
+            "session": session,
+            "pane": pane,
+        }
+
+    snapshot = _result(_json_command([herdr, "api", "snapshot"], env=env), "snapshot")
+    panes = snapshot.get("panes") if isinstance(snapshot, dict) else None
+    if not isinstance(panes, list):
+        raise LaunchBlocked("Herdr snapshot is missing panes.")
+
+    candidates: list[tuple[str, str]] = []
+    for item in panes:
+        if not isinstance(item, dict):
+            continue
+        workspace_id = item.get("workspace_id")
+        pane_id = item.get("pane_id")
+        if not isinstance(workspace_id, str) or not isinstance(pane_id, str):
+            continue
+        if Path(str(item.get("cwd", ""))).resolve() != cwd.resolve():
+            continue
+        try:
+            _herdr_pane(cwd, workspace_id, pane_id, herdr, env=env)
+        except LaunchBlocked:
+            continue
+        candidates.append((workspace_id, pane_id))
+
+    candidates.sort()
+    if len(candidates) != 1:
+        status = "not_found" if not candidates else "ambiguous"
+        raise TargetResolutionBlocked(
+            f"target_resolution={status}; eligible candidates={len(candidates)}",
+            {
+                "status": status,
+                "mode": "auto",
+                "candidate_count": len(candidates),
+                "candidates": [
+                    {"session": candidate_session, "pane": candidate_pane}
+                    for candidate_session, candidate_pane in candidates
+                ],
+            },
+        )
+    selected_session, selected_pane = candidates[0]
+    return selected_session, selected_pane, {
+        "status": "selected",
+        "mode": "auto",
+        "candidate_count": 1,
+        "session": selected_session,
+        "pane": selected_pane,
+    }
 
 
 def _codex_arguments(profile: AgentProfile, cwd: Path) -> list[str]:
@@ -624,6 +695,13 @@ def resolve_launch(
     codex = _executable("codex") if executor == "codex" else None
     dcode = _executable("dcode-project") if executor == "deepagents" else None
     git = _git_identity(cwd, expected_base)
+    session, pane, target_resolution = _resolve_target_selector(
+        cwd,
+        session,
+        pane,
+        herdr,
+        env=environment,
+    )
     pane_state = _herdr_pane(cwd, session, pane, herdr, env=environment)
     agent_name = name or f"{selected.name}-main"
     if executor == "codex":
@@ -700,6 +778,7 @@ def resolve_launch(
             "agent_kind": "codex" if executor == "codex" else "pane-process",
             "pane_cwd": str(Path(str(pane_state["pane"].get("cwd"))).resolve()),
         },
+        "target_resolution": target_resolution,
         "observation": {
             "executor": executor,
             "session": session,
@@ -751,8 +830,8 @@ def resolve_launch(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", required=True)
-    parser.add_argument("--session", required=True)
-    parser.add_argument("--pane", required=True)
+    parser.add_argument("--session", required=True, help="Herdr session ID or auto")
+    parser.add_argument("--pane", required=True, help="Herdr pane ID or auto")
     parser.add_argument("--cwd", required=True, type=Path)
     parser.add_argument("--expected-base", required=True)
     parser.add_argument("--executor", choices=sorted(_EXECUTORS), default="codex")
@@ -794,7 +873,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise LaunchBlocked("Launcher evidence missing codex_home.")
             environment = _codex_environment(Path(str(codex_evidence["codex_home"])))
         else:
-            environment = os.environ.copy()
+            environment = _herdr_environment()
         result = _run(
             command,
             env=environment,
@@ -923,6 +1002,10 @@ def main(argv: list[str] | None = None) -> int:
             }
         }, sort_keys=True))
         return 0
+    except TargetResolutionBlocked as exc:
+        print(json.dumps({"target_resolution": exc.resolution}, sort_keys=True))
+        print(f"BLOCKED: {exc}", file=sys.stderr)
+        return 2
     except LaunchBlocked as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2

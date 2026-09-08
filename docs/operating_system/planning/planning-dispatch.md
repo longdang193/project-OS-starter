@@ -71,6 +71,11 @@ base, lane ownership, and allowed paths. Use `scripts/herdr_main_launcher.py`
 for runtime projection and task delivery. The launcher and its tests own runtime
 mechanics; CoS accepts only successful final delivery evidence and treats
 missing or failed evidence as `BLOCKED`.
+The native Codex controller is outside the Herdr runtime pane; `HERDR_ENV` is
+not a CoS dispatch gate. Do not replace launcher evidence with an environment
+check or direct pane control. Herdr runtime checks apply to direct pane
+operations, while launcher-mediated CoS dispatch uses launcher preflight and
+delivery evidence.
 
 ## Agent And Orchestration Vocabulary
 
@@ -178,6 +183,14 @@ These are advisory eligibility rules, not a classifier. Do not map profile rank
 or task function permanently to an executor. Do not add automatic executor
 fallback or runtime-internal plan coordination. Use task-specific evidence when
 using `prefer`; otherwise keep Codex as the safe default.
+
+For a pending Git-tracked task with `Executor: unresolved` or
+`Template Profile: unresolved`, resolve executor first from this policy, then
+select the lowest reliable profile from `agents/*.toml` independently. Write
+both concrete values into that same task record before changing its state to
+`active`. Never infer executor from profile name or rank. Keep effective
+runtime grants transient in launcher evidence; they do not replace durable task
+resolution.
 
 ### Interactive Use
 

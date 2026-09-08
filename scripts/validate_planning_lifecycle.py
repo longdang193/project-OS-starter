@@ -280,12 +280,14 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
     template_profiles = profile_names | {"none (lead controller)"}
     validator_profiles = profile_names | {"none"}
     task_sections = _task_sections(text)
+    task_states = {row["task"]: row["state"] for row in _coordination_rows(text)}
     if enforce_contract and not task_sections:
         findings.append(Finding("planning_execution_error", rel, "requires at least one `### Task N` section"))
     require_task_authority = current and coordination == "git-tracked"
     for task_name, task_text in task_sections:
+        unresolved_allowed = task_states.get(task_name) == "pending"
         for label, allowed, required in (
-            ("Template Profile", template_profiles, enforce_contract),
+            ("Template Profile", template_profiles | ({"unresolved"} if unresolved_allowed else set()), enforce_contract),
             ("Validator Profile", validator_profiles, False),
         ):
             matches = re.findall(
@@ -377,7 +379,8 @@ def validate_git_coordination(
 
     for row in rows:
         executor = row["executor"].strip().lower()
-        if executor not in allowed_executors:
+        allowed_row_executors = allowed_executors | ({"unresolved"} if row["state"] == "pending" else set())
+        if executor not in allowed_row_executors:
             findings.append(
                 Finding(
                     "coordination_error",

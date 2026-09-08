@@ -171,7 +171,7 @@ def test_chief_of_staff_keeps_plan_execution_mode_specific() -> None:
         "Plan-bound execution mode",
         "Plan Binding applies only to `plan-bound-execution`",
         "Attention Audit applies to both coordination modes",
-        "Select one dependency-ready task only in `plan-bound-execution`",
+        "Select one dependency-ready task in `plan-bound-execution`, or one dependency-ready wave only when the plan is `parallel-capable`",
         "`skill-executing-plans` remains the sole approved-plan execution owner",
     ):
         assert text in normalized
@@ -244,6 +244,22 @@ def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
         assert forbidden in skill
     assert "Independent review and integration remain Codex-only." in skill
     assert "Reuse `implementation-main` only when its\nexecutor is `codex`" in skill
+
+
+def test_chief_of_staff_separates_native_controller_from_herdr_runtime() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    dispatch = read("docs/operating_system/planning/planning-dispatch.md")
+    for text in (
+        "The native Codex CoS controller is not a Herdr runtime pane.",
+        "Do not require,\ninspect, set, or clear `HERDR_ENV` in CoS as a dispatch gate.",
+        "Missing `HERDR_ENV`\nin the controller does not block launcher-mediated dispatch.",
+    ):
+        assert text in skill
+    for text in (
+        "The native Codex controller is outside the Herdr runtime pane; `HERDR_ENV` is\nnot a CoS dispatch gate.",
+        "Do not replace launcher evidence with an environment\ncheck or direct pane control.",
+    ):
+        assert text in dispatch
 
 
 def test_executor_skill_keeps_cos_as_codex_controlled() -> None:

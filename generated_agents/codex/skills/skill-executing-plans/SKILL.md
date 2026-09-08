@@ -121,7 +121,10 @@ Choose the smallest unblocked action from approved scope:
 6. task status update
 
 Before dispatch, read the active task ledger `Executor` and `Template Profile`
-values. For `codex`, execute inline lead-controller work directly when the
+values. Pending rows may contain `unresolved`; CoS must resolve both values
+through `planning-dispatch.md` and write them into the same task record before
+changing state to `active`. Active, blocked, and completed rows must contain
+concrete values. For `codex`, execute inline lead-controller work directly when the
 profile is `none`; when a fixed profile is selected for delegated work, use the
 active native Codex subagent capability for ordinary execution. A Herdr-
 supervised MAIN AGENT may also use native child delegation for assigned lane

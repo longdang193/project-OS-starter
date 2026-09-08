@@ -123,6 +123,12 @@ a failed check returns `BLOCKED`. Factory maintainers additionally run
 `py -B scripts/validate_agent_runtime_drift.py --all-platforms`; that adapter
 drift check is not a consumer dependency.
 
+The native Codex CoS controller is not a Herdr runtime pane. Do not require,
+inspect, set, or clear `HERDR_ENV` in CoS as a dispatch gate. The repository
+launcher owns Herdr pane inspection and delivery evidence; direct pane control
+must follow the active Herdr runtime contract separately. Missing `HERDR_ENV`
+in the controller does not block launcher-mediated dispatch.
+
 ## Conditional References
 
 - For `plan-bound-execution`, read `skill-executing-plans` for approved-plan execution and executor precedence.
@@ -230,9 +236,11 @@ create a launcher-owned fallback identity. Recheck binding, HEAD, worktree, and
 task ownership before retirement and before replacement dispatch.
 
 Plan-bound execution mode uses the existing runtime, lane, review, integration,
-retirement, and durable-truth rules below. Select one dependency-ready task only
-in `plan-bound-execution`. `skill-executing-plans` remains the sole approved-plan
-execution owner.
+retirement, and durable-truth rules below. Select one dependency-ready task in
+`plan-bound-execution`, or one dependency-ready wave only when the plan is
+`parallel-capable` and every task has independent dependencies, ownership,
+worktree, authority, and proof. `skill-executing-plans` remains the sole
+approved-plan execution owner.
 
 ## Runtime Gates (plan-bound execution)
 

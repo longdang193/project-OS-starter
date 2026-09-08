@@ -715,6 +715,116 @@ def test_launcher_allows_external_codex_controller(monkeypatch: pytest.MonkeyPat
     assert "HERDR_ENV" not in environment
 
 
+def test_target_selector_requires_both_auto_values() -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="must be used together"):
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "w1:p5", "herdr.exe")
+
+
+def test_target_selector_selects_one_eligible_auto_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {
+            "result": {
+                "snapshot": {
+                    "panes": [
+                        {
+                            "workspace_id": "w1",
+                            "pane_id": "w1:p5",
+                            "cwd": str(ROOT),
+                        }
+                    ]
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", lambda *args, **kwargs: {"pane": {}})
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("w1", "w1:p5")
+    assert resolution["status"] == "selected"
+    assert resolution["mode"] == "auto"
+
+
+def test_target_selector_rejects_ambiguous_auto_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {
+            "result": {
+                "snapshot": {
+                    "panes": [
+                        {"workspace_id": "w1", "pane_id": "w1:p1", "cwd": str(ROOT)},
+                        {"workspace_id": "w2", "pane_id": "w2:p1", "cwd": str(ROOT)},
+                    ]
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", lambda *args, **kwargs: {"pane": {}})
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="target_resolution=ambiguous"):
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+
+def test_target_selector_reports_no_auto_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {"result": {"snapshot": {"panes": []}}},
+    )
+
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert error.value.resolution == {
+        "status": "not_found",
+        "mode": "auto",
+        "candidate_count": 0,
+        "candidates": [],
+    }
+
+
+def test_deepagents_main_strips_herdr_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+        },
+        "herdr": {"agent_name": "normal-main"},
+    }
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("HERDR_ENV", "1")
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 0
+    assert "HERDR_ENV" not in captured["env"]
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]["status"] == "delivered"
+
+
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:
     fake_profile(tmp_path, "normal", 20)
     fake_profile(tmp_path, "ui", None)
