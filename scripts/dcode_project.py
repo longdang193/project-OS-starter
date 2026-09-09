@@ -590,7 +590,6 @@ def _direct_mcp_runtime(
     runtime_root: Path | None = None
     try:
         runtime_parent = _ensure_direct_mcp_runtime_parent()
-        _cleanup_stale_direct_mcp_runtimes(runtime_parent)
         runtime_root = Path(
             tempfile.mkdtemp(prefix=_DIRECT_MCP_RUNTIME_PREFIX, dir=runtime_parent)
         )

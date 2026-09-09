@@ -377,7 +377,7 @@ def test_codex_observation_timeout_preserves_unknown_execution(
     assert snapshot["output_chars"] == len("stale output")
 
 
-def test_codex_completion_timeout_keeps_delivery_confirmed(
+def test_codex_dispatch_returns_before_completion_observation(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -411,8 +411,6 @@ def test_codex_completion_timeout_keeps_delivery_confirmed(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    monkeypatch.setattr(LAUNCHER, "_CODEX_TASK_PROGRESS_TIMEOUT_SECONDS", 0)
-
     assert LAUNCHER.main([
         "--profile", "xhigh", "--session", "session", "--pane", "pane",
         "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
@@ -422,8 +420,14 @@ def test_codex_completion_timeout_keeps_delivery_confirmed(
     assert result["delivery_state"] == "delivered"
     assert result["delivery_certainty"] == "confirmed"
     assert result["prompt_accepted"] is True
-    assert result["execution"]["state"] == "working"
+    assert result["execution"] == {
+        "state": "unknown",
+        "observation_error": "not_observed",
+        "observed_at": None,
+    }
     assert result["completion_observed"] is False
+    assert all(command[3:5] != ["agent", "get"] for command in calls)
+    assert all(command[3:5] != ["agent", "read"] for command in calls)
 
 
 def test_codex_prompt_result_keeps_ambiguous_timeout_unknown() -> None:
@@ -672,20 +676,36 @@ def test_normalize_runtime_grant_rejects_invalid_child_agent_authority() -> None
         )
 
 
-def test_normalize_runtime_grant_allows_codex_wall_clock_watchdog() -> None:
-    grant = LAUNCHER._normalize_runtime_grant(
-        executor="codex",
-        grant_turns="native",
-        grant_wall_clock_seconds="600",
-        mcp_select=[],
+def test_normalize_runtime_grant_rejects_unsupported_codex_wall_clock_watchdog() -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="wall-clock enforcement"):
+        LAUNCHER._normalize_runtime_grant(
+            executor="codex",
+            grant_turns="native",
+            grant_wall_clock_seconds="600",
+            mcp_select=[],
+        )
+
+
+def test_codex_wall_clock_rejection_happens_before_runtime_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_executable",
+        lambda name: (_ for _ in ()).throw(AssertionError(name)),
     )
 
-    assert grant["wall_clock_seconds"] == {
-        "requested": 600,
-        "effective": 600,
-        "enforcement": "outer-watchdog",
-    }
-    assert grant["outer_watchdog_seconds"] == 600
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="wall-clock enforcement"):
+        LAUNCHER.resolve_launch(
+            profile_name="xhigh",
+            session="session",
+            pane="pane",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="codex",
+            grant_wall_clock_seconds="600",
+            task="assign lane",
+        )
 
 
 def test_normalize_runtime_grant_rejects_wall_clock_above_watchdog() -> None:
@@ -1114,8 +1134,7 @@ def test_main_starts_with_selected_codex_home(
             "assign lane [Runtime Grant: delegation.child_agents = allow]",
         ],
     ]
-    assert commands[2][3:5] == ["agent", "get"]
-    assert commands[3][3:5] == ["agent", "read"]
+    assert len(commands) == 2
     output = capsys.readouterr().out.splitlines()
     result = json.loads(output[-1])["assignment"]
     assert result["delivery_state"] == "delivered"
@@ -1548,7 +1567,9 @@ def test_main_reports_failed_assignment_after_start(
         ]
     ) == 7
     output = capsys.readouterr().out.splitlines()
-    assert json.loads(output[-1])["assignment"] == {
+    assignment = json.loads(output[-1])["assignment"]
+    assert isinstance(assignment.pop("attempt_id", None), str)
+    assert assignment == {
         "agent_name": "xhigh-main",
         "delivery_state": "delivery_failed",
         "delivery_certainty": "not_delivered",
@@ -1619,15 +1640,16 @@ def test_main_retries_default_agent_name_after_name_taken(
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
         ]
     ) == 0
-    assert len(commands) == 5
+    assert len(commands) == 3
     retry_name = commands[1][commands[1].index("start") + 1]
     assert retry_name.startswith("normal-main-")
     assert commands[2][commands[2].index("prompt") + 1] == retry_name
-    assert commands[3][commands[3].index("get") + 1] == retry_name
-    assert commands[4][commands[4].index("read") + 1] == retry_name
-    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    output = capsys.readouterr().out.splitlines()
+    initial = json.loads(output[0])["registry_launcher"]["attempt_id"]
+    result = json.loads(output[-1])["assignment"]
     assert result["agent_name"] == retry_name
     assert result["prompt_accepted"] is True
+    assert result["attempt_id"] != initial
 
 
 def test_launcher_allows_external_codex_controller(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2075,6 +2097,30 @@ def test_deepagents_completion_waits_for_delayed_report(
 
     assert evidence["state"] == "completed"
     assert sleeps
+
+
+def test_deepagents_completion_deadline_preserves_last_state_as_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 0)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: {"state": "running", "observation_error": None},
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: 0.0)
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="PROBE_OK",
+    )
+
+    assert evidence["state"] == "timed_out"
+    assert evidence["last_observed_state"] == "running"
+    assert evidence["observation_deadline_exceeded"] is True
 
 
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:

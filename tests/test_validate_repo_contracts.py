@@ -344,6 +344,42 @@ distribution_tier: starter_kit
     assert issues == []
 
 
+def test_starter_kit_classification_prunes_dependency_trees_but_keeps_manifest_paths(
+    tmp_path: Path,
+) -> None:
+    write_text(
+        tmp_path / "repo_config" / "starter-kit-manifest.json",
+        '{"copyPaths": ["node_modules/owned.py"]}\n',
+    )
+    write_text(
+        tmp_path / "node_modules" / "owned.py",
+        '"""\n@meta\nname: owned\ntype: script\n"""\n',
+    )
+    write_text(
+        tmp_path / "node_modules" / "ignored.py",
+        '"""\n@meta\nname: ignored\ntype: script\ndistribution_tier: starter_kit\n"""\n',
+    )
+
+    issues = VALIDATOR.validate_starter_kit_classification(tmp_path)
+
+    assert [issue.path for issue in issues] == ["node_modules/owned.py"]
+
+
+def test_sync_starter_kit_distribution_tier_patches_manifest_files(tmp_path: Path) -> None:
+    write_text(
+        tmp_path / "repo_config" / "starter-kit-manifest.json",
+        '{"copyPaths": ["scripts"]}\n',
+    )
+    path = tmp_path / "scripts" / "demo.py"
+    write_text(
+        path,
+        "# @meta\n# name: demo\n# type: script\n",
+    )
+
+    assert VALIDATOR.sync_starter_kit_distribution_tier(tmp_path) == 1
+    assert "distribution_tier: starter_kit" in path.read_text(encoding="utf-8")
+
+
 def test_starter_kit_classification_ignores_generated_local_rule_mirror(tmp_path: Path) -> None:
     write_text(
         tmp_path / "repo_config" / "starter-kit-manifest.json",

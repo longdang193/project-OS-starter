@@ -106,6 +106,20 @@ def test_open_design_mcp_launcher_discovers_current_sidecar() -> None:
     assert "Find-OpenDesignDaemon" in launcher
 
 
+def test_open_design_checks_readiness_before_starting_daemon() -> None:
+    launcher = (PATCH_ROOT / "Start-OpenDesignMcp.ps1").read_text(encoding="utf-8")
+
+    start = launcher.index('Start-Process -FilePath $exe -ArgumentList "--headless"')
+    guard = launcher.rfind(
+        "$remaining = Get-RemainingMilliseconds $readinessDeadlineTicks",
+        0,
+        start,
+    )
+
+    assert guard != -1
+    assert guard < start
+
+
 def test_installed_packaged_logger_uses_safe_writes() -> None:
     bundle = Path.home() / "AppData/Local/Programs/Open Design/resources/app/prebundled/packaged-main.mjs"
     if not bundle.exists():

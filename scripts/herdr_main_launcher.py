@@ -812,6 +812,10 @@ def _normalize_runtime_grant(
     )
     if executor == "codex" and turns != _NATIVE_GRANT_VALUE:
         raise LaunchBlocked("Codex strict turn budget is unsupported; use `native`.")
+    if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE:
+        raise LaunchBlocked(
+            "Codex strict wall-clock enforcement is unavailable; use `native`."
+        )
     if (
         executor == "deepagents"
         and wall_clock_seconds != _NATIVE_GRANT_VALUE
@@ -831,17 +835,11 @@ def _normalize_runtime_grant(
             "requested": wall_clock_seconds,
             "effective": wall_clock_seconds,
             "enforcement": (
-                "outer-watchdog"
-                if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE
-                else "runtime"
-                if wall_clock_seconds != _NATIVE_GRANT_VALUE
-                else "native"
+                "runtime" if wall_clock_seconds != _NATIVE_GRANT_VALUE else "native"
             ),
         },
         "outer_watchdog_seconds": (
-            int(wall_clock_seconds)
-            if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE
-            else int(_DEEPAGENTS_RUN_TIMEOUT)
+            int(_DEEPAGENTS_RUN_TIMEOUT)
             if executor == "deepagents"
             else None
         ),
@@ -1040,6 +1038,9 @@ def _deepagents_completion_evidence(
             return evidence
         remaining = deadline - time.monotonic()
         if remaining <= 0:
+            evidence["last_observed_state"] = evidence["state"]
+            evidence["state"] = "timed_out"
+            evidence["observation_deadline_exceeded"] = True
             return evidence
         time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
 
@@ -1452,6 +1453,13 @@ def main(argv: list[str] | None = None) -> int:
             name=args.name,
             codex_home=args.codex_home,
         )
+        attempt_id = uuid.uuid4().hex
+        registry_evidence = evidence.setdefault("registry_launcher", {})
+        observation_evidence = evidence.setdefault("observation", {})
+        if not isinstance(registry_evidence, dict) or not isinstance(observation_evidence, dict):
+            raise LaunchBlocked("Launcher evidence has invalid lifecycle sections.")
+        registry_evidence["attempt_id"] = attempt_id
+        observation_evidence["attempt_id"] = attempt_id
         print(json.dumps(evidence, sort_keys=True))
         if args.dry_run:
             return 0
@@ -1496,6 +1504,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
+                        "attempt_id": attempt_id,
                         "delivery_state": "delivery_uncertain",
                         "delivery_certainty": "unknown",
                         "delivery_task_sha256": delivery_task_sha256,
@@ -1532,6 +1541,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
+                        "attempt_id": attempt_id,
                         "delivery_state": "delivery_uncertain",
                         "delivery_certainty": "unknown",
                         "delivery_task_sha256": delivery_task_sha256,
@@ -1586,6 +1596,9 @@ def main(argv: list[str] | None = None) -> int:
                 command[command.index("--session") + 1] = resolved_session
                 command[command.index("--pane") + 1] = resolved_pane
             agent_name = _unique_agent_name(str(evidence["herdr"]["agent_name"]))
+            attempt_id = uuid.uuid4().hex
+            evidence["registry_launcher"]["attempt_id"] = attempt_id
+            evidence["observation"]["attempt_id"] = attempt_id
             command = command.copy()
             command[command.index("start") + 1] = agent_name
             evidence["herdr"]["agent_name"] = agent_name
@@ -1601,6 +1614,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
+                    "attempt_id": attempt_id,
                     "delivery_state": "delivery_failed",
                     "delivery_certainty": "not_delivered",
                     "delivery_task_sha256": delivery_task_sha256,
@@ -1618,7 +1632,6 @@ def main(argv: list[str] | None = None) -> int:
         if args.executor == "codex":
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
-            watchdog_seconds = _codex_watchdog_seconds(evidence)
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)
@@ -1656,6 +1669,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
+                        "attempt_id": attempt_id,
                         "delivery_state": "delivery_uncertain",
                         "delivery_certainty": "unknown",
                         "delivery_task_sha256": delivery_task_sha256,
@@ -1682,6 +1696,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
+                        "attempt_id": attempt_id,
                         "delivery_state": "delivery_uncertain",
                         "delivery_certainty": "unknown",
                         "delivery_task_sha256": delivery_task_sha256,
@@ -1702,6 +1717,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
+                        "attempt_id": attempt_id,
                         "delivery_state": "delivery_failed",
                         "delivery_certainty": "not_delivered",
                         "delivery_task_sha256": delivery_task_sha256,
@@ -1718,40 +1734,35 @@ def main(argv: list[str] | None = None) -> int:
                     }
                 }, sort_keys=True))
                 return assignment_result.returncode
-            completion = _codex_completion_snapshot(
-                herdr,
-                resolved_session,
-                agent_name,
-                env=environment,
-            )
-            completion["observation_deadline_seconds"] = (
-                watchdog_seconds
-                if watchdog_seconds is not None
-                else _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS
-            )
-            execution_state = str(completion["state"])
-            status = {
-                "done": "completed",
-                "blocked": "blocked",
-                "working": "working",
-                "idle": "idle",
-            }.get(execution_state, "submitted")
+            execution = {
+                "state": "unknown",
+                "observation_error": "not_observed",
+                "observed_at": None,
+            }
+            observation = dict(evidence.get("observation", {}))
+            observation.update(execution)
+            observation["session"] = resolved_session
+            observation["pane"] = resolved_pane
+            observation["agent_name"] = agent_name
             print(json.dumps({
                 "assignment": {
                     "agent_name": agent_name,
-                    "completion_observed": execution_state in {"done", "blocked"},
+                    "attempt_id": attempt_id,
+                    "completion_observed": False,
                     "delivery_state": "delivered",
                     "delivery_certainty": "confirmed",
                     "delivery_task_sha256": delivery_task_sha256,
-                    "execution": completion,
+                    "execution": execution,
+                    "observation": observation,
+                    "cleanup": {"state": "pending"},
                     "exit_code": 0,
                     "failure_kind": None,
                     "grant_digest": grant_digest,
                     "phase": "prompt",
                     "prompt_accepted": True,
-                    "reconciliation_required": completion["observation_error"] is not None,
+                    "reconciliation_required": False,
                     "session": resolved_session,
-                    "status": status,
+                    "status": "submitted",
                     "submission": "acknowledged",
                     "task_sha256": assignment_task_sha256,
                 }
@@ -1761,6 +1772,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
+                    "attempt_id": attempt_id,
                     "delivery_state": "delivery_failed",
                     "delivery_certainty": "not_delivered",
                     "delivery_task_sha256": delivery_task_sha256,
@@ -1793,7 +1805,16 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],
+                "attempt_id": attempt_id,
                 "completion": completion,
+                "execution": {
+                    "state": task_state,
+                    "last_observed_state": completion.get("last_observed_state"),
+                },
+                "observation": completion,
+                "cleanup": {
+                    "state": "verified" if completed else "unverified",
+                },
                 "delivery_state": "delivered",
                 "delivery_certainty": "confirmed",
                 "delivery_task_sha256": delivery_task_sha256,

@@ -340,11 +340,12 @@ def _is_metadata_capable(path: Path) -> bool:
 
 
 def _analyze_metadata_file(path: Path) -> tuple[bool, bool]:
-    text = path.read_text(encoding="utf-8", errors="ignore")
     is_metadata_capable = False
     metadata_text = ""
     if path.suffix == ".py":
-        metadata_text = "\n".join(text.splitlines()[:30])
+        metadata_text = "\n".join(
+            path.read_text(encoding="utf-8", errors="ignore").splitlines()[:30]
+        )
         is_metadata_capable = "@meta" in metadata_text
         if is_metadata_capable:
             meta_offset = metadata_text.index("@meta")
@@ -355,6 +356,7 @@ def _analyze_metadata_file(path: Path) -> tuple[bool, bool]:
                     metadata_text = metadata_text[start:end]
                     break
     elif path.suffix == ".md":
+        text = path.read_text(encoding="utf-8", errors="ignore")
         marker_end = text.find("\n---", 3)
         is_metadata_capable = text.startswith("---\n") and marker_end != -1
         if is_metadata_capable:
@@ -379,7 +381,12 @@ def _iter_files_pruned(root: Path) -> list[Path]:
         "__pycache__",
         ".pytest_cache",
         ".mypy_cache",
+        ".deepagents",
+        ".nox",
         "out",
+        ".tox",
+        ".venv",
+        "node_modules",
     }
     files: list[Path] = []
     for current_root, dirnames, filenames in os.walk(root):
@@ -434,7 +441,7 @@ def sync_starter_kit_distribution_tier(root: Path) -> int:
     distributed_paths = _manifest_distributed_paths(root, manifest)
 
     patched = 0
-    for rel in sorted(in_kit):
+    for rel in sorted(distributed_paths):
         if rel.startswith("docs/operating_system/templates/"):
             continue
         file_path = root / rel

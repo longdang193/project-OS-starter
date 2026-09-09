@@ -32,3 +32,13 @@ def test_hook_setup_scripts_install_repo_contract_validator_entrypoint() -> None
         assert "--repo-root" in script_text
         assert "--fast" in script_text
         assert ".venv" in script_text
+
+
+def test_hook_setup_scripts_resolve_runtime_paths_and_preserve_existing_hooks() -> None:
+    for script_path in HOOK_SCRIPT_PATHS:
+        script_text = script_path.read_text(encoding="utf-8")
+
+        assert "rev-parse --path-format=absolute --git-path hooks" in script_text
+        assert "repo_root=\"$(git rev-parse --show-toplevel)\"" in script_text
+        assert "pre-commit.project-os.previous" in script_text
+        assert "project-os-pre-commit-v1" in script_text

@@ -119,6 +119,8 @@ try {
 
         $runtime = Find-OpenDesignDaemon $readinessDeadlineTicks
         if ($null -eq $runtime) {
+            $remaining = Get-RemainingMilliseconds $readinessDeadlineTicks
+            if ($remaining -le 0) { throw "Open Design MCP readiness deadline expired before daemon start." }
             Start-Process -FilePath $exe -ArgumentList "--headless" -WindowStyle Hidden
             do {
                 Start-Sleep -Milliseconds 250

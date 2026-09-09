@@ -28,6 +28,24 @@ measure subprocess cost before making performance changes. Preserve worker MCP
 isolation, fail-closed delivery semantics, dynamic OpenDesign endpoint
 discovery, and unrelated workspace artifacts.
 
+## Follow-Up Ownership
+
+`docs/superpowers/plans/2026-09-09-starter-verdict-follow-up-plan.md` owns
+remaining gaps found after this plan’s partial implementation. It does not
+remove these requirements:
+
+| Requirement | Owner | Proof |
+| --- | --- | --- |
+| Attempt identity spans delivery, observation, reconciliation, and retirement | Follow-up Task 3 | attempt ID remains stable across one attempt and changes on retry |
+| Completion evidence is attributable; stale, echoed, idle, or blocked output cannot prove success | Follow-up Task 3 | focused state/marker tests and bounded probe |
+| Acknowledged delivery and last observed execution facts survive observation failure | Follow-up Task 3 | accepted-task plus unavailable-read test |
+| Final selected-pane validation remains immediately before launch | Follow-up Task 3 | launcher test asserts final pane/cwd/process validation |
+| OpenDesign readiness deadline is enforced immediately before process start | Follow-up Task 4 | mutex-delay deadline test |
+| Validator scan and runtime cleanup changes retain coverage and ownership boundaries | Follow-up Tasks 2 and 4 | explicit-manifest and cleanup-preservation tests |
+
+Pending tasks below remain source requirements until follow-up proof records
+which implementation owns each item. Task status alone does not retire a
+requirement.
 ## Implementation Outcomes
 
 ### Clean shared deployment
