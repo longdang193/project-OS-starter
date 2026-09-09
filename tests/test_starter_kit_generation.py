@@ -210,6 +210,7 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
     )
 
     assert "scripts/herdr_main_launcher.py" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/mcp_selection.py" in manifest["sharedPaths"]["scripts"]
     assert "scripts/opendesign_profile_adapter.py" in manifest["sharedPaths"]["scripts"]
     assert "scripts/setup_deepagents_runtime.ps1" in manifest["sharedPaths"]["scripts"]
     assert "scripts/patch_deepagents_runtime.py" in manifest["sharedPaths"]["scripts"]

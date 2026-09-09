@@ -88,6 +88,13 @@ def test_open_design_mcp_launcher_discovers_current_sidecar() -> None:
     assert "OpenDesignMcpBootstrap" in launcher
     assert "WaitOne" in launcher
     assert "ReleaseMutex" in launcher
+    assert "Get-RemainingMilliseconds" in launcher
+    assert "Diagnostics.Stopwatch" in launcher
+    assert "$deadlineTicks" in launcher
+    assert "$readinessDeadlineTicks" in launcher
+    assert launcher.index("Find-OpenDesignDaemon $readinessDeadlineTicks") < launcher.index("WaitOne")
+    assert "Connect([int][Math]::Min(1000, $remaining))" in launcher
+    assert "$read.Wait([int][Math]::Min(1000, $remaining))" in launcher
     assert "startupBudgetSeconds" in launcher
     assert "readinessBudgetSeconds" in launcher
     assert "Find-OpenDesignDaemon" in launcher

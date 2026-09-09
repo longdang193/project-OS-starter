@@ -213,7 +213,7 @@ def test_failed_codex_start_reconciliation_blocks_uncertain_process(
     assert result["cleanup"] is None
 
 
-def test_failed_codex_start_reconciliation_retires_owned_process(
+def test_failed_codex_start_reconciliation_requires_new_owned_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_json_command(command, **kwargs):
@@ -234,10 +234,39 @@ def test_failed_codex_start_reconciliation_retires_owned_process(
         "w1:p1",
         "normal-main",
         env={},
+        before_process_ids={41},
     )
 
     assert result["state"] == "retired"
     assert result["cleanup"]["verified"] is True
+
+
+def test_failed_codex_start_reconciliation_rejects_preexisting_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: (
+            {"result": {"panes": [{"pane_id": "w1:p1", "agent": "normal-main"}]}}
+            if command[-2:] == ["pane", "list"]
+            else {"result": {"process_info": {"foreground_processes": [{"pid": 42, "name": "codex.exe", "children": []}]}}}
+        ),
+    )
+    terminated: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_terminate_codex_lane",
+        lambda *args, **kwargs: terminated.append(args),
+    )
+
+    result = LAUNCHER._reconcile_failed_codex_start(
+        "herdr.exe", "session", "w1:p1", "normal-main", env={},
+        before_process_ids={42},
+    )
+
+    assert result["state"] == "uncertain"
+    assert terminated == []
 
 
 def test_redaction_hides_developer_instructions() -> None:
@@ -287,15 +316,157 @@ def test_codex_assignment_command_prompts_started_agent() -> None:
         "prompt",
         "xhigh-main",
         "assign lane",
-        "--wait",
-        "--timeout",
-        "30000",
     ]
 
-    bounded = LAUNCHER._codex_assignment_command(
-        "herdr.exe", "session", "xhigh-main", "assign lane", timeout_ms=600000,
+
+def test_codex_completion_snapshot_reads_status_and_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"working","state_change_seq":7}}}',
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, '{"result":"work output"}', "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    snapshot = LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={},
     )
-    assert bounded[-1] == "600000"
+
+    assert snapshot["state"] == "working"
+    assert snapshot["state_change_seq"] == 7
+    assert snapshot["output_chars"] == len("work output")
+    assert snapshot["observation_error"] is None
+    assert calls == [
+        ["herdr.exe", "--session", "session", "agent", "get", "xhigh-main"],
+        [
+            "herdr.exe", "--session", "session", "agent", "read", "xhigh-main",
+            "--source", "recent-unwrapped", "--lines", "200", "--format", "text",
+        ],
+    ]
+
+
+def test_codex_observation_timeout_preserves_unknown_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise LAUNCHER.CommandTransportTimeout("agent get timed out")
+        return subprocess.CompletedProcess(command, 0, '{"result":"stale output"}', "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    snapshot = LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={}, timeout_seconds=0.01,
+    )
+
+    assert snapshot["state"] == "unknown"
+    assert snapshot["observation_error"] == "agent get transport timeout"
+    assert snapshot["output_chars"] == len("stale output")
+
+
+def test_codex_completion_timeout_keeps_delivery_confirmed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "runtime_grant": {"delegation": {"child_agents": "allow"}},
+        },
+        "codex": {"codex_home": str(Path.cwd())},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "session",
+            "pane": "pane",
+        },
+    }
+    calls: list[list[str]] = []
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"working","state_change_seq":8}}}',
+                "",
+            )
+        if command[3:5] == ["agent", "read"]:
+            return subprocess.CompletedProcess(command, 0, '{"result":"still working"}', "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    monkeypatch.setattr(LAUNCHER, "_CODEX_TASK_PROGRESS_TIMEOUT_SECONDS", 0)
+
+    assert LAUNCHER.main([
+        "--profile", "xhigh", "--session", "session", "--pane", "pane",
+        "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["delivery_state"] == "delivered"
+    assert result["delivery_certainty"] == "confirmed"
+    assert result["prompt_accepted"] is True
+    assert result["execution"]["state"] == "working"
+    assert result["completion_observed"] is False
+
+
+def test_codex_prompt_result_keeps_ambiguous_timeout_unknown() -> None:
+    result = subprocess.CompletedProcess(
+        ["herdr", "agent", "prompt"],
+        1,
+        '{"error":{"code":"timeout","message":"wait expired"}}',
+        "",
+    )
+
+    assert LAUNCHER._classify_codex_prompt_result(result) == {
+        "submission": "unknown",
+        "prompt_accepted": None,
+        "failure_kind": "timeout",
+        "reconciliation_required": True,
+    }
+
+
+def test_codex_prompt_result_marks_explicit_rejection_false() -> None:
+    result = subprocess.CompletedProcess(
+        ["herdr", "agent", "prompt"],
+        1,
+        "",
+        '{"error":{"code":"agent_blocked","message":"blocked"}}',
+    )
+
+    assert LAUNCHER._classify_codex_prompt_result(result) == {
+        "submission": "rejected",
+        "prompt_accepted": False,
+        "failure_kind": "agent_blocked",
+        "reconciliation_required": False,
+    }
+
+
+def test_codex_prompt_result_marks_success_acknowledged() -> None:
+    result = subprocess.CompletedProcess(["herdr", "agent", "prompt"], 0, "{}", "")
+
+    assert LAUNCHER._classify_codex_prompt_result(result) == {
+        "submission": "acknowledged",
+        "prompt_accepted": True,
+        "failure_kind": None,
+        "reconciliation_required": False,
+    }
 
 
 def test_powershell_literal_escapes_apostrophes() -> None:
@@ -931,7 +1102,7 @@ def test_main_starts_with_selected_codex_home(
         ]
     ) == 0
     assert captured["env"]["CODEX_HOME"] == str(codex_home.resolve())
-    assert commands == [
+    assert commands[:2] == [
         ["herdr"],
         [
             "herdr.exe",
@@ -941,30 +1112,17 @@ def test_main_starts_with_selected_codex_home(
             "prompt",
             "xhigh-main",
             "assign lane [Runtime Grant: delegation.child_agents = allow]",
-            "--wait",
-            "--timeout",
-            "30000",
         ],
     ]
+    assert commands[2][3:5] == ["agent", "get"]
+    assert commands[3][3:5] == ["agent", "read"]
     output = capsys.readouterr().out.splitlines()
-    assert json.loads(output[-1])["assignment"] == {
-        "agent_name": "xhigh-main",
-        "delivery_state": "delivered",
-        "delivery_certainty": "confirmed",
-        "delivery_task_sha256": LAUNCHER._sha256_text(
-            "assign lane [Runtime Grant: delegation.child_agents = allow]"
-        ),
-        "exit_code": 0,
-        "failure_kind": None,
-        "grant_digest": None,
-        "phase": "prompt",
-        "prompt_accepted": True,
-        "reconciliation_required": False,
-        "session": "codex-probe",
-        "status": "delivered",
-        "task_sha256": LAUNCHER._sha256_text("assign lane"),
-        "wait": "settled",
-    }
+    result = json.loads(output[-1])["assignment"]
+    assert result["delivery_state"] == "delivered"
+    assert result["delivery_certainty"] == "confirmed"
+    assert result["prompt_accepted"] is True
+    assert result["status"] == "submitted"
+    assert result["completion_observed"] is False
 
 
 def test_main_times_out_codex_and_verifies_termination(
@@ -1027,30 +1185,14 @@ def test_main_times_out_codex_and_verifies_termination(
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
             "--grant-wall-clock-seconds", "8",
         ]
-    ) == 124
+    ) == 2
     output = capsys.readouterr().out.splitlines()
     result = json.loads(output[-1])["assignment"]
-    assert {key: value for key, value in result.items() if key != "watchdog"} == {
-        "agent_name": "xhigh-main",
-        "delivery_state": "watchdog_expired",
-        "delivery_certainty": "unknown",
-        "delivery_task_sha256": LAUNCHER._sha256_text("assign lane"),
-        "exit_code": 124,
-        "failure_kind": "watchdog_expired",
-        "grant_digest": None,
-        "phase": "prompt",
-        "prompt_accepted": None,
-        "reconciliation_required": False,
-        "session": "codex-probe",
-        "status": "TIMEOUT",
-        "task_sha256": LAUNCHER._sha256_text("assign lane"),
-    }
-    watchdog = result["watchdog"]
-    assert watchdog["requested_seconds"] == 8
-    assert watchdog["enforcement"] == "outer-watchdog"
-    assert watchdog["elapsed_seconds"] >= 0
-    assert watchdog["termination"] == cleanup
-    assert terminated == [("herdr.exe", "codex-probe", "w1:p5")]
+    assert result["delivery_state"] == "delivery_uncertain"
+    assert result["delivery_certainty"] == "unknown"
+    assert result["failure_kind"] == "transport_timeout"
+    assert result["reconciliation_required"] is True
+    assert terminated == []
 
 
 def test_main_transport_timeout_marks_delivery_uncertain_without_termination(
@@ -1239,10 +1381,10 @@ def test_main_watchdog_cleanup_failure_blocks_timeout_completion(
         ]
     ) == 2
     result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert result["delivery_state"] == "watchdog_expired"
-    assert result["status"] == "BLOCKED"
-    assert result["exit_code"] == 2
-    assert result["watchdog"]["termination"]["verified"] is False
+    assert result["delivery_state"] == "delivery_uncertain"
+    assert result["delivery_certainty"] == "unknown"
+    assert result["failure_kind"] == "transport_timeout"
+    assert result["reconciliation_required"] is True
 
 
 def test_main_auto_codex_uses_resolved_target(
@@ -1391,10 +1533,12 @@ def test_main_retries_default_agent_name_after_name_taken(
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
         ]
     ) == 0
-    assert len(commands) == 3
+    assert len(commands) == 5
     retry_name = commands[1][commands[1].index("start") + 1]
     assert retry_name.startswith("normal-main-")
     assert commands[2][commands[2].index("prompt") + 1] == retry_name
+    assert commands[3][commands[3].index("get") + 1] == retry_name
+    assert commands[4][commands[4].index("read") + 1] == retry_name
     result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
     assert result["agent_name"] == retry_name
     assert result["prompt_accepted"] is True

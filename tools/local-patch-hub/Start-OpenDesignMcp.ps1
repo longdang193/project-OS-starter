@@ -3,25 +3,39 @@ param()
 
 $ErrorActionPreference = "Stop"
 
+function Get-RemainingMilliseconds {
+    param([long]$DeadlineTicks)
+    $remainingTicks = $DeadlineTicks - [Diagnostics.Stopwatch]::GetTimestamp()
+    if ($remainingTicks -le 0) { return 0 }
+    return [int][Math]::Min(
+        2147483647,
+        [Math]::Ceiling($remainingTicks * 1000 / [Diagnostics.Stopwatch]::Frequency)
+    )
+}
+
 function Find-OpenDesignDaemon {
+    param([long]$DeadlineTicks)
     $pipes = @(Get-ChildItem "\\.\pipe\" -ErrorAction SilentlyContinue |
         Where-Object Name -like "open-design-*")
     foreach ($pipeInfo in $pipes) {
         $pipe = $null
         try {
+            $remaining = Get-RemainingMilliseconds $DeadlineTicks
+            if ($remaining -le 0) { return $null }
             $pipe = [IO.Pipes.NamedPipeClientStream]::new(
                 ".",
                 $pipeInfo.Name,
                 [IO.Pipes.PipeDirection]::InOut,
                 [IO.Pipes.PipeOptions]::None
             )
-            $pipe.Connect(1000)
+            $pipe.Connect([int][Math]::Min(1000, $remaining))
             $writer = [IO.StreamWriter]::new($pipe)
             $writer.AutoFlush = $true
             $writer.WriteLine('{"type":"sidecar:describe"}')
             $reader = [IO.StreamReader]::new($pipe)
             $read = $reader.ReadLineAsync()
-            if (-not $read.Wait(1000)) { continue }
+            $remaining = Get-RemainingMilliseconds $DeadlineTicks
+            if ($remaining -le 0 -or -not $read.Wait([int][Math]::Min(1000, $remaining))) { continue }
             $response = $read.Result | ConvertFrom-Json
             if ($response.ok -and $response.result.stamp.app -eq "daemon") {
                 return [pscustomobject]@{
@@ -56,25 +70,32 @@ if ($startupBudgetSeconds -lt 10) {
     throw "Open Design MCP startup timeout must be at least 10 seconds."
 }
 $readinessBudgetSeconds = $startupBudgetSeconds - 5
+$deadlineTicks = [Diagnostics.Stopwatch]::GetTimestamp() +
+    ($startupBudgetSeconds * [Diagnostics.Stopwatch]::Frequency)
+$readinessDeadlineTicks = $deadlineTicks - (5 * [Diagnostics.Stopwatch]::Frequency)
 $bootstrapMutex = [System.Threading.Mutex]::new($false, "Local\OpenDesignMcpBootstrap")
 $lockAcquired = $false
 $runtime = $null
 try {
-    try {
-        $lockAcquired = $bootstrapMutex.WaitOne([TimeSpan]::FromSeconds($startupBudgetSeconds))
-    } catch [System.Threading.AbandonedMutexException] {
-        $lockAcquired = $true
-    }
-    if (-not $lockAcquired) { throw "Open Design MCP bootstrap lock timed out." }
-
-    $runtime = Find-OpenDesignDaemon
+    $runtime = Find-OpenDesignDaemon $readinessDeadlineTicks
     if ($null -eq $runtime) {
-        Start-Process -FilePath $exe -ArgumentList "--headless" -WindowStyle Hidden
-        $deadline = (Get-Date).AddSeconds($readinessBudgetSeconds)
-        do {
-            Start-Sleep -Milliseconds 250
-            $runtime = Find-OpenDesignDaemon
-        } while ($null -eq $runtime -and (Get-Date) -lt $deadline)
+        $remaining = Get-RemainingMilliseconds $deadlineTicks
+        if ($remaining -le 0) { throw "Open Design MCP startup deadline expired." }
+        try {
+            $lockAcquired = $bootstrapMutex.WaitOne([TimeSpan]::FromMilliseconds($remaining))
+        } catch [System.Threading.AbandonedMutexException] {
+            $lockAcquired = $true
+        }
+        if (-not $lockAcquired) { throw "Open Design MCP bootstrap lock timed out." }
+
+        $runtime = Find-OpenDesignDaemon $readinessDeadlineTicks
+        if ($null -eq $runtime) {
+            Start-Process -FilePath $exe -ArgumentList "--headless" -WindowStyle Hidden
+            do {
+                Start-Sleep -Milliseconds 250
+                $runtime = Find-OpenDesignDaemon $readinessDeadlineTicks
+            } while ($null -eq $runtime -and (Get-RemainingMilliseconds $readinessDeadlineTicks) -gt 0)
+        }
     }
 } finally {
     if ($lockAcquired) { $bootstrapMutex.ReleaseMutex() }

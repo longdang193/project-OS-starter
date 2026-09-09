@@ -51,18 +51,16 @@ class TargetResolutionBlocked(LaunchBlocked):
 
 _EXECUTORS = {"codex", "deepagents"}
 _MAX_TASK_LENGTH = 4096
-_CODEX_PROMPT_TIMEOUT_MS = "30000"
+_CODEX_TASK_PROGRESS_TIMEOUT_SECONDS = 30.0
 _CODEX_START_TIMEOUT_MS = "120000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 60.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
-_CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
+_CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
-_CODEX_WATCHDOG_GRACE_SECONDS = 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
 _HERDR_DEFAULT_SESSION = "default"
-_WATCHDOG_TIMEOUT_EXIT_CODE = 124
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
@@ -70,6 +68,14 @@ _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 _DEEPAGENTS_FAILURE_PATTERN = re.compile(
     r"(?im)^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
 )
+_CODEX_PROMPT_REJECTION_CODES = {
+    "agent_blocked",
+    "agent_not_found",
+    "agent_prompt_rejected",
+    "empty_agent_prompt",
+    "invalid_agent",
+    "invalid_prompt",
+}
 
 
 def _herdr_environment() -> dict[str, str]:
@@ -572,8 +578,6 @@ def _codex_assignment_command(
     session: str,
     agent_name: str,
     task: str,
-    *,
-    timeout_ms: int | None = None,
 ) -> list[str]:
     return [
         herdr,
@@ -583,9 +587,6 @@ def _codex_assignment_command(
         "prompt",
         agent_name,
         task,
-        "--wait",
-        "--timeout",
-        str(timeout_ms or _CODEX_PROMPT_TIMEOUT_MS),
     ]
 
 
@@ -598,6 +599,114 @@ def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
     return isinstance(error, dict) and error.get("code") == "agent_name_taken"
 
 
+def _classify_codex_prompt_result(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    if result.returncode == 0:
+        return {
+            "submission": "acknowledged",
+            "prompt_accepted": True,
+            "failure_kind": None,
+            "reconciliation_required": False,
+        }
+    error_code: str | None = None
+    for output in (result.stdout, result.stderr):
+        if not output:
+            continue
+        try:
+            payload = json.loads(output)
+        except json.JSONDecodeError:
+            continue
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(error, dict) and isinstance(error.get("code"), str):
+            error_code = error["code"]
+            break
+    if error_code in _CODEX_PROMPT_REJECTION_CODES:
+        return {
+            "submission": "rejected",
+            "prompt_accepted": False,
+            "failure_kind": error_code,
+            "reconciliation_required": False,
+        }
+    return {
+        "submission": "unknown",
+        "prompt_accepted": None,
+        "failure_kind": error_code or "command_exit",
+        "reconciliation_required": True,
+    }
+
+
+def _codex_completion_snapshot(
+    herdr: str,
+    session: str,
+    agent_name: str,
+    *,
+    env: dict[str, str],
+    timeout_seconds: float = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    started = time.monotonic()
+
+    def remaining_timeout() -> float:
+        return max(0.01, timeout_seconds - (time.monotonic() - started))
+
+    get_result: subprocess.CompletedProcess[str] | None = None
+    read_result: subprocess.CompletedProcess[str] | None = None
+    state = "unknown"
+    state_change_seq: int | None = None
+    observation_error: str | None = None
+    try:
+        get_result = _run(
+            [herdr, "--session", session, "agent", "get", agent_name],
+            env=env,
+            timeout=remaining_timeout(),
+        )
+    except CommandTransportTimeout:
+        observation_error = "agent get transport timeout"
+    if get_result is not None and get_result.returncode:
+        observation_error = "agent get failed"
+    elif get_result is not None:
+        try:
+            payload = json.loads(get_result.stdout)
+            agent = _result(payload, "agent")
+            if not isinstance(agent, dict):
+                raise LaunchBlocked("agent get returned invalid agent information")
+            state = str(agent.get("agent_status") or "unknown")
+            raw_seq = agent.get("state_change_seq")
+            if isinstance(raw_seq, int):
+                state_change_seq = raw_seq
+        except (LaunchBlocked, json.JSONDecodeError) as exc:
+            observation_error = str(exc)
+    try:
+        read_result = _run(
+            [
+                herdr,
+                "--session",
+                session,
+                "agent",
+                "read",
+                agent_name,
+                "--source",
+                "recent-unwrapped",
+                "--lines",
+                "200",
+                "--format",
+                "text",
+            ],
+            env=env,
+            timeout=remaining_timeout(),
+        )
+    except CommandTransportTimeout:
+        observation_error = observation_error or "agent read transport timeout"
+    if read_result is not None and read_result.returncode:
+        observation_error = observation_error or "agent read failed"
+    output = _pane_output(read_result) if read_result is not None else ""
+    return {
+        "state": state,
+        "state_change_seq": state_change_seq,
+        "output_sha256": _sha256_text(output),
+        "output_chars": len(output),
+        "observation_error": observation_error,
+    }
+
+
 def _reconcile_failed_codex_start(
     herdr: str,
     session: str,
@@ -605,6 +714,7 @@ def _reconcile_failed_codex_start(
     agent_name: str,
     *,
     env: dict[str, str],
+    before_process_ids: set[int] | None = None,
 ) -> dict[str, Any]:
     try:
         panes = _result(
@@ -633,6 +743,13 @@ def _reconcile_failed_codex_start(
         process_ids = _process_ids(foreground, require_non_shell=False)
         if not process_ids:
             return {"state": "absent", "cleanup": None, "process_ids": []}
+        if before_process_ids is None or not (process_ids - before_process_ids):
+            return {
+                "state": "uncertain",
+                "cleanup": None,
+                "process_ids": sorted(process_ids),
+                "detail": "no new process proves failed-attempt ownership",
+            }
         if selected.get("agent") != agent_name:
             return {
                 "state": "uncertain",
@@ -834,10 +951,17 @@ def _deepagents_completion_snapshot(
     *,
     env: dict[str, str],
     expected_marker: str,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
+    def observation_timeout() -> float:
+        if deadline is None:
+            return _HERDR_COMMAND_TIMEOUT
+        return max(0.01, min(_HERDR_COMMAND_TIMEOUT, deadline - time.monotonic()))
+
     process_result = _run(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
         env=env,
+        timeout=observation_timeout(),
     )
     read_result = _run(
         [
@@ -855,6 +979,7 @@ def _deepagents_completion_snapshot(
             "text",
         ],
         env=env,
+        timeout=observation_timeout(),
     )
     pane_output = _pane_output(read_result)
     foreground: list[Any] = []
@@ -900,6 +1025,8 @@ def _deepagents_completion_evidence(
     expected_marker: str,
 ) -> dict[str, Any]:
     started = time.monotonic()
+    deadline = started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+    evidence: dict[str, Any] | None = None
     while True:
         evidence = _deepagents_completion_snapshot(
             herdr,
@@ -907,10 +1034,11 @@ def _deepagents_completion_evidence(
             pane,
             env=env,
             expected_marker=expected_marker,
+            deadline=deadline,
         )
         if evidence["state"] in {"completed", "failed"}:
             return evidence
-        remaining = _DEEPAGENTS_COMPLETION_WAIT_SECONDS - (time.monotonic() - started)
+        remaining = deadline - time.monotonic()
         if remaining <= 0:
             return evidence
         time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
@@ -1133,7 +1261,11 @@ def resolve_launch(
         env=environment,
     )
     pane_state = _herdr_pane(cwd, session, pane, herdr, executor=executor, env=environment)
-    agent_name = name or f"{selected.name}-main"
+    agent_name = name or (
+        _unique_agent_name(f"{selected.name}-main")
+        if executor == "codex"
+        else f"{selected.name}-main"
+    )
     if executor == "codex":
         runtime_mcp_servers = _codex_runtime_mcp_servers(
             str(codex),
@@ -1192,14 +1324,9 @@ def resolve_launch(
             _powershell_literal(delivery_task),
         ]
         command = [herdr, "--session", session, "pane", "run", pane, *runtime_arguments]
-    codex_watchdog = runtime_grant["wall_clock_seconds"]["requested"]
-    codex_prompt_timeout_ms = (
-        codex_watchdog * 1000
-        if executor == "codex" and codex_watchdog != _NATIVE_GRANT_VALUE
-        else None
-    )
     evidence = {
         "registry_launcher": {
+            "dispatch_id": uuid.uuid4().hex,
             "profile": selected.name,
             "profile_source": str(selected.source),
             "executor": executor,
@@ -1220,15 +1347,23 @@ def resolve_launch(
             "mcp_selection_requested": list(mcp_select or []),
         },
         "git": git,
-        "herdr": {
+            "herdr": {
             "executable": herdr,
             "version": _version(herdr, env=environment),
             "session": session,
             "pane": pane,
             "agent_name": agent_name,
             "agent_kind": "codex" if executor == "codex" else "pane-process",
-            "pane_cwd": str(Path(str(pane_state["pane"].get("cwd"))).resolve()),
-        },
+                "pane_cwd": str(Path(str(pane_state["pane"].get("cwd"))).resolve()),
+                "start_process_ids": sorted(
+                    _process_ids(
+                        pane_state.get("process_info", {}).get("foreground_processes", []),
+                        require_non_shell=False,
+                    )
+                    if pane_state.get("process_info", {}).get("foreground_processes")
+                    else set()
+                ),
+            },
         "target_resolution": target_resolution,
         "observation": {
             "executor": executor,
@@ -1260,7 +1395,6 @@ def resolve_launch(
                     session,
                     agent_name,
                     delivery_task,
-                    timeout_ms=codex_prompt_timeout_ms,
                 )
             ) if executor == "codex" else None,
         },
@@ -1391,6 +1525,7 @@ def main(argv: list[str] | None = None) -> int:
                 resolved_pane,
                 str(evidence["herdr"]["agent_name"]),
                 env=environment,
+                before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
             )
             registry_launcher["failed_start_reconciliation"] = reconciliation
             if reconciliation["state"] == "uncertain":
@@ -1469,121 +1604,122 @@ def main(argv: list[str] | None = None) -> int:
                 resolved_session,
                 agent_name,
                 delivery_task,
-                timeout_ms=(watchdog_seconds * 1000 if watchdog_seconds is not None else None),
             )
-            assignment_started = time.monotonic()
-            watchdog_expired = False
             transport_timeout: CommandTransportTimeout | None = None
             assignment_result: subprocess.CompletedProcess[str] | None = None
             try:
                 assignment_result = _run(
                     assignment,
                     env=environment,
-                    timeout=(
-                        watchdog_seconds + _CODEX_WATCHDOG_GRACE_SECONDS
-                        if watchdog_seconds is not None
-                        else _CODEX_ASSIGNMENT_TIMEOUT
-                    ),
+                    timeout=_CODEX_ASSIGNMENT_TIMEOUT,
                 )
             except CommandTransportTimeout as exc:
                 transport_timeout = exc
-            elapsed_seconds = time.monotonic() - assignment_started
-            if (
-                assignment_result is not None
-                and watchdog_seconds is not None
-                and assignment_result.returncode != 0
-                and elapsed_seconds >= watchdog_seconds
-            ):
-                watchdog_expired = True
             if transport_timeout is not None:
-                if watchdog_seconds is not None and elapsed_seconds >= watchdog_seconds:
-                    watchdog_expired = True
-                else:
-                    launcher = evidence["registry_launcher"]
-                    print(json.dumps({
-                        "assignment": {
-                    "agent_name": agent_name,
-                    "delivery_state": "delivery_uncertain",
-                    "delivery_certainty": "unknown",
-                    "delivery_task_sha256": delivery_task_sha256,
-                    "exit_code": 2,
-                    "failure_kind": "transport_timeout",
-                    "grant_digest": grant_digest,
-                    "phase": "prompt",
-                    "prompt_accepted": None,
-                    "reconciliation_required": True,
-                    "session": resolved_session,
-                    "status": "uncertain",
-                    "task_sha256": assignment_task_sha256,
-                        }
-                    }, sort_keys=True))
-                    return 2
-            if watchdog_expired:
-                cleanup = _terminate_codex_lane(
-                    herdr,
-                    resolved_session,
-                    resolved_pane,
-                    env=environment,
-                )
-                cleanup_verified = bool(cleanup.get("verified"))
-                status = "TIMEOUT" if cleanup_verified else "BLOCKED"
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
-                        "delivery_state": "watchdog_expired",
+                        "delivery_state": "delivery_uncertain",
                         "delivery_certainty": "unknown",
                         "delivery_task_sha256": delivery_task_sha256,
-                        "exit_code": (
-                            _WATCHDOG_TIMEOUT_EXIT_CODE
-                            if cleanup_verified
-                            else 2
-                        ),
+                        "exit_code": 2,
+                        "failure_kind": "transport_timeout",
+                        "grant_digest": grant_digest,
                         "phase": "prompt",
                         "prompt_accepted": None,
+                        "reconciliation_required": True,
                         "session": resolved_session,
-                        "status": status,
+                        "status": "uncertain",
                         "task_sha256": assignment_task_sha256,
-                        "failure_kind": "watchdog_expired",
-                        "grant_digest": grant_digest,
-                        "reconciliation_required": False,
-                        "watchdog": {
-                            "requested_seconds": watchdog_seconds,
-                            "enforcement": "outer-watchdog",
-                            "elapsed_seconds": round(elapsed_seconds, 3),
-                            "termination": cleanup,
-                        },
                     }
                 }, sort_keys=True))
-                return _WATCHDOG_TIMEOUT_EXIT_CODE if cleanup_verified else 2
+                return 2
             if assignment_result is None:
                 raise LaunchBlocked("Codex assignment produced no result.")
             if assignment_result.stdout:
                 print(assignment_result.stdout, end="")
             if assignment_result.stderr:
                 print(assignment_result.stderr, file=sys.stderr, end="")
+            prompt_result = _classify_codex_prompt_result(assignment_result)
+            if prompt_result["submission"] == "unknown":
+                print(json.dumps({
+                    "assignment": {
+                        "agent_name": agent_name,
+                        "delivery_state": "delivery_uncertain",
+                        "delivery_certainty": "unknown",
+                        "delivery_task_sha256": delivery_task_sha256,
+                        "exit_code": assignment_result.returncode,
+                        "failure_kind": prompt_result["failure_kind"],
+                        "grant_digest": grant_digest,
+                        "phase": "prompt",
+                        "prompt_accepted": None,
+                        "reconciliation_required": True,
+                        "session": resolved_session,
+                        "status": "uncertain",
+                        "submission": "unknown",
+                        "task_sha256": assignment_task_sha256,
+                    }
+                }, sort_keys=True))
+                return assignment_result.returncode
+            if prompt_result["submission"] == "rejected":
+                print(json.dumps({
+                    "assignment": {
+                        "agent_name": agent_name,
+                        "delivery_state": "delivery_failed",
+                        "delivery_certainty": "not_delivered",
+                        "delivery_task_sha256": delivery_task_sha256,
+                        "exit_code": assignment_result.returncode,
+                        "failure_kind": prompt_result["failure_kind"],
+                        "grant_digest": grant_digest,
+                        "phase": "prompt",
+                        "prompt_accepted": False,
+                        "reconciliation_required": False,
+                        "session": resolved_session,
+                        "status": "failed",
+                        "submission": "rejected",
+                        "task_sha256": assignment_task_sha256,
+                    }
+                }, sort_keys=True))
+                return assignment_result.returncode
+            completion = _codex_completion_snapshot(
+                herdr,
+                resolved_session,
+                agent_name,
+                env=environment,
+            )
+            completion["observation_deadline_seconds"] = (
+                watchdog_seconds
+                if watchdog_seconds is not None
+                else _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS
+            )
+            execution_state = str(completion["state"])
+            status = {
+                "done": "completed",
+                "blocked": "blocked",
+                "working": "working",
+                "idle": "idle",
+            }.get(execution_state, "submitted")
             print(json.dumps({
                 "assignment": {
                     "agent_name": agent_name,
-                    "delivery_state": (
-                        "delivered" if assignment_result.returncode == 0 else "delivery_failed"
-                    ),
-                    "delivery_certainty": (
-                        "confirmed" if assignment_result.returncode == 0 else "not_delivered"
-                    ),
+                    "completion_observed": execution_state in {"done", "blocked"},
+                    "delivery_state": "delivered",
+                    "delivery_certainty": "confirmed",
                     "delivery_task_sha256": delivery_task_sha256,
-                    "exit_code": assignment_result.returncode,
-                    "failure_kind": None if assignment_result.returncode == 0 else "command_exit",
+                    "execution": completion,
+                    "exit_code": 0,
+                    "failure_kind": None,
                     "grant_digest": grant_digest,
                     "phase": "prompt",
-                    "prompt_accepted": assignment_result.returncode == 0,
+                    "prompt_accepted": True,
+                    "reconciliation_required": completion["observation_error"] is not None,
                     "session": resolved_session,
-                    "status": "delivered" if assignment_result.returncode == 0 else "failed",
+                    "status": status,
+                    "submission": "acknowledged",
                     "task_sha256": assignment_task_sha256,
-                    "reconciliation_required": assignment_result.returncode != 0,
-                    "wait": "settled" if assignment_result.returncode == 0 else None,
                 }
             }, sort_keys=True))
-            return assignment_result.returncode
+            return 0
         if result.returncode:
             print(json.dumps({
                 "assignment": {

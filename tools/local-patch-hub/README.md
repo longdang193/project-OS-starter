@@ -26,11 +26,12 @@ Codex launches `Start-OpenDesignMcp.ps1`. It discovers the current daemon
 sidecar pipe and data directory from the installed runtime, so OpenDesign
 updates do not leave stale endpoint values in Codex config.
 
-Bootstrap uses one named Windows mutex and rechecks the daemon after acquiring
-it. Keep Codex MCP startup budget above the wrapper readiness sub-budget; the
-current local contract is `startup_timeout_sec = 90`, with a five-second
-readiness margin. Set `OPEN_DESIGN_MCP_STARTUP_TIMEOUT_SEC` only when the
-Codex MCP timeout is changed to the same value.
+Bootstrap probes for a healthy daemon before taking its named Windows mutex.
+Cold starts recheck after lock acquisition, and discovery, lock wait, daemon
+startup, and readiness share one monotonic deadline. The current local
+contract is `startup_timeout_sec = 90`, with a five-second final MCP-handshake
+margin. Set `OPEN_DESIGN_MCP_STARTUP_TIMEOUT_SEC` only when Codex MCP timeout
+is changed to the same value.
 
 After installing or updating OpenDesign, refresh Codex registration from the
 running local daemon. Use its current URL from OpenDesign MCP settings:
