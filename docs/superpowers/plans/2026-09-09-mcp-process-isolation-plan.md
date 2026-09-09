@@ -47,8 +47,9 @@ keeps its existing configuration and MCP access.
 
 OpenDesign daemon discovery and startup use one startup owner. Concurrent MCP
 wrappers recheck readiness after acquiring the owner lock and do not launch
-duplicate daemons. Startup timeout ownership is documented and aligned with
-Codex `startup_timeout_sec`.
+duplicate daemons. Discovery requires both daemon identity and a running
+non-empty daemon URL; `sidecar:describe` alone is not readiness. Startup
+timeout ownership is documented and aligned with Codex `startup_timeout_sec`.
 
 ### Regression and runtime proof
 
@@ -87,7 +88,7 @@ it.
 | Task 1 | `completed` | current | `codex` | none | launcher selector tests | `182 passed`; runtime selector tests added |
 | Task 2 | `completed` | current | `codex` | Task 1 | selection and isolation tests | global/project/runtime MCP isolation; live Codex parser probe |
 | Task 3 | `completed` | current | `codex` | Task 2 | failed-start ownership tests | ownership and fail-closed reconciliation tests pass |
-| Task 4 | `completed` | current | `codex` | Task 3 | OpenDesign patch tests and timeout contract | `178+` focused tests; warm probe retained one daemon count across concurrent wrappers; cold probe requires isolated runtime |
+| Task 4 | `completed` | current | `codex` | Task 3 | OpenDesign patch tests and timeout contract | `sidecar:status` readiness regression passes; corrected cold probe converged two wrappers on one `--headless` root and hashed daemon pipe |
 | Task 5 | `completed` | current | `codex` | Task 4 | full suite, validators, smoke evidence | live worker returned `LIVE_MCP_ISOLATION_OK`; zero new MCP child processes; drift clean |
 
 ## Task Breakdown
@@ -334,10 +335,15 @@ it.
   and document the required margin in `tools/local-patch-hub/README.md`.
 - [x] Add explicit manual configuration step for the user-owned Codex timeout;
   do not commit credentials or user-local config into the repository.
+- [x] Require `sidecar:status` to report a running daemon with a non-empty URL
+  after `sidecar:describe`; describe-only discovery falsely released the
+  inherited endpoint before MCP bootstrap could use it.
 
 **Verification:**
 - `py -m pytest tests/test_open_design_local_patch.py -q`
 - Expected: static contract proves lock/recheck behavior and no force-stop path.
+- Expected: readiness contract proves daemon identity is followed by a running
+  status and URL check before endpoint handoff.
 - Manual bounded check: start two wrapper invocations concurrently with an
   already-running daemon and with no daemon; inspect that only one owner starts
   the daemon and both clients converge on the same endpoint.

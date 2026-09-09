@@ -79,6 +79,10 @@ def test_open_design_mcp_launcher_discovers_current_sidecar() -> None:
     assert "ReadLineAsync" in launcher
     assert "ReadTimeout" not in launcher
     assert "result.stamp.app -eq \"daemon\"" in launcher
+    assert 'sidecar:status' in launcher
+    assert "status.result.state -eq \"running\"" in launcher
+    assert "status.result.url" in launcher
+    assert launcher.index('sidecar:describe') < launcher.index('sidecar:status')
     assert "OD_SIDECAR_CLIENT_ENDPOINT = $runtime.Endpoint" in launcher
     assert "OD_DATA_DIR = $runtime.DataDir" in launcher
     assert "Start-Process -FilePath $exe -ArgumentList \"--headless\"" in launcher

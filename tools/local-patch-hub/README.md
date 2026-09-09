@@ -27,7 +27,9 @@ sidecar pipe and data directory from the installed runtime, so OpenDesign
 updates do not leave stale endpoint values in Codex config.
 
 Bootstrap probes for a healthy daemon before taking its named Windows mutex.
-Cold starts recheck after lock acquisition, and discovery, lock wait, daemon
+Discovery accepts a sidecar only after `sidecar:describe` identifies the
+daemon and `sidecar:status` reports `state=running` with a non-empty URL. Cold
+starts recheck after lock acquisition, and discovery, lock wait, daemon
 startup, and readiness share one monotonic deadline. The current local
 contract is `startup_timeout_sec = 90`, with a five-second final MCP-handshake
 margin. Set `OPEN_DESIGN_MCP_STARTUP_TIMEOUT_SEC` only when Codex MCP timeout
