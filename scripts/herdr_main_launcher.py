@@ -107,6 +107,17 @@ def _run_checked(
     return result.stdout.strip()
 
 
+def _write_runtime_output(stream: Any, value: str) -> None:
+    try:
+        stream.write(value)
+    except UnicodeEncodeError:
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            raise
+        reconfigure(encoding="utf-8", errors="replace")
+        stream.write(value)
+
+
 def _json_command(
     command: list[str], *, env: dict[str, str] | None = None,
     timeout: float = _HERDR_COMMAND_TIMEOUT,
@@ -479,6 +490,19 @@ def _codex_assignment_command(
         "--timeout",
         str(timeout_ms or _CODEX_PROMPT_TIMEOUT_MS),
     ]
+
+
+def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False
+    error = payload.get("error")
+    return isinstance(error, dict) and error.get("code") == "agent_name_taken"
+
+
+def _unique_agent_name(agent_name: str) -> str:
+    return f"{agent_name}-{uuid.uuid4().hex[:8]}"
 
 
 def _parse_grant_value(value: str | int | None, label: str) -> int | str:
@@ -1148,39 +1172,56 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(completion_marker, str) or not completion_marker:
                 raise LaunchBlocked("Launcher evidence missing completion marker.")
             environment = _herdr_environment()
-        try:
-            result = _run(
-                command,
-                env=environment,
-                timeout=(
-                    _DEEPAGENTS_RUN_TIMEOUT
-                    if args.executor == "deepagents"
-                    else _CODEX_START_TIMEOUT
-                ),
-            )
-        except CommandTransportTimeout:
-            print(json.dumps({
-                "assignment": {
-                    "agent_name": evidence["herdr"]["agent_name"],
-                    "delivery_state": "delivery_uncertain",
-                    "delivery_certainty": "unknown",
-                    "delivery_task_sha256": delivery_task_sha256,
-                    "exit_code": 2,
-                    "failure_kind": "transport_timeout",
-                    "grant_digest": grant_digest,
-                    "phase": "pane_run" if args.executor == "deepagents" else "start",
-                    "prompt_accepted": None,
-                    "reconciliation_required": True,
-                    "session": resolved_session,
-                    "status": "uncertain",
-                    "task_sha256": assignment_task_sha256,
-                }
-            }, sort_keys=True))
-            return 2
+        for attempt in range(2):
+            try:
+                result = _run(
+                    command,
+                    env=environment,
+                    timeout=(
+                        _DEEPAGENTS_RUN_TIMEOUT
+                        if args.executor == "deepagents"
+                        else _CODEX_START_TIMEOUT
+                    ),
+                )
+            except CommandTransportTimeout:
+                print(json.dumps({
+                    "assignment": {
+                        "agent_name": evidence["herdr"]["agent_name"],
+                        "delivery_state": "delivery_uncertain",
+                        "delivery_certainty": "unknown",
+                        "delivery_task_sha256": delivery_task_sha256,
+                        "exit_code": 2,
+                        "failure_kind": "transport_timeout",
+                        "grant_digest": grant_digest,
+                        "phase": "pane_run" if args.executor == "deepagents" else "start",
+                        "prompt_accepted": None,
+                        "reconciliation_required": True,
+                        "session": resolved_session,
+                        "status": "uncertain",
+                        "task_sha256": assignment_task_sha256,
+                    }
+                }, sort_keys=True))
+                return 2
+            if not (
+                args.executor == "codex"
+                and args.name is None
+                and attempt == 0
+                and result.returncode
+                and _agent_name_taken(result)
+            ):
+                break
+            agent_name = _unique_agent_name(str(evidence["herdr"]["agent_name"]))
+            command = command.copy()
+            command[command.index("start") + 1] = agent_name
+            evidence["herdr"]["agent_name"] = agent_name
+            evidence["observation"]["agent_name"] = agent_name
+            prompt_argv = evidence["assignment_request"].get("redacted_prompt_argv")
+            if isinstance(prompt_argv, list) and "prompt" in prompt_argv:
+                prompt_argv[prompt_argv.index("prompt") + 1] = agent_name
         if result.stdout:
-            print(result.stdout, end="")
+            _write_runtime_output(sys.stdout, result.stdout)
         if result.stderr:
-            print(result.stderr, file=sys.stderr, end="")
+            _write_runtime_output(sys.stderr, result.stderr)
         if result.returncode:
             print(json.dumps({
                 "assignment": {

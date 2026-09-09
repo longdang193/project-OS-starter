@@ -140,6 +140,29 @@ def test_run_decodes_subprocess_output_as_utf8(monkeypatch: pytest.MonkeyPatch) 
     assert result.stdout == "✓"
 
 
+def test_runtime_output_reconfigures_windows_stream_for_utf8() -> None:
+    class LegacyStream:
+        encoding = "cp1252"
+
+        def __init__(self) -> None:
+            self.writes: list[str] = []
+
+        def write(self, value: str) -> None:
+            if self.encoding == "cp1252" and "✓" in value:
+                raise UnicodeEncodeError("cp1252", value, 0, 1, "unrepresentable")
+            self.writes.append(value)
+
+        def reconfigure(self, **kwargs: str) -> None:
+            self.encoding = kwargs["encoding"]
+
+    stream = LegacyStream()
+
+    LAUNCHER._write_runtime_output(stream, "✓")
+
+    assert stream.encoding == "utf-8"
+    assert stream.writes == ["✓"]
+
+
 def test_resolve_launch_builds_deepagents_pane_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1071,6 +1094,65 @@ def test_main_reports_failed_assignment_after_start(
         "status": "failed",
         "task_sha256": LAUNCHER._sha256_text("assign lane"),
     }
+
+
+def test_main_retries_default_agent_name_after_name_taken(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "normal-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
+        "observation": {"agent_name": "normal-main"},
+        "assignment_request": {"redacted_prompt_argv": []},
+    }
+    commands: list[list[str]] = []
+    start_command = [
+        "herdr.exe", "--session", "codex-probe", "agent", "start", "normal-main",
+        "--kind", "codex", "--pane", "w1:p5", "--timeout", "120000", "--", "codex",
+    ]
+
+    monkeypatch.setattr(
+        LAUNCHER, "resolve_launch", lambda **kwargs: (start_command, evidence)
+    )
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if len(commands) == 1:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                '{"error":{"code":"agent_name_taken"}}',
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 0
+    assert len(commands) == 3
+    retry_name = commands[1][commands[1].index("start") + 1]
+    assert retry_name.startswith("normal-main-")
+    assert commands[2][commands[2].index("prompt") + 1] == retry_name
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["agent_name"] == retry_name
+    assert result["prompt_accepted"] is True
 
 
 def test_launcher_allows_external_codex_controller(monkeypatch: pytest.MonkeyPatch) -> None:
