@@ -71,6 +71,21 @@ def test_open_design_launcher_patches_before_starting_app() -> None:
     assert "Stop-Process -Force" not in launcher
 
 
+def test_open_design_mcp_launcher_discovers_current_sidecar() -> None:
+    launcher = (PATCH_ROOT / "Start-OpenDesignMcp.ps1").read_text(encoding="utf-8")
+
+    assert "NamedPipeClientStream" in launcher
+    assert '"sidecar:describe"' in launcher
+    assert "ReadLineAsync" in launcher
+    assert "ReadTimeout" not in launcher
+    assert "result.stamp.app -eq \"daemon\"" in launcher
+    assert "OD_SIDECAR_CLIENT_ENDPOINT = $runtime.Endpoint" in launcher
+    assert "OD_DATA_DIR = $runtime.DataDir" in launcher
+    assert "Start-Process -FilePath $exe -ArgumentList \"--headless\"" in launcher
+    assert "open-design-sidecar-5329972e5f38dbd97ec28d825bccc6b9" not in launcher
+    assert 'Name -like "open-design-*"' in launcher
+
+
 def test_installed_packaged_logger_uses_safe_writes() -> None:
     bundle = Path.home() / "AppData/Local/Programs/Open Design/resources/app/prebundled/packaged-main.mjs"
     if not bundle.exists():

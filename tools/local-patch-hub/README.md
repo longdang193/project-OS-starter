@@ -22,6 +22,10 @@ Verify Codex sees the configured server:
 codex mcp get open-design
 ```
 
+Codex launches `Start-OpenDesignMcp.ps1`. It discovers the current daemon
+sidecar pipe and data directory from the installed runtime, so OpenDesign
+updates do not leave stale endpoint values in Codex config.
+
 After installing or updating OpenDesign, refresh Codex registration from the
 running local daemon. Use its current URL from OpenDesign MCP settings:
 
