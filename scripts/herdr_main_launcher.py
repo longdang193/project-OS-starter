@@ -40,6 +40,7 @@ class TargetResolutionBlocked(LaunchBlocked):
 
 
 _EXECUTORS = {"codex", "deepagents"}
+_WORKER_BROWSER_MCP_SERVERS = ("chrome-devtools", "playwright")
 _MAX_TASK_LENGTH = 4096
 _CODEX_PROMPT_TIMEOUT_MS = "30000"
 _CODEX_START_TIMEOUT_MS = "120000"
@@ -389,7 +390,7 @@ def _resolve_target_selector(
 
 
 def _codex_arguments(profile: AgentProfile, cwd: Path) -> list[str]:
-    return [
+    arguments = [
         "-C",
         str(cwd),
         "-c",
@@ -399,6 +400,12 @@ def _codex_arguments(profile: AgentProfile, cwd: Path) -> list[str]:
         "-c",
         f"developer_instructions={json.dumps(profile.developer_instructions)}",
     ]
+    arguments.extend(
+        value
+        for server in _WORKER_BROWSER_MCP_SERVERS
+        for value in ("-c", f"mcp_servers.{server}.enabled=false")
+    )
+    return arguments
 
 
 def _redacted_arguments(arguments: list[str]) -> list[str]:

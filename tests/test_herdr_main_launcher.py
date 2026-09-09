@@ -46,6 +46,16 @@ def test_codex_arguments_project_complete_contract(tmp_path: Path) -> None:
     assert 'developer_instructions="do not modify files"' in arguments
 
 
+def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) -> None:
+    fake_profile(tmp_path, "review", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+
+    arguments = LAUNCHER._codex_arguments(profile, tmp_path)
+
+    assert "mcp_servers.chrome-devtools.enabled=false" in arguments
+    assert "mcp_servers.playwright.enabled=false" in arguments
+
+
 def test_redaction_hides_developer_instructions() -> None:
     arguments = ["-c", 'model="combo-xhigh"', "-c", 'developer_instructions="secret"']
 
