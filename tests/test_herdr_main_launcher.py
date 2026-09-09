@@ -531,7 +531,6 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "9router",
         "combo-normal",
         20,
-        True,
         "test",
         "do not modify files",
     )
@@ -609,7 +608,6 @@ def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
         "9router",
         "combo-normal",
         20,
-        True,
         "test",
         "do not modify files",
     )
@@ -727,7 +725,6 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         "9router",
         "combo-normal",
         20,
-        True,
         "test",
         "do not modify files",
     )
@@ -790,7 +787,6 @@ def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
         "9router",
         "combo-normal",
         20,
-        True,
         "test",
         "do not modify files",
     )
@@ -852,7 +848,6 @@ def test_resolve_launch_projects_selected_codex_mcp_server(
         "9router",
         "combo-normal",
         20,
-        True,
         "test",
         "do not modify files",
     )
@@ -900,7 +895,6 @@ def test_resolve_launch_quotes_mcp_selectors_for_powershell(
         "9router",
         "combo-normal",
         20,
-        True,
         "test",
         "do not modify files",
     )
@@ -942,7 +936,6 @@ def test_deepagents_profile_binding_uses_lane_worktree(
         "9router",
         "model-A",
         20,
-        True,
         "lead",
         "lead instructions",
     )
@@ -952,7 +945,6 @@ def test_deepagents_profile_binding_uses_lane_worktree(
         "9router",
         "model-B",
         20,
-        True,
         "lane",
         "lane instructions",
     )
@@ -1030,33 +1022,6 @@ def test_codex_task_is_required_and_bounded(
             expected_base="HEAD",
             executor="codex",
             task=task,
-        )
-
-
-def test_deepagents_rejects_incompatible_profile(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    profile = LAUNCHER.AgentProfile(
-        Path("review.toml"),
-        "review",
-        "9router",
-        "combo-review",
-        None,
-        False,
-        "test",
-        "review only",
-    )
-    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
-
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="not compatible"):
-        LAUNCHER.resolve_launch(
-            profile_name="review",
-            session="session",
-            pane="pane",
-            cwd=ROOT,
-            expected_base="HEAD",
-            executor="deepagents",
-            task="task",
         )
 
 
@@ -2190,7 +2155,7 @@ def test_resolve_launch_rechecks_selected_target_before_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     profile = LAUNCHER.AgentProfile(
-        Path("normal.toml"), "normal", "9router", "combo-normal", 20, True, "test", "test",
+        Path("normal.toml"), "normal", "9router", "combo-normal", 20, "test", "test",
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")

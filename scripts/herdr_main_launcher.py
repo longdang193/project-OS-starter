@@ -1239,10 +1239,6 @@ def resolve_launch(
     )
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
-    if executor == "deepagents" and not selected.deepagents_compatible:
-        raise LaunchBlocked(
-            f"Profile is not compatible with DeepAgents: {selected.name}"
-        )
     runtime = _codex_runtime(cwd, codex_home) if executor == "codex" else None
     environment = (
         _codex_environment(Path(runtime["codex_home"]))

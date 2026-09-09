@@ -47,7 +47,6 @@ def test_load_profiles_accepts_ranked_and_unranked_profiles(tmp_path: Path) -> N
     assert profiles["normal"].rank == 20
     assert profiles["ui"].rank is None
     assert profiles["ui"].model == "combo-ui"
-    assert profiles["ui"].deepagents_compatible is True
 
 
 def test_repository_review_profile_preserves_specialized_contract() -> None:
@@ -57,20 +56,11 @@ def test_repository_review_profile_preserves_specialized_contract() -> None:
     assert review.rank is None
     assert review.model_provider == "9router"
     assert review.model == "combo-review"
-    assert review.deepagents_compatible is True
 
     instructions = review.developer_instructions.lower()
     assert "do not implement" in instructions
     assert "task-specific" in instructions
     assert "pass, fail, or blocked" in instructions
-
-
-def test_load_profiles_accepts_deepagents_compatibility_override(tmp_path: Path) -> None:
-    write_profile(tmp_path, "ui", None, 'deepagents_compatible = false\n')
-
-    profiles = REGISTRY.load_agent_profiles(tmp_path / "agents")
-
-    assert profiles["ui"].deepagents_compatible is False
 
 
 @pytest.mark.parametrize(
@@ -81,7 +71,7 @@ def test_load_profiles_accepts_deepagents_compatibility_override(tmp_path: Path)
         ("bad.toml", "name = \"wrong\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\n", "filename must match"),
         ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 0\ndescription = \"x\"\ndeveloper_instructions = \"x\"\n", "rank"),
         ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\nbase_url = \"http://127.0.0.1\"\n", "runtime-owned keys"),
-        ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\ndeepagents_compatible = \"false\"\n", "deepagents_compatible"),
+        ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\ndeepagents_compatible = false\n", "unsupported keys"),
     ],
 )
 def test_load_profiles_rejects_invalid_sources(

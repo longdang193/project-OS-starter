@@ -38,7 +38,7 @@ runtime, rules, skills, root instructions, and hooks.
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Shared Project OS runtime | `~/.agents/project-os` | Marker-owned sync of approved docs/scripts; one installation serves local projects. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; `--role` selects the canonical profile model for primary launch; validates controller-owned handoff; projects approved Codex `[mcp_servers]` only with explicit `--mcp-select`; keeps `--no-mcp` by default; uses temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
+| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; uses provider `wire_api` as the sole protocol source and projects `chat`/`responses` to native `use_responses_api=false/true`; rejects unsupported protocols before launch; `--role` selects the canonical profile model for primary launch; validates controller-owned handoff; projects approved Codex `[mcp_servers]` only with explicit `--mcp-select`; keeps `--no-mcp` by default; uses temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 

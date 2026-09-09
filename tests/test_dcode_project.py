@@ -340,6 +340,18 @@ def test_local_role_views_refuse_unowned_directory(tmp_path: Path) -> None:
         LAUNCHER._write_role_views(tmp_path, roles)
 
 
+def test_local_role_views_refuse_file_role_root(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    agents_root = tmp_path / ".deepagents" / "agents"
+    agents_root.parent.mkdir(parents=True)
+    agents_root.write_text("stale\n", encoding="utf-8")
+
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
+
+    with pytest.raises(RuntimeError, match="must be a directory"):
+        LAUNCHER._write_role_views(tmp_path, roles)
+
+
 def test_local_role_views_replace_empty_retired_directories(tmp_path: Path) -> None:
     write_role(tmp_path, "normal")
     (tmp_path / ".deepagents" / "agents" / "normal").mkdir(parents=True)
@@ -426,7 +438,11 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
         "_runtime_binding",
         lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
     )
-    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_config",
+        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+    )
     monkeypatch.setattr(
         LAUNCHER,
         "_mcp_capabilities",
@@ -478,7 +494,11 @@ def test_main_rejects_missing_or_unknown_role_before_role_view_write(
         "_runtime_binding",
         lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
     )
-    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_config",
+        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+    )
     monkeypatch.setattr(
         LAUNCHER,
         "_mcp_capabilities",
@@ -492,52 +512,6 @@ def test_main_rejects_missing_or_unknown_role_before_role_view_write(
 
     with pytest.raises(RuntimeError, match=message):
         LAUNCHER.main(argv)
-
-    assert not (tmp_path / ".deepagents").exists()
-
-
-def test_main_rejects_deepagents_incompatible_role_before_worker_start(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    write_role(tmp_path, "ui", rank=None)
-    profile = tmp_path / "agents" / "ui.toml"
-    profile.write_text(
-        profile.read_text(encoding="utf-8").replace("rank = None\n", "")
-        + "deepagents_compatible = false\n",
-        encoding="utf-8",
-    )
-    config_path = tmp_path / "dcode-project.toml"
-    config_path.write_text(
-        '[delegation]\ndefault_executor = "deepagents"\n',
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
-    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
-    )
-    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_mcp_capabilities",
-        lambda config: {
-            "mcp_servers": [],
-            "mcp_tools": [],
-            "server_tools": {},
-            "mcp_capability_digest": "digest",
-        },
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_find_dcode",
-        lambda: pytest.fail("DeepAgents executable must not start"),
-    )
-
-    with pytest.raises(RuntimeError, match="not compatible with DeepAgents"):
-        LAUNCHER.main(["--role", "ui", "-n", "task"])
 
     assert not (tmp_path / ".deepagents").exists()
 
@@ -606,6 +580,37 @@ def test_worker_timeout_defaults_are_executor_specific() -> None:
     ) == 600.0
 
 
+@pytest.mark.parametrize(
+    ("wire_api", "expected"),
+    [("chat", {"use_responses_api": False}), ("responses", {"use_responses_api": True})],
+)
+def test_deepagents_model_params_follow_provider_wire_api(
+    wire_api: str,
+    expected: dict[str, bool],
+) -> None:
+    config = {"model_providers": {"9router": {"wire_api": wire_api}}}
+
+    assert LAUNCHER._deepagents_model_params(config, "9router") == expected
+
+
+def test_deepagents_model_params_reject_unknown_wire_api() -> None:
+    config = {"model_providers": {"9router": {"wire_api": "legacy"}}}
+
+    with pytest.raises(RuntimeError, match="wire_api"):
+        LAUNCHER._deepagents_model_params(config, "9router")
+
+
+def test_runtime_binding_digest_changes_with_wire_api() -> None:
+    chat = LAUNCHER._runtime_binding_digest(
+        "9router", "combo-ui", "https://provider.example/v1", "chat"
+    )
+    responses = LAUNCHER._runtime_binding_digest(
+        "9router", "combo-ui", "https://provider.example/v1", "responses"
+    )
+
+    assert chat != responses
+
+
 @pytest.mark.parametrize("argument", ["--timeout", "--rubric"])
 def test_launcher_rejects_missing_bounded_option_value(argument: str) -> None:
     with pytest.raises(RuntimeError, match="requires a value"):
@@ -647,7 +652,11 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
         "_runtime_binding",
         lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
     )
-    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_config",
+        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+    )
     monkeypatch.setattr(
         LAUNCHER,
         "_mcp_capabilities",
@@ -687,6 +696,8 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
         "dcode",
         "-M",
         f"openai:{model}",
+        "--model-params",
+        '{"use_responses_api":false}',
         "--allow-fs-tools",
         "all",
         "--shell-allow-list",
@@ -734,7 +745,11 @@ def test_print_config_reports_selected_role_effective_model(
         "_runtime_binding",
         lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
     )
-    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_config",
+        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+    )
     monkeypatch.setattr(
         LAUNCHER,
         "_mcp_capabilities",
@@ -752,6 +767,7 @@ def test_print_config_reports_selected_role_effective_model(
     assert payload["selected_role"] == "normal"
     assert payload["effective_model"] == "openai:combo-normal"
     assert payload["controller_model"] == "openai:combo-high"
+    assert payload["deepagents_model_params"] == {"use_responses_api": False}
 
 def test_print_config_reports_tura_executable_hash_without_credentials(
     monkeypatch: pytest.MonkeyPatch,
@@ -816,6 +832,37 @@ def test_role_loader_rejects_mismatched_runtime_provider(tmp_path: Path) -> None
         LAUNCHER._load_roles(tmp_path, "9router")
 
 
+def test_deepagents_provider_binding_accepts_responses_wire_api() -> None:
+    config = {
+        "model_providers": {
+            "9router": {
+                "wire_api": "responses",
+            }
+        }
+    }
+
+    LAUNCHER._validate_deepagents_provider_binding(config, "9router")
+
+
+def test_deepagents_provider_binding_accepts_chat_wire_api() -> None:
+    config = {
+        "model_providers": {
+            "9router": {
+                "wire_api": "chat",
+            }
+        }
+    }
+
+    LAUNCHER._validate_deepagents_provider_binding(config, "9router")
+
+
+def test_deepagents_provider_binding_rejects_unknown_wire_api() -> None:
+    config = {"model_providers": {"9router": {"wire_api": "legacy"}}}
+
+    with pytest.raises(RuntimeError, match="use `chat` or `responses`"):
+        LAUNCHER._validate_deepagents_provider_binding(config, "9router")
+
+
 def test_role_loader_rejects_duplicate_ranks(tmp_path: Path) -> None:
     write_role(tmp_path, "low", rank=10)
     write_role(tmp_path, "normal", rank=10)
@@ -830,7 +877,6 @@ def test_canonical_role_hierarchy_is_source_owned() -> None:
             role["model_provider"],
             role["model"],
             role["rank"],
-            role["deepagents_compatible"],
         )
         for role in LAUNCHER._load_roles(ROOT, "9router")
     }
@@ -838,7 +884,7 @@ def test_canonical_role_hierarchy_is_source_owned() -> None:
     source_names = {path.stem for path in (ROOT / "agents").glob("*.toml")}
 
     assert set(roles) == source_names
-    assert roles["ui"] == ("9router", "combo-ui", None, True)
+    assert roles["ui"] == ("9router", "combo-ui", None)
 
 
 def test_runtime_environment_reaches_deepagents_server_child(
@@ -1100,6 +1146,7 @@ def _prepare_deepagents_main(
         encoding="utf-8",
     )
     codex_config = {
+        "model_providers": {"9router": {"wire_api": "chat"}},
         "mcp_servers": {
             "context7": {
                 "url": "https://mcp.context7.com/mcp",

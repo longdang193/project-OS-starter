@@ -149,11 +149,13 @@ consumes this selector and
 uses the selected profile's model for its primary `dcode -M` binding. Its
 provider endpoint, credentials, provider definition, and mutable state remain
 local. Each selected profile's `model_provider` must match active local Codex provider
-binding.
-Profiles may set `deepagents_compatible = false` when their provider model does
-not return the Responses API shape required by DeepAgents; `dcode-project`
-rejects that pairing before child launch, while Tura and native Codex remain
-independent paths.
+binding. `dcode-project` also reads that provider's canonical `wire_api` and
+projects it to DeepAgents' native `use_responses_api` model parameter:
+`chat` maps to `false`, `responses` maps to `true`. Unsupported protocols fail
+before child launch. Agent profiles do not duplicate protocol compatibility;
+the active provider binding owns that fact, so every profile using that provider
+follows the same launch mapping while Tura and Native Codex remain independent
+paths.
 
 `project-delegate` is the one bounded Native Codex-to-Tura adapter. Its wrapper
 rejects `--executor` and forces `--executor tura`; `[delegation].default_executor`

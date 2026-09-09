@@ -20,7 +20,7 @@ REQUIRED_KEYS = {
     "description",
     "developer_instructions",
 }
-ALLOWED_KEYS = REQUIRED_KEYS | {"rank", "deepagents_compatible"}
+ALLOWED_KEYS = REQUIRED_KEYS | {"rank"}
 
 
 @dataclass(frozen=True)
@@ -30,7 +30,6 @@ class AgentProfile:
     model_provider: str
     model: str
     rank: int | None
-    deepagents_compatible: bool
     description: str
     developer_instructions: str
 
@@ -83,11 +82,6 @@ def load_agent_profiles(
             raise ValueError(f"Agent profile ranks must be unique: {source}")
         if rank is not None:
             ranks.add(rank)
-        deepagents_compatible = payload.get("deepagents_compatible", True)
-        if not isinstance(deepagents_compatible, bool):
-            raise ValueError(
-                f"Agent profile {source} `deepagents_compatible` must be a boolean."
-            )
         if name in profiles:
             raise ValueError(f"Duplicate agent profile: {name}")
         profiles[name] = AgentProfile(
@@ -96,7 +90,6 @@ def load_agent_profiles(
             model_provider=model_provider,
             model=_required_string(payload, "model", source),
             rank=rank,
-            deepagents_compatible=deepagents_compatible,
             description=_required_string(payload, "description", source),
             developer_instructions=_required_string(payload, "developer_instructions", source),
         )

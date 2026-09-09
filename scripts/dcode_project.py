@@ -197,7 +197,6 @@ def _load_roles(
             "model_provider": profile.model_provider,
             "model": profile.model,
             "rank": profile.rank,
-            "deepagents_compatible": profile.deepagents_compatible,
             "description": profile.description,
             "developer_instructions": profile.developer_instructions,
         }
@@ -321,6 +320,11 @@ def _remove_role_views(repo_root: Path, roles: list[dict[str, str]]) -> None:
 def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
     agents_root = repo_root / ".deepagents" / "agents"
     marker = agents_root / _ROLE_VIEWS_MARKER
+    if agents_root.exists() and not agents_root.is_dir():
+        raise RuntimeError(
+            f"Refusing to replace user-owned DeepAgents role root: {agents_root} "
+            "must be a directory."
+        )
     if not agents_root.exists():
         agents_root.mkdir(parents=True)
     previous_views = _read_owned_views(marker, roles) if marker.exists() else {}
@@ -362,6 +366,37 @@ def _runtime_binding(config: dict[str, object]) -> tuple[str, str, str, str]:
         raise RuntimeError(f"Active Codex provider is unavailable: {provider_name}")
     base_url = _required_string(provider, "base_url", "active Codex provider")
     return model, base_url, _read_env_value(secret_file, secret_key), provider_name
+
+
+def _deepagents_model_params(
+    codex_config: dict[str, object],
+    provider_name: str,
+) -> dict[str, bool]:
+    providers = codex_config.get("model_providers")
+    if not isinstance(providers, dict):
+        raise RuntimeError("Missing Codex `model_providers` configuration for DeepAgents.")
+    provider = providers.get(provider_name)
+    if not isinstance(provider, dict):
+        raise RuntimeError(f"Active Codex provider is unavailable: {provider_name}")
+    wire_api = provider.get("wire_api")
+    if not isinstance(wire_api, str) or not wire_api.strip():
+        raise RuntimeError(
+            f"Active Codex provider `{provider_name}` must declare `wire_api` for DeepAgents."
+        )
+    normalized = wire_api.strip().lower()
+    if normalized not in {"chat", "responses"}:
+        raise RuntimeError(
+            f"DeepAgents does not support active Codex provider `{provider_name}` "
+            f"with `wire_api = \"{wire_api}\"`; use `chat` or `responses`."
+        )
+    return {"use_responses_api": normalized == "responses"}
+
+
+def _validate_deepagents_provider_binding(
+    codex_config: dict[str, object],
+    provider_name: str,
+) -> None:
+    _deepagents_model_params(codex_config, provider_name)
 
 def _codex_config(config: dict[str, object]) -> dict[str, object]:
     paths = config.get("paths")
@@ -415,9 +450,15 @@ def _runtime_binding_digest(
     provider_name: str,
     model: str,
     base_url: str,
+    deepagents_model_params: dict[str, bool] | None = None,
 ) -> str:
     return _sha256_json(
-        {"base_url": base_url, "model": model, "provider": provider_name}
+        {
+            "base_url": base_url,
+            "deepagents_model_params": deepagents_model_params,
+            "model": model,
+            "provider": provider_name,
+        }
     )
 
 def _parse_mcp_selection(values: list[str], capabilities: dict[str, object]) -> list[str]:
@@ -1238,6 +1279,11 @@ def main(argv: list[str]) -> int:
     executor = _resolve_executor(config, explicit_executor)
     model, base_url, api_key, provider_name = _runtime_binding(config)
     codex_config = _codex_config(config)
+    deepagents_model_params = (
+        _deepagents_model_params(codex_config, provider_name)
+        if executor == "deepagents"
+        else None
+    )
     capabilities = _mcp_capabilities(codex_config)
     selected = _parse_mcp_selection(selection_values, capabilities)
     roles = _load_roles(repo_root, provider_name)
@@ -1257,10 +1303,12 @@ def main(argv: list[str]) -> int:
             if isinstance(config.get("delegation"), dict)
             else None,
             "selected_executor": executor,
+            "deepagents_model_params": deepagents_model_params,
             "runtime_binding_digest": _runtime_binding_digest(
                 provider_name,
                 model,
                 base_url,
+                deepagents_model_params,
             ),
             "mcp_capability_digest": capabilities["mcp_capability_digest"],
             "roles_path": str(repo_root / ".deepagents" / "agents"),
@@ -1284,12 +1332,6 @@ def main(argv: list[str]) -> int:
     if selected_role is None:
         names = "|".join(sorted(role_by_name))
         raise RuntimeError(f"dcode-project requires `--role <{names}>` for task execution.")
-    if executor == "deepagents" and not selected_role["deepagents_compatible"]:
-        raise RuntimeError(
-            f"Role `{selected_role['name']}` is not compatible with DeepAgents for "
-            f"model `{selected_role['model']}`; use `project-delegate --role "
-            f"{selected_role['name']}` or repair the provider Responses API route."
-        )
     if executor == "tura":
         executable, provider_config = _tura_worker_paths(config)
         if handoff_file is None:
@@ -1338,6 +1380,8 @@ def main(argv: list[str]) -> int:
             dcode,
             "-M",
             f"openai:{selected_role['model']}",
+            "--model-params",
+            json.dumps(deepagents_model_params, separators=(",", ":"), sort_keys=True),
             *_FIXED_LOCAL_CAPABILITY_OPTIONS,
             *(arg for arg in child_argv if arg != "--no-mcp"),
         ]
