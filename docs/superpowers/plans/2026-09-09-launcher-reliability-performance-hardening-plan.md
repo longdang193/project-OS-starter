@@ -73,14 +73,14 @@ ships only when the captured baseline identifies material cost.
 - Branch: `main`
 - Base commit: `ec97aa2`
 - Expected workspace: tracked files clean at `ec97aa2`; preserve untracked `.playwright-mcp/` and `db/`; do not stage, delete, or rewrite them
-- Next action: complete Task 2 cold-concurrency proof, then Task 3 ownership proof
+- Next action: obtain isolated cold OpenDesign proof without touching shared daemons, then run measured performance baseline
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current | `codex` | none | generated kit and clean-bundle import tests | `35 passed`; manifest helper included; kit build and validation passed |
-| Task 2 | `active` | current | `codex` | Task 1 | OpenDesign contract tests and bounded Windows cold/warm probe | `4 passed`; PowerShell parse passed; warm probe `740.3 ms`; cold-concurrency probe pending |
-| Task 3 | `pending` | current | `unresolved` | Task 1 | collision and stale-pane regression tests | pending |
+| Task 2 | `active` | current | `codex` | Task 1 | OpenDesign contract tests and bounded Windows cold/warm probe | `4 passed`; PowerShell parse passed; prior warm probe `1.4s`, no timeouts, OpenDesign count `6→6`; current host has five shared daemons, so cold proof remains unsafe without isolated runtime |
+| Task 3 | `completed` | current | `codex` | Task 1 | collision and stale-pane regression tests | `87 passed`; verified retry now re-resolves session/pane and refreshes pane evidence before restart |
 | Task 4 | `pending` | current | `codex` | Task 1 | Codex acceptance/completion regression tests | implementation proof exists: `85 passed`; no-wait prompt plus bounded `agent get`/`agent read`; completion ledger update pending |
 | Task 5 | `pending` | current | `codex` | Tasks 1–4 | observation deadline and polling regression tests | implementation proof exists: `85 passed`; DeepAgents observer uses shared monotonic deadline; expanded timeout proof pending |
 | Task 6 | `pending` | current | `unresolved` | Tasks 2–5 | phase timing baseline and measured optimization decision | pending |
@@ -234,15 +234,15 @@ ships only when the captured baseline identifies material cost.
 - Stop for: process termination outside explicitly task-owned test lanes, uncertain attempt ownership, or retry after unverified cleanup.
 
 **Steps:**
-- [ ] Generate unique names for launcher-created agents before the first `agent start`.
-- [ ] When caller supplies `--name` and Herdr returns `agent_name_taken`, return conflict evidence without invoking pane cleanup.
-- [ ] Keep cleanup allowed only for a verified owned failed attempt; after successful retirement call `_resolve_target_selector` again and refresh pane evidence before retry.
-- [ ] Preserve evidence updates for the final agent name, target, retry, and reconciliation result.
-- [ ] Add tests for unrelated same-name agent preservation, unique default names, stale-pane re-resolution, verified cleanup, and uncertain cleanup.
+- [x] Generate unique names for launcher-created agents before the first `agent start`.
+- [x] When caller supplies `--name` and Herdr returns `agent_name_taken`, return conflict evidence without invoking pane cleanup.
+- [x] Keep cleanup allowed only for a verified owned failed attempt; after successful retirement call `_resolve_target_selector` again and refresh pane evidence before retry.
+- [x] Preserve evidence updates for the final agent name, target, retry, and reconciliation result.
+- [x] Add tests for unrelated same-name agent preservation, unique default names, stale-pane re-resolution, verified cleanup, and uncertain cleanup.
 
 **Verification:**
-- [ ] `py -m pytest tests/test_herdr_main_launcher.py -q`
-- Expected: same-name collision never calls `_terminate_codex_lane`; verified owned retry uses a newly resolved pane; uncertain state returns fail-closed evidence.
+- [x] `py -m pytest tests/test_herdr_main_launcher.py -q`
+- Expected: same-name collision never calls `_terminate_codex_lane`; verified owned retry uses a newly resolved pane; uncertain state returns fail-closed evidence. Confirmed by `87 passed`.
 
 **Exit Criteria:**
 - No recovery path retires an agent based only on matching name; no retry uses a pane proven unavailable.

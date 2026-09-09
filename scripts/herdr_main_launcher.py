@@ -1548,6 +1548,43 @@ def main(argv: list[str] | None = None) -> int:
                     }
                 }, sort_keys=True))
                 return 2
+            if reconciliation["state"] == "retired":
+                resolved_session, resolved_pane, target_resolution = _resolve_target_selector(
+                    args.cwd,
+                    args.session,
+                    args.pane,
+                    str(evidence["herdr"]["executable"]),
+                    executor="codex",
+                    env=environment,
+                )
+                pane_state = _herdr_pane(
+                    args.cwd,
+                    resolved_session,
+                    resolved_pane,
+                    str(evidence["herdr"]["executable"]),
+                    executor="codex",
+                    env=environment,
+                )
+                evidence["herdr"].update(
+                    {
+                        "session": resolved_session,
+                        "pane": resolved_pane,
+                        "pane_cwd": str(Path(str(pane_state["pane"]["cwd"])).resolve()),
+                        "start_process_ids": sorted(
+                            _process_ids(
+                                pane_state["process_info"].get("foreground_processes", []),
+                                require_non_shell=False,
+                            )
+                        ),
+                    }
+                )
+                evidence["target_resolution"] = target_resolution
+                evidence["observation"].update(
+                    {"session": resolved_session, "pane": resolved_pane}
+                )
+                command = command.copy()
+                command[command.index("--session") + 1] = resolved_session
+                command[command.index("--pane") + 1] = resolved_pane
             agent_name = _unique_agent_name(str(evidence["herdr"]["agent_name"]))
             command = command.copy()
             command[command.index("start") + 1] = agent_name

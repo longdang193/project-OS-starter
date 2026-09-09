@@ -87,7 +87,7 @@ it.
 | Task 1 | `completed` | current | `codex` | none | launcher selector tests | `182 passed`; runtime selector tests added |
 | Task 2 | `completed` | current | `codex` | Task 1 | selection and isolation tests | global/project/runtime MCP isolation; live Codex parser probe |
 | Task 3 | `completed` | current | `codex` | Task 2 | failed-start ownership tests | ownership and fail-closed reconciliation tests pass |
-| Task 4 | `completed` | current | `codex` | Task 3 | OpenDesign patch tests and timeout contract | `178+` focused tests; one daemon PID across concurrent wrappers |
+| Task 4 | `completed` | current | `codex` | Task 3 | OpenDesign patch tests and timeout contract | `178+` focused tests; warm probe retained one daemon count across concurrent wrappers; cold probe requires isolated runtime |
 | Task 5 | `completed` | current | `codex` | Task 4 | full suite, validators, smoke evidence | live worker returned `LIVE_MCP_ISOLATION_OK`; zero new MCP child processes; drift clean |
 
 ## Task Breakdown

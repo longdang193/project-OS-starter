@@ -1195,6 +1195,92 @@ def test_main_times_out_codex_and_verifies_termination(
     assert terminated == []
 
 
+def test_main_re_resolves_target_after_verified_codex_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "runtime_grant": {"delegation": {"child_agents": "deny"}},
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "old-session",
+            "pane": "old-pane",
+            "start_process_ids": [41],
+        },
+        "assignment_request": {
+            "redacted_prompt_argv": ["herdr", "agent", "prompt", "xhigh-main"],
+        },
+        "observation": {"agent_name": "xhigh-main"},
+        "target_resolution": {"status": "selected", "mode": "auto"},
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: ([
+        "herdr.exe", "--session", "old-session", "agent", "start", "xhigh-main",
+        "--pane", "old-pane", "--", "codex",
+    ], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_reconcile_failed_codex_start",
+        lambda *args, **kwargs: {"state": "retired", "cleanup": {"verified": True}},
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {
+            "pane": {"cwd": str(ROOT)},
+            "process_info": {"foreground_processes": [{"pid": 7, "name": "powershell.exe", "children": []}]},
+        },
+    )
+    resolutions = iter([
+        ("new-session", "new-pane", {"status": "selected", "mode": "auto"}),
+    ])
+    monkeypatch.setattr(LAUNCHER, "_resolve_target_selector", lambda *args, **kwargs: next(resolutions))
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                json.dumps({"error": {"code": "agent_name_taken"}}),
+                "",
+            )
+        if len(calls) == 2:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[3:5] == ["agent", "prompt"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"agent": {"agent_status": "idle"}}}),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": ""}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "auto", "--pane", "auto",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 0
+
+    retry_start = calls[1]
+    assert retry_start[retry_start.index("--session") + 1] == "new-session"
+    assert retry_start[retry_start.index("--pane") + 1] == "new-pane"
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["session"] == "new-session"
+
 def test_main_transport_timeout_marks_delivery_uncertain_without_termination(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
