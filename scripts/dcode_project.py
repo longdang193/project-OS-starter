@@ -23,6 +23,14 @@ try:
     from project_root import resolve_repo_root
 except ModuleNotFoundError:
     from scripts.project_root import resolve_repo_root
+try:
+    from mcp_selection import McpSelectionError, load_mcp_capabilities, normalize_mcp_selection
+except ModuleNotFoundError:
+    from scripts.mcp_selection import (
+        McpSelectionError,
+        load_mcp_capabilities,
+        normalize_mcp_selection,
+    )
 
 
 
@@ -363,23 +371,13 @@ def _codex_config(config: dict[str, object]) -> dict[str, object]:
     return _load_toml(path, "Codex config")
 
 def _mcp_capabilities(codex_config: dict[str, object]) -> dict[str, object]:
-    servers = codex_config.get("mcp_servers", {})
-    if not isinstance(servers, dict):
-        raise RuntimeError("Invalid Codex `[mcp_servers]` configuration.")
-    normalized: dict[str, list[str]] = {}
-    for server_name, server_config in servers.items():
-        if not isinstance(server_name, str) or not server_name.strip():
-            raise RuntimeError("Codex MCP server names must be non-empty strings.")
-        if not isinstance(server_config, dict):
-            raise RuntimeError(f"Invalid Codex MCP server configuration: {server_name}")
-        tools = server_config.get("tools", {})
-        if not isinstance(tools, dict):
-            tools = {}
-        normalized[server_name] = sorted(
-            tool_name
-            for tool_name in tools
-            if isinstance(tool_name, str) and tool_name.strip()
-        )
+    try:
+        normalized = {
+            name: list(tools)
+            for name, tools in load_mcp_capabilities(codex_config).items()
+        }
+    except McpSelectionError as exc:
+        raise RuntimeError(str(exc)) from exc
     server_ids = sorted(normalized)
     tool_ids = sorted(
         f"{server}.{tool}"
@@ -431,23 +429,11 @@ def _parse_mcp_selection(values: list[str], capabilities: dict[str, object]) -> 
             list(capabilities["mcp_servers"])
             + list(capabilities["mcp_tools"])
         )
-    selected: set[str] = set()
-    for value in values:
-        for selector in value.split(","):
-            selector = selector.strip()
-            if not selector:
-                raise RuntimeError("MCP selection contains an empty selector.")
-            server, separator, tool = selector.partition(".")
-            if not server or server not in server_tools:
-                raise RuntimeError(f"Unknown MCP server selection `{server}`.")
-            if separator:
-                if not tool or "." in tool:
-                    raise RuntimeError(f"Malformed MCP tool selection `{selector}`.")
-                tools = server_tools[server]
-                if not isinstance(tools, list) or tool not in tools:
-                    raise RuntimeError(f"Unknown MCP tool selection `{selector}`.")
-            selected.add(selector)
-    return sorted(selected)
+    try:
+        selection = normalize_mcp_selection(values, server_tools, allow_tools=True)
+    except McpSelectionError as exc:
+        raise RuntimeError(str(exc)) from exc
+    return list(selection["requested"])
 
 
 def _native_mcp_config(

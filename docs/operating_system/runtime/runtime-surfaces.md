@@ -50,7 +50,11 @@ runtime, rules, skills, root instructions, and hooks.
 - Globalized scripts resolve project root from explicit `--repo-root`, then Git top-level, and block when neither exists.
 - Project-local paths remain fallback when the shared installation is absent or marker ownership fails.
 - `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, it binds the exact lane profile and `dcode-project` resolves and projects that profile into DeepAgents. Herdr owns top-level session/pane lifecycle and outer observation, while `dcode-project` owns DeepAgents worker lifecycle. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
-- Native Herdr Codex workers disable `chrome-devtools` and `playwright` MCP servers inherited from global Codex configuration; browser MCPs stay available to the top-level controller without multiplying browser processes across workers.
+- Native Herdr Codex workers disable every effective MCP server by default; a
+  validated server-level selection enables only selected servers. Tool-level
+  selection fails closed until Codex can enforce it. Browser MCPs stay
+  available to the top-level controller without multiplying browser processes
+  across workers.
 - Codex Herdr probes use one resolved `CODEX_HOME`; the launcher passes it to Herdr and Codex child processes and blocks when project and home `hooks.json` both define `Stop` hooks.
 - Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. The launcher and its tests own task-delivery mechanics; CoS accepts only final delivery evidence, never readiness or intent alone. The launcher does not use `--until working` because that can match unrelated active work.
 - Native Codex CoS may pass `--session auto --pane auto`; the repository launcher discovers all eligible existing matching-`--cwd` panes from the default Herdr server, validates them through their workspace-qualified pane IDs, sorts candidates deterministically, and selects the first. Workspace IDs are not Herdr session names. Candidate evidence records the full eligible set. Mixed exact/`auto` selectors fail closed; no eligible target returns `target_resolution:not_found`. `HERDR_ENV` is not a controller dispatch gate; launcher child environments remove it.
@@ -77,6 +81,9 @@ runtime, rules, skills, root instructions, and hooks.
 - `dcode-project` owns DeepAgents capability validation and child projection;
   Herdr only forwards approved selectors or the default `--no-mcp`. Unsupported
   selectors fail before lane retirement.
+- Native Codex selection uses the same server identity contract but rejects
+  tool selectors before launch. Requested and effective selection remain
+  separate evidence fields.
 - Headless `-n` auto-runs MCP tools only when read-only metadata is coherent;
   unannotated and mutating calls fail closed. Local compatibility permits only
   `playwright_browser_tabs` with `action=list`.

@@ -84,6 +84,13 @@ def test_open_design_mcp_launcher_discovers_current_sidecar() -> None:
     assert "Start-Process -FilePath $exe -ArgumentList \"--headless\"" in launcher
     assert "open-design-sidecar-5329972e5f38dbd97ec28d825bccc6b9" not in launcher
     assert 'Name -like "open-design-*"' in launcher
+    assert "System.Threading.Mutex" in launcher
+    assert "OpenDesignMcpBootstrap" in launcher
+    assert "WaitOne" in launcher
+    assert "ReleaseMutex" in launcher
+    assert "startupBudgetSeconds" in launcher
+    assert "readinessBudgetSeconds" in launcher
+    assert "Find-OpenDesignDaemon" in launcher
 
 
 def test_installed_packaged_logger_uses_safe_writes() -> None:

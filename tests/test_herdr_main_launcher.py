@@ -50,10 +50,194 @@ def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) 
     fake_profile(tmp_path, "review", None)
     profile = LAUNCHER._profile(tmp_path / "agents", "review")
 
-    arguments = LAUNCHER._codex_arguments(profile, tmp_path)
+    arguments = LAUNCHER._codex_arguments(
+        profile,
+        tmp_path,
+        mcp_server_names=("chrome-devtools", "playwright", "open-design"),
+    )
 
     assert "mcp_servers.chrome-devtools.enabled=false" in arguments
     assert "mcp_servers.playwright.enabled=false" in arguments
+    assert "mcp_servers.open-design.enabled=false" in arguments
+
+
+def test_codex_arguments_disable_runtime_only_mcp_with_valid_transport(
+    tmp_path: Path,
+) -> None:
+    fake_profile(tmp_path, "review", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+
+    arguments = LAUNCHER._codex_arguments(
+        profile,
+        tmp_path,
+        mcp_server_names=("cua_repl",),
+        runtime_only_mcp_servers=("cua_repl",),
+    )
+
+    assert 'mcp_servers.cua_repl.command="cmd"' in arguments
+    assert "mcp_servers.cua_repl.args=[]" in arguments
+    assert "mcp_servers.cua_repl.enabled=false" in arguments
+
+
+def test_codex_arguments_preserve_selected_runtime_only_mcp_transport(
+    tmp_path: Path,
+) -> None:
+    fake_profile(tmp_path, "review", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+
+    arguments = LAUNCHER._codex_arguments(
+        profile,
+        tmp_path,
+        mcp_server_names=("cua_repl",),
+        selected_mcp_servers=("cua_repl",),
+        runtime_only_mcp_servers=("cua_repl",),
+    )
+
+    assert 'mcp_servers.cua_repl.command="cmd"' not in arguments
+    assert "mcp_servers.cua_repl.args=[]" not in arguments
+    assert arguments.count("mcp_servers.cua_repl.enabled=false") == 1
+    assert arguments.count("mcp_servers.cua_repl.enabled=true") == 1
+
+
+def test_codex_arguments_enable_only_selected_server(tmp_path: Path) -> None:
+    fake_profile(tmp_path, "review", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+
+    arguments = LAUNCHER._codex_arguments(
+        profile,
+        tmp_path,
+        mcp_server_names=("context7", "open-design"),
+        selected_mcp_servers=("context7",),
+    )
+
+    assert "mcp_servers.context7.enabled=false" in arguments
+    assert "mcp_servers.context7.enabled=true" in arguments
+    assert "mcp_servers.open-design.enabled=false" in arguments
+
+
+def test_codex_mcp_selection_reads_global_and_project_config(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        '[mcp_servers.global]\ncommand = "global"\n\n'
+        '[mcp_servers.overridden]\ncommand = "global"\n',
+        encoding="utf-8",
+    )
+    project_codex = tmp_path / ".codex"
+    project_codex.mkdir()
+    (project_codex / "config.toml").write_text(
+        '[mcp_servers.project]\ncommand = "project"\n\n'
+        '[mcp_servers.overridden]\ncommand = "project"\n',
+        encoding="utf-8",
+    )
+
+    selection = LAUNCHER._codex_mcp_selection(tmp_path, codex_home, [])
+
+    assert selection["effective_servers"] == ()
+    assert selection["server_names"] == ("global", "overridden", "project")
+
+
+def test_codex_mcp_selection_includes_runtime_servers(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        '[mcp_servers.context7]\ncommand = "context7"\n',
+        encoding="utf-8",
+    )
+
+    selection = LAUNCHER._codex_mcp_selection(
+        tmp_path,
+        codex_home,
+        [],
+        runtime_servers={"cua_repl": True},
+    )
+
+    assert selection["server_names"] == ("context7", "cua_repl")
+    assert selection["runtime_only_servers"] == ("cua_repl",)
+    assert selection["effective_servers"] == ()
+
+
+def test_codex_runtime_mcp_servers_reads_codex_listing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    result = subprocess.CompletedProcess(
+        ["codex", "mcp", "list", "--json"],
+        0,
+        stdout=json.dumps([
+            {"name": "cua_repl", "enabled": True},
+            {"name": "disabled", "enabled": False},
+        ]),
+        stderr="",
+    )
+    monkeypatch.setattr(LAUNCHER, "_run", lambda *args, **kwargs: result)
+
+    assert LAUNCHER._codex_runtime_mcp_servers("codex", tmp_path, env={}) == {
+        "cua_repl": True,
+        "disabled": False,
+    }
+
+
+def test_codex_mcp_selection_rejects_tool_selector(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        '[mcp_servers.context7]\ncommand = "context7"\n'
+        'tools = { query_docs = {} }\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="tool-level MCP selection"):
+        LAUNCHER._codex_mcp_selection(tmp_path, codex_home, ["context7.query_docs"])
+
+
+def test_failed_codex_start_reconciliation_blocks_uncertain_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_json_command(command, **kwargs):
+        if command[-2:] == ["pane", "list"]:
+            return {"result": {"panes": [{"pane_id": "w1:p1", "agent": None}]}}
+        return {"result": {"process_info": {"foreground_processes": [{"pid": 42, "name": "codex.exe", "children": []}]}}}
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json_command)
+
+    result = LAUNCHER._reconcile_failed_codex_start(
+        "herdr.exe",
+        "session",
+        "w1:p1",
+        "normal-main",
+        env={},
+    )
+
+    assert result["state"] == "uncertain"
+    assert result["cleanup"] is None
+
+
+def test_failed_codex_start_reconciliation_retires_owned_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_json_command(command, **kwargs):
+        if command[-2:] == ["pane", "list"]:
+            return {"result": {"panes": [{"pane_id": "w1:p1", "agent": "normal-main"}]}}
+        return {"result": {"process_info": {"foreground_processes": [{"pid": 42, "name": "codex.exe", "children": []}]}}}
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json_command)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_terminate_codex_lane",
+        lambda *args, **kwargs: {"verified": True, "action": "pane-close"},
+    )
+
+    result = LAUNCHER._reconcile_failed_codex_start(
+        "herdr.exe",
+        "session",
+        "w1:p1",
+        "normal-main",
+        env={},
+    )
+
+    assert result["state"] == "retired"
+    assert result["cleanup"]["verified"] is True
 
 
 def test_redaction_hides_developer_instructions() -> None:
@@ -458,6 +642,62 @@ def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
     assert evidence["registry_launcher"]["delivery_task_sha256"] == LAUNCHER._sha256_text(
         delivery_task
     )
+
+
+def test_resolve_launch_projects_selected_codex_mcp_server(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        '[mcp_servers.context7]\ncommand = "context7"\n\n'
+        '[mcp_servers.open-design]\ncommand = "open-design"\n',
+        encoding="utf-8",
+    )
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"),
+        "normal",
+        "9router",
+        "combo-normal",
+        20,
+        True,
+        "test",
+        "do not modify files",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_runtime",
+        lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
+    )
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda cwd, session, pane, herdr, **kwargs: {
+            "pane": {"cwd": str(cwd)},
+            "process_info": {"foreground_processes": []},
+        },
+    )
+
+    command, evidence = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="codex-probe",
+        pane="w1:p1",
+        cwd=ROOT,
+        expected_base="HEAD",
+        executor="codex",
+        mcp_select=["context7"],
+        task="task",
+    )
+
+    assert "mcp_servers.context7.enabled=false" in command
+    assert "mcp_servers.context7.enabled=true" in command
+    assert "mcp_servers.open-design.enabled=false" in command
+    assert evidence["codex"]["mcp_selection"]["effective_servers"] == ("context7",)
 
 
 def test_resolve_launch_quotes_mcp_selectors_for_powershell(
@@ -1125,6 +1365,11 @@ def test_main_retries_default_agent_name_after_name_taken(
 
     monkeypatch.setattr(
         LAUNCHER, "resolve_launch", lambda **kwargs: (start_command, evidence)
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_reconcile_failed_codex_start",
+        lambda *args, **kwargs: {"state": "absent", "cleanup": None, "process_ids": []},
     )
 
     def fake_run(command, **kwargs):

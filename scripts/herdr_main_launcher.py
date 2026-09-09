@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 import uuid
 from typing import Any
 
@@ -19,6 +21,14 @@ try:
     from agent_profile_registry import AgentProfile, load_agent_profiles
 except ModuleNotFoundError:
     from scripts.agent_profile_registry import AgentProfile, load_agent_profiles
+try:
+    from mcp_selection import McpSelectionError, load_mcp_capabilities, normalize_mcp_selection
+except ModuleNotFoundError:
+    from scripts.mcp_selection import (
+        McpSelectionError,
+        load_mcp_capabilities,
+        normalize_mcp_selection,
+    )
 
 
 class LaunchBlocked(RuntimeError):
@@ -40,7 +50,6 @@ class TargetResolutionBlocked(LaunchBlocked):
 
 
 _EXECUTORS = {"codex", "deepagents"}
-_WORKER_BROWSER_MCP_SERVERS = ("chrome-devtools", "playwright")
 _MAX_TASK_LENGTH = 4096
 _CODEX_PROMPT_TIMEOUT_MS = "30000"
 _CODEX_START_TIMEOUT_MS = "120000"
@@ -174,6 +183,75 @@ def _codex_environment(codex_home: Path) -> dict[str, str]:
     environment = _herdr_environment()
     environment["CODEX_HOME"] = str(codex_home.resolve())
     return environment
+
+
+def _codex_runtime_mcp_servers(
+    codex: str,
+    cwd: Path,
+    *,
+    env: dict[str, str],
+) -> dict[str, bool]:
+    result = _run(
+        [codex, "mcp", "list", "--json"],
+        cwd=cwd,
+        env=env,
+    )
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise LaunchBlocked(
+            f"Cannot inspect Codex MCP servers ({result.returncode}): {detail}"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise LaunchBlocked(f"Codex MCP listing returned invalid JSON: {exc}") from exc
+    if not isinstance(payload, list):
+        raise LaunchBlocked("Codex MCP listing returned a non-list JSON response.")
+    servers: dict[str, bool] = {}
+    for item in payload:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise LaunchBlocked("Codex MCP listing returned an invalid server entry.")
+        name = item["name"].strip()
+        if not name:
+            raise LaunchBlocked("Codex MCP listing returned an empty server name.")
+        servers[name] = item.get("enabled", True) is not False
+    return servers
+
+
+def _codex_mcp_selection(
+    cwd: Path,
+    codex_home: Path,
+    values: list[str],
+    *,
+    runtime_servers: Mapping[str, bool] | None = None,
+) -> dict[str, tuple[str, ...]]:
+    configs: list[dict[str, Any]] = []
+    for config_path in (codex_home / "config.toml", cwd.resolve() / ".codex" / "config.toml"):
+        if not config_path.is_file():
+            continue
+        try:
+            config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise LaunchBlocked(f"Cannot read Codex MCP config {config_path}: {exc}") from exc
+        configs.append(config)
+    try:
+        capabilities = load_mcp_capabilities(*configs)
+        runtime_only_servers: set[str] = set()
+        for name, enabled in (runtime_servers or {}).items():
+            if enabled:
+                if name not in capabilities:
+                    runtime_only_servers.add(name)
+                capabilities.setdefault(name, ())
+            else:
+                capabilities.pop(name, None)
+        selection = normalize_mcp_selection(values, capabilities, allow_tools=False)
+    except McpSelectionError as exc:
+        raise LaunchBlocked(str(exc)) from exc
+    return {
+        **selection,
+        "server_names": tuple(capabilities),
+        "runtime_only_servers": tuple(sorted(runtime_only_servers)),
+    }
 
 
 def _git_value(cwd: Path, *arguments: str) -> str:
@@ -400,7 +478,14 @@ def _resolve_target_selector(
     }
 
 
-def _codex_arguments(profile: AgentProfile, cwd: Path) -> list[str]:
+def _codex_arguments(
+    profile: AgentProfile,
+    cwd: Path,
+    *,
+    mcp_server_names: tuple[str, ...] = (),
+    selected_mcp_servers: tuple[str, ...] = (),
+    runtime_only_mcp_servers: tuple[str, ...] = (),
+) -> list[str]:
     arguments = [
         "-C",
         str(cwd),
@@ -411,10 +496,22 @@ def _codex_arguments(profile: AgentProfile, cwd: Path) -> list[str]:
         "-c",
         f"developer_instructions={json.dumps(profile.developer_instructions)}",
     ]
+    runtime_only = set(runtime_only_mcp_servers)
+    for server in mcp_server_names:
+        if server in runtime_only and server not in selected_mcp_servers:
+            arguments.extend(
+                (
+                    "-c",
+                    f'mcp_servers.{server}.command="cmd"',
+                    "-c",
+                    f"mcp_servers.{server}.args=[]",
+                )
+            )
+        arguments.extend(("-c", f"mcp_servers.{server}.enabled=false"))
     arguments.extend(
         value
-        for server in _WORKER_BROWSER_MCP_SERVERS
-        for value in ("-c", f"mcp_servers.{server}.enabled=false")
+        for server in selected_mcp_servers
+        for value in ("-c", f"mcp_servers.{server}.enabled=true")
     )
     return arguments
 
@@ -499,6 +596,65 @@ def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
         return False
     error = payload.get("error")
     return isinstance(error, dict) and error.get("code") == "agent_name_taken"
+
+
+def _reconcile_failed_codex_start(
+    herdr: str,
+    session: str,
+    pane: str,
+    agent_name: str,
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    try:
+        panes = _result(
+            _json_command(
+                [herdr, "--session", session, "pane", "list"],
+                env=env,
+            ),
+            "panes",
+        )
+        selected = next(
+            (item for item in panes if isinstance(item, dict) and item.get("pane_id") == pane),
+            None,
+        )
+        if not isinstance(selected, dict):
+            return {"state": "uncertain", "cleanup": None, "detail": "target pane disappeared"}
+        process_info = _result(
+            _json_command(
+                [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+                env=env,
+            ),
+            "process_info",
+        )
+        foreground = process_info.get("foreground_processes") if isinstance(process_info, dict) else None
+        if not isinstance(foreground, list):
+            return {"state": "uncertain", "cleanup": None, "detail": "invalid process evidence"}
+        process_ids = _process_ids(foreground, require_non_shell=False)
+        if not process_ids:
+            return {"state": "absent", "cleanup": None, "process_ids": []}
+        if selected.get("agent") != agent_name:
+            return {
+                "state": "uncertain",
+                "cleanup": None,
+                "process_ids": sorted(process_ids),
+                "detail": "process owner does not match failed attempt",
+            }
+        cleanup = _terminate_codex_lane(herdr, session, pane, env=env)
+        if cleanup.get("verified") is True:
+            return {
+                "state": "retired",
+                "cleanup": cleanup,
+                "process_ids": sorted(process_ids),
+            }
+        return {
+            "state": "uncertain",
+            "cleanup": cleanup,
+            "process_ids": sorted(process_ids),
+            "detail": "owned process cleanup was not verified",
+        }
+    except (LaunchBlocked, json.JSONDecodeError) as exc:
+        return {"state": "uncertain", "cleanup": None, "detail": str(exc)}
 
 
 def _unique_agent_name(agent_name: str) -> str:
@@ -979,7 +1135,24 @@ def resolve_launch(
     pane_state = _herdr_pane(cwd, session, pane, herdr, executor=executor, env=environment)
     agent_name = name or f"{selected.name}-main"
     if executor == "codex":
-        runtime_arguments = _codex_arguments(selected, cwd)
+        runtime_mcp_servers = _codex_runtime_mcp_servers(
+            str(codex),
+            cwd,
+            env=environment,
+        )
+        codex_mcp_selection = _codex_mcp_selection(
+            cwd,
+            Path(str(runtime["codex_home"])),
+            list(mcp_select or []),
+            runtime_servers=runtime_mcp_servers,
+        )
+        runtime_arguments = _codex_arguments(
+            selected,
+            cwd,
+            mcp_server_names=codex_mcp_selection["server_names"],
+            selected_mcp_servers=codex_mcp_selection["effective_servers"],
+            runtime_only_mcp_servers=codex_mcp_selection["runtime_only_servers"],
+        )
         command = [
             herdr,
             "--session",
@@ -1044,6 +1217,7 @@ def resolve_launch(
             "runtime_grant": runtime_grant,
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
+            "mcp_selection_requested": list(mcp_select or []),
         },
         "git": git,
         "herdr": {
@@ -1097,6 +1271,7 @@ def resolve_launch(
             "version": _version(str(codex), env=environment),
             **runtime,
         }
+        evidence["codex"]["mcp_selection"] = codex_mcp_selection
     else:
         evidence["deepagents"] = {
             "executable": dcode,
@@ -1210,6 +1385,34 @@ def main(argv: list[str] | None = None) -> int:
                 and _agent_name_taken(result)
             ):
                 break
+            reconciliation = _reconcile_failed_codex_start(
+                str(evidence["herdr"]["executable"]),
+                resolved_session,
+                resolved_pane,
+                str(evidence["herdr"]["agent_name"]),
+                env=environment,
+            )
+            registry_launcher["failed_start_reconciliation"] = reconciliation
+            if reconciliation["state"] == "uncertain":
+                print(json.dumps({
+                    "assignment": {
+                        "agent_name": evidence["herdr"]["agent_name"],
+                        "delivery_state": "delivery_uncertain",
+                        "delivery_certainty": "unknown",
+                        "delivery_task_sha256": delivery_task_sha256,
+                        "exit_code": 2,
+                        "failure_kind": "reconciliation_required",
+                        "grant_digest": grant_digest,
+                        "phase": "start",
+                        "prompt_accepted": None,
+                        "reconciliation_required": True,
+                        "reconciliation": reconciliation,
+                        "session": resolved_session,
+                        "status": "uncertain",
+                        "task_sha256": assignment_task_sha256,
+                    }
+                }, sort_keys=True))
+                return 2
             agent_name = _unique_agent_name(str(evidence["herdr"]["agent_name"]))
             command = command.copy()
             command[command.index("start") + 1] = agent_name

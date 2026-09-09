@@ -44,16 +44,45 @@ $cli = Join-Path $env:LOCALAPPDATA "Programs\Open Design\resources\app\prebundle
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Open Design executable not found: $exe" }
 if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) { throw "Open Design daemon CLI not found: $cli" }
 
-$runtime = Find-OpenDesignDaemon
-if ($null -eq $runtime) {
-    Start-Process -FilePath $exe -ArgumentList "--headless" -WindowStyle Hidden
-    $deadline = (Get-Date).AddSeconds(90)
-    do {
-        Start-Sleep -Milliseconds 250
-        $runtime = Find-OpenDesignDaemon
-    } while ($null -eq $runtime -and (Get-Date) -lt $deadline)
+$startupBudgetSeconds = 90
+if ($env:OPEN_DESIGN_MCP_STARTUP_TIMEOUT_SEC) {
+    $parsedBudget = 0
+    if (-not [int]::TryParse($env:OPEN_DESIGN_MCP_STARTUP_TIMEOUT_SEC, [ref]$parsedBudget)) {
+        throw "OPEN_DESIGN_MCP_STARTUP_TIMEOUT_SEC must be an integer."
+    }
+    $startupBudgetSeconds = $parsedBudget
 }
-if ($null -eq $runtime) { throw "Open Design daemon sidecar did not become ready within 90 seconds." }
+if ($startupBudgetSeconds -lt 10) {
+    throw "Open Design MCP startup timeout must be at least 10 seconds."
+}
+$readinessBudgetSeconds = $startupBudgetSeconds - 5
+$bootstrapMutex = [System.Threading.Mutex]::new($false, "Local\OpenDesignMcpBootstrap")
+$lockAcquired = $false
+$runtime = $null
+try {
+    try {
+        $lockAcquired = $bootstrapMutex.WaitOne([TimeSpan]::FromSeconds($startupBudgetSeconds))
+    } catch [System.Threading.AbandonedMutexException] {
+        $lockAcquired = $true
+    }
+    if (-not $lockAcquired) { throw "Open Design MCP bootstrap lock timed out." }
+
+    $runtime = Find-OpenDesignDaemon
+    if ($null -eq $runtime) {
+        Start-Process -FilePath $exe -ArgumentList "--headless" -WindowStyle Hidden
+        $deadline = (Get-Date).AddSeconds($readinessBudgetSeconds)
+        do {
+            Start-Sleep -Milliseconds 250
+            $runtime = Find-OpenDesignDaemon
+        } while ($null -eq $runtime -and (Get-Date) -lt $deadline)
+    }
+} finally {
+    if ($lockAcquired) { $bootstrapMutex.ReleaseMutex() }
+    $bootstrapMutex.Dispose()
+}
+if ($null -eq $runtime) {
+    throw "Open Design daemon sidecar did not become ready within $readinessBudgetSeconds seconds."
+}
 
 $env:ELECTRON_RUN_AS_NODE = "1"
 $env:OD_DATA_DIR = $runtime.DataDir
