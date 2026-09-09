@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from typing import Any
 
 try:
@@ -41,11 +42,13 @@ class TargetResolutionBlocked(LaunchBlocked):
 _EXECUTORS = {"codex", "deepagents"}
 _MAX_TASK_LENGTH = 4096
 _CODEX_PROMPT_TIMEOUT_MS = "30000"
+_CODEX_START_TIMEOUT_MS = "120000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 60.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
 _CODEX_ASSIGNMENT_TIMEOUT = (float(_CODEX_PROMPT_TIMEOUT_MS) / 1000) + 5.0
+_CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
 _CODEX_WATCHDOG_GRACE_SECONDS = 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
 _HERDR_DEFAULT_SESSION = "default"
@@ -54,9 +57,6 @@ _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
-_DEEPAGENTS_COMPLETION_PATTERN = re.compile(
-    r"(?im)^\s*(?:\[OK\]\s*)?Task completed\b|^\s*COMPLETED\b"
-)
 _DEEPAGENTS_FAILURE_PATTERN = re.compile(
     r"(?im)^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
 )
@@ -596,16 +596,27 @@ def _process_ids_alive(process_ids: set[int]) -> set[int]:
     return alive
 
 
-def _deepagents_task_state(foreground_processes: list[Any], pane_output: str) -> str:
+def _deepagents_task_state(
+    foreground_processes: list[Any],
+    pane_output: str,
+    expected_marker: str,
+) -> str:
     if _DEEPAGENTS_FAILURE_PATTERN.search(pane_output):
         return "failed"
-    if _DEEPAGENTS_COMPLETION_PATTERN.search(pane_output):
-        return "completed"
-    if any(
+    live_process = any(
         str(process.get("name", "")).lower() not in _DEEPAGENTS_SHELL_PROCESS_NAMES
         for process in foreground_processes
         if isinstance(process, dict)
+    )
+    lines = [line.strip() for line in pane_output.splitlines() if line.strip()]
+    if any(
+        lines[index:index + 2] == ["COMPLETED", expected_marker]
+        for index in range(len(lines) - 1)
     ):
+        return "completed"
+    if "COMPLETED" in lines:
+        return "running" if live_process else "no-report"
+    if live_process:
         return "running"
     return "no-report"
 
@@ -635,6 +646,7 @@ def _deepagents_completion_snapshot(
     pane: str,
     *,
     env: dict[str, str],
+    expected_marker: str,
 ) -> dict[str, Any]:
     process_result = _run(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -675,7 +687,9 @@ def _deepagents_completion_snapshot(
             observation_error = str(exc)
     if read_result.returncode:
         observation_error = observation_error or "pane read failed"
-    state = _deepagents_task_state(foreground, pane_output)
+    state = _deepagents_task_state(foreground, pane_output, expected_marker)
+    if observation_error and state == "completed":
+        state = "no-report"
     return {
         "state": state,
         "report_present": state in {"completed", "failed"},
@@ -696,6 +710,7 @@ def _deepagents_completion_evidence(
     pane: str,
     *,
     env: dict[str, str],
+    expected_marker: str,
 ) -> dict[str, Any]:
     started = time.monotonic()
     while True:
@@ -704,6 +719,7 @@ def _deepagents_completion_evidence(
             session,
             pane,
             env=env,
+            expected_marker=expected_marker,
         )
         if evidence["state"] in {"completed", "failed"}:
             return evidence
@@ -885,6 +901,13 @@ def resolve_launch(
         grant_child_agents=grant_child_agents,
     )
     delivery_task = _project_runtime_grant(task_text, runtime_grant)
+    completion_marker = None
+    if executor == "deepagents":
+        completion_marker = f"DEEPAGENTS_COMPLETED_{uuid.uuid4().hex[:16]}"
+        delivery_task += (
+            " Output these two final lines exactly when task is complete: "
+            f"COMPLETED, then {completion_marker}."
+        )
     grant_digest = _sha256_text(
         json.dumps(
             {
@@ -937,6 +960,8 @@ def resolve_launch(
             "codex",
             "--pane",
             pane,
+            "--timeout",
+            _CODEX_START_TIMEOUT_MS,
             "--",
             *runtime_arguments,
         ]
@@ -987,6 +1012,7 @@ def resolve_launch(
             "grant_digest": grant_digest,
             "runtime_grant": runtime_grant,
             "delivery_task_sha256": _sha256_text(delivery_task),
+            "completion_marker": completion_marker,
         },
         "git": git,
         "herdr": {
@@ -1100,6 +1126,7 @@ def main(argv: list[str] | None = None) -> int:
         assignment_task_sha256 = registry_launcher.get("assignment_task_sha256")
         if not isinstance(assignment_task_sha256, str):
             raise LaunchBlocked("Launcher evidence missing assignment task identity.")
+        completion_marker = registry_launcher.get("completion_marker")
         delivery_task_sha256 = registry_launcher.get(
             "delivery_task_sha256",
             assignment_task_sha256,
@@ -1111,6 +1138,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise LaunchBlocked("Launcher evidence missing codex_home.")
             environment = _codex_environment(Path(str(codex_evidence["codex_home"])))
         else:
+            if not isinstance(completion_marker, str) or not completion_marker:
+                raise LaunchBlocked("Launcher evidence missing completion marker.")
             environment = _herdr_environment()
         try:
             result = _run(
@@ -1119,7 +1148,7 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=(
                     _DEEPAGENTS_RUN_TIMEOUT
                     if args.executor == "deepagents"
-                    else _HERDR_COMMAND_TIMEOUT
+                    else _CODEX_START_TIMEOUT
                 ),
             )
         except CommandTransportTimeout:
@@ -1327,9 +1356,16 @@ def main(argv: list[str] | None = None) -> int:
             resolved_session,
             resolved_pane,
             env=environment,
+            expected_marker=completion_marker,
         )
         task_state = str(completion["state"])
-        completed = task_state == "completed"
+        if completion.get("observation_error") is not None and task_state == "completed":
+            task_state = "no-report"
+        completed = (
+            task_state == "completed"
+            and completion.get("report_present") is True
+            and completion.get("observation_error") is None
+        )
         print(json.dumps({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],

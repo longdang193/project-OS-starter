@@ -1440,6 +1440,10 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert '$env:UV_TOOL_BIN_DIR = $deepAgentsBinRoot' in setup
     assert 'dcode-doctor.ps1' in setup
     assert 'DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"' in setup
+    assert '$env:PYTHONUTF8 = "1"' in setup
+    assert '$env:PYTHONIOENCODING = "utf-8"' in setup
+    assert setup.index('$env:PYTHONUTF8 = "1"') < setup.index('& $dcodePath doctor')
+    assert setup.index('$env:PYTHONIOENCODING = "utf-8"') < setup.index('& $dcodePath doctor')
     assert "Python 3.12 or newer" in setup
     assert "version mismatch" in setup
     assert "patch_deepagents_runtime.py" in setup

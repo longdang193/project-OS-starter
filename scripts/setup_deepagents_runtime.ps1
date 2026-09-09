@@ -265,6 +265,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $env:DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 $dcodePath = Join-Path $HOME ".local\share\dcode-project\bin\dcode.exe"
 if (-not (Test-Path $dcodePath -PathType Leaf)) {
     [Console]::Error.WriteLine("dcode-doctor: isolated DeepAgents Code executable not found. Run setup_deepagents_runtime.ps1.")

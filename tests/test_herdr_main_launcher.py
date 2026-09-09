@@ -92,10 +92,10 @@ def test_codex_assignment_command_prompts_started_agent() -> None:
         "agent",
         "prompt",
         "xhigh-main",
-            "assign lane",
-            "--wait",
-            "--timeout",
-            "30000",
+        "assign lane",
+        "--wait",
+        "--timeout",
+        "30000",
     ]
 
     bounded = LAUNCHER._codex_assignment_command(
@@ -165,7 +165,7 @@ def test_resolve_launch_builds_deepagents_pane_command(
         task="Return exactly DEEPAGENTS_ADAPTER_OK",
     )
 
-    assert command == [
+    assert command[:-1] == [
         "herdr.exe",
         "--session",
         "deepagents-probe",
@@ -179,8 +179,14 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "--json",
         "--no-mcp",
         "-n",
-        "'Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]'",
     ]
+    assert command[-1].startswith(
+        "'Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
+    )
+    completion_marker = evidence["registry_launcher"]["completion_marker"]
+    assert isinstance(completion_marker, str)
+    assert completion_marker in command[-1]
+    assert "\n" not in command[-1]
 
     assert evidence["registry_launcher"]["executor"] == "deepagents"
     assert "--executor" not in command
@@ -196,9 +202,7 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "source": "herdr.pane_process",
         "state": "unknown",
         "task_sha256": LAUNCHER._sha256_text("Return exactly DEEPAGENTS_ADAPTER_OK"),
-        "delivery_task_sha256": LAUNCHER._sha256_text(
-            "Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
-        ),
+            "delivery_task_sha256": LAUNCHER._sha256_text(command[-1][1:-1]),
         "grant_digest": evidence["registry_launcher"]["grant_digest"],
     }
     assert LAUNCHER._DEEPAGENTS_RUN_TIMEOUT == 1800.0
@@ -360,7 +364,10 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         "delegation": {"child_agents": "allow"},
     }
     assert len(evidence["registry_launcher"]["grant_digest"]) == 64
-    assert command[-1] == "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]'"
+    assert command[-1].startswith(
+        "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]"
+    )
+    assert evidence["registry_launcher"]["completion_marker"] in command[-1]
 
 
 def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
@@ -397,7 +404,7 @@ def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
         },
     )
 
-    _, evidence = LAUNCHER.resolve_launch(
+    command, evidence = LAUNCHER.resolve_launch(
         profile_name="normal",
         session="codex-probe",
         pane="w1:p1",
@@ -408,6 +415,7 @@ def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
         task="original task",
     )
 
+    assert command[command.index("--timeout") + 1] == LAUNCHER._CODEX_START_TIMEOUT_MS
     delivery_task = "original task [Runtime Grant: delegation.child_agents = allow]"
     prompt_argv = evidence["assignment_request"]["redacted_prompt_argv"]
     assert f"task=<sha256:{LAUNCHER._sha256_text(delivery_task)}>" in prompt_argv
@@ -797,6 +805,7 @@ def test_main_transport_timeout_marks_delivery_uncertain_without_termination(
         },
     }
     calls = 0
+    timeouts: list[float] = []
     terminated: list[tuple[object, ...]] = []
 
     monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
@@ -805,6 +814,7 @@ def test_main_transport_timeout_marks_delivery_uncertain_without_termination(
     def fake_run(command, **kwargs):
         nonlocal calls
         calls += 1
+        timeouts.append(kwargs["timeout"])
         if calls == 1:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise LAUNCHER.CommandTransportTimeout("Command timed out before acceptance")
@@ -824,6 +834,7 @@ def test_main_transport_timeout_marks_delivery_uncertain_without_termination(
     assert result["prompt_accepted"] is None
     assert result["reconciliation_required"] is True
     assert terminated == []
+    assert timeouts == [LAUNCHER._CODEX_START_TIMEOUT, LAUNCHER._CODEX_ASSIGNMENT_TIMEOUT]
 
 
 def test_main_reports_deepagents_pane_run_failure(
@@ -834,6 +845,7 @@ def test_main_reports_deepagents_pane_run_failure(
     evidence = {
         "registry_launcher": {
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
         },
         "herdr": {
             "agent_name": "normal-main",
@@ -1255,6 +1267,7 @@ def test_deepagents_main_strips_herdr_environment(
     evidence = {
         "registry_launcher": {
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
         },
         "herdr": {
             "agent_name": "normal-main",
@@ -1303,6 +1316,7 @@ def test_deepagents_main_blocks_delivery_without_completion_report(
     evidence = {
         "registry_launcher": {
             "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
         },
         "herdr": {
             "agent_name": "normal-main",
@@ -1344,18 +1358,79 @@ def test_deepagents_main_blocks_delivery_without_completion_report(
     assert assignment["reconciliation_required"] is True
 
 
+def test_deepagents_main_rejects_completion_with_observer_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "report_present": True,
+            "report_sha256": "report",
+            "report_chars": 1,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": "pane read failed",
+        },
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 2
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["status"] == "no-report"
+    assert assignment["task_accepted"] is False
+    assert assignment["reconciliation_required"] is True
+
+
 def test_deepagents_task_state_requires_report_for_completion() -> None:
     assert LAUNCHER._deepagents_task_state(
         [{"name": "powershell.exe"}],
-        "Running task non-interactively...\n[OK] Task completed\n",
+        "Running task non-interactively...\nCOMPLETED\nEXPECTED_MARKER\nUsage Stats\n",
+        "EXPECTED_MARKER",
+    ) == "completed"
+    assert LAUNCHER._deepagents_task_state(
+        [{"name": "powershell.exe"}],
+        "Running task non-interactively...\nCOMPLETED\nOTHER_MARKER\n",
+        "EXPECTED_MARKER",
+    ) == "no-report"
+    assert LAUNCHER._deepagents_task_state(
+        [{"name": "powershell.exe"}],
+        "Running task non-interactively...\nCOMPLETED\nEXPECTED_MARKER\n",
+        "EXPECTED_MARKER",
     ) == "completed"
     assert LAUNCHER._deepagents_task_state(
         [{"name": "powershell.exe"}],
         "Running task non-interactively...\n",
+        "EXPECTED_MARKER",
     ) == "no-report"
     assert LAUNCHER._deepagents_task_state(
         [{"name": "python.exe"}],
         "Running task non-interactively...\n",
+        "EXPECTED_MARKER",
     ) == "running"
 
 
@@ -1363,7 +1438,42 @@ def test_deepagents_task_state_detects_failure_report() -> None:
     assert LAUNCHER._deepagents_task_state(
         [{"name": "powershell.exe"}],
         "[FAIL] Task failed\n",
+        "EXPECTED_MARKER",
     ) == "failed"
+
+
+@pytest.mark.parametrize("failure", ["process-info", "pane-read"])
+def test_deepagents_completion_rejects_observer_error(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    process_result = (
+        subprocess.CompletedProcess([], 1, "", "process-info failed")
+        if failure == "process-info"
+        else subprocess.CompletedProcess([], 0, json.dumps({"result": {"process_info": {"foreground_processes": [{"name": "powershell.exe"}]}}}), "")
+    )
+    read_result = (
+        subprocess.CompletedProcess([], 1, "", "pane read failed")
+        if failure == "pane-read"
+        else subprocess.CompletedProcess([], 0, json.dumps({"result": "COMPLETED\nPROBE_OK"}), "")
+    )
+    responses = iter([
+        process_result,
+        read_result,
+    ])
+    monkeypatch.setattr(LAUNCHER, "_run", lambda *args, **kwargs: next(responses))
+
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="PROBE_OK",
+    )
+
+    assert evidence["state"] == "no-report"
+    assert evidence["report_present"] is False
+    assert evidence["observation_error"] in {"pane process-info failed", "pane read failed"}
 
 
 def test_deepagents_completion_waits_for_delayed_report(
@@ -1380,7 +1490,7 @@ def test_deepagents_completion_waits_for_delayed_report(
         subprocess.CompletedProcess([], 0, process_info, ""),
         subprocess.CompletedProcess([], 0, json.dumps({"result": "Running task..."}), ""),
         subprocess.CompletedProcess([], 0, process_info, ""),
-        subprocess.CompletedProcess([], 0, json.dumps({"result": "[OK] Task completed"}), ""),
+        subprocess.CompletedProcess([], 0, json.dumps({"result": "COMPLETED\nPROBE_OK"}), ""),
     ])
     clock = [0.0]
     sleeps: list[float] = []
@@ -1393,6 +1503,7 @@ def test_deepagents_completion_waits_for_delayed_report(
         "session",
         "pane",
         env={},
+        expected_marker="PROBE_OK",
     )
 
     assert evidence["state"] == "completed"
