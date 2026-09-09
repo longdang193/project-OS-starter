@@ -1,6 +1,6 @@
 ---
 name: skill-disposable-artifact-cleanup
-description: Use when a completed or interrupted workflow leaves task-owned disposable files or directories that need safe audit or cleanup.
+description: Use when a completed or interrupted workflow leaves task-owned disposable files, directories, or lifecycle resources that need safe audit, routing, or cleanup.
 required_reads:
 - docs/operating_system/rules/command-execution-rule.md
 distribution_tier: starter_kit
@@ -18,51 +18,86 @@ To update: edit canonical source, then run sync.
 
 ## Role
 
-Audit and remove disposable artifacts created by the current task.
-
-This skill owns candidate validation, retention checks, exact-path cleanup,
-and post-cleanup inspection. It does not own Git disposition, branches,
-worktrees, stashes, executor runtime state, publication, or persistent project
-knowledge.
+Audit task-owned disposable artifacts and route non-file resources to their
+lifecycle owners. This skill owns candidate validation, retention checks,
+exact-scope cleanup for directly owned artifacts, and post-cleanup inspection.
+It does not retire Herdr runtime state, Git branches or worktrees, browser
+profiles, databases, publication output, or persistent project knowledge.
 
 ## Lifecycle
 
 - Audit mode may run during execution.
-- Cleanup requires the producing workflow to have finished using the artifact.
-- Verification decides whether an artifact is still needed for proof, debug,
-  recovery, or handoff.
-- Cleanup runs before the final `verified` snapshot, then affected proof runs
-  again.
+- Direct cleanup requires the producing workflow to have finished using the artifact.
+- Delegated routing may occur when work no longer needs a lifecycle resource; the owner then retires it, retirement is verified, and dependent storage cleanup becomes eligible.
+- Verification decides whether an artifact is still needed for proof, debug, recovery, or handoff.
+- Direct cleanup runs before the final `verified` snapshot, then affected proof runs again.
+- Git worktree cleanup remains owned by `skill-finishing-a-development-branch` after verified Git disposition, lane retirement, clean-state proof, and exact authorization.
 - Verification, not this skill, emits the final `verified` result.
 
-## Ownership Proof
+## Resource Identity And Ownership Proof
 
-A path is eligible only when all applicable checks establish:
+Use an exact normalized resource identity:
 
-1. exact normalized absolute path
+- filesystem artifact: absolute path or task-owned directory
+- Git worktree: path, branch or detached state, creation mechanism, and required commit state
+- Herdr resource: session, pane, agent, and relevant process identity
+- browser or application state: isolated profile or storage scope and producer
+- database: exact database path or instance scope and producing workflow
+
+A candidate is eligible only when all applicable checks establish:
+
+1. exact normalized resource identity
 2. producing task or tool
-3. path recorded in current task-local state or a validated handoff
-4. workflow no longer needs the path
+3. identity recorded in current task-local state or a validated handoff
+4. workflow no longer needs the resource, or the delegated owner can perform the next lifecycle action
 5. no active verification, debugging, recovery, or handoff depends on it
-6. no user-created, persistent, credential, backup, database, or upload data
-7. repository path is not tracked or staged
-8. cleanup scope is exactly the recorded file or task-owned directory
+6. no user-created, persistent, credential, backup, database, upload, normal profile, or unrelated state
+7. repository filesystem path is not tracked or staged
+8. direct cleanup scope is exactly the recorded file or task-owned directory
+9. delegated cleanup owner and actual supported procedure are identified
 
-Filename similarity, age, location, generated appearance, or Git ignore status
-does not prove ownership. Missing or stale ownership evidence means preserve.
+Filename similarity, age, location, generated appearance, Git ignore status,
+resource reuse, or “superseded” status does not prove ownership. Reusing an
+existing Herdr pane or worktree does not grant cleanup authority. Shared
+sessions such as `default` remain preserved unless their owner explicitly
+authorizes retirement.
+
+## Candidate Handling
+
+| Candidate | Handling | Required condition |
+| --- | --- | --- |
+| Task-created temporary files, traces, and reports | Direct cleanup | Exact ownership, no retention dependency, explicit authorization, and safe exact-path checks |
+| Herdr agents, panes, and sessions | Delegated routing | Exact runtime identity, work no longer needs it, owning runtime procedure identified, and no inferred ownership from reuse |
+| Individual Git worktrees | Delegated routing | Authorized Git disposition, verified retirement, preserved work and recovery evidence, then owner procedure for the creation mechanism |
+| Temporary migration or generated residue | Direct or producer-owned cleanup | Proven task-created residue; “superseded” alone is insufficient |
+| Isolated browser or application state | Producer-owned cleanup | Exact isolated scope, producer release, no remaining dependency, and producer deletion authority |
+| Isolated test databases | Producer-owned cleanup | Exact task-created database scope, producer release, no remaining dependency, and producer deletion authority |
+| Legacy source, routes, normal profiles, persistent user state, uploads, and application databases | Preserve or normal implementation | Never disposable merely because old, untracked, ignored, generated, or unused-looking |
+
+For Herdr, launcher termination logic is not a general cleanup CLI. Use only
+the supported launcher reconciliation procedure for the failure path that
+provides it; otherwise preserve and route to the runtime owner.
+
+For worktrees, use native cleanup for native-managed workspaces and
+`git worktree remove <path>` for manually managed worktrees. Never recursively
+delete a worktree directory directly.
 
 Do not persist machine-local absolute paths in Git-tracked plans merely for
-cleanup. If task-local state or validated handoff no longer contains ownership
-evidence, preserve the artifact.
+cleanup. If task-local state or a validated handoff no longer contains the
+identity or ownership evidence, preserve the resource.
 
 ## Candidate Sources
 
 Repository candidates:
 
 - exact paths declared or resolved by the producing workflow
-- Git-reported untracked paths, treated as review candidates only until
-  producer ownership is proven
+- Git-reported untracked paths, treated as review candidates only until producer ownership is proven
 - exact producer-owned ignored paths
+
+Routed lifecycle candidates:
+
+- exact runtime identities declared by the producing workflow or validated handoff
+- no discovery scan of shared runtime, profile, database, or temporary roots
 
 External temporary candidates:
 
@@ -70,7 +105,7 @@ External temporary candidates:
 - no discovery scan of `/tmp`, `C:\tmp`, `%TEMP%`, or `$TMPDIR`
 
 Never sweep, age-sweep, pattern-sweep, enumerate-for-deletion, or recursively
-clean a shared temporary root.
+clean a shared temporary, runtime, profile, or database root.
 
 Prefer one task-scoped directory under the platform temporary root. A directory
 name alone is not ownership proof.
@@ -82,37 +117,48 @@ Preserve:
 - unknown or unrelated untracked paths
 - tracked and staged files
 - user data and persistent state
-- credentials, environment files, databases, backups, and uploads
+- credentials, environment files, databases, backups, uploads, normal profiles, and application state
 - active verification, debugging, recovery, or handoff evidence
+- live or uncertain runtime resources
 - nested repositories
-- paths containing symlinks, junctions, or other reparse points unless their
-  safety is explicitly established
-- generated output still needed for validation, diff inspection, publication,
-  copying, debugging, or completion evidence
+- paths containing symlinks, junctions, or other reparse points unless their safety is explicitly established
+- generated output still needed for validation, diff inspection, publication, copying, debugging, or completion evidence
 - executor-local runtime state without an owning cleanup procedure
 
 ## Audit Mode
 
-Do not mutate files. Report for each candidate:
+Do not mutate files or lifecycle resources. Report for each candidate:
 
-- exact normalized path
+- exact normalized resource identity
 - producing task or tool
 - purpose
 - ownership evidence
 - lifecycle and retention dependency
-- repository or external classification
-- result: eligible, preserve, or blocked
+- cleanup owner
+- cleanup mode: `direct` or `delegated`
+- supported cleanup procedure
+- repository, external, or lifecycle classification
+- result: `eligible`, `preserve`, or `blocked`
+
+For `direct`, `eligible` means the named artifact may enter Cleanup Mode after
+authorization. For `delegated`, `eligible` means the named owner may perform
+the next retirement or cleanup action; it does not mean this skill removed the
+resource. Do not report delegated resources as removed until the owner returns
+verified cleanup evidence.
 
 Do not turn a Git-reported untracked path into an eligible candidate without
-producer evidence.
+producer evidence. Missing, stale, or uncertain evidence means `preserve`.
 
 ## Cleanup Mode
 
-Cleanup requires explicit authorization for the named task-owned candidates or
-an approved task that names those candidates. Recursive delete or move still
-follows `command-execution-rule.md`.
+Cleanup requires explicit authorization for the named task-owned direct
+candidates or an approved task that names those candidates. Recursive delete
+or move still follows `command-execution-rule.md`.
 
-Before removal:
+Delegated candidates are not deleted by this skill. Route the exact identity to
+the named owner and record the owner's verified result before dependent cleanup.
+
+Before direct removal:
 
 1. re-resolve each exact path
 2. confirm ownership and retention checks still pass
@@ -120,21 +166,25 @@ Before removal:
 4. block symlinks, junctions, and reparse points unless explicitly handled
 
 Remove only approved exact files or task-owned directories. Do not call
-`git clean`, delete a repository root, or delete a shared temporary root.
+`git clean`, delete a repository root, or delete a shared temporary, runtime,
+profile, or database root.
 
-After removal, report removed, preserved, and blocked paths. Inspect repository
-state and rerun affected verification before the final verified snapshot.
+After removal, report removed, preserved, and blocked paths or resource
+identities. Inspect repository state and rerun affected verification before the
+final verified snapshot.
 
 ## Producer Contract
 
 When creating external temporary output, retain its exact normalized absolute
-path in current task-local state or a validated handoff. Do not put machine-
-local paths in Git-tracked plans. Omitted paths remain preserved.
+path in current task-local state or a validated handoff. When creating or
+reusing a routed lifecycle resource, retain its exact resource identity,
+producer, owner, retention dependency, and supported procedure in current
+task-local state or a validated handoff. Do not put machine-local paths in
+Git-tracked plans. Omitted identities remain preserved.
 
 ## Integration
 
 - `skill-executing-plans` may invoke this skill in Audit Mode only.
-- `skill-verification-before-completion` identifies retention dependencies and
-  reruns affected proof; it does not perform deletion.
-- `skill-finishing-a-development-branch` owns Git disposition and Git-managed
-  branch, worktree, and stash cleanup after `verified`.
+- `skill-verification-before-completion` identifies retention dependencies and reruns affected proof; it does not perform deletion.
+- `skill-finishing-a-development-branch` owns Git disposition and Git-managed branch, worktree, and stash cleanup after `verified`.
+- The producing workflow or lifecycle owner remains authoritative for Herdr runtime, browser or application state, and databases.
