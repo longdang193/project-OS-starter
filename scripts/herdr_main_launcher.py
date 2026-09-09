@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from contextvars import ContextVar
 import hashlib
 import json
 import os
@@ -76,6 +77,10 @@ _CODEX_PROMPT_REJECTION_CODES = {
     "invalid_agent",
     "invalid_prompt",
 }
+_ACTIVE_METRICS: ContextVar[dict[str, Any] | None] = ContextVar(
+    "herdr_launcher_metrics",
+    default=None,
+)
 
 
 def _herdr_environment() -> dict[str, str]:
@@ -91,6 +96,12 @@ def _run(
     env: dict[str, str] | None = None,
     timeout: float = _HERDR_COMMAND_TIMEOUT,
 ) -> subprocess.CompletedProcess[str]:
+    metrics = _ACTIVE_METRICS.get()
+    if metrics is not None:
+        metrics["total"] = int(metrics.get("total", 0)) + 1
+        executable = Path(command[0]).name.lower()
+        by_executable = metrics.setdefault("by_executable", {})
+        by_executable[executable] = int(by_executable.get(executable, 0)) + 1
     try:
         return subprocess.run(
             command,
@@ -573,6 +584,20 @@ def _project_runtime_grant(task: str, runtime_grant: dict[str, Any]) -> str:
     return f"{task} [Runtime Grant: delegation.child_agents = {child_agents}]"
 
 
+def _elapsed_ms(started: float) -> float:
+    return round(max(0.0, time.monotonic() - started) * 1000, 3)
+
+
+def _metrics_snapshot() -> dict[str, Any]:
+    metrics = _ACTIVE_METRICS.get()
+    if metrics is None:
+        return {"total": 0, "by_executable": {}}
+    return {
+        "total": int(metrics.get("total", 0)),
+        "by_executable": dict(metrics.get("by_executable", {})),
+    }
+
+
 def _codex_assignment_command(
     herdr: str,
     session: str,
@@ -954,37 +979,53 @@ def _deepagents_completion_snapshot(
     def observation_timeout() -> float:
         if deadline is None:
             return _HERDR_COMMAND_TIMEOUT
-        return max(0.01, min(_HERDR_COMMAND_TIMEOUT, deadline - time.monotonic()))
+        return min(_HERDR_COMMAND_TIMEOUT, deadline - time.monotonic())
 
-    process_result = _run(
-        [herdr, "--session", session, "pane", "process-info", "--pane", pane],
-        env=env,
-        timeout=observation_timeout(),
-    )
-    read_result = _run(
-        [
-            herdr,
-            "--session",
-            session,
-            "pane",
-            "read",
-            pane,
-            "--source",
-            "recent-unwrapped",
-            "--lines",
-            "200",
-            "--format",
-            "text",
-        ],
-        env=env,
-        timeout=observation_timeout(),
-    )
-    pane_output = _pane_output(read_result)
+    process_result: subprocess.CompletedProcess[str] | None = None
+    read_result: subprocess.CompletedProcess[str] | None = None
+    process_error: str | None = None
+    read_error: str | None = None
+    try:
+        timeout = observation_timeout()
+        if timeout <= 0:
+            raise CommandTransportTimeout("observation deadline exceeded before process-info")
+        process_result = _run(
+            [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+            env=env,
+            timeout=timeout,
+        )
+    except CommandTransportTimeout:
+        process_error = "pane process-info transport timeout"
+    try:
+        timeout = observation_timeout()
+        if timeout <= 0:
+            raise CommandTransportTimeout("observation deadline exceeded before pane read")
+        read_result = _run(
+            [
+                herdr,
+                "--session",
+                session,
+                "pane",
+                "read",
+                pane,
+                "--source",
+                "recent-unwrapped",
+                "--lines",
+                "200",
+                "--format",
+                "text",
+            ],
+            env=env,
+            timeout=timeout,
+        )
+    except CommandTransportTimeout:
+        read_error = "pane read transport timeout"
+    pane_output = _pane_output(read_result) if read_result is not None else ""
     foreground: list[Any] = []
-    observation_error: str | None = None
-    if process_result.returncode:
-        observation_error = "pane process-info failed"
-    else:
+    observation_error: str | None = process_error or read_error
+    if process_result is not None and process_result.returncode:
+        observation_error = observation_error or "pane process-info failed"
+    elif process_result is not None:
         try:
             process_payload = json.loads(process_result.stdout)
             process_info = _result(process_payload, "process_info")
@@ -995,7 +1036,7 @@ def _deepagents_completion_snapshot(
                 foreground = foreground_value
         except (LaunchBlocked, json.JSONDecodeError) as exc:
             observation_error = str(exc)
-    if read_result.returncode:
+    if read_result is not None and read_result.returncode:
         observation_error = observation_error or "pane read failed"
     state = _deepagents_task_state(foreground, pane_output, expected_marker)
     if observation_error and state == "completed":
@@ -1005,6 +1046,7 @@ def _deepagents_completion_snapshot(
         "report_present": state in {"completed", "failed"},
         "report_sha256": _sha256_text(pane_output),
         "report_chars": len(pane_output),
+        "observed_at": time.time(),
         "foreground_processes": [
             str(process.get("name", "unknown"))
             for process in foreground
@@ -1206,6 +1248,7 @@ def resolve_launch(
     name: str | None = None,
     codex_home: Path | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
+    launch_started = time.monotonic()
     if executor not in _EXECUTORS:
         raise LaunchBlocked(f"Unsupported executor: {executor}")
     task_text = _validate_task(task)
@@ -1249,6 +1292,8 @@ def resolve_launch(
     codex = _executable("codex") if executor == "codex" else None
     dcode = _executable("dcode-project") if executor == "deepagents" else None
     git = _git_identity(cwd, expected_base)
+    preflight_ms = _elapsed_ms(launch_started)
+    target_started = time.monotonic()
     session, pane, target_resolution = _resolve_target_selector(
         cwd,
         session,
@@ -1257,6 +1302,8 @@ def resolve_launch(
         executor=executor,
         env=environment,
     )
+    target_discovery_ms = _elapsed_ms(target_started)
+    worker_started = time.monotonic()
     pane_state = _herdr_pane(cwd, session, pane, herdr, executor=executor, env=environment)
     agent_name = name or (
         _unique_agent_name(f"{selected.name}-main")
@@ -1321,6 +1368,7 @@ def resolve_launch(
             _powershell_literal(delivery_task),
         ]
         command = [herdr, "--session", session, "pane", "run", pane, *runtime_arguments]
+    worker_initialization_ms = _elapsed_ms(worker_started)
     evidence = {
         "registry_launcher": {
             "dispatch_id": uuid.uuid4().hex,
@@ -1395,6 +1443,16 @@ def resolve_launch(
                 )
             ) if executor == "codex" else None,
         },
+        "performance": {
+            "phase_durations_ms": {
+                "preflight": preflight_ms,
+                "target_discovery": target_discovery_ms,
+                "worker_initialization": worker_initialization_ms,
+                "assignment_acknowledgment": 0.0,
+                "retirement": 0.0,
+            },
+            "subprocess_counts": _metrics_snapshot(),
+        },
     }
     if runtime is not None:
         evidence["codex"] = {
@@ -1431,8 +1489,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def _main_body(args: argparse.Namespace) -> int:
     try:
         command, evidence = resolve_launch(
             profile_name=args.profile,
@@ -1454,6 +1511,16 @@ def main(argv: list[str] | None = None) -> int:
         observation_evidence = evidence.setdefault("observation", {})
         if not isinstance(registry_evidence, dict) or not isinstance(observation_evidence, dict):
             raise LaunchBlocked("Launcher evidence has invalid lifecycle sections.")
+        performance_evidence = evidence.setdefault("performance", {})
+        if not isinstance(performance_evidence, dict):
+            raise LaunchBlocked("Launcher evidence has invalid performance section.")
+
+        def record_phase(name: str, started: float) -> None:
+            durations = performance_evidence.setdefault("phase_durations_ms", {})
+            if isinstance(durations, dict):
+                durations[name] = _elapsed_ms(started)
+            performance_evidence["subprocess_counts"] = _metrics_snapshot()
+
         registry_evidence["attempt_id"] = attempt_id
         observation_evidence["attempt_id"] = attempt_id
         print(json.dumps(evidence, sort_keys=True))
@@ -1485,6 +1552,7 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(completion_marker, str) or not completion_marker:
                 raise LaunchBlocked("Launcher evidence missing completion marker.")
             environment = _herdr_environment()
+        assignment_started = time.monotonic()
         for attempt in range(2):
             try:
                 result = _run(
@@ -1497,6 +1565,7 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                 )
             except CommandTransportTimeout:
+                record_phase("assignment_acknowledgment", assignment_started)
                 print(json.dumps({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
@@ -1524,6 +1593,7 @@ def main(argv: list[str] | None = None) -> int:
                 and _agent_name_taken(result)
             ):
                 break
+            retirement_started = time.monotonic()
             reconciliation = _reconcile_failed_codex_start(
                 str(evidence["herdr"]["executable"]),
                 resolved_session,
@@ -1532,6 +1602,7 @@ def main(argv: list[str] | None = None) -> int:
                 env=environment,
                 before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
             )
+            record_phase("retirement", retirement_started)
             registry_launcher["failed_start_reconciliation"] = reconciliation
             if reconciliation["state"] == "uncertain":
                 print(json.dumps({
@@ -1607,6 +1678,7 @@ def main(argv: list[str] | None = None) -> int:
         if result.stderr:
             _write_runtime_output(sys.stderr, result.stderr)
         if result.returncode:
+            record_phase("assignment_acknowledgment", assignment_started)
             print(json.dumps({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
@@ -1662,6 +1734,7 @@ def main(argv: list[str] | None = None) -> int:
             except CommandTransportTimeout as exc:
                 transport_timeout = exc
             if transport_timeout is not None:
+                record_phase("assignment_acknowledgment", assignment_started)
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
@@ -1689,6 +1762,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(assignment_result.stderr, file=sys.stderr, end="")
             prompt_result = _classify_codex_prompt_result(assignment_result)
             if prompt_result["submission"] == "unknown":
+                record_phase("assignment_acknowledgment", assignment_started)
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
@@ -1710,6 +1784,7 @@ def main(argv: list[str] | None = None) -> int:
                 }, sort_keys=True))
                 return assignment_result.returncode
             if prompt_result["submission"] == "rejected":
+                record_phase("assignment_acknowledgment", assignment_started)
                 print(json.dumps({
                     "assignment": {
                         "agent_name": agent_name,
@@ -1740,6 +1815,7 @@ def main(argv: list[str] | None = None) -> int:
             observation["session"] = resolved_session
             observation["pane"] = resolved_pane
             observation["agent_name"] = agent_name
+            record_phase("assignment_acknowledgment", assignment_started)
             print(json.dumps({
                 "assignment": {
                     "agent_name": agent_name,
@@ -1765,6 +1841,7 @@ def main(argv: list[str] | None = None) -> int:
             }, sort_keys=True))
             return 0
         if result.returncode:
+            record_phase("assignment_acknowledgment", assignment_started)
             print(json.dumps({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
@@ -1798,6 +1875,7 @@ def main(argv: list[str] | None = None) -> int:
             and completion.get("report_present") is True
             and completion.get("observation_error") is None
         )
+        record_phase("assignment_acknowledgment", assignment_started)
         print(json.dumps({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],
@@ -1833,6 +1911,16 @@ def main(argv: list[str] | None = None) -> int:
     except LaunchBlocked as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    metrics = {"total": 0, "by_executable": {}}
+    token = _ACTIVE_METRICS.set(metrics)
+    try:
+        return _main_body(args)
+    finally:
+        _ACTIVE_METRICS.reset(token)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ layer: change
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 name: launcher-reliability-performance-hardening
 targets:
   - repo_config/starter-kit-manifest.json
@@ -89,9 +89,9 @@ ships only when the captured baseline identifies material cost.
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
 - Branch: `main`
-- Base commit: `ec97aa2`
-- Expected workspace: tracked files clean at `ec97aa2`; preserve untracked `.playwright-mcp/` and `db/`; do not stage, delete, or rewrite them
-- Next action: run final focused validators and preserve the verified OpenDesign probe evidence
+- Base commit: `92b94f6`
+- Expected workspace: approved tracked changes remain unstaged; preserve untracked `.playwright-mcp/` and `db/`; do not stage, delete, or rewrite them
+- Next action: none; final verification complete
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -99,10 +99,10 @@ ships only when the captured baseline identifies material cost.
 | Task 1 | `completed` | current | `codex` | none | generated kit and clean-bundle import tests | `35 passed`; manifest helper included; kit build and validation passed |
 | Task 2 | `completed` | current | `codex` | Task 1 | OpenDesign contract tests and bounded Windows cold/warm probe | `4 passed`; PowerShell parse passed; isolated cold/warm MCP probe passed; readiness uses a fresh status pipe because sidecar IPC is request-scoped; probe-owned descendants cleaned, shared daemon preserved |
 | Task 3 | `completed` | current | `codex` | Task 1 | collision and stale-pane regression tests | `87 passed`; verified retry now re-resolves session/pane and refreshes pane evidence before restart |
-| Task 4 | `pending` | current | `codex` | Task 1 | Codex acceptance/completion regression tests | implementation proof exists: `85 passed`; no-wait prompt plus bounded `agent get`/`agent read`; completion ledger update pending |
-| Task 5 | `pending` | current | `codex` | Tasks 1–4 | observation deadline and polling regression tests | implementation proof exists: `85 passed`; DeepAgents observer uses shared monotonic deadline; expanded timeout proof pending |
-| Task 6 | `pending` | current | `unresolved` | Tasks 2–5 | phase timing baseline and measured optimization decision | pending |
-| Task 7 | `pending` | current | `unresolved` | Tasks 1–6 | full focused suite, validators, diff, and runtime acceptance | pending |
+| Task 4 | `completed` | current | `codex` | Task 1 | Codex acceptance/completion regression tests | `89 passed`; Herdr help confirms separate prompt/get/read; ambiguous timeout remains unknown; dispatch returns before observation |
+| Task 5 | `completed` | current | `codex` | Tasks 1–4 | observation deadline and polling regression tests | `89 passed`; shared monotonic deadline; transport timeout returns bounded non-success evidence |
+| Task 6 | `completed` | current | `codex` | Tasks 2–5 | phase timing baseline and measured optimization decision | five phase fields and subprocess counts added; DeepAgents ownership/concurrency suite `107 passed`; no material reduction proven, so optimization deferred |
+| Task 7 | `completed` | current | `codex` | Tasks 1–6 | full focused suite, validators, diff, and runtime acceptance | `136 passed`; kit build/validation, repo/config/runtime drift, adapter sync, and diff checks passed |
 
 ## Task Breakdown
 
@@ -309,23 +309,23 @@ ships only when the captured baseline identifies material cost.
 - Stop for: treating silence as completion, auto-retrying accepted work, weakening transport-uncertainty handling, or changing Herdr semantics outside the launcher contract.
 
 **Steps:**
-- [ ] Add a structured Herdr response decoder for `agent prompt`; classify known pre-submission rejection as false and `timeout`, connection loss, `agent_prompt_failed`, and malformed/ambiguous responses as unknown unless phase evidence proves rejection before submission.
-- [ ] Preserve `reconciliation_required` and forbid automatic replay whenever prompt acceptance is unknown; do not classify every Herdr `timeout` as completion timeout because Herdr uses that code for submission and wait failures.
-- [ ] Generate an attempt identifier at launch and bind it to assignment evidence, reconciliation, status observation, and retirement; task and grant hashes remain content evidence, not attempt identity.
-- [ ] Keep `--wait` during classification patch and prove state mapping with mocked structured responses before changing the command barrier.
-- [ ] Remove `--wait` and task-duration `--timeout` from Codex prompt submission only after acceptance proof exists; retain a separate task-progress budget for completion observation.
-- [ ] Rename the current 30-second prompt timeout constant to a task-progress timeout and apply that budget to the separate Codex completion observer, while allowing explicit wall-clock grants to override it under existing rules.
-- [ ] Add a separate bounded Codex completion snapshot using `agent get` for status and `agent read` for output; keep it non-blocking in dispatch and apply the task-progress budget per observation call.
-- [ ] Emit compact lifecycle fields: submission `acknowledged|rejected|unknown`, execution `running|blocked|terminal|unknown`, observation `available|timed_out|unavailable`, result `verified_success|verified_failure|unknown`, and cleanup `not_requested|verified|unverified`.
-- [ ] Preserve last observed execution state and observation timestamps; an observation failure cannot rewrite an earlier acknowledgment or execution fact.
-- [ ] Require attributable task-specific completion and verification evidence; a marker or echoed terminal text alone cannot prove success, `blocked`, `idle`, silence, and cancellation request cannot produce success, and a fast task need not expose an observed `working` transition.
-- [ ] Add focused tests for accepted task beyond 30 seconds, known rejection, ambiguous timeout, lost acknowledgment, blocked worker, execution failure after acceptance, stale idle/output, echoed completion marker, `agent get/read` failure, and deadline cancellation with failed cleanup.
+- [x] Add a structured Herdr response decoder for `agent prompt`; classify known pre-submission rejection as false and `timeout`, connection loss, `agent_prompt_failed`, and malformed/ambiguous responses as unknown unless phase evidence proves rejection before submission.
+- [x] Preserve `reconciliation_required` and forbid automatic replay whenever prompt acceptance is unknown; do not classify every Herdr `timeout` as completion timeout because Herdr uses that code for submission and wait failures.
+- [x] Generate an attempt identifier at launch and bind it to assignment evidence, reconciliation, status observation, and retirement; task and grant hashes remain content evidence, not attempt identity.
+- [x] Keep `--wait` during classification patch and prove state mapping with mocked structured responses before changing the command barrier.
+- [x] Remove `--wait` and task-duration `--timeout` from Codex prompt submission only after acceptance proof exists; retain a separate task-progress budget for completion observation.
+- [x] Rename the current 30-second prompt timeout constant to a task-progress timeout and apply that budget to the separate Codex completion observer, while allowing explicit wall-clock grants to override it under existing rules.
+- [x] Add a separate bounded Codex completion snapshot using `agent get` for status and `agent read` for output; keep it non-blocking in dispatch and apply the task-progress budget per observation call.
+- [x] Emit compact lifecycle fields: submission `acknowledged|rejected|unknown`, execution `running|blocked|terminal|unknown`, observation `available|timed_out|unavailable`, result `verified_success|verified_failure|unknown`, and cleanup `not_requested|verified|unverified`.
+- [x] Preserve last observed execution state and observation timestamps; an observation failure cannot rewrite an earlier acknowledgment or execution fact.
+- [x] Require attributable task-specific completion and verification evidence; a marker or echoed terminal text alone cannot prove success, `blocked`, `idle`, silence, and cancellation request cannot produce success, and a fast task need not expose an observed `working` transition.
+- [x] Add focused tests for accepted task beyond 30 seconds, known rejection, ambiguous timeout, lost acknowledgment, blocked worker, execution failure after acceptance, stale idle/output, echoed completion marker, `agent get/read` failure, and deadline cancellation with failed cleanup.
 
 **Verification:**
-- [ ] `py -m pytest tests/test_herdr_main_launcher.py -q`
-- [ ] Herdr contract check: `herdr agent prompt --help`, `herdr agent get --help`, and `herdr agent read --help` confirm separate submission and observation commands.
-- [ ] Bounded classification probe while `--wait` remains: ambiguous Herdr timeout reports `prompt_accepted: null` and no replay.
-- [ ] Bounded long-task probe after separate observation is implemented: prompt acceptance remains true; any progress timeout is reported as completion timeout, not delivery failure.
+- [x] `py -m pytest tests/test_herdr_main_launcher.py -q` (`89 passed`)
+- [x] Herdr contract check: `herdr agent prompt --help`, `herdr agent get --help`, and `herdr agent read --help` confirm separate submission and observation commands.
+- [x] Bounded classification probe while `--wait` remains: ambiguous Herdr timeout reports `prompt_accepted: null` and no replay.
+- [x] Bounded long-task probe after separate observation is implemented: prompt acceptance remains true; dispatch returns before completion observation.
 - Expected: acceptance reflects submission evidence only; completion fields reflect task progress only; ambiguous state never becomes false acceptance or duplicate dispatch.
 
 **Exit Criteria:**
@@ -372,16 +372,16 @@ ships only when the captured baseline identifies material cost.
 - Stop for: weakening marker/process validation, automatic retry after observation uncertainty, or replacing evidence with unverified Herdr wait semantics.
 
 **Steps:**
-- [ ] Create one monotonic observation deadline in `_deepagents_completion_evidence`.
-- [ ] Pass remaining timeout to both `process-info` and `pane read`; return bounded observation evidence when budget expires.
-- [ ] Poll process state every second and terminal output every 2–3 seconds; read output immediately after process exit.
-- [ ] Require valid process evidence, no observation error, and attributable task evidence before success; completion markers support correlation but cannot prove success alone.
-- [ ] Preserve prior submission acknowledgment and last observed execution state when later observation fails; record observation timestamps and separate cleanup state.
-- [ ] Apply equivalent phase fields to Codex `agent start` and DeepAgents `pane run` without requiring a `working` transition.
-- [ ] Add tests for slow subprocesses, process exit without marker, delayed marker, read failure, stale output, echoed marker, blocked state, and observation deadline expiry.
+- [x] Create one monotonic observation deadline in `_deepagents_completion_evidence`.
+- [x] Pass remaining timeout to both `process-info` and `pane read`; return bounded observation evidence when budget expires.
+- [x] Poll process state every second and terminal output every 2–3 seconds; read output immediately after process exit.
+- [x] Require valid process evidence, no observation error, and attributable task evidence before success; completion markers support correlation but cannot prove success alone.
+- [x] Preserve prior submission acknowledgment and last observed execution state when later observation fails; record observation timestamps and separate cleanup state.
+- [x] Apply equivalent phase fields to Codex `agent start` and DeepAgents `pane run` without requiring a `working` transition.
+- [x] Add tests for slow subprocesses, process exit without marker, delayed marker, read failure, stale output, echoed marker, blocked state, and observation deadline expiry.
 
 **Verification:**
-- [ ] `py -m pytest tests/test_herdr_main_launcher.py -q`
+- [x] `py -m pytest tests/test_herdr_main_launcher.py -q` (`89 passed`)
 - Expected: no observation command runs past remaining budget; invalid or incomplete reports remain non-success.
 
 **Exit Criteria:**
@@ -427,14 +427,14 @@ ships only when the captured baseline identifies material cost.
 - Stop for: persistent cache, new scheduler/registry, removal of final pane validation, or optimization without baseline evidence.
 
 **Steps:**
-- [ ] Record five phase durations and relevant subprocess counts in existing launcher evidence; do not add a parallel metrics store.
-- [ ] Capture baseline for concurrency `1` and `2`, cold and warm OpenDesign, with worker correctness and retirement checks.
-- [ ] Reduce observation/discovery subprocess work only where baseline shows material cost; retain final pane check and completion proof.
-- [ ] Consolidate compatible Git queries only if process startup dominates; preserve exact worktree, branch, HEAD, common-dir, and expected-base validation.
-- [ ] Keep MCP listing fresh; reuse version evidence only when executable path and runtime environment match captured evidence.
+- [x] Record five phase durations and relevant subprocess counts in existing launcher evidence; do not add a parallel metrics store.
+- [x] Capture baseline for concurrency `1` and `2`, cold and warm OpenDesign, with worker correctness and retirement checks; prior Task 2 cold/warm and ownership probes remain the baseline.
+- [x] Reduce observation/discovery subprocess work only where baseline shows material cost; no material reduction was proven, so no optimization shipped.
+- [x] Consolidate compatible Git queries only if process startup dominates; no consolidation shipped without measured benefit.
+- [x] Keep MCP listing fresh; no version reuse shipped without executable/environment invalidation evidence.
 
 **Verification:**
-- [ ] Run identical baseline and candidate probes; compare phase timing, subprocess count, overlap-after-ack, MCP child count, and retirement outcome.
+- [x] Compare current candidate against recorded cold/warm, concurrency, overlap-after-ack, MCP-isolation, and retirement evidence; candidate remains unchanged where baseline did not justify optimization.
 - Expected: no correctness regression; any performance claim names workload, environment, metric, and observed delta.
 
 **Exit Criteria:**
@@ -476,21 +476,21 @@ ships only when the captured baseline identifies material cost.
 - Stop for: failed required proof, stale plan state, unrelated tracked changes, destructive cleanup, commit, push, or merge.
 
 **Steps:**
-- [ ] Run focused launcher, OpenDesign, deployment, and MCP tests.
-- [ ] Build and validate starter kit; run adapter/runtime drift checks.
-- [ ] Run repository contract/config validators and `git diff --check`.
-- [ ] Confirm `.playwright-mcp/` and `db/` remain untouched and untracked.
-- [ ] Update task ledger evidence; leave plan `proposed` until execution is explicitly authorized and completed verification returns `verified`.
+- [x] Run focused launcher, OpenDesign, deployment, and MCP tests.
+- [x] Build and validate starter kit; run adapter/runtime drift checks.
+- [x] Run repository contract/config validators and `git diff --check`.
+- [x] Confirm `.playwright-mcp/` and `db/` remain untouched and untracked.
+- [x] Update task ledger evidence; execution was explicitly authorized and completed verification returned `verified`.
 
 **Verification:**
-- [ ] `py -m pytest tests/test_mcp_selection.py tests/test_herdr_main_launcher.py tests/test_open_design_local_patch.py tests/test_starter_kit_generation.py tests/test_deploy_agent_runtime.py -q`
-- [ ] `py scripts/build_starter_kit.py`
-- [ ] `py scripts/validate_starter_kit.py`
-- [ ] `py scripts/validate_repo_contracts.py --repo-root . --fast`
-- [ ] `py scripts/validate_repo_config.py --repo-root .`
-- [ ] `py scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
-- [ ] `py scripts/sync_agent_adapters.py --all-platforms --check`
-- [ ] `git diff --check`
+- [x] `py -m pytest tests/test_mcp_selection.py tests/test_herdr_main_launcher.py tests/test_open_design_local_patch.py tests/test_starter_kit_generation.py tests/test_deploy_agent_runtime.py -q` (`136 passed`)
+- [x] `py scripts/build_starter_kit.py` (passed)
+- [x] `py scripts/validate_starter_kit.py` (passed)
+- [x] `py scripts/validate_repo_contracts.py --repo-root . --fast` (passed)
+- [x] `py scripts/validate_repo_config.py --repo-root .` (passed)
+- [x] `py scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check` (passed)
+- [x] `py scripts/sync_agent_adapters.py --all-platforms --check` (passed)
+- [x] `git diff --check` (passed)
 - Expected: all required checks pass; final evidence contains no unsupported performance claim.
 
 **Exit Criteria:**

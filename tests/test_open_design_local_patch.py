@@ -87,6 +87,7 @@ def test_open_design_mcp_launcher_discovers_current_sidecar() -> None:
     assert "statusPipe.Connect" in launcher
     assert "OD_SIDECAR_CLIENT_ENDPOINT = $runtime.Endpoint" in launcher
     assert "OD_DATA_DIR = $runtime.DataDir" in launcher
+    assert '$env:OD_MCP_STDIO_IDLE_EXIT_MS = "0"' in launcher
     assert "Start-Process -FilePath $exe -ArgumentList \"--headless\"" in launcher
     assert "open-design-sidecar-5329972e5f38dbd97ec28d825bccc6b9" not in launcher
     assert 'Name -like "open-design-*"' in launcher

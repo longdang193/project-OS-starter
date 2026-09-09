@@ -597,6 +597,16 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "grant_digest": evidence["registry_launcher"]["grant_digest"],
     }
     assert LAUNCHER._DEEPAGENTS_RUN_TIMEOUT == 1800.0
+    performance = evidence["performance"]
+    assert set(performance["phase_durations_ms"]) == {
+        "preflight",
+        "target_discovery",
+        "worker_initialization",
+        "assignment_acknowledgment",
+        "retirement",
+    }
+    assert all(value >= 0 for value in performance["phase_durations_ms"].values())
+    assert performance["subprocess_counts"]["total"] == 0
 
 
 def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
@@ -2028,6 +2038,29 @@ def test_deepagents_completion_rejects_observer_error(
     assert evidence["state"] == "no-report"
     assert evidence["report_present"] is False
     assert evidence["observation_error"] in {"pane process-info failed", "pane read failed"}
+
+
+def test_deepagents_completion_converts_transport_timeout_to_bounded_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def timeout_run(*args, **kwargs):
+        raise LAUNCHER.CommandTransportTimeout("observation timeout")
+
+    monkeypatch.setattr(LAUNCHER, "_run", timeout_run)
+
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=LAUNCHER.time.monotonic() + 0.1,
+    )
+
+    assert evidence["state"] == "no-report"
+    assert evidence["report_present"] is False
+    assert evidence["observation_error"] == "pane process-info transport timeout"
+    assert evidence["observed_at"] > 0
 
 
 def test_deepagents_completion_waits_for_delayed_report(

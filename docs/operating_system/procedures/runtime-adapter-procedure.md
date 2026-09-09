@@ -164,6 +164,11 @@ worker model and omits worker binding evidence when no role is selected. Tura
 keeps its existing provider configuration and credential behavior; only the
 DeepAgents path validates `wire_api` and derives `use_responses_api`.
 
+Launcher performance evidence records monotonic durations for preflight, target
+discovery, worker initialization, assignment acknowledgment, and retirement,
+alongside subprocess counts. Any optimization requires a matching workload
+baseline; otherwise reduction stays deferred.
+
 DeepAgents role views are one same-worktree attempt resource. Launcher acquires
 non-blocking ownership before mutation and holds it through worker exit and
 cleanup. Ownership key uses canonical resolved worktree identity. Lock-file

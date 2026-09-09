@@ -25,6 +25,8 @@ codex mcp get open-design
 Codex launches `Start-OpenDesignMcp.ps1`. It discovers the current daemon
 sidecar pipe and data directory from the installed runtime, so OpenDesign
 updates do not leave stale endpoint values in Codex config.
+The launcher disables OpenDesign MCP's idle stdio shutdown, so an idle Codex
+session does not later receive `Transport closed` from a dead MCP child.
 
 Bootstrap probes for a healthy daemon before taking its named Windows mutex.
 Discovery accepts a sidecar only after `sidecar:describe` identifies the

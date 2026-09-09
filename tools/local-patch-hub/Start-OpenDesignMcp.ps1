@@ -141,5 +141,6 @@ $env:OD_DATA_DIR = $runtime.DataDir
 $env:OD_MCP_BOOTSTRAP_ARGS = '["--headless"]'
 $env:OD_MCP_BOOTSTRAP_COMMAND = $exe
 $env:OD_SIDECAR_CLIENT_ENDPOINT = $runtime.Endpoint
+$env:OD_MCP_STDIO_IDLE_EXIT_MS = "0"
 & $exe $cli "mcp"
 exit $LASTEXITCODE
