@@ -83,6 +83,8 @@ def test_open_design_mcp_launcher_discovers_current_sidecar() -> None:
     assert "status.result.state -eq \"running\"" in launcher
     assert "status.result.url" in launcher
     assert launcher.index('sidecar:describe') < launcher.index('sidecar:status')
+    assert "statusPipe = [IO.Pipes.NamedPipeClientStream]::new" in launcher
+    assert "statusPipe.Connect" in launcher
     assert "OD_SIDECAR_CLIENT_ENDPOINT = $runtime.Endpoint" in launcher
     assert "OD_DATA_DIR = $runtime.DataDir" in launcher
     assert "Start-Process -FilePath $exe -ArgumentList \"--headless\"" in launcher

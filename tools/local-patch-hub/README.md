@@ -28,7 +28,9 @@ updates do not leave stale endpoint values in Codex config.
 
 Bootstrap probes for a healthy daemon before taking its named Windows mutex.
 Discovery accepts a sidecar only after `sidecar:describe` identifies the
-daemon and `sidecar:status` reports `state=running` with a non-empty URL. Cold
+daemon and a fresh named-pipe connection receives `sidecar:status` reporting
+`state=running` with a non-empty URL. OpenDesign sidecar IPC is request-scoped;
+do not reuse the `describe` connection for readiness status. Cold
 starts recheck after lock acquisition, and discovery, lock wait, daemon
 startup, and readiness share one monotonic deadline. The current local
 contract is `startup_timeout_sec = 90`, with a five-second final MCP-handshake

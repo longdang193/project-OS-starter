@@ -73,13 +73,13 @@ ships only when the captured baseline identifies material cost.
 - Branch: `main`
 - Base commit: `ec97aa2`
 - Expected workspace: tracked files clean at `ec97aa2`; preserve untracked `.playwright-mcp/` and `db/`; do not stage, delete, or rewrite them
-- Next action: obtain isolated cold OpenDesign proof without touching shared daemons, then run measured performance baseline
+- Next action: run final focused validators and preserve the verified OpenDesign probe evidence
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current | `codex` | none | generated kit and clean-bundle import tests | `35 passed`; manifest helper included; kit build and validation passed |
-| Task 2 | `active` | current | `codex` | Task 1 | OpenDesign contract tests and bounded Windows cold/warm probe | `4 passed`; PowerShell parse passed; prior warm probe `1.4s`, no timeouts, OpenDesign count `6→6`; current host has five shared daemons, so cold proof remains unsafe without isolated runtime |
+| Task 2 | `completed` | current | `codex` | Task 1 | OpenDesign contract tests and bounded Windows cold/warm probe | `4 passed`; PowerShell parse passed; isolated cold/warm MCP probe passed; readiness uses a fresh status pipe because sidecar IPC is request-scoped; probe-owned descendants cleaned, shared daemon preserved |
 | Task 3 | `completed` | current | `codex` | Task 1 | collision and stale-pane regression tests | `87 passed`; verified retry now re-resolves session/pane and refreshes pane evidence before restart |
 | Task 4 | `pending` | current | `codex` | Task 1 | Codex acceptance/completion regression tests | implementation proof exists: `85 passed`; no-wait prompt plus bounded `agent get`/`agent read`; completion ledger update pending |
 | Task 5 | `pending` | current | `codex` | Tasks 1–4 | observation deadline and polling regression tests | implementation proof exists: `85 passed`; DeepAgents observer uses shared monotonic deadline; expanded timeout proof pending |
@@ -178,16 +178,16 @@ ships only when the captured baseline identifies material cost.
 - Stop for: daemon termination, authentication, broad timeout increases, or endpoint behavior that cannot be proven from current runtime.
 
 **Steps:**
-- [ ] Add a monotonic deadline and remaining-milliseconds helper using PowerShell stopwatch timestamps.
-- [ ] Run `Find-OpenDesignDaemon` before mutex acquisition; pass remaining budget to each pipe connect/read operation.
-- [ ] Acquire mutex only when no healthy daemon is found, recheck readiness after lock acquisition, start only when still absent, and release mutex in every path.
-- [ ] Keep readiness below configured client startup timeout and document the single-deadline contract.
-- [ ] Add contract tests for fast path, shared deadline, bounded pipe calls, recheck, and dynamic endpoint handoff.
+- [x] Add a monotonic deadline and remaining-milliseconds helper using PowerShell stopwatch timestamps.
+- [x] Run `Find-OpenDesignDaemon` before mutex acquisition; pass remaining budget to each pipe connect/read operation.
+- [x] Acquire mutex only when no healthy daemon is found, recheck readiness after lock acquisition, start only when still absent, and release mutex in every path.
+- [x] Keep readiness below configured client startup timeout and document the single-deadline contract.
+- [x] Add contract tests for fast path, shared deadline, bounded pipe calls, recheck, dynamic endpoint handoff, and fresh status connection.
 
 **Verification:**
-- [ ] `py -m pytest tests/test_open_design_local_patch.py -q`
-- [ ] Bounded Windows probe: two concurrent wrapper starts against cold OpenDesign; verify one daemon startup owner and successful MCP handoff.
-- [ ] Bounded Windows probe: wrapper start against healthy daemon; verify no bootstrap wait before handoff.
+- [x] `py -m pytest tests/test_open_design_local_patch.py -q`
+- [x] Bounded Windows probe: isolated cold OpenDesign startup and successful MCP handoff.
+- [x] Bounded Windows probe: wrapper start against healthy daemon; verify no bootstrap wait before handoff.
 - Expected: no duplicate daemon launch, no cumulative timeout beyond configured budget, and valid dynamic endpoint variables.
 
 **Exit Criteria:**

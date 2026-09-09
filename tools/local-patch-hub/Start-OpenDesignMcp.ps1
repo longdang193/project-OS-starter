@@ -38,16 +38,37 @@ function Find-OpenDesignDaemon {
             if ($remaining -le 0 -or -not $read.Wait([int][Math]::Min(1000, $remaining))) { continue }
             $response = $read.Result | ConvertFrom-Json
             if ($response.ok -and $response.result.stamp.app -eq "daemon") {
-                $writer.WriteLine('{"type":"sidecar:status"}')
-                $statusRead = $reader.ReadLineAsync()
-                $remaining = Get-RemainingMilliseconds $DeadlineTicks
-                if ($remaining -le 0 -or -not $statusRead.Wait([int][Math]::Min(1000, $remaining))) { continue }
-                $status = $statusRead.Result | ConvertFrom-Json
-                if ($status.ok -and $status.result.state -eq "running" -and
-                    $status.result.url -is [string] -and $status.result.url.Length -gt 0) {
-                    return [pscustomobject]@{
-                        Endpoint = "\\.\pipe\$($pipeInfo.Name)"
-                        DataDir = $response.result.resources.dataRoot
+                $pipe.Dispose()
+                $pipe = $null
+                $statusPipe = $null
+                try {
+                    $statusPipe = [IO.Pipes.NamedPipeClientStream]::new(
+                        ".",
+                        $pipeInfo.Name,
+                        [IO.Pipes.PipeDirection]::InOut,
+                        [IO.Pipes.PipeOptions]::None
+                    )
+                    $remaining = Get-RemainingMilliseconds $DeadlineTicks
+                    if ($remaining -le 0) { continue }
+                    $statusPipe.Connect([int][Math]::Min(1000, $remaining))
+                    $statusWriter = [IO.StreamWriter]::new($statusPipe)
+                    $statusWriter.AutoFlush = $true
+                    $statusWriter.WriteLine('{"type":"sidecar:status"}')
+                    $statusReader = [IO.StreamReader]::new($statusPipe)
+                    $statusRead = $statusReader.ReadLineAsync()
+                    $remaining = Get-RemainingMilliseconds $DeadlineTicks
+                    if ($remaining -le 0 -or -not $statusRead.Wait([int][Math]::Min(1000, $remaining))) { continue }
+                    $status = $statusRead.Result | ConvertFrom-Json
+                    if ($status.ok -and $status.result.state -eq "running" -and
+                        $status.result.url -is [string] -and $status.result.url.Length -gt 0) {
+                        return [pscustomobject]@{
+                            Endpoint = "\\.\pipe\$($pipeInfo.Name)"
+                            DataDir = $response.result.resources.dataRoot
+                        }
+                    }
+                } finally {
+                    if ($null -ne $statusPipe) {
+                        $statusPipe.Dispose()
                     }
                 }
             }
