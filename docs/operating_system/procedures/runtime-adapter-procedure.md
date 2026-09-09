@@ -157,6 +157,20 @@ the active provider binding owns that fact, so every profile using that provider
 follows the same launch mapping while Tura and Native Codex remain independent
 paths.
 
+`dcode-project` loads Codex configuration once per invocation. `--print-config`
+does not read credentials, generate role views, acquire role ownership, or
+launch a worker. Execution evidence separates controller model from selected
+worker model and omits worker binding evidence when no role is selected. Tura
+keeps its existing provider configuration and credential behavior; only the
+DeepAgents path validates `wire_api` and derives `use_responses_api`.
+
+DeepAgents role views are one same-worktree attempt resource. Launcher acquires
+non-blocking ownership before mutation and holds it through worker exit and
+cleanup. Ownership key uses canonical resolved worktree identity. Lock-file
+presence is not live-owner evidence, and user-owned `.deepagents` content is
+preserved. Crash cleanup is allowed only when worker process lifetime is
+proven; otherwise generated views remain and launcher reports recovery blocked.
+
 `project-delegate` is the one bounded Native Codex-to-Tura adapter. Its wrapper
 rejects `--executor` and forces `--executor tura`; `[delegation].default_executor`
 is only an internal launcher fallback. It reuses the same role and handoff

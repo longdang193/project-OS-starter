@@ -69,6 +69,52 @@ def write_role(
     )
 
 
+def runtime_binding(
+    codex_config: dict[str, object],
+    *,
+    model: str = "combo-high",
+    base_url: str = "https://provider.example/v1",
+    provider_name: str = "9router",
+    secret_file: Path | None = None,
+    secret_key: str = "API_KEY",
+) -> object:
+    return LAUNCHER._RuntimeBinding(
+        model=model,
+        base_url=base_url,
+        provider_name=provider_name,
+        secret_file=secret_file or Path("missing-secret.env"),
+        secret_key=secret_key,
+        codex_config=codex_config,
+    )
+
+
+def start_lock_holder(root: Path, *, write_views: bool = False) -> subprocess.Popen[str]:
+    script = """
+import importlib.util
+import pathlib
+import sys
+
+launcher_path = pathlib.Path(sys.argv[1])
+root = pathlib.Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("lock_holder_launcher", launcher_path)
+launcher = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = launcher
+spec.loader.exec_module(launcher)
+with launcher._role_views_lock(root):
+    if sys.argv[3] == "write":
+        launcher._write_role_views(root, launcher._load_roles(root, "9router"))
+    print("READY", flush=True)
+    sys.stdin.readline()
+"""
+    return subprocess.Popen(
+        [sys.executable, "-c", script, str(LAUNCHER_PATH), str(root), "write" if write_views else "hold"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
 def tura_config(
     tmp_path: Path,
     *,
@@ -309,6 +355,57 @@ def test_deepagents_worker_reaps_windows_child_tree_after_normal_exit(
     assert observed == ["job"]
 
 
+def test_role_views_lock_rejects_competing_launch_without_mutation(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    holder = start_lock_holder(tmp_path, write_views=True)
+    assert holder.stdout is not None
+    assert holder.stdout.readline().strip() == "READY"
+
+    with pytest.raises(RuntimeError, match="owns role views"):
+        with LAUNCHER._role_views_lock(tmp_path):
+            pytest.fail("competing launch acquired role-view lock")
+
+    assert (tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md").is_file()
+    assert holder.stdin is not None
+    holder.stdin.write("stop\n")
+    holder.stdin.flush()
+    assert holder.wait(timeout=5) == 0
+
+
+def test_role_views_lock_preserves_views_after_launcher_crash(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    holder = start_lock_holder(tmp_path, write_views=True)
+    assert holder.stdout is not None
+    assert holder.stdout.readline().strip() == "READY"
+
+    holder.kill()
+    assert holder.wait(timeout=5) is not None
+    view = tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md"
+    assert view.is_file()
+    with LAUNCHER._role_views_lock(tmp_path):
+        assert view.is_file()
+
+
+def test_role_views_lock_allows_separate_worktrees(tmp_path: Path) -> None:
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    first = start_lock_holder(first_root)
+    second = start_lock_holder(second_root)
+    assert first.stdout is not None
+    assert second.stdout is not None
+    assert first.stdout.readline().strip() == "READY"
+    assert second.stdout.readline().strip() == "READY"
+
+    for process in (first, second):
+        assert process.stdin is not None
+        process.stdin.write("stop\n")
+        process.stdin.flush()
+    assert first.wait(timeout=5) == 0
+    assert second.wait(timeout=5) == 0
+
+
 def test_tura_worker_does_not_supply_adapter_cache_key() -> None:
     assert "prompt_cache_key" not in LAUNCHER._tura_worker_argv(
         Path("tura"), Path("repo"), "combo-low", "session-b", "task"
@@ -426,6 +523,8 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
     tmp_path: Path,
 ) -> None:
     write_role(tmp_path, "normal")
+    secret_file = tmp_path / "secret.env"
+    secret_file.write_text("API_KEY=secret\n", encoding="utf-8")
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text(
         '[delegation]\ndefault_executor = "deepagents"\n',
@@ -436,12 +535,10 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_codex_config",
-        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+        lambda config: runtime_binding(
+            {"model_providers": {"9router": {"wire_api": "chat"}}},
+            secret_file=secret_file,
+        ),
     )
     monkeypatch.setattr(
         LAUNCHER,
@@ -492,12 +589,9 @@ def test_main_rejects_missing_or_unknown_role_before_role_view_write(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_codex_config",
-        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+        lambda config: runtime_binding(
+            {"model_providers": {"9router": {"wire_api": "chat"}}}
+        ),
     )
     monkeypatch.setattr(
         LAUNCHER,
@@ -602,13 +696,69 @@ def test_deepagents_model_params_reject_unknown_wire_api() -> None:
 
 def test_runtime_binding_digest_changes_with_wire_api() -> None:
     chat = LAUNCHER._runtime_binding_digest(
-        "9router", "combo-ui", "https://provider.example/v1", "chat"
+        "9router",
+        "combo-high",
+        "combo-ui",
+        "https://provider.example/v1",
+        {"use_responses_api": False},
     )
     responses = LAUNCHER._runtime_binding_digest(
-        "9router", "combo-ui", "https://provider.example/v1", "responses"
+        "9router",
+        "combo-high",
+        "combo-ui",
+        "https://provider.example/v1",
+        {"use_responses_api": True},
     )
 
     assert chat != responses
+
+
+def test_runtime_binding_loads_codex_config_once_without_reading_secret(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    codex_path = tmp_path / "config.toml"
+    codex_path.write_text(
+        'model_provider = "9router"\n'
+        'model = "combo-high"\n'
+        '[model_providers."9router"]\n'
+        'base_url = "https://provider.example/v1"\n'
+        'wire_api = "responses"\n'
+        ,
+        encoding="utf-8",
+    )
+    config = {
+        "paths": {
+            "codex_config": str(codex_path),
+            "secret_file": str(tmp_path / "missing.env"),
+            "secret_key": "API_KEY",
+        }
+    }
+    monkeypatch.setattr(LAUNCHER, "_read_env_value", lambda *args: pytest.fail("secret read"))
+
+    binding = LAUNCHER._runtime_binding(config)
+
+    assert binding.codex_config["model_providers"]["9router"]["wire_api"] == "responses"
+    assert binding.secret_file == tmp_path / "missing.env"
+
+
+def test_runtime_binding_digest_changes_with_worker_model() -> None:
+    normal = LAUNCHER._runtime_binding_digest(
+        "9router",
+        "combo-high",
+        "combo-normal",
+        "https://provider.example/v1",
+        {"use_responses_api": True},
+    )
+    high = LAUNCHER._runtime_binding_digest(
+        "9router",
+        "combo-high",
+        "combo-high",
+        "https://provider.example/v1",
+        {"use_responses_api": True},
+    )
+
+    assert normal != high
 
 
 @pytest.mark.parametrize("argument", ["--timeout", "--rubric"])
@@ -640,6 +790,8 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
         ("xhigh", "combo-xhigh", 40),
     ]:
         write_role(tmp_path, candidate_name, model=candidate_model, rank=candidate_rank)
+    secret_file = tmp_path / "secret.env"
+    secret_file.write_text("API_KEY=secret\n", encoding="utf-8")
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text(
         '[delegation]\ndefault_executor = "deepagents"\n',
@@ -650,12 +802,10 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_codex_config",
-        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+        lambda config: runtime_binding(
+            {"model_providers": {"9router": {"wire_api": "chat"}}},
+            secret_file=secret_file,
+        ),
     )
     monkeypatch.setattr(
         LAUNCHER,
@@ -733,6 +883,8 @@ def test_print_config_reports_selected_role_effective_model(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     write_role(tmp_path, "normal", model="combo-normal", rank=20)
+    secret_file = tmp_path / "secret.env"
+    secret_file.write_text("API_KEY=secret\n", encoding="utf-8")
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text(
         '[delegation]\ndefault_executor = "deepagents"\n',
@@ -743,12 +895,10 @@ def test_print_config_reports_selected_role_effective_model(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_codex_config",
-        lambda config: {"model_providers": {"9router": {"wire_api": "chat"}}},
+        lambda config: runtime_binding(
+            {"model_providers": {"9router": {"wire_api": "chat"}}},
+            secret_file=secret_file,
+        ),
     )
     monkeypatch.setattr(
         LAUNCHER,
@@ -768,6 +918,104 @@ def test_print_config_reports_selected_role_effective_model(
     assert payload["effective_model"] == "openai:combo-normal"
     assert payload["controller_model"] == "openai:combo-high"
     assert payload["deepagents_model_params"] == {"use_responses_api": False}
+
+
+def test_print_config_without_role_omits_worker_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_role(tmp_path, "normal")
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text(
+        '[delegation]\ndefault_executor = "deepagents"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_runtime_binding",
+        lambda config: runtime_binding({"model_providers": {"9router": {"wire_api": "chat"}}}),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
+
+    assert LAUNCHER.main(["--print-config"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "selected_role" not in payload
+    assert "effective_model" not in payload
+    assert "runtime_binding_digest" not in payload
+
+
+@pytest.mark.parametrize("executor", ["deepagents", "tura"])
+def test_runtime_binding_loads_codex_config_once_per_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    write_role(tmp_path, "normal")
+    secret_file = tmp_path / "secret.env"
+    secret_file.write_text("API_KEY=secret\n", encoding="utf-8")
+    codex_path = tmp_path / "codex.toml"
+    codex_path.write_text(
+        'model_provider = "9router"\nmodel = "combo-high"\n'
+        '[model_providers."9router"]\n'
+        'base_url = "https://provider.example/v1"\nwire_api = "chat"\n',
+        encoding="utf-8",
+    )
+    executable = tmp_path / "tura.exe"
+    executable.write_bytes(b"tura")
+    provider_config = tmp_path / "providers.toml"
+    provider_config.write_text("provider = 'test'\n", encoding="utf-8")
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text(
+        f"[delegation]\ndefault_executor = '{executor}'\n[paths]\n"
+        f"codex_config = '{codex_path}'\nsecret_file = '{secret_file}'\n"
+        f"secret_key = 'API_KEY'\ntura_executable = '{executable}'\n"
+        f"tura_provider_config = '{provider_config}'\n",
+        encoding="utf-8",
+    )
+    original_load = LAUNCHER._load_toml
+    loads: list[Path] = []
+
+    def counted_load(path: Path, label: str) -> dict[str, object]:
+        if path == codex_path:
+            loads.append(path)
+        return original_load(path, label)
+
+    monkeypatch.setattr(LAUNCHER, "_load_toml", counted_load)
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
+    if executor == "deepagents":
+        monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
+        monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+        monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+    else:
+        monkeypatch.setattr(LAUNCHER, "_run_tura_worker", lambda *args: 0)
+
+    assert LAUNCHER.main(["--role", "normal", "-n", "task"]) == 0
+    assert loads == [codex_path]
+
 
 def test_print_config_reports_tura_executable_hash_without_credentials(
     monkeypatch: pytest.MonkeyPatch,
@@ -791,9 +1039,8 @@ def test_print_config_reports_tura_executable_hash_without_credentials(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
+        lambda config: runtime_binding({}),
     )
-    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: {})
     monkeypatch.setattr(
         LAUNCHER,
         "_mcp_capabilities",
@@ -841,7 +1088,7 @@ def test_deepagents_provider_binding_accepts_responses_wire_api() -> None:
         }
     }
 
-    LAUNCHER._validate_deepagents_provider_binding(config, "9router")
+    assert LAUNCHER._deepagents_model_params(config, "9router")
 
 
 def test_deepagents_provider_binding_accepts_chat_wire_api() -> None:
@@ -853,14 +1100,14 @@ def test_deepagents_provider_binding_accepts_chat_wire_api() -> None:
         }
     }
 
-    LAUNCHER._validate_deepagents_provider_binding(config, "9router")
+    assert LAUNCHER._deepagents_model_params(config, "9router")
 
 
 def test_deepagents_provider_binding_rejects_unknown_wire_api() -> None:
     config = {"model_providers": {"9router": {"wire_api": "legacy"}}}
 
     with pytest.raises(RuntimeError, match="use `chat` or `responses`"):
-        LAUNCHER._validate_deepagents_provider_binding(config, "9router")
+        LAUNCHER._deepagents_model_params(config, "9router")
 
 
 def test_role_loader_rejects_duplicate_ranks(tmp_path: Path) -> None:
@@ -1140,6 +1387,8 @@ def _prepare_deepagents_main(
     tmp_path: Path,
 ) -> dict[str, object]:
     write_role(tmp_path, "normal")
+    secret_file = tmp_path / "secret.env"
+    secret_file.write_text("API_KEY=secret\n", encoding="utf-8")
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text(
         '[delegation]\ndefault_executor = "deepagents"\n',
@@ -1165,9 +1414,8 @@ def _prepare_deepagents_main(
     monkeypatch.setattr(
         LAUNCHER,
         "_runtime_binding",
-        lambda config: ("combo-high", "https://provider.example/v1", "secret", "9router"),
+        lambda config: runtime_binding(codex_config, secret_file=secret_file),
     )
-    monkeypatch.setattr(LAUNCHER, "_codex_config", lambda config: codex_config)
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
     return codex_config

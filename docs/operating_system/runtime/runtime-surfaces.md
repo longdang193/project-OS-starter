@@ -11,7 +11,8 @@ runtime, rules, skills, root instructions, and hooks.
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring in this repository |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
-| `scripts/herdr_main_launcher.py` | Canonical existing-target resolution and runtime projection for one top-level Codex or DeepAgents Herdr lane |
+| `scripts/herdr_main_launcher.py` | Canonical existing-target resolution and top-level Herdr lane/lifecycle projection |
+| `scripts/dcode_project.py` | Canonical DeepAgents projection, worker lifecycle, and generated role-view ownership |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
 
 ## Deployed Runtime Projections
@@ -27,7 +28,7 @@ runtime, rules, skills, root instructions, and hooks.
 | --- | --- | --- | --- | --- |
 | Codex | `generated_agents/codex/AGENTS.md` | none | `generated_agents/codex/skills/<skill>/SKILL.md` | none |
 | Codex delegated roles | `generated_agents/codex/agents/<role>.toml` | none | none | Deployed to `~/.codex/agents/` |
-| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, then cleans marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `~/.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime; Herdr-owned MCP selection through explicit `--mcp-select`; default `--no-mcp`; temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; project MCP configs remain untouched and untrusted |
+| DeepAgents delegated roles | Root `AGENTS.md` auto-loaded; user-local `dcode-project` materializes ignored `.deepagents/agents/<role>/AGENTS.md` only for launch, owns one same-worktree attempt at a time, then removes only its marker-owned views | Canonical `docs/operating_system/rules/*.md` read when task scope requires; `.agents/rules` is not auto-loaded | `~/.agents/skills/<skill>/SKILL.md` auto-discovered | Local runtime; Herdr-owned MCP selection through explicit `--mcp-select`; default `--no-mcp`; temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; project MCP configs remain untouched and untrusted |
 | Claude | `generated_agents/claude/CLAUDE.md` | `.agents/rules/*.md` | `generated_agents/claude/skills/<skill>/SKILL.md` | none |
 | Antigravity/Gemini | `generated_agents/antigravity/GEMINI.md` | `.agents/rules/*.md` | `generated_agents/antigravity/skills/<skill>/SKILL.md` | none |
 
@@ -38,7 +39,7 @@ runtime, rules, skills, root instructions, and hooks.
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Shared Project OS runtime | `~/.agents/project-os` | Marker-owned sync of approved docs/scripts; one installation serves local projects. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | Launcher reads active Codex provider binding and local secret source; uses provider `wire_api` as the sole protocol source and projects `chat`/`responses` to native `use_responses_api=false/true`; rejects unsupported protocols before launch; `--role` selects the canonical profile model for primary launch; validates controller-owned handoff; projects approved Codex `[mcp_servers]` only with explicit `--mcp-select`; keeps `--no-mcp` by default; uses temporary launcher-owned config and isolated child `DEEPAGENTS_HOME`; uses setup-script-pinned `deepagents-code` version; disables child auto-update. |
+| DeepAgents | User-local `dcode-project` | Launcher loads one Codex snapshot per invocation; DeepAgents alone derives `wire_api` to native `use_responses_api=false/true`; secrets load only for execution; selected worker model and effective parameters form worker evidence; same-worktree role views use exclusive attempt ownership; Tura configuration remains independent. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 
@@ -49,7 +50,7 @@ runtime, rules, skills, root instructions, and hooks.
 - `deploy_agent_runtime.py` syncs approved shared docs/scripts and records ownership metadata. `--check` reports missing, stale, drifted, or foreign-owned bundle files.
 - Globalized scripts resolve project root from explicit `--repo-root`, then Git top-level, and block when neither exists.
 - Project-local paths remain fallback when the shared installation is absent or marker ownership fails.
-- `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, it binds the exact lane profile and `dcode-project` resolves and projects that profile into DeepAgents. Herdr owns top-level session/pane lifecycle and outer observation, while `dcode-project` owns DeepAgents worker lifecycle. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
+- `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, `dcode-project` resolves and projects the selected profile into DeepAgents. Herdr owns top-level lane/session/pane lifecycle and outer observation; `dcode-project` owns DeepAgents projection, worker lifecycle, and same-worktree role-view ownership. Tura keeps its existing provider and credential path. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
 - Native Herdr Codex workers disable every effective MCP server by default; a
   validated server-level selection enables only selected servers. Tool-level
   selection fails closed until Codex can enforce it. Browser MCPs stay

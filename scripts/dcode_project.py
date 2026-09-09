@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
+from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import Path
@@ -70,6 +71,7 @@ _DIRECT_MCP_RUNTIME_PREFIX = "runtime-"
 _DIRECT_MCP_OWNER_MARKER = ".owner"
 _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
 _DIRECT_MCP_STALE_AGE = timedelta(hours=24)
+_ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
 _ALLOWED_RUNTIME_FLAGS = {
     "--print-config",
     "--json",
@@ -317,6 +319,66 @@ def _remove_role_views(repo_root: Path, roles: list[dict[str, str]]) -> None:
     _remove_empty_parents(agents_root, repo_root)
 
 
+def _role_views_lock_path(repo_root: Path) -> Path:
+    identity = str(repo_root.resolve())
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return Path(tempfile.gettempdir()) / _ROLE_VIEWS_LOCK_PARENT / f"{digest}.lock"
+
+
+def _lock_file(fd: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            raise BlockingIOError from exc
+        return
+    import fcntl
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        raise BlockingIOError from exc
+
+
+def _unlock_file(fd: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+@contextmanager
+def _role_views_lock(repo_root: Path):
+    lock_path = _role_views_lock_path(repo_root)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    os.set_inheritable(fd, False)
+    acquired = False
+    try:
+        try:
+            _lock_file(fd)
+        except BlockingIOError as exc:
+            raise RuntimeError(
+                f"Another DeepAgents launch owns role views for worktree: {repo_root.resolve()}"
+            ) from exc
+        acquired = True
+        yield
+    finally:
+        try:
+            if acquired:
+                _unlock_file(fd)
+        finally:
+            os.close(fd)
+
+
 def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
     agents_root = repo_root / ".deepagents" / "agents"
     marker = agents_root / _ROLE_VIEWS_MARKER
@@ -348,7 +410,24 @@ def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
     return agents_root
 
 
-def _runtime_binding(config: dict[str, object]) -> tuple[str, str, str, str]:
+@dataclass(frozen=True)
+class _RuntimeBinding:
+    model: str
+    base_url: str
+    provider_name: str
+    secret_file: Path
+    secret_key: str
+    codex_config: dict[str, object]
+
+    def read_api_key(self) -> str:
+        return _read_env_value(self.secret_file, self.secret_key)
+
+
+class _WorkerRecoveryBlocked(RuntimeError):
+    pass
+
+
+def _runtime_binding(config: dict[str, object]) -> _RuntimeBinding:
     paths = config.get("paths")
     if not isinstance(paths, dict):
         raise RuntimeError("Missing local `[paths]` configuration.")
@@ -365,7 +444,14 @@ def _runtime_binding(config: dict[str, object]) -> tuple[str, str, str, str]:
     if not isinstance(provider, dict):
         raise RuntimeError(f"Active Codex provider is unavailable: {provider_name}")
     base_url = _required_string(provider, "base_url", "active Codex provider")
-    return model, base_url, _read_env_value(secret_file, secret_key), provider_name
+    return _RuntimeBinding(
+        model=model,
+        base_url=base_url,
+        provider_name=provider_name,
+        secret_file=secret_file,
+        secret_key=secret_key,
+        codex_config=codex,
+    )
 
 
 def _deepagents_model_params(
@@ -391,19 +477,6 @@ def _deepagents_model_params(
         )
     return {"use_responses_api": normalized == "responses"}
 
-
-def _validate_deepagents_provider_binding(
-    codex_config: dict[str, object],
-    provider_name: str,
-) -> None:
-    _deepagents_model_params(codex_config, provider_name)
-
-def _codex_config(config: dict[str, object]) -> dict[str, object]:
-    paths = config.get("paths")
-    if not isinstance(paths, dict):
-        raise RuntimeError("Missing local `[paths]` configuration.")
-    path = Path(_required_string(paths, "codex_config", "local paths")).expanduser()
-    return _load_toml(path, "Codex config")
 
 def _mcp_capabilities(codex_config: dict[str, object]) -> dict[str, object]:
     try:
@@ -448,7 +521,8 @@ def _sha256_file(path: Path) -> str:
 
 def _runtime_binding_digest(
     provider_name: str,
-    model: str,
+    controller_model: str,
+    worker_model: str | None,
     base_url: str,
     deepagents_model_params: dict[str, bool] | None = None,
 ) -> str:
@@ -456,8 +530,9 @@ def _runtime_binding_digest(
         {
             "base_url": base_url,
             "deepagents_model_params": deepagents_model_params,
-            "model": model,
+            "controller_model": controller_model,
             "provider": provider_name,
+            "worker_model": worker_model,
         }
     )
 
@@ -1166,8 +1241,16 @@ def _run_bounded_worker(
     }
     if os.name != "nt":
         popen_kwargs["start_new_session"] = True
+    popen_kwargs["close_fds"] = True
     process = subprocess.Popen(argv, **popen_kwargs)
     job = _create_windows_job(process)
+    if os.name == "nt" and job is None:
+        _kill_windows_process_tree(process.pid)
+        process.wait()
+        raise _WorkerRecoveryBlocked(
+            f"{worker_name} worker process lifetime is unproven; "
+            "generated role views preserved for recovery."
+        )
     fallback_kill = False
     try:
         if handoff_stdin is None:
@@ -1277,8 +1360,11 @@ def main(argv: list[str]) -> int:
     config = _load_toml(_config_path(), "dcode-project config")
     repo_root = _repo_root()
     executor = _resolve_executor(config, explicit_executor)
-    model, base_url, api_key, provider_name = _runtime_binding(config)
-    codex_config = _codex_config(config)
+    binding = _runtime_binding(config)
+    model = binding.model
+    base_url = binding.base_url
+    provider_name = binding.provider_name
+    codex_config = binding.codex_config
     deepagents_model_params = (
         _deepagents_model_params(codex_config, provider_name)
         if executor == "deepagents"
@@ -1304,12 +1390,6 @@ def main(argv: list[str]) -> int:
             else None,
             "selected_executor": executor,
             "deepagents_model_params": deepagents_model_params,
-            "runtime_binding_digest": _runtime_binding_digest(
-                provider_name,
-                model,
-                base_url,
-                deepagents_model_params,
-            ),
             "mcp_capability_digest": capabilities["mcp_capability_digest"],
             "roles_path": str(repo_root / ".deepagents" / "agents"),
         }
@@ -1325,6 +1405,13 @@ def main(argv: list[str]) -> int:
         if selected_role is not None:
             payload["selected_role"] = selected_role["name"]
             payload["effective_model"] = f"openai:{selected_role['model']}"
+            payload["runtime_binding_digest"] = _runtime_binding_digest(
+                provider_name,
+                model,
+                str(selected_role["model"]),
+                base_url,
+                deepagents_model_params,
+            )
         print(
             json.dumps(payload, sort_keys=True)
         )
@@ -1360,7 +1447,11 @@ def main(argv: list[str]) -> int:
         )
         return _run_tura_worker(
             tura_argv,
-            _tura_worker_environment(api_key, provider_config, repo_root),
+            _tura_worker_environment(
+                binding.read_api_key(),
+                provider_config,
+                repo_root,
+            ),
             repo_root,
             _worker_timeout(child_argv, default=120.0, worker_name="Tura"),
         )
@@ -1373,41 +1464,47 @@ def main(argv: list[str]) -> int:
     dcode = _find_dcode()
     if not dcode:
         raise RuntimeError("DeepAgents Code is not installed. Run scripts/setup_deepagents_runtime.ps1.")
-    environment = _runtime_environment(base_url, api_key)
-    _write_role_views(repo_root, roles)
-    try:
-        dcode_argv = [
-            dcode,
-            "-M",
-            f"openai:{selected_role['model']}",
-            "--model-params",
-            json.dumps(deepagents_model_params, separators=(",", ":"), sort_keys=True),
-            *_FIXED_LOCAL_CAPABILITY_OPTIONS,
-            *(arg for arg in child_argv if arg != "--no-mcp"),
-        ]
-        if selection_values:
-            with _direct_mcp_runtime(
-                repo_root,
-                codex_config,
-                selected,
-                environment,
-            ) as mcp_config_path:
-                return _run_deepagents_worker(
-                    [*dcode_argv, "--mcp-config", str(mcp_config_path)],
-                    environment,
+    environment = _runtime_environment(base_url, binding.read_api_key())
+    with _role_views_lock(repo_root):
+        _write_role_views(repo_root, roles)
+        cleanup_allowed = True
+        try:
+            dcode_argv = [
+                dcode,
+                "-M",
+                f"openai:{selected_role['model']}",
+                "--model-params",
+                json.dumps(deepagents_model_params, separators=(",", ":"), sort_keys=True),
+                *_FIXED_LOCAL_CAPABILITY_OPTIONS,
+                *(arg for arg in child_argv if arg != "--no-mcp"),
+            ]
+            if selection_values:
+                with _direct_mcp_runtime(
                     repo_root,
-                    handoff_stdin,
-                    _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
-                )
-        return _run_deepagents_worker(
-            [*dcode_argv, "--no-mcp"],
-            environment,
-            repo_root,
-            handoff_stdin,
-            _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
-        )
-    finally:
-        _remove_role_views(repo_root, roles)
+                    codex_config,
+                    selected,
+                    environment,
+                ) as mcp_config_path:
+                    return _run_deepagents_worker(
+                        [*dcode_argv, "--mcp-config", str(mcp_config_path)],
+                        environment,
+                        repo_root,
+                        handoff_stdin,
+                        _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
+                    )
+            return _run_deepagents_worker(
+                [*dcode_argv, "--no-mcp"],
+                environment,
+                repo_root,
+                handoff_stdin,
+                _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
+            )
+        except _WorkerRecoveryBlocked:
+            cleanup_allowed = False
+            raise
+        finally:
+            if cleanup_allowed:
+                _remove_role_views(repo_root, roles)
 
 
 if __name__ == "__main__":
