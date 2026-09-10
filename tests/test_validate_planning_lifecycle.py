@@ -464,6 +464,29 @@ def test_active_task_requires_completed_dependencies() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_active_task_accepts_plural_dependency_ranges() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            git_tracked_plan(
+                ledger="\n".join(
+                    (
+                        "| Task 1 | `completed` | current | codex | none | `test-one` | recorded |",
+                        "| Task 2 | `completed` | current | codex | Task 1 | `test-two` | recorded |",
+                        "| Task 3 | `active` | current | codex | Tasks 1–2 | `test-three` | pending |",
+                    )
+                )
+            ).replace("- Active task(s): `Task 1`\n", ""),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_completed_task_requires_recorded_evidence() -> None:
     root = make_test_root()
     try:
