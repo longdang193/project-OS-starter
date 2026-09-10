@@ -31,7 +31,7 @@ import pytest
 from project_os_test_paths import add_runtime_import_roots, runtime_script
 
 add_runtime_import_roots()
-from scripts.deepagents_result_contract import parse_result_receipt
+from scripts.deepagents_result_contract import encode_result_receipt, parse_result_receipt
 ROOT = Path(__file__).resolve().parent.parent
 LAUNCHER_PATH = runtime_script("dcode_project.py")
 
@@ -237,6 +237,36 @@ def test_result_contract_rejects_non_boolean_recovery_flag(tmp_path: Path) -> No
     }
 
 
+def test_result_contract_rejects_non_string_states_without_type_error(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+    result_file.write_text(
+        json.dumps({
+            "schema": LAUNCHER._RESULT_SCHEMA,
+            "attempt_id": "attempt-1",
+            "worker": {"state": [], "exit_code": 0, "descendant_state": "terminated"},
+            "cleanup": {"state": "removed", "role_views_state": "removed"},
+            "recovery_required": False,
+        }),
+        encoding="utf-8",
+    )
+
+    assert parse_result_receipt(result_file, "attempt-1") == {
+        "state": "unknown",
+        "detail": "receipt worker state invalid",
+    }
+
+
+def test_result_contract_encoder_rejects_invalid_producer_payload() -> None:
+    with pytest.raises(ValueError, match="receipt worker state invalid"):
+        encode_result_receipt({
+            "schema": LAUNCHER._RESULT_SCHEMA,
+            "attempt_id": "attempt-1",
+            "worker": {"state": [], "exit_code": 0, "descendant_state": "terminated"},
+            "cleanup": {"state": "removed", "role_views_state": "removed"},
+            "recovery_required": False,
+        })
+
+
 def test_deepagents_main_publishes_receipt_after_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -407,13 +437,38 @@ def test_bounded_worker_terminates_timed_out_posix_process(
     monkeypatch.setattr(LAUNCHER.os, "name", "posix")
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: process)
 
-    with pytest.raises(RuntimeError, match="worker timed out"):
+    with pytest.raises(LAUNCHER._WorkerLifecycleError, match="worker timed out") as error:
         LAUNCHER._run_bounded_worker(
             ["worker"], {}, tmp_path, None, 3, "worker"
         )
 
     assert process.killed is True
     assert process.waits == 2
+    assert error.value.facts.worker_state == "failed"
+    assert error.value.facts.descendant_state == "unknown"
+    assert error.value.facts.termination_proven is False
+
+
+def test_bounded_worker_reports_post_start_error_facts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeProcess:
+        pid = 42
+        returncode = None
+
+        def wait(self, timeout: float | None = None) -> int:
+            raise OSError("wait failed")
+
+    monkeypatch.setattr(LAUNCHER.os, "name", "posix")
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+
+    with pytest.raises(LAUNCHER._WorkerLifecycleError, match="failed after process creation") as error:
+        LAUNCHER._run_tura_worker(["worker"], {}, tmp_path, 3)
+
+    assert error.value.facts == LAUNCHER._WorkerLifecycleFacts(
+        "failed", None, "unknown", False
+    )
 
 def test_deepagents_worker_reaps_windows_child_tree_after_normal_exit(
     monkeypatch: pytest.MonkeyPatch,
@@ -595,8 +650,11 @@ def test_local_role_view_cleanup_keeps_unmarked_matching_view(tmp_path: Path) ->
     view.parent.mkdir(parents=True)
     view.write_text(LAUNCHER._role_view_content(roles[0]), encoding="utf-8")
 
-    LAUNCHER._remove_role_views(tmp_path, roles)
+    result = LAUNCHER._remove_role_views(tmp_path, roles)
 
+    assert result["state"] == "unverified"
+    assert result["marker_state"] == "absent"
+    assert result["remaining_paths"] == [str(view.relative_to(tmp_path))]
     assert view.exists()
 
 
@@ -1348,6 +1406,7 @@ def test_mcp_capability_projection_omits_runtime_values() -> None:
 def test_mcp_selection_narrows_and_rejects_unknown() -> None:
     capabilities = LAUNCHER._mcp_capabilities(mcp_config())
 
+    assert LAUNCHER._parse_mcp_selection([], capabilities) == []
     assert LAUNCHER._parse_mcp_selection(["context7.query_docs"], capabilities) == [
         "context7.query_docs"
     ]
@@ -1686,6 +1745,44 @@ def test_default_deepagents_path_keeps_mcp_disabled(
     assert argv[-1] == "--no-mcp"
     assert "--mcp-config" not in argv
 
+
+def test_default_deepagents_path_skips_capability_projection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: pytest.fail("default no-MCP path projected capabilities"),
+    )
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+
+    assert LAUNCHER.main(["--role", "normal", "-n", "task"]) == 0
+
+
+def test_print_config_reports_mcp_selection_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+
+    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["available_mcp"] == [
+        "context7",
+        "context7.query_docs",
+        "context7.resolve_library_id",
+        "serena",
+        "serena.find_symbol",
+    ]
+    assert payload["requested_mcp"] == []
+    assert payload["effective_mcp"] == []
+    assert payload["selected_mcp"] == []
+    assert payload["mcp_mode"] == "disabled"
+
 def test_handoff_validation_accepts_current_selected_facts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1701,6 +1798,21 @@ def test_handoff_validation_accepts_current_selected_facts(
 
     assert resolved == path
     assert payload["schema"] == "codex.mcp.handoff.v1"
+
+
+def test_handoff_validation_accepts_provenance_without_direct_mcp_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_handoff_root", lambda: tmp_path)
+    capabilities = LAUNCHER._mcp_capabilities(mcp_config())
+    path = tmp_path / "handoff.json"
+    path.write_text(json.dumps(handoff_payload(capabilities)), encoding="utf-8")
+
+    resolved, payload = LAUNCHER._validate_handoff(str(path), capabilities, [])
+
+    assert resolved == path
+    assert payload["sources"]
 
 @pytest.mark.parametrize(
     "mutator, message",

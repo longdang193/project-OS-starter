@@ -1960,9 +1960,12 @@ def test_deepagents_main_blocks_delivery_without_completion_report(
     assert assignment["reconciliation_required"] is True
 
 
+@pytest.mark.parametrize(("worker_exit_code", "expected_return"), [(0, 0), (7, 7)])
 def test_deepagents_main_waits_for_receipt_after_terminal_observation(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    worker_exit_code: int,
+    expected_return: int,
 ) -> None:
     evidence = {
         "registry_launcher": {
@@ -1997,11 +2000,36 @@ def test_deepagents_main_waits_for_receipt_after_terminal_observation(
             "report_chars": 1,
             "foreground_processes": ["powershell.exe"],
             "observation_error": None,
+            "lifecycle_receipt": {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": worker_exit_code,
+                "descendant_state": "terminated",
+                "cleanup_state": "removed",
+                "role_views_state": "removed",
+                "recovery_required": False,
+            },
         },
     )
-    receipts = iter([
-        {"state": "unknown", "detail": "receipt unavailable"},
-        {
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == expected_return
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["status"] == ("completed" if worker_exit_code == 0 else "failed")
+    assert assignment["execution"]["worker_exit_code"] == worker_exit_code
+    assert assignment["launcher_exit_code"] == assignment["exit_code"] == expected_return
+
+
+def test_deepagents_zero_exit_failed_report_is_not_completion() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered", "certainty": "confirmed", "prompt_accepted": True},
+        observation={"state": "failed", "report_present": True, "observation_error": None},
+        receipt={
             "state": "confirmed",
             "worker_state": "exited",
             "worker_exit_code": 0,
@@ -2010,20 +2038,16 @@ def test_deepagents_main_waits_for_receipt_after_terminal_observation(
             "role_views_state": "removed",
             "recovery_required": False,
         },
-    ])
-    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
-    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: None)
+        fallback_failure_kind=None,
+    )
 
-    assert LAUNCHER.main(
-        [
-            "--profile", "normal", "--session", "session", "--pane", "pane",
-            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
-            "--task", "assign lane",
-        ]
-    ) == 0
-    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert assignment["status"] == "completed"
-    assert assignment["execution"]["worker_exit_code"] == 0
+    assert result["execution"]["state"] == "completed"
+    assert result["task_result"] == {"state": "reported_failed", "accepted": False}
+    assert result["status"] == "failed"
+    assert result["failure_kind"] == "task_report_failed"
+    assert result["launcher_exit_code"] == 2
+    assert result["reconciliation_required"] is True
+    assert result["delivery"]["prompt_accepted"] is True
 
 
 def test_deepagents_main_rejects_completion_with_observer_error(
@@ -2295,6 +2319,150 @@ def test_deepagents_completion_waits_for_delayed_report(
 
     assert evidence["state"] == "completed"
     assert sleeps
+
+
+def test_deepagents_completion_uses_receipt_before_first_pane_command(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    receipt = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "recovery_required": False,
+    }
+    snapshots: list[str] = []
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: receipt)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: snapshots.append("pane") or {
+            "state": "no-report",
+            "report_present": False,
+        },
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert snapshots == ["pane"]
+    assert evidence["lifecycle_receipt"] == receipt
+
+
+def test_deepagents_completion_reads_receipt_between_pane_polls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    unknown = {"state": "unknown", "detail": "receipt unavailable"}
+    confirmed = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "recovery_required": False,
+    }
+    receipts = iter([unknown, confirmed])
+    snapshots = iter([
+        {"state": "running", "report_present": False},
+        {"state": "completed", "report_present": True},
+    ])
+    clock = [0.0]
+    sleeps: list[float] = []
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
+    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", lambda *args, **kwargs: next(snapshots))
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: (sleeps.append(seconds), clock.__setitem__(0, clock[0] + seconds)),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["lifecycle_receipt"] == confirmed
+    assert sleeps == [1.0]
+
+
+def test_deepagents_completion_returns_uncertain_receipt_at_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 0.5)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: {"state": "unknown", "detail": "receipt unavailable"},
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: {"state": "completed", "report_present": True},
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["state"] == "completed"
+    assert evidence["lifecycle_receipt"]["state"] == "unknown"
+
+
+def test_deepagents_snapshot_does_not_start_second_pane_command_after_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        clock[0] = 1.0
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"process_info": {"foreground_processes": []}}}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=0.5,
+    )
+
+    assert len(calls) == 1
+    assert evidence["observation_error"] == "pane read transport timeout"
 
 
 def test_deepagents_completion_deadline_preserves_last_state_as_timeout(
