@@ -103,6 +103,28 @@ def _coordination_rows(text: str) -> list[dict[str, str]]:
     return rows
 
 
+def _coordination_dependencies(value: str) -> list[str]:
+    matches = re.findall(
+        r"\bTasks?\s+(\d+)(?:\s*[-–]\s*(\d+))?\b",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if not matches:
+        return [value]
+
+    dependencies: list[str] = []
+    for first_number, last_number in matches:
+        start_number = int(first_number)
+        end_number = int(last_number or first_number)
+        if end_number < start_number:
+            return [value]
+        dependencies.extend(
+            f"Task {task_number}"
+            for task_number in range(start_number, end_number + 1)
+        )
+    return dependencies
+
+
 def _coordination_value(text: str, label: str) -> str | None:
     match = re.search(rf"(?im)^-\s*{re.escape(label)}:\s*(.+?)\s*$", text)
     return match.group(1).strip() if match else None
@@ -373,7 +395,7 @@ def validate_git_coordination(
         dependencies = row["dependencies"]
         if dependencies.lower() in {"", "none", "n/a"}:
             continue
-        for dependency in re.findall(r"Task\s+\d+", dependencies, flags=re.IGNORECASE) or [dependencies]:
+        for dependency in _coordination_dependencies(dependencies):
             dependency = dependency.strip()
             dependency_row = records.get(dependency)
             if dependency_row is None or dependency_row["state"] != "completed":
