@@ -1960,6 +1960,72 @@ def test_deepagents_main_blocks_delivery_without_completion_report(
     assert assignment["reconciliation_required"] is True
 
 
+def test_deepagents_main_waits_for_receipt_after_terminal_observation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    monkeypatch.setattr(
+        LAUNCHER,
+        "resolve_launch",
+        lambda **kwargs: (["herdr", "-n", "task"], evidence),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "report_sha256": "report",
+            "report_chars": 1,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+        },
+    )
+    receipts = iter([
+        {"state": "unknown", "detail": "receipt unavailable"},
+        {
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+            "role_views_state": "removed",
+            "recovery_required": False,
+        },
+    ])
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: None)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 0
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["status"] == "completed"
+    assert assignment["execution"]["worker_exit_code"] == 0
+
+
 def test_deepagents_main_rejects_completion_with_observer_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

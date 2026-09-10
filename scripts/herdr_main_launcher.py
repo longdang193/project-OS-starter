@@ -1922,6 +1922,29 @@ def _main_body(args: argparse.Namespace) -> int:
             if not isinstance(cleanup, dict):
                 cleanup = {"state": "unknown"}
             receipt = _read_deepagents_receipt(receipt_file, str(assignment.get("attempt_id", attempt_id)))
+            completion = assignment.get("completion")
+            if (
+                args.executor == "deepagents"
+                and receipt_file is not None
+                and receipt.get("state") != "confirmed"
+                and isinstance(completion, dict)
+                and completion.get("state") in {"completed", "failed", "no-report"}
+                and completion.get("observation_error") is None
+            ):
+                # ponytail: bounded receipt grace; event signaling if publication latency grows
+                deadline = min(
+                    observation_started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS,
+                    time.monotonic() + _DEEPAGENTS_RESULT_WAIT_SECONDS,
+                )
+                while receipt.get("state") != "confirmed":
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
+                    receipt = _read_deepagents_receipt(
+                        receipt_file,
+                        str(assignment.get("attempt_id", attempt_id)),
+                    )
             if args.executor == "deepagents":
                 assignment["lifecycle_receipt"] = receipt
                 classified = _classify_deepagents_outcome(
