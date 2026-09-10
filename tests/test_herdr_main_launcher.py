@@ -1933,7 +1933,7 @@ def test_deepagents_main_blocks_delivery_without_completion_report(
         ]
     ) == 2
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert assignment["delivery_state"] == "delivered"
+    assert assignment["delivery_state"] == "unknown"
     assert assignment["status"] == "no-report"
     assert assignment["task_accepted"] is False
     assert assignment["reconciliation_required"] is True
@@ -2385,3 +2385,23 @@ def test_performance_snapshot_uses_structured_phase_values() -> None:
         "status": "measured",
         "duration_ms": 12.4,
     }
+    LAUNCHER._record_performance_phase(performance, "delivery", 0.02, now=0.025)
+    assert performance["phase_occurrences"]["delivery"] == [
+        {"status": "measured", "duration_ms": 12.4},
+        {"status": "measured", "duration_ms": 5.0},
+    ]
+    assert performance["phase_aggregates"]["delivery"] == {
+        "status": "measured",
+        "duration_ms": 17.4,
+        "occurrence_count": 2,
+    }
+
+
+def test_performance_finalization_keeps_trailing_work_unattributed() -> None:
+    performance = LAUNCHER._new_performance_evidence()
+    LAUNCHER._record_performance_phase(performance, "preflight", 0.0, now=1.0)
+
+    LAUNCHER._finalize_performance(performance, 0.0, now=1.5)
+
+    assert performance["total_duration_ms"] == 1500.0
+    assert performance["unattributed_duration_ms"] == 500.0

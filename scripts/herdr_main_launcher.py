@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 import uuid
@@ -66,6 +67,10 @@ _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
+_DEEPAGENTS_RESULT_SCHEMA = "dcode-project.result.v1"
+_DEEPAGENTS_RESULT_MAX_BYTES = 16 * 1024
+_DEEPAGENTS_RESULT_MAX_AGE_SECONDS = 3600
+_DEEPAGENTS_RESULT_WAIT_SECONDS = 5.0
 _DEEPAGENTS_FAILURE_PATTERN = re.compile(
     r"(?im)^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
 )
@@ -175,6 +180,66 @@ def _result(payload: dict[str, Any], key: str) -> Any:
 
 def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _read_deepagents_receipt(path: Path | None, attempt_id: str) -> dict[str, Any]:
+    unknown = {"state": "unknown", "detail": "receipt unavailable"}
+    if path is None:
+        return unknown
+    deadline = time.monotonic() + _DEEPAGENTS_RESULT_WAIT_SECONDS
+    while not path.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    try:
+        stat = path.stat()
+        if (
+            not path.is_file()
+            or stat.st_size > _DEEPAGENTS_RESULT_MAX_BYTES
+            or time.time() - stat.st_mtime > _DEEPAGENTS_RESULT_MAX_AGE_SECONDS
+        ):
+            return unknown
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {"state": "unknown", "detail": "receipt malformed"}
+    if not isinstance(payload, dict) or payload.get("schema") != _DEEPAGENTS_RESULT_SCHEMA:
+        return {"state": "unknown", "detail": "receipt schema mismatch"}
+    if payload.get("attempt_id") != attempt_id:
+        return {"state": "unknown", "detail": "receipt correlation mismatch"}
+    worker = payload.get("worker")
+    cleanup = payload.get("cleanup")
+    if not isinstance(worker, dict) or not isinstance(cleanup, dict):
+        return {"state": "unknown", "detail": "receipt lifecycle fields missing"}
+    if worker.get("state") not in {"exited", "failed", "start_failed", "recovery_blocked"}:
+        return {"state": "unknown", "detail": "receipt worker state invalid"}
+    if cleanup.get("state") not in {"removed", "preserved", "unverified"}:
+        return {"state": "unknown", "detail": "receipt cleanup state invalid"}
+    exit_code = worker.get("exit_code")
+    if exit_code is not None and (isinstance(exit_code, bool) or not isinstance(exit_code, int)):
+        return {"state": "unknown", "detail": "receipt exit code invalid"}
+    return {
+        "state": "confirmed",
+        "worker_state": worker["state"],
+        "worker_exit_code": exit_code,
+        "descendant_state": worker.get("descendant_state"),
+        "cleanup_state": cleanup["state"],
+        "role_views_state": cleanup.get("role_views_state", cleanup["state"]),
+        "recovery_required": payload.get("recovery_required") is True,
+    }
+
+
+def _discard_deepagents_receipt(path: Path | None) -> None:
+    if path is None:
+        return
+    removed = False
+    try:
+        path.unlink()
+        removed = True
+    except FileNotFoundError:
+        pass
+    if removed:
+        try:
+            path.parent.rmdir()
+        except OSError:
+            pass
 
 
 def _codex_runtime(cwd: Path, configured_home: Path | None = None) -> dict[str, Any]:
@@ -615,6 +680,12 @@ def _new_performance_evidence() -> dict[str, Any]:
         },
         "subprocess_counts": _metrics_snapshot(),
         "attempts": [],
+        "phase_occurrences": {phase: [] for phase in _PERFORMANCE_PHASES},
+        "phase_aggregates": {
+            phase: {"status": "not_attempted", "duration_ms": None, "occurrence_count": 0}
+            for phase in _PERFORMANCE_PHASES
+        },
+        "unattributed_duration_ms": None,
         "total_duration_ms": None,
     }
 
@@ -636,6 +707,17 @@ def _record_performance_phase(
         "status": "measured",
         "duration_ms": round(max(0.0, current - started) * 1000, 3),
     }
+    occurrences = performance.setdefault("phase_occurrences", {}).setdefault(name, [])
+    occurrences.append(durations[name].copy())
+    aggregate = performance.setdefault("phase_aggregates", {}).setdefault(name, {})
+    aggregate.update({
+        "status": "measured",
+        "duration_ms": round(
+            sum(float(item["duration_ms"]) for item in occurrences),
+            3,
+        ),
+        "occurrence_count": len(occurrences),
+    })
     performance["_last_monotonic"] = current
     performance["subprocess_counts"] = _metrics_snapshot()
 
@@ -646,6 +728,7 @@ def _record_performance_attempt(
     started: float,
     *,
     now: float | None = None,
+    pane_run_duration_ms: float | None = None,
 ) -> None:
     current = performance.get("_last_monotonic") if now is None else now
     if current is None:
@@ -653,10 +736,13 @@ def _record_performance_attempt(
     attempts = performance.setdefault("attempts", [])
     if not isinstance(attempts, list):
         raise LaunchBlocked("Performance attempts must be an array.")
-    attempts.append({
+    attempt = {
         "attempt_id": attempt_id,
         "duration_ms": round(max(0.0, current - started) * 1000, 3),
-    })
+    }
+    if pane_run_duration_ms is not None:
+        attempt["pane_run_duration_ms"] = round(max(0.0, pane_run_duration_ms), 3)
+    attempts.append(attempt)
 
 
 def _finalize_performance(
@@ -670,6 +756,17 @@ def _finalize_performance(
         current = time.monotonic()
     performance["status"] = "measured"
     performance["total_duration_ms"] = round(max(0.0, current - started) * 1000, 3)
+    measured = sum(
+        float(item.get("duration_ms", 0.0))
+        for occurrences in performance.get("phase_occurrences", {}).values()
+        if isinstance(occurrences, list)
+        for item in occurrences
+        if isinstance(item, dict)
+    )
+    performance["unattributed_duration_ms"] = round(
+        max(0.0, performance["total_duration_ms"] - measured),
+        3,
+    )
     performance["subprocess_counts"] = _metrics_snapshot()
     return performance
 
@@ -689,6 +786,9 @@ def _build_assignment_result(
     legacy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     legacy_values = legacy or {}
+    delivery_state = delivery.get("state", "unknown")
+    delivery_certainty = delivery.get("certainty", "unknown")
+    task_accepted = task_result.get("accepted")
     assignment = {
         "agent_name": agent_name,
         "attempt_id": attempt_id,
@@ -701,22 +801,22 @@ def _build_assignment_result(
         "performance": performance,
         "launcher_exit_code": launcher_exit_code,
         "worker_exit_code": execution.get("worker_exit_code"),
-        "delivery_state": legacy_values.get("delivery_state", delivery.get("state")),
-        "delivery_certainty": legacy_values.get("delivery_certainty", delivery.get("certainty")),
+        "delivery_state": delivery_state,
+        "delivery_certainty": delivery_certainty,
         "delivery_task_sha256": legacy_values.get("delivery_task_sha256"),
         "exit_code": launcher_exit_code,
         "failure_kind": legacy_values.get("failure_kind"),
         "grant_digest": legacy_values.get("grant_digest"),
         "phase": legacy_values.get("phase"),
-        "prompt_accepted": legacy_values.get("prompt_accepted", delivery.get("prompt_accepted")),
+        "prompt_accepted": delivery.get("prompt_accepted"),
         "reconciliation_required": legacy_values.get(
             "reconciliation_required",
             delivery.get("reconciliation_required", False),
         ),
         "session": legacy_values.get("session"),
-        "status": legacy_values.get("status", task_result.get("status", execution.get("state"))),
-        "submission": legacy_values.get("submission", delivery.get("submission")),
-        "task_accepted": legacy_values.get("task_accepted", task_result.get("accepted")),
+        "status": legacy_values.get("status", execution.get("state", "unknown")),
+        "submission": delivery.get("submission"),
+        "task_accepted": task_accepted,
         "task_sha256": legacy_values.get("task_sha256"),
     }
     for key, value in legacy_values.items():
@@ -1055,20 +1155,25 @@ def _deepagents_task_state(
     pane_output: str,
     expected_marker: str,
 ) -> str:
-    if _DEEPAGENTS_FAILURE_PATTERN.search(pane_output):
-        return "failed"
     live_process = any(
         str(process.get("name", "")).lower() not in _DEEPAGENTS_SHELL_PROCESS_NAMES
         for process in foreground_processes
         if isinstance(process, dict)
     )
     lines = [line.strip() for line in pane_output.splitlines() if line.strip()]
+    start_index = max(
+        (index for index, line in enumerate(lines) if line == "Running task non-interactively..."),
+        default=0,
+    )
+    current_lines = lines[start_index:]
+    if _DEEPAGENTS_FAILURE_PATTERN.search("\n".join(current_lines)):
+        return "failed"
     if any(
-        lines[index:index + 2] == ["COMPLETED", expected_marker]
-        for index in range(len(lines) - 1)
+        current_lines[index:index + 2] == ["COMPLETED", expected_marker]
+        for index in range(len(current_lines) - 1)
     ):
         return "running" if live_process else "completed"
-    if "COMPLETED" in lines:
+    if "COMPLETED" in current_lines:
         return "running" if live_process else "no-report"
     if live_process:
         return "running"
@@ -1664,8 +1769,22 @@ def _main_body(args: argparse.Namespace) -> int:
         if not isinstance(performance_evidence, dict):
             raise LaunchBlocked("Launcher evidence has invalid performance section.")
         dispatch_id = str(registry_evidence.setdefault("dispatch_id", dispatch_id))
+        receipt_file: Path | None = None
+        if args.executor == "deepagents" and not args.dry_run and "-n" in command:
+            receipt_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
+            receipt_file = receipt_dir / "result.json"
+            command = command.copy()
+            command[command.index("-n"):command.index("-n")] = [
+                "--result-file",
+                _powershell_literal(str(receipt_file)),
+                "--attempt-id",
+                _powershell_literal(attempt_id),
+            ]
+            registry_evidence["result_file"] = str(receipt_file)
 
         def record_phase(name: str, started: float) -> None:
+            if args.executor == "deepagents" and name == "delivery":
+                return
             _record_performance_phase(performance_evidence, name, started)
 
         def emit_assignment(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1676,24 +1795,110 @@ def _main_body(args: argparse.Namespace) -> int:
             if not isinstance(execution, dict):
                 execution = {"state": "unknown", "worker_exit_code": None}
                 assignment["execution"] = execution
-            assignment.setdefault("dispatch_id", dispatch_id)
-            assignment.setdefault("attempt_id", attempt_id)
-            assignment.setdefault("delivery", {
-                "state": assignment.get("delivery_state", "unknown"),
-                "certainty": assignment.get("delivery_certainty", "unknown"),
-            })
-            assignment.setdefault("observation", {"state": "unknown"})
-            assignment.setdefault("task_result", {
-                "state": assignment.get("status", "unknown"),
-                "accepted": assignment.get("task_accepted"),
-            })
-            assignment.setdefault("cleanup", {"state": "unknown"})
-            assignment["performance"] = performance_evidence
-            assignment["launcher_exit_code"] = assignment.get("exit_code", 2)
-            assignment["worker_exit_code"] = execution.get("worker_exit_code")
-            _record_performance_attempt(performance_evidence, attempt_id, attempt_started)
+            delivery = assignment.get("delivery")
+            if not isinstance(delivery, dict):
+                delivery = {
+                    "state": assignment.get("delivery_state", "unknown"),
+                    "certainty": assignment.get("delivery_certainty", "unknown"),
+                }
+            if "prompt_accepted" in assignment:
+                delivery.setdefault("prompt_accepted", assignment["prompt_accepted"])
+            if "submission" in assignment:
+                delivery.setdefault("submission", assignment["submission"])
+            if "reconciliation_required" in assignment:
+                delivery.setdefault(
+                    "reconciliation_required",
+                    assignment["reconciliation_required"],
+                )
+            observation = assignment.get("observation")
+            if not isinstance(observation, dict):
+                observation = {"state": "unknown"}
+            task_result = assignment.get("task_result")
+            if not isinstance(task_result, dict):
+                task_result = {"state": "unknown", "accepted": assignment.get("task_accepted")}
+            cleanup = assignment.get("cleanup")
+            if not isinstance(cleanup, dict):
+                cleanup = {"state": "unknown"}
+            receipt = _read_deepagents_receipt(receipt_file, str(assignment.get("attempt_id", attempt_id)))
+            if args.executor == "deepagents":
+                assignment["lifecycle_receipt"] = receipt
+                if receipt.get("state") == "confirmed":
+                    execution = {
+                        **execution,
+                        "state": "exited" if receipt["worker_state"] != "recovery_blocked" else "unknown",
+                        "worker_exit_code": receipt.get("worker_exit_code"),
+                        "descendant_state": receipt.get("descendant_state"),
+                        "recovery_required": receipt.get("recovery_required", False),
+                    }
+                    cleanup = {
+                        "state": receipt["cleanup_state"],
+                        "role_views_state": receipt.get("role_views_state"),
+                        "recovery_required": receipt.get("recovery_required", False),
+                    }
+                    observed = assignment.get("observation")
+                    task_verified = (
+                        receipt["worker_state"] == "exited"
+                        and receipt.get("worker_exit_code") == 0
+                        and receipt["cleanup_state"] == "removed"
+                        and isinstance(observed, dict)
+                        and observed.get("marker_present") is True
+                        and observed.get("report_present") is True
+                        and observed.get("observation_error") is None
+                    )
+                    task_result = {
+                        "state": "verified" if task_verified else "unknown",
+                        "accepted": task_verified,
+                    }
+                else:
+                    execution = {"state": "unknown", "worker_exit_code": None}
+                    cleanup = {"state": "unknown"}
+                    task_result = {"state": "unknown", "accepted": False}
+                if assignment.get("delivery_state") == "delivered":
+                    delivery = {
+                        "state": "unknown",
+                        "certainty": "unknown",
+                        "submission": "unavailable",
+                    }
+                _discard_deepagents_receipt(receipt_file)
+            legacy = {
+                key: value
+                for key, value in assignment.items()
+                if key not in {
+                    "agent_name",
+                    "attempt_id",
+                    "dispatch_id",
+                    "delivery",
+                    "execution",
+                    "observation",
+                    "task_result",
+                    "cleanup",
+                    "performance",
+                    "launcher_exit_code",
+                    "worker_exit_code",
+                }
+            }
+            result = _build_assignment_result(
+                dispatch_id=str(assignment.get("dispatch_id", dispatch_id)),
+                attempt_id=str(assignment.get("attempt_id", attempt_id)),
+                agent_name=str(assignment.get("agent_name", evidence["herdr"]["agent_name"])),
+                delivery=delivery,
+                execution=execution,
+                observation=observation,
+                task_result=task_result,
+                cleanup=cleanup,
+                performance=performance_evidence,
+                launcher_exit_code=int(assignment.get("exit_code", 2)),
+                legacy=legacy,
+            )
+            result["assignment"]["performance"] = performance_evidence
+            _record_performance_attempt(
+                performance_evidence,
+                attempt_id,
+                attempt_started,
+                pane_run_duration_ms=pane_run_duration_ms,
+            )
             _finalize_performance(performance_evidence, invocation_started)
-            return {"assignment": assignment}
+            return result
 
         registry_evidence["attempt_id"] = attempt_id
         observation_evidence["attempt_id"] = attempt_id
@@ -1730,16 +1935,22 @@ def _main_body(args: argparse.Namespace) -> int:
             environment = _herdr_environment()
         for attempt in range(2):
             attempt_started = time.monotonic()
+            pane_run_duration_ms: float | None = None
+            pane_run_started = time.monotonic()
             try:
-                result = _run(
-                    command,
-                    env=environment,
-                    timeout=(
-                        _DEEPAGENTS_RUN_TIMEOUT
-                        if args.executor == "deepagents"
-                        else _CODEX_START_TIMEOUT
-                    ),
-                )
+                try:
+                    result = _run(
+                        command,
+                        env=environment,
+                        timeout=(
+                            _DEEPAGENTS_RUN_TIMEOUT
+                            if args.executor == "deepagents"
+                            else _CODEX_START_TIMEOUT
+                        ),
+                    )
+                finally:
+                    if args.executor == "deepagents":
+                        pane_run_duration_ms = max(0.0, time.monotonic() - pane_run_started) * 1000
             except CommandTransportTimeout:
                 record_phase("delivery", attempt_started)
                 print(json.dumps(emit_assignment({
@@ -1838,7 +2049,12 @@ def _main_body(args: argparse.Namespace) -> int:
                 command = command.copy()
                 command[command.index("--session") + 1] = resolved_session
                 command[command.index("--pane") + 1] = resolved_pane
-            _record_performance_attempt(performance_evidence, attempt_id, attempt_started)
+            _record_performance_attempt(
+                performance_evidence,
+                attempt_id,
+                attempt_started,
+                pane_run_duration_ms=pane_run_duration_ms,
+            )
             agent_name = _unique_agent_name(str(evidence["herdr"]["agent_name"]))
             attempt_id = uuid.uuid4().hex
             evidence["registry_launcher"]["attempt_id"] = attempt_id

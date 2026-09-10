@@ -165,6 +165,58 @@ def test_controller_options_extracts_executor_once() -> None:
     assert executor == "tura"
 
 
+def test_result_options_extracts_correlated_receipt_arguments(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+
+    assert LAUNCHER._result_options([
+        "--result-file", str(result_file), "--attempt-id", "attempt-1", "-n", "task"
+    ]) == (str(result_file), "attempt-1")
+
+
+def test_result_receipt_is_bounded_and_atomic(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="exited",
+        worker_exit_code=0,
+        descendant_state="terminated",
+        role_views_state="removed",
+        recovery_required=False,
+    )
+
+    payload = json.loads(result_file.read_text(encoding="utf-8"))
+    assert payload["schema"] == LAUNCHER._RESULT_SCHEMA
+    assert payload["attempt_id"] == "attempt-1"
+    assert payload["worker"]["exit_code"] == 0
+    assert payload["cleanup"]["state"] == "removed"
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_deepagents_main_publishes_receipt_after_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    result_file = tmp_path / "receipt.json"
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 7)
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", "attempt-1",
+    ]) == 7
+
+    payload = json.loads(result_file.read_text(encoding="utf-8"))
+    assert payload["worker"] == {
+        "descendant_state": "terminated",
+        "exit_code": 7,
+        "state": "exited",
+    }
+    assert payload["cleanup"]["state"] == "removed"
+    assert not (tmp_path / ".deepagents" / "agents").exists()
+
+
 def test_tura_argv_contains_bounded_worker_contract(tmp_path: Path) -> None:
     argv = LAUNCHER._tura_worker_argv(
         Path("C:/tools/tura.exe"),

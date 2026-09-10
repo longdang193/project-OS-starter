@@ -72,6 +72,8 @@ _DIRECT_MCP_OWNER_MARKER = ".owner"
 _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
 _DIRECT_MCP_STALE_AGE = timedelta(hours=24)
 _ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
+_RESULT_SCHEMA = "dcode-project.result.v1"
+_RESULT_MAX_BYTES = 16 * 1024
 _ALLOWED_RUNTIME_FLAGS = {
     "--print-config",
     "--json",
@@ -93,6 +95,8 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--handoff-file",
     "--role",
     "--executor",
+    "--result-file",
+    "--attempt-id",
 }
 _FIXED_LOCAL_CAPABILITY_OPTIONS = (
     "--allow-fs-tools",
@@ -317,6 +321,54 @@ def _remove_role_views(repo_root: Path, roles: list[dict[str, str]]) -> None:
     _remove_owned_views(agents_root, _read_owned_views(marker, roles))
     marker.unlink()
     _remove_empty_parents(agents_root, repo_root)
+
+
+def _result_file_path(raw_path: str) -> Path:
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        raise RuntimeError("dcode-project requires an absolute `--result-file` path.")
+    return path.resolve()
+
+
+def _publish_result_receipt(
+    result_file: Path,
+    *,
+    attempt_id: str,
+    worker_state: str,
+    worker_exit_code: int | None,
+    descendant_state: str,
+    role_views_state: str,
+    recovery_required: bool,
+) -> None:
+    payload = {
+        "schema": _RESULT_SCHEMA,
+        "attempt_id": attempt_id,
+        "worker": {
+            "state": worker_state,
+            "exit_code": worker_exit_code,
+            "descendant_state": descendant_state,
+        },
+        "cleanup": {
+            "state": role_views_state,
+            "role_views_state": role_views_state,
+        },
+        "recovery_required": recovery_required,
+    }
+    encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(encoded) > _RESULT_MAX_BYTES:
+        raise RuntimeError(f"dcode-project result receipt exceeds {_RESULT_MAX_BYTES} bytes.")
+    temporary = result_file.with_name(f".{result_file.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, result_file)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _role_views_lock_path(repo_root: Path) -> Path:
@@ -739,17 +791,26 @@ def _direct_mcp_runtime(
 
 def _controller_options(
     argv: list[str],
-) -> tuple[list[str], list[str], str | None, str | None, str | None]:
+) -> tuple[list[str], list[str], str | None, str | None, str | None, str | None, str | None]:
     child: list[str] = []
     selections: list[str] = []
     handoff_file: str | None = None
     role_name: str | None = None
     executor: str | None = None
+    result_file: str | None = None
+    attempt_id: str | None = None
     index = 0
     while index < len(argv):
         argument = argv[index]
         option, separator, inline_value = argument.partition("=")
-        if option in {"--mcp-select", "--handoff-file", "--role", "--executor"}:
+        if option in {
+            "--mcp-select",
+            "--handoff-file",
+            "--role",
+            "--executor",
+            "--result-file",
+            "--attempt-id",
+        }:
             if separator:
                 value = inline_value
             elif index + 1 < len(argv):
@@ -769,6 +830,14 @@ def _controller_options(
                 if handoff_file is not None:
                     raise RuntimeError("dcode-project accepts only one `--handoff-file`.")
                 handoff_file = value
+            elif option == "--result-file":
+                if result_file is not None:
+                    raise RuntimeError("dcode-project accepts only one `--result-file`.")
+                result_file = value
+            elif option == "--attempt-id":
+                if attempt_id is not None:
+                    raise RuntimeError("dcode-project accepts only one `--attempt-id`.")
+                attempt_id = value
             elif executor is not None:
                 raise RuntimeError("dcode-project accepts only one `--executor`.")
             else:
@@ -1354,12 +1423,48 @@ def _reject_conflicting_user_openai_base_url() -> None:
         )
 
 
+def _result_options(argv: list[str]) -> tuple[str | None, str | None]:
+    result_file: str | None = None
+    attempt_id: str | None = None
+    index = 0
+    while index < len(argv):
+        option, separator, inline_value = argv[index].partition("=")
+        if option not in {"--result-file", "--attempt-id"}:
+            index += 1
+            continue
+        if separator:
+            value = inline_value
+        elif index + 1 < len(argv):
+            value = argv[index + 1]
+            index += 1
+        else:
+            raise RuntimeError(f"dcode-project requires a value for `{option}`.")
+        if not value:
+            raise RuntimeError(f"dcode-project requires a value for `{option}`.")
+        if option == "--result-file":
+            if result_file is not None:
+                raise RuntimeError("dcode-project accepts only one `--result-file`.")
+            result_file = value
+        elif attempt_id is not None:
+            raise RuntimeError("dcode-project accepts only one `--attempt-id`.")
+        else:
+            attempt_id = value
+        index += 1
+    return result_file, attempt_id
+
+
 def main(argv: list[str]) -> int:
     _reject_unmanaged_runtime_options(argv)
     child_argv, selection_values, handoff_file, role_name, explicit_executor = _controller_options(argv)
+    result_file_value, attempt_id = _result_options(argv)
     config = _load_toml(_config_path(), "dcode-project config")
     repo_root = _repo_root()
     executor = _resolve_executor(config, explicit_executor)
+    result_file = _result_file_path(result_file_value) if result_file_value is not None else None
+    if result_file is not None and attempt_id is None:
+        raise RuntimeError("dcode-project requires `--attempt-id` with `--result-file`.")
+    if result_file is not None and executor != "deepagents":
+        raise RuntimeError("`--result-file` is supported only for DeepAgents task execution.")
     binding = _runtime_binding(config)
     model = binding.model
     base_url = binding.base_url
@@ -1468,6 +1573,12 @@ def main(argv: list[str]) -> int:
     with _role_views_lock(repo_root):
         _write_role_views(repo_root, roles)
         cleanup_allowed = True
+        worker_state = "not_started"
+        worker_exit_code: int | None = None
+        descendant_state = "unknown"
+        role_views_state = "unknown"
+        recovery_required = False
+        cleanup_error: Exception | None = None
         try:
             dcode_argv = [
                 dcode,
@@ -1485,26 +1596,61 @@ def main(argv: list[str]) -> int:
                     selected,
                     environment,
                 ) as mcp_config_path:
-                    return _run_deepagents_worker(
+                    worker_exit_code = _run_deepagents_worker(
                         [*dcode_argv, "--mcp-config", str(mcp_config_path)],
                         environment,
                         repo_root,
                         handoff_stdin,
                         _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
                     )
-            return _run_deepagents_worker(
-                [*dcode_argv, "--no-mcp"],
-                environment,
-                repo_root,
-                handoff_stdin,
-                _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
-            )
+            else:
+                worker_exit_code = _run_deepagents_worker(
+                    [*dcode_argv, "--no-mcp"],
+                    environment,
+                    repo_root,
+                    handoff_stdin,
+                    _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
+                )
+            worker_state = "exited"
+            descendant_state = "terminated"
         except _WorkerRecoveryBlocked:
             cleanup_allowed = False
+            worker_state = "recovery_blocked"
+            recovery_required = True
+            raise
+        except OSError:
+            worker_state = "start_failed"
+            descendant_state = "terminated"
+            raise
+        except Exception:
+            worker_state = "failed"
+            descendant_state = "terminated"
             raise
         finally:
             if cleanup_allowed:
-                _remove_role_views(repo_root, roles)
+                try:
+                    _remove_role_views(repo_root, roles)
+                except Exception as exc:
+                    role_views_state = "unverified"
+                    recovery_required = True
+                    cleanup_error = exc
+                else:
+                    role_views_state = "removed"
+            else:
+                role_views_state = "preserved"
+            if result_file is not None:
+                _publish_result_receipt(
+                    result_file,
+                    attempt_id=str(attempt_id),
+                    worker_state=worker_state,
+                    worker_exit_code=worker_exit_code,
+                    descendant_state=descendant_state,
+                    role_views_state=role_views_state,
+                    recovery_required=recovery_required,
+                )
+            if cleanup_error is not None:
+                raise cleanup_error
+        return int(worker_exit_code) if worker_exit_code is not None else 2
 
 
 if __name__ == "__main__":

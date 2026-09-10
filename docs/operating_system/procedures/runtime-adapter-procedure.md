@@ -103,6 +103,10 @@ candidate rejection or incomplete discovery remains observable as `blocked` or
 exact/`auto` selectors fail closed. `HERDR_ENV` is not a CoS dispatch gate and
 is removed from launcher child environments.
 
+Numeric Codex wall-clock grants fail closed until a named runtime owner can
+enforce interruption and cleanup. Herdr may record requested values, but it
+does not claim numeric wall-clock enforcement without that owner and proof.
+
 ## Delivery Reconciliation
 
 Launcher delivery evidence distinguishes `delivered`, `delivery_failed`, and

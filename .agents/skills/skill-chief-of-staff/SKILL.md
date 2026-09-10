@@ -113,9 +113,9 @@ Grant changes never hot-mutate a live runtime. CoS must retire the current
 top-level lane, prove no live process owns its worktree, reconcile plan plus
 Git, then redispatch the same plan task with a newly computed transient grant.
 DeepAgents direct MCP projection remains default-deny. Codex turn limits remain
-`native`; numeric Codex wall-clock limits use the Herdr outer watchdog, which
-closes the assigned pane on deadline and verifies pane/process retirement before
-returning `TIMEOUT`. Unsupported strict limits return `BLOCKED`.
+`native`; numeric Codex wall-clock grants fail closed until a named runtime owner
+can enforce interruption and cleanup. Herdr does not claim unsupported numeric
+wall-clock enforcement. Unsupported strict limits return `BLOCKED`.
 
 CoS may dispatch only top-level `codex` and `deepagents` MAIN AGENT lanes through
 Herdr. Codex lanes use top-level Codex main agents; DeepAgents lanes use the
