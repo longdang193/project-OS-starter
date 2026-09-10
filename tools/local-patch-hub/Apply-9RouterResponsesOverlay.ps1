@@ -58,37 +58,6 @@ $git = (Get-Command git -ErrorAction Stop).Source
 $head = (& $git -C $targetPath rev-parse HEAD 2>&1 | Out-String).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Target is not a Git checkout: $targetPath" }
 
-$records = @(Get-ChildItem -LiteralPath $overlayRoot -Directory | ForEach-Object {
-  $manifestPath = Join-Path $_.FullName "manifest.json"
-  if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { return }
-  $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-  [pscustomobject]@{
-    Manifest = $manifest
-    Patch = Join-Path $_.FullName ([string]$manifest.patch)
-  }
-})
-
-$applyFlags = @("--ignore-space-change", "--ignore-whitespace")
-$selected = @($records | Where-Object { [string]$_.Manifest.baseCommit -eq $head }) | Select-Object -First 1
-$alreadyApplied = $false
-if ($null -eq $selected) {
-  $applied = @($records | Where-Object {
-    Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--check", "--", $_.Patch))
-  })
-  if ($applied.Count -eq 1) {
-    $selected = $applied[0]
-    $alreadyApplied = $true
-  } elseif (@($records).Count -eq 1) {
-    $selected = $records[0]
-  } else {
-    $available = @($records | ForEach-Object { [string]$_.Manifest.baseCommit }) -join ", "
-    throw "No 9router Responses overlay matches HEAD $head or an already-applied overlay. Available bases: $available"
-  }
-}
-
-$patch = $selected.Patch
-if (-not (Test-Path -LiteralPath $patch -PathType Leaf)) { throw "Overlay patch missing: $patch" }
-
 $transformerPath = Join-Path $targetPath "open-sse\transformer\responsesTransformer.js"
 $translatorIndexPath = Join-Path $targetPath "open-sse\translator\index.js"
 $responsesTranslatorPath = Join-Path $targetPath "open-sse\translator\response\openai-responses.js"
@@ -121,6 +90,37 @@ if ($nativeFix) {
   Write-Output "9router Responses output fix already present at $head; no overlay changes needed."
   exit 0
 }
+
+$records = @(Get-ChildItem -LiteralPath $overlayRoot -Directory | ForEach-Object {
+  $manifestPath = Join-Path $_.FullName "manifest.json"
+  if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { return }
+  $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+  [pscustomobject]@{
+    Manifest = $manifest
+    Patch = Join-Path $_.FullName ([string]$manifest.patch)
+  }
+})
+
+$applyFlags = @("--ignore-space-change", "--ignore-whitespace")
+$selected = @($records | Where-Object { [string]$_.Manifest.baseCommit -eq $head }) | Select-Object -First 1
+$alreadyApplied = $false
+if ($null -eq $selected) {
+  $applied = @($records | Where-Object {
+    Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--check", "--", $_.Patch))
+  })
+  if ($applied.Count -eq 1) {
+    $selected = $applied[0]
+    $alreadyApplied = $true
+  } elseif (@($records).Count -eq 1) {
+    $selected = $records[0]
+  } else {
+    $available = @($records | ForEach-Object { [string]$_.Manifest.baseCommit }) -join ", "
+    throw "No 9router Responses overlay matches HEAD $head or an already-applied overlay. Available bases: $available"
+  }
+}
+
+$patch = $selected.Patch
+if (-not (Test-Path -LiteralPath $patch -PathType Leaf)) { throw "Overlay patch missing: $patch" }
 
 $appliedNow = $false
 if (-not $alreadyApplied) {

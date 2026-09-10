@@ -33,6 +33,7 @@ def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
     assert "reconstructedOutput = state.responseOutput.filter(Boolean)" in latest_patch
     assert "translatorIndexPath" in script
     assert "streamPath" in script
+    assert script.index("$nativeFix") < script.index("$records")
     assert "--3way" in script
     assert "--cached" in script
     assert "GIT_INDEX_FILE" in script
@@ -49,6 +50,13 @@ def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
     assert "Refusing to downgrade" in installer
     assert "installedVersion" in installer
     assert "Stop-Process" in installer
+    assert '"--force"' in installer
     assert "missing $entryPath" in installer
+    assert "builtAppPath" in installer
+    assert "installedAppPath" in installer
+    assert "Get-9RouterProcesses" in installer
+    assert "remainingProcesses" in installer
+    assert "versionOutput" in installer
+    assert "versionExitCode" in installer
     assert "9router.cmd" in installer
     assert "Apply-9RouterResponsesOverlay.ps1" in readme

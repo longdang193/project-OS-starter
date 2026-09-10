@@ -18,11 +18,24 @@ function Install-9RouterGlobal {
     }
   }
 
-  $processes = @(Get-CimInstance Win32_Process | Where-Object {
-    $_.Name -eq "node.exe" -and $_.CommandLine -match "(?i)9router.*(cli\.js|custom-server\.js)"
-  })
-  foreach ($process in $processes) {
-    Stop-Process -Id $process.ProcessId -Force
+  function Get-9RouterProcesses {
+    @(Get-CimInstance Win32_Process | Where-Object {
+      $_.Name -eq "node.exe" -and $_.CommandLine -match "(?i)9router.*(cli\.js|custom-server\.js)"
+    })
+  }
+
+  foreach ($process in @(Get-9RouterProcesses)) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+  $stopDeadline = [DateTime]::UtcNow.AddSeconds(10)
+  do {
+    $remainingProcesses = @(Get-9RouterProcesses)
+    if ($remainingProcesses.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $stopDeadline)
+  if ($remainingProcesses.Count -gt 0) {
+    $remainingIds = @($remainingProcesses | ForEach-Object { $_.ProcessId }) -join ", "
+    throw "Cannot replace global 9router while processes remain: $remainingIds"
   }
 
   $cliPath = Join-Path $TargetPath "cli"
@@ -35,7 +48,12 @@ function Install-9RouterGlobal {
     Pop-Location
   }
   if ($buildExitCode -ne 0) { throw "$npm build failed with exit code $buildExitCode." }
-  & $npm "install" "-g" (Join-Path $TargetPath "cli")
+  $builtAppPath = Join-Path $TargetPath "cli\app"
+  if (-not (Test-Path -LiteralPath (Join-Path $builtAppPath "server.js") -PathType Leaf) -and
+      -not (Test-Path -LiteralPath (Join-Path $builtAppPath "custom-server.js") -PathType Leaf)) {
+    throw "9router build is incomplete: missing cli\app\server.js and cli\app\custom-server.js."
+  }
+  & $npm "install" "-g" "--force" (Join-Path $TargetPath "cli")
   if ($LASTEXITCODE -ne 0) { throw "$npm global install failed with exit code $LASTEXITCODE." }
 
   $packageRoot = Join-Path $globalRoot "9router"
@@ -44,9 +62,20 @@ function Install-9RouterGlobal {
   if (-not (Test-Path -LiteralPath $entryPath -PathType Leaf)) {
     throw "Global 9router install is incomplete: missing $entryPath"
   }
+  $installedAppPath = Join-Path $packageRoot "app"
+  if (-not (Test-Path -LiteralPath (Join-Path $installedAppPath "server.js") -PathType Leaf) -and
+      -not (Test-Path -LiteralPath (Join-Path $installedAppPath "custom-server.js") -PathType Leaf)) {
+    throw "Global 9router install is incomplete: missing standalone app under $installedAppPath"
+  }
   if (-not (Test-Path -LiteralPath $cmdShim -PathType Leaf)) {
     throw "Global 9router install is incomplete: missing $cmdShim"
   }
 
-  Write-Output "Installed 9router global package and verified cli.js and 9router.cmd."
+  $versionOutput = (& $cmdShim "--version" 2>&1 | Out-String).Trim()
+  $versionExitCode = $LASTEXITCODE
+  if ($versionExitCode -ne 0 -or $versionOutput -ne [string]$targetPackage.version) {
+    throw "Global 9router install is unusable: expected version $($targetPackage.version), got '$versionOutput'."
+  }
+
+  Write-Output "Installed 9router global package and verified cli.js, 9router.cmd, and version $versionOutput."
 }
