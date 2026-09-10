@@ -168,6 +168,11 @@ optional; they are not generic lifecycle gates.
 No artifact is required merely to connect two other artifacts. Source, tests,
 configuration, and validators remain executable truth.
 
+Runtime launcher evidence is layered: delivery acknowledgement, worker execution,
+observation, task-result verification, cleanup proof, and performance are separate
+facts. Marker text, observer expiry, lock-file presence, or launcher exit alone
+does not establish missing layers.
+
 ## Executor Selection
 
 Executor and profile selection are independent. Select executor from task

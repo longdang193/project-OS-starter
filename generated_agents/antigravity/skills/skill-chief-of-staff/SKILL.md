@@ -442,5 +442,7 @@ Return work binding, coordination mode, `attention_result`, optional
 For `plan-bound-execution`, also return selected task, plan binding, lane
 identity, agent status, proof decision, and retirement result. Runtime evidence
 must be fresh for the current turn or backed by an independently revalidated
-anchor. Do not claim completion from Herdr status, a lane commit, an open PR,
-or a merged PR.
+anchor. Accept delivery, execution, observation, task-result, cleanup, and
+performance evidence independently; marker text or Herdr status cannot fill a
+missing layer. Do not claim completion from Herdr status, a lane commit, an open
+PR, or a merged PR.

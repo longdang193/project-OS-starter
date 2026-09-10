@@ -602,10 +602,14 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "preflight",
         "target_discovery",
         "worker_initialization",
-        "assignment_acknowledgment",
+        "delivery",
+        "observation",
         "retirement",
     }
-    assert all(value >= 0 for value in performance["phase_durations_ms"].values())
+    assert all(
+        value["status"] == ("measured" if phase in {"preflight", "target_discovery", "worker_initialization"} else "not_attempted")
+        for phase, value in performance["phase_durations_ms"].items()
+    )
     assert performance["subprocess_counts"]["total"] == 0
 
 
@@ -1170,7 +1174,7 @@ def test_main_times_out_codex_and_verifies_termination(
         raise LAUNCHER.CommandTransportTimeout("Command timed out after 13s: herdr.exe")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    times = iter([0.0, 9.0])
+    times = iter([0.0, 1.0, 9.0, 9.0, 9.0])
     monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
 
     assert LAUNCHER.main(
@@ -1400,7 +1404,7 @@ def test_main_immediate_transport_timeout_does_not_expire_long_grant(
         raise LAUNCHER.CommandTransportTimeout("assignment timeout")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    times = iter([0.0, 1.0])
+    times = iter([0.0, 1.0, 1.0, 1.0])
     monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
 
     assert LAUNCHER.main(
@@ -1450,7 +1454,7 @@ def test_main_watchdog_cleanup_failure_blocks_timeout_completion(
         raise LAUNCHER.CommandTransportTimeout("assignment timeout")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    times = iter([0.0, 4.0])
+    times = iter([0.0, 4.0, 4.0, 4.0])
     monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
 
     assert LAUNCHER.main(
@@ -1543,21 +1547,23 @@ def test_main_reports_failed_assignment_after_start(
     ) == 7
     output = capsys.readouterr().out.splitlines()
     assignment = json.loads(output[-1])["assignment"]
-    assert isinstance(assignment.pop("attempt_id", None), str)
-    assert assignment == {
-        "agent_name": "xhigh-main",
-        "delivery_state": "delivery_failed",
-        "delivery_certainty": "not_delivered",
-        "delivery_task_sha256": LAUNCHER._sha256_text("assign lane"),
-        "exit_code": 7,
-        "failure_kind": "command_exit",
-        "phase": "start",
-        "grant_digest": None,
-        "reconciliation_required": True,
-        "session": "codex-probe",
-        "status": "failed",
-        "task_sha256": LAUNCHER._sha256_text("assign lane"),
-    }
+    assert isinstance(assignment["attempt_id"], str)
+    assert assignment["agent_name"] == "xhigh-main"
+    assert assignment["delivery_state"] == "delivery_failed"
+    assert assignment["delivery_certainty"] == "not_delivered"
+    assert assignment["delivery_task_sha256"] == LAUNCHER._sha256_text("assign lane")
+    assert assignment["exit_code"] == 7
+    assert assignment["failure_kind"] == "command_exit"
+    assert assignment["phase"] == "start"
+    assert assignment["grant_digest"] is None
+    assert assignment["reconciliation_required"] is True
+    assert assignment["session"] == "codex-probe"
+    assert assignment["status"] == "failed"
+    assert assignment["task_sha256"] == LAUNCHER._sha256_text("assign lane")
+    assert assignment["delivery"]["state"] == "delivery_failed"
+    assert assignment["launcher_exit_code"] == 7
+    assert assignment["worker_exit_code"] is None
+    assert assignment["performance"]["status"] == "measured"
 
 
 def test_main_retries_default_agent_name_after_name_taken(
@@ -1625,6 +1631,9 @@ def test_main_retries_default_agent_name_after_name_taken(
     assert result["agent_name"] == retry_name
     assert result["prompt_accepted"] is True
     assert result["attempt_id"] != initial
+    attempts = result["performance"]["attempts"]
+    assert len(attempts) == 2
+    assert {item["attempt_id"] for item in attempts} == {initial, result["attempt_id"]}
 
 
 def test_launcher_allows_external_codex_controller(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1822,6 +1831,13 @@ def test_main_target_resolution_failure_is_not_workflow_blocked(
     captured = capsys.readouterr()
     assert "TARGET_RESOLUTION:" in captured.err
     assert "BLOCKED:" not in captured.err
+    result = json.loads(captured.out.splitlines()[-1])
+    assert result["target_resolution"]["status"] == "not_found"
+    assert result["assignment"]["performance"]["status"] == "measured"
+    assert all(
+        phase["status"] == "unavailable"
+        for phase in result["assignment"]["performance"]["phase_durations_ms"].values()
+    )
 
 
 def test_deepagents_main_strips_herdr_environment(
@@ -1848,6 +1864,7 @@ def test_deepagents_main_strips_herdr_environment(
         "_deepagents_completion_evidence",
         lambda *args, **kwargs: {
             "state": "completed",
+            "marker_present": True,
             "report_present": True,
             "report_sha256": "report",
             "report_chars": 1,
@@ -1949,6 +1966,7 @@ def test_deepagents_main_rejects_completion_with_observer_error(
         "_deepagents_completion_evidence",
         lambda *args, **kwargs: {
             "state": "completed",
+            "marker_present": True,
             "report_present": True,
             "report_sha256": "report",
             "report_chars": 1,
@@ -2320,3 +2338,50 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
     assert result["state"] == "processes-remain"
     assert result["remaining_process_ids"] == [102]
     assert len(commands) == 3
+
+
+def test_deepagents_marker_with_live_worker_does_not_report_completed() -> None:
+    assert LAUNCHER._deepagents_task_state(
+        [{"name": "python.exe"}],
+        "COMPLETED\nEXPECTED_MARKER\n",
+        "EXPECTED_MARKER",
+    ) == "running"
+
+
+def test_assignment_result_builder_keeps_lifecycle_facts_independent() -> None:
+    result = LAUNCHER._build_assignment_result(
+        dispatch_id="dispatch",
+        attempt_id="attempt",
+        agent_name="normal-main",
+        delivery={"state": "confirmed"},
+        execution={"state": "unknown"},
+        observation={"state": "timed_out"},
+        task_result={"state": "unknown"},
+        cleanup={"state": "unknown"},
+        performance={"status": "measured"},
+        launcher_exit_code=2,
+    )
+
+    assert result["assignment"]["dispatch_id"] == "dispatch"
+    assert result["assignment"]["attempt_id"] == "attempt"
+    assert result["assignment"]["delivery"]["state"] == "confirmed"
+    assert result["assignment"]["execution"]["state"] == "unknown"
+    assert result["assignment"]["observation"]["state"] == "timed_out"
+    assert result["assignment"]["task_result"]["state"] == "unknown"
+    assert result["assignment"]["cleanup"]["state"] == "unknown"
+    assert result["assignment"]["launcher_exit_code"] == 2
+    assert result["assignment"]["worker_exit_code"] is None
+
+
+def test_performance_snapshot_uses_structured_phase_values() -> None:
+    performance = LAUNCHER._new_performance_evidence()
+
+    assert performance["phase_durations_ms"]["delivery"] == {
+        "status": "not_attempted",
+        "duration_ms": None,
+    }
+    LAUNCHER._record_performance_phase(performance, "delivery", 0.0, now=0.0124)
+    assert performance["phase_durations_ms"]["delivery"] == {
+        "status": "measured",
+        "duration_ms": 12.4,
+    }

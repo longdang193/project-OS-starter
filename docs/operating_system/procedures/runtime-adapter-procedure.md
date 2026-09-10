@@ -165,8 +165,10 @@ keeps its existing provider configuration and credential behavior; only the
 DeepAgents path validates `wire_api` and derives `use_responses_api`.
 
 Launcher performance evidence records monotonic durations for preflight, target
-discovery, worker initialization, assignment acknowledgment, and retirement,
-alongside subprocess counts. Any optimization requires a matching workload
+discovery, worker initialization, delivery, observation, and retirement,
+alongside launcher subprocess counts. Each phase has explicit measured,
+not-attempted, or unavailable status; final evidence includes total duration and
+per-attempt retry attribution. Any optimization requires a matching workload
 baseline; otherwise reduction stays deferred.
 
 DeepAgents role views are one same-worktree attempt resource. Launcher acquires

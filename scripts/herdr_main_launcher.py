@@ -81,6 +81,14 @@ _ACTIVE_METRICS: ContextVar[dict[str, Any] | None] = ContextVar(
     "herdr_launcher_metrics",
     default=None,
 )
+_PERFORMANCE_PHASES = (
+    "preflight",
+    "target_discovery",
+    "worker_initialization",
+    "delivery",
+    "observation",
+    "retirement",
+)
 
 
 def _herdr_environment() -> dict[str, str]:
@@ -598,6 +606,125 @@ def _metrics_snapshot() -> dict[str, Any]:
     }
 
 
+def _new_performance_evidence() -> dict[str, Any]:
+    return {
+        "status": "preparation",
+        "phase_durations_ms": {
+            phase: {"status": "not_attempted", "duration_ms": None}
+            for phase in _PERFORMANCE_PHASES
+        },
+        "subprocess_counts": _metrics_snapshot(),
+        "attempts": [],
+        "total_duration_ms": None,
+    }
+
+
+def _record_performance_phase(
+    performance: dict[str, Any],
+    name: str,
+    started: float,
+    *,
+    now: float | None = None,
+) -> None:
+    if name not in _PERFORMANCE_PHASES:
+        raise LaunchBlocked(f"Unknown performance phase: {name}")
+    durations = performance.setdefault("phase_durations_ms", {})
+    if not isinstance(durations, dict):
+        raise LaunchBlocked("Performance phase durations must be an object.")
+    current = time.monotonic() if now is None else now
+    durations[name] = {
+        "status": "measured",
+        "duration_ms": round(max(0.0, current - started) * 1000, 3),
+    }
+    performance["_last_monotonic"] = current
+    performance["subprocess_counts"] = _metrics_snapshot()
+
+
+def _record_performance_attempt(
+    performance: dict[str, Any],
+    attempt_id: str,
+    started: float,
+    *,
+    now: float | None = None,
+) -> None:
+    current = performance.get("_last_monotonic") if now is None else now
+    if current is None:
+        current = time.monotonic()
+    attempts = performance.setdefault("attempts", [])
+    if not isinstance(attempts, list):
+        raise LaunchBlocked("Performance attempts must be an array.")
+    attempts.append({
+        "attempt_id": attempt_id,
+        "duration_ms": round(max(0.0, current - started) * 1000, 3),
+    })
+
+
+def _finalize_performance(
+    performance: dict[str, Any],
+    started: float,
+    *,
+    now: float | None = None,
+) -> dict[str, Any]:
+    current = performance.pop("_last_monotonic", None) if now is None else now
+    if current is None:
+        current = time.monotonic()
+    performance["status"] = "measured"
+    performance["total_duration_ms"] = round(max(0.0, current - started) * 1000, 3)
+    performance["subprocess_counts"] = _metrics_snapshot()
+    return performance
+
+
+def _build_assignment_result(
+    *,
+    dispatch_id: str | None,
+    attempt_id: str,
+    agent_name: str,
+    delivery: dict[str, Any],
+    execution: dict[str, Any],
+    observation: dict[str, Any],
+    task_result: dict[str, Any],
+    cleanup: dict[str, Any],
+    performance: dict[str, Any],
+    launcher_exit_code: int,
+    legacy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    legacy_values = legacy or {}
+    assignment = {
+        "agent_name": agent_name,
+        "attempt_id": attempt_id,
+        "dispatch_id": dispatch_id,
+        "delivery": delivery,
+        "execution": execution,
+        "observation": observation,
+        "task_result": task_result,
+        "cleanup": cleanup,
+        "performance": performance,
+        "launcher_exit_code": launcher_exit_code,
+        "worker_exit_code": execution.get("worker_exit_code"),
+        "delivery_state": legacy_values.get("delivery_state", delivery.get("state")),
+        "delivery_certainty": legacy_values.get("delivery_certainty", delivery.get("certainty")),
+        "delivery_task_sha256": legacy_values.get("delivery_task_sha256"),
+        "exit_code": launcher_exit_code,
+        "failure_kind": legacy_values.get("failure_kind"),
+        "grant_digest": legacy_values.get("grant_digest"),
+        "phase": legacy_values.get("phase"),
+        "prompt_accepted": legacy_values.get("prompt_accepted", delivery.get("prompt_accepted")),
+        "reconciliation_required": legacy_values.get(
+            "reconciliation_required",
+            delivery.get("reconciliation_required", False),
+        ),
+        "session": legacy_values.get("session"),
+        "status": legacy_values.get("status", task_result.get("status", execution.get("state"))),
+        "submission": legacy_values.get("submission", delivery.get("submission")),
+        "task_accepted": legacy_values.get("task_accepted", task_result.get("accepted")),
+        "task_sha256": legacy_values.get("task_sha256"),
+    }
+    for key, value in legacy_values.items():
+        if key not in assignment:
+            assignment[key] = value
+    return {"assignment": assignment}
+
+
 def _codex_assignment_command(
     herdr: str,
     session: str,
@@ -940,7 +1067,7 @@ def _deepagents_task_state(
         lines[index:index + 2] == ["COMPLETED", expected_marker]
         for index in range(len(lines) - 1)
     ):
-        return "completed"
+        return "running" if live_process else "completed"
     if "COMPLETED" in lines:
         return "running" if live_process else "no-report"
     if live_process:
@@ -1043,6 +1170,7 @@ def _deepagents_completion_snapshot(
         state = "no-report"
     return {
         "state": state,
+        "marker_present": expected_marker in pane_output,
         "report_present": state in {"completed", "failed"},
         "report_sha256": _sha256_text(pane_output),
         "report_chars": len(pane_output),
@@ -1292,7 +1420,8 @@ def resolve_launch(
     codex = _executable("codex") if executor == "codex" else None
     dcode = _executable("dcode-project") if executor == "deepagents" else None
     git = _git_identity(cwd, expected_base)
-    preflight_ms = _elapsed_ms(launch_started)
+    performance = _new_performance_evidence()
+    _record_performance_phase(performance, "preflight", launch_started)
     target_started = time.monotonic()
     session, pane, target_resolution = _resolve_target_selector(
         cwd,
@@ -1302,7 +1431,7 @@ def resolve_launch(
         executor=executor,
         env=environment,
     )
-    target_discovery_ms = _elapsed_ms(target_started)
+    _record_performance_phase(performance, "target_discovery", target_started)
     worker_started = time.monotonic()
     pane_state = _herdr_pane(cwd, session, pane, herdr, executor=executor, env=environment)
     agent_name = name or (
@@ -1368,7 +1497,6 @@ def resolve_launch(
             _powershell_literal(delivery_task),
         ]
         command = [herdr, "--session", session, "pane", "run", pane, *runtime_arguments]
-    worker_initialization_ms = _elapsed_ms(worker_started)
     evidence = {
         "registry_launcher": {
             "dispatch_id": uuid.uuid4().hex,
@@ -1443,16 +1571,7 @@ def resolve_launch(
                 )
             ) if executor == "codex" else None,
         },
-        "performance": {
-            "phase_durations_ms": {
-                "preflight": preflight_ms,
-                "target_discovery": target_discovery_ms,
-                "worker_initialization": worker_initialization_ms,
-                "assignment_acknowledgment": 0.0,
-                "retirement": 0.0,
-            },
-            "subprocess_counts": _metrics_snapshot(),
-        },
+        "performance": performance,
     }
     if runtime is not None:
         evidence["codex"] = {
@@ -1467,6 +1586,7 @@ def resolve_launch(
             "mcp_mode": "direct" if direct_mcp else "disabled",
             "mcp_selection": list(mcp_select or []),
         }
+    _record_performance_phase(performance, "worker_initialization", worker_started)
     return command, evidence
 
 
@@ -1490,6 +1610,35 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _main_body(args: argparse.Namespace) -> int:
+    invocation_started = time.monotonic()
+    dispatch_id = uuid.uuid4().hex
+    preparation_performance = _new_performance_evidence()
+
+    def emit_failure(message: str, resolution: dict[str, Any] | None = None) -> int:
+        phases = preparation_performance.get("phase_durations_ms", {})
+        if isinstance(phases, dict):
+            for phase in phases.values():
+                if isinstance(phase, dict) and phase.get("status") == "not_attempted":
+                    phase["status"] = "unavailable"
+        performance = _finalize_performance(preparation_performance, invocation_started)
+        result = _build_assignment_result(
+            dispatch_id=dispatch_id,
+            attempt_id=uuid.uuid4().hex,
+            agent_name=args.name or f"{args.profile}-main",
+            delivery={"state": "not_attempted", "certainty": "unknown"},
+            execution={"state": "not_started", "worker_exit_code": None},
+            observation={"state": "not_attempted"},
+            task_result={"state": "not_attempted", "accepted": False},
+            cleanup={"state": "not_attempted"},
+            performance=performance,
+            launcher_exit_code=2,
+            legacy={"failure_kind": message, "status": "blocked"},
+        )
+        if resolution is not None:
+            result["target_resolution"] = resolution
+        print(json.dumps(result, sort_keys=True))
+        return 2
+
     try:
         command, evidence = resolve_launch(
             profile_name=args.profile,
@@ -1511,18 +1660,45 @@ def _main_body(args: argparse.Namespace) -> int:
         observation_evidence = evidence.setdefault("observation", {})
         if not isinstance(registry_evidence, dict) or not isinstance(observation_evidence, dict):
             raise LaunchBlocked("Launcher evidence has invalid lifecycle sections.")
-        performance_evidence = evidence.setdefault("performance", {})
+        performance_evidence = evidence.setdefault("performance", preparation_performance)
         if not isinstance(performance_evidence, dict):
             raise LaunchBlocked("Launcher evidence has invalid performance section.")
+        dispatch_id = str(registry_evidence.setdefault("dispatch_id", dispatch_id))
 
         def record_phase(name: str, started: float) -> None:
-            durations = performance_evidence.setdefault("phase_durations_ms", {})
-            if isinstance(durations, dict):
-                durations[name] = _elapsed_ms(started)
-            performance_evidence["subprocess_counts"] = _metrics_snapshot()
+            _record_performance_phase(performance_evidence, name, started)
+
+        def emit_assignment(payload: dict[str, Any]) -> dict[str, Any]:
+            assignment = payload.get("assignment", payload)
+            if not isinstance(assignment, dict):
+                raise LaunchBlocked("Assignment evidence must be an object.")
+            execution = assignment.setdefault("execution", {"state": "unknown", "worker_exit_code": None})
+            if not isinstance(execution, dict):
+                execution = {"state": "unknown", "worker_exit_code": None}
+                assignment["execution"] = execution
+            assignment.setdefault("dispatch_id", dispatch_id)
+            assignment.setdefault("attempt_id", attempt_id)
+            assignment.setdefault("delivery", {
+                "state": assignment.get("delivery_state", "unknown"),
+                "certainty": assignment.get("delivery_certainty", "unknown"),
+            })
+            assignment.setdefault("observation", {"state": "unknown"})
+            assignment.setdefault("task_result", {
+                "state": assignment.get("status", "unknown"),
+                "accepted": assignment.get("task_accepted"),
+            })
+            assignment.setdefault("cleanup", {"state": "unknown"})
+            assignment["performance"] = performance_evidence
+            assignment["launcher_exit_code"] = assignment.get("exit_code", 2)
+            assignment["worker_exit_code"] = execution.get("worker_exit_code")
+            _record_performance_attempt(performance_evidence, attempt_id, attempt_started)
+            _finalize_performance(performance_evidence, invocation_started)
+            return {"assignment": assignment}
 
         registry_evidence["attempt_id"] = attempt_id
         observation_evidence["attempt_id"] = attempt_id
+        if isinstance(performance_evidence, dict):
+            performance_evidence.pop("_last_monotonic", None)
         print(json.dumps(evidence, sort_keys=True))
         if args.dry_run:
             return 0
@@ -1552,8 +1728,8 @@ def _main_body(args: argparse.Namespace) -> int:
             if not isinstance(completion_marker, str) or not completion_marker:
                 raise LaunchBlocked("Launcher evidence missing completion marker.")
             environment = _herdr_environment()
-        assignment_started = time.monotonic()
         for attempt in range(2):
+            attempt_started = time.monotonic()
             try:
                 result = _run(
                     command,
@@ -1565,8 +1741,8 @@ def _main_body(args: argparse.Namespace) -> int:
                     ),
                 )
             except CommandTransportTimeout:
-                record_phase("assignment_acknowledgment", assignment_started)
-                print(json.dumps({
+                record_phase("delivery", attempt_started)
+                print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
                         "attempt_id": attempt_id,
@@ -1583,7 +1759,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "status": "uncertain",
                         "task_sha256": assignment_task_sha256,
                     }
-                }, sort_keys=True))
+                }), sort_keys=True))
                 return 2
             if not (
                 args.executor == "codex"
@@ -1605,7 +1781,7 @@ def _main_body(args: argparse.Namespace) -> int:
             record_phase("retirement", retirement_started)
             registry_launcher["failed_start_reconciliation"] = reconciliation
             if reconciliation["state"] == "uncertain":
-                print(json.dumps({
+                print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
                         "attempt_id": attempt_id,
@@ -1623,7 +1799,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "status": "uncertain",
                         "task_sha256": assignment_task_sha256,
                     }
-                }, sort_keys=True))
+                }), sort_keys=True))
                 return 2
             if reconciliation["state"] == "retired":
                 resolved_session, resolved_pane, target_resolution = _resolve_target_selector(
@@ -1662,6 +1838,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 command = command.copy()
                 command[command.index("--session") + 1] = resolved_session
                 command[command.index("--pane") + 1] = resolved_pane
+            _record_performance_attempt(performance_evidence, attempt_id, attempt_started)
             agent_name = _unique_agent_name(str(evidence["herdr"]["agent_name"]))
             attempt_id = uuid.uuid4().hex
             evidence["registry_launcher"]["attempt_id"] = attempt_id
@@ -1678,8 +1855,8 @@ def _main_body(args: argparse.Namespace) -> int:
         if result.stderr:
             _write_runtime_output(sys.stderr, result.stderr)
         if result.returncode:
-            record_phase("assignment_acknowledgment", assignment_started)
-            print(json.dumps({
+            record_phase("delivery", attempt_started)
+            print(json.dumps(emit_assignment({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
                     "attempt_id": attempt_id,
@@ -1695,7 +1872,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     "grant_digest": grant_digest,
                     "task_sha256": assignment_task_sha256,
                 }
-            }, sort_keys=True))
+            }), sort_keys=True))
             return result.returncode
         if args.executor == "codex":
             herdr = str(evidence["herdr"]["executable"])
@@ -1734,8 +1911,8 @@ def _main_body(args: argparse.Namespace) -> int:
             except CommandTransportTimeout as exc:
                 transport_timeout = exc
             if transport_timeout is not None:
-                record_phase("assignment_acknowledgment", assignment_started)
-                print(json.dumps({
+                record_phase("delivery", attempt_started)
+                print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
                         "attempt_id": attempt_id,
@@ -1752,7 +1929,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "status": "uncertain",
                         "task_sha256": assignment_task_sha256,
                     }
-                }, sort_keys=True))
+                }), sort_keys=True))
                 return 2
             if assignment_result is None:
                 raise LaunchBlocked("Codex assignment produced no result.")
@@ -1762,8 +1939,8 @@ def _main_body(args: argparse.Namespace) -> int:
                 print(assignment_result.stderr, file=sys.stderr, end="")
             prompt_result = _classify_codex_prompt_result(assignment_result)
             if prompt_result["submission"] == "unknown":
-                record_phase("assignment_acknowledgment", assignment_started)
-                print(json.dumps({
+                record_phase("delivery", attempt_started)
+                print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
                         "attempt_id": attempt_id,
@@ -1781,11 +1958,11 @@ def _main_body(args: argparse.Namespace) -> int:
                         "submission": "unknown",
                         "task_sha256": assignment_task_sha256,
                     }
-                }, sort_keys=True))
+                }), sort_keys=True))
                 return assignment_result.returncode
             if prompt_result["submission"] == "rejected":
-                record_phase("assignment_acknowledgment", assignment_started)
-                print(json.dumps({
+                record_phase("delivery", attempt_started)
+                print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
                         "attempt_id": attempt_id,
@@ -1803,7 +1980,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "submission": "rejected",
                         "task_sha256": assignment_task_sha256,
                     }
-                }, sort_keys=True))
+                }), sort_keys=True))
                 return assignment_result.returncode
             execution = {
                 "state": "unknown",
@@ -1815,8 +1992,8 @@ def _main_body(args: argparse.Namespace) -> int:
             observation["session"] = resolved_session
             observation["pane"] = resolved_pane
             observation["agent_name"] = agent_name
-            record_phase("assignment_acknowledgment", assignment_started)
-            print(json.dumps({
+            record_phase("delivery", attempt_started)
+            print(json.dumps(emit_assignment({
                 "assignment": {
                     "agent_name": agent_name,
                     "attempt_id": attempt_id,
@@ -1826,7 +2003,8 @@ def _main_body(args: argparse.Namespace) -> int:
                     "delivery_task_sha256": delivery_task_sha256,
                     "execution": execution,
                     "observation": observation,
-                    "cleanup": {"state": "pending"},
+                    "task_result": {"state": "unknown", "accepted": False},
+                    "cleanup": {"state": "unknown"},
                     "exit_code": 0,
                     "failure_kind": None,
                     "grant_digest": grant_digest,
@@ -1838,11 +2016,11 @@ def _main_body(args: argparse.Namespace) -> int:
                     "submission": "acknowledged",
                     "task_sha256": assignment_task_sha256,
                 }
-            }, sort_keys=True))
+            }), sort_keys=True))
             return 0
         if result.returncode:
-            record_phase("assignment_acknowledgment", assignment_started)
-            print(json.dumps({
+            record_phase("delivery", attempt_started)
+            print(json.dumps(emit_assignment({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
                     "attempt_id": attempt_id,
@@ -1858,8 +2036,9 @@ def _main_body(args: argparse.Namespace) -> int:
                     "status": "failed",
                     "task_sha256": assignment_task_sha256,
                 }
-            }, sort_keys=True))
+            }), sort_keys=True))
             return result.returncode
+        observation_started = time.monotonic()
         completion = _deepagents_completion_evidence(
             str(evidence["herdr"]["executable"]),
             resolved_session,
@@ -1867,27 +2046,44 @@ def _main_body(args: argparse.Namespace) -> int:
             env=environment,
             expected_marker=completion_marker,
         )
+        record_phase("observation", observation_started)
         task_state = str(completion["state"])
         if completion.get("observation_error") is not None and task_state == "completed":
             task_state = "no-report"
-        completed = (
-            task_state == "completed"
+        foreground_processes = completion.get("foreground_processes", [])
+        worker_live = any(
+            str(name).lower() not in _DEEPAGENTS_SHELL_PROCESS_NAMES
+            for name in foreground_processes
+        )
+        execution_state = "running" if worker_live else (
+            "exited" if task_state in {"completed", "failed", "no-report"} else "unknown"
+        )
+        task_verified = (
+            not worker_live
+            and completion.get("marker_present") is True
             and completion.get("report_present") is True
             and completion.get("observation_error") is None
         )
-        record_phase("assignment_acknowledgment", assignment_started)
-        print(json.dumps({
+        completed = task_state == "completed" and task_verified
+        record_phase("delivery", attempt_started)
+        print(json.dumps(emit_assignment({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],
                 "attempt_id": attempt_id,
                 "completion": completion,
                 "execution": {
-                    "state": task_state,
+                    "state": execution_state,
+                    "worker_exit_code": None,
+                    "marker_reported": completion.get("marker_present") is True,
                     "last_observed_state": completion.get("last_observed_state"),
                 },
                 "observation": completion,
+                "task_result": {
+                    "state": "verified" if task_verified else "unknown",
+                    "accepted": completed,
+                },
                 "cleanup": {
-                    "state": "verified" if completed else "unverified",
+                    "state": "unknown" if worker_live else ("unverified" if completed else "unknown"),
                 },
                 "delivery_state": "delivered",
                 "delivery_certainty": "confirmed",
@@ -1902,15 +2098,15 @@ def _main_body(args: argparse.Namespace) -> int:
                 "task_accepted": completed,
                 "task_sha256": assignment_task_sha256,
             }
-        }, sort_keys=True))
+        }), sort_keys=True))
         return 0 if completed else 2
     except TargetResolutionBlocked as exc:
-        print(json.dumps({"target_resolution": exc.resolution}, sort_keys=True))
         print(f"TARGET_RESOLUTION: {exc}", file=sys.stderr)
-        return 2
+        return emit_failure(str(exc), exc.resolution)
     except LaunchBlocked as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
-        return 2
+        return emit_failure(str(exc))
+
 
 
 def main(argv: list[str] | None = None) -> int:
