@@ -6,6 +6,7 @@ scope: unit
 domain: docs
 covers:
   - Template metadata parsing for required-section validation
+  - Shared Project OS template fallback when repository templates are absent
   - Required section presence and non-empty checks
   - Template/document-type matching using required frontmatter constraints
 tags:
@@ -568,6 +569,53 @@ Historical behavior.
         rules, findings = VALIDATOR.discover_template_rules(root)
         assert findings == []
         assert VALIDATOR.validate_documents(root, rules, require_template_selection=False) == []
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_shared_templates_are_used_when_repo_templates_are_absent(monkeypatch) -> None:
+    root = make_test_root()
+    shared_root = root / "shared-templates"
+    try:
+        write_text(
+            shared_root / "implementation-plan-template.md",
+            """---
+template_id: implementation-plan
+target_globs:
+  - docs/superpowers/plans/*.md
+required_sections:
+  - Goal
+  - Verification
+required_frontmatter:
+  artifact_type: plan
+---
+""",
+        )
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "shared-plan.md",
+            """---
+artifact_type: plan
+template_id: implementation-plan
+---
+
+# Shared Plan
+
+## Goal
+Use shared template.
+
+## Verification
+- pass
+""",
+        )
+        monkeypatch.setattr(VALIDATOR, "SHARED_TEMPLATE_ROOT", shared_root)
+
+        rules, findings = VALIDATOR.discover_template_rules(root)
+
+        assert findings == []
+        assert [rule.template_path for rule in rules] == [
+            shared_root / "implementation-plan-template.md"
+        ]
+        assert VALIDATOR.validate_documents(root, rules, require_template_selection=True) == []
     finally:
         rmtree(root, ignore_errors=True)
 

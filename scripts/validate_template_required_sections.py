@@ -8,7 +8,7 @@ responsibility:
   - Validate that templated documents include required sections from template metadata.
   - Enforce non-empty required sections and template-specific frontmatter constraints.
 inputs:
-  - docs/operating_system/templates/*-template.md
+  - Repository-local or shared Project OS `docs/operating_system/templates/*-template.md`
   - Documents matched by template target_globs
 outputs:
   - Exit status and human-readable template compliance report.
@@ -38,6 +38,12 @@ import yaml
 
 HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 PLACEHOLDER_ONLY_RE = re.compile(r"^\s*(<[^>\n]+>|\[[^\]\n]+\]|\([^)\n]+\))\s*$")
+SHARED_TEMPLATE_ROOT = (
+    Path(__file__).resolve().parents[1]
+    / "docs"
+    / "operating_system"
+    / "templates"
+)
 SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "Goal and Problem": (
         "Goal and Problem",
@@ -125,23 +131,38 @@ def _extract_frontmatter_and_body(path: Path) -> tuple[dict[str, Any], str]:
     return payload, body
 
 
+def resolve_template_root(root: Path) -> Path | None:
+    local_root = root / "docs" / "operating_system" / "templates"
+    if local_root.is_dir():
+        return local_root
+    if SHARED_TEMPLATE_ROOT.is_dir():
+        return SHARED_TEMPLATE_ROOT
+    return None
+
+
 def discover_template_rules(root: Path) -> tuple[list[TemplateRule], list[Finding]]:
-    templates_root = root / "docs" / "operating_system" / "templates"
+    templates_root = resolve_template_root(root)
     findings: list[Finding] = []
     rules: list[TemplateRule] = []
-    if not templates_root.exists():
+    if templates_root is None:
         findings.append(
             Finding(
                 category="template_metadata_error",
                 path="docs/operating_system/templates",
-                message="templates directory is missing.",
+                message=(
+                    "no templates directory found in repository or shared "
+                    "Project OS installation."
+                ),
             )
         )
         return rules, findings
 
     for path in sorted(templates_root.glob("*-template.md")):
         payload, _ = _extract_frontmatter_and_body(path)
-        rel = relative_path(path, root)
+        try:
+            rel = relative_path(path, root)
+        except ValueError:
+            rel = f"shared Project OS/{path.name}"
         template_id = payload.get("template_id")
         target_globs = payload.get("target_globs")
         required_sections = payload.get("required_sections")
