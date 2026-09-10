@@ -3,10 +3,12 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$TargetRoot,
   [switch]$InstallGlobal,
+  [switch]$AllowDowngrade,
   [switch]$VerifyOnly
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "Install-9RouterGlobal.ps1")
 
 function Invoke-Native {
   param([string]$File, [string[]]$Arguments)
@@ -65,9 +67,7 @@ if (-not $alreadyApplied -and (Test-Path -LiteralPath $correlationPath) -and (Te
   if (($correlation -match "serverCorrelationId|serverRequestId") -and $correlation -match "upstreamRequestId|upstream_request_id" -and $redaction -match "redact") {
     if ($InstallGlobal) {
       if ($VerifyOnly) { throw "-InstallGlobal cannot be combined with -VerifyOnly." }
-      $npm = (Get-Command npm -ErrorAction Stop).Source
-      Invoke-Native $npm @("--prefix", (Join-Path $targetPath "cli"), "run", "build")
-      Invoke-Native $npm @("install", "-g", (Join-Path $targetPath "cli"))
+      Install-9RouterGlobal -TargetPath $targetPath -AllowDowngrade:$AllowDowngrade
     }
     Write-Output "9router security fix already present at $head; no overlay changes needed."
     exit 0
@@ -94,9 +94,7 @@ if (-not $alreadyApplied) {
 
 if ($InstallGlobal) {
   if ($VerifyOnly) { throw "-InstallGlobal cannot be combined with -VerifyOnly." }
-  $npm = (Get-Command npm -ErrorAction Stop).Source
-  Invoke-Native $npm @("--prefix", (Join-Path $targetPath "cli"), "run", "build")
-  Invoke-Native $npm @("install", "-g", (Join-Path $targetPath "cli"))
+  Install-9RouterGlobal -TargetPath $targetPath -AllowDowngrade:$AllowDowngrade
 }
 
 if ($appliedNow) { Write-Output "Applied 9router security overlay $($selected.Manifest.version) at $head." }

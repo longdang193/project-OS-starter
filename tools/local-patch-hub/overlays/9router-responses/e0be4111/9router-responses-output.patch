@@ -1,0 +1,99 @@
+diff --git a/open-sse/transformer/responsesTransformer.js b/open-sse/transformer/responsesTransformer.js
+index ac84db20..d3a36dcc 100644
+--- a/open-sse/transformer/responsesTransformer.js
++++ b/open-sse/transformer/responsesTransformer.js
+@@ -72,6 +72,7 @@ export function createResponsesApiTransformStream(logger = null) {
+     funcCallIds: {},
+     funcArgsDone: {},
+     funcItemDone: {},
++    responseOutput: [],
+     buffer: "",
+     completedSent: false
+   };
+@@ -81,6 +82,13 @@ export function createResponsesApiTransformStream(logger = null) {
+   
+   const emit = (controller, eventType, data) => {
+     data.sequence_number = nextSeq();
++    if (
++      (eventType === "response.output_item.added" || eventType === "response.output_item.done") &&
++      Number.isInteger(Number(data.output_index)) &&
++      data.item
++    ) {
++      state.responseOutput[Number(data.output_index)] = data.item;
++    }
+     const output = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+     logger?.logOutput(output.trim());
+     controller.enqueue(encoder.encode(output));
+@@ -233,7 +241,8 @@ export function createResponsesApiTransformStream(logger = null) {
+           created_at: state.created,
+           status: "completed",
+           background: false,
+-          error: null
++          error: null,
++          output: state.responseOutput.filter(Boolean)
+         }
+       });
+     }
+warning: in the working copy of 'tests/unit/responses-transformer-completed-output.test.js', LF will be replaced by CRLF the next time Git touches it
+diff --git a/tests/unit/responses-transformer-completed-output.test.js b/tests/unit/responses-transformer-completed-output.test.js
+new file mode 100644
+index 00000000..b65ef0dd
+--- /dev/null
++++ b/tests/unit/responses-transformer-completed-output.test.js
+@@ -0,0 +1,55 @@
++import { describe, expect, it } from "vitest";
++
++import { createResponsesApiTransformStream } from "../../open-sse/transformer/responsesTransformer.js";
++
++async function runTransform(input) {
++  const encoder = new TextEncoder();
++  const stream = new ReadableStream({
++    start(controller) {
++      controller.enqueue(encoder.encode(input));
++      controller.close();
++    },
++  });
++
++  const output = stream.pipeThrough(createResponsesApiTransformStream());
++  const reader = output.getReader();
++  const decoder = new TextDecoder();
++  let text = "";
++
++  while (true) {
++    const { value, done } = await reader.read();
++    if (done) break;
++    text += decoder.decode(value, { stream: true });
++  }
++
++  return text + decoder.decode();
++}
++
++describe("Responses API completion events", () => {
++  it("includes an output array in response.completed", async () => {
++    const output = await runTransform([
++      "data: " + JSON.stringify({
++        id: "chatcmpl_test",
++        choices: [{
++          index: 0,
++          delta: { content: "done" },
++          finish_reason: "stop",
++        }],
++      }),
++      "",
++      "",
++    ].join("\n"));
++
++    const completed = output
++      .split("\n\n")
++      .find((event) => event.startsWith("event: response.completed"));
++    const payload = JSON.parse(completed.split("data: ")[1]);
++
++    expect(payload.response.output).toEqual([{
++      id: "msg_resp_chatcmpl_test_0",
++      type: "message",
++      content: [{ type: "output_text", annotations: [], logprobs: [], text: "done" }],
++      role: "assistant",
++    }]);
++  });
++});
+

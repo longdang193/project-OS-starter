@@ -69,7 +69,7 @@ To apply the overlay whenever the patched OpenDesign launcher starts, set `LIGHT
 
 Add a new versioned directory under `overlays/lightrsi-codex-hook-portable/` after rebasing the patch onto a new upstream commit. Do not edit generated `dist/tokenpilot-codex-hook.cmd` files.
 
-## 9router security overlay
+## 9router overlays
 
 Use a clean checkout that tracks upstream; keep fork experiments separate:
 
@@ -90,3 +90,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-
 ```
 
 When upstream changes the patched files, create a new base directory under `overlays/9router-security/` and rebase the patch there. Keep old overlays for existing checkouts.
+
+Apply the Responses API output compatibility overlay separately:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterResponsesOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -InstallGlobal
+```
+
+Verify update safety without changing files:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterResponsesOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
+```
+
+The Responses overlay fixes `response.completed.response.output`, which is required by `wire_api = "responses"`. The reconciler accepts exact bases, already-applied overlays, upstream-native fixes, and clean Git 3-way rebases; whitespace-only line-ending changes do not block application. Rebase verification applies into a temporary Git index, so conflict checks do not mutate the target. Real 3-way application requires no tracked local changes and stops before mutation when preflight fails. `-InstallGlobal` stops running 9router Node processes before npm replacement, refuses to downgrade an installed newer version, then verifies global `cli.js` and `9router.cmd`; relaunch with `9router --tray --skip-update -p 20128`. Use `-AllowDowngrade` only for intentional older-version installs. When upstream changes the transformer, add a new exact-base directory under `overlays/9router-responses/` and rebase the patch there. Keep old overlays for existing checkouts.
