@@ -25,6 +25,14 @@ def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
     assert "output: state.responseOutput.filter(Boolean)" in patch
     assert "open-sse/transformer/responsesTransformer.js" in latest_patch
     assert "tests/unit/responses-transformer-completed-output.test.js" in latest_patch
+    assert "open-sse/translator/index.js" in latest_patch
+    assert "open-sse/translator/response/openai-responses.js" in latest_patch
+    assert "open-sse/utils/stream.js" in latest_patch
+    assert "tests/unit/openai-responses-completed-output.test.js" in latest_patch
+    assert "tests/unit/openai-responses-completed-output-passthrough.test.js" in latest_patch
+    assert "reconstructedOutput = state.responseOutput.filter(Boolean)" in latest_patch
+    assert "translatorIndexPath" in script
+    assert "streamPath" in script
     assert "--3way" in script
     assert "--cached" in script
     assert "GIT_INDEX_FILE" in script

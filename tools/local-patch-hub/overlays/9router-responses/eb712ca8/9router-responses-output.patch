@@ -34,6 +34,180 @@ index ac84db20..d3a36dcc 100644
          }
        });
      }
+diff --git a/open-sse/translator/index.js b/open-sse/translator/index.js
+index 2fcbcbf8..eb1a32ad 100644
+--- a/open-sse/translator/index.js
++++ b/open-sse/translator/index.js
+@@ -265,6 +265,7 @@ export function initState(sourceFormat) {
+       funcArgsDone: {},
+       funcItemDone: {},
+       customToolNames: new Set(),
++      responseOutput: [],
+       completedSent: false
+     };
+   }
+diff --git a/open-sse/translator/response/openai-responses.js b/open-sse/translator/response/openai-responses.js
+index bd435f9c..0c2c2311 100644
+--- a/open-sse/translator/response/openai-responses.js
++++ b/open-sse/translator/response/openai-responses.js
+@@ -26,6 +26,13 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
+   
+   const emit = (eventType, data) => {
+     data.sequence_number = nextSeq();
++    if (
++      (eventType === "response.output_item.added" || eventType === "response.output_item.done") &&
++      Number.isInteger(Number(data.output_index)) &&
++      data.item
++    ) {
++      state.responseOutput[Number(data.output_index)] = data.item;
++    }
+     events.push({ event: eventType, data });
+   };
+ 
+@@ -376,7 +383,8 @@ function sendCompleted(state, emit) {
+         created_at: state.created,
+         status: "completed",
+         background: false,
+-        error: null
++        error: null,
++        output: state.responseOutput.filter(Boolean)
+       }
+     });
+   }
+@@ -389,6 +397,13 @@ function flushEvents(state) {
+   const nextSeq = () => ++state.seq;
+   const emit = (eventType, data) => {
+     data.sequence_number = nextSeq();
++    if (
++      (eventType === "response.output_item.added" || eventType === "response.output_item.done") &&
++      Number.isInteger(Number(data.output_index)) &&
++      data.item
++    ) {
++      state.responseOutput[Number(data.output_index)] = data.item;
++    }
+     events.push({ event: eventType, data });
+   };
+ 
+diff --git a/open-sse/utils/stream.js b/open-sse/utils/stream.js
+index 15ee37d8..18fff9a0 100644
+--- a/open-sse/utils/stream.js
++++ b/open-sse/utils/stream.js
+@@ -322,6 +322,19 @@ export function createSSEStream(options = {}) {
+ 
+         // Responses same-format passthrough: re-emit with original event framing
+         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {
++          if (
++            (parsed.type === "response.output_item.added" || parsed.type === "response.output_item.done") &&
++            Number.isInteger(Number(parsed.output_index)) &&
++            parsed.item
++          ) {
++            state.responseOutput[Number(parsed.output_index)] = parsed.item;
++          }
++          if (parsed.type === "response.completed" && parsed.response) {
++            const reconstructedOutput = state.responseOutput.filter(Boolean);
++            if (reconstructedOutput.length > 0 || !Array.isArray(parsed.response.output)) {
++              parsed.response.output = reconstructedOutput;
++            }
++          }
+           const output = formatSSE({ event: openAIResponsesEventName, data: parsed }, sourceFormat);
+           reqLogger?.appendConvertedChunk?.(output);
+           controller.enqueue(sharedEncoder.encode(output));
+diff --git a/tests/unit/openai-responses-completed-output-passthrough.test.js b/tests/unit/openai-responses-completed-output-passthrough.test.js
+new file mode 100644
+index 00000000..2e26c7aa
+--- /dev/null
++++ b/tests/unit/openai-responses-completed-output-passthrough.test.js
+@@ -0,0 +1,57 @@
++import { describe, expect, it } from "vitest";
++
++import { FORMATS } from "../../open-sse/translator/formats.js";
++import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
++
++async function runTransform(input) {
++  const encoder = new TextEncoder();
++  const stream = new ReadableStream({
++    start(controller) {
++      controller.enqueue(encoder.encode(input));
++      controller.close();
++    },
++  });
++
++  const output = stream.pipeThrough(createSSETransformStreamWithLogger(
++    FORMATS.OPENAI_RESPONSES,
++    FORMATS.OPENAI_RESPONSES,
++    "codex",
++  ));
++  const reader = output.getReader();
++  const decoder = new TextDecoder();
++  let text = "";
++
++  while (true) {
++    const { value, done } = await reader.read();
++    if (done) break;
++    text += decoder.decode(value, { stream: true });
++  }
++
++  return text + decoder.decode();
++}
++
++describe("Native Responses completion events", () => {
++  it("reconstructs response.completed.response.output from output items", async () => {
++    const item = {
++      id: "msg_resp_test_0",
++      type: "message",
++      content: [{ type: "output_text", annotations: [], logprobs: [], text: "done" }],
++      role: "assistant",
++    };
++    const output = await runTransform([
++      "event: response.output_item.done",
++      `data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item })}`,
++      "",
++      "event: response.completed",
++      `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_test", output: null } })}`,
++      "",
++    ].join("\n"));
++
++    const completed = output
++      .split("\n\n")
++      .find((event) => event.startsWith("event: response.completed"));
++    const payload = JSON.parse(completed.split("data: ")[1]);
++
++    expect(payload.response.output).toEqual([item]);
++  });
++});
+diff --git a/tests/unit/openai-responses-completed-output.test.js b/tests/unit/openai-responses-completed-output.test.js
+new file mode 100644
+index 00000000..5e216ab0
+--- /dev/null
++++ b/tests/unit/openai-responses-completed-output.test.js
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from "vitest";
++
++import { initState } from "../../open-sse/translator/index.js";
++import { openaiToOpenAIResponsesResponse } from "../../open-sse/translator/response/openai-responses.js";
++
++describe("OpenAI Responses completion events", () => {
++  it("includes finalized output items in response.completed", () => {
++    const state = initState("openai-responses");
++    const events = openaiToOpenAIResponsesResponse({
++      id: "chatcmpl_test",
++      choices: [{
++        index: 0,
++        delta: { content: "done" },
++        finish_reason: "stop",
++      }],
++    }, state);
++
++    const completed = events.find(({ event }) => event === "response.completed");
++
++    expect(completed.data.response.output).toEqual([{
++      id: "msg_resp_chatcmpl_test_0",
++      type: "message",
++      content: [{ type: "output_text", annotations: [], logprobs: [], text: "done" }],
++      role: "assistant",
++    }]);
++  });
++});
 diff --git a/tests/unit/responses-transformer-completed-output.test.js b/tests/unit/responses-transformer-completed-output.test.js
 new file mode 100644
 index 00000000..b65ef0dd

@@ -90,11 +90,24 @@ $patch = $selected.Patch
 if (-not (Test-Path -LiteralPath $patch -PathType Leaf)) { throw "Overlay patch missing: $patch" }
 
 $transformerPath = Join-Path $targetPath "open-sse\transformer\responsesTransformer.js"
+$translatorIndexPath = Join-Path $targetPath "open-sse\translator\index.js"
+$responsesTranslatorPath = Join-Path $targetPath "open-sse\translator\response\openai-responses.js"
+$streamPath = Join-Path $targetPath "open-sse\utils\stream.js"
 $nativeFix = $false
-if (Test-Path -LiteralPath $transformerPath -PathType Leaf) {
+if ((Test-Path -LiteralPath $transformerPath -PathType Leaf) -and
+    (Test-Path -LiteralPath $translatorIndexPath -PathType Leaf) -and
+    (Test-Path -LiteralPath $responsesTranslatorPath -PathType Leaf) -and
+    (Test-Path -LiteralPath $streamPath -PathType Leaf)) {
   $transformer = [IO.File]::ReadAllText($transformerPath)
+  $translatorIndex = [IO.File]::ReadAllText($translatorIndexPath)
+  $responsesTranslator = [IO.File]::ReadAllText($responsesTranslatorPath)
+  $stream = [IO.File]::ReadAllText($streamPath)
   $nativeFix = $transformer -match "responseOutput:\s*\[\]" -and
-    $transformer -match "output:\s*state\.responseOutput\.filter\(Boolean\)"
+    $transformer -match "output:\s*state\.responseOutput\.filter\(Boolean\)" -and
+    $translatorIndex -match "responseOutput:\s*\[\]" -and
+    $responsesTranslator -match "state\.responseOutput\[Number\(data\.output_index\)\]" -and
+    $responsesTranslator -match "output:\s*state\.responseOutput\.filter\(Boolean\)" -and
+    $stream -match "reconstructedOutput = state\.responseOutput\.filter\(Boolean\)"
 }
 
 if ($nativeFix) {
