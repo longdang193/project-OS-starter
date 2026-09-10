@@ -321,7 +321,17 @@ def _remove_role_views(repo_root: Path, roles: list[dict[str, str]]) -> dict[str
     agents_root = repo_root / ".deepagents" / "agents"
     marker = agents_root / _ROLE_VIEWS_MARKER
     if not marker.exists():
-        return {"state": "removed", "remaining_paths": [], "marker_state": "absent"}
+        remaining_paths = sorted(
+            str(_role_view_path(agents_root, role["name"]).relative_to(repo_root))
+            for role in roles
+            if _role_view_path(agents_root, role["name"]).exists()
+            or _role_view_path(agents_root, role["name"]).is_symlink()
+        )
+        return {
+            "state": "unverified",
+            "remaining_paths": remaining_paths,
+            "marker_state": "absent",
+        }
     views = _read_owned_views(marker, roles)
     _remove_owned_views(agents_root, views)
     remaining_paths = sorted(
@@ -500,7 +510,21 @@ class _RuntimeBinding:
         return _read_env_value(self.secret_file, self.secret_key)
 
 
-class _WorkerRecoveryBlocked(RuntimeError):
+@dataclass(frozen=True)
+class _WorkerLifecycleFacts:
+    worker_state: str
+    exit_code: int | None
+    descendant_state: str
+    termination_proven: bool
+
+
+class _WorkerLifecycleError(RuntimeError):
+    def __init__(self, message: str, facts: _WorkerLifecycleFacts) -> None:
+        super().__init__(message)
+        self.facts = facts
+
+
+class _WorkerRecoveryBlocked(_WorkerLifecycleError):
     pass
 
 
@@ -613,20 +637,50 @@ def _runtime_binding_digest(
         }
     )
 
-def _parse_mcp_selection(values: list[str], capabilities: dict[str, object]) -> list[str]:
+def _normalized_mcp_selection(
+    values: list[str], capabilities: dict[str, object]
+) -> dict[str, tuple[str, ...]]:
+    if not values:
+        return {"requested": (), "effective_servers": (), "effective_tools": ()}
     server_tools = capabilities["server_tools"]
     if not isinstance(server_tools, dict):
         raise RuntimeError("Invalid MCP capability projection.")
-    if not values:
-        return sorted(
-            list(capabilities["mcp_servers"])
-            + list(capabilities["mcp_tools"])
-        )
     try:
         selection = normalize_mcp_selection(values, server_tools, allow_tools=True)
     except McpSelectionError as exc:
         raise RuntimeError(str(exc)) from exc
-    return list(selection["requested"])
+    return selection
+
+
+def _parse_mcp_selection(values: list[str], capabilities: dict[str, object]) -> list[str]:
+    return list(_normalized_mcp_selection(values, capabilities)["requested"])
+
+
+def _mcp_selection_state(
+    values: list[str], capabilities: dict[str, object]
+) -> dict[str, object]:
+    selection = _normalized_mcp_selection(values, capabilities)
+    requested = list(selection["requested"])
+    if not requested:
+        return {
+            "available_mcp": sorted(
+                list(capabilities["mcp_servers"]) + list(capabilities["mcp_tools"])
+            ),
+            "requested_mcp": [],
+            "effective_mcp": [],
+            "mcp_mode": "disabled",
+        }
+    effective = sorted(
+        set(selection["effective_servers"]) | set(selection["effective_tools"])
+    )
+    return {
+        "available_mcp": sorted(
+            list(capabilities["mcp_servers"]) + list(capabilities["mcp_tools"])
+        ),
+        "requested_mcp": requested,
+        "effective_mcp": effective,
+        "mcp_mode": "direct",
+    }
 
 
 def _native_mcp_config(
@@ -1351,7 +1405,8 @@ def _run_bounded_worker(
         process.wait()
         raise _WorkerRecoveryBlocked(
             f"{worker_name} worker process lifetime is unproven; "
-            "generated role views preserved for recovery."
+            "generated role views preserved for recovery.",
+            _WorkerLifecycleFacts("recovery_blocked", None, "unknown", False),
         )
     fallback_kill = False
     try:
@@ -1370,8 +1425,21 @@ def _run_bounded_worker(
             _close_windows_job(job)
             job = None
         process.wait()
-        raise RuntimeError(
-            f"{worker_name} worker timed out; child process tree terminated."
+        descendants_terminated = os.name == "nt" or job is not None
+        raise _WorkerLifecycleError(
+            f"{worker_name} worker timed out; child process tree terminated.",
+            _WorkerLifecycleFacts(
+                "failed",
+                None,
+                "terminated" if descendants_terminated else "unknown",
+                descendants_terminated,
+            ),
+        ) from exc
+    except Exception as exc:
+        exit_code = process.returncode if isinstance(process.returncode, int) else None
+        raise _WorkerLifecycleError(
+            f"{worker_name} worker failed after process creation.",
+            _WorkerLifecycleFacts("failed", exit_code, "unknown", False),
         ) from exc
     finally:
         if job is not None:
@@ -1485,8 +1553,21 @@ def main(argv: list[str]) -> int:
         if executor == "deepagents"
         else None
     )
-    capabilities = _mcp_capabilities(codex_config)
-    selected = _parse_mcp_selection(selection_values, capabilities)
+    needs_mcp_capabilities = bool(
+        selection_values or handoff_file or ("--print-config" in child_argv)
+    )
+    capabilities = (
+        _mcp_capabilities(codex_config)
+        if needs_mcp_capabilities
+        else {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": _sha256_json({"mcp_servers": {}}),
+        }
+    )
+    mcp_selection = _mcp_selection_state(selection_values, capabilities)
+    selected = list(mcp_selection["effective_mcp"])
     roles = _load_roles(repo_root, provider_name)
     role_by_name = {str(role["name"]): role for role in roles}
     selected_role = role_by_name.get(role_name) if role_name is not None else None
@@ -1499,7 +1580,8 @@ def main(argv: list[str]) -> int:
             "role_models": {str(role["name"]): f"openai:{role['model']}" for role in roles},
             "mcp_servers": capabilities["mcp_servers"],
             "mcp_tools": capabilities["mcp_tools"],
-            "selected_mcp": selected,
+            **mcp_selection,
+            "selected_mcp": mcp_selection["effective_mcp"],
             "default_executor": config.get("delegation", {}).get("default_executor")
             if isinstance(config.get("delegation"), dict)
             else None,
@@ -1624,10 +1706,19 @@ def main(argv: list[str]) -> int:
                 )
             worker_state = "exited"
             descendant_state = "terminated"
-        except _WorkerRecoveryBlocked:
-            cleanup_allowed = False
-            worker_state = "recovery_blocked"
+        except _WorkerRecoveryBlocked as exc:
+            cleanup_allowed = exc.facts.termination_proven
+            worker_state = exc.facts.worker_state
+            worker_exit_code = exc.facts.exit_code
+            descendant_state = exc.facts.descendant_state
             recovery_required = True
+            raise
+        except _WorkerLifecycleError as exc:
+            cleanup_allowed = exc.facts.termination_proven
+            worker_state = exc.facts.worker_state
+            worker_exit_code = exc.facts.exit_code
+            descendant_state = exc.facts.descendant_state
+            recovery_required = not exc.facts.termination_proven
             raise
         except OSError:
             worker_state = "start_failed"
@@ -1655,7 +1746,12 @@ def main(argv: list[str]) -> int:
             else:
                 role_views_state = "preserved"
                 cleanup_details = {
-                    "remaining_paths": [],
+                    "remaining_paths": sorted(
+                        str(_role_view_path(repo_root / ".deepagents" / "agents", role["name"]).relative_to(repo_root))
+                        for role in roles
+                        if _role_view_path(repo_root / ".deepagents" / "agents", role["name"]).exists()
+                        or _role_view_path(repo_root / ".deepagents" / "agents", role["name"]).is_symlink()
+                    ),
                     "marker_state": "retained",
                 }
             if result_file is not None:

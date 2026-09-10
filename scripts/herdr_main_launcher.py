@@ -73,6 +73,7 @@ _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 60.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
+_DEEPAGENTS_RECEIPT_POLL_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
@@ -84,7 +85,6 @@ _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 _DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
 _DEEPAGENTS_RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _DEEPAGENTS_RESULT_MAX_AGE_SECONDS = RESULT_MAX_AGE_SECONDS
-_DEEPAGENTS_RESULT_WAIT_SECONDS = 5.0
 _DEEPAGENTS_FAILURE_PATTERN = re.compile(
     r"(?im)^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
 )
@@ -874,10 +874,15 @@ def _classify_deepagents_outcome(
                     observation.get("report_present") is True
                     and observation.get("observation_error") is None
                 )
-                task_result = {
-                    "state": "reported_completed" if report_observed else "unverified",
-                    "accepted": None,
-                }
+                if observation.get("state") == "failed" and report_observed:
+                    task_result = {"state": "reported_failed", "accepted": False}
+                    status = "failed"
+                    failure_kind = "task_report_failed"
+                else:
+                    task_result = {
+                        "state": "reported_completed" if report_observed else "unverified",
+                        "accepted": None,
+                    }
                 if not report_observed:
                     failure_kind = "completion_evidence_missing"
             else:
@@ -1393,11 +1398,25 @@ def _deepagents_completion_evidence(
     *,
     env: dict[str, str],
     expected_marker: str,
+    receipt_file: Path | None = None,
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     deadline = started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS
     evidence: dict[str, Any] | None = None
+    receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
     while True:
+        if receipt.get("state") == "confirmed":
+            evidence = _deepagents_completion_snapshot(
+                herdr,
+                session,
+                pane,
+                env=env,
+                expected_marker=expected_marker,
+                deadline=deadline,
+            )
+            evidence["lifecycle_receipt"] = receipt
+            return evidence
         evidence = _deepagents_completion_snapshot(
             herdr,
             session,
@@ -1407,14 +1426,28 @@ def _deepagents_completion_evidence(
             deadline=deadline,
         )
         if evidence["state"] in {"completed", "failed"}:
-            return evidence
+            if receipt_file is None:
+                return evidence
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    evidence["lifecycle_receipt"] = receipt
+                    return evidence
+                time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, remaining))
+                receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+                if receipt.get("state") == "confirmed":
+                    evidence["lifecycle_receipt"] = receipt
+                    return evidence
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             evidence["last_observed_state"] = evidence["state"]
             evidence["state"] = "timed_out"
             evidence["observation_deadline_exceeded"] = True
+            if receipt_file is not None:
+                evidence["lifecycle_receipt"] = receipt
             return evidence
         time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
+        receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
 
 
 def _terminate_codex_lane(
@@ -1921,30 +1954,15 @@ def _main_body(args: argparse.Namespace) -> int:
             cleanup = assignment.get("cleanup")
             if not isinstance(cleanup, dict):
                 cleanup = {"state": "unknown"}
-            receipt = _read_deepagents_receipt(receipt_file, str(assignment.get("attempt_id", attempt_id)))
             completion = assignment.get("completion")
-            if (
-                args.executor == "deepagents"
-                and receipt_file is not None
-                and receipt.get("state") != "confirmed"
-                and isinstance(completion, dict)
-                and completion.get("state") in {"completed", "failed", "no-report"}
-                and completion.get("observation_error") is None
-            ):
-                # ponytail: bounded receipt grace; event signaling if publication latency grows
-                deadline = min(
-                    observation_started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS,
-                    time.monotonic() + _DEEPAGENTS_RESULT_WAIT_SECONDS,
+            receipt = assignment.get("lifecycle_receipt")
+            if not isinstance(receipt, dict) and isinstance(completion, dict):
+                receipt = completion.get("lifecycle_receipt")
+            if not isinstance(receipt, dict):
+                receipt = _read_deepagents_receipt(
+                    receipt_file,
+                    str(assignment.get("attempt_id", attempt_id)),
                 )
-                while receipt.get("state") != "confirmed":
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        break
-                    time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
-                    receipt = _read_deepagents_receipt(
-                        receipt_file,
-                        str(assignment.get("attempt_id", attempt_id)),
-                    )
             if args.executor == "deepagents":
                 assignment["lifecycle_receipt"] = receipt
                 classified = _classify_deepagents_outcome(
@@ -2372,6 +2390,8 @@ def _main_body(args: argparse.Namespace) -> int:
             resolved_pane,
             env=environment,
             expected_marker=completion_marker,
+            receipt_file=receipt_file,
+            attempt_id=attempt_id,
         )
         record_phase("observation", observation_started, attempt_id=attempt_id)
         task_state = str(completion["state"])
@@ -2393,7 +2413,7 @@ def _main_body(args: argparse.Namespace) -> int:
         )
         completed = task_state == "completed" and task_verified
         record_phase("delivery", attempt_started, attempt_id=attempt_id)
-        print(json.dumps(emit_assignment({
+        assignment_result = emit_assignment({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],
                 "attempt_id": attempt_id,
@@ -2425,8 +2445,9 @@ def _main_body(args: argparse.Namespace) -> int:
                 "task_accepted": completed,
                 "task_sha256": assignment_task_sha256,
             }
-        }), sort_keys=True))
-        return 0 if completed else 2
+        })
+        print(json.dumps(assignment_result, sort_keys=True))
+        return int(assignment_result["assignment"]["launcher_exit_code"])
     except TargetResolutionBlocked as exc:
         print(f"TARGET_RESOLUTION: {exc}", file=sys.stderr)
         return emit_failure(str(exc), exc.resolution)
