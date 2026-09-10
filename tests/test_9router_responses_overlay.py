@@ -51,6 +51,10 @@ def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
     assert "installedVersion" in installer
     assert "Stop-Process" in installer
     assert '"--force"' in installer
+    assert '"pack"' in installer
+    assert "packageStage" in installer
+    assert "packageFile" in installer
+    assert "packageItem.LinkType" in installer
     assert "missing $entryPath" in installer
     assert "builtAppPath" in installer
     assert "installedAppPath" in installer

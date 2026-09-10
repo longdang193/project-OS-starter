@@ -53,10 +53,32 @@ function Install-9RouterGlobal {
       -not (Test-Path -LiteralPath (Join-Path $builtAppPath "custom-server.js") -PathType Leaf)) {
     throw "9router build is incomplete: missing cli\app\server.js and cli\app\custom-server.js."
   }
-  & $npm "install" "-g" "--force" (Join-Path $TargetPath "cli")
-  if ($LASTEXITCODE -ne 0) { throw "$npm global install failed with exit code $LASTEXITCODE." }
+  $packageStage = Join-Path ([IO.Path]::GetTempPath()) ("9router-package-" + [Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $packageStage | Out-Null
+  try {
+    Push-Location -LiteralPath (Join-Path $TargetPath "cli")
+    try {
+      & $npm "pack" "--pack-destination" $packageStage
+      $packExitCode = $LASTEXITCODE
+    } finally {
+      Pop-Location
+    }
+    if ($packExitCode -ne 0) { throw "$npm pack failed with exit code $packExitCode." }
+    $packageFile = @(Get-ChildItem -LiteralPath $packageStage -Filter "9router-*.tgz" -File) | Select-Object -First 1
+    if ($null -eq $packageFile) { throw "9router package archive was not created." }
+    & $npm "install" "-g" "--force" $packageFile.FullName
+    if ($LASTEXITCODE -ne 0) { throw "$npm global install failed with exit code $LASTEXITCODE." }
+  } finally {
+    if (Test-Path -LiteralPath $packageStage) {
+      Remove-Item -LiteralPath $packageStage -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
 
   $packageRoot = Join-Path $globalRoot "9router"
+  $packageItem = Get-Item -LiteralPath $packageRoot -ErrorAction SilentlyContinue
+  if ($null -eq $packageItem -or $packageItem.LinkType) {
+    throw "Global 9router install is not a copied package directory: $packageRoot"
+  }
   $entryPath = Join-Path $packageRoot "cli.js"
   $cmdShim = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd"
   if (-not (Test-Path -LiteralPath $entryPath -PathType Leaf)) {
