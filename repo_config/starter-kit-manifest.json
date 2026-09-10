@@ -58,6 +58,7 @@
     "scripts/planning_artifact_schema.py",
       "scripts/project_root.py",
       "scripts/dcode_project.py",
+      "scripts/deepagents_result_contract.py",
     "scripts/agent_profile_registry.py",
     "scripts/herdr_main_launcher.py",
       "scripts/mcp_selection.py",

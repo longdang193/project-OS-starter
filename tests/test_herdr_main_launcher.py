@@ -601,15 +601,23 @@ def test_resolve_launch_builds_deepagents_pane_command(
     assert set(performance["phase_durations_ms"]) == {
         "preflight",
         "target_discovery",
+        "launch_preparation",
         "worker_initialization",
         "delivery",
         "observation",
         "retirement",
     }
     assert all(
-        value["status"] == ("measured" if phase in {"preflight", "target_discovery", "worker_initialization"} else "not_attempted")
+        value["status"] == (
+            "measured"
+            if phase in {"preflight", "target_discovery", "launch_preparation"}
+            else "unavailable"
+            if phase == "worker_initialization"
+            else "not_attempted"
+        )
         for phase, value in performance["phase_durations_ms"].items()
     )
+    assert performance["phase_durations_ms"]["worker_initialization"]["status"] == "unavailable"
     assert performance["subprocess_counts"]["total"] == 0
 
 
@@ -1174,7 +1182,7 @@ def test_main_times_out_codex_and_verifies_termination(
         raise LAUNCHER.CommandTransportTimeout("Command timed out after 13s: herdr.exe")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    times = iter([0.0, 1.0, 9.0, 9.0, 9.0])
+    times = iter([0.0, 1.0, 9.0, 9.0, 9.0, 9.0])
     monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
 
     assert LAUNCHER.main(
@@ -1404,7 +1412,7 @@ def test_main_immediate_transport_timeout_does_not_expire_long_grant(
         raise LAUNCHER.CommandTransportTimeout("assignment timeout")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    times = iter([0.0, 1.0, 1.0, 1.0])
+    times = iter([0.0, 1.0, 1.0, 1.0, 1.0, 1.0])
     monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
 
     assert LAUNCHER.main(
@@ -1454,7 +1462,7 @@ def test_main_watchdog_cleanup_failure_blocks_timeout_completion(
         raise LAUNCHER.CommandTransportTimeout("assignment timeout")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    times = iter([0.0, 4.0, 4.0, 4.0])
+    times = iter([0.0, 4.0, 4.0, 4.0, 4.0, 4.0])
     monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(times))
 
     assert LAUNCHER.main(
@@ -1872,6 +1880,19 @@ def test_deepagents_main_strips_herdr_environment(
             "observation_error": None,
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: {
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+            "role_views_state": "removed",
+            "recovery_required": False,
+        },
+    )
 
     def fake_run(command, **kwargs):
         captured.update(kwargs)
@@ -1933,9 +1954,9 @@ def test_deepagents_main_blocks_delivery_without_completion_report(
         ]
     ) == 2
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert assignment["delivery_state"] == "unknown"
-    assert assignment["status"] == "no-report"
-    assert assignment["task_accepted"] is False
+    assert assignment["delivery_state"] == "delivered"
+    assert assignment["status"] == "unknown"
+    assert assignment["task_accepted"] is None
     assert assignment["reconciliation_required"] is True
 
 
@@ -1983,9 +2004,104 @@ def test_deepagents_main_rejects_completion_with_observer_error(
         ]
     ) == 2
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert assignment["status"] == "no-report"
-    assert assignment["task_accepted"] is False
+    assert assignment["status"] == "unknown"
+    assert assignment["task_accepted"] is None
     assert assignment["reconciliation_required"] is True
+
+
+@pytest.mark.parametrize(
+    ("receipt", "observation", "expected"),
+    [
+        (
+            {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 7,
+                "descendant_state": "terminated",
+                "cleanup_state": "removed",
+                "role_views_state": "removed",
+                "recovery_required": False,
+            },
+            {"report_present": True, "observation_error": None},
+            {"status": "failed", "execution": "failed", "exit_code": 7},
+        ),
+        (
+            {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 0,
+                "descendant_state": "terminated",
+                "cleanup_state": "removed",
+                "role_views_state": "removed",
+                "recovery_required": False,
+            },
+            {"report_present": False, "observation_error": None},
+            {"status": "completed", "execution": "completed", "exit_code": 2},
+        ),
+        (
+            {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 0,
+                "descendant_state": "terminated",
+                "cleanup_state": "preserved",
+                "role_views_state": "preserved",
+                "recovery_required": True,
+            },
+            {"report_present": True, "observation_error": None},
+            {"status": "completed", "execution": "completed", "exit_code": 2},
+        ),
+        (
+            {
+                "state": "confirmed",
+                "worker_state": "start_failed",
+                "worker_exit_code": None,
+                "descendant_state": "not_started",
+                "cleanup_state": "removed",
+                "role_views_state": "removed",
+                "recovery_required": False,
+            },
+            {"report_present": False, "observation_error": None},
+            {"status": "start_failed", "execution": "start_failed", "exit_code": 2},
+        ),
+        (
+            {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 0,
+                "descendant_state": "unknown",
+                "cleanup_state": "removed",
+                "role_views_state": "removed",
+                "recovery_required": False,
+            },
+            {"report_present": True, "observation_error": None},
+            {"status": "completed", "execution": "completed", "exit_code": 2},
+        ),
+        (
+            {"state": "unknown", "detail": "receipt unavailable"},
+            {"report_present": True, "observation_error": None},
+            {"status": "unknown", "execution": "unknown", "exit_code": 2},
+        ),
+    ],
+)
+def test_deepagents_outcome_matrix(
+    receipt: dict[str, object],
+    observation: dict[str, object],
+    expected: dict[str, object],
+) -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered", "certainty": "confirmed", "prompt_accepted": True},
+        observation=observation,
+        receipt=receipt,
+        fallback_failure_kind=None,
+    )
+
+    assert result["status"] == expected["status"]
+    assert result["execution"]["state"] == expected["execution"]
+    assert result["launcher_exit_code"] == expected["exit_code"]
+    assert result["delivery"]["prompt_accepted"] is True
+    if receipt.get("state") == "confirmed" and receipt.get("worker_state") == "exited":
+        assert result["execution"]["worker_exit_code"] == receipt["worker_exit_code"]
 
 
 def test_deepagents_task_state_requires_report_for_completion() -> None:
@@ -2387,8 +2503,8 @@ def test_performance_snapshot_uses_structured_phase_values() -> None:
     }
     LAUNCHER._record_performance_phase(performance, "delivery", 0.02, now=0.025)
     assert performance["phase_occurrences"]["delivery"] == [
-        {"status": "measured", "duration_ms": 12.4},
-        {"status": "measured", "duration_ms": 5.0},
+        {"status": "measured", "duration_ms": 12.4, "attempt_id": None},
+        {"status": "measured", "duration_ms": 5.0, "attempt_id": None},
     ]
     assert performance["phase_aggregates"]["delivery"] == {
         "status": "measured",
@@ -2405,3 +2521,36 @@ def test_performance_finalization_keeps_trailing_work_unattributed() -> None:
 
     assert performance["total_duration_ms"] == 1500.0
     assert performance["unattributed_duration_ms"] == 500.0
+
+
+def test_performance_attempts_and_phases_keep_retry_attribution() -> None:
+    performance = LAUNCHER._new_performance_evidence()
+
+    LAUNCHER._record_performance_phase(
+        performance, "delivery", 1.0, now=1.2, attempt_id="attempt-1"
+    )
+    LAUNCHER._record_performance_phase(
+        performance, "delivery", 2.0, now=2.4, attempt_id="attempt-2"
+    )
+    LAUNCHER._record_performance_attempt(performance, "attempt-1", 1.0, now=1.3)
+    LAUNCHER._record_performance_attempt(performance, "attempt-2", 2.0, now=2.5)
+
+    assert [item["attempt_id"] for item in performance["phase_occurrences"]["delivery"]] == [
+        "attempt-1",
+        "attempt-2",
+    ]
+    assert [item["attempt_id"] for item in performance["attempts"]] == [
+        "attempt-1",
+        "attempt-2",
+    ]
+
+
+def test_performance_finalization_samples_current_clock_and_unions_overlaps() -> None:
+    performance = LAUNCHER._new_performance_evidence()
+    LAUNCHER._record_performance_phase(performance, "preflight", 0.0, now=2.0)
+    LAUNCHER._record_performance_phase(performance, "target_discovery", 1.0, now=3.0)
+
+    LAUNCHER._finalize_performance(performance, 0.0, now=4.0)
+
+    assert performance["total_duration_ms"] == 4000.0
+    assert performance["unattributed_duration_ms"] == 1000.0

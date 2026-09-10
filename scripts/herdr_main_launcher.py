@@ -31,6 +31,20 @@ except ModuleNotFoundError:
         load_mcp_capabilities,
         normalize_mcp_selection,
     )
+try:
+    from deepagents_result_contract import (
+        RESULT_MAX_AGE_SECONDS,
+        RESULT_MAX_BYTES,
+        RESULT_SCHEMA,
+        parse_result_receipt,
+    )
+except ModuleNotFoundError:
+    from scripts.deepagents_result_contract import (
+        RESULT_MAX_AGE_SECONDS,
+        RESULT_MAX_BYTES,
+        RESULT_SCHEMA,
+        parse_result_receipt,
+    )
 
 
 class LaunchBlocked(RuntimeError):
@@ -67,9 +81,9 @@ _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
-_DEEPAGENTS_RESULT_SCHEMA = "dcode-project.result.v1"
-_DEEPAGENTS_RESULT_MAX_BYTES = 16 * 1024
-_DEEPAGENTS_RESULT_MAX_AGE_SECONDS = 3600
+_DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
+_DEEPAGENTS_RESULT_MAX_BYTES = RESULT_MAX_BYTES
+_DEEPAGENTS_RESULT_MAX_AGE_SECONDS = RESULT_MAX_AGE_SECONDS
 _DEEPAGENTS_RESULT_WAIT_SECONDS = 5.0
 _DEEPAGENTS_FAILURE_PATTERN = re.compile(
     r"(?im)^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
@@ -89,6 +103,7 @@ _ACTIVE_METRICS: ContextVar[dict[str, Any] | None] = ContextVar(
 _PERFORMANCE_PHASES = (
     "preflight",
     "target_discovery",
+    "launch_preparation",
     "worker_initialization",
     "delivery",
     "observation",
@@ -183,47 +198,9 @@ def _sha256_text(value: str) -> str:
 
 
 def _read_deepagents_receipt(path: Path | None, attempt_id: str) -> dict[str, Any]:
-    unknown = {"state": "unknown", "detail": "receipt unavailable"}
     if path is None:
-        return unknown
-    deadline = time.monotonic() + _DEEPAGENTS_RESULT_WAIT_SECONDS
-    while not path.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-    try:
-        stat = path.stat()
-        if (
-            not path.is_file()
-            or stat.st_size > _DEEPAGENTS_RESULT_MAX_BYTES
-            or time.time() - stat.st_mtime > _DEEPAGENTS_RESULT_MAX_AGE_SECONDS
-        ):
-            return unknown
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {"state": "unknown", "detail": "receipt malformed"}
-    if not isinstance(payload, dict) or payload.get("schema") != _DEEPAGENTS_RESULT_SCHEMA:
-        return {"state": "unknown", "detail": "receipt schema mismatch"}
-    if payload.get("attempt_id") != attempt_id:
-        return {"state": "unknown", "detail": "receipt correlation mismatch"}
-    worker = payload.get("worker")
-    cleanup = payload.get("cleanup")
-    if not isinstance(worker, dict) or not isinstance(cleanup, dict):
-        return {"state": "unknown", "detail": "receipt lifecycle fields missing"}
-    if worker.get("state") not in {"exited", "failed", "start_failed", "recovery_blocked"}:
-        return {"state": "unknown", "detail": "receipt worker state invalid"}
-    if cleanup.get("state") not in {"removed", "preserved", "unverified"}:
-        return {"state": "unknown", "detail": "receipt cleanup state invalid"}
-    exit_code = worker.get("exit_code")
-    if exit_code is not None and (isinstance(exit_code, bool) or not isinstance(exit_code, int)):
-        return {"state": "unknown", "detail": "receipt exit code invalid"}
-    return {
-        "state": "confirmed",
-        "worker_state": worker["state"],
-        "worker_exit_code": exit_code,
-        "descendant_state": worker.get("descendant_state"),
-        "cleanup_state": cleanup["state"],
-        "role_views_state": cleanup.get("role_views_state", cleanup["state"]),
-        "recovery_required": payload.get("recovery_required") is True,
-    }
+        return {"state": "unknown", "detail": "receipt unavailable"}
+    return parse_result_receipt(path, attempt_id)
 
 
 def _discard_deepagents_receipt(path: Path | None) -> None:
@@ -672,7 +649,7 @@ def _metrics_snapshot() -> dict[str, Any]:
 
 
 def _new_performance_evidence() -> dict[str, Any]:
-    return {
+    evidence = {
         "status": "preparation",
         "phase_durations_ms": {
             phase: {"status": "not_attempted", "duration_ms": None}
@@ -688,6 +665,10 @@ def _new_performance_evidence() -> dict[str, Any]:
         "unattributed_duration_ms": None,
         "total_duration_ms": None,
     }
+    evidence["phase_durations_ms"]["worker_initialization"]["status"] = "unavailable"
+    evidence["phase_aggregates"]["worker_initialization"]["status"] = "unavailable"
+    evidence["_phase_intervals"] = []
+    return evidence
 
 
 def _record_performance_phase(
@@ -696,6 +677,7 @@ def _record_performance_phase(
     started: float,
     *,
     now: float | None = None,
+    attempt_id: str | None = None,
 ) -> None:
     if name not in _PERFORMANCE_PHASES:
         raise LaunchBlocked(f"Unknown performance phase: {name}")
@@ -708,7 +690,8 @@ def _record_performance_phase(
         "duration_ms": round(max(0.0, current - started) * 1000, 3),
     }
     occurrences = performance.setdefault("phase_occurrences", {}).setdefault(name, [])
-    occurrences.append(durations[name].copy())
+    occurrence = {**durations[name], "attempt_id": attempt_id}
+    occurrences.append(occurrence)
     aggregate = performance.setdefault("phase_aggregates", {}).setdefault(name, {})
     aggregate.update({
         "status": "measured",
@@ -719,6 +702,10 @@ def _record_performance_phase(
         "occurrence_count": len(occurrences),
     })
     performance["_last_monotonic"] = current
+    intervals = performance.setdefault("_phase_intervals", [])
+    if not isinstance(intervals, list):
+        raise LaunchBlocked("Performance phase intervals must be an array.")
+    intervals.append({"start": started, "end": current, "name": name})
     performance["subprocess_counts"] = _metrics_snapshot()
 
 
@@ -730,9 +717,7 @@ def _record_performance_attempt(
     now: float | None = None,
     pane_run_duration_ms: float | None = None,
 ) -> None:
-    current = performance.get("_last_monotonic") if now is None else now
-    if current is None:
-        current = time.monotonic()
+    current = time.monotonic() if now is None else now
     attempts = performance.setdefault("attempts", [])
     if not isinstance(attempts, list):
         raise LaunchBlocked("Performance attempts must be an array.")
@@ -751,20 +736,35 @@ def _finalize_performance(
     *,
     now: float | None = None,
 ) -> dict[str, Any]:
-    current = performance.pop("_last_monotonic", None) if now is None else now
-    if current is None:
-        current = time.monotonic()
+    current = time.monotonic() if now is None else now
     performance["status"] = "measured"
     performance["total_duration_ms"] = round(max(0.0, current - started) * 1000, 3)
-    measured = sum(
-        float(item.get("duration_ms", 0.0))
-        for occurrences in performance.get("phase_occurrences", {}).values()
-        if isinstance(occurrences, list)
-        for item in occurrences
-        if isinstance(item, dict)
-    )
+    intervals = [
+        (max(started, float(interval["start"])), min(current, float(interval["end"])))
+        for interval in performance.pop("_phase_intervals", [])
+        if isinstance(interval, dict)
+        and isinstance(interval.get("start"), (int, float))
+        and isinstance(interval.get("end"), (int, float))
+        and float(interval["end"]) > started
+    ]
+    intervals.sort()
+    covered = 0.0
+    covered_start: float | None = None
+    covered_end: float | None = None
+    for interval_start, interval_end in intervals:
+        if interval_end <= interval_start:
+            continue
+        if covered_start is None:
+            covered_start, covered_end = interval_start, interval_end
+        elif interval_start <= covered_end:
+            covered_end = max(covered_end, interval_end)
+        else:
+            covered += covered_end - covered_start
+            covered_start, covered_end = interval_start, interval_end
+    if covered_start is not None and covered_end is not None:
+        covered += covered_end - covered_start
     performance["unattributed_duration_ms"] = round(
-        max(0.0, performance["total_duration_ms"] - measured),
+        max(0.0, performance["total_duration_ms"] - covered * 1000),
         3,
     )
     performance["subprocess_counts"] = _metrics_snapshot()
@@ -823,6 +823,103 @@ def _build_assignment_result(
         if key not in assignment:
             assignment[key] = value
     return {"assignment": assignment}
+
+
+def _classify_deepagents_outcome(
+    *,
+    delivery: dict[str, Any],
+    observation: dict[str, Any],
+    receipt: dict[str, Any],
+    fallback_failure_kind: str | None,
+) -> dict[str, Any]:
+    execution = {"state": "unknown", "worker_exit_code": None}
+    cleanup = {"state": "unknown"}
+    task_result = {"state": "unverified", "accepted": None}
+    status = "unknown"
+    failure_kind = fallback_failure_kind
+    reconciliation_required = True
+    launcher_exit_code = 2
+
+    if receipt.get("state") == "confirmed":
+        worker_state = receipt["worker_state"]
+        worker_exit_code = receipt.get("worker_exit_code")
+        descendant_state = receipt.get("descendant_state")
+        cleanup_state = receipt["cleanup_state"]
+        recovery_required = receipt.get("recovery_required", False)
+        cleanup = {
+            "state": cleanup_state,
+            "role_views_state": receipt.get("role_views_state"),
+            "remaining_paths": receipt.get("remaining_paths", []),
+            "marker_state": receipt.get("marker_state"),
+            "recovery_required": recovery_required,
+        }
+        execution = {
+            "state": "unknown",
+            "worker_exit_code": worker_exit_code,
+            "descendant_state": descendant_state,
+            "recovery_required": recovery_required,
+        }
+        if worker_state == "start_failed":
+            execution["state"] = "start_failed"
+            status = "start_failed"
+            failure_kind = "worker_start_failed"
+        elif worker_state == "recovery_blocked":
+            status = "recovery_blocked"
+            failure_kind = "worker_recovery_blocked"
+        elif worker_state == "exited" and isinstance(worker_exit_code, int):
+            if worker_exit_code == 0:
+                execution["state"] = "completed"
+                status = "completed"
+                report_observed = (
+                    observation.get("report_present") is True
+                    and observation.get("observation_error") is None
+                )
+                task_result = {
+                    "state": "reported_completed" if report_observed else "unverified",
+                    "accepted": None,
+                }
+                if not report_observed:
+                    failure_kind = "completion_evidence_missing"
+            else:
+                execution["state"] = "failed"
+                status = "failed"
+                failure_kind = "worker_exit"
+        elif worker_state == "failed":
+            execution["state"] = "failed"
+            status = "failed"
+            failure_kind = "worker_failed"
+        else:
+            failure_kind = "worker_exit_unknown"
+
+        cleanup_settled = cleanup_state == "removed" and not recovery_required
+        completed_evidence = (
+            worker_state == "exited"
+            and worker_exit_code == 0
+            and descendant_state == "terminated"
+            and cleanup_settled
+            and task_result["state"] == "reported_completed"
+        )
+        if worker_state == "exited" and worker_exit_code == 0:
+            launcher_exit_code = 0 if completed_evidence else 2
+        elif isinstance(worker_exit_code, int) and worker_exit_code != 0:
+            launcher_exit_code = worker_exit_code
+        if not cleanup_settled:
+            failure_kind = "cleanup_recovery_required"
+        reconciliation_required = launcher_exit_code != 0
+    else:
+        failure_kind = fallback_failure_kind or receipt.get("detail") or "receipt_unavailable"
+
+    return {
+        "delivery": delivery,
+        "execution": execution,
+        "observation": observation,
+        "task_result": task_result,
+        "cleanup": cleanup,
+        "status": status,
+        "failure_kind": failure_kind,
+        "reconciliation_required": reconciliation_required,
+        "launcher_exit_code": launcher_exit_code,
+    }
 
 
 def _codex_assignment_command(
@@ -1691,7 +1788,7 @@ def resolve_launch(
             "mcp_mode": "direct" if direct_mcp else "disabled",
             "mcp_selection": list(mcp_select or []),
         }
-    _record_performance_phase(performance, "worker_initialization", worker_started)
+    _record_performance_phase(performance, "launch_preparation", worker_started)
     return command, evidence
 
 
@@ -1782,10 +1879,15 @@ def _main_body(args: argparse.Namespace) -> int:
             ]
             registry_evidence["result_file"] = str(receipt_file)
 
-        def record_phase(name: str, started: float) -> None:
+        def record_phase(name: str, started: float, *, attempt_id: str | None = None) -> None:
             if args.executor == "deepagents" and name == "delivery":
                 return
-            _record_performance_phase(performance_evidence, name, started)
+            _record_performance_phase(
+                performance_evidence,
+                name,
+                started,
+                attempt_id=attempt_id,
+            )
 
         def emit_assignment(payload: dict[str, Any]) -> dict[str, Any]:
             assignment = payload.get("assignment", payload)
@@ -1822,44 +1924,29 @@ def _main_body(args: argparse.Namespace) -> int:
             receipt = _read_deepagents_receipt(receipt_file, str(assignment.get("attempt_id", attempt_id)))
             if args.executor == "deepagents":
                 assignment["lifecycle_receipt"] = receipt
-                if receipt.get("state") == "confirmed":
-                    execution = {
-                        **execution,
-                        "state": "exited" if receipt["worker_state"] != "recovery_blocked" else "unknown",
-                        "worker_exit_code": receipt.get("worker_exit_code"),
-                        "descendant_state": receipt.get("descendant_state"),
-                        "recovery_required": receipt.get("recovery_required", False),
+                classified = _classify_deepagents_outcome(
+                    delivery=delivery,
+                    observation=observation,
+                    receipt=receipt,
+                    fallback_failure_kind=assignment.get("failure_kind"),
+                )
+                delivery = classified["delivery"]
+                execution = classified["execution"]
+                observation = classified["observation"]
+                task_result = classified["task_result"]
+                cleanup = classified["cleanup"]
+                assignment.update(
+                    {
+                        "status": classified["status"],
+                        "failure_kind": classified["failure_kind"],
+                        "reconciliation_required": classified["reconciliation_required"],
+                        "exit_code": classified["launcher_exit_code"],
+                        "prompt_accepted": delivery.get("prompt_accepted"),
+                        "task_accepted": task_result.get("accepted"),
                     }
-                    cleanup = {
-                        "state": receipt["cleanup_state"],
-                        "role_views_state": receipt.get("role_views_state"),
-                        "recovery_required": receipt.get("recovery_required", False),
-                    }
-                    observed = assignment.get("observation")
-                    task_verified = (
-                        receipt["worker_state"] == "exited"
-                        and receipt.get("worker_exit_code") == 0
-                        and receipt["cleanup_state"] == "removed"
-                        and isinstance(observed, dict)
-                        and observed.get("marker_present") is True
-                        and observed.get("report_present") is True
-                        and observed.get("observation_error") is None
-                    )
-                    task_result = {
-                        "state": "verified" if task_verified else "unknown",
-                        "accepted": task_verified,
-                    }
-                else:
-                    execution = {"state": "unknown", "worker_exit_code": None}
-                    cleanup = {"state": "unknown"}
-                    task_result = {"state": "unknown", "accepted": False}
-                if assignment.get("delivery_state") == "delivered":
-                    delivery = {
-                        "state": "unknown",
-                        "certainty": "unknown",
-                        "submission": "unavailable",
-                    }
-                _discard_deepagents_receipt(receipt_file)
+                )
+                if receipt.get("state") == "confirmed" and not receipt.get("recovery_required"):
+                    _discard_deepagents_receipt(receipt_file)
             legacy = {
                 key: value
                 for key, value in assignment.items()
@@ -1904,6 +1991,7 @@ def _main_body(args: argparse.Namespace) -> int:
         observation_evidence["attempt_id"] = attempt_id
         if isinstance(performance_evidence, dict):
             performance_evidence.pop("_last_monotonic", None)
+            performance_evidence.pop("_phase_intervals", None)
         print(json.dumps(evidence, sort_keys=True))
         if args.dry_run:
             return 0
@@ -1952,7 +2040,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     if args.executor == "deepagents":
                         pane_run_duration_ms = max(0.0, time.monotonic() - pane_run_started) * 1000
             except CommandTransportTimeout:
-                record_phase("delivery", attempt_started)
+                record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
@@ -1989,7 +2077,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 env=environment,
                 before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
             )
-            record_phase("retirement", retirement_started)
+            record_phase("retirement", retirement_started, attempt_id=attempt_id)
             registry_launcher["failed_start_reconciliation"] = reconciliation
             if reconciliation["state"] == "uncertain":
                 print(json.dumps(emit_assignment({
@@ -2071,7 +2159,7 @@ def _main_body(args: argparse.Namespace) -> int:
         if result.stderr:
             _write_runtime_output(sys.stderr, result.stderr)
         if result.returncode:
-            record_phase("delivery", attempt_started)
+            record_phase("delivery", attempt_started, attempt_id=attempt_id)
             print(json.dumps(emit_assignment({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
@@ -2127,7 +2215,7 @@ def _main_body(args: argparse.Namespace) -> int:
             except CommandTransportTimeout as exc:
                 transport_timeout = exc
             if transport_timeout is not None:
-                record_phase("delivery", attempt_started)
+                record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
@@ -2155,7 +2243,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 print(assignment_result.stderr, file=sys.stderr, end="")
             prompt_result = _classify_codex_prompt_result(assignment_result)
             if prompt_result["submission"] == "unknown":
-                record_phase("delivery", attempt_started)
+                record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
@@ -2177,7 +2265,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 }), sort_keys=True))
                 return assignment_result.returncode
             if prompt_result["submission"] == "rejected":
-                record_phase("delivery", attempt_started)
+                record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
@@ -2208,7 +2296,7 @@ def _main_body(args: argparse.Namespace) -> int:
             observation["session"] = resolved_session
             observation["pane"] = resolved_pane
             observation["agent_name"] = agent_name
-            record_phase("delivery", attempt_started)
+            record_phase("delivery", attempt_started, attempt_id=attempt_id)
             print(json.dumps(emit_assignment({
                 "assignment": {
                     "agent_name": agent_name,
@@ -2262,7 +2350,7 @@ def _main_body(args: argparse.Namespace) -> int:
             env=environment,
             expected_marker=completion_marker,
         )
-        record_phase("observation", observation_started)
+        record_phase("observation", observation_started, attempt_id=attempt_id)
         task_state = str(completion["state"])
         if completion.get("observation_error") is not None and task_state == "completed":
             task_state = "no-report"
@@ -2281,7 +2369,7 @@ def _main_body(args: argparse.Namespace) -> int:
             and completion.get("observation_error") is None
         )
         completed = task_state == "completed" and task_verified
-        record_phase("delivery", attempt_started)
+        record_phase("delivery", attempt_started, attempt_id=attempt_id)
         print(json.dumps(emit_assignment({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],

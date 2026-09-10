@@ -31,6 +31,7 @@ import pytest
 from project_os_test_paths import add_runtime_import_roots, runtime_script
 
 add_runtime_import_roots()
+from scripts.deepagents_result_contract import parse_result_receipt
 ROOT = Path(__file__).resolve().parent.parent
 LAUNCHER_PATH = runtime_script("dcode_project.py")
 
@@ -154,7 +155,7 @@ def test_executor_resolution_rejects_missing_or_invalid_values(
 
 
 def test_controller_options_extracts_executor_once() -> None:
-    child, selections, handoff, role, executor = LAUNCHER._controller_options(
+    child, selections, handoff, role, executor, result_file, attempt_id = LAUNCHER._controller_options(
         ["--executor", "tura", "--role", "normal", "-n", "task"]
     )
 
@@ -163,14 +164,18 @@ def test_controller_options_extracts_executor_once() -> None:
     assert handoff is None
     assert role == "normal"
     assert executor == "tura"
+    assert result_file is None
+    assert attempt_id is None
 
 
-def test_result_options_extracts_correlated_receipt_arguments(tmp_path: Path) -> None:
+def test_controller_options_extracts_correlated_receipt_arguments(tmp_path: Path) -> None:
     result_file = tmp_path / "result.json"
 
-    assert LAUNCHER._result_options([
+    parsed = LAUNCHER._controller_options([
         "--result-file", str(result_file), "--attempt-id", "attempt-1", "-n", "task"
-    ]) == (str(result_file), "attempt-1")
+    ])
+
+    assert parsed[-2:] == (str(result_file), "attempt-1")
 
 
 def test_result_receipt_is_bounded_and_atomic(tmp_path: Path) -> None:
@@ -192,6 +197,44 @@ def test_result_receipt_is_bounded_and_atomic(tmp_path: Path) -> None:
     assert payload["worker"]["exit_code"] == 0
     assert payload["cleanup"]["state"] == "removed"
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_result_contract_parses_once_without_waiting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result_file = tmp_path / "result.json"
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="exited",
+        worker_exit_code=0,
+        descendant_state="terminated",
+        role_views_state="removed",
+        recovery_required=False,
+    )
+    monkeypatch.setattr("scripts.deepagents_result_contract.time.sleep", lambda *_: pytest.fail("receipt parser waited"))
+
+    receipt = parse_result_receipt(result_file, "attempt-1")
+
+    assert receipt["state"] == "confirmed"
+    assert receipt["worker_exit_code"] == 0
+
+
+def test_result_contract_rejects_non_boolean_recovery_flag(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+    result_file.write_text(
+        json.dumps({
+            "schema": LAUNCHER._RESULT_SCHEMA,
+            "attempt_id": "attempt-1",
+            "worker": {"state": "exited", "exit_code": 0, "descendant_state": "terminated"},
+            "cleanup": {"state": "removed", "role_views_state": "removed"},
+            "recovery_required": "false",
+        }),
+        encoding="utf-8",
+    )
+
+    assert parse_result_receipt(result_file, "attempt-1") == {
+        "state": "unknown",
+        "detail": "receipt recovery flag invalid",
+    }
 
 
 def test_deepagents_main_publishes_receipt_after_cleanup(
@@ -524,6 +567,24 @@ def test_local_role_view_cleanup_removes_only_owned_files(tmp_path: Path) -> Non
     assert not (agents_root / ".dcode-project-owned").exists()
     assert not (agents_root / "normal" / "AGENTS.md").exists()
     assert user_file.read_text(encoding="utf-8") == "retain\n"
+
+
+def test_local_role_view_cleanup_preserves_modified_owned_view(tmp_path: Path) -> None:
+    write_role(tmp_path, "normal")
+    roles = LAUNCHER._load_roles(tmp_path, "9router")
+    agents_root = LAUNCHER._write_role_views(tmp_path, roles)
+    view = agents_root / "normal" / "AGENTS.md"
+    view.write_text("modified by user\n", encoding="utf-8")
+
+    result = LAUNCHER._remove_role_views(tmp_path, roles)
+
+    assert result["state"] == "preserved"
+    assert result["marker_state"] == "retained"
+    assert result["remaining_paths"] == [
+        str(view.relative_to(tmp_path)),
+    ]
+    assert view.read_text(encoding="utf-8") == "modified by user\n"
+    assert (agents_root / ".dcode-project-owned").exists()
 
 
 def test_local_role_view_cleanup_keeps_unmarked_matching_view(tmp_path: Path) -> None:

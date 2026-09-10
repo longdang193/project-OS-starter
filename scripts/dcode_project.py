@@ -32,6 +32,10 @@ except ModuleNotFoundError:
         load_mcp_capabilities,
         normalize_mcp_selection,
     )
+try:
+    from deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
+except ModuleNotFoundError:
+    from scripts.deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
 
 
 
@@ -72,8 +76,8 @@ _DIRECT_MCP_OWNER_MARKER = ".owner"
 _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
 _DIRECT_MCP_STALE_AGE = timedelta(hours=24)
 _ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
-_RESULT_SCHEMA = "dcode-project.result.v1"
-_RESULT_MAX_BYTES = 16 * 1024
+_RESULT_SCHEMA = RESULT_SCHEMA
+_RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _ALLOWED_RUNTIME_FLAGS = {
     "--print-config",
     "--json",
@@ -313,14 +317,35 @@ def _has_unowned_role_content(agents_root: Path, marker: Path, views: dict[str, 
     return False
 
 
-def _remove_role_views(repo_root: Path, roles: list[dict[str, str]]) -> None:
+def _remove_role_views(repo_root: Path, roles: list[dict[str, str]]) -> dict[str, object]:
     agents_root = repo_root / ".deepagents" / "agents"
     marker = agents_root / _ROLE_VIEWS_MARKER
     if not marker.exists():
-        return
-    _remove_owned_views(agents_root, _read_owned_views(marker, roles))
-    marker.unlink()
+        return {"state": "removed", "remaining_paths": [], "marker_state": "absent"}
+    views = _read_owned_views(marker, roles)
+    _remove_owned_views(agents_root, views)
+    remaining_paths = sorted(
+        str(_role_view_path(agents_root, role_name).relative_to(repo_root))
+        for role_name in views
+        if _role_view_path(agents_root, role_name).exists()
+        or _role_view_path(agents_root, role_name).is_symlink()
+    )
+    if remaining_paths:
+        return {
+            "state": "preserved",
+            "remaining_paths": remaining_paths,
+            "marker_state": "retained",
+        }
+    try:
+        marker.unlink()
+    except OSError:
+        return {
+            "state": "unverified",
+            "remaining_paths": [],
+            "marker_state": "retained",
+        }
     _remove_empty_parents(agents_root, repo_root)
+    return {"state": "removed", "remaining_paths": [], "marker_state": "absent"}
 
 
 def _result_file_path(raw_path: str) -> Path:
@@ -339,6 +364,7 @@ def _publish_result_receipt(
     descendant_state: str,
     role_views_state: str,
     recovery_required: bool,
+    cleanup_details: dict[str, object] | None = None,
 ) -> None:
     payload = {
         "schema": _RESULT_SCHEMA,
@@ -351,12 +377,11 @@ def _publish_result_receipt(
         "cleanup": {
             "state": role_views_state,
             "role_views_state": role_views_state,
+            **(cleanup_details or {}),
         },
         "recovery_required": recovery_required,
     }
-    encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
-    if len(encoded) > _RESULT_MAX_BYTES:
-        raise RuntimeError(f"dcode-project result receipt exceeds {_RESULT_MAX_BYTES} bytes.")
+    encoded = encode_result_receipt(payload)
     temporary = result_file.with_name(f".{result_file.name}.{uuid.uuid4().hex}.tmp")
     try:
         with temporary.open("xb") as handle:
@@ -791,7 +816,15 @@ def _direct_mcp_runtime(
 
 def _controller_options(
     argv: list[str],
-) -> tuple[list[str], list[str], str | None, str | None, str | None, str | None, str | None]:
+) -> tuple[
+    list[str],
+    list[str],
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+]:
     child: list[str] = []
     selections: list[str] = []
     handoff_file: str | None = None
@@ -845,7 +878,7 @@ def _controller_options(
         else:
             child.append(argument)
         index += 1
-    return child, selections, handoff_file, role_name, executor
+    return child, selections, handoff_file, role_name, executor, result_file, attempt_id
 
 
 def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
@@ -1423,40 +1456,17 @@ def _reject_conflicting_user_openai_base_url() -> None:
         )
 
 
-def _result_options(argv: list[str]) -> tuple[str | None, str | None]:
-    result_file: str | None = None
-    attempt_id: str | None = None
-    index = 0
-    while index < len(argv):
-        option, separator, inline_value = argv[index].partition("=")
-        if option not in {"--result-file", "--attempt-id"}:
-            index += 1
-            continue
-        if separator:
-            value = inline_value
-        elif index + 1 < len(argv):
-            value = argv[index + 1]
-            index += 1
-        else:
-            raise RuntimeError(f"dcode-project requires a value for `{option}`.")
-        if not value:
-            raise RuntimeError(f"dcode-project requires a value for `{option}`.")
-        if option == "--result-file":
-            if result_file is not None:
-                raise RuntimeError("dcode-project accepts only one `--result-file`.")
-            result_file = value
-        elif attempt_id is not None:
-            raise RuntimeError("dcode-project accepts only one `--attempt-id`.")
-        else:
-            attempt_id = value
-        index += 1
-    return result_file, attempt_id
-
-
 def main(argv: list[str]) -> int:
     _reject_unmanaged_runtime_options(argv)
-    child_argv, selection_values, handoff_file, role_name, explicit_executor = _controller_options(argv)
-    result_file_value, attempt_id = _result_options(argv)
+    (
+        child_argv,
+        selection_values,
+        handoff_file,
+        role_name,
+        explicit_executor,
+        result_file_value,
+        attempt_id,
+    ) = _controller_options(argv)
     config = _load_toml(_config_path(), "dcode-project config")
     repo_root = _repo_root()
     executor = _resolve_executor(config, explicit_executor)
@@ -1575,8 +1585,9 @@ def main(argv: list[str]) -> int:
         cleanup_allowed = True
         worker_state = "not_started"
         worker_exit_code: int | None = None
-        descendant_state = "unknown"
+        descendant_state = "not_started"
         role_views_state = "unknown"
+        cleanup_details: dict[str, object] = {}
         recovery_required = False
         cleanup_error: Exception | None = None
         try:
@@ -1620,24 +1631,33 @@ def main(argv: list[str]) -> int:
             raise
         except OSError:
             worker_state = "start_failed"
-            descendant_state = "terminated"
+            descendant_state = "not_started"
             raise
         except Exception:
             worker_state = "failed"
-            descendant_state = "terminated"
+            descendant_state = "unknown"
             raise
         finally:
             if cleanup_allowed:
                 try:
-                    _remove_role_views(repo_root, roles)
+                    cleanup_details = _remove_role_views(repo_root, roles)
                 except Exception as exc:
                     role_views_state = "unverified"
                     recovery_required = True
+                    cleanup_details = {
+                        "remaining_paths": [],
+                        "marker_state": "unknown",
+                    }
                     cleanup_error = exc
                 else:
-                    role_views_state = "removed"
+                    role_views_state = str(cleanup_details.get("state", "unverified"))
+                    recovery_required = recovery_required or role_views_state != "removed"
             else:
                 role_views_state = "preserved"
+                cleanup_details = {
+                    "remaining_paths": [],
+                    "marker_state": "retained",
+                }
             if result_file is not None:
                 _publish_result_receipt(
                     result_file,
@@ -1647,6 +1667,7 @@ def main(argv: list[str]) -> int:
                     descendant_state=descendant_state,
                     role_views_state=role_views_state,
                     recovery_required=recovery_required,
+                    cleanup_details=cleanup_details,
                 )
             if cleanup_error is not None:
                 raise cleanup_error
