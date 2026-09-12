@@ -108,6 +108,7 @@ _FIXED_LOCAL_CAPABILITY_OPTIONS = (
     "--shell-allow-list",
     "git,py",
 )
+_DEEPAGENTS_DEFAULT_TIMEOUT = 420.0
 _PROJECT_GUIDANCE_INSTRUCTION = (
     "Project guidance: read repository root `AGENTS.md` before acting. "
     "Before modifying any file, read every applicable ancestor `AGENTS.md`. "
@@ -1694,7 +1695,11 @@ def main(argv: list[str]) -> int:
                         environment,
                         repo_root,
                         handoff_stdin,
-                        _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
+                        _worker_timeout(
+                            child_argv,
+                            default=_DEEPAGENTS_DEFAULT_TIMEOUT,
+                            worker_name="DeepAgents",
+                        ),
                     )
             else:
                 worker_exit_code = _run_deepagents_worker(
@@ -1702,7 +1707,11 @@ def main(argv: list[str]) -> int:
                     environment,
                     repo_root,
                     handoff_stdin,
-                    _worker_timeout(child_argv, default=None, worker_name="DeepAgents"),
+                    _worker_timeout(
+                        child_argv,
+                        default=_DEEPAGENTS_DEFAULT_TIMEOUT,
+                        worker_name="DeepAgents",
+                    ),
                 )
             worker_state = "exited"
             descendant_state = "terminated"

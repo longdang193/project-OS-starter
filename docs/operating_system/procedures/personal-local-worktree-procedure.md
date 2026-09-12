@@ -181,26 +181,29 @@ task text. `codex.mcp.handoff.v1` stays validated facts and provenance, not tool
 access; controller deletes handoff after use.
 
 Herdr does not inject `--max-turns` or `--timeout` into normal DeepAgents runs;
-DeepAgents keeps control of its native execution budget. Herdr retains one
+DeepAgents keeps control of its native execution budget. Direct `dcode-project`
+launches apply a `420`-second wrapper safety ceiling when callers omit
+`--timeout`; explicit `--timeout N` remains authoritative. Herdr retains one
 30-minute outer watchdog to prevent an abandoned pane process from blocking the
 controller. Upgrade smoke probes may pass explicit shorter bounds because they
 are bounded compatibility checks, not normal task execution.
 
 An optional CoS Runtime Grant may project explicit DeepAgents `--max-turns` or
-`--timeout` values. Native defaults remain unchanged. Codex keeps native turn
-limits; numeric Codex wall-clock grants use Herdr's outer watchdog. On deadline,
-the launcher closes the assigned pane, verifies executor retirement, preserves
+`--timeout` values. DeepAgents native defaults remain unchanged. Direct
+`dcode-project` accepts any positive explicit `--timeout N`; that value is
+enforced by both the native DeepAgents process and its wrapper. Herdr-mediated
+DeepAgents wall-clock grants above its 1800-second watchdog fail closed, while
+the Herdr outer watchdog remains 1800 seconds. Codex keeps native turn limits;
+numeric Codex wall-clock grants use Herdr's outer watchdog. On deadline, the
+launcher closes the assigned pane, verifies executor retirement, preserves
 partial Git/filesystem state, and returns `TIMEOUT` or `BLOCKED`, never success.
-Strict DeepAgents wall-clock requests above Herdr's 1800-second watchdog fail
-closed. DeepAgents direct MCP projection remains default-deny unless approved
-selectors are passed through the launcher; concrete selectors and the transient
+DeepAgents direct MCP projection remains default-deny unless approved selectors
+are passed through the launcher; concrete selectors and the transient
 `grant_digest` and the projected child-agent authority belong to launch
 evidence and the bounded task brief, not tracked plan or runtime state.
 
-`dcode-project` also leaves its wrapper timeout unset for DeepAgents unless the
-caller passes `--timeout`; an explicit value is enforced by both the native
-DeepAgents process and its wrapper. Tura remains a bounded worker and keeps its
-120-second default when no explicit timeout is supplied.
+Tura remains a bounded worker and keeps its 120-second default when no explicit
+timeout is supplied.
 
 Launch a task without controller facts with:
 

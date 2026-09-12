@@ -835,8 +835,8 @@ def test_launcher_allows_bounded_noninteractive_options() -> None:
 
 def test_worker_timeout_defaults_are_executor_specific() -> None:
     assert LAUNCHER._worker_timeout(
-        ["-n", "task"], default=None, worker_name="DeepAgents"
-    ) is None
+        ["-n", "task"], default=420.0, worker_name="DeepAgents"
+    ) == 420.0
     assert LAUNCHER._worker_timeout(
         ["-n", "task"], default=120.0, worker_name="Tura"
     ) == 120.0
@@ -1044,7 +1044,7 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
         "--no-mcp",
     ]
     assert invoked_kwargs["cwd"] == tmp_path
-    assert invoked_kwargs["timeout"] is None
+    assert invoked_kwargs["timeout"] == LAUNCHER._DEEPAGENTS_DEFAULT_TIMEOUT
     assert not (tmp_path / ".deepagents").exists()
 
 
@@ -1607,7 +1607,12 @@ def test_direct_mcp_isolates_user_discovery_and_cleans_config(
     captured: dict[str, object] = {}
 
     def run_worker(argv, environment, repo_root, handoff_stdin, timeout):
-        captured.update(argv=list(argv), environment=dict(environment), input=handoff_stdin)
+        captured.update(
+            argv=list(argv),
+            environment=dict(environment),
+            input=handoff_stdin,
+            timeout=timeout,
+        )
         config_path = Path(argv[argv.index("--mcp-config") + 1])
         captured["config_exists_during_run"] = config_path.is_file()
         captured["config"] = json.loads(config_path.read_text(encoding="utf-8"))
@@ -1622,6 +1627,7 @@ def test_direct_mcp_isolates_user_discovery_and_cleans_config(
     assert "--no-mcp" not in argv
     assert "secret" not in " ".join(argv)
     assert captured["input"] is None
+    assert captured["timeout"] == LAUNCHER._DEEPAGENTS_DEFAULT_TIMEOUT
     assert captured["config_exists_during_run"] is True
     assert captured["config"] == {
         "mcpServers": {
