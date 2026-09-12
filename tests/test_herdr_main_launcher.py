@@ -2367,6 +2367,27 @@ def test_deepagents_completion_converts_transport_timeout_to_bounded_evidence(
     assert evidence["observed_at"] > 0
 
 
+def test_deepagents_snapshot_distinguishes_observation_deadline_from_transport_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(LAUNCHER, "_run", lambda command, **kwargs: calls.append(command))
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: 1.0)
+
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=0.5,
+    )
+
+    assert calls == []
+    assert evidence["observation_error"] == "observation deadline exceeded"
+    assert evidence["observation_deadline_exceeded"] is True
+
+
 def test_deepagents_completion_waits_for_delayed_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2542,7 +2563,7 @@ def test_deepagents_snapshot_does_not_start_second_pane_command_after_budget(
     )
 
     assert len(calls) == 1
-    assert evidence["observation_error"] == "pane read transport timeout"
+    assert evidence["observation_error"] == "observation deadline exceeded"
 
 
 def test_deepagents_completion_deadline_preserves_last_state_as_timeout(

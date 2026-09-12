@@ -1321,9 +1321,11 @@ def _deepagents_completion_snapshot(
     read_result: subprocess.CompletedProcess[str] | None = None
     process_error: str | None = None
     read_error: str | None = None
+    observation_deadline_exceeded = False
     try:
         timeout = observation_timeout()
         if timeout <= 0:
+            observation_deadline_exceeded = True
             raise CommandTransportTimeout("observation deadline exceeded before process-info")
         process_result = _run(
             [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -1331,10 +1333,15 @@ def _deepagents_completion_snapshot(
             timeout=timeout,
         )
     except CommandTransportTimeout:
-        process_error = "pane process-info transport timeout"
+        process_error = (
+            "observation deadline exceeded"
+            if observation_deadline_exceeded
+            else "pane process-info transport timeout"
+        )
     try:
         timeout = observation_timeout()
         if timeout <= 0:
+            observation_deadline_exceeded = True
             raise CommandTransportTimeout("observation deadline exceeded before pane read")
         read_result = _run(
             [
@@ -1355,7 +1362,11 @@ def _deepagents_completion_snapshot(
             timeout=timeout,
         )
     except CommandTransportTimeout:
-        read_error = "pane read transport timeout"
+        read_error = (
+            "observation deadline exceeded"
+            if observation_deadline_exceeded
+            else "pane read transport timeout"
+        )
     pane_output = _pane_output(read_result) if read_result is not None else ""
     foreground: list[Any] = []
     observation_error: str | None = process_error or read_error
@@ -1384,6 +1395,7 @@ def _deepagents_completion_snapshot(
         "report_sha256": _sha256_text(pane_output),
         "report_chars": len(pane_output),
         "observed_at": time.time(),
+        "observation_deadline_exceeded": observation_deadline_exceeded,
         "foreground_processes": [
             str(process.get("name", "unknown"))
             for process in foreground
