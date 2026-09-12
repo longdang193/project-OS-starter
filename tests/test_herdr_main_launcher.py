@@ -2222,12 +2222,92 @@ def test_deepagents_task_state_requires_report_for_completion() -> None:
     ) == "running"
 
 
-def test_deepagents_task_state_detects_failure_report() -> None:
+@pytest.mark.parametrize(
+    ("pane_output", "expected_state"),
+    [
+        ("Running task non-interactively...\nFAIL\n", "failed"),
+        ("Running task non-interactively...\nFAIL: fixture write failed.\n", "failed"),
+        ("Running task non-interactively...\nBLOCKED\n", "failed"),
+        ("Running task non-interactively...\nBLOCKED: fixture validation failed.\n", "failed"),
+        ("Running task non-interactively...\n[FAIL] Task failed\n", "failed"),
+        ('Running task non-interactively...\nExample: "FAIL: fixture write failed."\n', "no-report"),
+        ("Running task non-interactively...\nfixture_status = FAIL\n", "no-report"),
+        ("Running task non-interactively...\n  FAIL: fixture write failed.\n", "no-report"),
+        ("stale FAIL: prior attempt\nRunning task non-interactively...\nCOMPLETED\nEXPECTED_MARKER\n", "completed"),
+    ],
+)
+def test_deepagents_task_state_detects_terminal_failure_verdicts(
+    pane_output: str,
+    expected_state: str,
+) -> None:
     assert LAUNCHER._deepagents_task_state(
         [{"name": "powershell.exe"}],
-        "[FAIL] Task failed\n",
+        pane_output,
         "EXPECTED_MARKER",
-    ) == "failed"
+    ) == expected_state
+
+
+@pytest.mark.parametrize("verdict", ["FAIL: fixture write failed.", "BLOCKED"])
+def test_deepagents_main_reports_terminal_failure_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    verdict: str,
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr", "-n", "task"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "failed",
+            "marker_present": True,
+            "report_present": True,
+            "report_sha256": LAUNCHER._sha256_text(verdict),
+            "report_chars": len(verdict),
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+            "lifecycle_receipt": {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 0,
+                "descendant_state": "terminated",
+                "cleanup_state": "removed",
+                "role_views_state": "removed",
+                "recovery_required": False,
+            },
+        },
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 2
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["status"] == "failed"
+    assert assignment["task_result"] == {"state": "reported_failed", "accepted": False}
+    assert assignment["task_accepted"] is False
+    assert assignment["execution"]["worker_exit_code"] == 0
+    assert assignment["exit_code"] == assignment["launcher_exit_code"] == 2
+    assert assignment["reconciliation_required"] is True
 
 
 @pytest.mark.parametrize("failure", ["process-info", "pane-read"])

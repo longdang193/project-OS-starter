@@ -86,7 +86,7 @@ _DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
 _DEEPAGENTS_RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _DEEPAGENTS_RESULT_MAX_AGE_SECONDS = RESULT_MAX_AGE_SECONDS
 _DEEPAGENTS_FAILURE_PATTERN = re.compile(
-    r"(?im)^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
+    r"(?im)^(?:FAIL|BLOCKED)(?::(?:\s.*)?)?$|^\s*(?:\[FAIL\]\s*)?Task failed\b|^\s*Traceback \(most recent call last\):|^\s*ERROR:\s*"
 )
 _CODEX_PROMPT_REJECTION_CODES = {
     "agent_blocked",
@@ -1262,13 +1262,15 @@ def _deepagents_task_state(
         for process in foreground_processes
         if isinstance(process, dict)
     )
-    lines = [line.strip() for line in pane_output.splitlines() if line.strip()]
+    raw_lines = [line.rstrip() for line in pane_output.splitlines() if line.strip()]
+    lines = [line.strip() for line in raw_lines]
     start_index = max(
         (index for index, line in enumerate(lines) if line == "Running task non-interactively..."),
         default=0,
     )
     current_lines = lines[start_index:]
-    if _DEEPAGENTS_FAILURE_PATTERN.search("\n".join(current_lines)):
+    current_raw_lines = raw_lines[start_index:]
+    if _DEEPAGENTS_FAILURE_PATTERN.search("\n".join(current_raw_lines)):
         return "failed"
     if any(
         current_lines[index:index + 2] == ["COMPLETED", expected_marker]
