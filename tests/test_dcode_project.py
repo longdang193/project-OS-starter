@@ -413,6 +413,21 @@ def test_bounded_worker_preserves_stdin_and_status(
         subprocess.PIPE if handoff_stdin is not None else None
     )
 
+def test_bounded_worker_rejects_unbounded_timeout_before_starting_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER.subprocess,
+        "Popen",
+        lambda *args, **kwargs: pytest.fail("worker started without a finite timeout"),
+    )
+
+    with pytest.raises(ValueError, match="finite timeout"):
+        LAUNCHER._run_bounded_worker(
+            ["worker"], {}, tmp_path, None, None, "worker"
+        )
+
 def test_bounded_worker_terminates_timed_out_posix_process(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
+import math
 import os
 from pathlib import Path
 import re
@@ -1388,6 +1389,8 @@ def _run_bounded_worker(
     timeout: float | None,
     worker_name: str,
 ) -> int:
+    if timeout is None or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError(f"{worker_name} worker requires a finite timeout greater than zero.")
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
     popen_kwargs: dict[str, object] = {
         "cwd": repo_root,
