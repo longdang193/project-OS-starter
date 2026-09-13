@@ -94,10 +94,12 @@ _CODEX_PROMPT_REJECTION_CODES = {
     "agent_blocked",
     "agent_not_found",
     "agent_prompt_rejected",
+    "agent_not_running",
     "empty_agent_prompt",
     "invalid_agent",
     "invalid_prompt",
 }
+_CODEX_ACTIVE_AGENT_STATES = {"idle", "working"}
 _ACTIVE_METRICS: ContextVar[dict[str, Any] | None] = ContextVar(
     "herdr_launcher_metrics",
     default=None,
@@ -944,6 +946,48 @@ def _codex_assignment_command(
         agent_name,
         task,
     ]
+
+
+def _confirm_codex_start(
+    herdr: str,
+    session: str,
+    pane: str,
+    agent_name: str,
+    *,
+    env: dict[str, str],
+    before_process_ids: set[int],
+) -> dict[str, Any]:
+    try:
+        agent_payload = _json_command(
+            [herdr, "--session", session, "agent", "get", agent_name],
+            env=env,
+        )
+        agent = _result(agent_payload, "agent")
+        if not isinstance(agent, dict):
+            raise LaunchBlocked("Codex agent information is invalid.")
+        agent_status = str(agent.get("agent_status") or "unknown")
+        if agent_status not in _CODEX_ACTIVE_AGENT_STATES:
+            raise LaunchBlocked(
+                f"Codex agent is not active before prompt delivery: {agent_status}."
+            )
+        process_payload = _json_command(
+            [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+            env=env,
+        )
+        process_info = _result(process_payload, "process_info")
+        if not isinstance(process_info, dict):
+            raise LaunchBlocked("Codex process information is invalid.")
+        process_ids = _process_ids(
+            process_info.get("foreground_processes"),
+            require_non_shell=True,
+        )
+    except (CommandTransportTimeout, LaunchBlocked, json.JSONDecodeError) as exc:
+        if isinstance(exc, LaunchBlocked) and str(exc).startswith("Codex "):
+            raise
+        raise LaunchBlocked("Codex process is not running before prompt delivery.") from exc
+    if not process_ids - before_process_ids:
+        raise LaunchBlocked("Codex process ownership is unconfirmed before prompt delivery.")
+    return {"agent_status": agent_status, "process_ids": sorted(process_ids)}
 
 
 def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
@@ -2271,6 +2315,15 @@ def _main_body(args: argparse.Namespace) -> int:
         if args.executor == "codex":
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
+            if command[3:5] == ["agent", "start"]:
+                _confirm_codex_start(
+                    herdr,
+                    resolved_session,
+                    resolved_pane,
+                    agent_name,
+                    env=environment,
+                    before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
+                )
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)

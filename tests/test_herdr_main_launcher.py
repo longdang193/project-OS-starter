@@ -462,6 +462,22 @@ def test_codex_prompt_result_marks_explicit_rejection_false() -> None:
     }
 
 
+def test_codex_prompt_result_marks_agent_not_running_false() -> None:
+    result = subprocess.CompletedProcess(
+        ["herdr", "agent", "prompt"],
+        1,
+        '{"error":{"code":"agent_not_running","message":"Codex exited"}}',
+        "",
+    )
+
+    assert LAUNCHER._classify_codex_prompt_result(result) == {
+        "submission": "rejected",
+        "prompt_accepted": False,
+        "failure_kind": "agent_not_running",
+        "reconciliation_required": False,
+    }
+
+
 def test_codex_prompt_result_marks_success_acknowledged() -> None:
     result = subprocess.CompletedProcess(["herdr", "agent", "prompt"], 0, "{}", "")
 
@@ -1131,6 +1147,82 @@ def test_main_starts_with_selected_codex_home(
     assert result["completion_observed"] is False
 
 
+def test_main_blocks_codex_prompt_when_started_process_is_gone(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
+    }
+    start_command = [
+        "herdr.exe",
+        "--session",
+        "codex-probe",
+        "agent",
+        "start",
+        "xhigh-main",
+        "--kind",
+        "codex",
+        "--pane",
+        "w1:p5",
+    ]
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (start_command, evidence))
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"agent": {"agent_status": "idle"}}}),
+                "",
+            )
+        if command[3:5] == ["pane", "process-info"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "result": {
+                        "process_info": {
+                            "foreground_processes": [
+                                {"pid": 7, "name": "powershell.exe", "children": []}
+                            ]
+                        }
+                    }
+                }),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 2
+    assert not any(command[3:5] == ["agent", "prompt"] for command in commands)
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["status"] == "blocked"
+    assert result["delivery_state"] == "not_attempted"
+    assert result["failure_kind"] == "Codex process is not running before prompt delivery."
+
+
 def test_main_times_out_codex_and_verifies_termination(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1268,6 +1360,21 @@ def test_main_re_resolves_target_after_verified_codex_retry(
                 command,
                 0,
                 json.dumps({"result": {"agent": {"agent_status": "idle"}}}),
+                "",
+            )
+        if command[3:5] == ["pane", "process-info"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "result": {
+                        "process_info": {
+                            "foreground_processes": [
+                                {"pid": 42, "name": "codex.exe", "children": []}
+                            ]
+                        }
+                    }
+                }),
                 "",
             )
         return subprocess.CompletedProcess(command, 0, json.dumps({"result": ""}), "")
@@ -1619,6 +1726,20 @@ def test_main_retries_default_agent_name_after_name_taken(
                 '{"error":{"code":"agent_name_taken"}}',
                 "",
             )
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle"}}}',
+                "",
+            )
+        if command[3:5] == ["pane", "process-info"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"process_info":{"foreground_processes":[{"pid":42,"name":"codex.exe","children":[]}]}}}',
+                "",
+            )
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
@@ -1629,10 +1750,10 @@ def test_main_retries_default_agent_name_after_name_taken(
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
         ]
     ) == 0
-    assert len(commands) == 3
+    assert len(commands) == 5
     retry_name = commands[1][commands[1].index("start") + 1]
     assert retry_name.startswith("normal-main-")
-    assert commands[2][commands[2].index("prompt") + 1] == retry_name
+    assert commands[4][commands[4].index("prompt") + 1] == retry_name
     output = capsys.readouterr().out.splitlines()
     initial = json.loads(output[0])["registry_launcher"]["attempt_id"]
     result = json.loads(output[-1])["assignment"]
