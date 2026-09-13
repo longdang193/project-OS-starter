@@ -33,9 +33,7 @@ For Git-tracked coordinated work:
   durable authority invariant is `Plan Lane Authority ⊆ task Authority`.
 - Launcher evidence may include a transient `grant_digest` and launch-attempt
   identity. These are runtime evidence, not coordination state or recovery truth.
-- Grant changes use retire-and-redispatch: retire the current lane, prove no
-  live process owns its worktree, reconcile plan plus Git, then launch the same
-  plan task with a newly computed transient grant.
+- Grant changes use retire-and-redispatch: retire the current lane, positively verify its top-level process, relevant descendants, and task-owned resources no longer use its worktree, reconcile plan plus Git, then launch the same plan task with a newly computed transient grant.
 - Resume only by reconciling plan plus Git.
 - Block on plan/Git mismatch, unknown checkpoint, invalid active-task state,
   out-of-scope changes, unresolved blockers, or unsafe workspace identity.
@@ -44,9 +42,11 @@ For Git-tracked coordinated work:
   and a dependency-ready wave.
 - A write-capable coordinated implementation lane uses one exact branch and
   isolated worktree. The active plan may grant that lane bounded authority for
-  lane commits, lane push, PR create/update, and post-retirement cleanup.
-  Implementation lanes may implement, commit, push, and manage their assigned
-  PR when granted. Independent Codex review lanes own assigned review actions.
+  lane commits, lane push, and PR create/update. Implementation lanes may
+  implement, commit, push, and manage their assigned PR when granted.
+  `skill-finishing-a-development-branch` owns Git disposition and worktree
+  cleanup after exact authority and verified retirement evidence. Independent
+  Codex review lanes own assigned review actions.
   A designated Codex integration action owns an exact approved PR merge after
   review and verification gates pass.
 - Lane commits are implementation artifacts, not coordination checkpoints. The
@@ -60,8 +60,9 @@ For Git-tracked coordinated work:
   PR retargeting, protection bypass, semantic conflict resolution, unrelated
   mutation, and destructive recovery remain explicitly user-authorized.
 - Before worktree cleanup, retire the associated top-level lane process and
-  confirm no live process owns that path. The active agent never removes its own
-  worktree.
+  positively verify that relevant descendants and task-owned resources no longer
+  use that path. Timeout, silence, missing observation, or transport failure is
+  not proof of retirement. The active agent never removes its own worktree.
 - Task completion requires declared proof accepted by the lead controller.
 - The lead creates an authorized checkpoint commit only after accepting task
   proof and updating the task ledger in the same checkpoint.

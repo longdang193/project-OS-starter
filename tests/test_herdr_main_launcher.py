@@ -2388,6 +2388,51 @@ def test_deepagents_snapshot_distinguishes_observation_deadline_from_transport_t
     assert evidence["observation_deadline_exceeded"] is True
 
 
+@pytest.mark.parametrize("crossing_command", ["process-info", "pane-read"])
+def test_deepagents_snapshot_reclassifies_transport_timeout_after_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    crossing_command: str,
+) -> None:
+    process_info = json.dumps({
+        "result": {
+            "process_info": {
+                "foreground_processes": [{"name": "powershell.exe"}],
+            },
+        },
+    })
+    clock = [0.0]
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if crossing_command == "process-info" and "process-info" in command:
+            clock[0] = 2.0
+            raise LAUNCHER.CommandTransportTimeout("transport timeout")
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, process_info, "")
+        clock[0] = 2.0
+        raise LAUNCHER.CommandTransportTimeout("transport timeout")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=1.0,
+    )
+
+    assert any(
+        "process-info" in command if crossing_command == "process-info" else "read" in command
+        for command in calls
+    )
+    assert evidence["observation_error"] == "observation deadline exceeded"
+    assert evidence["observation_deadline_exceeded"] is True
+
+
 def test_deepagents_completion_waits_for_delayed_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2537,6 +2582,72 @@ def test_deepagents_completion_returns_uncertain_receipt_at_deadline(
 
     assert evidence["state"] == "completed"
     assert evidence["lifecycle_receipt"]["state"] == "unknown"
+
+
+def test_deepagents_completion_recovers_receipt_after_observation_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    unknown = {"state": "unknown", "detail": "receipt unavailable"}
+    confirmed = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "role_views_state": "removed",
+        "recovery_required": False,
+    }
+    receipts = iter([unknown, unknown, confirmed])
+    snapshots = iter([
+        {"state": "running", "report_present": False, "observation_error": None},
+        {
+            "state": "no-report",
+            "report_present": False,
+            "observation_error": "observation deadline exceeded",
+        },
+        {"state": "completed", "report_present": True, "observation_error": None},
+    ])
+    clock = [0.0]
+    deadlines: list[float | None] = []
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 0.5)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_DEEPAGENTS_RECEIPT_GRACE_SECONDS",
+        0.5,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: next(receipts),
+    )
+
+    def snapshot(*args: object, **kwargs: object) -> dict[str, object]:
+        deadlines.append(kwargs.get("deadline"))
+        return next(snapshots)
+
+    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", snapshot)
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["state"] == "completed"
+    assert evidence["lifecycle_receipt"] == confirmed
+    assert deadlines[-1] is None
 
 
 def test_deepagents_snapshot_does_not_start_second_pane_command_after_budget(

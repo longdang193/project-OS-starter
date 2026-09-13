@@ -49,7 +49,7 @@ Verification makes closure actions eligible. For an assigned lane, an explicit
 active-plan lane authority selects bounded lifecycle actions. User authorization
 remains required for exceptional or destructive actions.
 
-Do not commit, fetch, pull, create branch, rebase, merge, push, create or update pull request, apply or drop stash, delete branch, prune metadata, or remove worktree without explicit authorization for that action. An active approved plan may grant an assigned implementation lane bounded authority for its exact lane: branch/worktree creation or reuse, lane commits, lane push, PR create/update, and cleanup after retirement and clean-state proof. Implementation lanes may implement, commit, push, and manage their assigned PR when granted. Independent Codex review lanes own assigned review actions. A designated Codex integration action owns an exact approved PR merge after review and verification gates pass. Direct or exceptional base mutation, force push, PR retargeting, branch-protection bypass, semantic conflict resolution, unrelated branch/worktree mutation, destructive recovery, unknown-file discard, and merging another lane remain user-authorized.
+Do not commit, fetch, pull, create branch, rebase, merge, push, create or update pull request, apply or drop stash, delete branch, prune metadata, or remove worktree without explicit authorization for that action. An active approved plan may grant an assigned implementation lane bounded authority for its exact lane: branch/worktree creation or reuse, lane commits, lane push, and PR create/update. Implementation lanes may implement, commit, push, and manage their assigned PR when granted. `skill-finishing-a-development-branch` owns worktree cleanup after retirement, clean-state proof, released retention dependencies, and exact authorization. Independent Codex review lanes own assigned review actions. A designated Codex integration action owns an exact approved PR merge after review and verification gates pass. Direct or exceptional base mutation, force push, PR retargeting, branch-protection bypass, semantic conflict resolution, unrelated branch/worktree mutation, destructive recovery, unknown-file discard, and merging another lane remain user-authorized.
 
 Never infer a file is “superseded.” Before reconciliation can remove or overwrite
 content, show every overlapping file with hashes and diff summary, then require an
@@ -284,14 +284,18 @@ Never recursively delete worktree directory directly. Never discard unrelated ch
 ## 12. Worktree Cleanup
 
 Cleanup occurs only after selected Git disposition is complete, the lane main
-agent is retired, no live process owns the worktree, and exact cleanup
-authorization exists through the active plan or explicit user authorization.
+agent and relevant descendants/resources are retired, no live process owns the
+worktree, all verification/debugging/recovery/handoff retention dependencies are
+released, and exact cleanup authorization exists through the active plan or
+explicit user authorization. Timeout, silence, missing observation, or transport
+failure is not proof of retirement.
 
 - native-created workspace: use native cleanup tool
-- manually created worktree: use `git worktree remove <path>` after clean-state confirmation
+- manually created worktree: use `git worktree remove <path>` after clean-state and content confirmation
 - stale metadata: use `git worktree prune` only after verifying entry is genuinely stale and authorization exists
 
-Do not remove current active worktree, dirty worktree, unpushed required commits, or workspace needed for open reconciliation.
+Do not remove current active worktree, dirty worktree, unpushed required commits,
+unknown-content worktree, or workspace needed for open reconciliation.
 
 ## 13. Final Closure Report
 
@@ -303,7 +307,7 @@ Report:
 - commit, push, pull-request, merge, or keep result
 - pre-action and post-action verification commands and results
 - stash reconciliation when applicable
-- cleanup performed or intentionally deferred
+- cleanup performed or intentionally deferred, including workspace disposition, retention reason, and next action when retained
 - remaining risks and blockers
 - final result: `closed`, `kept`, or `blocked`
 

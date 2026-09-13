@@ -351,11 +351,13 @@ worktree, parallel-write, review, verification, and finishing owners.
 
 CoS has no direct Git or PR authority. An approved plan may grant an assigned
 implementation lane bounded authority to create or reuse its lane, commit
-lane-owned changes, push only its lane branch, create or update its PR, and clean
-its verified-clean retired lane. Implementation lanes may implement, commit,
-push, and manage their assigned PR when granted. Independent Codex review lanes
-own assigned review actions. A designated Codex integration action owns an exact
-approved PR merge after review and verification gates pass.
+lane-owned changes, push only its lane branch, and create or update its PR.
+Implementation lanes may implement, commit, push, and manage their assigned PR
+when granted. `skill-finishing-a-development-branch` owns Git disposition and
+worktree cleanup after the surviving controller hands it exact authority and
+verified retirement evidence. Independent Codex review lanes own assigned
+review actions. A designated Codex integration action owns an exact approved PR
+merge after review and verification gates pass.
 
 Never grant force push, direct or exceptional base mutation outside the exact
 PR merge path, PR retargeting, branch-protection bypass, semantic conflict
@@ -411,9 +413,11 @@ Route blockers to missing context, failed proof, runtime mismatch, review
 failure, identity limitation, or user-authorized exception.
 
 After accepted or merged lane work, prevent new writes, retire or stop the
-Herdr top-level lane, confirm no live process owns the worktree, then invoke
-`skill-finishing-a-development-branch`. Never let an agent remove the worktree
-from which it is running.
+Herdr top-level lane, and positively verify retirement of relevant descendants
+and task-owned resources using the worktree. Then hand exact cleanup authority
+and evidence to `skill-finishing-a-development-branch`. Never let an agent
+remove the worktree from which it is running. Timeout, silence, missing
+observation, or transport failure is not proof of retirement.
 
 ## Durable Truth And Escalation
 

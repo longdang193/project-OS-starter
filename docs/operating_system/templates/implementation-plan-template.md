@@ -68,6 +68,10 @@ never becomes repository state.
 - Next action: `<one dependency-ready action>`
 - Blockers: `<none or concrete blocker>`
 
+When workspace state is retained, record its reason in `Evidence` and its next
+dependency-ready action in `Next action`. Do not add a second lifecycle registry
+or mandatory disposition field for this purpose.
+
 `contract_version: 1` marks the modern plan contract. Completed plans without
 this marker remain historical compatibility artifacts. `Coordination schema: 1`
 marks compatible Git-tracked coordination. `Coordination schema: 2` additionally
@@ -89,10 +93,12 @@ update share one checkpoint commit after task-local proof. Git owns checkpoint
 identity: derive it from the commit containing the latest ledger transition;
 never copy that commit SHA into the plan. An active plan may preauthorize an
 assigned implementation lane to commit and push its exact lane, create or update
-its PR, and clean the retired lane. Implementation lanes may implement, commit,
-push, and manage their assigned PR when granted. Independent Codex review lanes
-own assigned review actions. A designated Codex integration action owns an exact
-approved PR merge after review and verification gates pass. Direct or exceptional
+its PR. Implementation lanes may implement, commit, push, and manage their
+assigned PR when granted. `skill-finishing-a-development-branch` owns cleanup
+after retirement, clean-state proof, released retention dependencies, and exact
+authority. Independent Codex review lanes own assigned review actions. A
+designated Codex integration action owns an exact approved PR merge after review
+and verification gates pass. Direct or exceptional
 base mutation, force push, retargeting, protection bypass, semantic conflict
 resolution, destructive recovery, discard, and unrelated cleanup still need
 explicit user authorization.

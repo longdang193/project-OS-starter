@@ -140,6 +140,10 @@ verified cleanup evidence.
 
 Do not turn a Git-reported untracked path into an eligible candidate without
 producer evidence. Missing, stale, or uncertain evidence means `preserve`.
+Recovery requires re-establishing exact resource identity, producer, owner,
+retention dependency, supported procedure, and cleanup authority through the
+current plan or a validated handoff. A recognizable path or directory name is
+not recovery evidence.
 
 ## Cleanup Mode
 
@@ -173,6 +177,9 @@ reusing a routed lifecycle resource, retain its exact resource identity,
 producer, owner, retention dependency, and supported procedure in current
 task-local state or a validated handoff. Do not put machine-local paths in
 Git-tracked plans. Omitted identities remain preserved.
+Disposable traces, screenshots, logs, and probes may use external temporary
+storage. Durable reports, fixtures, and acceptance evidence remain with their
+owning workflow and are not disposable by default.
 
 ## Integration
 

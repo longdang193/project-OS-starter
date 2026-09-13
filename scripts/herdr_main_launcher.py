@@ -72,6 +72,8 @@ _CODEX_START_TIMEOUT_MS = "120000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 60.0
+# ponytail: fixed 5s receipt grace; increase only with measured receipt latency.
+_DEEPAGENTS_RECEIPT_GRACE_SECONDS = 5.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
 _DEEPAGENTS_RECEIPT_POLL_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
@@ -1317,6 +1319,9 @@ def _deepagents_completion_snapshot(
             return _HERDR_COMMAND_TIMEOUT
         return min(_HERDR_COMMAND_TIMEOUT, deadline - time.monotonic())
 
+    def observation_deadline_expired() -> bool:
+        return deadline is not None and deadline - time.monotonic() <= 0
+
     process_result: subprocess.CompletedProcess[str] | None = None
     read_result: subprocess.CompletedProcess[str] | None = None
     process_error: str | None = None
@@ -1333,6 +1338,7 @@ def _deepagents_completion_snapshot(
             timeout=timeout,
         )
     except CommandTransportTimeout:
+        observation_deadline_exceeded = observation_deadline_expired()
         process_error = (
             "observation deadline exceeded"
             if observation_deadline_exceeded
@@ -1362,6 +1368,7 @@ def _deepagents_completion_snapshot(
             timeout=timeout,
         )
     except CommandTransportTimeout:
+        observation_deadline_exceeded = observation_deadline_expired()
         read_error = (
             "observation deadline exceeded"
             if observation_deadline_exceeded
@@ -1417,17 +1424,30 @@ def _deepagents_completion_evidence(
 ) -> dict[str, Any]:
     started = time.monotonic()
     deadline = started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+    receipt_deadline = deadline + _DEEPAGENTS_RECEIPT_GRACE_SECONDS
     evidence: dict[str, Any] | None = None
     receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+
+    def wait_for_receipt() -> dict[str, Any]:
+        nonlocal receipt
+        while receipt.get("state") != "confirmed":
+            remaining = receipt_deadline - time.monotonic()
+            if remaining <= 0:
+                return receipt
+            time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, remaining))
+            receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+        return receipt
+
     while True:
         if receipt.get("state") == "confirmed":
+            snapshot_deadline = deadline if time.monotonic() < deadline else None
             evidence = _deepagents_completion_snapshot(
                 herdr,
                 session,
                 pane,
                 env=env,
                 expected_marker=expected_marker,
-                deadline=deadline,
+                deadline=snapshot_deadline,
             )
             evidence["lifecycle_receipt"] = receipt
             return evidence
@@ -1442,18 +1462,33 @@ def _deepagents_completion_evidence(
         if evidence["state"] in {"completed", "failed"}:
             if receipt_file is None:
                 return evidence
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    evidence["lifecycle_receipt"] = receipt
-                    return evidence
-                time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, remaining))
-                receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
-                if receipt.get("state") == "confirmed":
-                    evidence["lifecycle_receipt"] = receipt
-                    return evidence
+            receipt = wait_for_receipt()
+            if receipt.get("state") == "confirmed" and time.monotonic() >= deadline:
+                evidence = _deepagents_completion_snapshot(
+                    herdr,
+                    session,
+                    pane,
+                    env=env,
+                    expected_marker=expected_marker,
+                    deadline=None,
+                )
+            evidence["lifecycle_receipt"] = receipt
+            return evidence
         remaining = deadline - time.monotonic()
         if remaining <= 0:
+            if receipt_file is not None:
+                receipt = wait_for_receipt()
+                if receipt.get("state") == "confirmed":
+                    evidence = _deepagents_completion_snapshot(
+                        herdr,
+                        session,
+                        pane,
+                        env=env,
+                        expected_marker=expected_marker,
+                        deadline=None,
+                    )
+                    evidence["lifecycle_receipt"] = receipt
+                    return evidence
             evidence["last_observed_state"] = evidence["state"]
             evidence["state"] = "timed_out"
             evidence["observation_deadline_exceeded"] = True

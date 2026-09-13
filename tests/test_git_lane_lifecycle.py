@@ -18,6 +18,9 @@ def test_write_capable_implementation_lanes_have_mandatory_isolated_lanes() -> N
     assert "For a write-capable Herdr implementation lane, isolation is mandatory" in worktree
     assert "explicit approved-plan lane authority" in worktree
     assert "launched process cwd" in worktree
+    assert "exact base commit recorded by the active plan" in worktree
+    assert "A healthy live lane may continue" in worktree
+    assert "replacement runtime" in worktree
     assert "A write-capable coordinated implementation lane uses one exact branch and isolated worktree" in coordination
 
 
@@ -48,10 +51,12 @@ def test_coordination_preserves_checkpoint_and_serialized_integration_truth() ->
         "expected reviewed head",
         "no post-review lane commit",
         "retire the associated top-level lane process",
+        "relevant descendants and task-owned resources",
         "active agent never removes its own worktree",
         "A lane commit cannot mark its task complete",
     ):
         assert text in coordination
+    assert "skill-finishing-a-development-branch` owns Git disposition" in coordination
 
 
 def test_review_dispatch_is_topology_neutral_and_review_is_head_bound() -> None:

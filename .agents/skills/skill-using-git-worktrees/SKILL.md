@@ -50,6 +50,12 @@ Classify current state:
 
 If already in suitable isolated workspace, reuse it. Do not create nested worktree.
 
+A healthy live lane may continue only after fresh checks confirm the same task,
+repository, worktree, branch, `HEAD`, base, and ownership. A replacement runtime
+for the same task and lane may reuse the workspace only after the prior runtime
+is retired and plan, Git, and ownership state reconcile. Never reuse a workspace
+for an unrelated task or concurrent writer.
+
 ## 2. Obtain Isolation Consent
 
 Use explicit approved-plan lane authority, user instruction, or repository
@@ -107,6 +113,10 @@ Before creation confirm:
 - target path does not contain user files
 - base commit or branch is correct
 
+For plan-bound work, use the exact base commit recorded by the active plan. Do
+not create each lane from the current `origin/main` unless the plan explicitly
+requires that remote state and records the resolved SHA.
+
 Do not force, delete, prune, reset, or overwrite to make creation succeed.
 
 ## 6. Establish Workspace Identity
@@ -151,6 +161,7 @@ Provide execution skill:
 - current HEAD
 - baseline commands and results
 - preserved unrelated changes
+- expected workspace state for a continuation or recovery
 - restrictions on commit, push, merge, and cleanup
 
 For a write-capable Herdr lane, also record launched process cwd and confirm it
@@ -158,8 +169,10 @@ matches the exact worktree before writes begin.
 
 ## Cleanup Boundary
 
-This skill does not remove worktree. Cleanup requires confirmation that no live
-top-level lane process owns the path.
+This skill does not remove worktree. Cleanup requires positive confirmation that
+the associated lane, relevant descendants, and task-owned resources no longer
+use the path. Timeout, silence, missing observation, or transport failure is
+not proof of retirement.
 
 `skill-finishing-a-development-branch` owns cleanup after verified Git disposition and explicit authorization. It must use native cleanup for native-created workspace and `git worktree remove` only for manually created worktree.
 
