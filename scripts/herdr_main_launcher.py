@@ -1495,6 +1495,31 @@ def _deepagents_completion_snapshot(
             if observation_deadline_exceeded
             else "pane process-info transport timeout"
         )
+    wait_timeout = observation_timeout()
+    if wait_timeout > 0:
+        try:
+            _run(
+                [
+                    herdr,
+                    "--session",
+                    session,
+                    "pane",
+                    "wait-output",
+                    "--match",
+                    expected_marker,
+                    "--source",
+                    "recent-unwrapped",
+                    "--lines",
+                    "200",
+                    "--timeout",
+                    str(max(1, int(wait_timeout * 1000))),
+                    pane,
+                ],
+                env=env,
+                timeout=min(_HERDR_COMMAND_TIMEOUT, wait_timeout),
+            )
+        except CommandTransportTimeout:
+            observation_deadline_exceeded = observation_deadline_expired()
     try:
         timeout = observation_timeout()
         if timeout <= 0:

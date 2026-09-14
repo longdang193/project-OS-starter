@@ -2546,11 +2546,14 @@ def test_deepagents_completion_rejects_observer_error(
         if failure == "pane-read"
         else subprocess.CompletedProcess([], 0, json.dumps({"result": "COMPLETED\nPROBE_OK"}), "")
     )
-    responses = iter([
-        process_result,
-        read_result,
-    ])
-    monkeypatch.setattr(LAUNCHER, "_run", lambda *args, **kwargs: next(responses))
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "process-info" in command:
+            return process_result
+        if "wait-output" in command:
+            return subprocess.CompletedProcess(command, 1, "", "unsupported")
+        return read_result
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
 
     evidence = LAUNCHER._deepagents_completion_snapshot(
         "herdr.exe",
@@ -2626,11 +2629,15 @@ def test_deepagents_snapshot_reclassifies_transport_timeout_after_deadline(
 
     def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(command)
+        if "wait-output" in command:
+            return subprocess.CompletedProcess(command, 1, "", "unsupported")
         if crossing_command == "process-info" and "process-info" in command:
             clock[0] = 2.0
             raise LAUNCHER.CommandTransportTimeout("transport timeout")
         if "process-info" in command:
             return subprocess.CompletedProcess(command, 0, process_info, "")
+        if "read" not in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": ""}), "")
         clock[0] = 2.0
         raise LAUNCHER.CommandTransportTimeout("transport timeout")
 
@@ -2664,15 +2671,27 @@ def test_deepagents_completion_waits_for_delayed_report(
             },
         },
     })
-    responses = iter([
-        subprocess.CompletedProcess([], 0, process_info, ""),
-        subprocess.CompletedProcess([], 0, json.dumps({"result": "Running task..."}), ""),
-        subprocess.CompletedProcess([], 0, process_info, ""),
-        subprocess.CompletedProcess([], 0, json.dumps({"result": "COMPLETED\nPROBE_OK"}), ""),
-    ])
+    responses = {
+        "process-info": iter([
+            subprocess.CompletedProcess([], 0, process_info, ""),
+            subprocess.CompletedProcess([], 0, process_info, ""),
+        ]),
+        "read": iter([
+            subprocess.CompletedProcess([], 0, json.dumps({"result": "Running task..."}), ""),
+            subprocess.CompletedProcess([], 0, json.dumps({"result": "COMPLETED\nPROBE_OK"}), ""),
+        ]),
+    }
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "process-info" in command:
+            return next(responses["process-info"])
+        if "read" in command:
+            return next(responses["read"])
+        return subprocess.CompletedProcess(command, 1, "", "unsupported")
+
     clock = [0.0]
     sleeps: list[float] = []
-    monkeypatch.setattr(LAUNCHER, "_run", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr(LAUNCHER, "_run", run)
     monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: (sleeps.append(seconds), clock.__setitem__(0, clock[0] + seconds)))
 
@@ -3587,3 +3606,112 @@ def test_performance_finalization_samples_current_clock_and_unions_overlaps() ->
 
     assert performance["total_duration_ms"] == 4000.0
     assert performance["unattributed_duration_ms"] == 1000.0
+
+
+def test_deepagents_snapshot_captures_gated_pane_wait_output_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "wait-output" in command:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"result": "COMPLETED\nMARKER"}), ""
+            )
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+                "",
+            )
+        return subprocess.CompletedProcess(
+            command, 0, json.dumps({"result": "COMPLETED\nMARKER"}), ""
+        )
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=LAUNCHER.time.monotonic() + 5,
+    )
+
+    wait_command = next(command for command in calls if "wait-output" in command)
+    assert wait_command[:4] == ["herdr.exe", "--session", "session", "pane"]
+    assert "--match" in wait_command
+    assert "MARKER" in wait_command
+    assert "--timeout" in wait_command
+    assert evidence["state"] == "completed"
+
+
+def test_deepagents_snapshot_bounds_native_wait_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], object]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs.get("timeout")))
+        if "wait-output" in command:
+            raise LAUNCHER.CommandTransportTimeout("wait timeout")
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": ""}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=LAUNCHER.time.monotonic() + 0.01,
+    )
+
+    wait_call = next(item for item in calls if "wait-output" in item[0])
+    assert float(wait_call[1]) <= LAUNCHER._HERDR_COMMAND_TIMEOUT
+    assert evidence["state"] != "completed"
+
+
+def test_deepagents_snapshot_falls_back_to_pull_probe_after_wait_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "wait-output" in command:
+            return subprocess.CompletedProcess(command, 1, "", "unsupported")
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+                "",
+            )
+        return subprocess.CompletedProcess(
+            command, 0, json.dumps({"result": "COMPLETED\nMARKER"}), ""
+        )
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe", "session", "pane", env={}, expected_marker="MARKER"
+    )
+
+    assert any("wait-output" in command for command in calls)
+    assert any("read" in command for command in calls)
+    assert evidence["state"] == "completed"
+
+
+def test_deepagents_snapshot_rejects_stale_marker_output() -> None:
+    assert LAUNCHER._deepagents_task_state(
+        [], "Running task non-interactively...\nCOMPLETED\nOLD_MARKER", "MARKER"
+    ) == "no-report"
