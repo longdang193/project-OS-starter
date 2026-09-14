@@ -3642,8 +3642,8 @@ def test_deepagents_snapshot_captures_gated_pane_wait_output_command(
 
     wait_command = next(command for command in calls if "wait-output" in command)
     assert wait_command[:4] == ["herdr.exe", "--session", "session", "pane"]
-    assert "--match" in wait_command
-    assert "MARKER" in wait_command
+    assert "--regex" in wait_command
+    assert r"(?m)^MARKER$" in wait_command
     assert "--timeout" in wait_command
     assert evidence["state"] == "completed"
 
@@ -3709,6 +3709,37 @@ def test_deepagents_snapshot_falls_back_to_pull_probe_after_wait_failure(
     assert any("wait-output" in command for command in calls)
     assert any("read" in command for command in calls)
     assert evidence["state"] == "completed"
+
+
+def test_deepagents_snapshot_anchors_marker_wait_to_output_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+                "",
+            )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps({"result": "COMPLETED\nMARKER"}),
+            "",
+        )
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe", "session", "pane", env={}, expected_marker="MARKER"
+    )
+
+    wait_command = next(command for command in calls if "wait-output" in command)
+    pattern = wait_command[wait_command.index("--regex") + 1]
+    assert pattern == r"(?m)^MARKER$"
 
 
 def test_deepagents_snapshot_rejects_stale_marker_output() -> None:
