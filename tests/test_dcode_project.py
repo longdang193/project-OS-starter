@@ -218,6 +218,24 @@ def test_result_contract_parses_once_without_waiting(tmp_path: Path, monkeypatch
     assert receipt["worker_exit_code"] == 0
 
 
+def test_result_contract_rejects_receipt_from_replaced_attempt(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="exited",
+        worker_exit_code=0,
+        descendant_state="terminated",
+        role_views_state="removed",
+        recovery_required=False,
+    )
+
+    assert parse_result_receipt(result_file, "attempt-2") == {
+        "state": "unknown",
+        "detail": "receipt correlation mismatch",
+    }
+
+
 def test_result_contract_rejects_non_boolean_recovery_flag(tmp_path: Path) -> None:
     result_file = tmp_path / "result.json"
     result_file.write_text(

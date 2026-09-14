@@ -791,6 +791,47 @@ def _build_assignment_result(
     delivery_state = delivery.get("state", "unknown")
     delivery_certainty = delivery.get("certainty", "unknown")
     task_accepted = task_result.get("accepted")
+    task_state = task_result.get("state", "unknown")
+    execution_state = execution.get("state", "unknown")
+    observation_state = observation.get("state", "unknown")
+    cleanup_state = cleanup.get("state", "unknown")
+    status = legacy_values.get("status")
+    if status is None:
+        if task_state == "reported_failed":
+            status = "failed"
+        elif execution_state in {
+            "failed",
+            "start_failed",
+            "recovery_blocked",
+            "completed",
+            "running",
+        }:
+            status = execution_state
+        elif delivery_state in {"delivery_failed", "delivery_uncertain"}:
+            status = "failed" if delivery_state == "delivery_failed" else "uncertain"
+        else:
+            status = "unknown"
+    failure_kind = legacy_values.get("failure_kind")
+    if failure_kind is None:
+        if task_state == "reported_failed":
+            failure_kind = "task_report_failed"
+        elif execution_state == "start_failed":
+            failure_kind = "worker_start_failed"
+        elif execution_state == "failed":
+            failure_kind = "worker_exit"
+        elif delivery_state == "delivery_failed":
+            failure_kind = "delivery_failed"
+        elif delivery_state == "delivery_uncertain":
+            failure_kind = "delivery_uncertain"
+    if "reconciliation_required" in legacy_values:
+        reconciliation_required = bool(legacy_values["reconciliation_required"])
+    else:
+        reconciliation_required = bool(delivery.get("reconciliation_required")) or (
+            execution_state in {"unknown", "running"}
+            or observation_state in {"unknown", "timed_out"}
+            or task_state in {"unknown", "unverified"}
+            or cleanup_state in {"unknown", "preserved", "unverified"}
+        )
     assignment = {
         "agent_name": agent_name,
         "attempt_id": attempt_id,
@@ -807,16 +848,13 @@ def _build_assignment_result(
         "delivery_certainty": delivery_certainty,
         "delivery_task_sha256": legacy_values.get("delivery_task_sha256"),
         "exit_code": launcher_exit_code,
-        "failure_kind": legacy_values.get("failure_kind"),
+        "failure_kind": failure_kind,
         "grant_digest": legacy_values.get("grant_digest"),
         "phase": legacy_values.get("phase"),
         "prompt_accepted": delivery.get("prompt_accepted"),
-        "reconciliation_required": legacy_values.get(
-            "reconciliation_required",
-            delivery.get("reconciliation_required", False),
-        ),
+        "reconciliation_required": reconciliation_required,
         "session": legacy_values.get("session"),
-        "status": legacy_values.get("status", execution.get("state", "unknown")),
+        "status": status,
         "submission": delivery.get("submission"),
         "task_accepted": task_accepted,
         "task_sha256": legacy_values.get("task_sha256"),

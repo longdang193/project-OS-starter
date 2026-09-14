@@ -56,14 +56,14 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Branch: `codex/parallel-deepagents-dispatch`
 - Base commit: `c086339c08bb396d32be44a2b848b1ab473fa52c`
 - Expected workspace: dedicated implementation worktree from `c086339c08bb396d32be44a2b848b1ab473fa52c`; lead workspace preserves untracked `.playwright-mcp/` and `db/`
-- Next action: execute Task 2 result derivation and stale-attempt regression work
+- Next action: execute Task 3 lane descriptor admission checks
 - Blockers: none for drafting; implementation remains blocked while plan status is `proposed`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | implementation worktree | `codex` | none | focused baseline and contract matrix | `250 passed`; preservation snapshot recorded |
-| Task 2 | `active` | implementation worktree | `codex` | Task 1 | builder/receipt tests pass | active |
-| Task 3 | `pending` | implementation worktree | `codex` | Task 2 | admission and identity tests pass | pending |
+| Task 2 | `completed` | implementation worktree | `codex` | Task 1 | builder/receipt tests pass | `253 passed`; stale-attempt proof accepted |
+| Task 3 | `active` | implementation worktree | `codex` | Task 2 | admission and identity tests pass | active |
 | Task 4 | `pending` | implementation worktree | `codex` | Task 3 | mocked parallel lifecycle tests pass | pending |
 | Task 5 | `pending` | implementation worktree | `codex` | Task 4 | measurement and dry-run evidence | pending |
 | Task 6 | `pending` | isolated pilot worktrees | `deepagents` | Task 5 | two harmless real lanes and receipts | pending |
@@ -160,13 +160,18 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Stop for: new lifecycle schema, new `accepted: true` path, changes to runtime ownership, or failing unrelated tests.
 
 **Steps:**
-- [ ] Step 1: Add failing tests for compatibility-field agreement, preserved known facts after later errors, and late receipt rejection across attempt IDs.
-- [ ] Step 2: Make smallest shared-boundary change so structured sections remain authoritative and compatibility fields derive consistently.
-- [ ] Step 3: Verify uncertain delivery reconciles same attempt and confirmed retry uses new attempt identity.
+- [x] Step 1: Add failing tests for compatibility-field agreement, preserved known facts after later errors, and late receipt rejection across attempt IDs.
+- [x] Step 2: Make smallest shared-boundary change so structured sections remain authoritative and compatibility fields derive consistently.
+- [x] Step 3: Verify uncertain delivery reconciles same attempt and confirmed retry uses new attempt identity.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_dcode_project.py -q`
+- [x] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_dcode_project.py -q`
 - Expected: new regressions pass; no test permits launcher start or worker completion to claim task acceptance.
+
+**Accepted Evidence:**
+- `253 passed in 5.20s`.
+- Added builder regressions prove structured compatibility derivation and reconciliation on incomplete evidence.
+- Added receipt regression proves attempt A receipt cannot settle attempt B.
 
 **Exit Criteria:**
 - one lane result per attempt is internally consistent; stale receipts cannot settle replacements; observation remains explicit.

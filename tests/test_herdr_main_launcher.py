@@ -3267,6 +3267,45 @@ def test_assignment_result_builder_keeps_lifecycle_facts_independent() -> None:
     assert result["assignment"]["worker_exit_code"] is None
 
 
+def test_assignment_result_builder_derives_compatibility_from_structured_facts() -> None:
+    result = LAUNCHER._build_assignment_result(
+        dispatch_id="dispatch",
+        attempt_id="attempt",
+        agent_name="normal-main",
+        delivery={"state": "confirmed"},
+        execution={"state": "failed", "worker_exit_code": 7},
+        observation={"state": "observed"},
+        task_result={"state": "reported_failed", "accepted": False},
+        cleanup={"state": "removed"},
+        performance={"status": "measured"},
+        launcher_exit_code=2,
+    )
+
+    assignment = result["assignment"]
+    assert assignment["status"] == "failed"
+    assert assignment["failure_kind"] == "task_report_failed"
+    assert assignment["reconciliation_required"] is False
+
+
+def test_assignment_result_builder_marks_incomplete_structured_facts_for_reconciliation() -> None:
+    result = LAUNCHER._build_assignment_result(
+        dispatch_id="dispatch",
+        attempt_id="attempt",
+        agent_name="normal-main",
+        delivery={"state": "confirmed"},
+        execution={"state": "unknown"},
+        observation={"state": "timed_out"},
+        task_result={"state": "unverified", "accepted": None},
+        cleanup={"state": "unknown"},
+        performance={"status": "measured"},
+        launcher_exit_code=2,
+    )
+
+    assignment = result["assignment"]
+    assert assignment["status"] == "unknown"
+    assert assignment["reconciliation_required"] is True
+
+
 def test_performance_snapshot_uses_structured_phase_values() -> None:
     performance = LAUNCHER._new_performance_evidence()
 
