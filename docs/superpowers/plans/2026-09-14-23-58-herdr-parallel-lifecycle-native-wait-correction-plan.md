@@ -98,7 +98,7 @@ Dated completed plans remain historical evidence and are not rewritten.
 - Base commit: `c74ab34cad850d998e88f6c517e7156f5f4cd83c`
 - Expected workspace: dedicated implementation worktree from the base commit; lead workspace preserves untracked `.playwright-mcp/` and `db/`
 - Next action: none; implementation and verification complete
-- Blockers: none; local Herdr `0.9.0` exposes `agent wait`, `pane wait-output`, and socket schema methods `agent.wait`, `pane.wait_for_output`, `events.subscribe`, and `events.wait`
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
