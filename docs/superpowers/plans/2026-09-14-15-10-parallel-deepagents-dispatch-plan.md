@@ -56,15 +56,15 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Branch: `codex/parallel-deepagents-dispatch`
 - Base commit: `c086339c08bb396d32be44a2b848b1ab473fa52c`
 - Expected workspace: dedicated implementation worktree from `c086339c08bb396d32be44a2b848b1ab473fa52c`; lead workspace preserves untracked `.playwright-mcp/` and `db/`
-- Next action: execute Task 3 lane descriptor admission checks
-- Blockers: none for drafting; implementation remains blocked while plan status is `proposed`
+- Next action: complete Task 4 mocked lifecycle coordination checks
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | implementation worktree | `codex` | none | focused baseline and contract matrix | `250 passed`; preservation snapshot recorded |
 | Task 2 | `completed` | implementation worktree | `codex` | Task 1 | builder/receipt tests pass | `253 passed`; stale-attempt proof accepted |
-| Task 3 | `active` | implementation worktree | `codex` | Task 2 | admission and identity tests pass | active |
-| Task 4 | `pending` | implementation worktree | `codex` | Task 3 | mocked parallel lifecycle tests pass | pending |
+| Task 3 | `completed` | implementation worktree | `codex` | Task 2 | admission and identity tests pass | `11 passed`; atomic conflict rejection, two-lane cap, interruption admission guard |
+| Task 4 | `completed` | implementation worktree | `codex` | Task 3 | mocked parallel lifecycle tests pass | `145 passed`; barrier overlap, atomic capacity/interruption, startup failure, timeout retention, sibling preservation, tagged evidence; no coordinator verdict layer |
 | Task 5 | `pending` | implementation worktree | `codex` | Task 4 | measurement and dry-run evidence | pending |
 | Task 6 | `pending` | isolated pilot worktrees | `deepagents` | Task 5 | two harmless real lanes and receipts | pending |
 | Task 7 | `pending` | implementation/integration worktree | `codex` | Task 6 | docs update, combined-revision review, final verification | pending |
@@ -212,12 +212,12 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Stop for: missing canonical plan-ledger input, selected-pane-only discovery requirement, or need for a new durable registry.
 
 **Steps:**
-- [ ] Step 1: Define lane descriptor fields: plan task/lane ID, task text/hash, executor/profile, repo/worktree, expected base, session/pane, allowed write set, fixed shared contracts, dependency status, and mutable-resource policy.
-- [ ] Step 2: Validate separate worktrees, exclusive panes, disjoint write sets, fixed shared contracts, dependency readiness, and mutable-resource isolation; cap admitted lanes at two.
-- [ ] Step 3: Return deterministic admitted/rejected records; leave `_resolve_target_selector` responsible only for full eligible-set discovery and pane/runtime evidence.
+- [x] Step 1: Define lane descriptor fields: plan task/lane ID, task text/hash, executor/profile, repo/worktree, expected base, session/pane, allowed write set, fixed shared contracts, dependency status, and mutable-resource policy.
+- [x] Step 2: Validate separate worktrees, exclusive panes, disjoint write sets, fixed shared contracts, dependency readiness, and mutable-resource isolation; cap admitted lanes at two.
+- [x] Step 3: Return deterministic admitted/rejected records; leave `_resolve_target_selector` responsible only for full eligible-set discovery and pane/runtime evidence.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_herdr_parallel_dispatch.py -q`
+- [x] `py -3 -m pytest tests/test_herdr_parallel_dispatch.py -q` — `11 passed`
 - Expected: unsafe waves reject before launch; valid two-lane input admits exactly two lanes; single-lane behavior remains unchanged.
 
 **Exit Criteria:**
@@ -259,14 +259,14 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Stop for: need for atomic Herdr API not present, second supervisor/registry, duplicate polling loop, or cross-lane shared mutable writes.
 
 **Steps:**
-- [ ] Step 1: Add a start/release barrier test proving both workers start before either finishes; reject a third launch while two slots are occupied.
-- [ ] Step 2: Implement tagged JSONL framing for preparation output, final assignment output, child exit status, stderr diagnostics, occupied capacity, and unresolved conditions.
-- [ ] Step 3: Keep slots occupied after launcher exit, transport timeout, observation expiry, or uncertain cleanup until retirement evidence; stop admission on controller interruption.
-- [ ] Step 4: Model lane A start plus lane B launch failure, potentially live worker timeout, deferred cancellation racing with completion, and sibling preservation; never claim active worker cancellation.
-- [ ] Step 5: Derive batch `PASS`, `FAIL`, or `BLOCKED` only as a CoS consumer decision; `FAIL` requires settled lifecycle, while unresolved state yields `BLOCKED` and preserves known failure.
+- [x] Step 1: Add a start/release barrier test proving both workers start before either finishes; reject a third launch while two slots are occupied.
+- [x] Step 2: Implement tagged JSONL framing for preparation output, final assignment output, child exit status, stderr diagnostics, occupied capacity, and unresolved conditions.
+- [x] Step 3: Keep slots occupied after launcher exit, transport timeout, observation expiry, or uncertain cleanup until retirement evidence; stop admission on controller interruption.
+- [x] Step 4: Model lane A start plus lane B launch failure, potentially live worker timeout, deferred cancellation racing with completion, and sibling preservation; never claim active worker cancellation.
+- [x] Step 5: Derive batch `PASS`, `FAIL`, or `BLOCKED` only as a CoS consumer decision; `FAIL` requires settled lifecycle, while unresolved state yields `BLOCKED` and preserves known failure.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py -q`
+- [x] `py -3 -m pytest tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py -q` — `145 passed`
 - Expected: barrier proves overlap; capacity, interruption, partial-start, stale-attempt, deferred-cancellation, and mixed-verdict cases pass; no old attempt settles new attempt.
 
 **Exit Criteria:**
