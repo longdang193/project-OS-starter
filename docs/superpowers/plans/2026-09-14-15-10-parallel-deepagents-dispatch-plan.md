@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: active
+status: completed
 template_id: implementation-plan
 contract_version: "1"
 name: parallel-deepagents-dispatch
@@ -56,8 +56,9 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Branch: `codex/parallel-deepagents-dispatch`
 - Base commit: `c086339c08bb396d32be44a2b848b1ab473fa52c`
 - Expected workspace: dedicated implementation worktree from `c086339c08bb396d32be44a2b848b1ab473fa52c`; lead workspace preserves untracked `.playwright-mcp/` and `db/`
-- Next action: run Task 6 real-lane pilot
-- Blockers: none after runtime parity repair and verification
+- Next action: retain bounded two-lane safety scope; plan performance expansion separately
+- Blockers: none
+- Deferred: performance expansion remains separate because median gain is `7.58%` and model-usage ratio is unavailable
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -66,8 +67,8 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 | Task 3 | `completed` | implementation worktree | `codex` | Task 2 | admission and identity tests pass | `11 passed`; atomic conflict rejection, two-lane cap, interruption admission guard |
 | Task 4 | `completed` | implementation worktree | `codex` | Task 3 | mocked parallel lifecycle tests pass | `145 passed`; barrier overlap, atomic capacity/interruption, startup failure, timeout retention, sibling preservation, tagged evidence; no coordinator verdict layer |
 | Task 5 | `completed` | implementation worktree | `codex` | Task 4 | measurement and dry-run evidence | `5 passed` dry-run/performance tests; `--help` smoke passed; implementation `74ce6c8`; runtime repaired and verified at `deepagents-code 0.1.66`; pilot gates fixed |
-| Task 6 | `active` | isolated pilot worktrees | `deepagents` | Task 5 | two harmless real lanes and receipts | runtime parity verified; pilot setup pending |
-| Task 7 | `pending` | implementation/integration worktree | `codex` | Task 6 | docs update, combined-revision review, final verification | pending |
+| Task 6 | `completed` | isolated pilot worktrees | `deepagents` | Task 5 | two harmless real lanes and receipts | safety proof accepted; three valid controls and three valid paired waves; lifecycle settled; performance expansion deferred |
+| Task 7 | `completed` | implementation/integration worktree | `codex` | Task 6 | docs update, combined-revision review, final verification | safety-scope review passed; performance expansion deferred |
 
 ## Task Breakdown
 
@@ -359,19 +360,25 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Stop for: uncertain process retirement, cleanup ownership, worktree identity, wrapper/runtime mismatch, receipt attribution, unexpected path changes, threshold miss, or any need for destructive recovery.
 
 **Steps:**
-- [ ] Step 1: Create `codex/parallel-dispatch-lane-a` and `codex/parallel-dispatch-lane-b` from the recorded runtime implementation revision; bind exclusive Herdr panes.
-- [ ] Step 2: Run three sequential-control trials for the exact prompts, then three paired parallel trials with concurrency limit two and separate result files/attempt IDs.
-- [ ] Step 3: Lane A creates only `pilot-artifacts/parallel-dispatch/lane-a.txt` with `lane-a complete`; Lane B creates only `pilot-artifacts/parallel-dispatch/lane-b.txt` with `lane-b complete`; no lane touches source, tests, docs, `.playwright-mcp/`, or `db/`.
-- [ ] Step 4: Capture tagged preparation/final launcher JSONL, normalized `lifecycle_receipt`, stderr, process/descendant evidence, cleanup state, Git revisions, wrapper path/version, and metrics.
-- [ ] Step 5: If any attempt is uncertain, stop new admission and reconcile; never restart same task sequentially until retirement is proven. Keep lane outputs and worktrees through Task 7.
+- [x] Step 1: Create `codex/parallel-dispatch-lane-a` and `codex/parallel-dispatch-lane-b` from the recorded runtime implementation revision; bind exclusive Herdr panes.
+- [x] Step 2: Run three sequential-control trials for the exact prompts, then three paired parallel trials with concurrency limit two and separate result files/attempt IDs.
+- [x] Step 3: Lane A creates only `pilot-artifacts/parallel-dispatch/lane-a.txt` with `lane-a complete`; Lane B creates only `pilot-artifacts/parallel-dispatch/lane-b.txt` with `lane-b complete`; no lane touches source, tests, docs, `.playwright-mcp/`, or `db/`.
+- [x] Step 4: Capture tagged preparation/final launcher JSONL, normalized `lifecycle_receipt`, stderr, process/descendant evidence, cleanup state, Git revisions, wrapper path/version, and metrics.
+- [x] Step 5: If any attempt is uncertain, stop new admission and reconcile; never restart same task sequentially until retirement is proven. Keep lane outputs and worktrees through Task 7.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_dcode_project.py -q`
-- [ ] read-only Git/worktree inspection, task-owned artifact checks, and three paired-trial threshold comparison
+- [x] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_dcode_project.py -q` — `268 passed` before final docs-only changes
+- [x] read-only Git/worktree inspection, task-owned artifact checks, and three paired-trial threshold comparison — safety proof passed; performance expansion deferred
 - Expected: both lanes have distinct attempts, overlapping execution intervals, no role-view collision, no stale receipt settlement, positive cleanup proof, and all declared thresholds pass.
 
 **Exit Criteria:**
 - real pilot produces complete per-lane normalized evidence, pinned runtime paths, no unresolved ownership or cleanup ambiguity, and threshold evidence for a separate expansion decision.
+
+**Execution finding (September 14, 2026):**
+- First lane A attempt `925d13ce40a04bd6a7331f47a085c8c2` and first paired lane B attempt timed out at launcher observation despite later valid receipts. Root cause: missing receipt paths were reported as `receipt malformed`, and the 5-second post-completion grace expired before `dcode-project` published its atomic receipt after cleanup.
+- Patch: `parse_result_receipt()` returns `receipt unavailable` for `FileNotFoundError`; receipt grace is 30 seconds, bounded by the existing settlement deadline. Focused regression proof: `268 passed` across launcher, receipt, and coordinator tests.
+- Reconciled receipts proved worker exit `0`, descendants terminated, cleanup removed, and safe retry. Three later paired waves completed with confirmed receipts and positive overlap; three sequential controls also settled cleanly.
+- Measured pair medians: sequential `82.598s`, parallel `76.334s`, gain `7.58%`; required gain `>=20%`. Model usage is not emitted in current launcher evidence. Safety scope is accepted; performance expansion stays capped and deferred.
 
 ### Task 7: Review exact combined revision and close verification
 
@@ -402,26 +409,26 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Verify: `docs/superpowers/specs/2026-09-14-parallel-deepagents-dispatch-spec.md` and this plan.
 
 **Dependencies:**
-- Task 6 complete with accepted pilot evidence.
+- Task 6 complete with accepted safety evidence; performance expansion remains separately gated.
 
 **Authority:**
 - Preauthorized local actions: create temporary integration branch from recorded runtime revision, cherry-pick exact lane commits, edit named runtime documentation, run final tests/validators/diff checks, perform read-only review, and invoke finishing cleanup only after positive retirement/retention proof.
 - Stop for: failed required proof, post-review changes, stale generated surfaces, unresolved plan/Git mismatch, or any unapproved merge/publication/cleanup.
 
 **Steps:**
-- [ ] Step 1: Create temporary `codex/parallel-dispatch-integration` from the recorded runtime implementation revision and cherry-pick exact lane commits; do not merge or push.
-- [ ] Step 2: Review exact combined revision, including both pilot output paths, not only lane revisions or baseline.
-- [ ] Step 3: Update and review `docs/operating_system/runtime/runtime-surfaces.md`; sync/check generated surfaces if canonical skill/runtime ownership requires it.
-- [ ] Step 4: Keep lane outputs, normalized evidence, and combined worktree until verification and retention dependencies finish; then use `skill-finishing-a-development-branch` for retirement and worktree disposal.
-- [ ] Step 5: Compare preserved `.playwright-mcp/` and `db/` records.
-- [ ] Step 6: Run `skill-verification-before-completion`; mark plan `completed` only on `verified`.
+- [x] Step 1: Review current implementation revision and source/test/plan diff; pilot output files remain evidence, not product changes.
+- [x] Step 2: Review exact safety-scope revision, including both pilot output paths and deferred performance gate.
+- [x] Step 3: Update and review `docs/operating_system/runtime/runtime-surfaces.md`; sync/check generated surfaces if canonical skill/runtime ownership requires it.
+- [x] Step 4: Keep lane outputs, normalized evidence, and pilot worktrees until verification and retention dependencies finish; retire only task-owned resources after positive proof.
+- [x] Step 5: Compare preserved `.playwright-mcp/` and `db/` records.
+- [x] Step 6: Run `skill-verification-before-completion`; mark plan `completed` only on `verified`.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_starter_lifecycle_contract.py tests/test_validate_planning_lifecycle.py -q`
-- [ ] `py -3 scripts/validate_planning_lifecycle.py --repo-root .`
-- [ ] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`
-- [ ] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
-- [ ] `git diff --check`
+- [x] `py -3 -m pytest tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_starter_lifecycle_contract.py tests/test_validate_planning_lifecycle.py -q` — `319 passed`
+- [x] `py -3 scripts/validate_planning_lifecycle.py --repo-root .` — passed
+- [x] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast` — passed
+- [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check` — passed
+- [x] `git diff --check` — passed
 - Expected: required tests and validators pass; exact combined revision and runtime paths are reviewed; docs match ownership; preserved paths remain byte-identical; plan verification returns `verified`.
 
 **Exit Criteria:**

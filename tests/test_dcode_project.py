@@ -218,6 +218,13 @@ def test_result_contract_parses_once_without_waiting(tmp_path: Path, monkeypatch
     assert receipt["worker_exit_code"] == 0
 
 
+def test_result_contract_reports_missing_receipt_as_unavailable(tmp_path: Path) -> None:
+    assert parse_result_receipt(tmp_path / "missing.json", "attempt-1") == {
+        "state": "unknown",
+        "detail": "receipt unavailable",
+    }
+
+
 def test_result_contract_rejects_receipt_from_replaced_attempt(tmp_path: Path) -> None:
     result_file = tmp_path / "result.json"
     LAUNCHER._publish_result_receipt(
