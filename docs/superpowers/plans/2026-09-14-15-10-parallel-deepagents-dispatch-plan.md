@@ -56,8 +56,8 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Branch: `codex/parallel-deepagents-dispatch`
 - Base commit: `c086339c08bb396d32be44a2b848b1ab473fa52c`
 - Expected workspace: dedicated implementation worktree from `c086339c08bb396d32be44a2b848b1ab473fa52c`; lead workspace preserves untracked `.playwright-mcp/` and `db/`
-- Next action: complete Task 4 mocked lifecycle coordination checks
-- Blockers: none
+- Next action: restore `deepagents-code 0.1.66` parity, then run Task 6 real-lane pilot
+- Blockers: installed runtime is `deepagents-code 0.1.59`; setup pins `0.1.66`; installation/auth requires explicit approval
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
