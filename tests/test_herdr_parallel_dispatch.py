@@ -207,6 +207,153 @@ def test_run_lane_tags_child_exit_and_capacity(tmp_path: Path) -> None:
     assert result["capacity"] == "retired"
 
 
+def test_run_lane_zero_exit_without_final_assignment_stays_occupied(tmp_path: Path) -> None:
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return json.dumps({"registry_launcher": {"attempt_id": "a"}}), ""
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["unresolved"] is True
+    assert result["capacity"] == "occupied"
+
+
+@pytest.mark.parametrize(
+    ("assignment", "expected_reason"),
+    [
+        ({"attempt_id": "a", "execution": {"state": "unknown"}}, "execution"),
+        ({"attempt_id": "a", "cleanup": {"state": "unverified"}}, "cleanup"),
+        ({"attempt_id": "a", "reconciliation_required": True}, "reconciliation"),
+    ],
+)
+def test_run_lane_uncertain_final_assignment_stays_occupied(
+    tmp_path: Path,
+    assignment: dict[str, object],
+    expected_reason: str,
+) -> None:
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                "\n".join(
+                    [
+                        json.dumps({"registry_launcher": {"attempt_id": "a"}}),
+                        json.dumps({"assignment": assignment}),
+                    ]
+                ),
+                "",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["unresolved"] is True, expected_reason
+    assert result["capacity"] == "occupied"
+
+
+def test_run_lane_valid_settled_assignment_retires_capacity(tmp_path: Path) -> None:
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                + "\n"
+                + json.dumps(
+                    {
+                        "assignment": {
+                            "attempt_id": "a",
+                            "execution": {"state": "exited"},
+                            "cleanup": {"state": "removed"},
+                            "reconciliation_required": False,
+                        }
+                    }
+                ),
+                "",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["unresolved"] is False
+    assert result["capacity"] == "retired"
+
+
+def test_run_lane_rejects_unsupported_executor_before_launch(tmp_path: Path) -> None:
+    rejected = lane("a", tmp_path)
+    rejected["executor"] = "codex"
+    launched = False
+
+    def popen(*args, **kwargs):
+        nonlocal launched
+        launched = True
+        raise AssertionError("unsupported executor launched")
+
+    result = dispatcher.run_lane(rejected, popen_factory=popen)
+
+    assert result["failure_kind"] == "unsupported_executor"
+    assert result["unresolved"] is False
+    assert result["capacity"] == "retired"
+    assert launched is False
+
+
+def test_run_parallel_revalidates_mapping_admission_bypass(tmp_path: Path, monkeypatch) -> None:
+    rejected = lane("a", tmp_path)
+    rejected["executor"] = "codex"
+    launched = False
+
+    def fake_run_lane(*args, **kwargs):
+        nonlocal launched
+        launched = True
+        raise AssertionError("mapping admission bypass launched")
+
+    monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
+    result = dispatcher.run_parallel({"admitted": [rejected], "rejected": []})
+
+    assert result["admitted"] == []
+    assert result["results"] == []
+    assert result["rejected"] == [
+        {"lane_id": "a", "reason": "unsupported executor: codex"}
+    ]
+    assert launched is False
+
+
+def test_parse_launcher_records_mismatched_attempt_preserves_evidence_without_settling() -> None:
+    parsed = dispatcher.parse_launcher_records(
+        "\n".join(
+            [
+                json.dumps({"registry_launcher": {"attempt_id": "preparation"}}),
+                json.dumps(
+                    {
+                        "assignment": {
+                            "attempt_id": "foreign",
+                            "status": "completed",
+                        }
+                    }
+                ),
+            ]
+        ),
+        lane_id="a",
+    )
+
+    assert parsed["assignment"] is None
+    assert [item["tag"] for item in parsed["records"]] == [
+        "preparation",
+        "final_assignment",
+    ]
+    assert parsed["records"][1]["payload"]["attempt_id"] == "foreign"
+
+
 def test_run_parallel_interruption_stops_admission(monkeypatch, tmp_path: Path) -> None:
     stop_event = threading.Event()
     stop_event.set()

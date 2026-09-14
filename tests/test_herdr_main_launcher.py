@@ -2975,6 +2975,170 @@ def test_deepagents_completion_deadline_preserves_last_state_as_timeout(
     assert evidence["observation_deadline_exceeded"] is True
 
 
+def test_deepagents_snapshot_captures_gated_pane_wait_output_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "wait-output" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": "COMPLETED\nMARKER"}),
+                "",
+            )
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+                "",
+            )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps({"result": "COMPLETED\nMARKER"}),
+            "",
+        )
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=LAUNCHER.time.monotonic() + 5,
+    )
+
+    wait_calls = [command for command in calls if "wait-output" in command]
+    assert wait_calls
+    wait_command = wait_calls[0]
+    assert wait_command[:4] == ["herdr.exe", "--session", "session", "pane"]
+    assert "wait-output" in wait_command
+    assert "--match" in wait_command or "--regex" in wait_command
+    assert "MARKER" in wait_command
+    assert "--timeout" in wait_command
+    assert evidence["state"] == "completed"
+
+
+def test_deepagents_snapshot_bounds_native_wait_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], object]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs.get("timeout")))
+        if "wait-output" in command:
+            raise LAUNCHER.CommandTransportTimeout("wait timeout")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"process_info": {"foreground_processes": []}}}), "") if "process-info" in command else subprocess.CompletedProcess(command, 0, json.dumps({"result": ""}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=LAUNCHER.time.monotonic() + 0.01,
+    )
+
+    wait_call = next(item for item in calls if "wait-output" in item[0])
+    assert float(wait_call[1]) <= LAUNCHER._HERDR_COMMAND_TIMEOUT
+    assert evidence["state"] != "completed"
+
+
+def test_deepagents_snapshot_falls_back_to_pull_probe_after_wait_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "wait-output" in command:
+            return subprocess.CompletedProcess(command, 1, "", "unsupported")
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+                "",
+            )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps({"result": "COMPLETED\nMARKER"}),
+            "",
+        )
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+    )
+
+    assert any("wait-output" in command for command in calls)
+    assert any("pane" in command and "read" in command for command in calls)
+    assert evidence["state"] == "completed"
+
+
+def test_deepagents_snapshot_rejects_stale_marker_output() -> None:
+    evidence = LAUNCHER._deepagents_task_state(
+        [],
+        "Running task non-interactively...\nCOMPLETED\nOLD_MARKER",
+        "MARKER",
+    )
+
+    assert evidence == "no-report"
+
+
+def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    unknown = {"state": "unknown", "detail": "receipt unavailable"}
+    confirmed = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "role_views_state": "removed",
+        "recovery_required": False,
+    }
+    receipts = iter([unknown, unknown, confirmed])
+    snapshots = iter([
+        {"state": "completed", "report_present": True},
+        {"state": "completed", "report_present": True},
+    ])
+    clock = [0.0]
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_POLL_SECONDS", 0.1)
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_GRACE_SECONDS", 1.0)
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 1.0)
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
+    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", lambda *args, **kwargs: next(snapshots))
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["state"] == "completed"
+    assert evidence["lifecycle_receipt"] == confirmed
+
+
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:
     fake_profile(tmp_path, "normal", 20)
     fake_profile(tmp_path, "ui", None)
