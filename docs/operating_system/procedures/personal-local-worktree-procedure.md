@@ -194,7 +194,8 @@ An optional CoS Runtime Grant may project explicit DeepAgents `--max-turns` or
 enforced by both the native DeepAgents process and its wrapper. Herdr-mediated
 DeepAgents wall-clock grants above its 1800-second watchdog fail closed, while
 the Herdr outer watchdog remains 1800 seconds. Codex keeps native turn limits;
-numeric Codex wall-clock grants use Herdr's outer watchdog. On deadline, the
+numeric Codex wall-clock grants fail closed because no Herdr runtime owner
+enforces them. On deadline, the
 launcher closes the assigned pane, verifies executor retirement, preserves
 partial Git/filesystem state, and returns `TIMEOUT` or `BLOCKED`, never success.
 DeepAgents direct MCP projection remains default-deny unless approved selectors

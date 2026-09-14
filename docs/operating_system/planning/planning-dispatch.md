@@ -241,8 +241,8 @@ owns tactical choices inside its grant. Runtime v1 exposes only enforceable
 resource values: `turns` and `wall_clock_seconds`, plus policy authority
 `delegation.child_agents` as `deny | allow`. The default is `deny`; CoS-assigned
 MAIN AGENTS may receive `allow`, while ordinary, review, and integration lanes
-default to `deny`. Codex turns remain `native`;
-numeric Codex wall-clock values use the Herdr outer watchdog. DeepAgents may
+default to `deny`. Codex turns remain `native`; numeric Codex wall-clock values
+fail closed because no Herdr runtime owner enforces them. DeepAgents may
 use native or explicit numeric values for both fields. The launcher projects
 child-agent authority into the bounded task brief for the assigned MAIN AGENT.
 Delegation and parallelism remain policy-level autonomy; Herdr records the
@@ -252,6 +252,6 @@ DeepAgents direct MCP projection remains default-deny. Runtime Tool Resolution
 owns capability requirements and the adapter resolves them to concrete
 executor selectors. Concrete selectors belong in launch evidence, not a new
 durable Project-OS registry. Strict requests unsupported by an executor return
-`BLOCKED`; prompt wording is not runtime enforcement. A Codex watchdog timeout
-must close the assigned pane, verify no foreground executor remains, preserve
+`BLOCKED`; prompt wording is not runtime enforcement. A supported runtime
+timeout must close the assigned pane, verify no foreground executor remains, preserve
 partial Git/filesystem state, and report `TIMEOUT` or `BLOCKED`, never success.

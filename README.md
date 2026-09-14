@@ -101,11 +101,13 @@ those lanes only when their Runtime Grant includes
 `delegation.child_agents: allow`. Sub-agents remain subordinate and may not
 spawn peer MAIN AGENTS or activate CoS. Review and integration remain
 Codex-only.
-Herdr controller visibility is pull-based: use `agent get`/`agent read` for
-Codex and `pane process-info`/`pane read` for DeepAgents. Tura uses
-`project-delegate` outside the Herdr main-lane path. Missing or unchanged output is
-`unknown` or `stuck_suspected`, not completion; no observer daemon, heartbeat
-store, automatic retry, or raw-output ledger exists.
+Herdr controller visibility uses bounded pull probes, with `pane wait-output`
+available for DeepAgents marker observation before `pane process-info`/`pane read`.
+Codex uses `agent get`/`agent read`; `agent wait` remains a documented Herdr
+capability, not current launcher integration. Tura uses `project-delegate`
+outside the Herdr main-lane path. Missing or unchanged output is `unknown` or
+`stuck_suspected`, not completion; no observer daemon, heartbeat store, automatic
+retry, or raw-output ledger exists.
 Before consumer local dispatch, run shared Project OS contract validation with
 `py -B "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast`.
 Factory maintainers additionally run

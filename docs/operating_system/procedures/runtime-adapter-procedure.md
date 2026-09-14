@@ -81,10 +81,12 @@ does not grant MCP tool access.
 
 ## Herdr Observation
 
-Controller inspection uses existing Herdr pull commands, not a new supervisor
-or runtime ledger. For Codex, inspect `agent get` and `agent read`; for
-DeepAgents, inspect `pane process-info` and `pane read`. Tura remains outside
-this Herdr launcher path and uses `project-delegate`. Record executor, session,
+Controller inspection uses bounded Herdr waits plus existing pull commands, not a
+new supervisor or runtime ledger. For DeepAgents, use `pane wait-output` for
+marker observation, then inspect `pane process-info` and `pane read`; for Codex,
+inspect `agent get` and `agent read`. `agent wait` remains a documented Herdr
+capability, not current launcher integration. Tura remains outside this Herdr
+launcher path and uses `project-delegate`. Record executor, session,
 pane, agent identity, task hash, state, and
 evidence source; keep state `unknown` when evidence is missing or stale.
 Treat `pane read` and `agent read` output as disposable probe data: metadata-only
@@ -103,9 +105,9 @@ candidate rejection or incomplete discovery remains observable as `blocked` or
 exact/`auto` selectors fail closed. `HERDR_ENV` is not a CoS dispatch gate and
 is removed from launcher child environments.
 
-Numeric Codex wall-clock grants fail closed until a named runtime owner can
-enforce interruption and cleanup. Herdr may record requested values, but it
-does not claim numeric wall-clock enforcement without that owner and proof.
+Numeric Codex wall-clock grants fail closed. Use `native` until a named runtime
+owner can enforce interruption and cleanup; Herdr does not claim numeric
+wall-clock enforcement without that owner and proof.
 
 ## Delivery Reconciliation
 

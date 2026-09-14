@@ -94,11 +94,18 @@ targets:
 | What does dry-run prove? | Main dry-run emits resolved JSON and returns before launch. | `scripts/herdr_main_launcher.py`, `tests/test_herdr_main_launcher.py` | high | Dry-run proves resolution only, not worker concurrency or cleanup. |
 | Who owns durable coordination? | Plan owns task/dependency/acceptance state; Git owns workspace and changes; runtime state is not recovery truth. | `docs/operating_system/rules/git-tracked-coordination-rule.md` | high | Batch aggregation remains a derived view over plan and lane evidence. |
 | Does Herdr expose atomic correlated delivery? | Current APIs provide process/pane observations and prompt operations, but no proven atomic attempt/pane/process-generation conditional delivery primitive. | reviewed verdicts and current launcher code | medium | Do not assume stronger delivery semantics; retain unknown and reconciliation paths. |
+| What do native waits prove? | `pane wait-output` provides a bounded DeepAgents marker-observation signal before pull-based process and output proof; `agent wait` is a documented capability, not current launcher integration. | Herdr capability evidence and launcher behavior | high | Wait success or timeout never proves delivery, acceptance, cleanup, or safe retry. |
 
 ### Coordination Interface
 
 The pilot uses one foreground CoS lead controller, not a new daemon or durable
 registry.
+
+Native waits are bounded observation signals only. Current launcher integration
+uses `pane wait-output` for DeepAgents marker observation, then retains receipt,
+process/descendant, pane, cleanup, and reconciliation checks. `agent wait` remains
+documented as a Herdr capability but is not wired into the launcher; CoS retains
+final `PASS | FAIL | BLOCKED` acceptance authority.
 
 | Interface item | Contract |
 |---|---|
