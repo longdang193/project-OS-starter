@@ -289,6 +289,79 @@ def test_run_lane_valid_settled_assignment_retires_capacity(tmp_path: Path) -> N
     assert result["capacity"] == "retired"
 
 
+def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
+    tmp_path: Path,
+) -> None:
+    class CompletedProcess:
+        returncode = 2
+
+        def communicate(self, *, timeout):
+            return (
+                "\n".join(
+                    [
+                        json.dumps({"registry_launcher": {"attempt_id": "a"}}),
+                        json.dumps(
+                            {
+                                "assignment": {
+                                    "attempt_id": "a",
+                                    "execution": {
+                                        "state": "exited",
+                                        "descendant_state": "terminated",
+                                    },
+                                    "task_result": {"state": "unverified", "accepted": None},
+                                    "cleanup": {"state": "removed"},
+                                    "reconciliation_required": True,
+                                }
+                            }
+                        ),
+                    ]
+                ),
+                "",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["unresolved"] is True
+    assert result["capacity"] == "retired"
+
+
+def test_run_lane_malformed_evidence_keeps_capacity_occupied(tmp_path: Path) -> None:
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                "\n".join(
+                    [
+                        json.dumps({"registry_launcher": {"attempt_id": "a"}}),
+                        json.dumps(
+                            {
+                                "assignment": {
+                                    "attempt_id": "a",
+                                    "execution": {"state": "exited"},
+                                    "cleanup": {"state": "removed"},
+                                    "reconciliation_required": False,
+                                }
+                            }
+                        ),
+                        "not-json",
+                    ]
+                ),
+                "",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["unresolved"] is True
+    assert result["capacity"] == "occupied"
+
+
 def test_run_lane_rejects_unsupported_executor_before_launch(tmp_path: Path) -> None:
     rejected = lane("a", tmp_path)
     rejected["executor"] = "codex"

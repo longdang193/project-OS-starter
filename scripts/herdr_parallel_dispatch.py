@@ -100,6 +100,9 @@ def _admit_lanes(
         if missing:
             rejected.append(_reject(lane, f"missing fields: {', '.join(missing)}"))
             continue
+        if lane["executor"] != "deepagents":
+            rejected.append(_reject(lane, f"unsupported executor: {lane['executor']}"))
+            continue
         if lane_id in seen_ids:
             rejected.append(_reject(lane, "duplicate lane ID"))
             continue
@@ -218,7 +221,7 @@ def parse_launcher_records(
     records: list[dict[str, Any]] = []
     malformed: list[str] = []
     preparation: dict[str, Any] | None = None
-    assignment: dict[str, Any] | None = None
+    candidate_assignment: dict[str, Any] | None = None
     for line in lines:
         text = line.strip()
         if not text:
@@ -234,13 +237,24 @@ def parse_launcher_records(
         record = dict(record)
         record_lane_id = lane_id or str(record.get("lane_id", ""))
         if "assignment" in record and isinstance(record["assignment"], Mapping):
-            assignment = dict(record["assignment"])
-            records.append(_tagged(record_lane_id, "final_assignment", assignment))
+            candidate_assignment = dict(record["assignment"])
+            records.append(_tagged(record_lane_id, "final_assignment", candidate_assignment))
         elif "registry_launcher" in record:
             preparation = record
             records.append(_tagged(record_lane_id, "preparation", record))
         else:
             records.append(_tagged(record_lane_id, "launcher_record", record))
+
+    preparation_attempt_id = None
+    if preparation is not None and isinstance(preparation.get("registry_launcher"), Mapping):
+        preparation_attempt_id = preparation["registry_launcher"].get("attempt_id")
+    assignment = None
+    if (
+        candidate_assignment is not None
+        and preparation_attempt_id is not None
+        and candidate_assignment.get("attempt_id") == preparation_attempt_id
+    ):
+        assignment = candidate_assignment
     return {
         "preparation": preparation,
         "assignment": assignment,
@@ -265,6 +279,17 @@ def run_lane(
         python_executable=python_executable,
         launcher_path=launcher_path,
     )
+    if lane.get("executor") != "deepagents":
+        return {
+            "lane_id": lane_id,
+            "command": command,
+            "exit_code": None,
+            "records": [],
+            "stderr": "",
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "unsupported_executor",
+        }
     try:
         process = popen_factory(
             command,
@@ -304,17 +329,43 @@ def run_lane(
     records.append(_tagged(lane_id, "child_exit", {"exit_code": process.returncode}))
     if stderr:
         records.append(_tagged(lane_id, "stderr", {"text": stderr}))
-    unresolved = bool(parsed["assignment"] is None and process.returncode != 0)
-    records.append(
-        _tagged(
-            lane_id,
-            "capacity",
-            {"state": "occupied" if unresolved else "retired"},
+
+    def classify(assignment: Mapping[str, Any] | None) -> tuple[str, bool, str]:
+        if not isinstance(assignment, Mapping):
+            return "occupied", True, "missing final assignment"
+        execution = assignment.get("execution")
+        cleanup = assignment.get("cleanup")
+        descendant_state = execution.get("descendant_state") if isinstance(execution, Mapping) else None
+        resource_settled = (
+            isinstance(execution, Mapping)
+            and execution.get("state") in {"exited", "completed", "failed", "start_failed"}
+            and descendant_state in {None, "terminated", "not_started"}
+            and isinstance(cleanup, Mapping)
+            and cleanup.get("state") == "removed"
+            and cleanup.get("recovery_required") is not True
         )
-    )
+        if not resource_settled:
+            return "occupied", True, "execution or cleanup unsettled"
+        if assignment.get("reconciliation_required") is True:
+            return "retired", True, "task result unresolved"
+        task_result = assignment.get("task_result")
+        task_uncertain = isinstance(task_result, Mapping) and (
+            task_result.get("accepted") is None
+            or task_result.get("state") in {"unknown", "running", "preserved", "unverified"}
+            or task_result.get("status") in {"unknown", "running", "preserved", "unverified"}
+        )
+        if task_uncertain:
+            return "retired", True, "task result unresolved"
+        return "retired", False, "settled"
+
+    if parsed["malformed"]:
+        capacity, unresolved, unresolved_reason = "occupied", True, "malformed launcher evidence"
+    else:
+        capacity, unresolved, unresolved_reason = classify(parsed["assignment"])
+    records.append(_tagged(lane_id, "capacity", {"state": capacity}))
     if unresolved:
-        records.append(_tagged(lane_id, "unresolved", {"reason": "missing final assignment"}))
-    return {
+        records.append(_tagged(lane_id, "unresolved", {"reason": unresolved_reason}))
+    result = {
         "lane_id": lane_id,
         "command": command,
         "exit_code": process.returncode,
@@ -324,8 +375,13 @@ def run_lane(
         "malformed": parsed["malformed"],
         "stderr": stderr or "",
         "unresolved": unresolved,
-        "capacity": "occupied" if unresolved else "retired",
+        "capacity": capacity,
     }
+    if process.returncode:
+        result["failure_kind"] = "command_exit"
+    elif unresolved and unresolved_reason == "task result unresolved":
+        result["failure_kind"] = "task_result_unresolved"
+    return result
 
 
 def load_lane_descriptors_from_items(
@@ -350,7 +406,11 @@ def run_parallel(
     if isinstance(source, (str, os.PathLike)):
         admission = load_lane_descriptors(source, max_concurrency=max_concurrency)
     elif isinstance(source, Mapping) and "admitted" in source:
-        admission = source
+        admitted = source["admitted"]
+        if not isinstance(admitted, list):
+            raise ValueError("admitted lanes must be a list")
+        admission = _admit_lanes(admitted, max_concurrency=max_concurrency)
+        admission["rejected"] = list(source.get("rejected", [])) + admission["rejected"]
     else:
         admission = load_lane_descriptors_from_items(source, max_concurrency=max_concurrency)
 
