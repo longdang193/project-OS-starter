@@ -203,8 +203,9 @@ def test_run_lane_tags_child_exit_and_capacity(tmp_path: Path) -> None:
         "final_assignment",
         "child_exit",
         "capacity",
+        "unresolved",
     ]
-    assert result["capacity"] == "retired"
+    assert result["capacity"] == "occupied"
 
 
 def test_run_lane_zero_exit_without_final_assignment_stays_occupied(tmp_path: Path) -> None:
@@ -445,3 +446,42 @@ def test_run_parallel_interruption_stops_admission(monkeypatch, tmp_path: Path) 
     assert result["interrupted"] is True
     assert launched == []
     assert result["results"] == []
+
+
+def test_run_lane_zero_exit_without_final_assignment_stays_unresolved(tmp_path: Path) -> None:
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (json.dumps({"registry_launcher": {"attempt_id": "a"}}), "")
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["unresolved"] is True
+    assert result["capacity"] == "occupied"
+
+
+def test_run_lane_final_assignment_attempt_mismatch_preserves_evidence(tmp_path: Path) -> None:
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                json.dumps({"registry_launcher": {"attempt_id": "prep"}})
+                + "\n"
+                + json.dumps({"assignment": {"attempt_id": "final", "status": "completed"}}),
+                "",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["records"][0]["tag"] == "preparation"
+    assert result["records"][1]["tag"] == "final_assignment"
+    assert result["capacity"] == "occupied"
+    assert result["unresolved"] is True
