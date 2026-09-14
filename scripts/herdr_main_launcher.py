@@ -421,15 +421,13 @@ def _herdr_pane(
     foreground = process_info["foreground_processes"]
     if not isinstance(foreground, list):
         raise TargetCandidateRejected("Herdr pane process information is invalid.")
-    shell_names = (
-        _DEEPAGENTS_SHELL_PROCESS_NAMES
-        if executor == "deepagents"
-        else _SHELL_PROCESS_NAMES
-    )
+    shell_names = _shell_process_names(executor)
     conflicting: list[str] = []
-    for process in foreground:
-        if not isinstance(process, dict):
-            raise TargetCandidateRejected("Herdr pane process information is invalid.")
+    try:
+        processes = _process_records(foreground, require_pid=False)
+    except LaunchBlocked as exc:
+        raise TargetCandidateRejected(str(exc)) from exc
+    for process in processes:
         process_name = str(process.get("name", "unknown"))
         if process_name.lower() not in shell_names:
             conflicting.append(process_name)
@@ -956,6 +954,8 @@ def _confirm_codex_start(
     *,
     env: dict[str, str],
     before_process_ids: set[int],
+    expected_codex_executable: str,
+    expected_cwd: Path,
 ) -> dict[str, Any]:
     try:
         agent_payload = _json_command(
@@ -977,17 +977,22 @@ def _confirm_codex_start(
         process_info = _result(process_payload, "process_info")
         if not isinstance(process_info, dict):
             raise LaunchBlocked("Codex process information is invalid.")
-        process_ids = _process_ids(
-            process_info.get("foreground_processes"),
-            require_non_shell=True,
-        )
+        processes = _process_records(process_info.get("foreground_processes"))
+        process_ids = _process_ids(processes, require_non_shell=True)
     except (CommandTransportTimeout, LaunchBlocked, json.JSONDecodeError) as exc:
         if isinstance(exc, LaunchBlocked) and str(exc).startswith("Codex "):
             raise
         raise LaunchBlocked("Codex process is not running before prompt delivery.") from exc
-    if not process_ids - before_process_ids:
+    owned_process_ids = {
+        int(process["pid"])
+        for process in processes
+        if int(process["pid"]) not in before_process_ids
+        and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+        and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+    }
+    if not owned_process_ids:
         raise LaunchBlocked("Codex process ownership is unconfirmed before prompt delivery.")
-    return {"agent_status": agent_status, "process_ids": sorted(process_ids)}
+    return {"agent_status": agent_status, "process_ids": sorted(owned_process_ids)}
 
 
 def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
@@ -1115,6 +1120,8 @@ def _reconcile_failed_codex_start(
     *,
     env: dict[str, str],
     before_process_ids: set[int] | None = None,
+    expected_codex_executable: str | None = None,
+    expected_cwd: Path | None = None,
 ) -> dict[str, Any]:
     try:
         panes = _result(
@@ -1140,7 +1147,8 @@ def _reconcile_failed_codex_start(
         foreground = process_info.get("foreground_processes") if isinstance(process_info, dict) else None
         if not isinstance(foreground, list):
             return {"state": "uncertain", "cleanup": None, "detail": "invalid process evidence"}
-        process_ids = _process_ids(foreground, require_non_shell=False)
+        processes = _process_records(foreground)
+        process_ids = _process_ids(processes, require_non_shell=False)
         if not process_ids:
             return {"state": "absent", "cleanup": None, "process_ids": []}
         if before_process_ids is None or not (process_ids - before_process_ids):
@@ -1149,6 +1157,27 @@ def _reconcile_failed_codex_start(
                 "cleanup": None,
                 "process_ids": sorted(process_ids),
                 "detail": "no new process proves failed-attempt ownership",
+            }
+        if expected_codex_executable is None or expected_cwd is None:
+            return {
+                "state": "uncertain",
+                "cleanup": None,
+                "process_ids": sorted(process_ids),
+                "detail": "Codex identity evidence is unavailable",
+            }
+        owned_processes = [
+            process
+            for process in processes
+            if int(process["pid"]) not in before_process_ids
+            and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+            and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+        ]
+        if not owned_processes:
+            return {
+                "state": "uncertain",
+                "cleanup": None,
+                "process_ids": sorted(process_ids),
+                "detail": "no new process proves failed-attempt Codex ownership",
             }
         if selected.get("agent") != agent_name:
             return {
@@ -1256,30 +1285,70 @@ def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
     return requested if isinstance(requested, int) else None
 
 
-def _process_ids(processes: Any, *, require_non_shell: bool) -> set[int]:
-    if not isinstance(processes, list) or not processes:
-        raise LaunchBlocked("termination verification returned empty process information")
-    process_ids: set[int] = set()
+def _shell_process_names(executor: str) -> set[str]:
+    return _DEEPAGENTS_SHELL_PROCESS_NAMES if executor == "deepagents" else _SHELL_PROCESS_NAMES
+
+
+def _process_records(processes: Any, *, require_pid: bool = True) -> list[dict[str, Any]]:
+    if not isinstance(processes, list):
+        raise LaunchBlocked("process information is not an array")
+    records: list[dict[str, Any]] = []
 
     def collect(process: Any) -> None:
         if not isinstance(process, dict):
-            raise LaunchBlocked("termination verification returned invalid process information")
+            raise LaunchBlocked("process information contains invalid process data")
         pid = process.get("pid")
-        if not isinstance(pid, int) or pid <= 0:
-            raise LaunchBlocked("termination verification returned process without pid")
-        if str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES:
-            process_ids.add(pid)
+        if require_pid and (not isinstance(pid, int) or pid <= 0):
+            raise LaunchBlocked("process information contains process without pid")
         children = process.get("children", [])
         if not isinstance(children, list):
-            raise LaunchBlocked("termination verification returned invalid child processes")
+            raise LaunchBlocked("process information contains invalid child processes")
+        records.append(process)
         for child in children:
             collect(child)
 
     for process in processes:
         collect(process)
+    return records
+
+
+def _process_ids(
+    processes: Any,
+    *,
+    require_non_shell: bool,
+    shell_names: set[str] | None = None,
+) -> set[int]:
+    records = _process_records(processes)
+    if not records:
+        raise LaunchBlocked("termination verification returned empty process information")
+    shell_names = shell_names or _SHELL_PROCESS_NAMES
+    process_ids: set[int] = set()
+    process_ids.update(
+        int(process["pid"])
+        for process in records
+        if str(process.get("name", "")).lower() not in shell_names
+    )
     if require_non_shell and not process_ids:
         raise LaunchBlocked("termination verification found no launch-owned process")
     return process_ids
+
+
+def _matches_codex_process(
+    process: dict[str, Any],
+    expected_executable: str,
+    expected_cwd: Path,
+) -> bool:
+    expected_name = Path(expected_executable).name.lower()
+    executable_match = any(
+        value and Path(str(value)).name.lower() == expected_name
+        for value in (process.get("argv0"), process.get("name"))
+    )
+    process_cwd = process.get("cwd")
+    return bool(
+        executable_match
+        and isinstance(process_cwd, str)
+        and Path(process_cwd).resolve() == expected_cwd.resolve()
+    )
 
 
 def _process_ids_alive(process_ids: set[int]) -> set[int]:
@@ -1467,24 +1536,45 @@ def _deepagents_completion_evidence(
     attempt_id: str | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
-    deadline = started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS
-    receipt_deadline = deadline + _DEEPAGENTS_RECEIPT_GRACE_SECONDS
+    observation_deadline = started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+    settlement_deadline = observation_deadline + _DEEPAGENTS_RECEIPT_GRACE_SECONDS
     evidence: dict[str, Any] | None = None
     receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+    terminal_observed_at: float | None = None
 
     def wait_for_receipt() -> dict[str, Any]:
         nonlocal receipt
         while receipt.get("state") != "confirmed":
-            remaining = receipt_deadline - time.monotonic()
+            terminal_deadline = (
+                min(terminal_observed_at + _DEEPAGENTS_RECEIPT_GRACE_SECONDS, settlement_deadline)
+                if terminal_observed_at is not None
+                else settlement_deadline
+            )
+            remaining = terminal_deadline - time.monotonic()
             if remaining <= 0:
                 return receipt
             time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, remaining))
+            if time.monotonic() >= terminal_deadline:
+                return receipt
             receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
         return receipt
 
     while True:
         if receipt.get("state") == "confirmed":
-            snapshot_deadline = deadline if time.monotonic() < deadline else None
+            if time.monotonic() >= settlement_deadline:
+                if evidence is None:
+                    evidence = {
+                        "state": "unknown",
+                        "report_present": False,
+                        "observation_error": "settlement deadline exceeded",
+                    }
+                evidence["lifecycle_receipt"] = receipt
+                return evidence
+            snapshot_deadline = (
+                observation_deadline
+                if time.monotonic() < observation_deadline
+                else settlement_deadline
+            )
             evidence = _deepagents_completion_snapshot(
                 herdr,
                 session,
@@ -1501,35 +1591,36 @@ def _deepagents_completion_evidence(
             pane,
             env=env,
             expected_marker=expected_marker,
-            deadline=deadline,
+            deadline=observation_deadline,
         )
         if evidence["state"] in {"completed", "failed"}:
+            terminal_observed_at = time.monotonic()
             if receipt_file is None:
                 return evidence
             receipt = wait_for_receipt()
-            if receipt.get("state") == "confirmed" and time.monotonic() >= deadline:
+            if receipt.get("state") == "confirmed" and time.monotonic() < settlement_deadline:
                 evidence = _deepagents_completion_snapshot(
                     herdr,
                     session,
                     pane,
                     env=env,
                     expected_marker=expected_marker,
-                    deadline=None,
+                    deadline=settlement_deadline,
                 )
             evidence["lifecycle_receipt"] = receipt
             return evidence
-        remaining = deadline - time.monotonic()
+        remaining = observation_deadline - time.monotonic()
         if remaining <= 0:
             if receipt_file is not None:
                 receipt = wait_for_receipt()
-                if receipt.get("state") == "confirmed":
+                if receipt.get("state") == "confirmed" and time.monotonic() < settlement_deadline:
                     evidence = _deepagents_completion_snapshot(
                         herdr,
                         session,
                         pane,
                         env=env,
                         expected_marker=expected_marker,
-                        deadline=None,
+                        deadline=settlement_deadline,
                     )
                     evidence["lifecycle_receipt"] = receipt
                     return evidence
@@ -1664,7 +1755,8 @@ def _terminate_codex_lane(
         }
     foreground = process_info.get("foreground_processes")
     try:
-        after_ids = _process_ids(foreground, require_non_shell=False)
+        after_processes = _process_records(foreground)
+        after_ids = _process_ids(after_processes, require_non_shell=False)
     except LaunchBlocked as exc:
         return {
             "requested": True,
@@ -1672,11 +1764,10 @@ def _terminate_codex_lane(
             "verified": False,
             "detail": str(exc),
         }
-    shell_names = _SHELL_PROCESS_NAMES
     remaining = [
         str(process.get("name", "unknown"))
-        for process in foreground
-        if str(process.get("name", "")).lower() not in shell_names
+        for process in after_processes
+        if str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
     ]
     return {
         "requested": True,
@@ -1684,6 +1775,7 @@ def _terminate_codex_lane(
         "verified": not remaining and not (before_ids & after_ids),
         "state": "shell-only" if not remaining else "processes-remain",
         "remaining_foreground_processes": remaining,
+        "remaining_processes": remaining,
         "remaining_process_ids": sorted(before_ids & after_ids),
     }
 
@@ -1850,6 +1942,7 @@ def resolve_launch(
         "git": git,
             "herdr": {
             "executable": herdr,
+            "codex_executable": codex,
             "version": _version(herdr, env=environment),
             "session": session,
             "pane": pane,
@@ -1941,26 +2034,86 @@ def _main_body(args: argparse.Namespace) -> int:
     invocation_started = time.monotonic()
     dispatch_id = uuid.uuid4().hex
     preparation_performance = _new_performance_evidence()
+    attempt_context: dict[str, Any] = {
+        "attempt_id": None,
+        "agent_name": args.name or f"{args.profile}-main",
+        "session": None,
+        "pane": None,
+        "started": False,
+        "delivery": None,
+        "execution": None,
+        "observation": None,
+        "task_result": None,
+        "cleanup": None,
+        "reconciliation_required": False,
+        "task_sha256": None,
+        "delivery_task_sha256": None,
+        "grant_digest": None,
+    }
 
     def emit_failure(message: str, resolution: dict[str, Any] | None = None) -> int:
+        started = attempt_context["started"] is True
+        current_attempt_id = attempt_context.get("attempt_id")
+        current_agent_name = attempt_context.get("agent_name")
+        has_attempt = isinstance(current_attempt_id, str) and bool(current_attempt_id)
+        delivery = attempt_context.get("delivery")
+        execution = attempt_context.get("execution")
+        observation = attempt_context.get("observation")
+        task_result = attempt_context.get("task_result")
+        cleanup = attempt_context.get("cleanup")
+        if not isinstance(delivery, dict):
+            delivery = {"state": "not_attempted", "certainty": "unknown"}
+        if not isinstance(execution, dict):
+            execution = (
+                {"state": "unknown", "worker_exit_code": None}
+                if started
+                else {"state": "not_started", "worker_exit_code": None}
+            )
+        if not isinstance(observation, dict):
+            observation = {"state": "unknown" if started else "not_attempted"}
+        if not isinstance(task_result, dict):
+            task_result = (
+                {"state": "unverified", "accepted": None}
+                if started
+                else {"state": "not_attempted", "accepted": False}
+            )
+        if not isinstance(cleanup, dict):
+            cleanup = {"state": "unknown" if started else "not_attempted"}
         phases = preparation_performance.get("phase_durations_ms", {})
         if isinstance(phases, dict):
             for phase in phases.values():
                 if isinstance(phase, dict) and phase.get("status") == "not_attempted":
                     phase["status"] = "unavailable"
         performance = _finalize_performance(preparation_performance, invocation_started)
+        legacy = {
+            "failure_kind": message,
+            "status": "blocked",
+            "reconciliation_required": (
+                bool(attempt_context.get("reconciliation_required"))
+                if started
+                else False
+            ),
+        }
+        if isinstance(attempt_context.get("session"), str):
+            legacy["session"] = attempt_context["session"]
+        if isinstance(attempt_context.get("task_sha256"), str):
+            legacy["task_sha256"] = attempt_context["task_sha256"]
+        if isinstance(attempt_context.get("delivery_task_sha256"), str):
+            legacy["delivery_task_sha256"] = attempt_context["delivery_task_sha256"]
+        if isinstance(attempt_context.get("grant_digest"), str):
+            legacy["grant_digest"] = attempt_context["grant_digest"]
         result = _build_assignment_result(
             dispatch_id=dispatch_id,
-            attempt_id=uuid.uuid4().hex,
-            agent_name=args.name or f"{args.profile}-main",
-            delivery={"state": "not_attempted", "certainty": "unknown"},
-            execution={"state": "not_started", "worker_exit_code": None},
-            observation={"state": "not_attempted"},
-            task_result={"state": "not_attempted", "accepted": False},
-            cleanup={"state": "not_attempted"},
+            attempt_id=(current_attempt_id if has_attempt else uuid.uuid4().hex),
+            agent_name=(current_agent_name if isinstance(current_agent_name, str) else args.profile + "-main"),
+            delivery=delivery,
+            execution=execution,
+            observation=observation,
+            task_result=task_result,
+            cleanup=cleanup,
             performance=performance,
             launcher_exit_code=2,
-            legacy={"failure_kind": message, "status": "blocked"},
+            legacy=legacy,
         )
         if resolution is not None:
             result["target_resolution"] = resolution
@@ -1984,6 +2137,12 @@ def _main_body(args: argparse.Namespace) -> int:
             codex_home=args.codex_home,
         )
         attempt_id = uuid.uuid4().hex
+        attempt_context.update(
+            {
+                "attempt_id": attempt_id,
+                "agent_name": evidence.get("herdr", {}).get("agent_name", args.profile + "-main"),
+            }
+        )
         registry_evidence = evidence.setdefault("registry_launcher", {})
         observation_evidence = evidence.setdefault("observation", {})
         if not isinstance(registry_evidence, dict) or not isinstance(observation_evidence, dict):
@@ -2119,6 +2278,20 @@ def _main_body(args: argparse.Namespace) -> int:
                 pane_run_duration_ms=pane_run_duration_ms,
             )
             _finalize_performance(performance_evidence, invocation_started)
+            attempt_context.update(
+                {
+                    "attempt_id": result["assignment"]["attempt_id"],
+                    "agent_name": result["assignment"]["agent_name"],
+                    "delivery": delivery,
+                    "execution": execution,
+                    "observation": observation,
+                    "task_result": task_result,
+                    "cleanup": cleanup,
+                    "reconciliation_required": result["assignment"].get(
+                        "reconciliation_required", False
+                    ),
+                }
+            )
             return result
 
         registry_evidence["attempt_id"] = attempt_id
@@ -2146,6 +2319,15 @@ def _main_body(args: argparse.Namespace) -> int:
             assignment_task_sha256,
         )
         grant_digest = registry_launcher.get("grant_digest")
+        attempt_context.update(
+            {
+                "session": resolved_session,
+                "pane": resolved_pane,
+                "task_sha256": assignment_task_sha256,
+                "delivery_task_sha256": delivery_task_sha256,
+                "grant_digest": grant_digest,
+            }
+        )
         if args.executor == "codex":
             codex_evidence = evidence.get("codex")
             if not isinstance(codex_evidence, dict) or not codex_evidence.get("codex_home"):
@@ -2194,6 +2376,16 @@ def _main_body(args: argparse.Namespace) -> int:
                     }
                 }), sort_keys=True))
                 return 2
+            attempt_context.update(
+                {
+                    "started": result.returncode == 0,
+                    "attempt_id": attempt_id,
+                    "agent_name": evidence["herdr"]["agent_name"],
+                    "session": resolved_session,
+                    "pane": resolved_pane,
+                    "reconciliation_required": result.returncode == 0,
+                }
+            )
             if not (
                 args.executor == "codex"
                 and args.name is None
@@ -2210,6 +2402,8 @@ def _main_body(args: argparse.Namespace) -> int:
                 str(evidence["herdr"]["agent_name"]),
                 env=environment,
                 before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
+                expected_codex_executable=str(evidence["herdr"].get("codex_executable") or "codex"),
+                expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
             )
             record_phase("retirement", retirement_started, attempt_id=attempt_id)
             registry_launcher["failed_start_reconciliation"] = reconciliation
@@ -2279,6 +2473,19 @@ def _main_body(args: argparse.Namespace) -> int:
             )
             agent_name = _unique_agent_name(str(evidence["herdr"]["agent_name"]))
             attempt_id = uuid.uuid4().hex
+            attempt_context.update(
+                {
+                    "attempt_id": attempt_id,
+                    "agent_name": agent_name,
+                    "started": False,
+                    "delivery": None,
+                    "execution": None,
+                    "observation": None,
+                    "task_result": None,
+                    "cleanup": None,
+                    "reconciliation_required": False,
+                }
+            )
             evidence["registry_launcher"]["attempt_id"] = attempt_id
             evidence["observation"]["attempt_id"] = attempt_id
             command = command.copy()
@@ -2323,6 +2530,8 @@ def _main_body(args: argparse.Namespace) -> int:
                     agent_name,
                     env=environment,
                     before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
+                    expected_codex_executable=str(evidence["herdr"].get("codex_executable") or "codex"),
+                    expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
                 )
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
