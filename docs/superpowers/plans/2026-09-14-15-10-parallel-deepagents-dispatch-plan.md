@@ -56,8 +56,8 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Branch: `codex/parallel-deepagents-dispatch`
 - Base commit: `c086339c08bb396d32be44a2b848b1ab473fa52c`
 - Expected workspace: dedicated implementation worktree from `c086339c08bb396d32be44a2b848b1ab473fa52c`; lead workspace preserves untracked `.playwright-mcp/` and `db/`
-- Next action: restore `deepagents-code 0.1.66` parity, then run Task 6 real-lane pilot
-- Blockers: installed runtime is `deepagents-code 0.1.59`; setup pins `0.1.66`; installation/auth requires explicit approval
+- Next action: run Task 6 real-lane pilot
+- Blockers: none after runtime parity repair and verification
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -65,8 +65,8 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 | Task 2 | `completed` | implementation worktree | `codex` | Task 1 | builder/receipt tests pass | `253 passed`; stale-attempt proof accepted |
 | Task 3 | `completed` | implementation worktree | `codex` | Task 2 | admission and identity tests pass | `11 passed`; atomic conflict rejection, two-lane cap, interruption admission guard |
 | Task 4 | `completed` | implementation worktree | `codex` | Task 3 | mocked parallel lifecycle tests pass | `145 passed`; barrier overlap, atomic capacity/interruption, startup failure, timeout retention, sibling preservation, tagged evidence; no coordinator verdict layer |
-| Task 5 | `completed` | implementation worktree | `codex` | Task 4 | measurement and dry-run evidence | `5 passed` dry-run/performance tests; `--help` smoke passed; implementation `74ce6c8`; launcher and wrapper paths recorded; pilot gates fixed |
-| Task 6 | `blocked` | isolated pilot worktrees | `deepagents` | Task 5 | two harmless real lanes and receipts | blocked: installed `deepagents-code 0.1.59`, setup pins `0.1.66`; no runtime install/auth performed |
+| Task 5 | `completed` | implementation worktree | `codex` | Task 4 | measurement and dry-run evidence | `5 passed` dry-run/performance tests; `--help` smoke passed; implementation `74ce6c8`; runtime repaired and verified at `deepagents-code 0.1.66`; pilot gates fixed |
+| Task 6 | `active` | isolated pilot worktrees | `deepagents` | Task 5 | two harmless real lanes and receipts | runtime parity verified; pilot setup pending |
 | Task 7 | `pending` | implementation/integration worktree | `codex` | Task 6 | docs update, combined-revision review, final verification | pending |
 
 ## Task Breakdown
@@ -307,7 +307,7 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 - Stop for: semantic discovery change, unmeasured optimization, or performance regression with no safe explanation.
 
 **Steps:**
-- [x] Step 1: Record the runtime implementation commit, exact launcher path, `dcode-project` wrapper path/version, and deployment parity needed for the pilot. Recorded `74ce6c8`, local launcher path, wrapper path, setup pin `0.1.66`, installed `0.1.59`; parity is blocked.
+- [x] Step 1: Record the runtime implementation commit, exact launcher path, `dcode-project` wrapper path/version, and deployment parity needed for the pilot. Recorded `74ce6c8`, local launcher path, wrapper path, setup pin `0.1.66`; installed runtime verified at `0.1.66` after compatibility patch repair `f57b3c8`.
 - [x] Step 2: Run dry-run resolution and a sequential control using identical harmless-task descriptors, profiles, limits, clean worktrees, and implementation revision. Dry-run/performance contract tests pass; no worker starts in dry-run. Real control deferred with runtime parity blocker.
 - [x] Step 3: Set pilot gates before execution: three paired trials; parallel median wall time at least 20% lower; model usage no more than 110% of sequential control; positive overlap every trial; zero retries, duplicate attempts, and cleanup failures.
 - [x] Step 4: Record wall time, subprocess/probe count, output bytes, model usage, retries, and candidate-set equality; change only demonstrably redundant observation work. No optimization applied; existing counters remain SSOT.
@@ -315,7 +315,7 @@ Mocked lifecycle tests, dry-run resolution, a sequential control, and three pair
 **Verification:**
 - [x] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_herdr_parallel_dispatch.py -q` — `145 passed`
 - [x] `py -3 scripts/herdr_main_launcher.py --help`
-- Expected: dry-run proves resolution only; candidate sets remain equal; no worker starts during dry-run; thresholds and runtime paths are recorded before real pilot. Runtime parity mismatch blocks Task 6.
+- Expected: dry-run proves resolution only; candidate sets remain equal; no worker starts during dry-run; thresholds and runtime paths are recorded before real pilot. Runtime parity now passes.
 
 **Exit Criteria:**
 - dry-run and sequential-control evidence is reproducible; implementation/runtime revisions are pinned; thresholds are recorded before the real pilot.
