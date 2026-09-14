@@ -7,6 +7,7 @@ from scripts.patch_deepagents_runtime import (
     patch_headless_mcp_guard,
     patch_mcp_tools,
     patch_stdio_lookup,
+    patch_windows_lookup,
 )
 
 
@@ -81,3 +82,30 @@ def test_patch_headless_mcp_guard_allows_only_browser_list_probe(
     assert 'args.get("action") == "list"' in patched
     assert "name == \"playwright_browser_tabs\"" in patched
     assert patch_headless_mcp_guard(target) is False
+
+
+def test_patch_windows_lookup_accepts_current_mcp_source_shape(tmp_path: Path) -> None:
+    target = tmp_path / "utilities.py"
+    target.write_text(
+        "    try:\n"
+        "        # First check if command exists in PATH as-is\n"
+        "        if command_path := shutil.which(command):\n",
+        encoding="utf-8",
+    )
+
+    assert patch_windows_lookup(target) is True
+    assert "Path(command).is_absolute()" in target.read_text(encoding="utf-8")
+    assert patch_windows_lookup(target) is False
+
+
+def test_patch_windows_lookup_accepts_legacy_mcp_source_shape(tmp_path: Path) -> None:
+    target = tmp_path / "utilities.py"
+    target.write_text(
+        "    try:\n"
+        "        # First check if command exists on PATH as-is\n"
+        "        if command_path := shutil.which(command):\n",
+        encoding="utf-8",
+    )
+
+    assert patch_windows_lookup(target) is True
+    assert patch_windows_lookup(target) is False

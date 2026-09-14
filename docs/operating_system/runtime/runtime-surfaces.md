@@ -12,6 +12,7 @@ runtime, rules, skills, root instructions, and hooks.
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
 | `scripts/herdr_main_launcher.py` | Canonical existing-target resolution and top-level Herdr lane/lifecycle projection |
+| `scripts/herdr_parallel_dispatch.py` | Canonical bounded foreground coordinator for isolated DeepAgents lanes; no durable ledger or supervisor |
 | `scripts/dcode_project.py` | Canonical DeepAgents projection, worker lifecycle, and generated role-view ownership |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
 
@@ -51,6 +52,7 @@ runtime, rules, skills, root instructions, and hooks.
 - Globalized scripts resolve project root from explicit `--repo-root`, then Git top-level, and block when neither exists.
 - Project-local paths remain fallback when the shared installation is absent or marker ownership fails.
 - `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, `dcode-project` resolves and projects the selected profile into DeepAgents. Herdr owns top-level lane/session/pane lifecycle and outer observation; `dcode-project` owns DeepAgents projection, worker lifecycle, and same-worktree role-view ownership. Tura keeps its existing provider and credential path. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
+- `scripts/herdr_parallel_dispatch.py` admits at most two independent lanes after worktree, pane, write-set, contract, and mutable-resource checks. It retains uncertain capacity, preserves per-lane evidence, and defers active cancellation claims to existing Herdr/process retirement evidence.
 - Native Herdr Codex workers disable every effective MCP server by default; a
   validated server-level selection enables only selected servers. Tool-level
   selection fails closed until Codex can enforce it. Browser MCPs stay

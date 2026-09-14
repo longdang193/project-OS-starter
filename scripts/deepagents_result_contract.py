@@ -88,6 +88,8 @@ def parse_result_receipt(path: Path, attempt_id: str) -> dict[str, Any]:
         ):
             return unknown
         payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return unknown
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {"state": "unknown", "detail": "receipt malformed"}
     try:

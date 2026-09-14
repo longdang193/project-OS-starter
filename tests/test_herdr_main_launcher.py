@@ -2872,6 +2872,58 @@ def test_deepagents_completion_recovers_receipt_after_observation_deadline(
     assert all(deadline is not None for deadline in deadlines)
 
 
+def test_deepagents_completion_waits_for_slow_cleanup_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    unknown = {"state": "unknown", "detail": "receipt unavailable"}
+    confirmed = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "role_views_state": "removed",
+        "recovery_required": False,
+    }
+    receipts = iter([unknown, *([unknown] * 5), confirmed])
+    snapshots = iter([
+        {"state": "completed", "report_present": True},
+        {"state": "completed", "report_present": True},
+    ])
+    clock = [0.0]
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_POLL_SECONDS", 1.0)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: next(receipts),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["state"] == "completed"
+    assert evidence["lifecycle_receipt"] == confirmed
+
+
 def test_deepagents_snapshot_does_not_start_second_pane_command_after_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3265,6 +3317,45 @@ def test_assignment_result_builder_keeps_lifecycle_facts_independent() -> None:
     assert result["assignment"]["cleanup"]["state"] == "unknown"
     assert result["assignment"]["launcher_exit_code"] == 2
     assert result["assignment"]["worker_exit_code"] is None
+
+
+def test_assignment_result_builder_derives_compatibility_from_structured_facts() -> None:
+    result = LAUNCHER._build_assignment_result(
+        dispatch_id="dispatch",
+        attempt_id="attempt",
+        agent_name="normal-main",
+        delivery={"state": "confirmed"},
+        execution={"state": "failed", "worker_exit_code": 7},
+        observation={"state": "observed"},
+        task_result={"state": "reported_failed", "accepted": False},
+        cleanup={"state": "removed"},
+        performance={"status": "measured"},
+        launcher_exit_code=2,
+    )
+
+    assignment = result["assignment"]
+    assert assignment["status"] == "failed"
+    assert assignment["failure_kind"] == "task_report_failed"
+    assert assignment["reconciliation_required"] is False
+
+
+def test_assignment_result_builder_marks_incomplete_structured_facts_for_reconciliation() -> None:
+    result = LAUNCHER._build_assignment_result(
+        dispatch_id="dispatch",
+        attempt_id="attempt",
+        agent_name="normal-main",
+        delivery={"state": "confirmed"},
+        execution={"state": "unknown"},
+        observation={"state": "timed_out"},
+        task_result={"state": "unverified", "accepted": None},
+        cleanup={"state": "unknown"},
+        performance={"status": "measured"},
+        launcher_exit_code=2,
+    )
+
+    assignment = result["assignment"]
+    assert assignment["status"] == "unknown"
+    assert assignment["reconciliation_required"] is True
 
 
 def test_performance_snapshot_uses_structured_phase_values() -> None:

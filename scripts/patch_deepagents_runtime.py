@@ -43,12 +43,14 @@ _WINDOWS_LOOKUP = """    try:
         # First check if command exists on PATH as-is
         if command_path := shutil.which(command):
 """
+_WINDOWS_LOOKUP_LEGACY = _WINDOWS_LOOKUP.replace("exists on PATH", "exists in PATH")
 _WINDOWS_LOOKUP_ADD = """    try:
         if Path(command).is_absolute():
             return command
         # First check if command exists on PATH as-is
         if command_path := shutil.which(command):
 """
+_WINDOWS_LOOKUP_ADD_LEGACY = _WINDOWS_LOOKUP_ADD.replace("exists on PATH", "exists in PATH")
 _PROCESS_FALLBACK = """    except Exception:
         # Try again without creation flags
         process = await anyio.open_process(
@@ -171,7 +173,17 @@ def patch_stdio_lookup(target: Path) -> bool:
 
 
 def patch_windows_lookup(target: Path) -> bool:
-    return _replace_once(target, _WINDOWS_LOOKUP, _WINDOWS_LOOKUP_ADD, "MCP Windows runtime")
+    content = target.read_text(encoding="utf-8")
+    if _WINDOWS_LOOKUP_ADD in content or _WINDOWS_LOOKUP_ADD_LEGACY in content:
+        return False
+    for old, new in (
+        (_WINDOWS_LOOKUP, _WINDOWS_LOOKUP_ADD),
+        (_WINDOWS_LOOKUP_LEGACY, _WINDOWS_LOOKUP_ADD_LEGACY),
+    ):
+        if old in content:
+            target.write_text(content.replace(old, new, 1), encoding="utf-8")
+            return True
+    raise RuntimeError(f"Unsupported MCP Windows runtime: {target}")
 
 
 def patch_windows_process(target: Path) -> bool:
