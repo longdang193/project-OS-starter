@@ -769,3 +769,36 @@ def test_finish_timed_out_process_drains_closes_and_reaps() -> None:
     assert process.calls == 1
     assert process.stdout.closed is True
     assert process.stderr.closed is True
+
+
+def test_runtime_completion_does_not_equal_acceptance() -> None:
+    assert dispatcher.runtime_completion_is_not_acceptance({"status": "reported_completed"})
+
+
+def test_missing_grant_evidence_rejects_acceptance() -> None:
+    assert dispatcher.validate_acceptance({"status": "reported_completed"}) == "missing_grant_evidence"
+
+
+def test_timeout_owner_is_worker_runtime() -> None:
+    assert dispatcher.TIMEOUT_OWNER == "dcode-project"
+
+
+def test_fake_clock_includes_exact_whole_attempt_boundary() -> None:
+    assert dispatcher.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS == 1800
+    assert dispatcher.attempt_expired(1800.0, 1800.0)
+
+
+def test_launcher_json_flows_through_dispatcher() -> None:
+    record = {"lane_id": "a", "attempt_id": "attempt-a", "status": "reported_completed"}
+    assert dispatcher.dispatch_launcher_record(json.dumps(record))["attempt_id"] == "attempt-a"
+
+
+def test_local_capabilities_and_selector_validation_are_forwarded() -> None:
+    assert dispatcher.validate_local_capabilities(["agent.wait"], ["agent.wait"])
+    with pytest.raises(ValueError):
+        dispatcher.validate_local_capabilities(["unknown"], ["agent.wait"])
+
+
+def test_policy_requires_cumulative_allowance_and_git_checkpoint() -> None:
+    assert dispatcher.validate_plan_authority({"cumulative_wall_clock_seconds": 1800})
+    assert dispatcher.validate_git_checkpoint({"revision": "HEAD", "verified": True})

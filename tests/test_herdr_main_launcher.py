@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 from pathlib import Path
@@ -3356,6 +3357,50 @@ def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
     assert evidence["lifecycle_receipt"] == confirmed
 
 
+def test_deepagents_completion_retries_pane_after_confirmed_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    confirmed = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "role_views_state": "removed",
+        "recovery_required": False,
+    }
+    snapshots = iter([
+        {"state": "no-report", "marker_present": False, "report_present": False},
+        {"state": "completed", "marker_present": True, "report_present": True},
+    ])
+    clock = [0.0]
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 1.0)
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_GRACE_SECONDS", 1.0)
+    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", lambda *args, **kwargs: next(snapshots))
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: confirmed)
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["state"] == "completed"
+    assert evidence["marker_present"] is True
+    assert evidence["lifecycle_receipt"] == confirmed
+
+
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:
     fake_profile(tmp_path, "normal", 20)
     fake_profile(tmp_path, "ui", None)
@@ -3944,3 +3989,10 @@ def test_deepagents_snapshot_rejects_stale_marker_output() -> None:
     assert LAUNCHER._deepagents_task_state(
         [], "Running task non-interactively...\nCOMPLETED\nOLD_MARKER", "MARKER"
     ) == "no-report"
+
+
+def test_launcher_wait_test_names_are_unique() -> None:
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+    wait_names = [name for name in names if "wait" in name]
+    assert len(wait_names) == len(set(wait_names))
