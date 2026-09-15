@@ -101,6 +101,7 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Coordination schema: `2`
 - Branch: `codex/herdr-parallel-lifecycle-grant-projection`
 - Base commit: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f`
+- Activation checkpoint: `f2902a60bb40ed537e1e6fc42598a7ff351062be`
 - Expected workspace: lead remains on current checkout; write-capable lanes use isolated worktrees from the base commit; `.playwright-mcp/` and `db/` remain untouched
 - Next action: establish fresh Task 1 worktree from the activation checkpoint and record baseline proof
 - Blockers: none
