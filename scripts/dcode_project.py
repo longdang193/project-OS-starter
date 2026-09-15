@@ -106,9 +106,8 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
 _FIXED_LOCAL_CAPABILITY_OPTIONS = (
     "--allow-fs-tools",
     "all",
-    "--shell-allow-list",
-    "git,py",
 )
+_LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 _DEEPAGENTS_DEFAULT_TIMEOUT = 420.0
 _PROJECT_GUIDANCE_INSTRUCTION = (
     "Project guidance: read repository root `AGENTS.md` before acting. "
@@ -937,6 +936,35 @@ def _controller_options(
     return child, selections, handoff_file, role_name, executor, result_file, attempt_id
 
 
+def _extract_local_capabilities(argv: list[str]) -> tuple[list[str], list[str]]:
+    child: list[str] = []
+    values: list[str] = []
+    index = 0
+    while index < len(argv):
+        option, separator, inline_value = argv[index].partition("=")
+        if option != "--local-capability":
+            child.append(argv[index])
+            index += 1
+            continue
+        if separator:
+            value = inline_value
+        elif index + 1 < len(argv):
+            value = argv[index + 1]
+            index += 1
+        else:
+            raise RuntimeError("dcode-project requires a value for `--local-capability`.")
+        if not value:
+            raise RuntimeError("dcode-project requires a value for `--local-capability`.")
+        values.append(value)
+        index += 1
+    normalized = [value.lower() for value in values]
+    if any(not _LOCAL_CAPABILITY_PATTERN.fullmatch(value) or ".." in value for value in normalized):
+        raise RuntimeError("local_capabilities must contain safe command basenames.")
+    if len(normalized) != len(set(normalized)):
+        raise RuntimeError("local_capabilities cannot contain duplicates.")
+    return child, normalized
+
+
 def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
     if explicit is not None:
         selected = explicit.strip().lower()
@@ -1539,6 +1567,7 @@ def main(argv: list[str]) -> int:
         result_file_value,
         attempt_id,
     ) = _controller_options(argv)
+    child_argv, local_capabilities = _extract_local_capabilities(child_argv)
     config = _load_toml(_config_path(), "dcode-project config")
     repo_root = _repo_root()
     executor = _resolve_executor(config, explicit_executor)
@@ -1684,6 +1713,8 @@ def main(argv: list[str]) -> int:
                 "--model-params",
                 json.dumps(deepagents_model_params, separators=(",", ":"), sort_keys=True),
                 *_FIXED_LOCAL_CAPABILITY_OPTIONS,
+                "--shell-allow-list",
+                ",".join(local_capabilities or ["git", "py"]),
                 *(arg for arg in child_argv if arg != "--no-mcp"),
             ]
             if selection_values:

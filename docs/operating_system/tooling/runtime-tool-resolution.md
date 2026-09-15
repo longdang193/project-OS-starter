@@ -16,6 +16,18 @@ Before selecting a tool, record:
 
 Capability labels describe needs; they are not a fixed enum or provider registry.
 
+Task-specific local command requirements use structured `local_capabilities`.
+Values normalize to lowercase ASCII command basenames matching
+`[a-z0-9][a-z0-9._+-]*`; separators, whitespace, commas, shell metacharacters,
+`*`, `..`, assignments, and duplicates reject. Admission verifies each selector
+is available to selected executor before launch. Launcher projects effective
+selectors to wrapper; wrapper validates again and keeps standalone safe default
+(`--allow-fs-tools all --shell-allow-list git,py`) when field absent. Returned
+evidence records requested/effective selectors, verification commands, source
+task SHA-256, and selection digest. Digest equality proves equality only, not
+CoS authority. Flow remains `CoS requirement → admission → launcher projection
+→ wrapper validation → returned evidence`.
+
 ## Evidence Reuse
 
 Within one explicit controller turn, reuse successful

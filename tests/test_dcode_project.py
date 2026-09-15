@@ -49,6 +49,15 @@ def load_module(name: str, path: Path):
 LAUNCHER = load_module("dcode_project", LAUNCHER_PATH)
 
 
+def test_local_capability_wrapper_validation_keeps_default() -> None:
+    assert LAUNCHER._extract_local_capabilities(["--local-capability", "Node", "--json"]) == (
+        ["--json"], ["node"]
+    )
+    assert LAUNCHER._extract_local_capabilities(["--json"]) == (["--json"], [])
+    with pytest.raises(RuntimeError):
+        LAUNCHER._extract_local_capabilities(["--local-capability", "node/npm"])
+
+
 def write_role(
     root: Path,
     name: str,

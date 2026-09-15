@@ -646,6 +646,14 @@ def test_resolve_launch_builds_deepagents_pane_command(
     assert performance["phase_durations_ms"]["worker_initialization"]["status"] == "unavailable"
     assert performance["subprocess_counts"]["total"] == 0
 
+def test_local_capabilities_normalize_and_reject_unsafe_values() -> None:
+    assert LAUNCHER._normalize_local_capabilities(["Node", "npm-bin"]) == ["node", "npm-bin"]
+    for value in ["node/npm", "node npm", "node,npm", "node*", "..", "PATH=node"]:
+        with pytest.raises(LAUNCHER.LaunchBlocked):
+            LAUNCHER._normalize_local_capabilities([value])
+    with pytest.raises(LAUNCHER.LaunchBlocked):
+        LAUNCHER._normalize_local_capabilities(["node", "NODE"])
+
 
 def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     monkeypatch: pytest.MonkeyPatch,

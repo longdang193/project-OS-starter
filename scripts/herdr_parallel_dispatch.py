@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -18,10 +20,14 @@ try:
         _sha256_text,
     )
 except ModuleNotFoundError:
-    from herdr_main_launcher import _normalize_runtime_grant, _sha256_text
+    from herdr_main_launcher import (
+        _normalize_runtime_grant,
+        _sha256_text,
+    )
 
 
 MAX_CONCURRENCY = 2
+_LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 TIMEOUT_OWNER = "dcode-project"
 WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = 1800
 _REQUIRED_FIELDS = (
@@ -101,6 +107,10 @@ def _grant_digest(executor: str, runtime_grant: Mapping[str, Any]) -> str:
     )
 
 
+def _capability_digest(values: list[str]) -> str:
+    return _sha256_text(json.dumps(values, separators=(",", ":")))
+
+
 def _bind_requested_grant(lane: dict[str, Any]) -> None:
     selectors = _canonical_mcp_selectors(lane["mcp_select"])
     nested = lane.get("runtime_grant")
@@ -114,6 +124,13 @@ def _bind_requested_grant(lane: dict[str, Any]) -> None:
         mcp_select=selectors,
         grant_child_agents=lane["grant_child_agents"],
     )
+    requested_value = lane.get("local_capabilities", [])
+    requested = (
+        requested_value.get("requested", [])
+        if isinstance(requested_value, Mapping)
+        else requested_value
+    )
+    effective = _verify_local_capabilities(_normalize_local_capabilities(requested))
     lane.update(
         {
             "mcp_select": selectors,
@@ -122,8 +139,35 @@ def _bind_requested_grant(lane: dict[str, Any]) -> None:
             "grant_child_agents": runtime_grant["delegation"]["child_agents"],
             "runtime_grant": runtime_grant,
             "grant_digest": _grant_digest(str(lane["executor"]), runtime_grant),
+            "local_capabilities": {
+                "requested": requested,
+                "effective": effective,
+                "verification_commands": list(effective),
+                "source_task_sha256": _sha256_text(str(lane["task"])),
+                "digest": _capability_digest(effective),
+            },
         }
     )
+
+
+def _normalize_local_capabilities(values: object) -> list[str]:
+    if values is None:
+        return []
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        raise ValueError("local_capabilities must be a list of strings")
+    normalized = [value.lower() for value in values]
+    if any(not _LOCAL_CAPABILITY_PATTERN.fullmatch(value) or ".." in value for value in normalized):
+        raise ValueError("local_capabilities must contain safe command basenames")
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("local_capabilities cannot contain duplicates")
+    return normalized
+
+
+def _verify_local_capabilities(values: list[str]) -> list[str]:
+    unavailable = [value for value in values if shutil.which(value) is None]
+    if unavailable:
+        raise ValueError("unavailable local capabilities: " + ", ".join(unavailable))
+    return list(values)
 
 
 def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
@@ -287,6 +331,11 @@ def _launcher_command(
     )
     for selection in grant.get("mcp_select", []):
         command.extend(["--mcp-select", str(selection)])
+    capabilities = lane.get("local_capabilities", [])
+    if isinstance(capabilities, Mapping):
+        capabilities = capabilities.get("effective", [])
+    for capability in capabilities:
+        command.extend(["--local-capability", str(capability)])
     return command
 
 

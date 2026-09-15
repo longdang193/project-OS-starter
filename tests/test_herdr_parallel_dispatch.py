@@ -810,6 +810,19 @@ def test_local_capabilities_and_selector_validation_are_forwarded() -> None:
         dispatcher.validate_local_capabilities(["unknown"], ["agent.wait"])
 
 
+def test_local_capabilities_admission_normalizes_and_checks_availability(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    item = lane("a", tmp_path)
+    item["local_capabilities"] = ["Node"]
+    monkeypatch.setattr(dispatcher.shutil, "which", lambda value: f"/bin/{value}")
+    dispatcher._bind_requested_grant(item)
+    assert item["local_capabilities"]["effective"] == ["node"]
+    assert "--local-capability" in dispatcher._launcher_command(
+        item, python_executable="python", launcher_path="launcher.py"
+    )
+
+
 def test_policy_requires_cumulative_allowance_and_git_checkpoint() -> None:
     assert dispatcher.validate_plan_authority({"cumulative_wall_clock_seconds": 1800})
     assert dispatcher.validate_git_checkpoint({"revision": "HEAD", "verified": True})
