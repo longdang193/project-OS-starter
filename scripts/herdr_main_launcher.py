@@ -76,6 +76,7 @@ _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 60.0
 _DEEPAGENTS_RECEIPT_GRACE_SECONDS = 30.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
 _DEEPAGENTS_RECEIPT_POLL_SECONDS = 0.1
+_DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
@@ -1437,6 +1438,19 @@ def _deepagents_task_state(
     return "no-report"
 
 
+def _deepagents_marker_present(pane_output: str, expected_marker: str) -> bool:
+    lines = [line.strip() for line in pane_output.splitlines() if line.strip()]
+    start_index = max(
+        (index for index, line in enumerate(lines) if line == "Running task non-interactively..."),
+        default=0,
+    )
+    current_lines = lines[start_index:]
+    return any(
+        current_lines[index:index + 2] == ["COMPLETED", expected_marker]
+        for index in range(len(current_lines) - 1)
+    )
+
+
 def _pane_output(result: subprocess.CompletedProcess[str]) -> str:
     output = result.stdout.strip()
     if not output:
@@ -1464,6 +1478,8 @@ def _deepagents_completion_snapshot(
     env: dict[str, str],
     expected_marker: str,
     deadline: float | None = None,
+    wait_for_marker: bool = True,
+    marker_observed: bool = False,
 ) -> dict[str, Any]:
     def observation_timeout() -> float:
         if deadline is None:
@@ -1478,8 +1494,11 @@ def _deepagents_completion_snapshot(
     process_error: str | None = None
     read_error: str | None = None
     observation_deadline_exceeded = False
+    marker_wait_state = "skipped" if marker_observed or not wait_for_marker else "not_attempted"
     try:
         timeout = observation_timeout()
+        if deadline is not None:
+            timeout = max(0.0, timeout - (2 * _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS))
         if timeout <= 0:
             observation_deadline_exceeded = True
             raise CommandTransportTimeout("observation deadline exceeded before process-info")
@@ -1495,10 +1514,16 @@ def _deepagents_completion_snapshot(
             if observation_deadline_exceeded
             else "pane process-info transport timeout"
         )
+    if observation_deadline_expired():
+        observation_deadline_exceeded = True
+        process_error = "observation deadline exceeded"
     wait_timeout = observation_timeout()
-    if wait_timeout > 0:
+    if wait_for_marker and not marker_observed and wait_timeout > 0:
+        reserved = min(_DEEPAGENTS_OBSERVATION_RESERVE_SECONDS, wait_timeout / 2)
+        wait_timeout = max(0.0, wait_timeout - reserved)
+    if wait_for_marker and not marker_observed and wait_timeout > 0:
         try:
-            _run(
+            wait_result = _run(
                 [
                     herdr,
                     "--session",
@@ -1518,7 +1543,9 @@ def _deepagents_completion_snapshot(
                 env=env,
                 timeout=min(_HERDR_COMMAND_TIMEOUT, wait_timeout),
             )
+            marker_wait_state = "observed" if wait_result.returncode == 0 else "expired"
         except CommandTransportTimeout:
+            marker_wait_state = "transport_failed"
             observation_deadline_exceeded = observation_deadline_expired()
     try:
         timeout = observation_timeout()
@@ -1553,6 +1580,8 @@ def _deepagents_completion_snapshot(
     pane_output = _pane_output(read_result) if read_result is not None else ""
     foreground: list[Any] = []
     observation_error: str | None = process_error or read_error
+    if marker_wait_state == "transport_failed":
+        observation_error = observation_error or "pane wait-output transport timeout"
     if process_result is not None and process_result.returncode:
         observation_error = observation_error or "pane process-info failed"
     elif process_result is not None:
@@ -1573,7 +1602,7 @@ def _deepagents_completion_snapshot(
         state = "no-report"
     return {
         "state": state,
-        "marker_present": expected_marker in pane_output,
+        "marker_present": marker_observed or _deepagents_marker_present(pane_output, expected_marker),
         "report_present": state in {"completed", "failed"},
         "report_sha256": _sha256_text(pane_output),
         "report_chars": len(pane_output),
@@ -1585,6 +1614,7 @@ def _deepagents_completion_snapshot(
             if isinstance(process, dict)
         ],
         "observation_error": observation_error,
+        "marker_wait_state": marker_wait_state,
     }
 
 
@@ -1622,6 +1652,7 @@ def _deepagents_completion_evidence(
             receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
         return receipt
 
+    marker_observed = False
     while True:
         if receipt.get("state") == "confirmed":
             if time.monotonic() >= settlement_deadline:
@@ -1645,7 +1676,10 @@ def _deepagents_completion_evidence(
                 env=env,
                 expected_marker=expected_marker,
                 deadline=snapshot_deadline,
+                wait_for_marker=False,
+                marker_observed=marker_observed,
             )
+            marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
             return evidence
         evidence = _deepagents_completion_snapshot(
@@ -1655,7 +1689,30 @@ def _deepagents_completion_evidence(
             env=env,
             expected_marker=expected_marker,
             deadline=observation_deadline,
+            marker_observed=marker_observed,
         )
+        marker_observed = marker_observed or evidence.get("marker_present") is True
+        if receipt_file is not None and evidence.get("marker_wait_state") in {
+            "observed",
+            "expired",
+            "transport_failed",
+        }:
+            receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+            if receipt.get("state") == "confirmed":
+                if time.monotonic() < settlement_deadline:
+                    evidence = _deepagents_completion_snapshot(
+                        herdr,
+                        session,
+                        pane,
+                        env=env,
+                        expected_marker=expected_marker,
+                        deadline=settlement_deadline,
+                        wait_for_marker=False,
+                        marker_observed=marker_observed,
+                    )
+                    marker_observed = marker_observed or evidence.get("marker_present") is True
+                evidence["lifecycle_receipt"] = receipt
+                return evidence
         if evidence["state"] in {"completed", "failed"}:
             terminal_observed_at = time.monotonic()
             if receipt_file is None:
@@ -1669,7 +1726,10 @@ def _deepagents_completion_evidence(
                     env=env,
                     expected_marker=expected_marker,
                     deadline=settlement_deadline,
+                    wait_for_marker=False,
+                    marker_observed=marker_observed,
                 )
+                marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
             return evidence
         remaining = observation_deadline - time.monotonic()
@@ -1684,7 +1744,10 @@ def _deepagents_completion_evidence(
                         env=env,
                         expected_marker=expected_marker,
                         deadline=settlement_deadline,
+                        wait_for_marker=False,
+                        marker_observed=marker_observed,
                     )
+                    marker_observed = marker_observed or evidence.get("marker_present") is True
                     evidence["lifecycle_receipt"] = receipt
                     return evidence
             evidence["last_observed_state"] = evidence["state"]
@@ -2362,7 +2425,7 @@ def _main_body(args: argparse.Namespace) -> int:
         if isinstance(performance_evidence, dict):
             performance_evidence.pop("_last_monotonic", None)
             performance_evidence.pop("_phase_intervals", None)
-        print(json.dumps(evidence, sort_keys=True))
+        print(json.dumps(evidence, sort_keys=True), flush=True)
         if args.dry_run:
             return 0
         try:

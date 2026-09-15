@@ -3116,6 +3116,104 @@ def test_deepagents_snapshot_rejects_stale_marker_output() -> None:
     assert evidence == "no-report"
 
 
+def test_deepagents_snapshot_does_not_report_stale_marker_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"process_info": {"foreground_processes": []}}}), "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": "Running task non-interactively...\nCOMPLETED\nOLD_MARKER"}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    evidence = LAUNCHER._deepagents_completion_snapshot("herdr.exe", "session", "pane", env={}, expected_marker="MARKER")
+
+    assert evidence["marker_present"] is False
+
+
+def test_deepagents_confirmed_receipt_skips_blocking_marker_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    confirmed = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "role_views_state": "removed",
+        "recovery_required": False,
+    }
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"process_info": {"foreground_processes": []}}}), "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": "Running task...\nCOMPLETED\nMARKER"}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: confirmed)
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe", "session", "pane", env={}, expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json", attempt_id="attempt-1",
+    )
+
+    assert evidence["lifecycle_receipt"] == confirmed
+    assert not any("wait-output" in command for command in calls)
+
+
+def test_deepagents_snapshot_reserves_deadline_for_final_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], float | None]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs.get("timeout")))
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"process_info": {"foreground_processes": []}}}), "")
+        return subprocess.CompletedProcess(command, 1, "", "interval expired")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe", "session", "pane", env={}, expected_marker="MARKER",
+        deadline=LAUNCHER.time.monotonic() + 2,
+    )
+
+    wait_call = next(item for item in calls if "wait-output" in item[0])
+    read_call = next(item for item in calls if "read" in item[0])
+    assert float(wait_call[1]) < float(read_call[1])
+
+
+def test_deepagents_completion_memoizes_current_attempt_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {"state": "running", "marker_present": True, "report_present": False, "marker_wait_state": "observed"},
+        {"state": "completed", "marker_present": False, "report_present": True, "marker_wait_state": "skipped"},
+    ])
+    marker_observed: list[object] = []
+
+    def snapshot(*args: object, **kwargs: object) -> dict[str, object]:
+        marker_observed.append(kwargs.get("marker_observed"))
+        return next(snapshots)
+
+    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", snapshot)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: {"state": "unknown", "detail": "receipt unavailable"},
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: None)
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe", "session", "pane", env={}, expected_marker="MARKER"
+    )
+
+    assert marker_observed[:2] == [False, True]
+    assert evidence["state"] == "completed"
+
+
 def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
