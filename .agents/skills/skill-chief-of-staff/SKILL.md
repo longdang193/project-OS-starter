@@ -99,19 +99,35 @@ Runtime v1 supports only enforceable resource values:
 - capability exposure intent resolved through Runtime Tool Resolution.
 
 The grant also carries policy authority `delegation.child_agents: deny | allow`.
-It defaults to `deny`; CoS-assigned MAIN AGENTS may receive `allow`. The
-launcher records this authority in evidence and projects it into the bounded
-task brief, but executor-local spawning remains policy-enforced until an
-executor provides a direct enforcement hook.
+It defaults to `deny`. `allow` is valid only for isolated implementation
+subtasks when the child write set is a strict subset of the parent write set,
+dependencies are ready, and the parent has sufficient remaining allowance.
+Review, integration, and acceptance lanes are mandatory `deny`. The launcher
+records this authority in evidence and projects it into the bounded task brief,
+but executor-local spawning remains policy-enforced until an executor provides
+a direct enforcement hook.
 
-MAIN AGENT owns tactical choices inside its grant. Delegation and parallelism
-remain policy-level autonomy until an executor can enforce those limits. The
-launcher records concrete selectors, requested values, effective values,
-enforcement mode, and a transient `grant_digest` in launch evidence.
+MAIN AGENT owns tactical choices inside its grant. Planning target prompts
+reassessment; enforced maximum bounds one attempt and does not terminate a
+valid attempt at the planning target. Durable task `Authority.cumulative_wall_clock_seconds`
+caps all attempts. Each attempt charges allocated `wall_clock_seconds` in full
+when usage is unknown. Delegation and parallelism remain policy-level autonomy
+until an executor can enforce those limits. The launcher records concrete
+selectors, requested values, effective values, enforcement mode, and a
+transient `grant_digest` in launch evidence.
 
 Grant changes never hot-mutate a live runtime. CoS must retire the current
 top-level lane, prove no live process owns its worktree, reconcile plan plus
 Git, then redispatch the same plan task with a newly computed transient grant.
+CoS owns continuation; the dispatcher returns settlement only. A continuation
+requires settled prior-attempt evidence, remaining cumulative authority, and
+structured task-result evidence:
+`{progress, remaining_work, requested_increase, reason, checkpoint:{commit, task_sha256, remaining_work, verification}}`.
+Each continuation uses a fresh worktree anchored to the accepted checkpoint
+commit. Checkpoint acceptance preserves useful partial work but is not final
+task acceptance.
+Live deadline mutation, enforceable child count/depth/spend, Codex numeric
+budgets, and concurrency expansion remain deferred.
 DeepAgents direct MCP projection remains default-deny. Codex turn limits remain
 `native`; numeric Codex wall-clock grants fail closed until a named runtime owner
 can enforce interruption and cleanup. Herdr does not claim unsupported numeric
