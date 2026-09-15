@@ -106,11 +106,11 @@ accepted-task measurements.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task1` | `codex` / `normal` | none | R1 root cause, focused regression, launcher repair, and contract proof | `a407f7d` (cherry-picked from `9a08d34`); 36 focused tests passed; worktree clean |
-| Task 2 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task2` | `codex` / `normal` | Task 1 checkpoint `a407f7d` | dispatcher behavior and direct helper proof | `ae99cde` (lane `a066875`); 44 dispatcher tests passed; harmless timeout fake passed; diff clean |
-| Task 3 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task3` | `codex` / `normal` | Task 1 checkpoint `a407f7d` | launcher deadline, receipt, and observation proof | `41f0bec` (lane `0e044ec`); 151 launcher tests passed; Herdr help/schema checks passed; diff clean |
-| Task 4 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task4` | `codex` / `normal` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | capability flow and pre-launch rejection proof | `a617fe9` + `57d26f6` (lane `eab6a4a` + `c6394b5`); 329 owned tests passed; compile and diff checks clean |
-| Task 5 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task5` | `codex` / `normal` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | policy, planning, and generated-surface proof | `9dc586f` (lane `2cef769`); 40 policy tests passed; adapter sync and `--check` passed |
+| Task 1 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task1` | `codex` | none | R1 root cause, focused regression, launcher repair, and contract proof | `a407f7d` (cherry-picked from `9a08d34`); 36 focused tests passed; worktree clean; profile `normal` |
+| Task 2 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task2` | `codex` | Task 1 checkpoint `a407f7d` | dispatcher behavior and direct helper proof | `ae99cde` (lane `a066875`); 44 dispatcher tests passed; harmless timeout fake passed; diff clean; profile `normal` |
+| Task 3 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task3` | `codex` | Task 1 checkpoint `a407f7d` | launcher deadline, receipt, and observation proof | `41f0bec` (lane `0e044ec`); 151 launcher tests passed; Herdr help/schema checks passed; diff clean; profile `normal` |
+| Task 4 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task4` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | capability flow and pre-launch rejection proof | `a617fe9` + `57d26f6` (lane `eab6a4a` + `c6394b5`); 329 owned tests passed; compile and diff checks clean; profile `normal` |
+| Task 5 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task5` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | policy, planning, and generated-surface proof | `9dc586f` (lane `2cef769`); 40 policy tests passed; adapter sync and `--check` passed; profile `normal` |
 | Task 6 | `active` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | Stage 2 checkpoints integrated; serialized verification in progress |
 
 CoS resolves executor and template profile independently through
