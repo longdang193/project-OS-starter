@@ -103,14 +103,14 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Base commit: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f`
 - Activation checkpoint: `f2902a60bb40ed537e1e6fc42598a7ff351062be`
 - Expected workspace: lead remains on current checkout; write-capable lanes use isolated worktrees from the base commit; `.playwright-mcp/` and `db/` remain untouched
-- Next action: establish fresh Task 2 and Task 3 worktrees from the accepted Task 1 checkpoint and dispatch independent root-cause patch lanes
+- Next action: integrate accepted Task 2 and Task 3 commits, establish combined checkpoint, then activate Task 4 specification alignment
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | isolated worktree | `codex` | none | red contract tests plus baseline | commit `55affa393c9ffa4ffc50b5a45e8e6cc621ee383f`; 169 passed, 8 intended correction reds; CoS `PASS` |
-| Task 2 | `active` | isolated worktree | `codex` | Task 1 | dispatcher tests and direct helper proof | root-cause patch lane pending |
-| Task 3 | `active` | isolated worktree | `codex` | Task 1 | launcher tests and bounded observation proof | root-cause patch lane pending |
+| Task 2 | `completed` | isolated worktree | `codex` | Task 1 | dispatcher tests and direct helper proof | commit `1308a1e`; 37 dispatcher tests passed; direct timeout/grant proof passed; CoS `PASS` with runtime trace deferred |
+| Task 3 | `completed` | isolated worktree | `codex` | Task 1 | launcher tests and bounded observation proof | commit `86f522a`; 143 launcher tests passed; bounded observation subset passed; CoS `PASS` with live trace deferred |
 | Task 4 | `pending` | lead workspace | `codex` | Tasks 2–3 | integrated revision and active spec consistency | pending |
 | Task 5 | `pending` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | pending |
 
@@ -227,20 +227,20 @@ evidence, not copied future commit IDs.
 - Stop for: launcher source changes, a durable attempt registry, automatic kill/retry, grant inference from missing fields, or any worktree/process cleanup requiring destructive action.
 
 **Steps:**
-- [ ] Step 1: Use `skill-systematic-debugging` to trace `run_lane()` callers, parser/assignment consumers, and capacity transitions; confirm each red test maps to one shared root cause and check sibling paths for the same defect.
-- [ ] Step 2: Make lane admission require an explicit requested Runtime Grant, normalize it through the existing launcher-compatible shape, validate structure without deriving authority from task prose, and reject conflicting top-level/nested MCP selectors.
-- [ ] Step 3: Extend `_launcher_command()` to forward requested grant values and canonical MCP selectors; preserve existing redacted command behavior.
-- [ ] Step 4: Compare correlated preparation `runtime_grant`/`grant_digest` and final assignment `grant_digest` against the admitted lane binding; classify mismatch as unresolved and keep capacity occupied.
-- [ ] Step 5: On timeout, use one helper that retains the `Popen` handle, drains and closes its pipes, reaps the process, normalizes available text/byte `output` and `stderr`, preserves raw partial records, and extracts parseable attempt identity. Record process identity plus the helper’s reconciliation ownership. Do not retry or replace execution until that same attempt is reaped; if no launch occurred, rebind immediately is allowed.
-- [ ] Step 6: Keep incomplete trailing JSON as malformed evidence without discarding preceding valid preparation or assignment records.
-- [ ] Step 7: Require explicit `descendant_state` in `{terminated, not_started}` for retirement; treat missing or `unknown` as occupied. Require explicit cleanup state `removed` with `recovery_required` false.
-- [ ] Step 8: Keep settled resource retirement separate from unresolved task-result evidence; a missing task report may still retire capacity when ownership and cleanup are independently settled. Preserve sibling results and nonzero coordinator status.
-- [ ] Step 9: Implement the explicit completion matrix: correlated completion plus settled ownership/cleanup retires with CoS acceptance pending; missing/unverified task report plus settled ownership/cleanup retires but remains runtime-unresolved; unknown descendant or cleanup stays occupied and runtime-unresolved.
+- [x] Step 1: Use `skill-systematic-debugging` to trace `run_lane()` callers, parser/assignment consumers, and capacity transitions; confirm each red test maps to one shared root cause and check sibling paths for the same defect.
+- [x] Step 2: Make lane admission require an explicit requested Runtime Grant, normalize it through the existing launcher-compatible shape, validate structure without deriving authority from task prose, and reject conflicting top-level/nested MCP selectors.
+- [x] Step 3: Extend `_launcher_command()` to forward requested grant values and canonical MCP selectors; preserve existing redacted command behavior.
+- [x] Step 4: Compare correlated preparation `runtime_grant`/`grant_digest` and final assignment `grant_digest` against the admitted lane binding; classify mismatch as unresolved and keep capacity occupied.
+- [x] Step 5: On timeout, use one helper that retains the `Popen` handle, drains and closes its pipes, reaps the process, normalizes available text/byte `output` and `stderr`, preserves raw partial records, and extracts parseable attempt identity. Record process identity plus the helper’s reconciliation ownership. Do not retry or replace execution until that same attempt is reaped; if no launch occurred, rebind immediately is allowed.
+- [x] Step 6: Keep incomplete trailing JSON as malformed evidence without discarding preceding valid preparation or assignment records.
+- [x] Step 7: Require explicit `descendant_state` in `{terminated, not_started}` for retirement; treat missing or `unknown` as occupied. Require explicit cleanup state `removed` with `recovery_required` false.
+- [x] Step 8: Keep settled resource retirement separate from unresolved task-result evidence; a missing task report may still retire capacity when ownership and cleanup are independently settled. Preserve sibling results and nonzero coordinator status.
+- [x] Step 9: Implement the explicit completion matrix: correlated completion plus settled ownership/cleanup retires with CoS acceptance pending; missing/unverified task report plus settled ownership/cleanup retires but remains runtime-unresolved; unknown descendant or cleanup stays occupied and runtime-unresolved.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_herdr_parallel_dispatch.py`
+- [x] `python -m pytest -q tests/test_herdr_parallel_dispatch.py`
 - Expected: timeout partial output, grant forwarding/mismatch, explicit retirement, stale/malformed evidence, and sibling-preservation tests pass.
-- [ ] `python scripts/herdr_parallel_dispatch.py --help`
+- [x] `python scripts/herdr_parallel_dispatch.py --help`
 - Expected: helper remains file-backed and capped at two lanes; no new retry or ledger options appear.
 
 **Exit Criteria:**
@@ -285,21 +285,21 @@ evidence, not copied future commit IDs.
 - Stop for: production `agent wait`, raw socket/event transport, automatic acceptance, automatic cleanup/retry, or changes to `scripts/dcode_project.py`.
 
 **Steps:**
-- [ ] Step 1: Use `skill-systematic-debugging` to trace `_deepagents_completion_snapshot()` and `_deepagents_completion_evidence()` callers, confirm shared wait/receipt root causes, and check for equivalent stale-marker or transport handling elsewhere.
-- [ ] Step 2: Read the receipt before marker waiting. Memoize observation of the current attempt marker. If receipt is confirmed, skip blocking `wait-output` while retaining one bounded pane read and process probe.
-- [ ] Step 3: For unresolved receipts, perform one short bounded marker wait, reserving transport overhead and time for receipt rereads plus fresh pane/process probes inside the absolute observation and settlement deadlines. Do not give the native wait and enclosing subprocess identical timeout budgets.
-- [ ] Step 4: Preserve stale-marker rejection. Classify marker absence during this interval separately from transport failure; retain earlier uncertainty, but let later authoritative receipt/process/pane evidence resolve it. Never let wait success prove task acceptance, cleanup, retirement, or retry safety.
-- [ ] Step 5: Keep `reported_completed` with `accepted: null`, status `completed`, and explicit reconciliation semantics. Ensure compatibility fields do not convert pending CoS acceptance into `true`; dispatcher remains the consumer that classifies CoS acceptance.
-- [ ] Step 6: Keep missing receipt, observer error, unknown descendant, and cleanup recovery states unresolved even when worker exit code is zero.
-- [ ] Step 7: Record every wait/probe timeout as bounded observation uncertainty with attempt identity and existing performance evidence. Test the production observation path with a receipt appearing during wait and process state changing before the final probe.
-- [ ] Step 8: Run launcher with `python -u` or explicitly flush preparation output so attempt identity reaches the dispatcher before timeout.
+- [x] Step 1: Use `skill-systematic-debugging` to trace `_deepagents_completion_snapshot()` and `_deepagents_completion_evidence()` callers, confirm shared wait/receipt root causes, and check for equivalent stale-marker or transport handling elsewhere.
+- [x] Step 2: Read the receipt before marker waiting. Memoize observation of the current attempt marker. If receipt is confirmed, skip blocking `wait-output` while retaining one bounded pane read and process probe.
+- [x] Step 3: For unresolved receipts, perform one short bounded marker wait, reserving transport overhead and time for receipt rereads plus fresh pane/process probes inside the absolute observation and settlement deadlines. Do not give the native wait and enclosing subprocess identical timeout budgets.
+- [x] Step 4: Preserve stale-marker rejection. Classify marker absence during this interval separately from transport failure; retain earlier uncertainty, but let later authoritative receipt/process/pane evidence resolve it. Never let wait success prove task acceptance, cleanup, retirement, or retry safety.
+- [x] Step 5: Keep `reported_completed` with `accepted: null`, status `completed`, and explicit reconciliation semantics. Ensure compatibility fields do not convert pending CoS acceptance into `true`; dispatcher remains the consumer that classifies CoS acceptance.
+- [x] Step 6: Keep missing receipt, observer error, unknown descendant, and cleanup recovery states unresolved even when worker exit code is zero.
+- [x] Step 7: Record every wait/probe timeout as bounded observation uncertainty with attempt identity and existing performance evidence. Test the production observation path with a receipt appearing during wait and process state changing before the final probe.
+- [x] Step 8: Run launcher with `python -u` or explicitly flush preparation output so attempt identity reaches the dispatcher before timeout.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_herdr_main_launcher.py`
+- [x] `python -m pytest -q tests/test_herdr_main_launcher.py`
 - Expected: receipt-aware ordering, stale marker, observer failure, timeout, classification matrix, and independent lifecycle-field tests pass.
-- [ ] `herdr agent wait --help`
+- [x] `herdr agent wait --help`
 - Expected: capability remains inspectable only; launcher does not call it in captured production command tests.
-- [ ] `herdr pane wait-output --help`
+- [x] `herdr pane wait-output --help`
 - Expected: bounded `--regex`/`--timeout` capability remains available for DeepAgents observation.
 
 **Exit Criteria:**
