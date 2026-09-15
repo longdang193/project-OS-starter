@@ -84,7 +84,7 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Execution model: `plan-bound-execution via CoS`
 - Lead controller: native Codex; sole writer of `Coordination State` and task ledger
 - MAIN AGENT transport: Herdr; each write-capable lane uses one isolated Git worktree
-- Required skills: `skill-chief-of-staff`, `skill-dispatching-parallel-agents`, `skill-plan-document-reviewer`, `skill-executing-plans`, `skill-backend-verification`, `skill-test-driven-development`, `skill-verification-before-completion`, `skill-using-git-worktrees`
+- Required skills: `skill-chief-of-staff`, `skill-dispatching-parallel-agents`, `skill-plan-document-reviewer`, `skill-executing-plans`, `skill-backend-verification`, `skill-systematic-debugging`, `skill-test-driven-development`, `skill-verification-before-completion`, `skill-using-git-worktrees`
 - Isolation: dedicated worktree per write-capable lane from the recorded base commit; preserve lead-workspace untracked `.playwright-mcp/` and `db/`
 - Commit policy: lane commits are implementation artifacts; lead creates one checkpoint only after accepting task proof and updating this ledger; no push or remote merge authority; accepted local lane integration remains authorized to the lead
 - Preauthorized local actions: create declared isolated worktrees, inspect and edit listed files, run listed local tests and validators, run bounded Herdr capability checks, and execute bounded harmless runtime proof after the plan is activated
@@ -103,14 +103,14 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Base commit: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f`
 - Activation checkpoint: `f2902a60bb40ed537e1e6fc42598a7ff351062be`
 - Expected workspace: lead remains on current checkout; write-capable lanes use isolated worktrees from the base commit; `.playwright-mcp/` and `db/` remain untouched
-- Next action: establish fresh Task 1 worktree from the activation checkpoint and record baseline proof
+- Next action: establish fresh Task 2 and Task 3 worktrees from the accepted Task 1 checkpoint and dispatch independent root-cause patch lanes
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `active` | isolated worktree | `codex` | `normal` | none | red contract tests plus baseline | pending |
-| Task 2 | `pending` | isolated worktree | `unresolved` | Task 1 | dispatcher tests and direct helper proof | pending |
-| Task 3 | `pending` | isolated worktree | `unresolved` | Task 1 | launcher tests and bounded observation proof | pending |
+| Task 1 | `completed` | isolated worktree | `codex` | none | red contract tests plus baseline | commit `55affa393c9ffa4ffc50b5a45e8e6cc621ee383f`; 169 passed, 8 intended correction reds; CoS `PASS` |
+| Task 2 | `active` | isolated worktree | `codex` | Task 1 | dispatcher tests and direct helper proof | root-cause patch lane pending |
+| Task 3 | `active` | isolated worktree | `codex` | Task 1 | launcher tests and bounded observation proof | root-cause patch lane pending |
 | Task 4 | `pending` | lead workspace | `codex` | Tasks 2–3 | integrated revision and active spec consistency | pending |
 | Task 5 | `pending` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | pending |
 
@@ -124,12 +124,12 @@ Runtime Grant explicitly permits it and the child scope is a strict subset.
 Revision protocol: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f` remains the original
 baseline. The activation checkpoint is Task 1’s starting revision and is recorded
 in this ledger after activation. After Task 1 proof is accepted, the lead creates
-a checkpoint and creates Task 2 and Task 3 worktrees from that accepted Task 1
-revision. After both implementation lanes are accepted, the lead integrates them
-locally and creates the combined checkpoint before Task 4 reviews the active
-specification. Task 5 runs only against that combined revision. Git remains the
-source of checkpoint identity; the plan records task state and evidence, not
-copied future commit IDs.
+a checkpoint at `55affa393c9ffa4ffc50b5a45e8e6cc621ee383f` and creates Task 2 and
+Task 3 worktrees from it. After both implementation lanes are accepted, the lead
+integrates them locally and creates the combined checkpoint before Task 4 reviews
+the active specification. Task 5 runs only against that combined revision. Git
+remains the source of checkpoint identity; the plan records task state and
+evidence, not copied future commit IDs.
 
 ## Task Breakdown
 
@@ -170,16 +170,16 @@ copied future commit IDs.
 - Stop for: a required behavior not covered by the active parent specification, a new result schema, live worker execution, or changes outside the two test files.
 
 **Steps:**
-- [ ] Step 1: Record baseline focused test output and current Git/worktree identity.
-- [ ] Step 2: Add red tests for timeout before preparation and after preparation, `TimeoutExpired.output`/`.stderr` preservation, byte decoding, incomplete trailing JSON, attempt/process identity, and unresolved ownership handback.
-- [ ] Step 3: Add red tests proving absent or `unknown` `descendant_state` stays occupied while explicit `terminated` or `not_started` can retire capacity only with explicit cleanup evidence.
-- [ ] Step 4: Define and test the comparison contract: admitted requested grant maps to launcher CLI arguments; correlated preparation supplies normalized `runtime_grant` and `grant_digest`; correlated final assignment supplies the matching digest. Add red tests for grant mismatch blocking and conflicting top-level/nested MCP selectors.
-- [ ] Step 5: Add red tests proving confirmed receipts skip `pane wait-output` but retain bounded pane/process probes; unresolved attempts reread receipt after bounded wait.
-- [ ] Step 6: Add red classification coverage proving `reported_completed` plus `accepted: null` is runtime completion pending CoS acceptance, not accepted success.
-- [ ] Step 7: Feed actual JSON evidence emitted by the existing launcher composition/classification path into the dispatcher test; do not hand-construct an equivalent completion fixture.
+- [x] Step 1: Record baseline focused test output and current Git/worktree identity.
+- [x] Step 2: Add red tests for timeout before preparation and after preparation, `TimeoutExpired.output`/`.stderr` preservation, byte decoding, incomplete trailing JSON, attempt/process identity, and unresolved ownership handback.
+- [x] Step 3: Add red tests proving absent or `unknown` `descendant_state` stays occupied while explicit `terminated` or `not_started` can retire capacity only with explicit cleanup evidence.
+- [x] Step 4: Define and test the comparison contract: admitted requested grant maps to launcher CLI arguments; correlated preparation supplies normalized `runtime_grant` and `grant_digest`; correlated final assignment supplies the matching digest. Add red tests for grant mismatch blocking and conflicting top-level/nested MCP selectors.
+- [x] Step 5: Add red tests proving confirmed receipts skip `pane wait-output` but retain bounded pane/process probes; unresolved attempts reread receipt after bounded wait.
+- [x] Step 6: Add red classification coverage proving `reported_completed` plus `accepted: null` is runtime completion pending CoS acceptance, not accepted success.
+- [x] Step 7: Feed actual JSON evidence emitted by the existing launcher composition/classification path into the dispatcher test; do not hand-construct an equivalent completion fixture.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py`
+- [x] `python -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py`
 - Expected: existing tests pass; newly added cases fail only at unimplemented correction points, including both timeout phases and the launcher-to-dispatcher evidence path.
 
 **Exit Criteria:**
@@ -194,8 +194,8 @@ copied future commit IDs.
 - Implement the smallest dispatcher-side correction against existing JSONL and assignment evidence.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: bounded Python source change with security and lifecycle consequences; select lowest profile that can validate subprocess and evidence semantics.
+- Controller-selected: `high`
+- Selection basis: independent Herdr Codex lane must trace shared dispatcher callers and correct subprocess, retirement, and grant-boundary defects without widening scope.
 
 **Validator Profile (optional):**
 - Controller-selected: `review`
@@ -208,6 +208,7 @@ copied future commit IDs.
 - `skill-test-driven-development`
 - `skill-backend-verification`
 - `skill-dispatching-parallel-agents`
+- `skill-systematic-debugging`
 
 **Files And Symbols:**
 - Inspect: `scripts/herdr_parallel_dispatch.py:_REQUIRED_FIELDS`, `scripts/herdr_parallel_dispatch.py:_launcher_command`, `scripts/herdr_parallel_dispatch.py:parse_launcher_records`, `scripts/herdr_parallel_dispatch.py:run_lane`, `scripts/herdr_parallel_dispatch.py:_admit_lanes`, `scripts/herdr_parallel_dispatch.py:run_parallel`
@@ -215,7 +216,7 @@ copied future commit IDs.
 - Verify: `tests/test_herdr_parallel_dispatch.py`, launcher command capture, and JSONL result output
 
 **Dependencies:**
-- Task 1 accepted with red cases present.
+- Task 1 accepted with red cases present at commit `55affa393c9ffa4ffc50b5a45e8e6cc621ee383f`.
 - Launcher already accepts `--grant-turns`, `--grant-wall-clock-seconds`, `--grant-child-agents`, and `--mcp-select`; do not duplicate launcher grant normalization.
 - Runtime Grant shape remains the normalized launcher shape: `turns.requested`, `wall_clock_seconds.requested`, `mcp_select`, `delegation.child_agents`, and `grant_digest`.
 - Task 2 starts from the accepted Task 1 checkpoint. Task 3 owns launcher output flushing; Task 2 consumes that output and does not modify launcher source.
@@ -225,14 +226,15 @@ copied future commit IDs.
 - Stop for: launcher source changes, a durable attempt registry, automatic kill/retry, grant inference from missing fields, or any worktree/process cleanup requiring destructive action.
 
 **Steps:**
-- [ ] Step 1: Make lane admission require an explicit requested Runtime Grant, normalize it through the existing launcher-compatible shape, validate structure without deriving authority from task prose, and reject conflicting top-level/nested MCP selectors.
-- [ ] Step 2: Extend `_launcher_command()` to forward requested grant values and canonical MCP selectors; preserve existing redacted command behavior.
-- [ ] Step 3: Compare correlated preparation `runtime_grant`/`grant_digest` and final assignment `grant_digest` against the admitted lane binding; classify mismatch as unresolved and keep capacity occupied.
-- [ ] Step 4: On timeout, use one helper that retains the `Popen` handle, drains and closes its pipes, reaps the process, normalizes available text/byte `output` and `stderr`, preserves raw partial records, and extracts parseable attempt identity. Record process identity plus the helper’s reconciliation ownership. Do not retry or replace execution until that same attempt is reaped; if no launch occurred, rebind immediately is allowed.
-- [ ] Step 5: Keep incomplete trailing JSON as malformed evidence without discarding preceding valid preparation or assignment records.
-- [ ] Step 6: Require explicit `descendant_state` in `{terminated, not_started}` for retirement; treat missing or `unknown` as occupied. Require explicit cleanup state `removed` with `recovery_required` false.
-- [ ] Step 7: Keep settled resource retirement separate from unresolved task-result evidence; a missing task report may still retire capacity when ownership and cleanup are independently settled. Preserve sibling results and nonzero coordinator status.
-- [ ] Step 8: Implement the explicit completion matrix: correlated completion plus settled ownership/cleanup retires with CoS acceptance pending; missing/unverified task report plus settled ownership/cleanup retires but remains runtime-unresolved; unknown descendant or cleanup stays occupied and runtime-unresolved.
+- [ ] Step 1: Use `skill-systematic-debugging` to trace `run_lane()` callers, parser/assignment consumers, and capacity transitions; confirm each red test maps to one shared root cause and check sibling paths for the same defect.
+- [ ] Step 2: Make lane admission require an explicit requested Runtime Grant, normalize it through the existing launcher-compatible shape, validate structure without deriving authority from task prose, and reject conflicting top-level/nested MCP selectors.
+- [ ] Step 3: Extend `_launcher_command()` to forward requested grant values and canonical MCP selectors; preserve existing redacted command behavior.
+- [ ] Step 4: Compare correlated preparation `runtime_grant`/`grant_digest` and final assignment `grant_digest` against the admitted lane binding; classify mismatch as unresolved and keep capacity occupied.
+- [ ] Step 5: On timeout, use one helper that retains the `Popen` handle, drains and closes its pipes, reaps the process, normalizes available text/byte `output` and `stderr`, preserves raw partial records, and extracts parseable attempt identity. Record process identity plus the helper’s reconciliation ownership. Do not retry or replace execution until that same attempt is reaped; if no launch occurred, rebind immediately is allowed.
+- [ ] Step 6: Keep incomplete trailing JSON as malformed evidence without discarding preceding valid preparation or assignment records.
+- [ ] Step 7: Require explicit `descendant_state` in `{terminated, not_started}` for retirement; treat missing or `unknown` as occupied. Require explicit cleanup state `removed` with `recovery_required` false.
+- [ ] Step 8: Keep settled resource retirement separate from unresolved task-result evidence; a missing task report may still retire capacity when ownership and cleanup are independently settled. Preserve sibling results and nonzero coordinator status.
+- [ ] Step 9: Implement the explicit completion matrix: correlated completion plus settled ownership/cleanup retires with CoS acceptance pending; missing/unverified task report plus settled ownership/cleanup retires but remains runtime-unresolved; unknown descendant or cleanup stays occupied and runtime-unresolved.
 
 **Verification:**
 - [ ] `python -m pytest -q tests/test_herdr_parallel_dispatch.py`
@@ -252,8 +254,8 @@ copied future commit IDs.
 - Implement bounded DeepAgents observation and preserve independent lifecycle sections at the existing launcher composition boundary.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: bounded launcher behavior change requires exact receipt/pane/process reasoning and direct failure proof.
+- Controller-selected: `normal`
+- Selection basis: independent Herdr Codex lane must trace launcher observation callers and correct bounded receipt/pane/process behavior with focused regression proof.
 
 **Validator Profile (optional):**
 - Controller-selected: `review`
@@ -265,6 +267,7 @@ copied future commit IDs.
 **Required Skills:**
 - `skill-test-driven-development`
 - `skill-backend-verification`
+- `skill-systematic-debugging`
 
 **Files And Symbols:**
 - Inspect: `scripts/herdr_main_launcher.py:_deepagents_completion_snapshot`, `scripts/herdr_main_launcher.py:_deepagents_completion_evidence`, `scripts/herdr_main_launcher.py:_classify_deepagents_outcome`, `scripts/herdr_main_launcher.py:_build_assignment_result`, `scripts/herdr_main_launcher.py:main`
@@ -272,7 +275,7 @@ copied future commit IDs.
 - Verify: launcher unit tests, launcher JSON assignment output, Herdr wait capability help/schema
 
 **Dependencies:**
-- Task 1 accepted with launcher red cases present.
+- Task 1 accepted with launcher red cases present at commit `55affa393c9ffa4ffc50b5a45e8e6cc621ee383f`.
 - Preserve `_build_assignment_result()` as the single result composition boundary.
 - Preserve current `pane wait-output` fallback and fail-closed Codex numeric wall-clock behavior.
 
@@ -281,13 +284,14 @@ copied future commit IDs.
 - Stop for: production `agent wait`, raw socket/event transport, automatic acceptance, automatic cleanup/retry, or changes to `scripts/dcode_project.py`.
 
 **Steps:**
-- [ ] Step 1: Read the receipt before marker waiting. Memoize observation of the current attempt marker. If receipt is confirmed, skip blocking `wait-output` while retaining one bounded pane read and process probe.
-- [ ] Step 2: For unresolved receipts, perform one short bounded marker wait, reserving transport overhead and time for receipt rereads plus fresh pane/process probes inside the absolute observation and settlement deadlines. Do not give the native wait and enclosing subprocess identical timeout budgets.
-- [ ] Step 3: Preserve stale-marker rejection. Classify marker absence during this interval separately from transport failure; retain earlier uncertainty, but let later authoritative receipt/process/pane evidence resolve it. Never let wait success prove task acceptance, cleanup, retirement, or retry safety.
-- [ ] Step 4: Keep `reported_completed` with `accepted: null`, status `completed`, and explicit reconciliation semantics. Ensure compatibility fields do not convert pending CoS acceptance into `true`.
-- [ ] Step 5: Keep missing receipt, observer error, unknown descendant, and cleanup recovery states unresolved even when worker exit code is zero.
-- [ ] Step 6: Record every wait/probe timeout as bounded observation uncertainty with attempt identity and existing performance evidence. Test the production observation path with a receipt appearing during wait and process state changing before the final probe.
-- [ ] Step 7: Run launcher with `python -u` or explicitly flush preparation output so attempt identity reaches the dispatcher before timeout.
+- [ ] Step 1: Use `skill-systematic-debugging` to trace `_deepagents_completion_snapshot()` and `_deepagents_completion_evidence()` callers, confirm shared wait/receipt root causes, and check for equivalent stale-marker or transport handling elsewhere.
+- [ ] Step 2: Read the receipt before marker waiting. Memoize observation of the current attempt marker. If receipt is confirmed, skip blocking `wait-output` while retaining one bounded pane read and process probe.
+- [ ] Step 3: For unresolved receipts, perform one short bounded marker wait, reserving transport overhead and time for receipt rereads plus fresh pane/process probes inside the absolute observation and settlement deadlines. Do not give the native wait and enclosing subprocess identical timeout budgets.
+- [ ] Step 4: Preserve stale-marker rejection. Classify marker absence during this interval separately from transport failure; retain earlier uncertainty, but let later authoritative receipt/process/pane evidence resolve it. Never let wait success prove task acceptance, cleanup, retirement, or retry safety.
+- [ ] Step 5: Keep `reported_completed` with `accepted: null`, status `completed`, and explicit reconciliation semantics. Ensure compatibility fields do not convert pending CoS acceptance into `true`; dispatcher remains the consumer that classifies CoS acceptance.
+- [ ] Step 6: Keep missing receipt, observer error, unknown descendant, and cleanup recovery states unresolved even when worker exit code is zero.
+- [ ] Step 7: Record every wait/probe timeout as bounded observation uncertainty with attempt identity and existing performance evidence. Test the production observation path with a receipt appearing during wait and process state changing before the final probe.
+- [ ] Step 8: Run launcher with `python -u` or explicitly flush preparation output so attempt identity reaches the dispatcher before timeout.
 
 **Verification:**
 - [ ] `python -m pytest -q tests/test_herdr_main_launcher.py`
