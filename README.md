@@ -1,181 +1,148 @@
-# project-OS-starter
+# Project OS Starter
 
-A private starter repository for carrying forward the repo operating system without coupling new projects to a specific runtime structure.
+## A starter kit for governed multi-agent development with AI coding agents.
 
-## What This Repo Owns
+Define how coding agents are assigned, bounded, equipped, observed, and accepted across multiple runtimes.
 
-- `docs/operating_system/`: human-readable repo governance and procedures
-- `.agents/skills/`: canonical skill authoring source; consumers use deployed `~/.agents/skills/`
-- `agents/*.toml`: canonical agent-profile registry
-- `docs/operating_system/templates/agents/`: source templates for generated instruction outputs
-- `repo_config/`: starter-level configuration for shipped starter validation and planning contracts
-- `scripts/`: validation, hooks, and curated repo procedures
+**One controller. Bounded lanes. Evidence before acceptance.**
 
-## Canonical Vs Generated
+- Shared capability profiles
+- Controlled tool access
+- Explicit Git and workspace boundaries
+- Observable lifecycle and acceptance evidence
 
-Canonical source layers live in:
+[GitHub](https://github.com/longdang193/project-OS-starter) · [Issues](https://github.com/longdang193/project-OS-starter/issues)
 
-- scoped `AGENTS.md` files, when present
-- `docs/operating_system/`
-- `.agents/skills/`
-- `docs/operating_system/templates/agents/`
-- `agents/*.toml`
-- `repo_config/`
-- `scripts/`
+## Why Project OS Starter?
 
-Generated and packaged outputs are downstream artifacts:
+Individual coding agents can write useful code. Multi-agent development adds harder problems:
 
-- `AGENTS.md`
-- `generated_agents/`
-- `.agents/rules/`
-- `generated_exports/project-OS-starter-kit/`
+- Who owns each task?
+- Which tools and runtimes may each worker use?
+- How do concurrent changes avoid colliding?
+- What counts as running, finished, or accepted?
+- Which evidence survives retries, replacement attempts, and review?
 
-Do not edit generated outputs directly. Regenerate them from the source layers.
+Project OS Starter supplies repository structure and contracts for answering those questions consistently.
 
-Scoped `AGENTS.md` files are canonical instructions for their directories.
+## How It Works
 
-## Bootstrap A New Project
-
-Start with [Project Adoption Migration](docs/operating_system/adoption/project-adoption-migration-guide.md).
-
-First-hour flow:
-
-1. replace the starter identity in `README.md`
-2. create the standard root project docs under `docs/`:
-   - `setup.md`
-   - `configuration.md`
-   - `usage.md`
-   - `pipeline.md`
-   - `architecture.md`
-3. keep project-local folders in place:
-   - `docs/superpowers/specs/`
-   - `docs/superpowers/plans/`
-   - `repo_config/`
-   - project-specific `scripts/`
-   - `tests/`
-   - project code
-   Shared operating-system docs, reusable scripts, and skills stay under
-   `~/.agents/project-os/` and `~/.agents/skills/`.
-4. create `docs/intent/` when durable project purpose needs more than `README.md`
-5. decide whether the private/public publication procedure applies
-6. review starter governance and shipped root agent docs
-
-## Native Personal-Local Work
-
-Ordinary trusted one-user development uses
-[`native-personal-local`](docs/operating_system/procedures/personal-local-worktree-procedure.md):
-native Git plus Codex, DeepAgents, or Tura. Executor and profile selection are
-independent; Codex is safe default when plan omits executor or delegated benefit
-is unclear. Follow `docs/operating_system/planning/planning-dispatch.md` for
-advisory executor selection.
-Reuse clean checkout for small reversible work. Use a native Git worktree only
-when existing worktree guidance selects isolation. Git owns workspace identity,
-change evidence, and branch disposition. Shared delegated profiles live in
-`agents/*.toml`; names and models are discovered from this registry. User-local
-`dcode-project --role <profile>`
-selects source profile model for primary DeepAgents launch and materializes
-ignored DeepAgents project subagents; they are not `dcode --agent` primary profiles.
-When bounded Tura delegation is installed, use
-`project-delegate --role <profile> -n "<task>"`. Tura uses the
-same profile registry and configured provider route; Native Codex remains controller.
-DeepAgents uses `dcode-project`.
-DeepAgents MCP is opt-in through explicit Herdr selection. Herdr accepts
-`--mcp-select <server[.tool][,server[.tool]...]>` and forwards it to
-`dcode-project`; `dcode-project` validates selection against approved Codex
-`[mcp_servers]`. No selection
-keeps child `--no-mcp`. Selecting a server exposes all tools exposed by that
-approved server; selecting a tool narrows access. Direct mode creates temporary
-launcher-owned config under isolated child `DEEPAGENTS_HOME`; no per-task
-`.mcp.json`, `--trust-project-mcp`, or project-config mutation. Project MCP
-configs remain untouched and untrusted. MCP `headers` values must be `${VAR}`
-references. MCP `env` values may be `${VAR}` references or non-sensitive literals.
-Raw credentials and config secrets never enter task text,
-logs, or tracked files. `codex.mcp.handoff.v1` remains validated facts and
-provenance, not tool access.
-CoS may run from a native Codex session and dispatch through Herdr. The launcher
-verifies target lane readiness, Git/cwd identity, runtime/profile binding, and
-task delivery. It does not attest controller identity or own lane authority.
-CoS assigns top-level MAIN AGENTS through Herdr. MAIN AGENTS own assigned lanes
-and may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
-those lanes only when their Runtime Grant includes
-`delegation.child_agents: allow`. Sub-agents remain subordinate and may not
-spawn peer MAIN AGENTS or activate CoS. Review and integration remain
-Codex-only.
-Herdr controller visibility uses bounded pull probes, with `pane wait-output`
-available for DeepAgents marker observation before `pane process-info`/`pane read`.
-Codex uses `agent get`/`agent read`; `agent wait` remains a documented Herdr
-capability, not current launcher integration. Tura uses `project-delegate`
-outside the Herdr main-lane path. Missing or unchanged output is `unknown` or
-`stuck_suspected`, not completion; no observer daemon, heartbeat store, automatic
-retry, or raw-output ledger exists.
-Before consumer local dispatch, run shared Project OS contract validation with
-`py -B "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast`.
-Factory maintainers additionally run
-`py -B scripts/validate_agent_runtime_drift.py --all-platforms`.
-Launcher and test files own task-delivery mechanics; missing or failed final
-delivery evidence blocks assignment.
-Local setup uses the version pinned by `scripts/setup_deepagents_runtime.ps1`,
-requires Python 3.12 or newer, and disables child auto-update. Refresh the runtime through
-`scripts/setup_deepagents_runtime.ps1`, not through `dcode --update`.
-For Tura replacement, keep the configured executable path when possible, check
-its nonsecret identity with `project-delegate --role normal --print-config`,
-and run one bounded TL smoke before treating existing compatibility or
-performance evidence as current. A moved executable needs setup rerun; an
-in-place replacement does not.
-
-## Agent Memory
-
-Use official MCP Memory Server for verified reusable project knowledge. See `docs/operating_system/rules/agent-memory-rule.md` for fetch, update, privacy, precedence, and fallback policy; see `docs/operating_system/procedures/mcp-memory-server-setup.md` for client setup.
-
-Memory data is private local state outside repository. Source code, tests, ADRs, current governance, and explicit instructions remain authoritative.
-
-## Optional Documentation Capability
-
-Version-specific external-library research is optional, advisory, and resolved
-by the active executor only when pinned local sources do not answer. See
-`docs/operating_system/tooling/runtime-tool-resolution.md` for capability,
-evidence, permission, and fallback boundaries.
-
-## Customize First
-
-When bootstrapping a new project, review these first:
-
-- `docs/setup.md`
-- `docs/configuration.md`
-- `docs/usage.md`
-- `docs/pipeline.md`
-- `docs/architecture.md`
-- `docs/intent/README.md` when the optional intent layer exists
-- `docs/operating_system/governance/repo-governance.md`
-- `docs/operating_system/templates/agents/*.template.md`
-- `repo_config/planning_artifact_schema.yaml`
-
-## Optional Nested AGENTS Templates
-
-The starter ships with optional example templates:
-
-- `docs/operating_system/templates/agents/example-runtime-AGENTS.template.md`
-- `docs/operating_system/templates/agents/example-admin-AGENTS.template.md`
-
-These are examples only. Keep them as optional starter guidance unless your
-source repo also owns a separate generation procedure for additional agent entry
-surfaces.
-
-## Public Mirror Procedure
-
-Use the curated publication script to prepare a public-safe export:
-
-```powershell
-& "$HOME/.agents/project-os/scripts/publish_public_repo.ps1"
+```text
+                         Controller
+                             │
+                       plan and policy
+                             │
+                    admit bounded work
+                             │
+             ┌───────────────┴───────────────┐
+             │                               │
+          Lane A                          Lane B
+      selected runtime                 selected runtime
+             │                               │
+             └───────────────┬───────────────┘
+                             │
+                          evidence
+                             │
+                    PASS / FAIL / BLOCKED
 ```
 
-Push to the configured public remote when ready:
+The system separates task delivery, execution, observation, lifecycle state, cleanup, and final acceptance. Runtime completion alone does not establish task acceptance.
 
-```powershell
-& "$HOME/.agents/project-os/scripts/publish_public_repo.ps1" -Push
+## Example Workflow
+
+```text
+Request: implement an API change, update its frontend usage, and review it.
+
+Controller
+ ├─ Lane A: backend change, selected profile, bounded workspace
+ ├─ Lane B: frontend change, selected profile, bounded workspace
+ ├─ Validate dependencies and collect runtime evidence
+ └─ Review combined result and decide PASS / FAIL / BLOCKED
 ```
 
-The default starter config keeps operating-system docs, skills, adapter sources, generated agent files, and other private-only materials out of the public mirror.
+Workers own engineering inside assigned scope. The controller owns orchestration boundaries, evidence requirements, and acceptance.
 
-Repo/system configuration lives in `repo_config/`. Optional durable product feature documentation may live in `docs/features/`; code, configuration, schemas, and tests own executable behavior.
+## What It Governs
 
+| Concern | Contract |
+| --- | --- |
+| Assignment | Roles, profiles, ownership, and task boundaries stay explicit. |
+| Execution | Workers run through selected runtimes with bounded scope. |
+| Capabilities | Tool and MCP access is selected deliberately, not inherited implicitly. |
+| Workspace | Git and workspace boundaries make concurrent changes inspectable. |
+| Lifecycle | Preparation, delivery, execution, observation, cleanup, and result state stay distinct. |
+| Acceptance | Required evidence drives `PASS`, `FAIL`, or `BLOCKED`; worker claims do not. |
+
+## Included Structure
+
+- **Agent profiles** — reusable role and capability definitions.
+- **Canonical sources** — one owning layer for rules, procedures, templates, and configuration.
+- **Generated projections** — downstream instruction and starter-kit outputs derived from canonical sources; edit canonical sources, then regenerate outputs.
+- **Validation tooling** — repository, metadata, configuration, lifecycle, and package-boundary checks.
+- **Runtime adapters** — conventions for Native Codex, DeepAgents, Tura, and related local execution paths.
+- **Regression coverage** — tests for delivery, isolation, capability selection, lifecycle, and evidence contracts.
+
+## Design Principles
+
+- **Evidence before acceptance** — completion is a claim until required proof exists.
+- **Explicit authority** — controllers, workers, reviewers, and cleanup actions have separate responsibilities.
+- **Repository as source of truth** — Git state, tests, contracts, and recorded evidence outrank chat output.
+- **Canonical over copied** — generated surfaces are rebuilt from their owners.
+- **Unknown stays unknown** — missing or ambiguous runtime evidence does not become success.
+
+## Where It Fits
+
+```text
+Coding runtime
+Codex / DeepAgents / Tura
+          │
+          ▼
+Project OS Starter
+assignment · boundaries · tools · lifecycle · evidence · acceptance
+          │
+          ▼
+Project repository
+code · tests · Git history · review
+```
+
+Project OS Starter is not a foundation model, IDE, memory database, or application framework. It is the operating layer around coding-agent execution.
+
+## Scope And Status
+
+This repository is an active starter/reference implementation. Runtime integrations, contracts, and generated surfaces may change as the system is hardened.
+
+It does not promise autonomous engineering, zero-configuration deployment, universal runtime support, or performance gains without matching measurements.
+
+Public distribution is curated separately from deeper implementation and runtime internals. The current public surface is an overview, not a complete drop-in product distribution.
+
+## Evaluation Path
+
+For maintainers with source access, evaluate the project through its contracts and tests:
+
+```powershell
+python scripts/validate_repo_contracts.py
+python scripts/validate_repo_config.py
+python -m pytest -q
+```
+
+Adopt only the layers your project can own, expose, and validate. Keep project-specific setup and product code in the consuming repository.
+
+## Local Adoption
+
+- Native personal work follows `native-personal-local` and `docs/operating_system/planning/planning-dispatch.md`.
+- Native execution uses Codex, DeepAgents, or Tura, selected per bounded task.
+- Shared operating-system docs, reusable scripts, and skills stay under the shared Project OS installation: `~/.agents/project-os` and `~/.agents/skills`.
+- Keep project-specific project-local folders such as `docs/intent/`, `docs/superpowers/`, `repo_config/`, code, tests, and scripts in this repository when adopting this starter.
+- When adopting this starter, create `docs/intent/` when durable project purpose needs more than `README.md`.
+- DeepAgents runtime setup owns its version; version pinned by `scripts/setup_deepagents_runtime.ps1`.
+- Select runtime profiles explicitly, for example `--role <profile>`.
+- DeepAgents MCP is opt-in through explicit Herdr selection. Herdr accepts `--mcp-select` and forwards selected servers to `dcode-project`.
+- MCP `headers` values must be `${VAR}` references. MCP `env` values may be `${VAR}` references or non-sensitive literals.
+
+## Contributing
+
+Keep changes focused. Update tests and documentation when behavior or contracts change. Edit canonical sources instead of generated projections. Open an issue before proposing broad changes.
+
+## License
+
+No license file is included yet. Review licensing before reuse or redistribution.

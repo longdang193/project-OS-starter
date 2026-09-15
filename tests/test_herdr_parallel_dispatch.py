@@ -32,6 +32,10 @@ def lane(
         "dependency_ready": dependency_ready,
         "fixed_contracts": ["parallel-dispatch-v1"],
         "mutable_resources": [f"resource-{lane_id}"],
+        "grant_turns": "native",
+        "grant_wall_clock_seconds": "native",
+        "grant_child_agents": "deny",
+        "mcp_select": [],
     }
 
 
@@ -286,8 +290,8 @@ def test_run_lane_valid_settled_assignment_retires_capacity(tmp_path: Path) -> N
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
-    assert result["unresolved"] is False
-    assert result["capacity"] == "retired"
+    assert result["unresolved"] is True
+    assert result["capacity"] == "occupied"
 
 
 def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
@@ -310,7 +314,7 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
                                         "descendant_state": "terminated",
                                     },
                                     "task_result": {"state": "unverified", "accepted": None},
-                                    "cleanup": {"state": "removed"},
+                                    "cleanup": {"state": "removed", "recovery_required": False},
                                     "reconciliation_required": True,
                                 }
                             }
@@ -485,3 +489,283 @@ def test_run_lane_final_assignment_attempt_mismatch_preserves_evidence(tmp_path:
     assert result["records"][1]["tag"] == "final_assignment"
     assert result["capacity"] == "occupied"
     assert result["unresolved"] is True
+
+
+def test_run_lane_timeout_before_preparation_preserves_partial_streams(tmp_path: Path) -> None:
+    class TimedOut:
+        pid = 417
+        returncode = None
+
+        def communicate(self, *, timeout):
+            raise subprocess.TimeoutExpired(
+                "launcher",
+                timeout,
+                output=b'{"registry_launcher":{"attempt_id":"attempt-before"}}\n',
+                stderr=b"prep warning",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: TimedOut(),
+        timeout_seconds=0.01,
+    )
+
+    assert result["preparation"]["registry_launcher"]["attempt_id"] == "attempt-before"
+    assert result["stdout"] == '{"registry_launcher":{"attempt_id":"attempt-before"}}\n'
+    assert result["stderr"] == "prep warning"
+    assert result["attempt_id"] == "attempt-before"
+    assert result["process_identity"] == {"pid": 417}
+    assert result["reconciliation_required"] is True
+    assert result["capacity"] == "occupied"
+
+
+def test_run_lane_timeout_after_preparation_preserves_partial_streams_and_ownership(
+    tmp_path: Path,
+) -> None:
+    class TimedOut:
+        pid = 418
+        returncode = None
+
+        def communicate(self, *, timeout):
+            raise subprocess.TimeoutExpired(
+                "launcher",
+                timeout,
+                output='{"registry_launcher":{"attempt_id":"attempt-after"}}\n',
+                stderr="worker warning",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: TimedOut(),
+        timeout_seconds=0.01,
+    )
+
+    assert result["attempt_id"] == "attempt-after"
+    assert result["stdout"].endswith("\n")
+    assert result["stderr"] == "worker warning"
+    assert result["ownership"] == "reconciliation_required"
+    assert result["capacity"] == "occupied"
+
+
+def test_run_lane_decodes_byte_streams_and_reports_incomplete_trailing_json(
+    tmp_path: Path,
+) -> None:
+    class CompletedProcess:
+        pid = 419
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                b'{"registry_launcher":{"attempt_id":"a"}}\n{"assignment":{"attempt_id":"a"',
+                b"byte stderr",
+            )
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: CompletedProcess(),
+    )
+
+    assert result["malformed"] == ['{"assignment":{"attempt_id":"a"']
+    assert result["stderr"] == "byte stderr"
+    assert result["process_identity"] == {"pid": 419}
+    assert result["capacity"] == "occupied"
+
+
+@pytest.mark.parametrize("descendant_state", [None, "unknown"])
+def test_run_lane_missing_or_unknown_descendant_state_stays_occupied(
+    tmp_path: Path, descendant_state: str | None,
+) -> None:
+    assignment = {
+        "attempt_id": "a",
+        "execution": {"state": "exited", **({"descendant_state": descendant_state} if descendant_state else {})},
+        "cleanup": {"state": "removed", "recovery_required": False},
+        "reconciliation_required": False,
+    }
+
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                + "\n"
+                + json.dumps({"assignment": assignment}),
+                "",
+            )
+
+    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+
+    assert result["capacity"] == "occupied"
+    assert result["unresolved"] is True
+
+
+@pytest.mark.parametrize("descendant_state", ["terminated", "not_started"])
+def test_run_lane_explicit_descendant_retirement_requires_cleanup(
+    tmp_path: Path, descendant_state: str,
+) -> None:
+    assignment = {
+        "attempt_id": "a",
+        "execution": {"state": "exited", "descendant_state": descendant_state},
+        "cleanup": {"state": "removed", "recovery_required": False},
+        "reconciliation_required": False,
+    }
+
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                + "\n"
+                + json.dumps({"assignment": assignment}),
+                "",
+            )
+
+    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+
+    assert result["capacity"] == "retired"
+    assert result["unresolved"] is True
+
+
+def test_launcher_command_forwards_admitted_runtime_grant_and_mcp_select(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    item.update({
+        "grant_turns": 8,
+        "grant_wall_clock_seconds": 600,
+        "grant_child_agents": "allow",
+        "mcp_select": ["context7.query_docs"],
+    })
+
+    command = dispatcher._launcher_command(item, python_executable="python", launcher_path="launcher.py")
+
+    assert command[command.index("--grant-turns") + 1] == "8"
+    assert command[command.index("--grant-wall-clock-seconds") + 1] == "600"
+    assert command[command.index("--grant-child-agents") + 1] == "allow"
+    assert command[command.index("--mcp-select") + 1] == "context7.query_docs"
+
+
+def test_run_lane_grant_digest_mismatch_blocks_capacity(tmp_path: Path) -> None:
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                "\n".join([
+                    json.dumps({"registry_launcher": {
+                        "attempt_id": "a",
+                        "runtime_grant": {"turns": {"requested": 8}},
+                        "grant_digest": "prep-digest",
+                    }}),
+                    json.dumps({"assignment": {
+                        "attempt_id": "a",
+                        "grant_digest": "final-digest",
+                        "execution": {"state": "exited", "descendant_state": "terminated"},
+                        "cleanup": {"state": "removed", "recovery_required": False},
+                        "reconciliation_required": False,
+                    }}),
+                ]),
+                "",
+            )
+
+    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+
+    assert result["capacity"] == "occupied"
+    assert result["unresolved"] is True
+    assert result["failure_kind"] == "grant_mismatch"
+
+
+def test_admission_rejects_conflicting_top_level_and_nested_mcp_selectors(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    item.update({"mcp_select": ["context7"], "runtime_grant": {"mcp_select": ["playwright"]}})
+
+    result = dispatcher.load_lane_descriptors(write_lanes(tmp_path, [item]))
+
+    assert result["admitted"] == []
+    assert "MCP" in result["rejected"][0]["reason"]
+
+
+def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_acceptance(
+    tmp_path: Path,
+) -> None:
+    from scripts import herdr_main_launcher as launcher
+
+    classified = launcher._classify_deepagents_outcome(
+        delivery={"state": "delivered", "certainty": "confirmed", "prompt_accepted": True},
+        observation={"state": "completed", "report_present": True, "observation_error": None},
+        receipt={
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+        },
+        fallback_failure_kind=None,
+    )
+    emitted = launcher._build_assignment_result(
+        dispatch_id="dispatch",
+        attempt_id="a",
+        agent_name="normal-main",
+        delivery=classified["delivery"],
+        execution=classified["execution"],
+        observation=classified["observation"],
+        task_result=classified["task_result"],
+        cleanup=classified["cleanup"],
+        performance={"status": "measured"},
+        launcher_exit_code=classified["launcher_exit_code"],
+        legacy={"status": classified["status"], "reconciliation_required": classified["reconciliation_required"]},
+    )
+
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                + "\n"
+                + json.dumps(emitted),
+                "",
+            )
+
+    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+
+    assert result["assignment"]["task_result"] == {"state": "reported_completed", "accepted": None}
+    assert result["capacity"] == "retired"
+    assert result["unresolved"] is True
+
+
+def test_finish_timed_out_process_drains_closes_and_reaps() -> None:
+    class Pipe:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class TimedOut:
+        pid = 420
+        returncode = None
+
+        def __init__(self) -> None:
+            self.stdout = Pipe()
+            self.stderr = Pipe()
+            self.calls = 0
+
+        def communicate(self, *, timeout):
+            self.calls += 1
+            self.returncode = 0
+            return (b"tail", b"err-tail")
+
+        def wait(self, *, timeout):
+            self.returncode = 0
+            return 0
+
+    process = TimedOut()
+    stdout, stderr, reaped = dispatcher._finish_timed_out_process(
+        process,
+        subprocess.TimeoutExpired("launcher", 0.01, output=b"head", stderr=b"err"),
+    )
+
+    assert (stdout, stderr, reaped) == ("headtail", "err-tail", True)
+    assert process.calls == 1
+    assert process.stdout.closed is True
+    assert process.stderr.closed is True

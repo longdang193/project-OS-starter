@@ -12,6 +12,14 @@ import subprocess
 import sys
 from typing import Any
 
+try:
+    from scripts.herdr_main_launcher import (
+        _normalize_runtime_grant,
+        _sha256_text,
+    )
+except ModuleNotFoundError:
+    from herdr_main_launcher import _normalize_runtime_grant, _sha256_text
+
 
 MAX_CONCURRENCY = 2
 _REQUIRED_FIELDS = (
@@ -28,6 +36,10 @@ _REQUIRED_FIELDS = (
     "dependency_ready",
     "fixed_contracts",
     "mutable_resources",
+    "grant_turns",
+    "grant_wall_clock_seconds",
+    "grant_child_agents",
+    "mcp_select",
 )
 
 
@@ -60,6 +72,56 @@ def _path_conflicts(left: object, right: object) -> bool:
 
 def _set_conflicts(left: Iterable[object], right: Iterable[object]) -> bool:
     return any(_path_conflicts(left_item, right_item) for left_item in left for right_item in right)
+
+
+def _canonical_mcp_selectors(values: object) -> list[str]:
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        raise ValueError("MCP selectors must be a list of strings")
+    selectors = [selector.strip() for value in values for selector in value.split(",")]
+    if any(not selector for selector in selectors):
+        raise ValueError("MCP selectors cannot be empty")
+    return sorted(set(selectors))
+
+
+def _grant_digest(executor: str, runtime_grant: Mapping[str, Any]) -> str:
+    return _sha256_text(
+        json.dumps(
+            {
+                "executor": executor,
+                "turns": runtime_grant["turns"]["requested"],
+                "wall_clock_seconds": runtime_grant["wall_clock_seconds"]["requested"],
+                "mcp_select": runtime_grant["mcp_select"],
+                "delegation": runtime_grant["delegation"],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+
+def _bind_requested_grant(lane: dict[str, Any]) -> None:
+    selectors = _canonical_mcp_selectors(lane["mcp_select"])
+    nested = lane.get("runtime_grant")
+    if isinstance(nested, Mapping) and "mcp_select" in nested:
+        if _canonical_mcp_selectors(nested["mcp_select"]) != selectors:
+            raise ValueError("conflicting top-level and nested MCP selectors")
+    runtime_grant = _normalize_runtime_grant(
+        executor=str(lane["executor"]),
+        grant_turns=lane["grant_turns"],
+        grant_wall_clock_seconds=lane["grant_wall_clock_seconds"],
+        mcp_select=selectors,
+        grant_child_agents=lane["grant_child_agents"],
+    )
+    lane.update(
+        {
+            "mcp_select": selectors,
+            "grant_turns": runtime_grant["turns"]["requested"],
+            "grant_wall_clock_seconds": runtime_grant["wall_clock_seconds"]["requested"],
+            "grant_child_agents": runtime_grant["delegation"]["child_agents"],
+            "runtime_grant": runtime_grant,
+            "grant_digest": _grant_digest(str(lane["executor"]), runtime_grant),
+        }
+    )
 
 
 def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
@@ -114,6 +176,11 @@ def _admit_lanes(
             lane["mutable_resources"], list
         ):
             rejected.append(_reject(lane, "resource sets must be lists"))
+            continue
+        try:
+            _bind_requested_grant(lane)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            rejected.append(_reject(lane, str(exc)))
             continue
 
         worktree = _canonical_path(lane["worktree"])
@@ -201,7 +268,22 @@ def _launcher_command(
     for name, flag in (("name", "--name"), ("codex_home", "--codex-home")):
         if lane.get(name):
             command.extend([flag, str(lane[name])])
-    for selection in lane.get("mcp_select", []):
+    grant = lane.get("runtime_grant")
+    if not isinstance(grant, Mapping):
+        bound_lane = dict(lane)
+        _bind_requested_grant(bound_lane)
+        grant = bound_lane["runtime_grant"]
+    command.extend(
+        [
+            "--grant-turns",
+            str(grant["turns"]["requested"]),
+            "--grant-wall-clock-seconds",
+            str(grant["wall_clock_seconds"]["requested"]),
+            "--grant-child-agents",
+            str(grant["delegation"]["child_agents"]),
+        ]
+    )
+    for selection in grant.get("mcp_select", []):
         command.extend(["--mcp-select", str(selection)])
     return command
 
@@ -217,13 +299,17 @@ def parse_launcher_records(
 ) -> dict[str, Any]:
     """Parse launcher JSONL without treating preparation as final evidence."""
 
+    if isinstance(output, bytes):
+        output = output.decode("utf-8", errors="replace")
     lines = output.splitlines() if isinstance(output, str) else list(output)
     records: list[dict[str, Any]] = []
     malformed: list[str] = []
     preparation: dict[str, Any] | None = None
     candidate_assignment: dict[str, Any] | None = None
     for line in lines:
-        text = line.strip()
+        if isinstance(line, bytes):
+            line = line.decode("utf-8", errors="replace")
+        text = str(line).strip()
         if not text:
             continue
         try:
@@ -263,6 +349,77 @@ def parse_launcher_records(
     }
 
 
+def _text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _merge_streams(first: object, second: object) -> str:
+    left = _text(first)
+    right = _text(second)
+    if not left:
+        return right
+    if not right:
+        return left
+    if right == left or right.startswith(left):
+        return right
+    return left + right
+
+
+def _finish_timed_out_process(process: Any, timeout_error: subprocess.TimeoutExpired) -> tuple[str, str, bool]:
+    stdout = _text(timeout_error.output)
+    stderr = _text(timeout_error.stderr)
+    drained = False
+    try:
+        extra_stdout, extra_stderr = process.communicate(timeout=0)
+        stdout = _merge_streams(stdout, extra_stdout)
+        stderr = _merge_streams(stderr, extra_stderr)
+        drained = True
+    except (subprocess.TimeoutExpired, OSError, TypeError):
+        pass
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(process, stream_name, None)
+        close = getattr(stream, "close", None)
+        if callable(close):
+            close()
+    reaped = getattr(process, "returncode", None) is not None
+    wait = getattr(process, "wait", None)
+    if not reaped and callable(wait):
+        try:
+            wait(timeout=0)
+        except (subprocess.TimeoutExpired, OSError, TypeError):
+            pass
+        reaped = getattr(process, "returncode", None) is not None
+    return stdout, stderr, drained and reaped
+
+
+def _process_identity(process: Any) -> dict[str, Any]:
+    pid = getattr(process, "pid", None)
+    return {"pid": pid} if isinstance(pid, int) else {}
+
+
+def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) -> bool:
+    preparation = parsed.get("preparation")
+    assignment = parsed.get("assignment")
+    registry = preparation.get("registry_launcher") if isinstance(preparation, Mapping) else None
+    prep_grant = registry.get("runtime_grant") if isinstance(registry, Mapping) else None
+    prep_digest = registry.get("grant_digest") if isinstance(registry, Mapping) else None
+    assignment_digest = assignment.get("grant_digest") if isinstance(assignment, Mapping) else None
+    if prep_grant is None and prep_digest is None and assignment_digest is None:
+        return True
+    expected = lane.get("runtime_grant")
+    expected_digest = lane.get("grant_digest")
+    return (
+        isinstance(expected, Mapping)
+        and prep_grant == expected
+        and prep_digest == expected_digest
+        and assignment_digest == expected_digest
+    )
+
+
 def run_lane(
     lane: Mapping[str, Any],
     *,
@@ -274,15 +431,10 @@ def run_lane(
     """Run one blocking launcher attempt and retain unresolved state on timeout."""
 
     lane_id = str(lane["lane_id"])
-    command = _launcher_command(
-        lane,
-        python_executable=python_executable,
-        launcher_path=launcher_path,
-    )
     if lane.get("executor") != "deepagents":
         return {
             "lane_id": lane_id,
-            "command": command,
+            "command": [],
             "exit_code": None,
             "records": [],
             "stderr": "",
@@ -290,6 +442,25 @@ def run_lane(
             "capacity": "retired",
             "failure_kind": "unsupported_executor",
         }
+    bound_lane = dict(lane)
+    try:
+        _bind_requested_grant(bound_lane)
+    except (TypeError, ValueError, RuntimeError) as exc:
+        return {
+            "lane_id": lane_id,
+            "command": [],
+            "exit_code": None,
+            "records": [],
+            "stderr": str(exc),
+            "unresolved": True,
+            "capacity": "occupied",
+            "failure_kind": "grant_invalid",
+        }
+    command = _launcher_command(
+        bound_lane,
+        python_executable=python_executable,
+        launcher_path=launcher_path,
+    )
     try:
         process = popen_factory(
             command,
@@ -301,16 +472,38 @@ def run_lane(
         )
         try:
             stdout, stderr = process.communicate(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
+            stdout, stderr, reaped = _finish_timed_out_process(process, exc)
+            parsed = parse_launcher_records(stdout, lane_id=lane_id)
+            records = list(parsed["records"])
+            records.append(_tagged(lane_id, "child_exit", {"exit_code": process.returncode}))
+            if stderr:
+                records.append(_tagged(lane_id, "stderr", {"text": stderr}))
+            attempt_id = None
+            preparation = parsed.get("preparation")
+            registry = preparation.get("registry_launcher") if isinstance(preparation, Mapping) else None
+            if isinstance(registry, Mapping):
+                attempt_id = registry.get("attempt_id")
+            records.append(_tagged(lane_id, "capacity", {"state": "occupied"}))
+            records.append(_tagged(lane_id, "unresolved", {"reason": "transport timeout"}))
             return {
                 "lane_id": lane_id,
                 "command": command,
-                "exit_code": None,
-                "records": [],
-                "stderr": "",
+                "exit_code": process.returncode,
+                "records": records,
+                "preparation": parsed["preparation"],
+                "assignment": parsed["assignment"],
+                "malformed": parsed["malformed"],
+                "stdout": stdout,
+                "stderr": stderr,
+                "attempt_id": attempt_id,
+                "process_identity": _process_identity(process),
+                "ownership": "reconciliation_required",
+                "reconciliation_required": True,
                 "unresolved": True,
                 "capacity": "occupied",
                 "failure_kind": "transport_timeout",
+                "reaped": reaped,
             }
     except OSError as exc:
         return {
@@ -324,7 +517,9 @@ def run_lane(
             "failure_kind": "launch_failed",
         }
 
-    parsed = parse_launcher_records(stdout or "", lane_id=lane_id)
+    stdout = _text(stdout)
+    stderr = _text(stderr)
+    parsed = parse_launcher_records(stdout, lane_id=lane_id)
     records = list(parsed["records"])
     records.append(_tagged(lane_id, "child_exit", {"exit_code": process.returncode}))
     if stderr:
@@ -339,17 +534,17 @@ def run_lane(
         resource_settled = (
             isinstance(execution, Mapping)
             and execution.get("state") in {"exited", "completed", "failed", "start_failed"}
-            and descendant_state in {None, "terminated", "not_started"}
+            and descendant_state in {"terminated", "not_started"}
             and isinstance(cleanup, Mapping)
             and cleanup.get("state") == "removed"
-            and cleanup.get("recovery_required") is not True
+            and cleanup.get("recovery_required") is False
         )
         if not resource_settled:
             return "occupied", True, "execution or cleanup unsettled"
         if assignment.get("reconciliation_required") is True:
             return "retired", True, "task result unresolved"
         task_result = assignment.get("task_result")
-        task_uncertain = isinstance(task_result, Mapping) and (
+        task_uncertain = not isinstance(task_result, Mapping) or (
             task_result.get("accepted") is None
             or task_result.get("state") in {"unknown", "running", "preserved", "unverified"}
             or task_result.get("status") in {"unknown", "running", "preserved", "unverified"}
@@ -358,7 +553,10 @@ def run_lane(
             return "retired", True, "task result unresolved"
         return "retired", False, "settled"
 
-    if parsed["malformed"]:
+    grant_mismatch = not _grant_evidence_matches(bound_lane, parsed)
+    if grant_mismatch:
+        capacity, unresolved, unresolved_reason = "occupied", True, "grant mismatch"
+    elif parsed["malformed"]:
         capacity, unresolved, unresolved_reason = "occupied", True, "malformed launcher evidence"
     else:
         capacity, unresolved, unresolved_reason = classify(parsed["assignment"])
@@ -373,12 +571,16 @@ def run_lane(
         "preparation": parsed["preparation"],
         "assignment": parsed["assignment"],
         "malformed": parsed["malformed"],
+        "stdout": stdout,
         "stderr": stderr or "",
+        "process_identity": _process_identity(process),
         "unresolved": unresolved,
         "capacity": capacity,
     }
     if process.returncode:
         result["failure_kind"] = "command_exit"
+    elif unresolved_reason == "grant mismatch":
+        result["failure_kind"] = "grant_mismatch"
     elif unresolved and unresolved_reason == "task result unresolved":
         result["failure_kind"] = "task_result_unresolved"
     return result
