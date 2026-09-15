@@ -104,8 +104,8 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Activation checkpoint: `f2902a60bb40ed537e1e6fc42598a7ff351062be`
 - Combined implementation checkpoint: `16c70e4`; focused dispatcher and launcher suite: `180 passed`
 - Expected workspace: lead remains on current checkout; write-capable lanes use isolated worktrees from the base commit; `.playwright-mcp/` and `db/` remain untouched
-- Next action: run final focused, contract, full-suite, and bounded runtime verification
-- Blockers: none
+- Next action: resolve bounded runtime proof limitation before final completion decision
+- Blockers: bounded runtime proof incomplete; harmless DeepAgents worker exceeded launcher observation window and later timed out under `dcode-project`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -113,7 +113,7 @@ executor-fitness claim is promoted without fresh paired measurements.
 | Task 2 | `completed` | isolated worktree | `codex` | Task 1 | dispatcher tests and direct helper proof | commit `1308a1e`; 37 dispatcher tests passed; direct timeout/grant proof passed; CoS `PASS` with runtime trace deferred |
 | Task 3 | `completed` | isolated worktree | `codex` | Task 1 | launcher tests and bounded observation proof | commit `86f522a`; 143 launcher tests passed; bounded observation subset passed; CoS `PASS` with live trace deferred |
 | Task 4 | `completed` | lead workspace | `codex` | Tasks 2–3 | integrated revision and active spec consistency | spec patched against combined checkpoint `16c70e4`; required search and `git diff --check` passed; CoS `PASS` |
-| Task 5 | `active` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | pending |
+| Task 5 | `active` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | focused/full/contract/Herdr checks passed; runtime proof unresolved; no patch from independent root-cause lane |
 
 CoS resolves each pending executor and template profile independently through
 `docs/operating_system/planning/planning-dispatch.md`. `deepagents` is eligible
@@ -399,35 +399,35 @@ evidence, not copied future commit IDs.
 - Stop for: failed required proof, stale or mismatched Herdr/runtime binding, live process ownership uncertainty, out-of-scope changes, credential/authentication need, destructive recovery, or any request to push/merge/clean.
 
 **Steps:**
-- [ ] Step 1: Inspect each lane diff and accept only declared paths, exact base identity, task-local proof, and no unresolved scope deviation.
-- [ ] Step 2: Integrate accepted lane commits one at a time; update this ledger in the lead workspace after each accepted checkpoint.
-- [ ] Step 3: Run focused lifecycle tests and confirm the new cases fail if any correction is reverted.
-- [ ] Step 4: Run one bounded harmless two-lane runtime proof only after mock and sequential-control gates; capture launcher JSON, receipt JSON, process/ownership evidence, Git identity, and final task-result/cleanup state.
-- [ ] Step 5: Run full repository tests and repository contract validation.
-- [ ] Step 6: Re-run Herdr version/help/schema checks and inspect for unsupported `agent wait`, raw event transport, retry, ledger, or concurrency-expansion paths.
-- [ ] Step 7: Run final diff/status checks, confirm unrelated untracked paths remain untouched, and request `skill-verification-before-completion` before any status transition to `completed`.
-- [ ] Step 8: Keep lifecycle runtime trace separate from performance qualification; make no cost or latency claim without fresh paired measurements.
+- [x] Step 1: Inspect each lane diff and accept only declared paths, exact base identity, task-local proof, and no unresolved scope deviation.
+- [x] Step 2: Integrate accepted lane commits one at a time; update this ledger in the lead workspace after each accepted checkpoint.
+- [x] Step 3: Run focused lifecycle tests and confirm the new cases fail if any correction is reverted.
+- [ ] Step 4: Run one bounded harmless two-lane runtime proof only after mock and sequential-control gates; capture launcher JSON, receipt JSON, process/ownership evidence, Git identity, and final task-result/cleanup state. Attempt `C:\tmp\herdr-runtime-proof-output.jsonl`: both lanes delivered and retained attempt/grant/Git evidence, but launcher observation timed out at 90 seconds; later receipts showed worker exit `0` and cleanup `removed`, so proof is not accepted as a successful end-to-end trace.
+- [x] Step 5: Run full repository tests and repository contract validation.
+- [x] Step 6: Re-run Herdr version/help/schema checks and inspect for unsupported `agent wait`, raw event transport, retry, ledger, or concurrency-expansion paths.
+- [x] Step 7: Run final diff/status checks, confirm unrelated untracked paths remain untouched, and request `skill-verification-before-completion` before any status transition to `completed`.
+- [x] Step 8: Keep lifecycle runtime trace separate from performance qualification; make no cost or latency claim without fresh paired measurements.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py`
+- [x] `python -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py`
 - Expected: focused lifecycle suite passes.
-- [ ] `python -m pytest -q`
+- [x] `python -m pytest -q`
 - Expected: full repository suite passes with no unrelated failure introduced.
-- [ ] `python scripts/validate_repo_contracts.py`
+- [x] `python scripts/validate_repo_contracts.py`
 - Expected: repository contract validation passes.
-- [ ] `herdr --version`
+- [x] `herdr --version`
 - Expected: installed Herdr version is recorded in evidence.
-- [ ] `herdr agent wait --help`
+- [x] `herdr agent wait --help`
 - Expected: informational capability check only; production launcher remains free of `agent wait` integration.
-- [ ] `herdr pane wait-output --help`
+- [x] `herdr pane wait-output --help`
 - Expected: bounded marker-wait capability check passes.
-- [ ] `herdr api schema --json | rg -n -F 'agent.wait'`
+- [x] `herdr api schema --json | rg -n -F 'agent.wait'`
 - Expected: schema contains `agent.wait`; evidence is informational and does not authorize production integration.
-- [ ] `herdr api schema --json | rg -n -F 'pane.wait_for_output'`
+- [x] `herdr api schema --json | rg -n -F 'pane.wait_for_output'`
 - Expected: schema contains `pane.wait_for_output`; evidence is informational.
-- [ ] `git diff --check`
+- [x] `git diff --check`
 - Expected: no whitespace errors.
-- [ ] `git status --short --branch`
+- [x] `git status --short --branch`
 - Expected: only declared plan/source/test/spec changes appear; `.playwright-mcp/` and `db/` remain untouched.
 
 **Exit Criteria:**
