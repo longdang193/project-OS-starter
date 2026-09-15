@@ -103,9 +103,10 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Base commit: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f`
 - Activation checkpoint: `f2902a60bb40ed537e1e6fc42598a7ff351062be`
 - Combined implementation checkpoint: `16c70e4`; focused dispatcher and launcher suite: `180 passed`
+- Last verified lead HEAD: `d2c4351`
 - Expected workspace: lead remains on current checkout; write-capable lanes use isolated worktrees from the base commit; `.playwright-mcp/` and `db/` remain untouched
 - Next action: resolve bounded runtime proof limitation before final completion decision
-- Blockers: bounded runtime proof incomplete; harmless DeepAgents worker exceeded launcher observation window and later timed out under `dcode-project`
+- Blockers: bounded runtime proof incomplete; harmless DeepAgents worker exceeded launcher observation window; later receipt proved exit `0` and cleanup `removed`; independent root-cause lane timed out without edits or patch
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
