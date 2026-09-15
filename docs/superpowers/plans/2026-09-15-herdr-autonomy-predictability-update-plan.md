@@ -215,6 +215,7 @@ implementation lanes, and each wave has at most two active lanes.
 - Define durable plan-task `Authority.cumulative_wall_clock_seconds`; charge each attempt’s allocated `wall_clock_seconds` in full when usage is unknown. Do not claim token or child-budget accounting.
 - Define checkpoint as an inspected Git commit plus task hash, remaining-work report, and completed verification evidence. Continuation is not final task acceptance.
 - Add focused tests in declared test files for lifecycle truth, absent grant evidence, timeout ownership, fake-clock deadline/allowance boundaries, capability flow, pre-launch rejection, policy, checkpoint identity, actual launcher JSON through dispatcher, and duplicate wait-test names. Do not add dispatcher continuation tests; CoS owns that decision.
+- R1 exception: because the first Herdr attempt lost completion evidence after worker exit `0`, Task 1 may inspect and patch the shared launcher completion-evidence path in `scripts/herdr_main_launcher.py` and its focused tests. Task 3 retains deadline ownership after Task 1 acceptance; no overlapping launcher edits run concurrently.
 
 **Required Skills:**
 - `skill-test-driven-development`
@@ -222,7 +223,7 @@ implementation lanes, and each wave has at most two active lanes.
 - `skill-plan-document-reviewer`
 
 **Authority:**
-- Preauthorized local actions: edit the active spec and declared test files; run named focused test commands.
+- Preauthorized local actions: edit the active spec, declared test files, and the R1 launcher completion-evidence owner only; run named focused test commands.
 - Stop for: any contract change that requires a new result schema, live deadline mutation, durable runtime ledger, or authority beyond this plan.
 
 **Verification:**
