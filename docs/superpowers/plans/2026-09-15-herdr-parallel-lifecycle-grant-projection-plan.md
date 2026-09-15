@@ -123,9 +123,10 @@ Runtime Grant explicitly permits it and the child scope is a strict subset.
 
 Revision protocol: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f` remains the original
 baseline. The activation checkpoint is Task 1’s starting revision and is recorded
-in this ledger after activation. After Task 1 proof is accepted, the lead creates
-a checkpoint at `55affa393c9ffa4ffc50b5a45e8e6cc621ee383f` and creates Task 2 and
-Task 3 worktrees from it. After both implementation lanes are accepted, the lead
+in this ledger after activation. Task 1’s accepted lane commit is
+`55affa393c9ffa4ffc50b5a45e8e6cc621ee383f`; the lead’s accepted-task coordination
+checkpoint is recorded in this ledger and is the starting revision for Task 2 and
+Task 3. After both implementation lanes are accepted, the lead
 integrates them locally and creates the combined checkpoint before Task 4 reviews
 the active specification. Task 5 runs only against that combined revision. Git
 remains the source of checkpoint identity; the plan records task state and
