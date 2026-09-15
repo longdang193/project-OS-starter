@@ -100,9 +100,9 @@ accepted-task measurements.
 - Branch: `codex/herdr-autonomy-predictability-update`
 - Base commit: `60e11dd12fc186d40e2a0abad8b98984924b5e8f`
 - Expected workspace: fresh checkout of `origin/main` at base; current feature checkout, `.playwright-mcp/`, `db/`, and existing stash remain preserved
-- Next action: dispatch R2 runtime debugger, then rerun bounded DeepAgents evidence proof before Task 6 acceptance
-- Blockers: Task 6 runtime acceptance blocked. Proof B returned `completion_evidence_missing` with worker exit `0`, confirmed cleanup, and pane output later showing report plus exact marker; R1 retry patch did not make this live path observable. Static verification remains green
-- Runtime incident R1: closed for its original delayed-receipt unit case. Runtime incident R2: investigate live DeepAgents pane/result observation where wrapper completed at 19.3 seconds but launcher settled at about 61 seconds with `report_present: false` and `marker_present: false`, while later pane read showed `READY_RUNTIME_B`, `COMPLETED`, and the exact marker. Keep worker completion, launcher reaping, report receipt, marker observation, and terminal rendering separate
+- Next action: complete Task 6 serialized verification and final acceptance review
+- Blockers: none after R2 patch and fresh bounded replay; Task 6 remains active until full verification and completion gate pass
+- Runtime incident R1: closed for its original delayed-receipt unit case. Runtime incident R2: closed. Root cause was a shared late-confirmed-receipt path that took one final pane snapshot, then returned missing evidence without using remaining settlement grace. The patch routes marker-wait, terminal-observation, and observation-deadline receipt paths through one bounded retry decision. Fresh replay on Herdr 0.9.0 completed in 22.3 seconds with worker exit `0`, report and exact marker observed, descendant terminated, cleanup removed, and no reconciliation required. PSReadLine render noise remains separate from captured pane evidence
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -111,7 +111,7 @@ accepted-task measurements.
 | Task 3 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task3` | `codex` | Task 1 checkpoint `a407f7d` | launcher deadline, receipt, and observation proof | `41f0bec` (lane `0e044ec`); 151 launcher tests passed; Herdr help/schema checks passed; diff clean; profile `normal` |
 | Task 4 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task4` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | capability flow and pre-launch rejection proof | `a617fe9` + `57d26f6` (lane `eab6a4a` + `c6394b5`); 329 owned tests passed; compile and diff checks clean; profile `normal` |
 | Task 5 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task5` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | policy, planning, and generated-surface proof | `9dc586f` (lane `2cef769`); 40 policy tests passed; adapter sync and `--check` passed; profile `normal` |
-| Task 6 | `active` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | Stage 2 checkpoints integrated; static verification passed; runtime acceptance blocked by R2 |
+| Task 6 | `active` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | Stage 2 checkpoints integrated; R2 patch `8156922`; launcher tests 153 passed; fresh bounded replay passed; final repository verification pending |
 
 CoS resolves executor and template profile independently through
 `docs/operating_system/planning/planning-dispatch.md`. `deepagents` is eligible
