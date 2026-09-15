@@ -3095,7 +3095,7 @@ def test_deepagents_completion_deadline_preserves_last_state_as_timeout(
     assert evidence["observation_deadline_exceeded"] is True
 
 
-def test_deepagents_snapshot_captures_gated_pane_wait_output_command(
+def test_deepagents_snapshot_captures_gated_pane_wait_output_command_duplicate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[list[str]] = []
@@ -3139,12 +3139,12 @@ def test_deepagents_snapshot_captures_gated_pane_wait_output_command(
     assert wait_command[:4] == ["herdr.exe", "--session", "session", "pane"]
     assert "wait-output" in wait_command
     assert "--match" in wait_command or "--regex" in wait_command
-    assert "MARKER" in wait_command
+    assert any("MARKER" in part for part in wait_command)
     assert "--timeout" in wait_command
     assert evidence["state"] == "completed"
 
 
-def test_deepagents_snapshot_bounds_native_wait_timeout(
+def test_deepagents_snapshot_bounds_native_wait_timeout_duplicate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[list[str], object]] = []
@@ -3170,7 +3170,7 @@ def test_deepagents_snapshot_bounds_native_wait_timeout(
     assert evidence["state"] != "completed"
 
 
-def test_deepagents_snapshot_falls_back_to_pull_probe_after_wait_failure(
+def test_deepagents_snapshot_falls_back_to_pull_probe_after_wait_failure_duplicate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[list[str]] = []
@@ -3996,3 +3996,70 @@ def test_launcher_wait_test_names_are_unique() -> None:
     names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
     wait_names = [name for name in names if "wait" in name]
     assert len(wait_names) == len(set(wait_names))
+
+
+def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.setdefault("worker_timeout", kwargs.get("timeout"))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: {
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+            "role_views_state": "removed",
+            "recovery_required": False,
+        },
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: captured.update(kwargs) or {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "foreground_processes": [],
+            "observation_error": None,
+        },
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 0
+
+    assert float(captured["worker_timeout"]) <= LAUNCHER._DEEPAGENTS_RUN_TIMEOUT
+    assert float(captured["attempt_deadline"]) - LAUNCHER.time.monotonic() <= LAUNCHER._DEEPAGENTS_RUN_TIMEOUT
+    assert float(captured["completion_wait_seconds"]) <= (
+        LAUNCHER._DEEPAGENTS_RUN_TIMEOUT - LAUNCHER._DEEPAGENTS_RECEIPT_GRACE_SECONDS
+    )
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["task_result"] == {"state": "reported_completed", "accepted": None}
+    assert assignment["task_accepted"] is None

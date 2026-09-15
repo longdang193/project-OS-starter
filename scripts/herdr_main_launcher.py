@@ -1628,6 +1628,7 @@ def _deepagents_completion_evidence(
     receipt_file: Path | None = None,
     attempt_id: str | None = None,
     completion_wait_seconds: float | None = None,
+    attempt_deadline: float | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     observation_wait_seconds = (
@@ -1638,7 +1639,14 @@ def _deepagents_completion_evidence(
     if observation_wait_seconds < 0:
         raise LaunchBlocked("DeepAgents completion observation budget cannot be negative.")
     observation_deadline = started + observation_wait_seconds
+    if attempt_deadline is not None:
+        observation_deadline = min(
+            observation_deadline,
+            attempt_deadline - _DEEPAGENTS_RECEIPT_GRACE_SECONDS,
+        )
     settlement_deadline = observation_deadline + _DEEPAGENTS_RECEIPT_GRACE_SECONDS
+    if attempt_deadline is not None:
+        settlement_deadline = min(settlement_deadline, attempt_deadline)
     evidence: dict[str, Any] | None = None
     receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
     terminal_observed_at: float | None = None
@@ -2184,6 +2192,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _main_body(args: argparse.Namespace) -> int:
     invocation_started = time.monotonic()
+    attempt_deadline = invocation_started + _DEEPAGENTS_RUN_TIMEOUT
     dispatch_id = uuid.uuid4().hex
     preparation_performance = _new_performance_evidence()
     attempt_context: dict[str, Any] = {
@@ -2288,6 +2297,8 @@ def _main_body(args: argparse.Namespace) -> int:
             name=args.name,
             codex_home=args.codex_home,
         )
+        if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
+            raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")
         attempt_id = uuid.uuid4().hex
         attempt_context.update(
             {
@@ -2499,7 +2510,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         command,
                         env=environment,
                         timeout=(
-                            _DEEPAGENTS_RUN_TIMEOUT
+                            max(0.01, attempt_deadline - time.monotonic())
                             if args.executor == "deepagents"
                             else _CODEX_START_TIMEOUT
                         ),
@@ -2869,8 +2880,12 @@ def _main_body(args: argparse.Namespace) -> int:
             completion_wait_seconds=(
                 float(requested_wait)
                 if isinstance(requested_wait, int)
-                else _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+                else max(
+                    0.0,
+                    attempt_deadline - time.monotonic() - _DEEPAGENTS_RECEIPT_GRACE_SECONDS,
+                )
             ),
+            attempt_deadline=attempt_deadline,
         )
         record_phase("observation", observation_started, attempt_id=attempt_id)
         task_state = str(completion["state"])
@@ -2905,8 +2920,8 @@ def _main_body(args: argparse.Namespace) -> int:
                 },
                 "observation": completion,
                 "task_result": {
-                    "state": "verified" if task_verified else "unknown",
-                    "accepted": completed,
+                    "state": "reported_completed" if task_verified else "unknown",
+                    "accepted": None,
                 },
                 "cleanup": {
                     "state": "unknown" if worker_live else ("unverified" if completed else "unknown"),
@@ -2921,7 +2936,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 "reconciliation_required": not completed,
                 "session": resolved_session,
                 "status": task_state,
-                "task_accepted": completed,
+                "task_accepted": None,
                 "task_sha256": assignment_task_sha256,
             }
         })
