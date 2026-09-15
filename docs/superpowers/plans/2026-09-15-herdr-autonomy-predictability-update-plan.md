@@ -100,7 +100,7 @@ accepted-task measurements.
 - Branch: `codex/herdr-autonomy-predictability-update`
 - Base commit: `60e11dd12fc186d40e2a0abad8b98984924b5e8f`
 - Expected workspace: fresh checkout of `origin/main` at base; current feature checkout, `.playwright-mcp/`, `db/`, and existing stash remain preserved
-- Next action: dispatch Stage 2 Tasks 4–5 from accepted Stage 1 checkpoints `ae99cde` and `41f0bec`
+- Next action: monitor Stage 2 Tasks 4–5, then reconcile accepted checkpoints before Task 6 integration
 - Blockers: none for Stage 1; Task 1 R1 acceptance is complete. Full baseline still has 8 pre-existing Task 1 failures for undeveloped dispatcher behavior and duplicate-name contract coverage; do not widen R1 scope to fix them
 - Runtime incident R1: closed. Confirmed receipt could arrive before pane output flush, producing `completion_evidence_missing` despite worker exit `0` and confirmed cleanup. Shared owner now retries only when successful receipt has both report and marker missing, within existing grace window; non-success and partial-evidence states retain prior behavior
 
@@ -109,8 +109,8 @@ accepted-task measurements.
 | Task 1 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task1` | `codex` / `normal` | none | R1 root cause, focused regression, launcher repair, and contract proof | `a407f7d` (cherry-picked from `9a08d34`); 36 focused tests passed; worktree clean |
 | Task 2 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task2` | `codex` / `normal` | Task 1 checkpoint `a407f7d` | dispatcher behavior and direct helper proof | `ae99cde` (lane `a066875`); 44 dispatcher tests passed; harmless timeout fake passed; diff clean |
 | Task 3 | `accepted` | `.worktrees/herdr-autonomy-predictability-update-task3` | `codex` / `normal` | Task 1 checkpoint `a407f7d` | launcher deadline, receipt, and observation proof | `41f0bec` (lane `0e044ec`); 151 launcher tests passed; Herdr help/schema checks passed; diff clean |
-| Task 4 | `pending` | isolated worktree | `unresolved` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | capability flow and pre-launch rejection proof | ready for Stage 2 |
-| Task 5 | `pending` | isolated worktree | `unresolved` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | policy, planning, and generated-surface proof | ready for Stage 2 |
+| Task 4 | `active` | `.worktrees/herdr-autonomy-predictability-update-task4` | `codex` / `normal` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | capability flow and pre-launch rejection proof | Herdr delivery confirmed; attempt `acb6125e35e84784b5691c604684b610`; pane `w3Z:p1`; branch base `18902c0` |
+| Task 5 | `active` | `.worktrees/herdr-autonomy-predictability-update-task5` | `codex` / `normal` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | policy, planning, and generated-surface proof | Herdr delivery confirmed; attempt `4915f6ed76394c25873b78270ef9202b`; pane `w30:p1`; branch base `18902c0` |
 | Task 6 | `pending` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | pending accepted lanes |
 
 CoS resolves executor and template profile independently through
