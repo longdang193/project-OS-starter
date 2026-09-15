@@ -148,6 +148,8 @@ def _bind_requested_grant(lane: dict[str, Any]) -> None:
             },
         }
     )
+    if not requested:
+        lane.pop("local_capabilities", None)
 
 
 def _normalize_local_capabilities(values: object) -> list[str]:
@@ -462,15 +464,21 @@ def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) 
     assignment_digest = assignment.get("grant_digest") if isinstance(assignment, Mapping) else None
     expected = lane.get("runtime_grant")
     expected_digest = lane.get("grant_digest")
+    expected_capabilities = lane.get("local_capabilities")
     if not isinstance(expected, Mapping) or not expected_digest:
         return True
-    return (
+    grant_matches = (
         isinstance(registry, Mapping)
         and isinstance(assignment, Mapping)
         and prep_grant == expected
         and prep_digest == expected_digest
         and assignment_digest == expected_digest
     )
+    if not isinstance(expected_capabilities, Mapping):
+        return grant_matches
+    prep_capabilities = registry.get("local_capabilities") if isinstance(registry, Mapping) else None
+    assignment_capabilities = assignment.get("local_capabilities") if isinstance(assignment, Mapping) else None
+    return grant_matches and prep_capabilities == expected_capabilities and assignment_capabilities == expected_capabilities
 
 
 def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:

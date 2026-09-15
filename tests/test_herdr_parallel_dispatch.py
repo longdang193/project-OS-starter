@@ -823,6 +823,20 @@ def test_local_capabilities_admission_normalizes_and_checks_availability(
     )
 
 
+def test_local_capability_evidence_mismatch_stays_unverified(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    item["local_capabilities"] = ["git"]
+    dispatcher._bind_requested_grant(item)
+    parsed = {
+        "preparation": {"registry_launcher": {
+            "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"],
+            "local_capabilities": {**item["local_capabilities"], "digest": "wrong"},
+        }},
+        "assignment": {"grant_digest": item["grant_digest"], "local_capabilities": item["local_capabilities"]},
+    }
+    assert dispatcher._grant_evidence_matches(item, parsed) is False
+
+
 def test_policy_requires_cumulative_allowance_and_git_checkpoint() -> None:
     assert dispatcher.validate_plan_authority({"cumulative_wall_clock_seconds": 1800})
     assert dispatcher.validate_git_checkpoint({"revision": "HEAD", "verified": True})

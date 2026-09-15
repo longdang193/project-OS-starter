@@ -2380,6 +2380,9 @@ def _main_body(args: argparse.Namespace) -> int:
             assignment = payload.get("assignment", payload)
             if not isinstance(assignment, dict):
                 raise LaunchBlocked("Assignment evidence must be an object.")
+            local_capabilities = registry_evidence.get("local_capabilities")
+            if isinstance(local_capabilities, dict):
+                assignment["local_capabilities"] = dict(local_capabilities)
             execution = assignment.setdefault("execution", {"state": "unknown", "worker_exit_code": None})
             if not isinstance(execution, dict):
                 execution = {"state": "unknown", "worker_exit_code": None}
