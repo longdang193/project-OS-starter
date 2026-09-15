@@ -297,6 +297,8 @@ def test_run_lane_valid_settled_assignment_retires_capacity(tmp_path: Path) -> N
 def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
     tmp_path: Path,
 ) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
     class CompletedProcess:
         returncode = 2
 
@@ -304,11 +306,12 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
             return (
                 "\n".join(
                     [
-                        json.dumps({"registry_launcher": {"attempt_id": "a"}}),
+                            json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}}),
                         json.dumps(
                             {
-                                "assignment": {
-                                    "attempt_id": "a",
+                                    "assignment": {
+                                        "attempt_id": "a",
+                                        "grant_digest": item["grant_digest"],
                                     "execution": {
                                         "state": "exited",
                                         "descendant_state": "terminated",
@@ -325,7 +328,7 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        item,
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -603,8 +606,11 @@ def test_run_lane_missing_or_unknown_descendant_state_stays_occupied(
 def test_run_lane_explicit_descendant_retirement_requires_cleanup(
     tmp_path: Path, descendant_state: str,
 ) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
     assignment = {
         "attempt_id": "a",
+        "grant_digest": item["grant_digest"],
         "execution": {"state": "exited", "descendant_state": descendant_state},
         "cleanup": {"state": "removed", "recovery_required": False},
         "reconciliation_required": False,
@@ -615,13 +621,13 @@ def test_run_lane_explicit_descendant_retirement_requires_cleanup(
 
         def communicate(self, *, timeout):
             return (
-                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                    json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
                 + "\n"
                 + json.dumps({"assignment": assignment}),
                 "",
             )
 
-    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+    result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["capacity"] == "retired"
     assert result["unresolved"] is True
@@ -689,6 +695,9 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
 ) -> None:
     from scripts import herdr_main_launcher as launcher
 
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
+
     classified = launcher._classify_deepagents_outcome(
         delivery={"state": "delivered", "certainty": "confirmed", "prompt_accepted": True},
         observation={"state": "completed", "report_present": True, "observation_error": None},
@@ -714,23 +723,25 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
         launcher_exit_code=classified["launcher_exit_code"],
         legacy={"status": classified["status"], "reconciliation_required": classified["reconciliation_required"]},
     )
+    emitted["assignment"]["grant_digest"] = item["grant_digest"]
 
     class CompletedProcess:
         returncode = 0
 
         def communicate(self, *, timeout):
             return (
-                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                    json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
                 + "\n"
                 + json.dumps(emitted),
                 "",
             )
 
-    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+    result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["assignment"]["task_result"] == {"state": "reported_completed", "accepted": None}
     assert result["capacity"] == "retired"
-    assert result["unresolved"] is True
+    assert result["unresolved"] is False
+    assert result["acceptance_pending"] is True
 
 
 def test_finish_timed_out_process_drains_closes_and_reaps() -> None:

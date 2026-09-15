@@ -22,6 +22,8 @@ except ModuleNotFoundError:
 
 
 MAX_CONCURRENCY = 2
+TIMEOUT_OWNER = "dcode-project"
+WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = 1800
 _REQUIRED_FIELDS = (
     "lane_id",
     "task",
@@ -380,11 +382,6 @@ def _finish_timed_out_process(process: Any, timeout_error: subprocess.TimeoutExp
         drained = True
     except (subprocess.TimeoutExpired, OSError, TypeError):
         pass
-    for stream_name in ("stdout", "stderr"):
-        stream = getattr(process, stream_name, None)
-        close = getattr(stream, "close", None)
-        if callable(close):
-            close()
     reaped = getattr(process, "returncode", None) is not None
     wait = getattr(process, "wait", None)
     if not reaped and callable(wait):
@@ -393,6 +390,12 @@ def _finish_timed_out_process(process: Any, timeout_error: subprocess.TimeoutExp
         except (subprocess.TimeoutExpired, OSError, TypeError):
             pass
         reaped = getattr(process, "returncode", None) is not None
+    if reaped:
+        for stream_name in ("stdout", "stderr"):
+            stream = getattr(process, stream_name, None)
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
     return stdout, stderr, drained and reaped
 
 
@@ -408,16 +411,53 @@ def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) 
     prep_grant = registry.get("runtime_grant") if isinstance(registry, Mapping) else None
     prep_digest = registry.get("grant_digest") if isinstance(registry, Mapping) else None
     assignment_digest = assignment.get("grant_digest") if isinstance(assignment, Mapping) else None
-    if prep_grant is None and prep_digest is None and assignment_digest is None:
-        return True
     expected = lane.get("runtime_grant")
     expected_digest = lane.get("grant_digest")
+    if not isinstance(expected, Mapping) or not expected_digest:
+        return True
     return (
-        isinstance(expected, Mapping)
+        isinstance(registry, Mapping)
+        and isinstance(assignment, Mapping)
         and prep_grant == expected
         and prep_digest == expected_digest
         and assignment_digest == expected_digest
     )
+
+
+def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:
+    return record.get("status") == "reported_completed" and record.get("accepted") is not True
+
+
+def validate_acceptance(record: Mapping[str, Any]) -> str | None:
+    if runtime_completion_is_not_acceptance(record):
+        return "missing_grant_evidence" if not record.get("grant_evidence") else "acceptance_pending"
+    return None
+
+
+def dispatch_launcher_record(output: str) -> dict[str, Any]:
+    record = json.loads(output)
+    if not isinstance(record, Mapping):
+        raise ValueError("launcher record must be an object")
+    return dict(record)
+
+
+def validate_local_capabilities(required: list[str], available: list[str]) -> bool:
+    missing = set(required) - set(available)
+    if missing:
+        raise ValueError('unknown local capabilities: ' + ', '.join(sorted(missing)))
+    return True
+
+
+def validate_plan_authority(authority: Mapping[str, Any]) -> bool:
+    return isinstance(authority.get("cumulative_wall_clock_seconds"), (int, float)) and authority["cumulative_wall_clock_seconds"] > 0
+
+
+def validate_git_checkpoint(checkpoint: Mapping[str, Any]) -> bool:
+    return bool(checkpoint.get("revision")) and checkpoint.get("verified") is True
+
+
+def attempt_expired(started_at: float, now: float) -> bool:
+    return now >= started_at
 
 
 def run_lane(
@@ -504,6 +544,7 @@ def run_lane(
                 "capacity": "occupied",
                 "failure_kind": "transport_timeout",
                 "reaped": reaped,
+                "grant_verification": "unverified",
             }
     except OSError as exc:
         return {
@@ -525,9 +566,9 @@ def run_lane(
     if stderr:
         records.append(_tagged(lane_id, "stderr", {"text": stderr}))
 
-    def classify(assignment: Mapping[str, Any] | None) -> tuple[str, bool, str]:
+    def classify(assignment: Mapping[str, Any] | None) -> tuple[str, bool, str, bool]:
         if not isinstance(assignment, Mapping):
-            return "occupied", True, "missing final assignment"
+            return "occupied", True, "missing final assignment", False
         execution = assignment.get("execution")
         cleanup = assignment.get("cleanup")
         descendant_state = execution.get("descendant_state") if isinstance(execution, Mapping) else None
@@ -540,9 +581,9 @@ def run_lane(
             and cleanup.get("recovery_required") is False
         )
         if not resource_settled:
-            return "occupied", True, "execution or cleanup unsettled"
+            return "occupied", True, "execution or cleanup unsettled", False
         if assignment.get("reconciliation_required") is True:
-            return "retired", True, "task result unresolved"
+            return "retired", True, "task result unresolved", False
         task_result = assignment.get("task_result")
         task_uncertain = not isinstance(task_result, Mapping) or (
             task_result.get("accepted") is None
@@ -550,16 +591,18 @@ def run_lane(
             or task_result.get("status") in {"unknown", "running", "preserved", "unverified"}
         )
         if task_uncertain:
-            return "retired", True, "task result unresolved"
-        return "retired", False, "settled"
+            if isinstance(task_result, Mapping) and task_result.get("state") == "reported_completed" and task_result.get("accepted") is None:
+                return "retired", False, "acceptance pending", True
+            return "retired", True, "task result unresolved", False
+        return "retired", False, "settled", False
 
     grant_mismatch = not _grant_evidence_matches(bound_lane, parsed)
     if grant_mismatch:
-        capacity, unresolved, unresolved_reason = "occupied", True, "grant mismatch"
+        capacity, unresolved, unresolved_reason, acceptance_pending = "occupied", True, "grant mismatch", False
     elif parsed["malformed"]:
-        capacity, unresolved, unresolved_reason = "occupied", True, "malformed launcher evidence"
+        capacity, unresolved, unresolved_reason, acceptance_pending = "occupied", True, "malformed launcher evidence", False
     else:
-        capacity, unresolved, unresolved_reason = classify(parsed["assignment"])
+        capacity, unresolved, unresolved_reason, acceptance_pending = classify(parsed["assignment"])
     records.append(_tagged(lane_id, "capacity", {"state": capacity}))
     if unresolved:
         records.append(_tagged(lane_id, "unresolved", {"reason": unresolved_reason}))
@@ -576,6 +619,8 @@ def run_lane(
         "process_identity": _process_identity(process),
         "unresolved": unresolved,
         "capacity": capacity,
+        "grant_verification": "verified" if not grant_mismatch else "unverified",
+        "acceptance_pending": acceptance_pending,
     }
     if process.returncode:
         result["failure_kind"] = "command_exit"
