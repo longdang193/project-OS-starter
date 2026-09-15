@@ -103,6 +103,7 @@ accepted-task measurements.
 - Next action: none; completion verification passed
 - Blockers: none
 - Runtime incident R1: closed for its original delayed-receipt unit case. Runtime incident R2: closed. Root cause was a shared late-confirmed-receipt path that took one final pane snapshot, then returned missing evidence without using remaining settlement grace. The patch routes marker-wait, terminal-observation, and observation-deadline receipt paths through one bounded retry decision. Fresh replay on Herdr 0.9.0 completed in 22.3 seconds with worker exit `0`, report and exact marker observed, descendant terminated, cleanup removed, and no reconciliation required. PSReadLine render noise remains separate from captured pane evidence
+- Post-completion live probes: success attempt `e23f86c33c9e4b5197049251b6434482` passed with a `120s` grant, report and marker present, worker exit `0`, descendant terminated, and cleanup removed. Bounded `1s` timeout attempt `b5c3b32f1c3c428da240463674e7e589` failed closed with cleanup removed; direct pane inspection showed only the Herdr PowerShell shell remained. Systematic-debugging review found no new shared defect, so no additional patch was justified.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
