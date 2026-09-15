@@ -1689,6 +1689,17 @@ def _deepagents_completion_evidence(
             receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
         return receipt
 
+    def retry_missing_evidence() -> bool:
+        if receipt.get("worker_state") != "exited" or receipt.get("worker_exit_code") != 0:
+            return False
+        if evidence.get("report_present") is not False or evidence.get("marker_present") is not False:
+            return False
+        remaining = settlement_deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
+        return True
+
     marker_observed = False
     while True:
         if receipt.get("state") == "confirmed":
@@ -1718,24 +1729,8 @@ def _deepagents_completion_evidence(
             )
             marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
-            receipt_success = (
-                receipt.get("worker_state") == "exited"
-                and receipt.get("worker_exit_code") == 0
-            )
-            evidence_complete = (
-                evidence.get("report_present") is True
-                and evidence.get("marker_present") is True
-            )
-            evidence_missing = (
-                evidence.get("report_present") is False
-                and evidence.get("marker_present") is False
-            )
-            if not receipt_success or evidence_complete or not evidence_missing:
+            if not retry_missing_evidence():
                 return evidence
-            remaining = settlement_deadline - time.monotonic()
-            if remaining <= 0:
-                return evidence
-            time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
             continue
         evidence = _deepagents_completion_snapshot(
             herdr,
@@ -1767,6 +1762,8 @@ def _deepagents_completion_evidence(
                     )
                     marker_observed = marker_observed or evidence.get("marker_present") is True
                 evidence["lifecycle_receipt"] = receipt
+                if retry_missing_evidence():
+                    continue
                 return evidence
         if evidence["state"] in {"completed", "failed"}:
             terminal_observed_at = time.monotonic()
@@ -1786,6 +1783,8 @@ def _deepagents_completion_evidence(
                 )
                 marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
+            if retry_missing_evidence():
+                continue
             return evidence
         remaining = observation_deadline - time.monotonic()
         if remaining <= 0:
@@ -1804,6 +1803,8 @@ def _deepagents_completion_evidence(
                     )
                     marker_observed = marker_observed or evidence.get("marker_present") is True
                     evidence["lifecycle_receipt"] = receipt
+                    if retry_missing_evidence():
+                        continue
                     return evidence
             evidence["last_observed_state"] = evidence["state"]
             evidence["state"] = "timed_out"
