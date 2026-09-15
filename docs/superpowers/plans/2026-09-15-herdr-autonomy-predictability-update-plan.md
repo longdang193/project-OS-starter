@@ -101,11 +101,12 @@ accepted-task measurements.
 - Base commit: `60e11dd12fc186d40e2a0abad8b98984924b5e8f`
 - Expected workspace: fresh checkout of `origin/main` at base; current feature checkout, `.playwright-mcp/`, `db/`, and existing stash remain preserved
 - Next action: dispatch Task 1 through Herdr, then record its accepted checkpoint revision before Stage 1 dispatch
-- Blockers: none for planning; execution stops if continuation authority, capability input, or timeout handoff cannot be represented by existing structured evidence
+- Blockers: Task 1 runtime attempt returned `completion_evidence_missing` with worker exit `0`, confirmed cleanup, absent report/marker, and `reconciliation_required: true`; acceptance is blocked pending root-cause repair and fresh proof
+- Runtime incident R1: investigate completion evidence transport and terminal-buffer interaction; keep worker completion, launcher reaping, report receipt, and marker observation as separate facts
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `active` | `.worktrees/herdr-autonomy-predictability-update-task1` | `codex` / `normal` | none | contract review and red regressions | dispatch prepared |
+| Task 1 | `blocked` | `.worktrees/herdr-autonomy-predictability-update-task1` | `codex` / `normal` | none | contract review and red regressions | R1: completion evidence missing after worker exit 0 |
 | Task 2 | `pending` | isolated worktree | `unresolved` | Task 1 checkpoint | dispatcher behavior and direct helper proof | pending Task 1 |
 | Task 3 | `pending` | isolated worktree | `unresolved` | Task 1 checkpoint | launcher deadline, receipt, and observation proof | pending Task 1 |
 | Task 4 | `pending` | isolated worktree | `unresolved` | Tasks 2–3 checkpoints | capability flow and pre-launch rejection proof | pending Stage 1 |
