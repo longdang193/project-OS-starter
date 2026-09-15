@@ -102,8 +102,9 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Branch: `codex/herdr-parallel-lifecycle-grant-projection`
 - Base commit: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f`
 - Activation checkpoint: `f2902a60bb40ed537e1e6fc42598a7ff351062be`
+- Combined implementation checkpoint: `16c70e4`; focused dispatcher and launcher suite: `180 passed`
 - Expected workspace: lead remains on current checkout; write-capable lanes use isolated worktrees from the base commit; `.playwright-mcp/` and `db/` remain untouched
-- Next action: integrate accepted Task 2 and Task 3 commits, establish combined checkpoint, then activate Task 4 specification alignment
+- Next action: run final focused, contract, full-suite, and bounded runtime verification
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -111,8 +112,8 @@ executor-fitness claim is promoted without fresh paired measurements.
 | Task 1 | `completed` | isolated worktree | `codex` | none | red contract tests plus baseline | commit `55affa393c9ffa4ffc50b5a45e8e6cc621ee383f`; 169 passed, 8 intended correction reds; CoS `PASS` |
 | Task 2 | `completed` | isolated worktree | `codex` | Task 1 | dispatcher tests and direct helper proof | commit `1308a1e`; 37 dispatcher tests passed; direct timeout/grant proof passed; CoS `PASS` with runtime trace deferred |
 | Task 3 | `completed` | isolated worktree | `codex` | Task 1 | launcher tests and bounded observation proof | commit `86f522a`; 143 launcher tests passed; bounded observation subset passed; CoS `PASS` with live trace deferred |
-| Task 4 | `pending` | lead workspace | `codex` | Tasks 2–3 | integrated revision and active spec consistency | pending |
-| Task 5 | `pending` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | pending |
+| Task 4 | `completed` | lead workspace | `codex` | Tasks 2–3 | integrated revision and active spec consistency | spec patched against combined checkpoint `16c70e4`; required search and `git diff --check` passed; CoS `PASS` |
+| Task 5 | `active` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | pending |
 
 CoS resolves each pending executor and template profile independently through
 `docs/operating_system/planning/planning-dispatch.md`. `deepagents` is eligible
@@ -314,7 +315,7 @@ evidence, not copied future commit IDs.
 - Reconcile maintained contract text only after accepted Task 2 and Task 3 changes are locally integrated into one combined revision.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: narrow canonical documentation update with exact source/test evidence available from Tasks 2–3.
 
 **Validator Profile (optional):**
@@ -342,19 +343,19 @@ evidence, not copied future commit IDs.
 - Stop for: a source/spec contradiction requiring new behavior, generated-surface changes, new coordination state, or any documentation path outside the active parent specification.
 
 **Steps:**
-- [ ] Step 1: Confirm the lead’s combined checkpoint contains accepted Task 2 and Task 3 source/test changes; review the specification against that revision, not lane-only revisions.
-- [ ] Step 2: State that `reported_completed` means runtime reporting complete while `accepted: null` keeps CoS acceptance pending.
-- [ ] Step 3: State that missing/unknown descendant, cleanup, ownership, or observation evidence never proves retirement or retry safety.
-- [ ] Step 4: Document normalized Runtime Grant propagation, digest matching, child-scope subset rules, and fail-closed mismatch behavior.
-- [ ] Step 5: Document receipt-first wait ordering and bounded fallback without adding `agent wait` production integration.
-- [ ] Step 6: Define CoS ephemeral projection as an explicit mapping from existing structured task, profile, Git, Herdr, and grant owners; reject missing/ambiguous values; validate `--lanes-file` through the same admission path; keep expected Git identity separate from observed identity. Do not add automated Markdown/prose derivation unless an existing structured caller is named and updated within this scope.
-- [ ] Step 7: Add specification tests/search evidence for missing inputs, dependency readiness, grant conflicts, and expected-versus-observed Git identity.
-- [ ] Step 8: Record executor-fitness reuse, streaming, Codex waits, native mutation idempotency, and concurrency expansion as deferred follow-up work requiring separate evidence.
+- [x] Step 1: Confirm the lead’s combined checkpoint contains accepted Task 2 and Task 3 source/test changes; review the specification against that revision, not lane-only revisions.
+- [x] Step 2: State that `reported_completed` means runtime reporting complete while `accepted: null` keeps CoS acceptance pending.
+- [x] Step 3: State that missing/unknown descendant, cleanup, ownership, or observation evidence never proves retirement or retry safety.
+- [x] Step 4: Document normalized Runtime Grant propagation, digest matching, child-scope subset rules, and fail-closed mismatch behavior.
+- [x] Step 5: Document receipt-first wait ordering and bounded fallback without adding `agent wait` production integration.
+- [x] Step 6: Define CoS ephemeral projection as an explicit mapping from existing structured task, profile, Git, Herdr, and grant owners; reject missing/ambiguous values; validate `--lanes-file` through the same admission path; keep expected Git identity separate from observed identity. Do not add automated Markdown/prose derivation unless an existing structured caller is named and updated within this scope.
+- [x] Step 7: Add specification tests/search evidence for missing inputs, dependency readiness, grant conflicts, and expected-versus-observed Git identity.
+- [x] Step 8: Record executor-fitness reuse, streaming, Codex waits, native mutation idempotency, and concurrency expansion as deferred follow-up work requiring separate evidence.
 
 **Verification:**
-- [ ] `rg -n -i "missing.*retirement|reported_completed|accepted: null|grant_digest|descendant_state|wait-output|lanes-file|expected.*observed|fitness|streaming|idempotency" docs/superpowers/specs/2026-09-14-parallel-deepagents-dispatch-spec.md`
+- [x] `rg -n -i "missing.*retirement|reported_completed|accepted: null|grant_digest|descendant_state|wait-output|lanes-file|expected.*observed|fitness|streaming|idempotency" docs/superpowers/specs/2026-09-14-parallel-deepagents-dispatch-spec.md`
 - Expected: active contract uses exact field names and does not claim unsupported enforcement or optimization.
-- [ ] `git diff --check`
+- [x] `git diff --check`
 - Expected: no whitespace errors.
 
 **Exit Criteria:**

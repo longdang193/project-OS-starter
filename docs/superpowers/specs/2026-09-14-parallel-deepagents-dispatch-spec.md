@@ -102,7 +102,9 @@ The pilot uses one foreground CoS lead controller, not a new daemon or durable
 registry.
 
 Native waits are bounded observation signals only. Current launcher integration
-uses `pane wait-output` for DeepAgents marker observation, then retains receipt,
+reads the attempt-correlated receipt first. Confirmed receipts skip blocking
+marker waits but still retain bounded pane and process probes; unresolved
+receipts use one bounded `pane wait-output` observation before final receipt,
 process/descendant, pane, cleanup, and reconciliation checks. `agent wait` remains
 documented as a Herdr capability but is not wired into the launcher; CoS retains
 final `PASS | FAIL | BLOCKED` acceptance authority.
@@ -115,6 +117,27 @@ final `PASS | FAIL | BLOCKED` acceptance authority.
 | Final output | Final assignment JSON record, or explicit transport/launch failure record, keyed by lane ID and `attempt_id`; normalized `lifecycle_receipt` is retained in assignment evidence before any raw receipt deletion. |
 | Controller result | Per-lane normalized evidence, child exit status, stream diagnostics, capacity state, and unresolved conditions on stdout as tagged JSONL. Helper does not update plan ledger or assign `PASS`, `FAIL`, or `BLOCKED`. |
 | Interruption | Stop admitting new lanes; retain running or uncertain attempts; reconcile plan, Git, and runtime ownership before any replacement launch. |
+
+### Runtime Grant And CoS Projection
+
+Each admitted descriptor supplies explicit `grant_turns`,
+`grant_wall_clock_seconds`, `grant_child_agents`, and `mcp_select` values.
+Admission normalizes these values through the existing
+`_normalize_runtime_grant()` contract, maps them to launcher CLI arguments, and
+derives one `grant_digest`. Correlated preparation evidence is authoritative for
+the normalized `runtime_grant` and digest; final assignment evidence must carry
+the same digest. Conflicting top-level and nested MCP selectors reject admission;
+no selector source wins silently. Child delegation remains policy-level scope,
+not subtree-budget enforcement.
+
+CoS projection is ephemeral and explicit. It maps only existing structured
+owners: task/lane identity and task text, profile and executor, Git worktree and
+expected base, allowed writes, dependencies and readiness, Herdr session/pane,
+fixed contracts, mutable resources, and Runtime Grant fields. Missing or
+ambiguous values reject admission. File-backed `--lanes-file` descriptors and
+in-memory descriptors use the same `load_lane_descriptors_from_items()`
+validation path. Markdown or prose is not an input source, and expected Git
+identity remains distinct from observed Git identity.
 
 ### Identity and Evidence Lifetime
 
@@ -198,6 +221,19 @@ required.
 - output or state change: `delivery` may remain `unknown`; launcher task acceptance remains `None` or `False`; batch verdict is `PASS`, `FAIL`, or `BLOCKED` only at CoS acceptance.
 - failure behavior: missing acknowledgement, report, verification, or cleanup proof prevents optimistic acceptance.
 - observable acceptance: tests reject launcher-start-as-delivery and worker-completion-as-task-acceptance shortcuts.
+
+Runtime reporting completion is not CoS acceptance. `reported_completed` means
+runtime reporting reached its terminal reporting state; `accepted: null` keeps
+CoS acceptance pending. Launcher status may be `completed` while task-result
+acceptance remains unresolved.
+
+#### Requirement: Retirement and bounded observation
+
+- trigger or actor: launcher completion observer and coordinator capacity tracker.
+- required behavior: receipt confirmation precedes marker waiting; confirmed receipts skip blocking marker wait but retain one bounded pane read and process probe. Unresolved receipts receive one bounded marker wait with reserved time for receipt reread and fresh final probes.
+- output or state change: marker observation is recorded as `observed`, `expired`, or `transport_failed`; interval expiry is distinct from transport failure; stale markers never settle a current attempt.
+- retirement rule: missing or unknown `descendant_state`, ownership, cleanup, or task evidence never proves retirement. Capacity may retire only when ownership and cleanup are explicitly settled, even if task-result evidence remains unresolved.
+- observable acceptance: regression proof covers receipt-aware ordering, stale-marker rejection, bounded timeout uncertainty, process-state change before final probe, and `reported_completed` with `accepted: null`.
 
 #### Requirement: Retry and stale-receipt protection
 
