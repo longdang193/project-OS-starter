@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: active
+status: completed
 template_id: implementation-plan
 contract_version: "1"
 name: herdr-parallel-lifecycle-grant-projection
@@ -103,10 +103,11 @@ executor-fitness claim is promoted without fresh paired measurements.
 - Base commit: `3a7f3941bfbed3765ce956d7b9e1d80b005ca41f`
 - Activation checkpoint: `f2902a60bb40ed537e1e6fc42598a7ff351062be`
 - Combined implementation checkpoint: `16c70e4`; focused dispatcher and launcher suite: `180 passed`
-- Last verified lead HEAD: `d2c4351`
+- Last committed lead HEAD: `a070b6d`; verified working-tree corrections are recorded below.
+- Working-tree corrections: DeepAgents completion observation follows explicit wall-clock grant; `native` uses fixed `120s` default and receipt grace remains independent; README adoption contract coverage is restored without reverting user edits.
 - Expected workspace: lead remains on current checkout; write-capable lanes use isolated worktrees from the base commit; `.playwright-mcp/` and `db/` remain untouched
-- Next action: resolve bounded runtime proof limitation before final completion decision
-- Blockers: bounded runtime proof incomplete; harmless DeepAgents worker exceeded launcher observation window; later receipt proved exit `0` and cleanup `removed`; independent root-cause lane timed out without edits or patch
+- Next action: none; completion verification passed
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -114,7 +115,7 @@ executor-fitness claim is promoted without fresh paired measurements.
 | Task 2 | `completed` | isolated worktree | `codex` | Task 1 | dispatcher tests and direct helper proof | commit `1308a1e`; 37 dispatcher tests passed; direct timeout/grant proof passed; CoS `PASS` with runtime trace deferred |
 | Task 3 | `completed` | isolated worktree | `codex` | Task 1 | launcher tests and bounded observation proof | commit `86f522a`; 143 launcher tests passed; bounded observation subset passed; CoS `PASS` with live trace deferred |
 | Task 4 | `completed` | lead workspace | `codex` | Tasks 2–3 | integrated revision and active spec consistency | spec patched against combined checkpoint `16c70e4`; required search and `git diff --check` passed; CoS `PASS` |
-| Task 5 | `active` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | focused/full/contract/Herdr checks passed; runtime proof unresolved; no patch from independent root-cause lane |
+| Task 5 | `completed` | lead workspace | `codex` | Task 4 | focused, full, contract, runtime, and Git verification | focused suites `33` and `182` passed; full suite `589 passed`; contract/planning/template validators passed; Herdr `0.9.0` capability/schema checks passed; runtime proof passed for both lanes; Git checks passed; CoS `PASS` |
 
 CoS resolves each pending executor and template profile independently through
 `docs/operating_system/planning/planning-dispatch.md`. `deepagents` is eligible
@@ -403,7 +404,10 @@ evidence, not copied future commit IDs.
 - [x] Step 1: Inspect each lane diff and accept only declared paths, exact base identity, task-local proof, and no unresolved scope deviation.
 - [x] Step 2: Integrate accepted lane commits one at a time; update this ledger in the lead workspace after each accepted checkpoint.
 - [x] Step 3: Run focused lifecycle tests and confirm the new cases fail if any correction is reverted.
-- [ ] Step 4: Run one bounded harmless two-lane runtime proof only after mock and sequential-control gates; capture launcher JSON, receipt JSON, process/ownership evidence, Git identity, and final task-result/cleanup state. Attempt `C:\tmp\herdr-runtime-proof-output.jsonl`: both lanes delivered and retained attempt/grant/Git evidence, but launcher observation timed out at 90 seconds; later receipts showed worker exit `0` and cleanup `removed`, so proof is not accepted as a successful end-to-end trace.
+- [x] Step 3a: Apply `skill-systematic-debugging` to the shared completion helper and caller; confirm fixed `60s + 30s` observation ignored explicit DeepAgents grants and caused valid late completion loss.
+- [x] Step 3b: Add red/green regression proof for a report observed after `90s` and for launcher propagation of a `120s` grant.
+- [x] Step 3c: Patch `_deepagents_completion_evidence()` and its only production caller; preserve receipt grace, acceptance separation, and the `1800s` outer watchdog.
+- [x] Step 4: Run one bounded harmless two-lane runtime proof only after mock and sequential-control gates; `C:\tmp\herdr-runtime-proof-output-120-marker.jsonl` records both lanes with matching `120s` grant digests, confirmed delivery, worker exit `0`, completed observation, marker/report presence, confirmed receipts, removed cleanup, retired capacity, and `task_result.accepted: null` as required. Dispatcher exit remains nonzero because CoS acceptance is intentionally unresolved.
 - [x] Step 5: Run full repository tests and repository contract validation.
 - [x] Step 6: Re-run Herdr version/help/schema checks and inspect for unsupported `agent wait`, raw event transport, retry, ledger, or concurrency-expansion paths.
 - [x] Step 7: Run final diff/status checks, confirm unrelated untracked paths remain untouched, and request `skill-verification-before-completion` before any status transition to `completed`.
@@ -412,8 +416,8 @@ evidence, not copied future commit IDs.
 **Verification:**
 - [x] `python -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py`
 - Expected: focused lifecycle suite passes.
-- [x] `python -m pytest -q`
-- Expected: full repository suite passes with no unrelated failure introduced.
+- [x] `python -m pytest -q` (prior baseline)
+- Expected: full repository suite passes with no unrelated failure introduced; latest rerun is `589 passed` after restoring required README contract coverage while preserving user edits.
 - [x] `python scripts/validate_repo_contracts.py`
 - Expected: repository contract validation passes.
 - [x] `herdr --version`
@@ -432,7 +436,7 @@ evidence, not copied future commit IDs.
 - Expected: only declared plan/source/test/spec changes appear; `.playwright-mcp/` and `db/` remain untouched.
 
 **Exit Criteria:**
-- `skill-verification-before-completion` returns `verified`; all required evidence is fresh, task ledger and Git state reconcile, no required blocker remains, and no branch push/merge/cleanup occurs without separate authorization.
+- Completion verification result: `verified`; required evidence is fresh, task ledger and Git state reconcile, no required blocker remains, and no branch push/merge/cleanup occurs without separate authorization.
 
 ## Verification
 

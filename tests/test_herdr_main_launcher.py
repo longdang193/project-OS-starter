@@ -2132,6 +2132,68 @@ def test_deepagents_main_strips_herdr_environment(
     assert json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]["status"] == "completed"
 
 
+def test_deepagents_main_uses_grant_wall_clock_for_completion_observation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+            "runtime_grant": {"wall_clock_seconds": {"requested": 120}},
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: captured.update(kwargs) or {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "report_sha256": "report",
+            "report_chars": 1,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: {
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+            "recovery_required": False,
+        },
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(tmp_path), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane", "--grant-wall-clock-seconds", "120",
+        ]
+    ) == 0
+    assert captured["completion_wait_seconds"] == 120.0
+    capsys.readouterr()
+
+
 def test_deepagents_main_blocks_delivery_without_completion_report(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -2705,6 +2767,44 @@ def test_deepagents_completion_waits_for_delayed_report(
 
     assert evidence["state"] == "completed"
     assert sleeps
+
+
+def test_deepagents_completion_allows_report_after_ninety_seconds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    sleeps: list[float] = []
+    snapshots = iter([
+        {"state": "running", "report_present": False},
+        {"state": "completed", "report_present": True},
+    ])
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_DEEPAGENTS_COMPLETION_POLL_SECONDS",
+        100.0,
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: (sleeps.append(seconds), clock.__setitem__(0, clock[0] + seconds)),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="PROBE_OK",
+    )
+
+    assert evidence["state"] == "completed"
+    assert sleeps == [100.0]
 
 
 def test_deepagents_completion_uses_receipt_before_first_pane_command(

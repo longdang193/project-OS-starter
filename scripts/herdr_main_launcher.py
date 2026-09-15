@@ -71,7 +71,7 @@ _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS = 30.0
 _CODEX_START_TIMEOUT_MS = "120000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
-_DEEPAGENTS_COMPLETION_WAIT_SECONDS = 60.0
+_DEEPAGENTS_COMPLETION_WAIT_SECONDS = 120.0
 # ponytail: fixed 30s receipt grace; increase only with measured receipt latency.
 _DEEPAGENTS_RECEIPT_GRACE_SECONDS = 30.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
@@ -1627,9 +1627,17 @@ def _deepagents_completion_evidence(
     expected_marker: str,
     receipt_file: Path | None = None,
     attempt_id: str | None = None,
+    completion_wait_seconds: float | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
-    observation_deadline = started + _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+    observation_wait_seconds = (
+        _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+        if completion_wait_seconds is None
+        else completion_wait_seconds
+    )
+    if observation_wait_seconds < 0:
+        raise LaunchBlocked("DeepAgents completion observation budget cannot be negative.")
+    observation_deadline = started + observation_wait_seconds
     settlement_deadline = observation_deadline + _DEEPAGENTS_RECEIPT_GRACE_SECONDS
     evidence: dict[str, Any] | None = None
     receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
@@ -2821,6 +2829,17 @@ def _main_body(args: argparse.Namespace) -> int:
             }), sort_keys=True))
             return result.returncode
         observation_started = time.monotonic()
+        runtime_grant = registry_launcher.get("runtime_grant")
+        wall_clock_grant = (
+            runtime_grant.get("wall_clock_seconds")
+            if isinstance(runtime_grant, dict)
+            else None
+        )
+        requested_wait = (
+            wall_clock_grant.get("requested")
+            if isinstance(wall_clock_grant, dict)
+            else None
+        )
         completion = _deepagents_completion_evidence(
             str(evidence["herdr"]["executable"]),
             resolved_session,
@@ -2829,6 +2848,11 @@ def _main_body(args: argparse.Namespace) -> int:
             expected_marker=completion_marker,
             receipt_file=receipt_file,
             attempt_id=attempt_id,
+            completion_wait_seconds=(
+                float(requested_wait)
+                if isinstance(requested_wait, int)
+                else _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+            ),
         )
         record_phase("observation", observation_started, attempt_id=attempt_id)
         task_state = str(completion["state"])

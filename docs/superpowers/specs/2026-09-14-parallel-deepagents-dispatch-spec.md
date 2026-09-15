@@ -230,7 +230,7 @@ acceptance remains unresolved.
 #### Requirement: Retirement and bounded observation
 
 - trigger or actor: launcher completion observer and coordinator capacity tracker.
-- required behavior: receipt confirmation precedes marker waiting; confirmed receipts skip blocking marker wait but retain one bounded pane read and process probe. Unresolved receipts receive one bounded marker wait with reserved time for receipt reread and fresh final probes.
+- required behavior: receipt confirmation precedes marker waiting; confirmed receipts skip blocking marker wait but retain one bounded pane read and process probe. Unresolved receipts receive one bounded marker wait with reserved time for receipt reread and fresh final probes. DeepAgents explicit `runtime_grant.wall_clock_seconds.requested` supplies completion observation budget; `native` uses the fixed `120s` default, and receipt grace remains separate.
 - output or state change: marker observation is recorded as `observed`, `expired`, or `transport_failed`; interval expiry is distinct from transport failure; stale markers never settle a current attempt.
 - retirement rule: missing or unknown `descendant_state`, ownership, cleanup, or task evidence never proves retirement. Capacity may retire only when ownership and cleanup are explicitly settled, even if task-result evidence remains unresolved.
 - observable acceptance: regression proof covers receipt-aware ordering, stale-marker rejection, bounded timeout uncertainty, process-state change before final probe, and `reported_completed` with `accepted: null`.
