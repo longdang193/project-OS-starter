@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: proposed
+status: active
 template_id: implementation-plan
 contract_version: "1"
 name: herdr-autonomy-predictability-update
@@ -100,12 +100,12 @@ accepted-task measurements.
 - Branch: `codex/herdr-autonomy-predictability-update`
 - Base commit: `60e11dd12fc186d40e2a0abad8b98984924b5e8f`
 - Expected workspace: fresh checkout of `origin/main` at base; current feature checkout, `.playwright-mcp/`, `db/`, and existing stash remain preserved
-- Next action: obtain plan approval, activate Task 1, and record its accepted checkpoint revision before Stage 1 dispatch
+- Next action: dispatch Task 1 through Herdr, then record its accepted checkpoint revision before Stage 1 dispatch
 - Blockers: none for planning; execution stops if continuation authority, capability input, or timeout handoff cannot be represented by existing structured evidence
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | isolated worktree | `unresolved` | none | contract review and red regressions | pending activation |
+| Task 1 | `active` | `.worktrees/herdr-autonomy-predictability-update-task1` | `codex` / `normal` | none | contract review and red regressions | dispatch prepared |
 | Task 2 | `pending` | isolated worktree | `unresolved` | Task 1 checkpoint | dispatcher behavior and direct helper proof | pending Task 1 |
 | Task 3 | `pending` | isolated worktree | `unresolved` | Task 1 checkpoint | launcher deadline, receipt, and observation proof | pending Task 1 |
 | Task 4 | `pending` | isolated worktree | `unresolved` | Tasks 2–3 checkpoints | capability flow and pre-launch rejection proof | pending Stage 1 |
