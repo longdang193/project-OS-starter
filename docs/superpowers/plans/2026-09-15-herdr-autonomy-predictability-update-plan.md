@@ -111,7 +111,7 @@ accepted-task measurements.
 | Task 3 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task3` | `codex` | Task 1 checkpoint `a407f7d` | launcher deadline, receipt, and observation proof | `41f0bec` (lane `0e044ec`); 151 launcher tests passed; Herdr help/schema checks passed; diff clean; profile `normal` |
 | Task 4 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task4` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | capability flow and pre-launch rejection proof | `a617fe9` + `57d26f6` (lane `eab6a4a` + `c6394b5`); 329 owned tests passed; compile and diff checks clean; profile `normal` |
 | Task 5 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task5` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | policy, planning, and generated-surface proof | `9dc586f` (lane `2cef769`); 40 policy tests passed; adapter sync and `--check` passed; profile `normal` |
-| Task 6 | `active` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | Stage 2 checkpoints integrated; R2 patch `8156922`; launcher tests 153 passed; fresh bounded replay passed; final repository verification pending |
+| Task 6 | `active` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | Stage 2 checkpoints integrated; R2 patch `8156922`; full suite 608 passed; validators and Herdr checks passed; fresh bounded replay passed; CoS continuation proof remains pending |
 
 CoS resolves executor and template profile independently through
 `docs/operating_system/planning/planning-dispatch.md`. `deepagents` is eligible
