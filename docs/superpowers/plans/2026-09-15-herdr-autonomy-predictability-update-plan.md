@@ -100,8 +100,8 @@ accepted-task measurements.
 - Branch: `codex/herdr-autonomy-predictability-update`
 - Base commit: `60e11dd12fc186d40e2a0abad8b98984924b5e8f`
 - Expected workspace: fresh checkout of `origin/main` at base; current feature checkout, `.playwright-mcp/`, `db/`, and existing stash remain preserved
-- Next action: complete Task 6 serialized verification and final acceptance review
-- Blockers: none after R2 patch and fresh bounded replay; Task 6 remains active until full verification and completion gate pass
+- Next action: none; completion verification passed
+- Blockers: none
 - Runtime incident R1: closed for its original delayed-receipt unit case. Runtime incident R2: closed. Root cause was a shared late-confirmed-receipt path that took one final pane snapshot, then returned missing evidence without using remaining settlement grace. The patch routes marker-wait, terminal-observation, and observation-deadline receipt paths through one bounded retry decision. Fresh replay on Herdr 0.9.0 completed in 22.3 seconds with worker exit `0`, report and exact marker observed, descendant terminated, cleanup removed, and no reconciliation required. PSReadLine render noise remains separate from captured pane evidence
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -111,7 +111,7 @@ accepted-task measurements.
 | Task 3 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task3` | `codex` | Task 1 checkpoint `a407f7d` | launcher deadline, receipt, and observation proof | `41f0bec` (lane `0e044ec`); 151 launcher tests passed; Herdr help/schema checks passed; diff clean; profile `normal` |
 | Task 4 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task4` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | capability flow and pre-launch rejection proof | `a617fe9` + `57d26f6` (lane `eab6a4a` + `c6394b5`); 329 owned tests passed; compile and diff checks clean; profile `normal` |
 | Task 5 | `completed` | `.worktrees/herdr-autonomy-predictability-update-task5` | `codex` | Tasks 2–3 checkpoints `ae99cde`, `41f0bec` | policy, planning, and generated-surface proof | `9dc586f` (lane `2cef769`); 40 policy tests passed; adapter sync and `--check` passed; profile `normal` |
-| Task 6 | `active` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | Stage 2 checkpoints integrated; R2 patch `8156922`; full suite 608 passed; validators and Herdr checks passed; fresh bounded replay passed; CoS continuation proof remains pending |
+| Task 6 | `completed` | lead workspace | `codex` | Tasks 2–5 checkpoints | integrated verification and runtime trace | R2 patch `8156922`; full suite `608 passed`; validators, adapter sync, compile, Herdr checks, and `git diff --check` passed; CoS continuation proof passed with attempts `1b01e19a9521499a9a1a8dcde88e6776` and `5e75512e2a8746d9b88464e9091d2504`, identical task hash `aa05de0ea75f9e2e09c8ea807cd9496931f6dfd1f1349717fbd2f2979544dd8a`, matching grant digest `800c0531860ddb24122ea9f69ca93f24978ea8993003b311b4cd83e0dcdc4518`, checkpoint `a0d50b0`, fresh worktrees, report and marker present, worker exit `0`, descendants terminated, cleanup removed |
 
 CoS resolves executor and template profile independently through
 `docs/operating_system/planning/planning-dispatch.md`. `deepagents` is eligible
