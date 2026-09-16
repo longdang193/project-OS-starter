@@ -45,6 +45,21 @@ Subagent (controller-selected profile: <discovered-profile>):
     git diff [BASE_SHA]..[HEAD_SHA]
     ```
 
+    ## Review Evidence Identity
+
+    For committed implementation changes, bind review evidence to the supplied
+    `[BASE_SHA]` and `[HEAD_SHA]` commit identities and the caller-owned Git
+    inventory. If `HEAD` does not identify implementation changes, bind evidence to
+    the frozen `scripts/review-package` artifact and record its SHA-256 plus the
+    Git-inventory digest. Re-run review when either digest changes; `HEAD` alone is
+    not sufficient for working-tree, staged, unstaged, or untracked changes.
+
+    Optional OCR preparation is advisory only. Consume its normalized manifest when
+    present, preserve every inventory path, and keep canonical Project OS rules
+    higher priority than OCR rules. `prepared` adds OCR paths and rules; `fallback`
+    returns review to native coverage. Never let OCR select `PASS`, `FAIL`, or
+    `BLOCKED`.
+
     ## Read-Only Review
 
     Your review is read-only on this checkout. Do not mutate the working tree, the index, HEAD, or branch state in any way. Use tools like `git show`, `git diff`, and `git log` to inspect history. If you need a working copy of a different revision, check it out into a separate temporary directory — never move HEAD on this checkout.

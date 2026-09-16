@@ -216,12 +216,28 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
     assert "scripts/setup_deepagents_runtime.ps1" in manifest["sharedPaths"]["scripts"]
     assert "scripts/patch_deepagents_runtime.py" in manifest["sharedPaths"]["scripts"]
     assert "scripts/publish_public_repo.ps1" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/ocr_delegate_adapter.py" in manifest["sharedPaths"]["scripts"]
     assert not any(path == "tests" or path.startswith("tests/") for path in manifest["copyPaths"])
     assert "tests" in manifest["forbiddenPaths"]
     assert not any(path == ".agents/skills" or path.startswith(".agents/skills/") for path in manifest["copyPaths"])
     assert ".agents/skills" in manifest["sharedPaths"]["skills"]
     assert "scripts/herdr_main_launcher.py" not in manifest["requiredPaths"]
     assert "docs/operating_system" not in manifest["copyPaths"]
+
+
+def test_canonical_manifest_keeps_ocr_external_and_hook_free() -> None:
+    manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
+    scripts = manifest["sharedPaths"]["scripts"]
+
+    assert scripts.count("scripts/ocr_delegate_adapter.py") == 1
+    assert not any("ocr" in path.lower() for path in manifest["copyPaths"])
+
+    requesting = read_source(".agents/skills/skill-requesting-code-review/SKILL.md")
+    procedure = read_source("docs/operating_system/procedures/ocr-delegation-procedure.md")
+    assert "prepared" in requesting
+    assert "tokenpilot-codex-hook.cmd" in procedure
+    assert "OCR_NO_UPDATE=1" in procedure
+    assert "installer" in procedure.lower()
 
 
 def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path) -> None:

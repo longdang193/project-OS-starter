@@ -40,6 +40,13 @@ Evidence must include repository, PR number, base ref and SHA when material,
 head ref and SHA, verdict, checks inspected, findings, approved deviations,
 and known limits. New commits invalidate prior review evidence.
 
+The review-requesting skill owns optional OCR preparation semantics. PR review
+may consume its normalized `prepared` or `fallback` manifest, but does not own
+OCR invocation or installation. Preserve caller-owned Git inventory and apply
+canonical Project OS rules before any OCR rule text. For committed review, use
+base/head identity; for working-tree review, use frozen review-package SHA-256
+and Git-inventory digest when `HEAD` does not identify implementation changes.
+
 ## GitHub Review State
 
 Project OS review is separate from GitHub review state. Submit GitHub

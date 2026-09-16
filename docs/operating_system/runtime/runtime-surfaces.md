@@ -15,6 +15,7 @@ runtime, rules, skills, root instructions, and hooks.
 | `scripts/herdr_parallel_dispatch.py` | Canonical bounded foreground coordinator for isolated DeepAgents lanes; no durable ledger or supervisor |
 | `scripts/dcode_project.py` | Canonical DeepAgents projection, worker lifecycle, and generated role-view ownership |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
+| `scripts/ocr_delegate_adapter.py` | Canonical optional range-only OCR preparation adapter; native review remains authoritative |
 
 ## Deployed Runtime Projections
 
@@ -115,3 +116,9 @@ runtime, rules, skills, root instructions, and hooks.
   environment values win, and project files must not carry credentials or
   runtime authority.
 - Reusable operating methods live in skills; prompts remain wording-only.
+- Optional OCR preparation is shared through `scripts/ocr_delegate_adapter.py`
+  and its procedure. It consumes caller-owned immutable Git range identity and
+  inventory, requires `OCR_NO_UPDATE=1` and schema v1, records observed version
+  and digests as evidence, and falls back to native review on OCR capability
+  failure. It does not integrate with `tokenpilot-codex-hook.cmd`, pre-commit,
+  Stop hooks, installers, or generated runtime files.
