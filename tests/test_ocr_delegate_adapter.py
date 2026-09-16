@@ -74,6 +74,12 @@ def test_prepared_uses_inventory_and_safe_rule_boundary(tmp_path: Path, monkeypa
     assert calls[1][0][2:] == ["preview", "--repo", str(repo), "--from", base, "--to", head, "--format", "json"]
 
 
+def test_lowercase_deletion_uses_old_path_for_review() -> None:
+    entry = adapter.GitInventoryEntry("d", old_path="old.txt")
+
+    assert entry.review_path == "old.txt"
+
+
 @pytest.mark.parametrize("case", ["missing", "nonancestor", "mergebase", "unsafe", "duplicate", "inconsistent"])
 def test_invalid_project_input_is_contract_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     repo, base, head = _repo(tmp_path)

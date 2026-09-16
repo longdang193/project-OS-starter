@@ -62,7 +62,7 @@ class GitInventoryEntry:
 
     @property
     def review_path(self) -> str:
-        return self.old_path if self.status == "D" or self.status.lower() == "deleted" else self.new_path  # type: ignore[return-value]
+        return self.old_path if self.status.upper() == "D" or self.status.lower() == "deleted" else self.new_path  # type: ignore[return-value]
 
     def as_dict(self) -> dict[str, str | None]:
         return {"status": self.status, "old_path": self.old_path, "new_path": self.new_path}
