@@ -19,14 +19,15 @@ Capability labels describe needs; they are not a fixed enum or provider registry
 Task-specific local command requirements use structured `local_capabilities`.
 Values normalize to lowercase ASCII command basenames matching
 `[a-z0-9][a-z0-9._+-]*`; separators, whitespace, commas, shell metacharacters,
-`*`, `..`, assignments, and duplicates reject. Admission verifies each selector
-is available to selected executor before launch. Launcher projects effective
-selectors to wrapper; wrapper validates again and keeps standalone safe default
+`*`, `..`, assignments, and duplicates reject. Dispatcher and launcher validate
+selector shape only; `dcode-project` validates availability against worker
+wrapper `PATH` before worker creation. Launcher projects selectors to wrapper;
+wrapper keeps standalone safe default
 (`--allow-fs-tools all --shell-allow-list git,py`) when field absent. Returned
-evidence records requested/effective selectors, verification commands, source
-task SHA-256, and selection digest. Digest equality proves equality only, not
-CoS authority. Flow remains `CoS requirement → admission → launcher projection
-→ wrapper validation → returned evidence`.
+receipt evidence records requested, passed-to-worker, validated-available, digest,
+and validation-error fields, correlated by `attempt_id`. Digest equality proves
+equality only, not CoS authority. Flow remains `CoS requirement → admission →
+launcher projection → wrapper validation → returned evidence`.
 
 ## Evidence Reuse
 
@@ -109,9 +110,11 @@ references or non-sensitive literals. Raw credentials and
 config secrets stay out of task text, logs, and tracked files.
 `codex.mcp.handoff.v1` carries facts and provenance only, not tool access.
 
-Herdr controller observation uses bounded waits plus pull probes. Use
-`pane wait-output` for DeepAgents marker observation before
-`pane process-info`/`pane read`; use `agent get`/`agent read` for Codex.
+Herdr controller observation uses bounded waits plus pull probes. Read
+attempt-correlated receipt first. Confirmed terminal receipt skips blocking marker
+wait but still gets one bounded process-info and pane read; unresolved receipt gets
+one bounded marker wait, then fresh final probes. Use `pane wait-output` for
+DeepAgents marker observation; use `agent get`/`agent read` for Codex.
 `agent wait` is a documented Herdr capability, not current launcher integration.
 Tura uses `project-delegate` outside the Herdr main-lane path. Normalize evidence
 fields, not transport internals. Missing, unchanged, or timed-out waits/reads

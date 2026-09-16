@@ -12,14 +12,25 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 try:
+    from scripts.herdr_attempt_contract import (
+        NATIVE_GRANT_VALUE,
+        NATIVE_WORKER_WALL_CLOCK_SECONDS,
+        grant_digest as _contract_grant_digest,
+    )
     from scripts.herdr_main_launcher import (
         _normalize_runtime_grant,
         _sha256_text,
     )
 except ModuleNotFoundError:
+    from herdr_attempt_contract import (
+        NATIVE_GRANT_VALUE,
+        NATIVE_WORKER_WALL_CLOCK_SECONDS,
+        grant_digest as _contract_grant_digest,
+    )
     from herdr_main_launcher import (
         _normalize_runtime_grant,
         _sha256_text,
@@ -92,19 +103,7 @@ def _canonical_mcp_selectors(values: object) -> list[str]:
 
 
 def _grant_digest(executor: str, runtime_grant: Mapping[str, Any]) -> str:
-    return _sha256_text(
-        json.dumps(
-            {
-                "executor": executor,
-                "turns": runtime_grant["turns"]["requested"],
-                "wall_clock_seconds": runtime_grant["wall_clock_seconds"]["requested"],
-                "mcp_select": runtime_grant["mcp_select"],
-                "delegation": runtime_grant["delegation"],
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
+    return _contract_grant_digest(executor, runtime_grant)
 
 
 def _capability_digest(values: list[str]) -> str:
@@ -410,6 +409,18 @@ def _text(value: object) -> str:
     return str(value)
 
 
+def _read_capture(stream: Any) -> str:
+    flush = getattr(stream, "flush", None)
+    if callable(flush):
+        flush()
+    seek = getattr(stream, "seek", None)
+    read = getattr(stream, "read", None)
+    if not callable(seek) or not callable(read):
+        return ""
+    seek(0)
+    return _text(read())
+
+
 def _merge_streams(first: object, second: object) -> str:
     left = _text(first)
     right = _text(second)
@@ -455,6 +466,39 @@ def _process_identity(process: Any) -> dict[str, Any]:
     return {"pid": pid} if isinstance(pid, int) else {}
 
 
+def _effective_budget_is_contained(
+    requested: Mapping[str, Any],
+    observed: Mapping[str, Any],
+) -> bool:
+    for name, native_limit in (
+        ("turns", None),
+        ("wall_clock_seconds", NATIVE_WORKER_WALL_CLOCK_SECONDS),
+    ):
+        requested_budget = requested.get(name)
+        observed_budget = observed.get(name)
+        if not isinstance(requested_budget, Mapping) or not isinstance(observed_budget, Mapping):
+            return False
+        requested_value = requested_budget.get("requested")
+        effective_value = observed_budget.get("effective")
+        if observed_budget.get("requested") != requested_value:
+            return False
+        if effective_value == NATIVE_GRANT_VALUE:
+            if requested_value != NATIVE_GRANT_VALUE:
+                return False
+            continue
+        if (
+            isinstance(effective_value, bool)
+            or not isinstance(effective_value, int)
+            or effective_value <= 0
+        ):
+            return False
+        if requested_value != NATIVE_GRANT_VALUE and effective_value > requested_value:
+            return False
+        if native_limit is not None and effective_value > native_limit:
+            return False
+    return True
+
+
 def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) -> bool:
     preparation = parsed.get("preparation")
     assignment = parsed.get("assignment")
@@ -467,18 +511,42 @@ def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) 
     expected_capabilities = lane.get("local_capabilities")
     if not isinstance(expected, Mapping) or not expected_digest:
         return True
+    try:
+        stable_digest = _contract_grant_digest(str(lane.get("executor", "deepagents")), prep_grant)
+    except (TypeError, ValueError):
+        return False
     grant_matches = (
         isinstance(registry, Mapping)
         and isinstance(assignment, Mapping)
-        and prep_grant == expected
+        and isinstance(prep_grant, Mapping)
+        and stable_digest == expected_digest
         and prep_digest == expected_digest
         and assignment_digest == expected_digest
+        and _effective_budget_is_contained(expected, prep_grant)
     )
     if not isinstance(expected_capabilities, Mapping):
         return grant_matches
     prep_capabilities = registry.get("local_capabilities") if isinstance(registry, Mapping) else None
     assignment_capabilities = assignment.get("local_capabilities") if isinstance(assignment, Mapping) else None
-    return grant_matches and prep_capabilities == expected_capabilities and assignment_capabilities == expected_capabilities
+    return (
+        grant_matches
+        and _capability_evidence_matches(expected_capabilities, prep_capabilities)
+        and _capability_evidence_matches(expected_capabilities, assignment_capabilities)
+    )
+
+
+def _capability_evidence_matches(
+    expected: Mapping[str, Any], actual: object
+) -> bool:
+    if not isinstance(actual, Mapping):
+        return False
+    for key in ("requested", "effective", "verification_commands", "source_task_sha256", "digest"):
+        if key in expected and actual.get(key) != expected.get(key):
+            return False
+    for key in ("passed_to_worker", "validated_available"):
+        if key in actual and actual.get(key) != expected.get("effective", []):
+            return False
+    return True
 
 
 def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:
@@ -558,52 +626,85 @@ def run_lane(
         python_executable=python_executable,
         launcher_path=launcher_path,
     )
+    capture_dir = Path(tempfile.mkdtemp(prefix=f"herdr-timeout-{lane_id}-"))
+    stdout_path = capture_dir / "stdout.log"
+    stderr_path = capture_dir / "stderr.log"
+    handoff_path = capture_dir / "handoff.json"
     try:
-        process = popen_factory(
-            command,
-            cwd=str(lane["worktree"]),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-        )
-        try:
-            stdout, stderr = process.communicate(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired as exc:
-            stdout, stderr, reaped = _finish_timed_out_process(process, exc)
-            parsed = parse_launcher_records(stdout, lane_id=lane_id)
-            records = list(parsed["records"])
-            records.append(_tagged(lane_id, "child_exit", {"exit_code": process.returncode}))
-            if stderr:
-                records.append(_tagged(lane_id, "stderr", {"text": stderr}))
-            attempt_id = None
-            preparation = parsed.get("preparation")
-            registry = preparation.get("registry_launcher") if isinstance(preparation, Mapping) else None
-            if isinstance(registry, Mapping):
-                attempt_id = registry.get("attempt_id")
-            records.append(_tagged(lane_id, "capacity", {"state": "occupied"}))
-            records.append(_tagged(lane_id, "unresolved", {"reason": "transport timeout"}))
-            return {
-                "lane_id": lane_id,
-                "command": command,
-                "exit_code": process.returncode,
-                "records": records,
-                "preparation": parsed["preparation"],
-                "assignment": parsed["assignment"],
-                "malformed": parsed["malformed"],
-                "stdout": stdout,
-                "stderr": stderr,
-                "attempt_id": attempt_id,
-                "process_identity": _process_identity(process),
-                "ownership": "reconciliation_required",
-                "reconciliation_required": True,
-                "unresolved": True,
-                "capacity": "occupied",
-                "failure_kind": "transport_timeout",
-                "reaped": reaped,
-                "grant_verification": "unverified",
-            }
+        with stdout_path.open("w+", encoding="utf-8") as stdout_file, stderr_path.open(
+            "w+", encoding="utf-8"
+        ) as stderr_file:
+            process = popen_factory(
+                command,
+                cwd=str(lane["worktree"]),
+                stdout=stdout_file,
+                stderr=stderr_file,
+                text=True,
+                encoding="utf-8",
+            )
+            try:
+                stdout, stderr = process.communicate(timeout=timeout_seconds)
+                stdout = _merge_streams(stdout, _read_capture(stdout_file))
+                stderr = _merge_streams(stderr, _read_capture(stderr_file))
+                if getattr(process, "returncode", None) is None:
+                    raise subprocess.TimeoutExpired(
+                        command,
+                        timeout_seconds,
+                        output=stdout,
+                        stderr=stderr,
+                    )
+            except subprocess.TimeoutExpired as exc:
+                stdout, stderr, reaped = _finish_timed_out_process(process, exc)
+                stdout = _merge_streams(stdout, _read_capture(stdout_file))
+                stderr = _merge_streams(stderr, _read_capture(stderr_file))
+                parsed = parse_launcher_records(stdout, lane_id=lane_id)
+                records = list(parsed["records"])
+                records.append(_tagged(lane_id, "child_exit", {"exit_code": process.returncode}))
+                if stderr:
+                    records.append(_tagged(lane_id, "stderr", {"text": stderr}))
+                attempt_id = None
+                preparation = parsed.get("preparation")
+                registry = preparation.get("registry_launcher") if isinstance(preparation, Mapping) else None
+                if isinstance(registry, Mapping):
+                    attempt_id = registry.get("attempt_id")
+                timeout_evidence = {
+                    "owner": TIMEOUT_OWNER,
+                    "pid": _process_identity(process).get("pid"),
+                    "attempt_id": attempt_id,
+                    "capacity": "occupied",
+                    "reaped": reaped,
+                    "paths": {
+                        "stdout": str(stdout_path),
+                        "stderr": str(stderr_path),
+                        "handoff": str(handoff_path),
+                    },
+                }
+                handoff_path.write_text(json.dumps(timeout_evidence, sort_keys=True), encoding="utf-8")
+                records.append(_tagged(lane_id, "capacity", {"state": "occupied"}))
+                records.append(_tagged(lane_id, "unresolved", {"reason": "transport timeout"}))
+                return {
+                    "lane_id": lane_id,
+                    "command": command,
+                    "exit_code": process.returncode,
+                    "records": records,
+                    "preparation": parsed["preparation"],
+                    "assignment": parsed["assignment"],
+                    "malformed": parsed["malformed"],
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "attempt_id": attempt_id,
+                    "process_identity": _process_identity(process),
+                    "ownership": "reconciliation_required",
+                    "reconciliation_required": True,
+                    "unresolved": True,
+                    "capacity": "occupied",
+                    "failure_kind": "transport_timeout",
+                    "reaped": reaped,
+                    "timeout_evidence": timeout_evidence,
+                    "grant_verification": "unverified",
+                }
     except OSError as exc:
+        shutil.rmtree(capture_dir, ignore_errors=True)
         return {
             "lane_id": lane_id,
             "command": command,
@@ -615,6 +716,7 @@ def run_lane(
             "failure_kind": "launch_failed",
         }
 
+    shutil.rmtree(capture_dir, ignore_errors=True)
     stdout = _text(stdout)
     stderr = _text(stderr)
     parsed = parse_launcher_records(stdout, lane_id=lane_id)

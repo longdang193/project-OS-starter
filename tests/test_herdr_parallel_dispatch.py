@@ -837,6 +837,123 @@ def test_local_capability_evidence_mismatch_stays_unverified(tmp_path: Path) -> 
     assert dispatcher._grant_evidence_matches(item, parsed) is False
 
 
+def test_grant_evidence_uses_stable_requested_binding_for_dynamic_budget(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
+    effective = dict(item["runtime_grant"])
+    effective["turns"] = {"requested": "native", "effective": 8, "enforcement": "runtime"}
+    effective["wall_clock_seconds"] = {
+        "requested": "native", "effective": 420, "enforcement": "runtime"
+    }
+    parsed = {
+        "preparation": {"registry_launcher": {
+            "runtime_grant": effective,
+            "grant_digest": item["grant_digest"],
+        }},
+        "assignment": {"grant_digest": item["grant_digest"]},
+    }
+    assert dispatcher._grant_evidence_matches(item, parsed) is True
+
+
+def test_mismatched_stable_grant_digest_stays_unverified(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
+    parsed = {
+        "preparation": {"registry_launcher": {
+            "runtime_grant": item["runtime_grant"], "grant_digest": "wrong",
+        }},
+        "assignment": {"grant_digest": "wrong"},
+    }
+    assert dispatcher._grant_evidence_matches(item, parsed) is False
+
+
+def test_empty_capability_evidence_defaults_without_rejection(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
+    parsed = {
+        "preparation": {"registry_launcher": {
+            "runtime_grant": item["runtime_grant"],
+            "grant_digest": item["grant_digest"],
+            "local_capabilities": {},
+        }},
+        "assignment": {
+            "grant_digest": item["grant_digest"],
+            "local_capabilities": {},
+        },
+    }
+    assert "local_capabilities" not in item
+    assert dispatcher._grant_evidence_matches(item, parsed) is True
+
+
 def test_policy_requires_cumulative_allowance_and_git_checkpoint() -> None:
     assert dispatcher.validate_plan_authority({"cumulative_wall_clock_seconds": 1800})
     assert dispatcher.validate_git_checkpoint({"revision": "HEAD", "verified": True})
+
+
+def test_run_lane_timeout_preserves_file_backed_late_output(tmp_path: Path) -> None:
+    class TimedOut:
+        pid = 421
+        returncode = None
+
+        def __init__(self, stdout, stderr) -> None:
+            self.stdout_file = stdout
+            self.stderr_file = stderr
+            self.calls = 0
+
+        def communicate(self, *, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(
+                    "launcher",
+                    timeout,
+                    output='{"registry_launcher":{"attempt_id":"attempt-late"}}\n',
+                )
+            self.stdout_file.write(
+                '{"assignment":{"attempt_id":"attempt-late","status":"reported_completed"}}\n'
+            )
+            self.stdout_file.flush()
+            raise subprocess.TimeoutExpired("launcher", timeout)
+
+    process = None
+
+    def popen_factory(*args, **kwargs):
+        nonlocal process
+        process = TimedOut(kwargs["stdout"], kwargs["stderr"])
+        return process
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=popen_factory,
+        timeout_seconds=0.01,
+    )
+
+    assert process is not None
+    collector = result["timeout_evidence"]
+    assert collector["owner"] == dispatcher.TIMEOUT_OWNER
+    assert collector["pid"] == 421
+    assert collector["attempt_id"] == "attempt-late"
+    assert collector["capacity"] == "occupied"
+    assert Path(collector["paths"]["stdout"]).read_text(encoding="utf-8").endswith(
+        '"attempt_id":"attempt-late","status":"reported_completed"}}\n'
+    )
+    assert Path(collector["paths"]["handoff"]).is_file()
+    assert result["capacity"] == "occupied"
+
+
+def test_run_lane_timeout_without_reaping_keeps_capacity_occupied(tmp_path: Path) -> None:
+    class NotReaped:
+        pid = 422
+        returncode = None
+
+        def communicate(self, *, timeout):
+            return ("late output", "")
+
+    result = dispatcher.run_lane(
+        lane("a", tmp_path),
+        popen_factory=lambda *args, **kwargs: NotReaped(),
+        timeout_seconds=0.01,
+    )
+
+    assert result["reaped"] is False
+    assert result["capacity"] == "occupied"
+    assert result["timeout_evidence"]["capacity"] == "occupied"

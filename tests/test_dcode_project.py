@@ -50,12 +50,65 @@ LAUNCHER = load_module("dcode_project", LAUNCHER_PATH)
 
 
 def test_local_capability_wrapper_validation_keeps_default() -> None:
+    LAUNCHER._reject_unmanaged_runtime_options(["--local-capability", "Node", "--json"])
     assert LAUNCHER._extract_local_capabilities(["--local-capability", "Node", "--json"]) == (
         ["--json"], ["node"]
     )
     assert LAUNCHER._extract_local_capabilities(["--json"]) == (["--json"], [])
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="safe command basenames"):
         LAUNCHER._extract_local_capabilities(["--local-capability", "node/npm"])
+    with pytest.raises(RuntimeError, match="cannot contain duplicates"):
+        LAUNCHER._extract_local_capabilities(
+            ["--local-capability", "Node", "--local-capability", "node"]
+        )
+
+
+def test_worker_capabilities_use_wrapper_path_and_emit_effective_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[str, str | None]] = []
+
+    def which(command: str, path: str | None = None) -> str | None:
+        seen.append((command, path))
+        return f"/bin/{command}" if command == "git" else None
+
+    monkeypatch.setattr(LAUNCHER.shutil, "which", which)
+
+    with pytest.raises(RuntimeError, match="Unavailable local capabilities: py"):
+        LAUNCHER._resolve_worker_shell_capabilities(["git", "py"], {"PATH": "wrapper-path"})
+    assert seen == [("git", "wrapper-path"), ("py", "wrapper-path")]
+    evidence = LAUNCHER._resolve_worker_shell_capabilities(["git"], {"PATH": "wrapper-path"})
+    assert evidence["requested"] == ["git"]
+    assert evidence["passed_to_worker"] == ["git"]
+    assert evidence["validated_available"] == ["git"]
+
+
+def test_result_receipt_keeps_capability_and_lifecycle_evidence(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="exited",
+        worker_exit_code=0,
+        descendant_state="unknown",
+        role_views_state="preserved",
+        recovery_required=True,
+        shell_capabilities={
+            "requested": ["git"],
+            "available": ["git"],
+            "effective": ["git"],
+        },
+    )
+
+    payload = json.loads(result_file.read_text(encoding="utf-8"))
+    assert payload["shell_capabilities"] == {
+        "requested": ["git"],
+        "available": ["git"],
+        "effective": ["git"],
+    }
+    assert payload["worker"]["descendant_state"] == "unknown"
+    assert payload["recovery_required"] is True
 
 
 def write_role(

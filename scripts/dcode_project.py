@@ -102,6 +102,7 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--executor",
     "--result-file",
     "--attempt-id",
+    "--local-capability",
 }
 _FIXED_LOCAL_CAPABILITY_OPTIONS = (
     "--allow-fs-tools",
@@ -375,6 +376,7 @@ def _publish_result_receipt(
     descendant_state: str,
     role_views_state: str,
     recovery_required: bool,
+    shell_capabilities: dict[str, object] | None = None,
     cleanup_details: dict[str, object] | None = None,
 ) -> None:
     payload = {
@@ -392,6 +394,27 @@ def _publish_result_receipt(
         },
         "recovery_required": recovery_required,
     }
+    if shell_capabilities is not None:
+        payload["shell_capabilities"] = shell_capabilities
+        payload["capabilities"] = {
+            "requested": list(shell_capabilities.get("requested", [])),
+            "passed_to_worker": list(
+                shell_capabilities.get(
+                    "passed_to_worker", shell_capabilities.get("effective", [])
+                )
+            ),
+            "validated_available": list(
+                shell_capabilities.get(
+                    "validated_available", shell_capabilities.get("effective", [])
+                )
+            ),
+            "digest": _sha256_json(
+                shell_capabilities.get(
+                    "validated_available", shell_capabilities.get("effective", [])
+                )
+            ),
+            "validation_error": None,
+        }
     encoded = encode_result_receipt(payload)
     temporary = result_file.with_name(f".{result_file.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -963,6 +986,24 @@ def _extract_local_capabilities(argv: list[str]) -> tuple[list[str], list[str]]:
     if len(normalized) != len(set(normalized)):
         raise RuntimeError("local_capabilities cannot contain duplicates.")
     return child, normalized
+
+
+def _resolve_worker_shell_capabilities(
+    requested: list[str], environment: dict[str, str]
+) -> dict[str, list[str]]:
+    requested_values = list(requested)
+    effective = requested_values or ["git", "py"]
+    path = environment.get("PATH")
+    unavailable = [value for value in effective if shutil.which(value, path=path) is None]
+    if unavailable:
+        raise RuntimeError("Unavailable local capabilities: " + ", ".join(unavailable))
+    return {
+        "requested": requested_values,
+        "available": list(effective),
+        "effective": list(effective),
+        "passed_to_worker": list(effective),
+        "validated_available": list(effective),
+    }
 
 
 def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
@@ -1695,6 +1736,7 @@ def main(argv: list[str]) -> int:
     if not dcode:
         raise RuntimeError("DeepAgents Code is not installed. Run scripts/setup_deepagents_runtime.ps1.")
     environment = _runtime_environment(base_url, binding.read_api_key())
+    shell_capabilities = _resolve_worker_shell_capabilities(local_capabilities, environment)
     with _role_views_lock(repo_root):
         _write_role_views(repo_root, roles)
         cleanup_allowed = True
@@ -1714,7 +1756,7 @@ def main(argv: list[str]) -> int:
                 json.dumps(deepagents_model_params, separators=(",", ":"), sort_keys=True),
                 *_FIXED_LOCAL_CAPABILITY_OPTIONS,
                 "--shell-allow-list",
-                ",".join(local_capabilities or ["git", "py"]),
+                ",".join(shell_capabilities["effective"]),
                 *(arg for arg in child_argv if arg != "--no-mcp"),
             ]
             if selection_values:
@@ -1806,6 +1848,7 @@ def main(argv: list[str]) -> int:
                     descendant_state=descendant_state,
                     role_views_state=role_views_state,
                     recovery_required=recovery_required,
+                    shell_capabilities=shell_capabilities,
                     cleanup_details=cleanup_details,
                 )
             if cleanup_error is not None:

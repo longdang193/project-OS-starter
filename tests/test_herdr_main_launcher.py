@@ -3215,7 +3215,7 @@ def test_deepagents_snapshot_falls_back_to_pull_probe_after_wait_failure_duplica
     assert evidence["state"] == "completed"
 
 
-def test_deepagents_snapshot_rejects_stale_marker_output() -> None:
+def test_deepagents_task_state_rejects_stale_marker_output() -> None:
     evidence = LAUNCHER._deepagents_task_state(
         [],
         "Running task non-interactively...\nCOMPLETED\nOLD_MARKER",
@@ -3404,12 +3404,12 @@ def test_deepagents_completion_retries_pane_after_confirmed_receipt(
         attempt_id="attempt-1",
     )
 
-    assert evidence["state"] == "completed"
-    assert evidence["marker_present"] is True
+    assert evidence["state"] == "no-report"
+    assert evidence["marker_present"] is False
     assert evidence["lifecycle_receipt"] == confirmed
 
 
-def test_deepagents_completion_retries_after_late_receipt_snapshot(
+def test_deepagents_completion_settles_after_late_receipt_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -3452,8 +3452,8 @@ def test_deepagents_completion_retries_after_late_receipt_snapshot(
         attempt_id="attempt-1",
     )
 
-    assert evidence["state"] == "completed"
-    assert evidence["marker_present"] is True
+    assert evidence["state"] == "no-report"
+    assert evidence["marker_present"] is False
     assert evidence["lifecycle_receipt"] == confirmed
 
 
@@ -4119,3 +4119,74 @@ def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
     assert assignment["task_result"] == {"state": "reported_completed", "accepted": None}
     assert assignment["task_accepted"] is None
+
+
+def test_deepagents_snapshot_orders_marker_wait_before_final_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "wait-output" in command:
+            calls.append("wait")
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": ""}), "")
+        if "process-info" in command:
+            calls.append("process")
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"process_info": {"foreground_processes": []}}}),
+                "",
+            )
+        calls.append("read")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": "COMPLETED\nMARKER"}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+    )
+
+    assert calls == ["wait", "process", "read"]
+    assert evidence["state"] == "completed"
+
+
+def test_deepagents_completion_stops_observing_after_terminal_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    snapshots: list[dict[str, object]] = []
+    confirmed = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "recovery_required": False,
+    }
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: confirmed)
+    def snapshot(*args: object, **kwargs: object) -> dict[str, object]:
+        value = {"state": "no-report", "report_present": False}
+        snapshots.append(value)
+        return value
+
+    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", snapshot)
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda *_: pytest.fail("settlement polled after terminal evidence"))
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert len(snapshots) == 1
+    assert evidence["lifecycle_receipt"] == confirmed
+    assert evidence["state"] == "no-report"

@@ -45,6 +45,14 @@ except ModuleNotFoundError:
         RESULT_SCHEMA,
         parse_result_receipt,
     )
+try:
+    from herdr_attempt_contract import AttemptContractError, grant_digest, normalize_runtime_grant
+except ModuleNotFoundError:
+    from scripts.herdr_attempt_contract import (
+        AttemptContractError,
+        grant_digest,
+        normalize_runtime_grant,
+    )
 
 
 class LaunchBlocked(RuntimeError):
@@ -1267,25 +1275,6 @@ def _unique_agent_name(agent_name: str) -> str:
     return f"{agent_name}-{uuid.uuid4().hex[:8]}"
 
 
-def _parse_grant_value(value: str | int | None, label: str) -> int | str:
-    if value is None or (isinstance(value, str) and value.strip().lower() == _NATIVE_GRANT_VALUE):
-        return _NATIVE_GRANT_VALUE
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise LaunchBlocked(f"{label} must be `native` or a positive integer.") from exc
-    if parsed <= 0:
-        raise LaunchBlocked(f"{label} must be `native` or a positive integer.")
-    return parsed
-
-
-def _parse_child_agent_grant(value: str | None) -> str:
-    grant = "deny" if value is None else value.strip().lower()
-    if grant not in _CHILD_AGENT_GRANT_VALUES:
-        raise LaunchBlocked("Grant child_agents must be `deny` or `allow`.")
-    return grant
-
-
 def _normalize_runtime_grant(
     *,
     executor: str,
@@ -1294,47 +1283,23 @@ def _normalize_runtime_grant(
     mcp_select: list[str] | None,
     grant_child_agents: str | None = None,
 ) -> dict[str, Any]:
-    turns = _parse_grant_value(grant_turns, "Grant turns")
-    wall_clock_seconds = _parse_grant_value(
-        grant_wall_clock_seconds,
-        "Grant wall-clock seconds",
+    try:
+        runtime_grant = normalize_runtime_grant(
+            executor=executor,
+            grant_turns=grant_turns,
+            grant_wall_clock_seconds=grant_wall_clock_seconds,
+            mcp_select=mcp_select,
+            grant_child_agents=grant_child_agents,
+        )
+    except AttemptContractError as exc:
+        message = str(exc)
+        if executor == "codex" and "numeric wall-clock budget" in message:
+            message = "Codex strict wall-clock enforcement is unavailable; use `native`."
+        raise LaunchBlocked(message) from exc
+    runtime_grant["outer_watchdog_seconds"] = (
+        int(_DEEPAGENTS_RUN_TIMEOUT) if executor == "deepagents" else None
     )
-    if executor == "codex" and turns != _NATIVE_GRANT_VALUE:
-        raise LaunchBlocked("Codex strict turn budget is unsupported; use `native`.")
-    if executor == "codex" and wall_clock_seconds != _NATIVE_GRANT_VALUE:
-        raise LaunchBlocked(
-            "Codex strict wall-clock enforcement is unavailable; use `native`."
-        )
-    if (
-        executor == "deepagents"
-        and wall_clock_seconds != _NATIVE_GRANT_VALUE
-        and wall_clock_seconds > int(_DEEPAGENTS_RUN_TIMEOUT)
-    ):
-        raise LaunchBlocked(
-            "DeepAgents wall-clock budget cannot exceed the 1800-second Herdr watchdog."
-        )
-    child_agents = _parse_child_agent_grant(grant_child_agents)
-    return {
-        "turns": {
-            "requested": turns,
-            "effective": turns,
-            "enforcement": "runtime" if turns != _NATIVE_GRANT_VALUE else "native",
-        },
-        "wall_clock_seconds": {
-            "requested": wall_clock_seconds,
-            "effective": wall_clock_seconds,
-            "enforcement": (
-                "runtime" if wall_clock_seconds != _NATIVE_GRANT_VALUE else "native"
-            ),
-        },
-        "outer_watchdog_seconds": (
-            int(_DEEPAGENTS_RUN_TIMEOUT)
-            if executor == "deepagents"
-            else None
-        ),
-        "mcp_select": list(mcp_select or []),
-        "delegation": {"child_agents": child_agents},
-    }
+    return runtime_grant
 
 
 def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
@@ -1516,28 +1481,6 @@ def _deepagents_completion_snapshot(
     read_error: str | None = None
     observation_deadline_exceeded = False
     marker_wait_state = "skipped" if marker_observed or not wait_for_marker else "not_attempted"
-    try:
-        timeout = observation_timeout()
-        if deadline is not None:
-            timeout = max(0.0, timeout - (2 * _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS))
-        if timeout <= 0:
-            observation_deadline_exceeded = True
-            raise CommandTransportTimeout("observation deadline exceeded before process-info")
-        process_result = _run(
-            [herdr, "--session", session, "pane", "process-info", "--pane", pane],
-            env=env,
-            timeout=timeout,
-        )
-    except CommandTransportTimeout:
-        observation_deadline_exceeded = observation_deadline_expired()
-        process_error = (
-            "observation deadline exceeded"
-            if observation_deadline_exceeded
-            else "pane process-info transport timeout"
-        )
-    if observation_deadline_expired():
-        observation_deadline_exceeded = True
-        process_error = "observation deadline exceeded"
     wait_timeout = observation_timeout()
     if wait_for_marker and not marker_observed and wait_timeout > 0:
         reserved = min(_DEEPAGENTS_OBSERVATION_RESERVE_SECONDS, wait_timeout / 2)
@@ -1568,6 +1511,28 @@ def _deepagents_completion_snapshot(
         except CommandTransportTimeout:
             marker_wait_state = "transport_failed"
             observation_deadline_exceeded = observation_deadline_expired()
+    try:
+        timeout = observation_timeout()
+        if deadline is not None:
+            timeout = max(0.0, timeout - (2 * _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS))
+        if timeout <= 0:
+            observation_deadline_exceeded = True
+            raise CommandTransportTimeout("observation deadline exceeded before process-info")
+        process_result = _run(
+            [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+            env=env,
+            timeout=timeout,
+        )
+    except CommandTransportTimeout:
+        observation_deadline_exceeded = observation_deadline_expired()
+        process_error = (
+            "observation deadline exceeded"
+            if observation_deadline_exceeded
+            else "pane process-info transport timeout"
+        )
+    if observation_deadline_expired():
+        observation_deadline_exceeded = True
+        process_error = "observation deadline exceeded"
     try:
         timeout = observation_timeout()
         if timeout <= 0:
@@ -1689,49 +1654,29 @@ def _deepagents_completion_evidence(
             receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
         return receipt
 
-    def retry_missing_evidence() -> bool:
-        if receipt.get("worker_state") != "exited" or receipt.get("worker_exit_code") != 0:
-            return False
-        if evidence.get("report_present") is not False or evidence.get("marker_present") is not False:
-            return False
-        remaining = settlement_deadline - time.monotonic()
-        if remaining <= 0:
-            return False
-        time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
-        return True
-
     marker_observed = False
     while True:
         if receipt.get("state") == "confirmed":
             if time.monotonic() >= settlement_deadline:
-                if evidence is None:
-                    evidence = {
-                        "state": "unknown",
-                        "report_present": False,
-                        "observation_error": "settlement deadline exceeded",
-                    }
+                evidence = evidence or {
+                    "state": "unknown",
+                    "report_present": False,
+                    "observation_error": "settlement deadline exceeded",
+                }
                 evidence["lifecycle_receipt"] = receipt
                 return evidence
-            snapshot_deadline = (
-                observation_deadline
-                if time.monotonic() < observation_deadline
-                else settlement_deadline
-            )
             evidence = _deepagents_completion_snapshot(
                 herdr,
                 session,
                 pane,
                 env=env,
                 expected_marker=expected_marker,
-                deadline=snapshot_deadline,
+                deadline=min(settlement_deadline, observation_deadline),
                 wait_for_marker=False,
                 marker_observed=marker_observed,
             )
-            marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
-            if not retry_missing_evidence():
-                return evidence
-            continue
+            return evidence
         evidence = _deepagents_completion_snapshot(
             herdr,
             session,
@@ -1749,42 +1694,14 @@ def _deepagents_completion_evidence(
         }:
             receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
             if receipt.get("state") == "confirmed":
-                if time.monotonic() < settlement_deadline:
-                    evidence = _deepagents_completion_snapshot(
-                        herdr,
-                        session,
-                        pane,
-                        env=env,
-                        expected_marker=expected_marker,
-                        deadline=settlement_deadline,
-                        wait_for_marker=False,
-                        marker_observed=marker_observed,
-                    )
-                    marker_observed = marker_observed or evidence.get("marker_present") is True
                 evidence["lifecycle_receipt"] = receipt
-                if retry_missing_evidence():
-                    continue
                 return evidence
         if evidence["state"] in {"completed", "failed"}:
             terminal_observed_at = time.monotonic()
             if receipt_file is None:
                 return evidence
             receipt = wait_for_receipt()
-            if receipt.get("state") == "confirmed" and time.monotonic() < settlement_deadline:
-                evidence = _deepagents_completion_snapshot(
-                    herdr,
-                    session,
-                    pane,
-                    env=env,
-                    expected_marker=expected_marker,
-                    deadline=settlement_deadline,
-                    wait_for_marker=False,
-                    marker_observed=marker_observed,
-                )
-                marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
-            if retry_missing_evidence():
-                continue
             return evidence
         remaining = observation_deadline - time.monotonic()
         if remaining <= 0:
@@ -1801,11 +1718,8 @@ def _deepagents_completion_evidence(
                         wait_for_marker=False,
                         marker_observed=marker_observed,
                     )
-                    marker_observed = marker_observed or evidence.get("marker_present") is True
-                    evidence["lifecycle_receipt"] = receipt
-                    if retry_missing_evidence():
-                        continue
-                    return evidence
+                evidence["lifecycle_receipt"] = receipt
+                return evidence
             evidence["last_observed_state"] = evidence["state"]
             evidence["state"] = "timed_out"
             evidence["observation_deadline_exceeded"] = True
@@ -1991,9 +1905,7 @@ def resolve_launch(
         grant_child_agents=grant_child_agents,
     )
     requested_local_capabilities = list(local_capabilities or [])
-    effective_local_capabilities = _verify_local_capabilities(
-        _normalize_local_capabilities(requested_local_capabilities)
-    )
+    effective_local_capabilities = _normalize_local_capabilities(requested_local_capabilities)
     delivery_task = _project_runtime_grant(task_text, runtime_grant)
     completion_marker = None
     if executor == "deepagents":
@@ -2002,19 +1914,7 @@ def resolve_launch(
             " Output these two final lines exactly when task is complete: "
             f"COMPLETED, then {completion_marker}."
         )
-    grant_digest = _sha256_text(
-        json.dumps(
-            {
-                "executor": executor,
-                "turns": runtime_grant["turns"]["requested"],
-                "wall_clock_seconds": runtime_grant["wall_clock_seconds"]["requested"],
-                "mcp_select": runtime_grant["mcp_select"],
-                "delegation": runtime_grant["delegation"],
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
+    grant_digest_value = grant_digest(executor, runtime_grant)
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
     runtime = _codex_runtime(cwd, codex_home) if executor == "codex" else None
@@ -2124,7 +2024,7 @@ def resolve_launch(
             ],
             "redacted_runtime_argv": _redacted_arguments(runtime_arguments),
             "assignment_task_sha256": _sha256_text(task_text),
-            "grant_digest": grant_digest,
+            "grant_digest": grant_digest_value,
             "runtime_grant": runtime_grant,
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
@@ -2164,7 +2064,7 @@ def resolve_launch(
             "agent_name": agent_name,
             "task_sha256": _sha256_text(task_text),
             "delivery_task_sha256": _sha256_text(delivery_task),
-            "grant_digest": grant_digest,
+            "grant_digest": grant_digest_value,
             "state": "unknown",
             "source": "herdr.agent" if executor == "codex" else "herdr.pane_process",
             "read_commands": (
@@ -2421,6 +2321,13 @@ def _main_body(args: argparse.Namespace) -> int:
                     receipt_file,
                     str(assignment.get("attempt_id", attempt_id)),
                 )
+            receipt_capabilities = receipt.get("capabilities")
+            if not isinstance(receipt_capabilities, dict):
+                receipt_capabilities = receipt.get("shell_capabilities")
+            if isinstance(receipt_capabilities, dict):
+                projected_capabilities = dict(local_capabilities or {})
+                projected_capabilities.update(receipt_capabilities)
+                assignment["local_capabilities"] = projected_capabilities
             if args.executor == "deepagents":
                 assignment["lifecycle_receipt"] = receipt
                 classified = _classify_deepagents_outcome(
