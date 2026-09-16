@@ -237,18 +237,34 @@ reconciliation.
 
 Plan task `Authority` is durable maximum authority. CoS may assign a transient
 Runtime Grant that narrows runtime resources and capability exposure; MAIN AGENT
-owns tactical choices inside its grant. Runtime v1 exposes only enforceable
-resource values: `turns` and `wall_clock_seconds`, plus policy authority
-`delegation.child_agents` as `deny | allow`. The default is `deny`; CoS-assigned
-MAIN AGENTS may receive `allow`, while ordinary, review, and integration lanes
-default to `deny`. Codex turns remain `native`; numeric Codex wall-clock values
-fail closed because no Herdr runtime owner enforces them. DeepAgents may
+owns tactical choices inside its grant. Planning target prompts reassessment;
+enforced maximum bounds one attempt and does not terminate a valid attempt at
+the planning target. Durable task `Authority.cumulative_wall_clock_seconds`
+caps all attempts. Each attempt charges allocated `wall_clock_seconds` in full
+when usage is unknown. Runtime v1 exposes only enforceable resource values:
+`turns` and `wall_clock_seconds`, plus policy authority
+`delegation.child_agents` as `deny | allow`. The default is `deny`. `allow` is
+valid only for isolated implementation subtasks when the child write set is a
+strict subset of the parent write set, dependencies are ready, and the parent
+has sufficient remaining allowance. Review, integration, and acceptance lanes
+are mandatory `deny`. Codex turns remain `native`; numeric Codex wall-clock
+values fail closed because no Herdr runtime owner enforces them. DeepAgents may
 use native or explicit numeric values for both fields. The launcher projects
 child-agent authority into the bounded task brief for the assigned MAIN AGENT.
 Delegation and parallelism remain policy-level autonomy; Herdr records the
 authority in launch evidence but does not enforce executor-local spawning.
 
-DeepAgents direct MCP projection remains default-deny. Runtime Tool Resolution
+CoS owns continuation; the dispatcher returns settlement only. CoS continues
+only after settled prior-attempt evidence and remaining cumulative authority.
+Continuation task-result evidence uses exact structure
+`{progress, remaining_work, requested_increase, reason, checkpoint:{commit, task_sha256, remaining_work, verification}}`.
+Each continuation uses a fresh worktree anchored to the accepted checkpoint
+commit. Checkpoint acceptance preserves useful partial work but is not final
+task acceptance.
+
+DeepAgents direct MCP projection remains default-deny. Live deadline mutation,
+enforceable child count/depth/spend, Codex numeric budgets, and concurrency
+expansion remain deferred. Runtime Tool Resolution
 owns capability requirements and the adapter resolves them to concrete
 executor selectors. Concrete selectors belong in launch evidence, not a new
 durable Project-OS registry. Strict requests unsupported by an executor return

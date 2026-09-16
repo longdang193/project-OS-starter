@@ -85,6 +85,7 @@ _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
+_LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 _DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
 _DEEPAGENTS_RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _DEEPAGENTS_RESULT_MAX_AGE_SECONDS = RESULT_MAX_AGE_SECONDS
@@ -200,6 +201,26 @@ def _result(payload: dict[str, Any], key: str) -> Any:
 
 def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _normalize_local_capabilities(values: object) -> list[str]:
+    if values is None:
+        return []
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        raise LaunchBlocked("local_capabilities must be a list of strings.")
+    normalized = [value.lower() for value in values]
+    if any(not _LOCAL_CAPABILITY_PATTERN.fullmatch(value) or ".." in value for value in normalized):
+        raise LaunchBlocked("local_capabilities must contain safe command basenames.")
+    if len(normalized) != len(set(normalized)):
+        raise LaunchBlocked("local_capabilities cannot contain duplicates.")
+    return normalized
+
+
+def _verify_local_capabilities(values: list[str]) -> list[str]:
+    unavailable = [value for value in values if shutil.which(value) is None]
+    if unavailable:
+        raise LaunchBlocked("Unavailable local capabilities: " + ", ".join(unavailable))
+    return list(values)
 
 
 def _read_deepagents_receipt(path: Path | None, attempt_id: str) -> dict[str, Any]:
@@ -1628,6 +1649,7 @@ def _deepagents_completion_evidence(
     receipt_file: Path | None = None,
     attempt_id: str | None = None,
     completion_wait_seconds: float | None = None,
+    attempt_deadline: float | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     observation_wait_seconds = (
@@ -1638,7 +1660,14 @@ def _deepagents_completion_evidence(
     if observation_wait_seconds < 0:
         raise LaunchBlocked("DeepAgents completion observation budget cannot be negative.")
     observation_deadline = started + observation_wait_seconds
+    if attempt_deadline is not None:
+        observation_deadline = min(
+            observation_deadline,
+            attempt_deadline - _DEEPAGENTS_RECEIPT_GRACE_SECONDS,
+        )
     settlement_deadline = observation_deadline + _DEEPAGENTS_RECEIPT_GRACE_SECONDS
+    if attempt_deadline is not None:
+        settlement_deadline = min(settlement_deadline, attempt_deadline)
     evidence: dict[str, Any] | None = None
     receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
     terminal_observed_at: float | None = None
@@ -1659,6 +1688,17 @@ def _deepagents_completion_evidence(
                 return receipt
             receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
         return receipt
+
+    def retry_missing_evidence() -> bool:
+        if receipt.get("worker_state") != "exited" or receipt.get("worker_exit_code") != 0:
+            return False
+        if evidence.get("report_present") is not False or evidence.get("marker_present") is not False:
+            return False
+        remaining = settlement_deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
+        return True
 
     marker_observed = False
     while True:
@@ -1689,7 +1729,9 @@ def _deepagents_completion_evidence(
             )
             marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
-            return evidence
+            if not retry_missing_evidence():
+                return evidence
+            continue
         evidence = _deepagents_completion_snapshot(
             herdr,
             session,
@@ -1720,6 +1762,8 @@ def _deepagents_completion_evidence(
                     )
                     marker_observed = marker_observed or evidence.get("marker_present") is True
                 evidence["lifecycle_receipt"] = receipt
+                if retry_missing_evidence():
+                    continue
                 return evidence
         if evidence["state"] in {"completed", "failed"}:
             terminal_observed_at = time.monotonic()
@@ -1739,6 +1783,8 @@ def _deepagents_completion_evidence(
                 )
                 marker_observed = marker_observed or evidence.get("marker_present") is True
             evidence["lifecycle_receipt"] = receipt
+            if retry_missing_evidence():
+                continue
             return evidence
         remaining = observation_deadline - time.monotonic()
         if remaining <= 0:
@@ -1757,6 +1803,8 @@ def _deepagents_completion_evidence(
                     )
                     marker_observed = marker_observed or evidence.get("marker_present") is True
                     evidence["lifecycle_receipt"] = receipt
+                    if retry_missing_evidence():
+                        continue
                     return evidence
             evidence["last_observed_state"] = evidence["state"]
             evidence["state"] = "timed_out"
@@ -1923,6 +1971,7 @@ def resolve_launch(
     expected_base: str,
     executor: str = "codex",
     mcp_select: list[str] | None = None,
+    local_capabilities: list[str] | None = None,
     grant_turns: str | int | None = None,
     grant_wall_clock_seconds: str | int | None = None,
     grant_child_agents: str | None = None,
@@ -1940,6 +1989,10 @@ def resolve_launch(
         grant_wall_clock_seconds=grant_wall_clock_seconds,
         mcp_select=mcp_select,
         grant_child_agents=grant_child_agents,
+    )
+    requested_local_capabilities = list(local_capabilities or [])
+    effective_local_capabilities = _verify_local_capabilities(
+        _normalize_local_capabilities(requested_local_capabilities)
     )
     delivery_task = _project_runtime_grant(task_text, runtime_grant)
     completion_marker = None
@@ -2046,6 +2099,10 @@ def resolve_launch(
                 (["--mcp-select", _powershell_literal(value)] for value in (mcp_select or [])),
                 [],
             ),
+            *sum(
+                (["--local-capability", _powershell_literal(value)] for value in effective_local_capabilities),
+                [],
+            ),
             *([] if direct_mcp else ["--no-mcp"]),
             "-n",
             _powershell_literal(delivery_task),
@@ -2072,6 +2129,13 @@ def resolve_launch(
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
             "mcp_selection_requested": list(mcp_select or []),
+            "local_capabilities": {
+                "requested": requested_local_capabilities,
+                "effective": effective_local_capabilities,
+                "verification_commands": list(effective_local_capabilities),
+                "source_task_sha256": _sha256_text(task_text),
+                "digest": _sha256_text(json.dumps(effective_local_capabilities, separators=(",", ":"))),
+            },
         },
         "git": git,
             "herdr": {
@@ -2154,6 +2218,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-base", required=True)
     parser.add_argument("--executor", choices=sorted(_EXECUTORS), default="codex")
     parser.add_argument("--mcp-select", action="append", default=[])
+    parser.add_argument("--local-capability", action="append", default=[])
     parser.add_argument("--grant-turns", default=_NATIVE_GRANT_VALUE)
     parser.add_argument("--grant-wall-clock-seconds", default=_NATIVE_GRANT_VALUE)
     parser.add_argument("--grant-child-agents", choices=["allow", "deny"], default="deny")
@@ -2166,6 +2231,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _main_body(args: argparse.Namespace) -> int:
     invocation_started = time.monotonic()
+    attempt_deadline = invocation_started + _DEEPAGENTS_RUN_TIMEOUT
     dispatch_id = uuid.uuid4().hex
     preparation_performance = _new_performance_evidence()
     attempt_context: dict[str, Any] = {
@@ -2263,6 +2329,7 @@ def _main_body(args: argparse.Namespace) -> int:
             expected_base=args.expected_base,
             executor=args.executor,
             mcp_select=args.mcp_select,
+            local_capabilities=args.local_capability,
             grant_turns=args.grant_turns,
             grant_wall_clock_seconds=args.grant_wall_clock_seconds,
             grant_child_agents=args.grant_child_agents,
@@ -2270,6 +2337,8 @@ def _main_body(args: argparse.Namespace) -> int:
             name=args.name,
             codex_home=args.codex_home,
         )
+        if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
+            raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")
         attempt_id = uuid.uuid4().hex
         attempt_context.update(
             {
@@ -2312,6 +2381,9 @@ def _main_body(args: argparse.Namespace) -> int:
             assignment = payload.get("assignment", payload)
             if not isinstance(assignment, dict):
                 raise LaunchBlocked("Assignment evidence must be an object.")
+            local_capabilities = registry_evidence.get("local_capabilities")
+            if isinstance(local_capabilities, dict):
+                assignment["local_capabilities"] = dict(local_capabilities)
             execution = assignment.setdefault("execution", {"state": "unknown", "worker_exit_code": None})
             if not isinstance(execution, dict):
                 execution = {"state": "unknown", "worker_exit_code": None}
@@ -2481,7 +2553,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         command,
                         env=environment,
                         timeout=(
-                            _DEEPAGENTS_RUN_TIMEOUT
+                            max(0.01, attempt_deadline - time.monotonic())
                             if args.executor == "deepagents"
                             else _CODEX_START_TIMEOUT
                         ),
@@ -2851,8 +2923,12 @@ def _main_body(args: argparse.Namespace) -> int:
             completion_wait_seconds=(
                 float(requested_wait)
                 if isinstance(requested_wait, int)
-                else _DEEPAGENTS_COMPLETION_WAIT_SECONDS
+                else max(
+                    0.0,
+                    attempt_deadline - time.monotonic() - _DEEPAGENTS_RECEIPT_GRACE_SECONDS,
+                )
             ),
+            attempt_deadline=attempt_deadline,
         )
         record_phase("observation", observation_started, attempt_id=attempt_id)
         task_state = str(completion["state"])
@@ -2887,8 +2963,8 @@ def _main_body(args: argparse.Namespace) -> int:
                 },
                 "observation": completion,
                 "task_result": {
-                    "state": "verified" if task_verified else "unknown",
-                    "accepted": completed,
+                    "state": "reported_completed" if task_verified else "unknown",
+                    "accepted": None,
                 },
                 "cleanup": {
                     "state": "unknown" if worker_live else ("unverified" if completed else "unknown"),
@@ -2903,7 +2979,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 "reconciliation_required": not completed,
                 "session": resolved_session,
                 "status": task_state,
-                "task_accepted": completed,
+                "task_accepted": None,
                 "task_sha256": assignment_task_sha256,
             }
         })

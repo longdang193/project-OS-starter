@@ -431,3 +431,17 @@ Specification is complete when:
 5. pilot scope, rollout gates, rollback, and non-goals are explicit
 6. every required outcome maps to executable validation intent
 7. implementation plan can name exact files, symbols, commands, dependencies, and stop conditions
+
+## Task 1 frozen dispatch contract
+
+Task lifecycle is exact and ordered: `admitted` → `started` → `running` → `reported_completed` or `reported_failed` or `reported_timeout` → `observed` → `retired` → `accepted` or `rejected`. Runtime completion is not acceptance. `reported_completed` proves worker-reported completion only; `accepted` requires CoS validation of receipt, process/descendant retirement, cleanup, allowed write set, checkpoint, and combined-revision evidence.
+
+Each attempt owns one whole-attempt wall-clock boundary of exactly `1800` seconds. Worker execution, descendant handling, launcher observation, output draining, cleanup, and retirement remain inside that attempt boundary. Timeout ownership stays with `dcode-project` for worker and descendant termination; launcher and dispatcher own observation, reconciliation, and admission state. Observation expiry never proves termination.
+
+CoS owns continuation. Dispatcher may stop admission and return unresolved ownership; it must not autonomously continue, retry, or delegate. Continuation requires explicit CoS decision, settled prior attempt evidence, and remaining durable plan authority. Plan task `Authority` carries `cumulative_wall_clock_seconds`; each attempt charges allocated `wall_clock_seconds` in full when usage is unknown. No token or child-budget accounting.
+
+Accepted work requires executable Git checkpoint evidence: checkpoint revision exists, is reachable from expected base, contains only allowed writes, and passes task verification. Fresh worktree identity and checkpoint revision remain distinct contracts.
+
+`local_capabilities` flows from validated runtime selection into dispatcher admission, launcher invocation, and receipt evidence. Selectors accept only declared capability IDs; unknown IDs, tool names, conflicting selectors, and undeclared runtime-only capabilities reject before launch. Launcher JSON passes through dispatcher unchanged enough for correlation and validation; malformed, stale, or mismatched records remain unresolved.
+
+Task 1 regression scope covers runtime completion versus acceptance, missing grant evidence, timeout ownership, fake-clock boundaries, launcher JSON through dispatcher, capability flow and selector validation, policy/checkpoint contracts, and duplicate launcher wait-test names.

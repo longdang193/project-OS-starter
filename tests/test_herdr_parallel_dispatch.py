@@ -297,6 +297,8 @@ def test_run_lane_valid_settled_assignment_retires_capacity(tmp_path: Path) -> N
 def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
     tmp_path: Path,
 ) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
     class CompletedProcess:
         returncode = 2
 
@@ -304,11 +306,12 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
             return (
                 "\n".join(
                     [
-                        json.dumps({"registry_launcher": {"attempt_id": "a"}}),
+                            json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}}),
                         json.dumps(
                             {
-                                "assignment": {
-                                    "attempt_id": "a",
+                                    "assignment": {
+                                        "attempt_id": "a",
+                                        "grant_digest": item["grant_digest"],
                                     "execution": {
                                         "state": "exited",
                                         "descendant_state": "terminated",
@@ -325,7 +328,7 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        item,
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -603,8 +606,11 @@ def test_run_lane_missing_or_unknown_descendant_state_stays_occupied(
 def test_run_lane_explicit_descendant_retirement_requires_cleanup(
     tmp_path: Path, descendant_state: str,
 ) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
     assignment = {
         "attempt_id": "a",
+        "grant_digest": item["grant_digest"],
         "execution": {"state": "exited", "descendant_state": descendant_state},
         "cleanup": {"state": "removed", "recovery_required": False},
         "reconciliation_required": False,
@@ -615,13 +621,13 @@ def test_run_lane_explicit_descendant_retirement_requires_cleanup(
 
         def communicate(self, *, timeout):
             return (
-                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                    json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
                 + "\n"
                 + json.dumps({"assignment": assignment}),
                 "",
             )
 
-    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+    result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["capacity"] == "retired"
     assert result["unresolved"] is True
@@ -689,6 +695,9 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
 ) -> None:
     from scripts import herdr_main_launcher as launcher
 
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
+
     classified = launcher._classify_deepagents_outcome(
         delivery={"state": "delivered", "certainty": "confirmed", "prompt_accepted": True},
         observation={"state": "completed", "report_present": True, "observation_error": None},
@@ -714,23 +723,25 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
         launcher_exit_code=classified["launcher_exit_code"],
         legacy={"status": classified["status"], "reconciliation_required": classified["reconciliation_required"]},
     )
+    emitted["assignment"]["grant_digest"] = item["grant_digest"]
 
     class CompletedProcess:
         returncode = 0
 
         def communicate(self, *, timeout):
             return (
-                json.dumps({"registry_launcher": {"attempt_id": "a"}})
+                    json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
                 + "\n"
                 + json.dumps(emitted),
                 "",
             )
 
-    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+    result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["assignment"]["task_result"] == {"state": "reported_completed", "accepted": None}
     assert result["capacity"] == "retired"
-    assert result["unresolved"] is True
+    assert result["unresolved"] is False
+    assert result["acceptance_pending"] is True
 
 
 def test_finish_timed_out_process_drains_closes_and_reaps() -> None:
@@ -769,3 +780,63 @@ def test_finish_timed_out_process_drains_closes_and_reaps() -> None:
     assert process.calls == 1
     assert process.stdout.closed is True
     assert process.stderr.closed is True
+
+
+def test_runtime_completion_does_not_equal_acceptance() -> None:
+    assert dispatcher.runtime_completion_is_not_acceptance({"status": "reported_completed"})
+
+
+def test_missing_grant_evidence_rejects_acceptance() -> None:
+    assert dispatcher.validate_acceptance({"status": "reported_completed"}) == "missing_grant_evidence"
+
+
+def test_timeout_owner_is_worker_runtime() -> None:
+    assert dispatcher.TIMEOUT_OWNER == "dcode-project"
+
+
+def test_fake_clock_includes_exact_whole_attempt_boundary() -> None:
+    assert dispatcher.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS == 1800
+    assert dispatcher.attempt_expired(1800.0, 1800.0)
+
+
+def test_launcher_json_flows_through_dispatcher() -> None:
+    record = {"lane_id": "a", "attempt_id": "attempt-a", "status": "reported_completed"}
+    assert dispatcher.dispatch_launcher_record(json.dumps(record))["attempt_id"] == "attempt-a"
+
+
+def test_local_capabilities_and_selector_validation_are_forwarded() -> None:
+    assert dispatcher.validate_local_capabilities(["agent.wait"], ["agent.wait"])
+    with pytest.raises(ValueError):
+        dispatcher.validate_local_capabilities(["unknown"], ["agent.wait"])
+
+
+def test_local_capabilities_admission_normalizes_and_checks_availability(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    item = lane("a", tmp_path)
+    item["local_capabilities"] = ["Node"]
+    monkeypatch.setattr(dispatcher.shutil, "which", lambda value: f"/bin/{value}")
+    dispatcher._bind_requested_grant(item)
+    assert item["local_capabilities"]["effective"] == ["node"]
+    assert "--local-capability" in dispatcher._launcher_command(
+        item, python_executable="python", launcher_path="launcher.py"
+    )
+
+
+def test_local_capability_evidence_mismatch_stays_unverified(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    item["local_capabilities"] = ["git"]
+    dispatcher._bind_requested_grant(item)
+    parsed = {
+        "preparation": {"registry_launcher": {
+            "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"],
+            "local_capabilities": {**item["local_capabilities"], "digest": "wrong"},
+        }},
+        "assignment": {"grant_digest": item["grant_digest"], "local_capabilities": item["local_capabilities"]},
+    }
+    assert dispatcher._grant_evidence_matches(item, parsed) is False
+
+
+def test_policy_requires_cumulative_allowance_and_git_checkpoint() -> None:
+    assert dispatcher.validate_plan_authority({"cumulative_wall_clock_seconds": 1800})
+    assert dispatcher.validate_git_checkpoint({"revision": "HEAD", "verified": True})

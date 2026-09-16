@@ -37,6 +37,35 @@ def test_chief_of_staff_defines_transient_runtime_grant_boundary() -> None:
         assert text in normalized
 
 
+def test_chief_of_staff_bounds_continuation_and_child_delegation_symmetrically() -> None:
+    skill = " ".join(read(".agents/skills/skill-chief-of-staff/SKILL.md").split())
+    dispatch = " ".join(read("docs/operating_system/planning/planning-dispatch.md").split())
+    terms = (
+        "Planning target prompts reassessment",
+        "enforced maximum bounds one attempt",
+        "Authority.cumulative_wall_clock_seconds",
+        "charges allocated `wall_clock_seconds` in full when usage is unknown",
+        "CoS owns continuation; the dispatcher returns settlement only",
+        "settled prior-attempt evidence",
+        "remaining cumulative authority",
+        "{progress, remaining_work, requested_increase, reason, checkpoint:{commit, task_sha256, remaining_work, verification}}",
+        "fresh worktree anchored to the accepted checkpoint commit",
+        "strict subset of the parent write set",
+        "dependencies are ready",
+        "sufficient remaining allowance",
+        "Review, integration, and acceptance lanes are mandatory `deny`",
+        "Live deadline mutation",
+        "enforceable child count/depth/spend",
+        "Codex numeric budgets",
+        "concurrency expansion remain deferred",
+    )
+    for text in terms:
+        assert text in skill
+        assert text in dispatch
+    assert "CoS-assigned MAIN AGENTS may receive `allow`" not in skill
+    assert "CoS-assigned MAIN AGENTS may receive `allow`" not in dispatch
+
+
 def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
     for text in (
