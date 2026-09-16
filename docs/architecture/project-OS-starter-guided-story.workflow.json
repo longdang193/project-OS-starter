@@ -1,0 +1,103 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Project OS Starter — From Request to Accepted Change",
+    "animation": "none",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "why",
+        "label": "Why Project OS exists",
+        "focus": ["request", "controller", "plan", "verdict"],
+        "note": "See how Project OS makes ownership, boundaries, and acceptance explicit."
+      },
+      {
+        "id": "control",
+        "label": "Control before execution",
+        "focus": ["controller", "plan", "admission", "runtime"],
+        "note": "Follow policy and bounded runtime selection before workers begin."
+      },
+      {
+        "id": "lanes",
+        "label": "Bounded lanes",
+        "focus": ["admission", "lanes", "runtime"],
+        "note": "See how selected runtimes operate inside explicit task and workspace boundaries."
+      },
+      {
+        "id": "proof",
+        "label": "Evidence before acceptance",
+        "focus": ["runtime", "evidence", "verdict"],
+        "note": "Runtime completion becomes a claim until required proof reaches acceptance."
+      },
+      {
+        "id": "recovery",
+        "label": "Recovery stays explicit",
+        "focus": ["evidence", "blocked", "reconcile", "admission", "verdict"],
+        "note": "See why retry requires settled evidence, retirement checks, and plan plus Git reconciliation."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "intent", "label": "Intent & Control" },
+    { "id": "execution", "label": "Bounded Execution" },
+    { "id": "evidence", "label": "Evidence, Recovery & Acceptance" }
+  ],
+  "phases": [
+    { "id": "frame", "label": "Frame", "fromCol": 0, "toCol": 1 },
+    { "id": "govern", "label": "Govern", "fromCol": 2, "toCol": 2, "variant": "emphasis" },
+    { "id": "execute", "label": "Execute", "fromCol": 3, "toCol": 3 },
+    { "id": "prove", "label": "Prove", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": [
+    "request",
+    "controller",
+    "plan",
+    "admission",
+    "lanes",
+    "runtime",
+    "evidence",
+    "verdict"
+  ],
+  "semanticChecks": {
+    "allowedRoots": ["request"],
+    "allowedTerminals": ["verdict", "reconcile"],
+    "requiredEdges": [
+      { "from": "controller", "to": "plan" },
+      { "from": "evidence", "to": "verdict" }
+    ],
+    "requiredPaths": [
+      { "from": "request", "to": "verdict" }
+    ]
+  },
+  "nodes": [
+    { "id": "request", "lane": "intent", "col": 0, "type": "external", "label": "Task Request", "width": 132 },
+    { "id": "controller", "lane": "intent", "col": 1, "type": "backend", "label": "Lead Controller", "tag": "one controller", "width": 132 },
+    { "id": "plan", "lane": "intent", "col": 2, "type": "backend", "label": "Git-Tracked Plan", "tag": "coordination SSOT", "width": 132 },
+    { "id": "admission", "lane": "intent", "col": 3, "type": "security", "label": "Bounded Admission", "tag": "grant narrows work", "width": 132 },
+    { "id": "lanes", "lane": "execution", "col": 3, "type": "backend", "label": "Implementation Lanes", "width": 132 },
+    { "id": "runtime", "lane": "execution", "col": 4, "type": "backend", "label": "Selected Runtime", "tag": "Codex / DeepAgents / Tura", "width": 160 },
+    { "id": "evidence", "lane": "evidence", "col": 4, "type": "database", "label": "Accepted Evidence", "tag": "proof before verdict", "width": 132 },
+    { "id": "verdict", "lane": "evidence", "col": 5, "type": "security", "label": "Acceptance Decision", "tag": "same task and output", "width": 160 },
+    { "id": "blocked", "lane": "evidence", "col": 1, "type": "security", "label": "Blocked", "width": 132 },
+    { "id": "reconcile", "lane": "evidence", "col": 2, "type": "backend", "label": "Reconcile", "tag": "fresh attempt only", "width": 132 }
+  ],
+  "edges": [
+    { "id": "request-controller", "from": "request", "to": "controller", "label": "submit" },
+    { "id": "controller-plan", "from": "controller", "to": "plan", "label": "record authority", "variant": "emphasis" },
+    { "id": "plan-admission", "from": "plan", "to": "admission", "label": "admit bounded work", "variant": "emphasis" },
+    { "id": "admission-lanes", "from": "admission", "to": "lanes", "label": "grant scope" },
+    { "id": "lanes-runtime", "from": "lanes", "to": "runtime", "label": "select runtime" },
+    { "id": "runtime-evidence", "from": "runtime", "to": "evidence", "label": "settle proof", "variant": "dashed" },
+    { "id": "evidence-verdict", "from": "evidence", "to": "verdict", "label": "review and decide", "variant": "emphasis" },
+    { "id": "admission-blocked", "from": "admission", "to": "blocked", "label": "cannot safely admit", "variant": "security", "role": "error" },
+    { "id": "evidence-blocked", "from": "evidence", "to": "blocked", "label": "evidence incomplete", "variant": "security", "role": "error" },
+    { "id": "blocked-reconcile", "from": "blocked", "to": "reconcile", "label": "retry only after settlement", "variant": "dashed", "role": "branch" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Authority", "items": ["The controller coordinates work and acceptance", "The plan owns task order, dependencies, and proof"] },
+    { "dot": "rose", "title": "Evidence", "items": ["Runtime completion is not acceptance", "PASS, FAIL, or BLOCKED requires accepted evidence"] },
+    { "dot": "amber", "title": "Recovery", "items": ["Blocked state preserves uncertainty instead of guessing", "Retry needs retirement, reconciliation, and a fresh attempt"] }
+  ]
+}

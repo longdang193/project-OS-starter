@@ -1,13 +1,25 @@
 # Pipeline
 
-Use this document for the project's high-level workflow or processing stages.
+Project OS Starter moves each task through five visible stages:
 
-Keep it focused on:
+1. **Frame** — receive task request and establish lead-controller authority.
+2. **Govern** — record Git-tracked plan, ownership, dependencies, proof, and
+   bounded admission.
+3. **Execute** — dispatch implementation lanes through selected runtimes inside
+   admitted task and workspace boundaries.
+4. **Prove** — settle runtime output into accepted evidence, then review and
+   decide `PASS`, `FAIL`, or `BLOCKED`.
+5. **Recover** — preserve blocked uncertainty, reconcile plan and Git state, and
+   start only a fresh admitted attempt.
 
-- major workflow steps
-- handoffs between stages, components, or artifacts
-- end-to-end sequence of work
-- the operating flow of the system
+```text
+Frame → Govern → Execute → Prove
+  └────────────── failure or incomplete evidence ──→ Recover
+```
 
-For stage-specific or feature-specific detail, link to the deeper docs rather
-than duplicating them here.
+`Recover` is not an automatic retry loop. It is a settlement boundary. The
+next attempt must use reconciled plan and Git state, fresh evidence, and new
+bounded admission.
+
+Stage-specific detail belongs in the owning procedure, rule, or runtime
+documentation rather than in this high-level pipeline.

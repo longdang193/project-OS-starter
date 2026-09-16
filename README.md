@@ -28,25 +28,22 @@ Project OS Starter supplies repository structure and contracts for answering tho
 ## How It Works
 
 ```text
-                         Controller
-                             │
-                       plan and policy
-                             │
-                    admit bounded work
-                             │
-             ┌───────────────┴───────────────┐
-             │                               │
-          Lane A                          Lane B
-      selected runtime                 selected runtime
-             │                               │
-             └───────────────┬───────────────┘
-                             │
-                          evidence
-                             │
-                    PASS / FAIL / BLOCKED
+Task Request → Lead Controller → Git-Tracked Plan → Bounded Admission
+                                                        │
+                                              Implementation Lanes
+                                                        │
+                                               Selected Runtime
+                                                        │
+                                              Accepted Evidence
+                                                        │
+                                             Acceptance Decision
 ```
 
-The system separates task delivery, execution, observation, lifecycle state, cleanup, and final acceptance. Runtime completion alone does not establish task acceptance.
+The system separates task delivery, bounded execution, evidence, recovery, and final acceptance. Runtime completion alone does not establish task acceptance.
+
+If admission or evidence fails, work enters `BLOCKED`. Reconciliation settles plan and Git state before any fresh attempt; retry is never automatic.
+
+See [`docs/architecture.md`](docs/architecture.md), [`docs/pipeline.md`](docs/pipeline.md), and the [Archify workflow source](docs/architecture/project-os-starter-guided-story.workflow.json).
 
 ## Example Workflow
 
