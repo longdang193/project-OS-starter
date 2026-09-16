@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -14,12 +15,21 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Literal, Sequence
 
+try:
+    from owned_process import OwnedProcessResult, run_owned_process
+except ModuleNotFoundError:
+    from scripts.owned_process import OwnedProcessResult, run_owned_process
+try:
+    from review_content_policy import classify_inventory
+except ModuleNotFoundError:
+    from scripts.review_content_policy import classify_inventory
+
 SUPPORTED_DELEGATE_SCHEMA = "1"
-OCR_TESTED_VERSION = "1.12.4"
 MAX_RULE_ARGUMENT_LENGTH = 24_000
 MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _SAFE_STATUSES = {"A", "C", "D", "M", "R", "T", "U", "X", "added", "copied", "deleted", "modified", "renamed", "type_changed", "unmerged", "unknown"}
+
 _GIT_RUN = subprocess.run
 
 
@@ -73,23 +83,28 @@ class ReviewRange:
     repo: Path
     base_sha: str
     head_sha: str
-    inventory: tuple[GitInventoryEntry, ...] | Sequence[GitInventoryEntry]
+    inventory: tuple[GitInventoryEntry, ...] | Sequence[GitInventoryEntry] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "repo", Path(self.repo).expanduser().resolve())
         object.__setattr__(self, "base_sha", self.base_sha.lower() if isinstance(self.base_sha, str) else self.base_sha)
         object.__setattr__(self, "head_sha", self.head_sha.lower() if isinstance(self.head_sha, str) else self.head_sha)
-        object.__setattr__(self, "inventory", tuple(self.inventory))
+        if self.inventory is not None:
+            object.__setattr__(self, "inventory", tuple(self.inventory))
 
 
 @dataclass(frozen=True)
 class PreparationResult:
-    status: Literal["prepared", "fallback"]
+    status: Literal["prepared", "fallback", "BLOCKED"]
     reason: str | None = None
     inventory: tuple[GitInventoryEntry, ...] = ()
     reviewable_paths: tuple[str, ...] = ()
     excluded_paths: tuple[str, ...] = ()
+    protected_paths: tuple[str, ...] = ()
+    protected_entries: tuple[dict[str, Any], ...] = ()
+    exclusion_metadata: tuple[dict[str, Any], ...] = ()
     rules: tuple[dict[str, Any], ...] = ()
+    advisory_hints: tuple[dict[str, Any], ...] = ()
     observed_version: str | None = None
     schema_versions: tuple[str, ...] = ()
     executable: str | None = None
@@ -97,8 +112,54 @@ class PreparationResult:
     payload_digests: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def fallback(cls, reason: str, *, executable: str | None = None) -> "PreparationResult":
-        return cls(status="fallback", reason=reason, executable=executable)
+    def fallback(
+        cls,
+        reason: str,
+        *,
+        inventory: Iterable[GitInventoryEntry] = (),
+        scope_identity: dict[str, Any] | None = None,
+        protected_paths: Iterable[str] = (),
+        protected_entries: Iterable[dict[str, Any]] = (),
+        exclusion_metadata: Iterable[dict[str, Any]] = (),
+        executable: str | None = None,
+        observed_version: str | None = None,
+    ) -> "PreparationResult":
+        return cls(
+            status="fallback",
+            reason=reason,
+            inventory=tuple(inventory),
+            executable=executable,
+            observed_version=observed_version,
+            scope_identity=scope_identity or {},
+            protected_paths=tuple(protected_paths),
+            protected_entries=tuple(protected_entries),
+            exclusion_metadata=tuple(exclusion_metadata),
+        )
+
+    @classmethod
+    def blocked(
+        cls,
+        reason: str,
+        *,
+        inventory: Iterable[GitInventoryEntry],
+        scope_identity: dict[str, Any],
+        protected_paths: Iterable[str] = (),
+        protected_entries: Iterable[dict[str, Any]] = (),
+        exclusion_metadata: Iterable[dict[str, Any]] = (),
+        executable: str | None = None,
+        observed_version: str | None = None,
+    ) -> "PreparationResult":
+        return cls(
+            status="BLOCKED",
+            reason=reason,
+            inventory=tuple(inventory),
+            executable=executable,
+            observed_version=observed_version,
+            scope_identity=scope_identity,
+            protected_paths=tuple(protected_paths),
+            protected_entries=tuple(protected_entries),
+            exclusion_metadata=tuple(exclusion_metadata),
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -107,7 +168,11 @@ class PreparationResult:
             "inventory": [entry.as_dict() for entry in self.inventory],
             "reviewable_paths": list(self.reviewable_paths),
             "excluded_paths": list(self.excluded_paths),
+            "protected_paths": list(self.protected_paths),
+            "protected_entries": list(self.protected_entries),
+            "exclusion_metadata": list(self.exclusion_metadata),
             "rules": list(self.rules),
+            "advisory_hints": list(self.advisory_hints),
             "observed_version": self.observed_version,
             "schema_versions": list(self.schema_versions),
             "executable": self.executable,
@@ -131,7 +196,127 @@ def inventory_digest(inventory: Iterable[GitInventoryEntry]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def validate_input(review_range: ReviewRange) -> ReviewRange:
+def _git_result(
+    review_range: ReviewRange,
+    deadline: float,
+    *args: str,
+) -> subprocess.CompletedProcess[bytes]:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ContractError("Git validation timed out")
+    try:
+        result = _GIT_RUN(
+            ["git", "-C", str(review_range.repo), *args],
+            capture_output=True,
+            text=False,
+            check=False,
+            timeout=remaining,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ContractError("Git validation failed") from exc
+    if result.returncode:
+        raise ContractError("Git validation failed")
+    return result
+
+
+def _git_stdout(result: subprocess.CompletedProcess[bytes], label: str) -> bytes:
+    value = result.stdout
+    if isinstance(value, str):
+        try:
+            return value.encode("utf-8")
+        except UnicodeError as exc:
+            raise ContractError(f"invalid Git {label}") from exc
+    if not isinstance(value, bytes):
+        raise ContractError(f"invalid Git {label}")
+    if len(value) > MAX_OUTPUT_BYTES:
+        raise ContractError(f"Git {label} output too large")
+    return value
+
+
+def derive_inventory(review_range: ReviewRange, deadline: float | None = None) -> tuple[GitInventoryEntry, ...]:
+    deadline = deadline if deadline is not None else time.monotonic() + 60
+    result = _git_result(
+        review_range,
+        deadline,
+        "diff",
+        "--name-status",
+        "-z",
+        "--find-renames",
+        "--find-copies",
+        "--find-copies-harder",
+        review_range.base_sha,
+        review_range.head_sha,
+        "--",
+    )
+    fields = _git_stdout(result, "inventory").split(b"\0")
+    entries: list[GitInventoryEntry] = []
+    index = 0
+    while index < len(fields) and fields[index] == b"":
+        index += 1
+    while index < len(fields):
+        status_field = fields[index]
+        index += 1
+        if not status_field:
+            continue
+        try:
+            status_text = status_field.decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise ContractError("invalid Git inventory status") from exc
+        status = status_text[0]
+        if status in {"R", "C"}:
+            if index + 1 >= len(fields):
+                raise ContractError("incomplete Git rename/copy inventory")
+            try:
+                old_path = fields[index].decode("utf-8")
+                new_path = fields[index + 1].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ContractError("invalid UTF-8 in Git inventory") from exc
+            index += 2
+            entries.append(GitInventoryEntry(status, old_path, new_path))
+        else:
+            if index >= len(fields):
+                raise ContractError("incomplete Git inventory")
+            try:
+                new_path = fields[index].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ContractError("invalid UTF-8 in Git inventory") from exc
+            index += 1
+            entries.append(GitInventoryEntry(status, new_path=new_path) if status != "D" else GitInventoryEntry(status, old_path=new_path))
+    seen: set[str] = set()
+    for entry in entries:
+        if entry.review_path in seen:
+            raise ContractError(f"duplicate inventory path: {entry.review_path}")
+        seen.add(entry.review_path)
+    return tuple(entries)
+
+
+def _scope_identity(review_range: ReviewRange) -> dict[str, Any]:
+    return {
+        "repo": str(review_range.repo),
+        "base_sha": review_range.base_sha,
+        "head_sha": review_range.head_sha,
+        "inventory_sha256": inventory_digest(review_range.inventory),
+    }
+
+
+def validate_preparation_identity(preparation: object, review_range: ReviewRange) -> dict[str, Any]:
+    if not isinstance(preparation, dict):
+        raise ContractError("preparation manifest must be an object")
+    if preparation.get("status") not in {"prepared", "fallback", "BLOCKED"}:
+        raise ContractError("invalid preparation status")
+    identity = preparation.get("scope_identity")
+    if not isinstance(identity, dict):
+        raise ContractError("preparation identity is missing")
+    expected = _scope_identity(review_range)
+    for key in ("base_sha", "head_sha", "inventory_sha256"):
+        if identity.get(key) != expected[key]:
+            raise ContractError(f"preparation identity mismatch: {key}")
+    if preparation.get("status") != "prepared" and preparation.get("advisory_hints"):
+        raise ContractError("hints require prepared status")
+    return preparation
+
+
+def validate_input(review_range: ReviewRange, *, deadline: float | None = None) -> ReviewRange:
     if not isinstance(review_range, ReviewRange):
         raise ContractError("review range must be ReviewRange")
     if not review_range.repo.is_dir():
@@ -139,36 +324,33 @@ def validate_input(review_range: ReviewRange) -> ReviewRange:
     for name, value in (("base_sha", review_range.base_sha), ("head_sha", review_range.head_sha)):
         if not isinstance(value, str) or not _SHA_RE.fullmatch(value):
             raise ContractError(f"{name} must be a full 40-character commit SHA")
+    caller_inventory = review_range.inventory
     seen: set[str] = set()
-    for entry in review_range.inventory:
+    for entry in caller_inventory or ():
         if not isinstance(entry, GitInventoryEntry):
             raise ContractError("inventory entries must be GitInventoryEntry")
-        for path in (entry.old_path, entry.new_path):
-            if path is not None:
-                _validate_path(path)
-                if path in seen:
-                    raise ContractError(f"duplicate inventory path: {path}")
-                seen.add(path)
+        path = entry.review_path
+        if path in seen:
+            raise ContractError(f"duplicate inventory path: {path}")
+        seen.add(path)
 
-    def git(*args: str) -> subprocess.CompletedProcess[str]:
-        return _GIT_RUN(
-            ["git", "-C", str(review_range.repo), *args],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    deadline = deadline if deadline is not None else time.monotonic() + 60
 
     for name, value in (("base_sha", review_range.base_sha), ("head_sha", review_range.head_sha)):
-        result = git("rev-parse", "--verify", f"{value}^{{commit}}")
-        if result.returncode or result.stdout.strip().lower() != value:
+        result = _git_result(review_range, deadline, "rev-parse", "--verify", f"{value}^{{commit}}")
+        if _git_stdout(result, name).strip().lower() != value.encode("ascii"):
             raise ContractError(f"invalid {name}: {value}")
-    ancestor = git("merge-base", "--is-ancestor", review_range.base_sha, review_range.head_sha)
-    if ancestor.returncode:
-        raise ContractError("base_sha is not an ancestor of head_sha")
-    merge_base = git("merge-base", review_range.base_sha, review_range.head_sha)
-    if merge_base.returncode or merge_base.stdout.strip().lower() != review_range.base_sha:
+    try:
+        _git_result(review_range, deadline, "merge-base", "--is-ancestor", review_range.base_sha, review_range.head_sha)
+    except ContractError as exc:
+        raise ContractError("base_sha is not an ancestor of head_sha") from exc
+    merge_base = _git_result(review_range, deadline, "merge-base", review_range.base_sha, review_range.head_sha)
+    if _git_stdout(merge_base, "merge-base").strip().lower() != review_range.base_sha.encode("ascii"):
         raise ContractError("merge-base does not equal base_sha")
-    return review_range
+    canonical = derive_inventory(review_range, deadline)
+    if caller_inventory is not None and seen != {entry.review_path for entry in canonical}:
+        raise ContractError("caller inventory must equal complete Git-derived review paths")
+    return ReviewRange(review_range.repo, review_range.base_sha, review_range.head_sha, canonical)
 
 
 def _canonical_digest(payload: Any) -> str:
@@ -263,6 +445,24 @@ def normalize_rules(payloads: Iterable[object], reviewable_paths: Iterable[str])
     return tuple({**group, "files": sorted(group["files"])} for group in sorted(merged.values(), key=lambda item: (item["source"], item["pattern"], item["rule"])))
 
 
+def _policy_metadata(inventory: Iterable[GitInventoryEntry]) -> dict[str, Any]:
+    policy = classify_inventory(inventory)
+    return {
+        "protected_paths": tuple(policy["protected_paths"]),
+        "protected_review_paths": tuple(policy["protected_review_paths"]),
+        "protected_entries": tuple(policy["protected_entries"]),
+    }
+
+
+def _ocr_exclusion_metadata(reconciled: dict[str, Any], protected_paths: set[str]) -> tuple[dict[str, Any], ...]:
+    metadata: list[dict[str, Any]] = []
+    for partition in ("reviewable", "excluded"):
+        for entry in reconciled["files"][partition]:
+            if entry["path"] in protected_paths or partition == "excluded":
+                metadata.append(dict(entry, partition=partition))
+    return tuple(metadata)
+
+
 class OcrDelegateAdapter:
     def __init__(self, *, timeout_seconds: float = 60.0, max_output_bytes: int = MAX_OUTPUT_BYTES, max_rule_argument_length: int = MAX_RULE_ARGUMENT_LENGTH) -> None:
         self.timeout_seconds = timeout_seconds
@@ -270,77 +470,97 @@ class OcrDelegateAdapter:
         self.max_rule_argument_length = max_rule_argument_length
 
     def prepare(self, review_range: ReviewRange) -> PreparationResult:
-        review_range = validate_input(review_range)
+        deadline = time.monotonic() + self.timeout_seconds
+        review_range = validate_input(review_range, deadline=deadline)
+        identity = _scope_identity(review_range)
+        policy = _policy_metadata(review_range.inventory)
+        protected_paths = set(policy["protected_paths"])
+        protected_review_paths = set(policy["protected_review_paths"])
         executable = shutil.which("ocr")
         if not executable:
-            return PreparationResult.fallback("executable_missing")
+            return PreparationResult.fallback("executable_missing", inventory=review_range.inventory, scope_identity=identity, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"])
         executable = str(Path(executable).resolve())
-        deadline = time.monotonic() + self.timeout_seconds
-        env = dict(__import__("os").environ)
+        env = dict(os.environ)
         env["OCR_NO_UPDATE"] = "1"
-        version = self._run_jsonless([executable, "--version"], review_range.repo, env, deadline)
-        if version is None:
-            reason = getattr(self, "_last_reason", "version_probe_failed")
-            return PreparationResult.fallback("version_probe_failed" if reason == "command_failed" else reason, executable=executable)
+        version, reason = self._run_jsonless([executable, "--version"], review_range.repo, env, deadline)
+        if reason:
+            if reason == "BLOCKED":
+                return PreparationResult.blocked(reason, inventory=review_range.inventory, scope_identity=identity, executable=executable, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"])
+            return PreparationResult.fallback("version_probe_failed" if reason == "command_failed" else reason, inventory=review_range.inventory, scope_identity=identity, executable=executable, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"])
         observed_version = _parse_version(version)
         if observed_version is None:
-            return PreparationResult.fallback("version_probe_failed", executable=executable)
-        preview = self._run_json([executable, "delegate", "preview", "--repo", str(review_range.repo), "--from", review_range.base_sha, "--to", review_range.head_sha, "--format", "json"], review_range.repo, env, deadline)
-        if preview is None:
-            return PreparationResult.fallback(self._last_reason, executable=executable)
+            return PreparationResult.fallback("version_probe_failed", inventory=review_range.inventory, scope_identity=identity, executable=executable, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"])
+        preview, reason = self._run_json([executable, "delegate", "preview", "--repo", str(review_range.repo), "--from", review_range.base_sha, "--to", review_range.head_sha, "--format", "json"], review_range.repo, env, deadline)
+        if reason:
+            if reason == "BLOCKED":
+                return PreparationResult.blocked(reason, inventory=review_range.inventory, scope_identity=identity, executable=executable, observed_version=observed_version, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"])
+            return PreparationResult.fallback(reason, inventory=review_range.inventory, scope_identity=identity, executable=executable, observed_version=observed_version, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"])
         try:
             reconciled = reconcile_preview(preview, review_range)
         except OcrPayloadError as exc:
-            return PreparationResult.fallback(str(exc), executable=executable)
+            return PreparationResult.fallback(str(exc), inventory=review_range.inventory, scope_identity=identity, executable=executable, observed_version=observed_version, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"])
+        exclusion_metadata = _ocr_exclusion_metadata(reconciled, protected_paths)
+        reviewable_paths = tuple(path for path in reconciled["reviewable"] if path not in protected_review_paths)
+        excluded_paths = tuple(path for path in reconciled["excluded"] if path not in protected_review_paths)
         rules_payloads: list[object] = []
-        for batch in self._rule_batches(reconciled["reviewable"]):
-            command = [executable, "delegate", "rule", "--repo", str(review_range.repo), "--format", "json", "--", *batch]
-            payload = self._run_json(command, review_range.repo, env, deadline)
-            if payload is None:
-                return PreparationResult.fallback(self._last_reason, executable=executable)
+        for batch in self._rule_batches(reviewable_paths):
+            command = [executable, "delegate", "rule", "--repo", str(review_range.repo), "--from", review_range.base_sha, "--to", review_range.head_sha, "--format", "json", "--", *batch]
+            payload, reason = self._run_json(command, review_range.repo, env, deadline)
+            if reason:
+                if reason == "BLOCKED":
+                    return PreparationResult.blocked(reason, inventory=review_range.inventory, scope_identity=identity, executable=executable, observed_version=observed_version, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"], exclusion_metadata=exclusion_metadata)
+                return PreparationResult.fallback(reason, inventory=review_range.inventory, scope_identity=identity, executable=executable, observed_version=observed_version, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"], exclusion_metadata=exclusion_metadata)
             rules_payloads.append(payload)
         try:
-            rules = normalize_rules(rules_payloads, reconciled["reviewable"])
+            rules = normalize_rules(rules_payloads, reviewable_paths)
         except OcrPayloadError as exc:
-            return PreparationResult.fallback(str(exc), executable=executable)
-        return PreparationResult(status="prepared", inventory=review_range.inventory, reviewable_paths=reconciled["reviewable"], excluded_paths=reconciled["excluded"], rules=rules, observed_version=observed_version, schema_versions=(SUPPORTED_DELEGATE_SCHEMA,), executable=executable, scope_identity={"repo": str(review_range.repo), "base_sha": review_range.base_sha, "head_sha": review_range.head_sha, "inventory_sha256": inventory_digest(review_range.inventory)}, payload_digests={"preview": _canonical_digest(preview), "rules": _canonical_digest(rules_payloads)})
+            return PreparationResult.fallback(str(exc), inventory=review_range.inventory, scope_identity=identity, executable=executable, observed_version=observed_version, protected_paths=policy["protected_paths"], protected_entries=policy["protected_entries"], exclusion_metadata=exclusion_metadata)
+        return PreparationResult(status="prepared", inventory=review_range.inventory, reviewable_paths=reviewable_paths, excluded_paths=excluded_paths, protected_paths=tuple(sorted(protected_paths)), protected_entries=policy["protected_entries"], exclusion_metadata=exclusion_metadata, rules=rules, advisory_hints=tuple(rule for rule in rules if rule["source"] == "system"), observed_version=observed_version, schema_versions=(SUPPORTED_DELEGATE_SCHEMA,), executable=executable, scope_identity=identity, payload_digests={"preview": _canonical_digest(preview), "rules": _canonical_digest(rules_payloads)})
 
-    def _run_jsonless(self, command: list[str], cwd: Path, env: dict[str, str], deadline: float) -> str | None:
-        completed = self._run(command, cwd, env, deadline)
-        if completed is None:
-            return None
-        return completed.stdout + completed.stderr
-
-    def _run_json(self, command: list[str], cwd: Path, env: dict[str, str], deadline: float) -> object | None:
-        completed = self._run(command, cwd, env, deadline)
-        if completed is None:
-            return None
+    def _run_jsonless(self, command: list[str], cwd: Path, env: dict[str, str], deadline: float) -> tuple[str | None, str | None]:
+        result = self._run(command, cwd, env, deadline)
+        reason = self._run_reason(result)
+        if reason:
+            return None, reason
         try:
-            return json.loads(completed.stdout)
-        except json.JSONDecodeError:
-            self._last_reason = "malformed_json"
-            return None
+            return (result.stdout + result.stderr).decode("utf-8"), None
+        except UnicodeDecodeError:
+            return None, "invalid_utf8"
 
-    def _run(self, command: list[str], cwd: Path, env: dict[str, str], deadline: float) -> subprocess.CompletedProcess[str] | None:
+    def _run_json(self, command: list[str], cwd: Path, env: dict[str, str], deadline: float) -> tuple[object | None, str | None]:
+        result = self._run(command, cwd, env, deadline)
+        reason = self._run_reason(result)
+        if reason:
+            return None, reason
+        try:
+            payload = json.loads(result.stdout.decode("utf-8"))
+        except UnicodeDecodeError:
+            return None, "invalid_utf8"
+        except json.JSONDecodeError:
+            return None, "malformed_json"
+        if not isinstance(payload, dict):
+            return None, "non_object_json"
+        return payload, None
+
+    def _run(self, command: list[str], cwd: Path, env: dict[str, str], deadline: float) -> OwnedProcessResult:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            self._last_reason = "timeout"
+            return OwnedProcessResult("timeout")
+        return run_owned_process(command, cwd=cwd, env=env, timeout=remaining, max_output_bytes=self.max_output_bytes)
+
+    @staticmethod
+    def _run_reason(result: OwnedProcessResult) -> str | None:
+        if result.status == "success":
             return None
-        try:
-            completed = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False, timeout=remaining)
-        except subprocess.TimeoutExpired:
-            self._last_reason = "timeout"
-            return None
-        except OSError:
-            self._last_reason = "command_failed"
-            return None
-        if len(completed.stdout.encode()) + len(completed.stderr.encode()) > self.max_output_bytes:
-            self._last_reason = "output_too_large"
-            return None
-        if completed.returncode:
-            self._last_reason = "command_failed"
-            return None
-        return completed
+        if result.status == "BLOCKED":
+            return "BLOCKED"
+        return {
+            "timeout": "timeout",
+            "output_limit": "output_too_large",
+            "nonzero_exit": "command_failed",
+            "command_failed": "command_failed",
+            "spawn_failed": "command_failed",
+        }[result.status]
 
     def _rule_batches(self, paths: Iterable[str]) -> tuple[tuple[str, ...], ...]:
         batches: list[tuple[str, ...]] = []

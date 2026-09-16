@@ -49,11 +49,15 @@ head ref and SHA, verdict, checks inspected, findings, approved deviations,
 and known limits. New commits invalidate prior review evidence.
 
 The review-requesting skill owns optional OCR preparation semantics. PR review
-may consume its normalized `prepared` or `fallback` manifest, but does not own
-OCR invocation or installation. Preserve caller-owned Git inventory and apply
-canonical Project OS rules before any OCR rule text. For committed review, use
-base/head identity; for working-tree review, use frozen review-package SHA-256
-and Git-inventory digest when `HEAD` does not identify implementation changes.
+may consume one `[REVIEW_PREPARATION_FILE]` as advisory input, but does not own
+OCR invocation or installation. Verify preparation `base_sha`, `head_sha`,
+inventory digest, and status before hints. Preserve caller-owned Git inventory;
+apply Project OS content policy and canonical rules before OCR. Protected
+content is never review input, including both old and new rename/copy paths.
+Only OCR `system` rules become advisory hints; other OCR provenance stays data.
+For committed review, use exact base/head identity. For working-tree review,
+use scoped native `review-package` with package SHA-256 and Git-inventory
+digest.
 
 ## GitHub Review State
 

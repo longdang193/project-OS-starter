@@ -18,6 +18,12 @@ import tempfile
 import tomllib
 import uuid
 try:
+    import owned_process as _owned_process
+except ModuleNotFoundError:
+    from scripts import owned_process as _owned_process
+
+run_owned_process = _owned_process.run_owned_process
+try:
     from agent_profile_registry import load_agent_profiles
 except ModuleNotFoundError:
     from scripts.agent_profile_registry import load_agent_profiles
@@ -1370,84 +1376,13 @@ def _worker_timeout(
     return default
 
 def _create_windows_job(process: subprocess.Popen[object]) -> object | None:
-    if os.name != "nt":
-        return None
-    import ctypes
-    from ctypes import wintypes
+    return _owned_process._create_windows_job(process) if os.name == "nt" else None
 
-    class BasicLimitInformation(ctypes.Structure):
-        _fields_ = [
-            ("PerProcessUserTimeLimit", ctypes.c_longlong),
-            ("PerJobUserTimeLimit", ctypes.c_longlong),
-            ("LimitFlags", wintypes.DWORD),
-            ("MinimumWorkingSetSize", ctypes.c_size_t),
-            ("MaximumWorkingSetSize", ctypes.c_size_t),
-            ("ActiveProcessLimit", wintypes.DWORD),
-            ("Affinity", ctypes.c_size_t),
-            ("PriorityClass", wintypes.DWORD),
-            ("SchedulingClass", wintypes.DWORD),
-        ]
+def _close_windows_job(job: object | None) -> bool:
+    return _owned_process._close_windows_job(job)
 
-    class IoCounters(ctypes.Structure):
-        _fields_ = [(name, ctypes.c_ulonglong) for name in (
-            "ReadOperationCount",
-            "WriteOperationCount",
-            "OtherOperationCount",
-            "ReadTransferCount",
-            "WriteTransferCount",
-            "OtherTransferCount",
-        )]
-
-    class ExtendedLimitInformation(ctypes.Structure):
-        _fields_ = [
-            ("BasicLimitInformation", BasicLimitInformation),
-            ("IoInfo", IoCounters),
-            ("ProcessMemoryLimit", ctypes.c_size_t),
-            ("JobMemoryLimit", ctypes.c_size_t),
-            ("PeakProcessMemoryUsed", ctypes.c_size_t),
-            ("PeakJobMemoryUsed", ctypes.c_size_t),
-        ]
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-    kernel32.SetInformationJobObject.restype = wintypes.BOOL
-    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
-    kernel32.CloseHandle.restype = wintypes.BOOL
-    job = kernel32.CreateJobObjectW(None, None)
-    process_handle = getattr(process, "_handle", None)
-    if not job or process_handle is None:
-        if job:
-            kernel32.CloseHandle(job)
-        return None
-    limits = ExtendedLimitInformation()
-    limits.BasicLimitInformation.LimitFlags = 0x2000
-    if not kernel32.SetInformationJobObject(
-        job,
-        9,
-        ctypes.byref(limits),
-        ctypes.sizeof(limits),
-    ) or not kernel32.AssignProcessToJobObject(job, process_handle):
-        kernel32.CloseHandle(job)
-        return None
-    return job
-
-def _close_windows_job(job: object | None) -> None:
-    if job is None or os.name != "nt":
-        return
-    import ctypes
-
-    ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(job)
-
-def _kill_windows_process_tree(pid: int) -> None:
-    if os.name != "nt":
-        return
-    subprocess.run(
-        ["taskkill", "/PID", str(pid), "/T", "/F"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=2,
-    )
+def _kill_windows_process_tree(pid: int) -> bool:
+    return _owned_process._kill_windows_process_tree(pid)
 
 
 def _run_bounded_worker(
@@ -1460,66 +1395,48 @@ def _run_bounded_worker(
 ) -> int:
     if timeout is None or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError(f"{worker_name} worker requires a finite timeout greater than zero.")
-    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
-    popen_kwargs: dict[str, object] = {
-        "cwd": repo_root,
-        "env": environment,
-        "creationflags": creationflags,
-        "stdin": subprocess.PIPE if handoff_stdin is not None else None,
-        "text": handoff_stdin is not None,
-    }
-    if os.name != "nt":
-        popen_kwargs["start_new_session"] = True
-    popen_kwargs["close_fds"] = True
-    process = subprocess.Popen(argv, **popen_kwargs)
-    job = _create_windows_job(process)
-    if os.name == "nt" and job is None:
-        _kill_windows_process_tree(process.pid)
-        process.wait()
-        raise _WorkerRecoveryBlocked(
-            f"{worker_name} worker process lifetime is unproven; "
-            "generated role views preserved for recovery.",
-            _WorkerLifecycleFacts("recovery_blocked", None, "unknown", False),
+    result = run_owned_process(
+        argv,
+        cwd=repo_root,
+        env=environment,
+        timeout=timeout,
+        input_data=handoff_stdin,
+        capture_output=False,
+        popen_factory=subprocess.Popen,
+        platform_name=os.name,
+        create_job=_create_windows_job,
+        close_job=_close_windows_job,
+        kill_tree=_kill_windows_process_tree,
+    )
+    if result.status == "success":
+        return result.returncode or 0
+    facts = _WorkerLifecycleFacts(
+        "failed",
+        result.returncode,
+        "unknown" if not result.cleanup_confirmed else "terminated",
+        result.cleanup_confirmed,
+    )
+    if result.status == "BLOCKED":
+        message = (
+            f"{worker_name} worker timed out; child process tree cleanup is unconfirmed."
+            if result.reason == "timeout"
+            else f"{worker_name} worker {result.reason or 'process cleanup'} is unconfirmed;"
         )
-    fallback_kill = False
-    try:
-        if handoff_stdin is None:
-            return_code = process.wait(timeout=timeout)
-        else:
-            process.communicate(input=handoff_stdin, timeout=timeout)
-            return_code = process.returncode
-    except subprocess.TimeoutExpired as exc:
-        if job is None and os.name == "nt":
-            _kill_windows_process_tree(process.pid)
-            fallback_kill = True
-        elif job is None:
-            process.kill()
-        else:
-            _close_windows_job(job)
-            job = None
-        process.wait()
-        descendants_terminated = os.name == "nt" or job is not None
         raise _WorkerLifecycleError(
-            f"{worker_name} worker timed out; child process tree terminated.",
-            _WorkerLifecycleFacts(
-                "failed",
-                None,
-                "terminated" if descendants_terminated else "unknown",
-                descendants_terminated,
-            ),
-        ) from exc
-    except Exception as exc:
-        exit_code = process.returncode if isinstance(process.returncode, int) else None
+            message + " generated role views preserved for recovery.",
+            facts,
+        )
+    if result.returncode is not None:
+        return result.returncode
+    if result.error is not None:
         raise _WorkerLifecycleError(
             f"{worker_name} worker failed after process creation.",
-            _WorkerLifecycleFacts("failed", exit_code, "unknown", False),
-        ) from exc
-    finally:
-        if job is not None:
-            _close_windows_job(job)
-        elif os.name == "nt" and not fallback_kill:
-            _kill_windows_process_tree(process.pid)
-    return return_code
+            facts,
+        ) from result.error
+    raise _WorkerLifecycleError(
+        f"{worker_name} worker {result.status.replace('_', ' ')}; child process tree terminated.",
+        facts,
+    )
 
 def _run_tura_worker(
     argv: list[str],

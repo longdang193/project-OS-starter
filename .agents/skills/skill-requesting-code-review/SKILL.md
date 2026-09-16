@@ -69,22 +69,27 @@ class plus approved deviations.
 
 ## Optional OCR Preparation
 
-Review requesting may use the shared `scripts/ocr_delegate_adapter.py` as an
-optional advisory overlay for an immutable Git range. The caller remains the
-authority for repository, `base_sha`, `head_sha`, and Git inventory; OCR never
-reconstructs, replaces, or narrows that inventory.
+Review requesting may use shared `scripts/ocr_delegate_adapter.py` as optional
+advisory overlay for immutable Git range. Caller owns repository, `base_sha`,
+`head_sha`, and complete Git inventory; OCR never reconstructs, replaces, or
+narrows inventory.
 
-Use the adapter's normalized preparation manifest as input to review, not as a
-verdict. A `prepared` result contains the authoritative inventory, OCR
-`reviewable_paths`, `excluded_paths`, normalized `rules`, `scope_identity`,
-`payload_digests`, schema evidence, and `observed_version`. A `fallback` result
-keeps native review responsible for the full inventory. Invalid Project OS
-input is a contract error and must not be treated as OCR fallback.
+Write one preparation JSON file and pass it as `[REVIEW_PREPARATION_FILE]`.
+Reviewer verifies `scope_identity.base_sha`, `scope_identity.head_sha`,
+`scope_identity.inventory_sha256`, and `status` before consuming any hint.
+`prepared` contains inventory, OCR `reviewable_paths`, ordinary
+`excluded_paths`, `protected_paths`, exclusion metadata, provenance-bearing
+`rules`, system-only `advisory_hints`, `scope_identity`, `payload_digests`,
+schema evidence, and `observed_version`. `fallback` keeps native review
+responsible for complete inventory; `BLOCKED` is not native fallback.
 
-Apply canonical Project OS rules before OCR rule text. OCR is range-only,
-requires the v1 schema, and runs with `OCR_NO_UPDATE=1`; installation and
-upgrades remain external. Do not add OCR calls to hooks, installers, or review
-verdict ownership.
+Project OS content policy runs before OCR. `.env`, `.env.*`, `*.private.*`, and
+`*.local.*` paths are protected on both old and new rename/copy sides. Protected
+content never enters review package or LLM review. Canonical Project OS rules
+outrank OCR; only OCR `system` source may become advisory hints. `project`,
+`custom`, and `global` OCR rules remain data. Invalid Project OS input is a
+contract error, never OCR fallback. OCR is range-only, v1-schema gated, and
+runs with `OCR_NO_UPDATE=1`; installation and upgrades remain external.
 
 ## Example
 

@@ -1,74 +1,144 @@
 #!/usr/bin/env bash
-# Generate a review package for committed and current working-tree changes.
-#
-# Usage: review-package BASE [HEAD] [OUTFILE]
-# Without HEAD, include staged, unstaged, and untracked changes against BASE.
 set -euo pipefail
 
-if [ $# -lt 1 ] || [ $# -gt 3 ]; then
-  echo "usage: review-package BASE [HEAD] [OUTFILE]" >&2
-  exit 2
-fi
+export REVIEW_PACKAGE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python - "$@" <<'PY'
+from __future__ import annotations
 
-base=$1
-head=""
-out=""
-if [ $# -ge 2 ]; then
-  head=$2
-fi
-if [ $# -eq 3 ]; then
-  out=$3
-fi
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from pathlib import PurePosixPath
 
-git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
-if [ -n "$head" ]; then
-  git rev-parse --verify --quiet "$head" >/dev/null || { echo "bad HEAD: $head" >&2; exit 2; }
-fi
+sys.path.insert(0, str(Path(os.environ["REVIEW_PACKAGE_SCRIPT_DIR"]).parents[3]))
+from scripts.review_content_policy import is_protected_path
 
-if [ -z "$out" ]; then
-  dir=$("$(cd "$(dirname "$0")" && pwd)/sdd-workspace")
-  suffix="worktree"
-  if [ -n "$head" ]; then
-    suffix=$(git rev-parse --short "$head")
-  fi
-  out="$dir/review-$(git rev-parse --short "$base")..${suffix}.diff"
-fi
 
-{
-  if [ -n "$head" ]; then
-    echo "# Review package: ${base}..${head}"
-    echo
-    echo "## Commits"
-    git log --oneline "${base}..${head}"
-    echo
-    echo "## Files changed"
-    git diff --stat "${base}..${head}"
-    echo
-    echo "## Diff"
-    git diff -U10 "${base}..${head}"
-  else
-    echo "# Review package: ${base}..working-tree"
-    echo
-    echo "## Commits"
-    git log --oneline "${base}..HEAD"
-    echo
-    echo "## Files changed"
-    git diff --stat "$base"
-    echo
-    echo "## Working-tree status"
-    git status --short
-    echo
-    echo "## Diff"
-    git diff -U10 "$base"
-    echo
-    echo "## Untracked files"
-    while IFS= read -r -d '' file; do
-      echo
-      echo "### $file"
-      git diff --no-index -U10 -- /dev/null "$file" || true
-    done < <(git ls-files --others --exclude-standard -z)
-  fi
-} > "$out"
+def git(repo: Path, *args: str) -> bytes:
+    result = subprocess.run(["git", "-C", str(repo), *args], check=False, capture_output=True)
+    if result.returncode:
+        raise SystemExit(f"git command failed: {' '.join(args)}")
+    return result.stdout
 
-commits=$(git rev-list --count "${base}..${head:-HEAD}")
-echo "wrote ${out}: ${commits} commit(s), $(wc -c < "$out" | tr -d ' ') bytes"
+
+def entry_paths(entry: dict[str, object]) -> tuple[str, ...]:
+    status = str(entry.get("status", ""))
+    paths = tuple(path for path in (entry.get("old_path"), entry.get("new_path")) if isinstance(path, str))
+    if status.upper() == "D":
+        paths = (str(entry["old_path"]),)
+    if not paths:
+        raise SystemExit("inventory entry has no path")
+    for path in paths:
+        parsed = PurePosixPath(path)
+        if "\x00" in path or "\\" in path or parsed.is_absolute() or any(part in {"", ".", ".."} for part in parsed.parts):
+            raise SystemExit(f"unsafe inventory path: {path}")
+    return paths
+
+
+def inventory_digest(inventory: list[dict[str, object]]) -> str:
+    encoded = json.dumps(inventory, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def load_json(path: Path, label: str) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"invalid {label}: {path}") from exc
+
+
+def untracked(repo: Path, path: str) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "--others", "--exclude-standard", "--", path],
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0 and bool(result.stdout)
+
+
+parser = argparse.ArgumentParser(usage="review-package BASE [HEAD] [OUTFILE] --inventory FILE --content-policy FILE")
+parser.add_argument("base")
+parser.add_argument("head", nargs="?", default="")
+parser.add_argument("outfile", nargs="?", default="")
+parser.add_argument("--inventory", required=True)
+parser.add_argument("--content-policy", required=True)
+args = parser.parse_args()
+repo = Path.cwd()
+git(repo, "rev-parse", "--verify", args.base)
+if args.head:
+    git(repo, "rev-parse", "--verify", args.head)
+
+inventory_payload = load_json(Path(args.inventory), "inventory")
+policy_payload = load_json(Path(args.content_policy), "content policy")
+if not isinstance(inventory_payload, list) or not all(isinstance(item, dict) for item in inventory_payload):
+    raise SystemExit("inventory must be a JSON list of objects")
+if not isinstance(policy_payload, dict) or not isinstance(policy_payload.get("protected_paths"), list):
+    raise SystemExit("content policy must contain protected_paths list")
+inventory = [dict(item) for item in inventory_payload]
+protected_paths = {path for path in policy_payload["protected_paths"] if isinstance(path, str)}
+seen: set[str] = set()
+for entry in inventory:
+    paths = entry_paths(entry)
+    if seen.intersection(paths):
+        raise SystemExit("inventory contains duplicate path")
+    seen.update(paths)
+canonical_protected_paths = {path for path in seen if is_protected_path(path)}
+if protected_paths != canonical_protected_paths:
+    raise SystemExit("content policy does not match Project OS policy")
+
+scope = f"{args.base}..{args.head}" if args.head else f"{args.base}..working-tree"
+diff_range = [args.base, args.head] if args.head else [args.base]
+lines = [
+    f"# Review package: {scope}",
+    "",
+    "## Scope",
+    f"- base_sha: {args.base}",
+    f"- head_sha: {args.head or 'working-tree'}",
+    f"- inventory_sha256: {inventory_digest(inventory)}",
+    "",
+    "## Files changed",
+]
+for entry in inventory:
+    paths = entry_paths(entry)
+    label = f"{paths[0]} -> {paths[1]}" if len(paths) == 2 else paths[0]
+    lines.append(f"- {entry.get('status')}: {label}")
+lines.extend(["", "## Protected paths (protected content omitted)"])
+for entry in inventory:
+    paths = entry_paths(entry)
+    protected = [path for path in paths if path in protected_paths]
+    if protected:
+        label = f"{paths[0]} -> {paths[1]}" if len(paths) == 2 else paths[0]
+        lines.append(f"- {entry.get('status')}: {label} ({', '.join(protected)})")
+lines.extend(["", "## Commits"])
+lines.append(git(repo, "log", "--oneline", f"{args.base}..{args.head or 'HEAD'}").decode("utf-8", "replace"))
+lines.extend(["", "## Diff"])
+for entry in inventory:
+    paths = entry_paths(entry)
+    if any(path in protected_paths for path in paths):
+        continue
+    command = ["diff", "--no-ext-diff", "--no-textconv", "-U10", *diff_range, "--", *paths]
+    output = git(repo, *command)
+    if output:
+        lines.append(output.decode("utf-8", "replace"))
+    elif not args.head and len(paths) == 1 and untracked(repo, paths[0]):
+        output = subprocess.run(
+            ["git", "-C", str(repo), "diff", "--no-ext-diff", "--no-textconv", "-U10", "--no-index", "/dev/null", paths[0]],
+            check=False,
+            capture_output=True,
+        ).stdout
+        if output:
+            lines.append(output.decode("utf-8", "replace"))
+
+if not args.outfile:
+    workspace = repo / ".superpowers" / "sdd"
+    workspace.mkdir(parents=True, exist_ok=True)
+    args.outfile = str(workspace / f"review-{args.base[:7]}..{args.head[:7] if args.head else 'worktree'}.diff")
+Path(args.outfile).write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+commits = git(repo, "rev-list", "--count", f"{args.base}..{args.head or 'HEAD'}").decode().strip()
+size = Path(args.outfile).stat().st_size
+print(f"wrote {args.outfile}: {commits} commit(s), {size} bytes")
+PY

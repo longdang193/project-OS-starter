@@ -167,7 +167,13 @@ selected profile. Follow the active agent tool contract.
 ## Handling Implementer Status
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Generate the review package (`scripts/review-package BASE`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit recorded before dispatching the implementer), then dispatch the task reviewer with the printed path. The package includes committed, staged, unstaged, and untracked changes.
+**DONE:** Generate scoped review package from this skill's directory. Supply
+exact inventory and Project OS content-policy JSON:
+`scripts/review-package BASE [HEAD] [OUTFILE] --inventory INVENTORY --content-policy CONTENT_POLICY`.
+The package includes only approved inventory paths, emits protected status
+metadata without protected content, and excludes unrelated untracked files.
+Pass its path as `[DIFF_FILE]`; bind evidence to package SHA-256 and inventory
+digest.
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
@@ -213,14 +219,12 @@ final whole-branch review. When you fill a reviewer template:
   "matches Y"). The reviewer's template already carries process rules (YAGNI,
   test hygiene, review method); this block carries only requirements for THIS
   task.
-- Hand the reviewer its diff as a file: run this skill's
-  `scripts/review-package BASE` and pass the reviewer the file path
-  it prints (or, without bash: `git log --oneline`, `git diff --stat`,
-  and `git diff -U10` for the range, redirected to one uniquely named
-  file). The output never enters your own context, and the reviewer sees
-  the commit list, stat summary, and full diff with context in one Read
-  call. Use the BASE you recorded before dispatching the implementer —
-  never `HEAD~1`, which silently truncates multi-commit tasks.
+- Hand the reviewer scoped diff as one file. Run `scripts/review-package`
+  with exact `BASE`, optional `HEAD`, `--inventory`, and `--content-policy`;
+  pass printed path as `[DIFF_FILE]`. Output never enters your context.
+  Use BASE recorded before dispatching implementer; never `HEAD~1`, which
+  silently truncates multi-commit tasks. For working-tree review, package
+  SHA-256 and inventory digest bind evidence; changing either invalidates it.
 - A dispatch prompt describes one task, not the session's history. Do not
   paste accumulated prior-task summaries ("state after Tasks 1-3") into
   later dispatches — a real session's dispatch hit 42k chars of which 99%
@@ -237,11 +241,11 @@ final whole-branch review. When you fill a reviewer template:
   ordering drift directly in the plan and continue. Do not dismiss a material
   finding because the plan mandates it, and do not dispatch a fix that changes
   approved behavior without asking.
-- The final whole-branch review gets a package too: run
-  `scripts/review-package MERGE_BASE HEAD` (MERGE_BASE = the commit the
-  branch started from, e.g. `git merge-base main HEAD`) and include the
-  printed path in the final review dispatch, so the final reviewer reads
-  one file instead of re-deriving the branch diff with git commands.
+- The final whole-branch review gets a scoped package too: run
+  `scripts/review-package MERGE_BASE HEAD OUTFILE --inventory INVENTORY
+  --content-policy CONTENT_POLICY` (MERGE_BASE = the commit the branch
+  started from, e.g. `git merge-base main HEAD`) and include printed path plus
+  package and inventory digests in final review dispatch.
 - Every fix dispatch carries the implementer contract: the fix subagent
   re-runs the tests covering its change and reports the results. Name the
   covering test files in the dispatch — a one-line fix does not need the
@@ -419,9 +423,9 @@ Done!
 - Tell a reviewer what not to flag, or pre-rate a finding's severity in the
   dispatch prompt ("treat it as Minor at most") — the plan's example code is
   a starting point, not evidence that its weaknesses were chosen
-- Dispatch a task reviewer without a diff file — generate it first
-  (`scripts/review-package BASE`) and name the printed path in the
-  prompt
+- Dispatch a task reviewer without scoped diff file — generate it first with
+  `scripts/review-package BASE ... --inventory INVENTORY --content-policy
+  CONTENT_POLICY` and name printed path in prompt
 - Move to next task while the review has open Critical/Important issues
 - Re-dispatch a task the plan ledger already marks complete — reconcile the
   ledger with Git and accepted proof after any compaction or resume

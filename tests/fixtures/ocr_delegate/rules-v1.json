@@ -5,7 +5,7 @@
       "group_id": 2,
       "source": "project",
       "pattern": "**/*.py",
-      "files": ["gone.py", "renamed.py", "src/app.py", "tests/test_app.py"],
+      "files": ["-leading-name.py", "copied.py", "gone.py", "renamed.py", "src/app.py", "tests/test_app.py"],
       "rule": "Keep Python changes small and covered by tests.",
       "additive_fixture_field": {"provenance": "fixture-only"}
     },
