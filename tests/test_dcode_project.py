@@ -50,12 +50,17 @@ LAUNCHER = load_module("dcode_project", LAUNCHER_PATH)
 
 
 def test_local_capability_wrapper_validation_keeps_default() -> None:
+    LAUNCHER._reject_unmanaged_runtime_options(["--local-capability", "Node", "--json"])
     assert LAUNCHER._extract_local_capabilities(["--local-capability", "Node", "--json"]) == (
         ["--json"], ["node"]
     )
     assert LAUNCHER._extract_local_capabilities(["--json"]) == (["--json"], [])
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="safe command basenames"):
         LAUNCHER._extract_local_capabilities(["--local-capability", "node/npm"])
+    with pytest.raises(RuntimeError, match="cannot contain duplicates"):
+        LAUNCHER._extract_local_capabilities(
+            ["--local-capability", "Node", "--local-capability", "node"]
+        )
 
 
 def write_role(

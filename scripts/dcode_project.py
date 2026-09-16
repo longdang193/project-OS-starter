@@ -102,6 +102,7 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--executor",
     "--result-file",
     "--attempt-id",
+    "--local-capability",
 }
 _FIXED_LOCAL_CAPABILITY_OPTIONS = (
     "--allow-fs-tools",
