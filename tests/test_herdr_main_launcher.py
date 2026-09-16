@@ -35,6 +35,59 @@ def fake_profile(tmp_path: Path, name: str, rank: int | None) -> None:
     )
 
 
+def test_resolve_launch_rejects_explicit_over_limit_agent_name_before_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"),
+        "normal",
+        "9router",
+        "combo-normal",
+        20,
+        "test",
+        "do not modify files",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    pane_calls: list[object] = []
+
+    def fake_herdr_pane(*args: object, **kwargs: object) -> dict[str, object]:
+        pane_calls.append((args, kwargs))
+        return {"pane": {"cwd": str(ROOT)}, "process_info": {}}
+
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        fake_herdr_pane,
+    )
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="32"):
+        LAUNCHER.resolve_launch(
+            profile_name="normal",
+            session="deepagents-probe",
+            pane="w1:p1",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="deepagents",
+            name="a" * 33,
+            task="assign lane",
+        )
+    assert pane_calls == []
+
+
+def test_unique_agent_names_are_bounded_and_unique(monkeypatch: pytest.MonkeyPatch) -> None:
+    values = iter(("a" * 32, "b" * 32))
+    monkeypatch.setattr(LAUNCHER.uuid, "uuid4", lambda: type("UUID", (), {"hex": next(values)})())
+
+    first = LAUNCHER._unique_agent_name("normal-profile-name-that-exceeds-herdr-limit")
+    second = LAUNCHER._unique_agent_name("normal-profile-name-that-exceeds-herdr-limit")
+
+    assert len(first) <= 32
+    assert len(second) <= 32
+    assert first != second
+
+
 def test_codex_arguments_project_complete_contract(tmp_path: Path) -> None:
     fake_profile(tmp_path, "review", None)
     profile = LAUNCHER._profile(tmp_path / "agents", "review")

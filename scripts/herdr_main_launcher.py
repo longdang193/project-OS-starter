@@ -94,6 +94,8 @@ _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 _LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
+_HERDR_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+_HERDR_AGENT_NAME_MAX_LENGTH = 32
 _DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
 _DEEPAGENTS_RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _DEEPAGENTS_RESULT_MAX_AGE_SECONDS = RESULT_MAX_AGE_SECONDS
@@ -1271,8 +1273,20 @@ def _reconcile_failed_codex_start(
         return {"state": "uncertain", "cleanup": None, "detail": str(exc)}
 
 
+def _validate_agent_name(agent_name: str) -> None:
+    if (
+        len(agent_name) > _HERDR_AGENT_NAME_MAX_LENGTH
+        or not _HERDR_AGENT_NAME_PATTERN.fullmatch(agent_name)
+    ):
+        raise LaunchBlocked(
+            "Invalid Herdr agent name: expected lowercase letters, digits, '-' or '_' "
+            f"and at most {_HERDR_AGENT_NAME_MAX_LENGTH} characters."
+        )
+
+
 def _unique_agent_name(agent_name: str) -> str:
-    return f"{agent_name}-{uuid.uuid4().hex[:8]}"
+    suffix = uuid.uuid4().hex[:8]
+    return f"{agent_name[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix) - 1]}-{suffix}"
 
 
 def _normalize_runtime_grant(
@@ -1917,6 +1931,8 @@ def resolve_launch(
     grant_digest_value = grant_digest(executor, runtime_grant)
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
+    if name is not None:
+        _validate_agent_name(name)
     runtime = _codex_runtime(cwd, codex_home) if executor == "codex" else None
     environment = (
         _codex_environment(Path(runtime["codex_home"]))
@@ -1944,7 +1960,7 @@ def resolve_launch(
     agent_name = name or (
         _unique_agent_name(f"{selected.name}-main")
         if executor == "codex"
-        else f"{selected.name}-main"
+        else f"{selected.name}-main"[:_HERDR_AGENT_NAME_MAX_LENGTH]
     )
     if executor == "codex":
         runtime_mcp_servers = _codex_runtime_mcp_servers(
