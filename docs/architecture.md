@@ -8,6 +8,11 @@ keeps authority, bounded work, evidence, recovery, and acceptance separate.
 The canonical Archify workflow source is
 `docs/architecture/project-os-starter-guided-story.workflow.json`.
 
+Static preview: `docs/architecture/project-OS-starter-guided-story.svg`.
+Interactive viewer: `docs/architecture/project-OS-starter-guided-story.html`.
+GitHub Pages publishes both projections from
+`.github/workflows/guided-story-pages.yml`.
+
 Its main path is:
 
 ```text
