@@ -2043,7 +2043,7 @@ def main(argv: list[str]) -> int:
     if not dcode:
         raise RuntimeError("DeepAgents Code is not installed. Run scripts/setup_deepagents_runtime.ps1.")
     environment = _runtime_environment(base_url, binding.read_api_key())
-    shell_capabilities = _resolve_worker_shell_capabilities(local_capabilities, environment)
+    shell_capabilities: dict[str, object] | None = None
     attempt_guard_binding = None
     if assignment_id_value is not None:
         attempt_guard_binding = {
@@ -2083,6 +2083,14 @@ def main(argv: list[str]) -> int:
         recovery_required = False
         cleanup_error: Exception | None = None
         try:
+            try:
+                shell_capabilities = _resolve_worker_shell_capabilities(
+                    local_capabilities, environment
+                )
+            except RuntimeError:
+                worker_state = "start_failed"
+                descendant_state = "not_started"
+                raise
             dcode_argv = [
                 dcode,
                 "-M",

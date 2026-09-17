@@ -50,6 +50,7 @@ def test_resolve_launch_rejects_explicit_over_limit_agent_name_before_start(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     pane_calls: list[object] = []
 
@@ -616,6 +617,7 @@ def test_resolve_launch_builds_deepagents_pane_command(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -725,6 +727,7 @@ def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -842,6 +845,7 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -895,6 +899,7 @@ def test_resolve_launch_uses_contained_effective_worker_budget(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,

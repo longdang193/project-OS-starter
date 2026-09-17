@@ -2056,6 +2056,17 @@ def _prepare_deepagents_main(
     )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_resolve_worker_shell_capabilities",
+        lambda requested, environment: {
+            "requested": list(requested),
+            "available": list(requested or ["git", "py"]),
+            "effective": list(requested or ["git", "py"]),
+            "passed_to_worker": list(requested or ["git", "py"]),
+            "validated_available": list(requested or ["git", "py"]),
+        },
+    )
     return codex_config
 
 
