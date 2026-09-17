@@ -1940,7 +1940,21 @@ def main(argv: list[str]) -> int:
     selected_role = role_by_name.get(role_name) if role_name is not None else None
     if role_name is not None and selected_role is None:
         raise RuntimeError(f"Unknown role `{role_name}`.")
-    if "--print-config" in child_argv and len(child_argv) == 1:
+    if "--print-config" in child_argv:
+        allowed_print_config_args = {
+            "--print-config",
+            "--json",
+            "--no-mcp",
+            "--no-stream",
+            "-q",
+        }
+        unexpected_print_config_args = [
+            argument for argument in child_argv if argument not in allowed_print_config_args
+        ]
+        if unexpected_print_config_args:
+            raise RuntimeError(
+                "`--print-config` cannot be combined with task execution options."
+            )
         payload: dict[str, object] = {
             "controller_model": f"openai:{model}",
             "provider": provider_name,

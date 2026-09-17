@@ -1535,8 +1535,13 @@ def test_print_config_reports_selected_role_effective_model(
             "mcp_capability_digest": "digest",
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run_deepagents_worker",
+        lambda *args, **kwargs: pytest.fail("print-config reached worker runtime"),
+    )
 
-    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
+    assert LAUNCHER.main(["--role", "normal", "--print-config", "--no-mcp", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["selected_role"] == "normal"
