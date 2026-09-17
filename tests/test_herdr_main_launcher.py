@@ -1000,6 +1000,7 @@ def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
         "_codex_runtime",
         lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
     )
+    monkeypatch.setattr(LAUNCHER, "_codex_runtime_mcp_servers", lambda *args, **kwargs: {})
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -1061,6 +1062,11 @@ def test_resolve_launch_projects_selected_codex_mcp_server(
         "_codex_runtime",
         lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_runtime_mcp_servers",
+        lambda *args, **kwargs: {"context7": True, "open-design": True},
+    )
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -1102,6 +1108,7 @@ def test_resolve_launch_quotes_mcp_selectors_for_powershell(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,

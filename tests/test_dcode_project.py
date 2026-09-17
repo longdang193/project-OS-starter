@@ -1184,6 +1184,7 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
     )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
 
     def fail_dcode(*args: object, **kwargs: object) -> None:
         assert (tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md").is_file()
@@ -1451,6 +1452,7 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
     )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
     invoked: list[object] = []
     invoked_kwargs: dict[str, object] = {}
 
@@ -1646,6 +1648,7 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
     if executor == "deepagents":
         monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
         monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+        _stub_worker_shell_capabilities(monkeypatch)
         monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
     else:
         monkeypatch.setattr(LAUNCHER, "_run_tura_worker", lambda *args: 0)
@@ -2020,6 +2023,20 @@ def test_native_mcp_config_normalizes_integral_float_startup_timeout() -> None:
     assert projected["mcpServers"]["serena"]["startup_timeout_sec"] == 120
 
 
+def _stub_worker_shell_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_resolve_worker_shell_capabilities",
+        lambda requested, environment: {
+            "requested": list(requested),
+            "available": list(requested or ["git", "py"]),
+            "effective": list(requested or ["git", "py"]),
+            "passed_to_worker": list(requested or ["git", "py"]),
+            "validated_available": list(requested or ["git", "py"]),
+        },
+    )
+
+
 def _prepare_deepagents_main(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2056,17 +2073,7 @@ def _prepare_deepagents_main(
     )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_resolve_worker_shell_capabilities",
-        lambda requested, environment: {
-            "requested": list(requested),
-            "available": list(requested or ["git", "py"]),
-            "effective": list(requested or ["git", "py"]),
-            "passed_to_worker": list(requested or ["git", "py"]),
-            "validated_available": list(requested or ["git", "py"]),
-        },
-    )
+    _stub_worker_shell_capabilities(monkeypatch)
     return codex_config
 
 
