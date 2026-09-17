@@ -5,17 +5,19 @@
   "from": "1111111111111111111111111111111111111111",
   "to": "2222222222222222222222222222222222222222",
   "merge_base": "1111111111111111111111111111111111111111",
-  "total_files": 8,
-  "reviewable_count": 5,
+  "total_files": 10,
+  "reviewable_count": 7,
   "excluded_count": 3,
-  "total_insertions": 9,
+  "total_insertions": 12,
   "total_deletions": 5,
   "reviewable_files": [
     {"path": "src/app.py", "status": "modified", "insertions": 4, "deletions": 1},
     {"path": "README.md", "status": "added", "insertions": 2, "deletions": 0},
     {"path": "tests/test_app.py", "status": "modified", "insertions": 1, "deletions": 1},
     {"path": "gone.py", "status": "deleted", "insertions": 0, "deletions": 2},
-    {"path": "renamed.py", "status": "renamed", "insertions": 2, "deletions": 1}
+    {"path": "renamed.py", "status": "renamed", "insertions": 2, "deletions": 1},
+    {"path": "copied.py", "status": "copied", "insertions": 2, "deletions": 0},
+    {"path": "-leading-name.py", "status": "added", "insertions": 1, "deletions": 0}
   ],
   "excluded_files": [
     {"path": "notes.xyz", "status": "modified", "insertions": 0, "deletions": 0, "exclude_reason": "unsupported_extension"},

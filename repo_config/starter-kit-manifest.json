@@ -74,7 +74,9 @@
       "scripts/validate_repo_contracts.py",
       "scripts/validate_template_required_sections.py",
       "scripts/publish_public_repo.ps1",
-      "scripts/ocr_delegate_adapter.py"
+      "scripts/ocr_delegate_adapter.py",
+      "scripts/owned_process.py",
+      "scripts/review_content_policy.py"
     ]
   }
 }

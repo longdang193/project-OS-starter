@@ -458,7 +458,7 @@ def test_tura_worker_propagates_opaque_child_status(
 
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(LAUNCHER, "_create_windows_job", lambda process: "job")
-    monkeypatch.setattr(LAUNCHER, "_close_windows_job", lambda job: None)
+    monkeypatch.setattr(LAUNCHER, "_close_windows_job", lambda job: True)
 
     assert LAUNCHER._run_tura_worker(
         ["tura", "task"], {"TURA_PROVIDER_CONFIG": "providers.toml"}, tmp_path, 3
@@ -593,8 +593,9 @@ def test_deepagents_worker_reaps_windows_child_tree_after_normal_exit(
     def fake_popen(argv: list[str], **kwargs: object) -> FakeProcess:
         return FakeProcess()
 
-    def fake_close(job: object | None) -> None:
+    def fake_close(job: object | None) -> bool:
         observed.append(job)
+        return True
 
     monkeypatch.setattr(LAUNCHER.os, "name", "nt")
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)

@@ -29,9 +29,12 @@ try:
     from project_root import resolve_repo_root
 except ModuleNotFoundError:
     from scripts.project_root import resolve_repo_root
+try:
+    from review_content_policy import REQUIRED_ENTRIES
+except ModuleNotFoundError:
+    from scripts.review_content_policy import REQUIRED_ENTRIES
 
 
-REQUIRED_ENTRIES = (".env", ".env.*", "*.private.*", "*.local.*")
 EXAMPLE_ALLOWLIST_ENTRY = "!.env.example"
 
 

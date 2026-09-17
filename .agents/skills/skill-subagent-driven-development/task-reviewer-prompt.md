@@ -175,9 +175,17 @@ Subagent (controller-selected profile: <discovered-profile>):
   report to
 - `[BASE_SHA]` — commit before this task
 - `[HEAD_SHA]` — current commit
-- `[DIFF_FILE]` — REQUIRED: the path the controller wrote the review
-  package to (`scripts/review-package BASE HEAD` prints the unique path it
-  wrote; the package never enters the controller's context)
+- `[DIFF_FILE]` — REQUIRED: scoped package path from
+  `scripts/review-package BASE [HEAD] [OUTFILE] --inventory INVENTORY
+  --content-policy CONTENT_POLICY`; package includes approved inventory only,
+  protected status metadata without protected content, and no unrelated
+  untracked files
+
+The requester may provide one `[REVIEW_PREPARATION_FILE]`. Verify its
+`scope_identity.base_sha`, `scope_identity.head_sha`,
+`scope_identity.inventory_sha256`, and `status` before consuming hints.
+Canonical Project OS rules outrank OCR. Only `system` OCR rules become
+advisory hints; retain `project`, `custom`, and `global` provenance as data.
 
 **Reviewer returns:** Spec Compliance verdict (✅/❌/⚠️), Strengths, Issues
 (Critical/Important/Minor), Task quality verdict

@@ -29,7 +29,7 @@ def _repo(tmp_path: Path) -> tuple[Path, str, str]:
     _git(repo, "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "base")
     base = _git(repo, "rev-parse", "HEAD")
     (repo / "old.txt").rename(repo / "new.txt")
-    (repo / "new.txt").write_text("new\n", encoding="utf-8")
+    (repo / "new.txt").write_text("old\n", encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "head")
     return repo, base, _git(repo, "rev-parse", "HEAD")
@@ -57,13 +57,20 @@ def _mock_ocr(monkeypatch: pytest.MonkeyPatch, preview: dict, rules: dict | None
     def run(command, **kwargs):
         calls.append((command, kwargs))
         if command[-1] == "--version":
-            return Completed(version, returncode)
-        if "preview" in command:
-            return Completed(json.dumps(preview), returncode if preview_returncode is None else preview_returncode)
-        return Completed(json.dumps(rules), returncode)
+            completed = Completed(version, returncode)
+        elif "preview" in command:
+            completed = Completed(json.dumps(preview), returncode if preview_returncode is None else preview_returncode)
+        else:
+            completed = Completed(json.dumps(rules), returncode)
+        return adapter.OwnedProcessResult(
+            "success" if completed.returncode == 0 else "command_failed",
+            completed.returncode,
+            completed.stdout.encode(),
+            completed.stderr.encode(),
+        )
 
     monkeypatch.setattr(adapter.shutil, "which", lambda _: "/usr/bin/ocr")
-    monkeypatch.setattr(adapter.subprocess, "run", run)
+    monkeypatch.setattr(adapter, "run_owned_process", lambda command, **kwargs: run(command, **kwargs))
     return calls
 
 
@@ -79,6 +86,8 @@ def _fixture_review(tmp_path: Path) -> adapter.ReviewRange:
         adapter.GitInventoryEntry("M", new_path="tests/test_app.py"),
         adapter.GitInventoryEntry("D", old_path="gone.py"),
         adapter.GitInventoryEntry("R", old_path="old_name.py", new_path="renamed.py"),
+        adapter.GitInventoryEntry("C", old_path="source.py", new_path="copied.py"),
+        adapter.GitInventoryEntry("A", new_path="-leading-name.py"),
         adapter.GitInventoryEntry("M", new_path="notes.xyz"),
         adapter.GitInventoryEntry("M", new_path="assets/logo.bin"),
         adapter.GitInventoryEntry("M", new_path="vendor/generated.py"),
@@ -162,6 +171,7 @@ raise SystemExit(2)
         executable.write_text(f"#!{sys.executable}\n" + script.read_text(encoding="utf-8"), encoding="utf-8")
         executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setattr(adapter.shutil, "which", lambda _: str(executable))
+    monkeypatch.setattr(adapter, "validate_input", lambda value, deadline=None: value)
     monkeypatch.setenv("FAKE_OCR_MODE", mode)
     monkeypatch.setenv("FAKE_OCR_VERSION", version)
     monkeypatch.setenv("FAKE_OCR_PAYLOAD_DIR", str(payload_dir))
@@ -187,6 +197,108 @@ def test_lowercase_deletion_uses_old_path_for_review() -> None:
     entry = adapter.GitInventoryEntry("d", old_path="old.txt")
 
     assert entry.review_path == "old.txt"
+
+
+def test_git_inventory_is_complete_and_nul_parsed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, base, head = _repo(tmp_path)
+    caller = (
+        adapter.GitInventoryEntry("R", "old.txt", "new.txt"),
+        adapter.GitInventoryEntry("C", "old.txt", "copy.txt"),
+        adapter.GitInventoryEntry("D", old_path="gone.txt"),
+        adapter.GitInventoryEntry("A", new_path="-leading-name.txt"),
+    )
+    outputs = {
+        "rev-parse": [base.encode() + b"\n", head.encode() + b"\n"],
+        "merge-base": [b"", base.encode() + b"\n"],
+        "diff": [b"R100\0old.txt\0new.txt\0C100\0old.txt\0copy.txt\0D\0gone.txt\0A\0-leading-name.txt\0"],
+    }
+
+    def run(command, **kwargs):
+        key = next(item for item in ("rev-parse", "merge-base", "diff") if item in command)
+        value = outputs[key].pop(0)
+        return subprocess.CompletedProcess(command, 0, value, b"")
+
+    monkeypatch.setattr(adapter, "_GIT_RUN", run)
+    result = adapter.validate_input(adapter.ReviewRange(repo, base, head, caller))
+
+    assert result.inventory == caller
+    assert [entry.review_path for entry in result.inventory] == ["new.txt", "copy.txt", "gone.txt", "-leading-name.txt"]
+
+
+def test_fallback_preserves_validated_identity_and_inventory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, base, head = _repo(tmp_path)
+    inventory = (adapter.GitInventoryEntry("R", "old.txt", "new.txt"),)
+    review = adapter.ReviewRange(repo, base, head, inventory)
+    monkeypatch.setattr(adapter, "validate_input", lambda value, deadline=None: review)
+    monkeypatch.setattr(adapter.shutil, "which", lambda _: None)
+
+    result = adapter.OcrDelegateAdapter().prepare(review)
+
+    assert result.status == "fallback"
+    assert result.inventory == inventory
+    assert result.scope_identity["base_sha"] == base
+    assert result.scope_identity["head_sha"] == head
+    assert result.scope_identity["inventory_sha256"] == adapter.inventory_digest(inventory)
+
+
+def test_rule_invocation_carries_exact_range(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, base, head = _repo(tmp_path)
+    review = _range(repo, base, head)
+    calls = _mock_ocr(monkeypatch, _preview(review))
+
+    assert adapter.OcrDelegateAdapter().prepare(review).status == "prepared"
+    rule = calls[-1][0]
+    assert rule[rule.index("--from") + 1] == base
+    assert rule[rule.index("--to") + 1] == head
+    assert rule[rule.index("--") + 1:] == ["new.txt"]
+
+
+@pytest.mark.parametrize(
+    ("stdout", "reason"),
+    [(b"\xff", "invalid_utf8"), (b"null", "non_object_json"), (b"[]", "non_object_json"), (b"{", "malformed_json")],
+)
+def test_ocr_json_boundary_failures_are_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stdout: bytes, reason: str) -> None:
+    repo, base, head = _repo(tmp_path)
+    review = _range(repo, base, head)
+    monkeypatch.setattr(adapter, "validate_input", lambda value, deadline=None: review)
+    monkeypatch.setattr(adapter.shutil, "which", lambda _: "ocr")
+
+    def run(command, **kwargs):
+        return adapter.OwnedProcessResult("success", 0, b"OpenCodeReview v1.2.3" if command[-1] == "--version" else stdout, b"")
+
+    monkeypatch.setattr(adapter, "run_owned_process", run)
+    result = adapter.OcrDelegateAdapter().prepare(review)
+
+    assert result.status == "fallback"
+    assert result.reason == reason
+
+
+def test_ocr_cleanup_uncertainty_is_blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, base, head = _repo(tmp_path)
+    review = _range(repo, base, head)
+    monkeypatch.setattr(adapter, "validate_input", lambda value, deadline=None: review)
+    monkeypatch.setattr(adapter.shutil, "which", lambda _: "ocr")
+    monkeypatch.setattr(adapter, "run_owned_process", lambda *args, **kwargs: adapter.OwnedProcessResult("BLOCKED", reason="timeout", cleanup_confirmed=False))
+
+    result = adapter.OcrDelegateAdapter().prepare(review)
+
+    assert result.status == "BLOCKED"
+    assert result.inventory == review.inventory
+    assert result.reviewable_paths == ()
+
+
+def test_ocr_output_limit_falls_back_with_validated_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, base, head = _repo(tmp_path)
+    review = _range(repo, base, head)
+    monkeypatch.setattr(adapter, "validate_input", lambda value, deadline=None: review)
+    monkeypatch.setattr(adapter.shutil, "which", lambda _: "ocr")
+    monkeypatch.setattr(adapter, "run_owned_process", lambda *args, **kwargs: adapter.OwnedProcessResult("output_limit"))
+
+    result = adapter.OcrDelegateAdapter().prepare(review)
+
+    assert result.status == "fallback"
+    assert result.reason == "output_too_large"
+    assert result.inventory == review.inventory
 
 
 @pytest.mark.parametrize("case", ["missing", "nonancestor", "mergebase", "unsafe", "duplicate", "inconsistent"])
@@ -221,20 +333,18 @@ def test_ocr_failures_return_fallback(tmp_path: Path, monkeypatch: pytest.Monkey
         _mock_ocr(monkeypatch, _preview(review), version="unknown")
     elif reason == "timeout":
         monkeypatch.setattr(adapter.shutil, "which", lambda _: "/usr/bin/ocr")
-        def run(*args, **kwargs):
-            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
-        monkeypatch.setattr(adapter.subprocess, "run", run)
+        monkeypatch.setattr(adapter, "run_owned_process", lambda *args, **kwargs: adapter.OwnedProcessResult("timeout"))
     else:
         preview = _preview(review, schema="9" if reason == "unsupported_schema" else "1")
         if reason == "command_failed":
             _mock_ocr(monkeypatch, preview, preview_returncode=1)
         elif reason == "malformed_json":
             monkeypatch.setattr(adapter.shutil, "which", lambda _: "/usr/bin/ocr")
-            def run(*args, **kwargs):
-                if args[0][-1] == "--version":
-                    return subprocess.CompletedProcess(args[0], 0, "OpenCodeReview v1.12.4", "")
-                return subprocess.CompletedProcess(args[0], 0, "{", "")
-            monkeypatch.setattr(adapter.subprocess, "run", run)
+            def run(command, **kwargs):
+                if command[-1] == "--version":
+                    return adapter.OwnedProcessResult("success", 0, b"OpenCodeReview v1.12.4", b"")
+                return adapter.OwnedProcessResult("success", 0, b"{", b"")
+            monkeypatch.setattr(adapter, "run_owned_process", run)
         elif reason == "unsafe_path":
             preview["reviewable_files"][0]["path"] = "../bad"
             _mock_ocr(monkeypatch, preview)
@@ -246,7 +356,7 @@ def test_ocr_failures_return_fallback(tmp_path: Path, monkeypatch: pytest.Monkey
     result = adapter.OcrDelegateAdapter().prepare(review)
     assert result.status == "fallback"
     assert result.reason == reason
-    assert not result.inventory
+    assert result.inventory == review.inventory
 
 
 def test_rule_batches_are_bounded_and_deterministic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -270,9 +380,9 @@ def test_v1_fixtures_reconcile_statuses_and_preserve_inventory_authority(tmp_pat
     preview, rules_payload = _fixture_payloads(review)
 
     reconciled = adapter.reconcile_preview(preview, review)
-    assert reconciled["reviewable"] == ("src/app.py", "README.md", "tests/test_app.py", "gone.py", "renamed.py")
+    assert reconciled["reviewable"] == ("src/app.py", "README.md", "tests/test_app.py", "gone.py", "renamed.py", "copied.py", "-leading-name.py")
     assert reconciled["excluded"] == ("notes.xyz", "assets/logo.bin", "vendor/generated.py")
-    assert [entry["status"] for entry in reconciled["files"]["reviewable"]] == ["modified", "added", "modified", "deleted", "renamed"]
+    assert [entry["status"] for entry in reconciled["files"]["reviewable"]] == ["modified", "added", "modified", "deleted", "renamed", "copied", "added"]
     assert [entry["exclude_reason"] for entry in reconciled["files"]["excluded"]] == ["unsupported_extension", "binary", "excluded"]
 
     rules = adapter.normalize_rules([rules_payload], reconciled["reviewable"])
@@ -326,7 +436,7 @@ def test_fake_executable_failures_fallback(tmp_path: Path, monkeypatch: pytest.M
 
     assert result.status == "fallback"
     assert result.reason == reason
-    assert not result.inventory
+    assert result.inventory == review.inventory
 
 
 def test_schema_and_required_fields_rejected_before_reconciliation(tmp_path: Path) -> None:
@@ -370,12 +480,69 @@ def test_empty_ocr_reviewable_set_keeps_excluded_paths_and_prepares(tmp_path: Pa
     assert result.inventory == review.inventory
 
 
+def test_project_os_policy_protects_old_and_new_paths_and_keeps_rule_provenance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, base, head = _repo(tmp_path)
+    review = adapter.ReviewRange(
+        repo,
+        base,
+        head,
+        (
+            adapter.GitInventoryEntry("R", old_path="old/.env", new_path="safe.txt"),
+            adapter.GitInventoryEntry("M", new_path="src/app.py"),
+            adapter.GitInventoryEntry("M", new_path="src/other.py"),
+        ),
+    )
+    preview = _preview(review, reviewable=["safe.txt", "src/app.py", "src/other.py"])
+    preview["total_insertions"] = 3
+    rules = {
+        "schema_version": "1",
+        "groups": [
+            {"group_id": 1, "source": "system", "pattern": "*.py", "files": ["src/app.py"], "rule": "system hint"},
+            {"group_id": 2, "source": "project", "pattern": "*.py", "files": ["src/other.py"], "rule": "branch text"},
+        ],
+    }
+    _mock_ocr(monkeypatch, preview, rules)
+    monkeypatch.setattr(adapter, "validate_input", lambda value, deadline=None: value)
+
+    result = adapter.OcrDelegateAdapter().prepare(review)
+
+    assert result.status == "prepared"
+    assert result.reviewable_paths == ("src/app.py", "src/other.py")
+    assert result.protected_paths == ("old/.env", "safe.txt")
+    assert result.protected_entries[0]["old_path"] == "old/.env"
+    assert result.exclusion_metadata[0]["path"] == "safe.txt"
+    assert {rule["source"] for rule in result.rules} == {"project", "system"}
+    assert [rule["source"] for rule in result.advisory_hints] == ["system"]
+
+
+def test_preparation_identity_rejects_stale_scope_and_non_prepared_hints(tmp_path: Path) -> None:
+    repo, base, head = _repo(tmp_path)
+    review = _range(repo, base, head)
+    manifest = {
+        "status": "prepared",
+        "scope_identity": adapter._scope_identity(review),
+        "advisory_hints": [{"source": "system"}],
+    }
+
+    assert adapter.validate_preparation_identity(manifest, review) == manifest
+
+    stale = copy.deepcopy(manifest)
+    stale["scope_identity"]["head_sha"] = base
+    with pytest.raises(adapter.ContractError, match="preparation identity mismatch"):
+        adapter.validate_preparation_identity(stale, review)
+
+    fallback = copy.deepcopy(manifest)
+    fallback["status"] = "fallback"
+    with pytest.raises(adapter.ContractError, match="hints require prepared status"):
+        adapter.validate_preparation_identity(fallback, review)
+
+
 def test_live_ocr_range_compatibility_is_opt_in(tmp_path: Path) -> None:
     if os.environ.get("PROJECT_OS_OCR_LIVE_TEST") != "1":
         pytest.skip("live OCR disabled; set PROJECT_OS_OCR_LIVE_TEST=1")
     executable = adapter.shutil.which("ocr")
     if not executable:
-        pytest.skip("live OCR unavailable: ocr executable not installed")
+        pytest.fail("live OCR enabled but ocr executable not installed")
 
     repo = tmp_path / "live-repo"
     repo.mkdir()
@@ -385,12 +552,21 @@ def test_live_ocr_range_compatibility_is_opt_in(tmp_path: Path) -> None:
     (repo / "src/app.py").write_text("return 1\n", encoding="utf-8")
     (repo / "tests/test_app.py").write_text("assert True\n", encoding="utf-8")
     (repo / "old_name.py").write_text("return 1\n", encoding="utf-8")
+    (repo / "source.py").write_text("return 1\n", encoding="utf-8")
+    (repo / "deleted.py").write_text("deleted content\n", encoding="utf-8")
+    (repo / "-leading-name.py").write_text("return 1\n", encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "base")
     base = _git(repo, "rev-parse", "HEAD")
     (repo / "src/app.py").write_text("return 2\n", encoding="utf-8")
     (repo / "README.md").write_text("# live\n", encoding="utf-8")
     (repo / "tests/test_app.py").write_text("assert 2 == 2\n", encoding="utf-8")
+    (repo / "-leading-name.py").write_text("return 2\n", encoding="utf-8")
+    (repo / "copied.py").write_text((repo / "source.py").read_text(encoding="utf-8"), encoding="utf-8")
+    (repo / "deleted.py").unlink()
+    (repo / "notes.xyz").write_text("unsupported\n", encoding="utf-8")
+    (repo / "assets").mkdir()
+    (repo / "assets/logo.bin").write_bytes(b"\x00\x01")
     _git(repo, "mv", "old_name.py", "renamed.py")
     _git(repo, "add", "-A")
     _git(repo, "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "head")
@@ -399,12 +575,7 @@ def test_live_ocr_range_compatibility_is_opt_in(tmp_path: Path) -> None:
         repo,
         base,
         head,
-        (
-            adapter.GitInventoryEntry("M", new_path="src/app.py"),
-            adapter.GitInventoryEntry("A", new_path="README.md"),
-            adapter.GitInventoryEntry("M", new_path="tests/test_app.py"),
-            adapter.GitInventoryEntry("R", old_path="old_name.py", new_path="renamed.py"),
-        ),
+        None,
     )
 
     result = adapter.OcrDelegateAdapter(timeout_seconds=60).prepare(review)
@@ -412,5 +583,9 @@ def test_live_ocr_range_compatibility_is_opt_in(tmp_path: Path) -> None:
     assert result.status == "prepared"
     assert result.observed_version
     assert result.schema_versions == ("1",)
-    assert set(result.reviewable_paths) | set(result.excluded_paths) == {entry.review_path for entry in review.inventory}
+    assert {entry.review_path for entry in result.inventory} == {"src/app.py", "README.md", "tests/test_app.py", "deleted.py", "renamed.py", "copied.py", "-leading-name.py", "notes.xyz", "assets/logo.bin"}
+    assert set(result.reviewable_paths) | set(result.excluded_paths) == {entry.review_path for entry in result.inventory}
+    assert {"renamed.py", "copied.py", "-leading-name.py"}.issubset(result.reviewable_paths)
+    assert "deleted.py" in result.excluded_paths
+    assert {"notes.xyz", "assets/logo.bin"}.issubset(result.excluded_paths)
     assert {path for rule in result.rules for path in rule["files"]} == set(result.reviewable_paths)

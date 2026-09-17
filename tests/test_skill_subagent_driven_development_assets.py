@@ -98,9 +98,74 @@ def test_review_package_writes_commit_log_and_diff(tmp_path: Path) -> None:
     head_sha = _git(tmp_path, "rev-parse", "HEAD")
 
     output = tmp_path / "review.diff"
-    _run_script(tmp_path, "review-package", base_sha, head_sha, str(output))
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        '[{"status":"M","new_path":"demo.txt"}]\n',
+        encoding="utf-8",
+    )
+    policy = tmp_path / "policy.json"
+    policy.write_text('{"protected_paths":[],"protected_entries":[]}\n', encoding="utf-8")
+    _run_script(
+        tmp_path,
+        "review-package",
+        base_sha,
+        head_sha,
+        str(output),
+        "--inventory",
+        str(inventory),
+        "--content-policy",
+        str(policy),
+    )
 
     package = output.read_text(encoding="utf-8")
     assert f"# Review package: {base_sha}..{head_sha}" in package
     assert "expand demo" in package
     assert "+beta" in package
+
+
+def test_review_package_scopes_content_and_omits_protected_entries(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    safe = tmp_path / "safe.txt"
+    secret = tmp_path / ".env"
+    safe.write_text("safe base\n", encoding="utf-8")
+    secret.write_text("TOKEN=do-not-disclose\n", encoding="utf-8")
+    _git(tmp_path, "add", "safe.txt", ".env")
+    _git(tmp_path, "commit", "-m", "base")
+    base_sha = _git(tmp_path, "rev-parse", "HEAD")
+    safe.write_text("safe changed\n", encoding="utf-8")
+    secret.write_text("TOKEN=still-do-not-disclose\n", encoding="utf-8")
+    unrelated = tmp_path / "unrelated.txt"
+    unrelated.write_text("unrelated-do-not-include\n", encoding="utf-8")
+    _git(tmp_path, "add", "safe.txt", ".env")
+    _git(tmp_path, "commit", "-m", "change")
+    head_sha = _git(tmp_path, "rev-parse", "HEAD")
+
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        '[{"status":"M","new_path":"safe.txt"},{"status":"M","new_path":".env"}]\n',
+        encoding="utf-8",
+    )
+    policy = tmp_path / "policy.json"
+    policy.write_text(
+        '{"protected_paths":[".env"],"protected_entries":[{"status":"M","new_path":".env","reason":".env"}]}\n',
+        encoding="utf-8",
+    )
+    output = tmp_path / "review.diff"
+    _run_script(
+        tmp_path,
+        "review-package",
+        base_sha,
+        head_sha,
+        str(output),
+        "--inventory",
+        str(inventory),
+        "--content-policy",
+        str(policy),
+    )
+
+    package = output.read_text(encoding="utf-8")
+    assert "safe changed" in package
+    assert "TOKEN=do-not-disclose" not in package
+    assert "TOKEN=still-do-not-disclose" not in package
+    assert "unrelated-do-not-include" not in package
+    assert "protected content omitted" in package

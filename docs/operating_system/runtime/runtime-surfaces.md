@@ -116,9 +116,9 @@ runtime, rules, skills, root instructions, and hooks.
   environment values win, and project files must not carry credentials or
   runtime authority.
 - Reusable operating methods live in skills; prompts remain wording-only.
-- Optional OCR preparation is shared through `scripts/ocr_delegate_adapter.py`
-  and its procedure. It consumes caller-owned immutable Git range identity and
-  inventory, requires `OCR_NO_UPDATE=1` and schema v1, records observed version
-  and digests as evidence, and falls back to native review on OCR capability
-  failure. It does not integrate with `tokenpilot-codex-hook.cmd`, pre-commit,
-  Stop hooks, installers, or generated runtime files.
+- Optional OCR preparation belongs to `scripts/ocr_delegate_adapter.py`,
+  `scripts/owned_process.py`, and `scripts/review_content_policy.py`; see
+  `docs/operating_system/procedures/ocr-delegation-procedure.md`. Adapter owns
+  Git-range identity, protected exclusions, bounded OCR execution, schema v1,
+  provenance, and native fallback. It does not integrate with
+  `tokenpilot-codex-hook.cmd`, hooks, installers, or generated runtime files.
