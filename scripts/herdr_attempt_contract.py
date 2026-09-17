@@ -15,6 +15,7 @@ NATIVE_GRANT_VALUE = "native"
 CHILD_AGENT_GRANT_VALUES = frozenset({"allow", "deny"})
 LIFECYCLE_STATES = frozenset({"UNCLAIMED", "ACTIVE", "SETTLED", "RECOVERY_REQUIRED"})
 ELIGIBILITY_ACTIONS = frozenset({"BLOCKED", "RECONCILE", "ELIGIBLE"})
+ADMISSION_RESULTS = frozenset({"ADMITTED", "IDEMPOTENT", "BLOCKED", "RECONCILE"})
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -370,6 +371,7 @@ _resolve_attempt_budget = resolve_attempt_budget
 
 __all__ = [
     "AttemptContractError",
+    "ADMISSION_RESULTS",
     "CHILD_AGENT_GRANT_VALUES",
     "NATIVE_GRANT_VALUE",
     "NATIVE_WORKER_WALL_CLOCK_SECONDS",

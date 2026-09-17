@@ -197,9 +197,9 @@ enforce it.
 ## Attention
 
 CoS attention is pull-based on explicit CoS turns. No polling or subscription
-mechanism is implied by this skill. Herdr lifecycle state is runtime observation
-only. It does not prove task acceptance, update the ledger, or replace
-canonical work truth.
+mechanism is implied by this skill. Herdr lifecycle state is diagnostic runtime
+observation only. It does not prove task acceptance, update the ledger, release
+assignment ownership, or replace canonical work truth.
 
 ### Attention Audit
 

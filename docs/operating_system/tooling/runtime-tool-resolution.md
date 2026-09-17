@@ -110,7 +110,7 @@ references or non-sensitive literals. Raw credentials and
 config secrets stay out of task text, logs, and tracked files.
 `codex.mcp.handoff.v1` carries facts and provenance only, not tool access.
 
-Herdr controller observation uses bounded waits plus pull probes. Read
+Herdr controller diagnostic observation uses bounded waits plus pull probes. Read
 attempt-correlated receipt first. Confirmed terminal receipt skips blocking marker
 wait but still gets one bounded process-info and pane read; unresolved receipt gets
 one bounded marker wait, then fresh final probes. Use `pane wait-output` for

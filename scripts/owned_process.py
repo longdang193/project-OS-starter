@@ -256,4 +256,19 @@ def run_owned_process(argv: list[str], *, cwd: str | os.PathLike[str], env: dict
             closed = False
         if not closed:
             return OwnedProcessResult("BLOCKED", _returncode(process), bytes(buffers["stdout"]), bytes(buffers["stderr"]), False, reason="cleanup_unconfirmed")
+    if platform_name != "nt" and not _confirm_process_tree_retired(
+        process,
+        platform_name=platform_name,
+        job=job,
+        close_job=close_job,
+        kill_tree=kill_tree,
+    ):
+        return OwnedProcessResult(
+            "BLOCKED",
+            _returncode(process),
+            bytes(buffers["stdout"]),
+            bytes(buffers["stderr"]),
+            False,
+            reason="cleanup_unconfirmed",
+        )
     return OwnedProcessResult("success" if returncode == 0 else "nonzero_exit", returncode, bytes(buffers["stdout"]), bytes(buffers["stderr"]))

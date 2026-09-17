@@ -18,9 +18,10 @@ from typing import Any
 try:
     from scripts.herdr_attempt_contract import (
         NATIVE_GRANT_VALUE,
-        NATIVE_WORKER_WALL_CLOCK_SECONDS,
+        WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
+        normalize_runtime_grant,
     )
     from scripts.herdr_main_launcher import (
         _normalize_runtime_grant,
@@ -29,9 +30,10 @@ try:
 except ModuleNotFoundError:
     from herdr_attempt_contract import (
         NATIVE_GRANT_VALUE,
-        NATIVE_WORKER_WALL_CLOCK_SECONDS,
+        WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
+        normalize_runtime_grant,
     )
     from herdr_main_launcher import (
         _normalize_runtime_grant,
@@ -42,7 +44,6 @@ except ModuleNotFoundError:
 MAX_CONCURRENCY = 2
 _LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 TIMEOUT_OWNER = "dcode-project"
-WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = 1800
 _REQUIRED_FIELDS = (
     "lane_id",
     "repository_identity",
@@ -120,7 +121,7 @@ def _bind_requested_grant(lane: dict[str, Any]) -> None:
     if isinstance(nested, Mapping) and "mcp_select" in nested:
         if _canonical_mcp_selectors(nested["mcp_select"]) != selectors:
             raise ValueError("conflicting top-level and nested MCP selectors")
-    runtime_grant = _normalize_runtime_grant(
+    runtime_grant = normalize_runtime_grant(
         executor=str(lane["executor"]),
         grant_turns=lane["grant_turns"],
         grant_wall_clock_seconds=lane["grant_wall_clock_seconds"],
@@ -351,6 +352,8 @@ def _launcher_command(
         str(lane["executor"]),
         "--task",
         str(lane["task"]),
+        "--prior-attempt-known",
+        str(bool(lane.get("prior_attempt_known", False))).lower(),
     ]
     for name, flag in (("name", "--name"), ("codex_home", "--codex-home")):
         if lane.get(name):
@@ -505,10 +508,7 @@ def _effective_budget_is_contained(
     requested: Mapping[str, Any],
     observed: Mapping[str, Any],
 ) -> bool:
-    for name, native_limit in (
-        ("turns", None),
-        ("wall_clock_seconds", NATIVE_WORKER_WALL_CLOCK_SECONDS),
-    ):
+    for name in ("turns", "wall_clock_seconds"):
         requested_budget = requested.get(name)
         observed_budget = observed.get(name)
         if not isinstance(requested_budget, Mapping) or not isinstance(observed_budget, Mapping):
@@ -528,8 +528,6 @@ def _effective_budget_is_contained(
         ):
             return False
         if requested_value != NATIVE_GRANT_VALUE and effective_value > requested_value:
-            return False
-        if native_limit is not None and effective_value > native_limit:
             return False
     return True
 
@@ -777,8 +775,6 @@ def run_lane(
         )
         if not resource_settled:
             return "occupied", True, "execution or cleanup unsettled", False
-        if assignment.get("reconciliation_required") is True:
-            return "occupied", True, "reconciliation required", False
         task_result = assignment.get("task_result")
         task_uncertain = not isinstance(task_result, Mapping) or (
             task_result.get("accepted") is None

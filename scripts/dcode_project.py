@@ -59,6 +59,7 @@ except ModuleNotFoundError:
 
 
 _ROLE_VIEWS_MARKER = ".dcode-project-owned"
+_ADMISSION_RESULTS = frozenset({"ADMITTED", "IDEMPOTENT", "BLOCKED", "RECONCILE"})
 _ROLE_VIEWS_SCHEMA = 1
 _LEGACY_ROLE_VIEWS_MARKER = "dcode-project owns this directory.\n"
 _HANDOFF_SCHEMA = "codex.mcp.handoff.v1"
@@ -595,21 +596,22 @@ def _claim_attempt(
     }
     if existing is None:
         if prior_attempt_known:
-            return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE"}
+            return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE"}
         _write_attempt_guard(path, candidate)
-        return {"state": "ACTIVE", "action": "BLOCKED", "claimed": True, "record": candidate}
+        return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "record": candidate}
     if same_attempt_binding(existing, candidate):
         state = str(existing.get("state", "")).upper()
         if state not in {"ACTIVE", "SETTLED"}:
-            return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE"}
-        return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "idempotent": True, "record": existing}
+            return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE"}
+        return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "admission": "IDEMPOTENT", "idempotent": True, "record": existing}
     existing_state = str(existing.get("state", "")).lower()
     if existing_state == "settled":
         _write_attempt_guard(path, candidate)
-        return {"state": "ACTIVE", "action": "BLOCKED", "claimed": True, "replaced_settled": True, "record": candidate}
+        return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "replaced_settled": True, "record": candidate}
     state = "ACTIVE" if existing_state == "active" else "RECOVERY_REQUIRED"
     action = "BLOCKED" if state == "ACTIVE" else "RECONCILE"
-    return {"state": state, "action": action, "record": existing}
+    admission = "BLOCKED" if state == "ACTIVE" else "RECONCILE"
+    return {"state": state, "action": action, "admission": admission, "record": existing}
 
 
 def _settle_attempt(
@@ -617,6 +619,7 @@ def _settle_attempt(
     assignment_id: str,
     binding: dict[str, object],
     settlement_proven: bool,
+    settlement_evidence: dict[str, object] | None = None,
 ) -> dict[str, object]:
     path = _attempt_guard_path(assignment_id)
     existing = _read_attempt_guard(path)
@@ -632,6 +635,8 @@ def _settle_attempt(
             "settled_at": datetime.now(timezone.utc).isoformat(),
         }
     )
+    if settlement_evidence is not None:
+        settled["settlement_evidence"] = dict(settlement_evidence)
     _write_attempt_guard(path, settled)
     return settled
 
@@ -1873,10 +1878,15 @@ def main(argv: list[str]) -> int:
                 result_file=result_file,
                 prior_attempt_known=prior_attempt_known,
             )
-            if attempt_claim.get("action") == "RECONCILE":
+            admission = attempt_claim.get("admission")
+            if admission not in _ADMISSION_RESULTS:
+                raise RuntimeError("DeepAgents attempt admission result is invalid.")
+            if admission == "RECONCILE":
                 raise RuntimeError("DeepAgents assignment requires explicit reconciliation before launch.")
-            if attempt_claim.get("idempotent"):
+            if admission == "IDEMPOTENT":
                 raise RuntimeError("DeepAgents attempt already has an active or settled claim; no launch performed.")
+            if admission == "BLOCKED":
+                raise RuntimeError("DeepAgents assignment already has an active competing claim; no launch performed.")
         _write_role_views(repo_root, roles)
         cleanup_allowed = True
         worker_state = "not_started"
@@ -2000,6 +2010,13 @@ def main(argv: list[str]) -> int:
                         and role_views_state == "removed"
                         and not recovery_required
                     ),
+                    settlement_evidence={
+                        "attempt_id": str(attempt_id),
+                        "worker_state": worker_state,
+                        "worker_exit_code": worker_exit_code,
+                        "descendant_state": descendant_state,
+                        "cleanup_state": role_views_state,
+                    },
                 )
             if cleanup_error is not None:
                 raise cleanup_error

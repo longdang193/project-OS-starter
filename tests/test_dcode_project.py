@@ -744,6 +744,54 @@ def test_attempt_guard_claim_is_atomic_and_idempotent(
     assert mismatch["action"] == "BLOCKED"
 
 
+def test_competing_attempt_stops_before_execution_side_effects(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_write_role_views",
+        lambda *args, **kwargs: pytest.fail("competing attempt wrote role views"),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run_deepagents_worker",
+        lambda *args, **kwargs: pytest.fail("competing attempt launched worker"),
+    )
+
+    with pytest.raises(RuntimeError, match="active competing"):
+        LAUNCHER.main(
+            [
+                "--role",
+                "normal",
+                "--attempt-id",
+                "attempt-2",
+                "--assignment-id",
+                "assignment-1",
+                "--repository-identity",
+                "repo-1",
+                "--task-sha256",
+                "task-1",
+                "--grant-digest",
+                "grant-1",
+                "--prior-attempt-known",
+                "false",
+                "-n",
+                "task",
+            ]
+        )
+
+
 def test_attempt_guard_missing_after_known_attempt_requires_reconciliation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -761,7 +809,11 @@ def test_attempt_guard_missing_after_known_attempt_requires_reconciliation(
         prior_attempt_known=True,
     )
 
-    assert result == {"state": "RECOVERY_REQUIRED", "action": "RECONCILE"}
+    assert result == {
+        "state": "RECOVERY_REQUIRED",
+        "action": "RECONCILE",
+        "admission": "RECONCILE",
+    }
 
 
 def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
@@ -791,6 +843,68 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     )
     assert replacement["replaced_settled"] is True
     assert replacement["state"] == "ACTIVE"
+
+
+def test_attempt_guard_retains_terminal_settlement_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=tmp_path / "receipt.json")
+
+    evidence = {
+        "attempt_id": "attempt-1",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+    }
+    settled = LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        settlement_proven=True,
+        settlement_evidence=evidence,
+    )
+
+    assert settled["settlement_evidence"] == evidence
+
+
+def test_attempt_guard_blocks_relaunch_after_receipt_publication_or_deletion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(
+        **binding,
+        repo_root=tmp_path,
+        result_file=result_file,
+    )
+    result_file.write_text('{"state":"confirmed"}', encoding="utf-8")
+
+    for _ in range(2):
+        repeated = LAUNCHER._claim_attempt(
+            **binding,
+            repo_root=tmp_path,
+            result_file=result_file,
+        )
+        assert repeated["admission"] == "IDEMPOTENT"
+        assert repeated["state"] == "ACTIVE"
+        result_file.unlink(missing_ok=True)
 
 
 def test_tura_worker_does_not_supply_adapter_cache_key() -> None:

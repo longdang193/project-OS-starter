@@ -101,7 +101,7 @@ checks, and verify Git scope before acceptance.
 
 ### Herdr Observation
 
-Herdr remains transient observation authority. Use `api snapshot`, `pane list`,
+Herdr remains transient diagnostic observation. Use `api snapshot`, `pane list`,
 `pane process-info`, and `pane read` for DeepAgents pane processes; use
 `agent get` and `agent read` for Codex agents. Keep one semantic record across
 executors: executor, session, pane, agent identity, task hash, state, and
@@ -194,9 +194,10 @@ launches apply a `420`-second wrapper safety ceiling when callers omit
 30-minute outer watchdog to prevent an abandoned pane process from blocking the
 controller. Upgrade smoke probes may pass explicit shorter bounds because they
 are bounded compatibility checks, not normal task execution.
-The pinned runtime compatibility patch caps cumulative interactive and auxiliary
-model retry sleep at `10` seconds, below Herdr's `60`-second observation
-transport window.
+The pinned runtime compatibility patch temporarily caps cumulative interactive
+and auxiliary model retry sleep at `10` seconds, below Herdr's `60`-second
+observation transport window. Remove this migration/backoff cap only after
+provider retry behavior has a bounded contract and matching live proof.
 
 An optional CoS Runtime Grant may project explicit DeepAgents `--max-turns` or
 `--timeout` values. DeepAgents native defaults remain unchanged. Direct

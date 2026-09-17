@@ -95,12 +95,21 @@ def _same_repository(first_root: Path, second_root: Path) -> bool:
     return first_git is not None and first_git == second_git
 
 
+def _repository_identity(root: Path) -> str | None:
+    common_dir = _git_common_dir(root)
+    return str(common_dir) if common_dir is not None else None
+
+
 def _marker_owned(marker: dict[str, object] | None, expected: dict[str, object]) -> bool:
     if marker is None:
         return False
     for key, value in expected.items():
-        if key not in {"source_root", "source_paths", "source_revision", "source_digest"} and marker.get(key) != value:
+        if key not in {"source_root", "source_paths", "source_revision", "source_digest", "repository_identity"} and marker.get(key) != value:
             return False
+    marker_identity = marker.get("repository_identity")
+    expected_identity = expected.get("repository_identity")
+    if isinstance(marker_identity, str):
+        return isinstance(expected_identity, str) and marker_identity == expected_identity
     marker_root = marker.get("source_root")
     expected_root = expected.get("source_root")
     if not isinstance(marker_root, str) or not isinstance(expected_root, str):
@@ -634,11 +643,15 @@ def _repo_skill_names(skills_root: Path) -> set[str]:
 
 
 def _shared_skill_marker(skills_root: Path, skill_name: str) -> dict[str, object]:
-    return {
+    marker = {
         "schema": 1,
         "source_root": str(skills_root.parent.parent.resolve()),
         "source_rel": f".agents/skills/{skill_name}",
     }
+    repository_identity = _repository_identity(Path(marker["source_root"]))
+    if repository_identity is not None:
+        marker["repository_identity"] = repository_identity
+    return marker
 
 
 def _shared_skill_marker_path(target_root: Path, skill_name: str) -> Path:
@@ -728,7 +741,7 @@ def _shared_asset_marker(root: Path, bundle_name: str, entries: list[tuple[Path,
         ).stdout.strip()
     except OSError:
         source_revision = ""
-    return {
+    marker = {
         "schema": 1,
         "bundle": bundle_name,
         "source_root": str(root.resolve()),
@@ -736,6 +749,10 @@ def _shared_asset_marker(root: Path, bundle_name: str, entries: list[tuple[Path,
         "source_revision": source_revision or "uncommitted",
         "source_digest": _shared_asset_source_digest(entries),
     }
+    repository_identity = _repository_identity(root)
+    if repository_identity is not None:
+        marker["repository_identity"] = repository_identity
+    return marker
 
 
 def _shared_asset_marker_path(bundle_name: str) -> Path:

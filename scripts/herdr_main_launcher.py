@@ -2247,6 +2247,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan-identity")
     parser.add_argument("--task-sha256")
     parser.add_argument("--grant-digest")
+    parser.add_argument("--prior-attempt-known", choices=["true", "false"], default="false")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -2274,6 +2275,7 @@ def _main_body(args: argparse.Namespace) -> int:
         "assignment_id": args.assignment_id,
         "repository_identity": args.repository_identity,
         "plan_identity": args.plan_identity,
+        "prior_attempt_known": args.prior_attempt_known == "true",
     }
 
     def emit_failure(message: str, resolution: dict[str, Any] | None = None) -> int:
@@ -2412,6 +2414,8 @@ def _main_body(args: argparse.Namespace) -> int:
                     _powershell_literal(str(args.task_sha256)),
                     "--grant-digest",
                     _powershell_literal(str(args.grant_digest)),
+                    "--prior-attempt-known",
+                    _powershell_literal(args.prior_attempt_known),
                 ]
             registry_evidence["result_file"] = str(receipt_file)
 

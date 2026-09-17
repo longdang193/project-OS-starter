@@ -330,6 +330,49 @@ def test_shared_skill_deploy_preserves_unrelated_installed_skills(tmp_path: Path
     assert all("gitnexus-cli" not in change for change in changes)
 
 
+def test_marker_ownership_survives_deleted_source_worktree(tmp_path: Path, monkeypatch) -> None:
+    common_repo = tmp_path / "common.git"
+    old_source = tmp_path / "deleted-worktree"
+    new_source = tmp_path / "current-worktree"
+    monkeypatch.setattr(
+        DEPLOY,
+        "_git_common_dir",
+        lambda root: common_repo if root == new_source else None,
+    )
+
+    marker = {
+        "schema": 1,
+        "source_root": str(old_source),
+        "repository_identity": str(common_repo),
+        "source_rel": ".agents/skills/demo",
+    }
+    expected = {
+        "schema": 1,
+        "source_root": str(new_source),
+        "repository_identity": str(common_repo),
+        "source_rel": ".agents/skills/demo",
+    }
+
+    assert DEPLOY._marker_owned(marker, expected) is True
+
+
+def test_marker_ownership_rejects_foreign_repository_identity(tmp_path: Path) -> None:
+    marker = {
+        "schema": 1,
+        "source_root": str(tmp_path / "source"),
+        "repository_identity": str(tmp_path / "foreign.git"),
+        "source_rel": ".agents/skills/demo",
+    }
+    expected = {
+        "schema": 1,
+        "source_root": str(tmp_path / "source"),
+        "repository_identity": str(tmp_path / "current.git"),
+        "source_rel": ".agents/skills/demo",
+    }
+
+    assert DEPLOY._marker_owned(marker, expected) is False
+
+
 def test_owned_shared_skill_updates_without_force(tmp_path: Path) -> None:
     skills_root = tmp_path / "repo" / ".agents" / "skills"
     target_root = tmp_path / "user-skills"

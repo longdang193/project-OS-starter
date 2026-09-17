@@ -116,8 +116,9 @@ Launcher delivery evidence distinguishes `delivered`, `delivery_failed`, and
 completion observation is separate. Transport timeout or missing observation
 produces `delivery_uncertain` only before acknowledgement; a later observation
 timeout does not rewrite confirmed delivery as rejection and does not authorize
-automatic kill or replay. Reconcile the existing lane through Herdr observation
-before retrying any uncertain write-capable delivery.
+automatic kill or replay. Reconcile existing lane through correlated receipt and
+direct process/cleanup evidence before retrying any uncertain write-capable
+delivery; Herdr output is diagnostic only.
 Replay requires plausible transient failure, an idempotent operation, and
 fresh evidence that the original delivery did not succeed. The launcher keeps
 the original task hash, projected Runtime Grant digest, and delivery-task hash

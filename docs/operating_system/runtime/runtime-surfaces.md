@@ -108,8 +108,9 @@ runtime, rules, skills, root instructions, and hooks.
   task text. Handoff remains facts and provenance, not tool access.
 - MCP escalation is controller-mediated: pre-dispatch facts use one handoff;
   mid-task requests return `NEEDS_CONTEXT`, then the outer Codex controller
-  refreshes the handoff and retries the same plan task. When CoS is active, CoS
-  coordinates that refresh and retry.
+  may refresh the handoff and retry the same plan task only after explicit
+  continuation decision and settled prior-attempt evidence. When CoS is active,
+  CoS coordinates that refresh and retry.
 - DeepAgents web search is executor-local and needs user-local `TAVILY_API_KEY`.
   It is absent by default and never falls back to Codex browser or web MCP tools.
 - Project `.env` files are untrusted runtime input. Launcher-owned provider
