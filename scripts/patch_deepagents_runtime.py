@@ -152,6 +152,17 @@ _HEADLESS_MCP_REJECTION_PATCHED = """    def _rejection(self, request: ToolCallR
             status=\"error\",
         )
 """
+_MODEL_RETRY_BUDGET = """# Total sleep the interactive model node may spend across one call's retries.
+# Per-delay caps bound nothing (see `_delay_budget_guard`): five honoured
+# `Retry-After` hints of `_MAX_RETRY_AFTER_SECONDS` each would stall a turn for
+# five minutes behind a spinner. One full honoured hint still fits.
+_MAX_INTERACTIVE_TOTAL_DELAY_SECONDS = 60.0
+"""
+_MODEL_RETRY_BUDGET_PATCHED = """# Herdr's observation transport timeout is 60s. Keep model retry sleep
+# below that window so a provider `Retry-After` cannot masquerade as a runtime
+# timeout and suppress the worker receipt.
+_MAX_INTERACTIVE_TOTAL_DELAY_SECONDS = 10.0
+"""
 
 
 def _replace_once(target: Path, old: str, new: str, label: str) -> bool:
@@ -211,15 +222,42 @@ def patch_headless_mcp_guard(target: Path) -> bool:
     )
 
 
+def patch_model_retry_budget(target: Path) -> bool:
+    content = target.read_text(encoding="utf-8")
+    changed = False
+    if _MODEL_RETRY_BUDGET in content:
+        content = content.replace(_MODEL_RETRY_BUDGET, _MODEL_RETRY_BUDGET_PATCHED, 1)
+        changed = True
+    elif _MODEL_RETRY_BUDGET_PATCHED not in content:
+        raise RuntimeError(f"Unsupported DeepAgents model retry runtime: {target}")
+
+    old_signature = "max_total_delay: float | None = None"
+    new_signature = "max_total_delay: float | None = _MAX_INTERACTIVE_TOTAL_DELAY_SECONDS"
+    signature_count = content.count(old_signature)
+    if signature_count:
+        if signature_count != 2:
+            raise RuntimeError(f"Unsupported DeepAgents model retry runtime: {target}")
+        content = content.replace(old_signature, new_signature)
+        changed = True
+    elif content.count(new_signature) != 2:
+        raise RuntimeError(f"Unsupported DeepAgents model retry runtime: {target}")
+
+    if changed:
+        target.write_text(content, encoding="utf-8")
+    return changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mcp_tools", type=Path)
     args = parser.parse_args()
     auto_mode = args.mcp_tools.with_name("auto_mode.py")
+    model_retry = args.mcp_tools.parents[1] / "deepagents_code" / "model_retry.py"
     utility = args.mcp_tools.parents[1] / "mcp" / "os" / "win32" / "utilities.py"
     changed = patch_mcp_tools(args.mcp_tools)
     changed = patch_stdio_lookup(args.mcp_tools) or changed
     changed = patch_headless_mcp_guard(auto_mode) or changed
+    changed = patch_model_retry_budget(model_retry) or changed
     changed = patch_windows_lookup(utility) or changed
     changed = patch_windows_process(utility) or changed
     status = "patched" if changed else "already patched"

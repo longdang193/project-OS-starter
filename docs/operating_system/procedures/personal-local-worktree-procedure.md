@@ -187,6 +187,9 @@ launches apply a `420`-second wrapper safety ceiling when callers omit
 30-minute outer watchdog to prevent an abandoned pane process from blocking the
 controller. Upgrade smoke probes may pass explicit shorter bounds because they
 are bounded compatibility checks, not normal task execution.
+The pinned runtime compatibility patch caps cumulative interactive and auxiliary
+model retry sleep at `10` seconds, below Herdr's `60`-second observation
+transport window.
 
 An optional CoS Runtime Grant may project explicit DeepAgents `--max-turns` or
 `--timeout` values. DeepAgents native defaults remain unchanged. Direct

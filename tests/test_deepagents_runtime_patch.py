@@ -1,14 +1,20 @@
 from pathlib import Path
+import importlib.util
+import sys
 
-from project_os_test_paths import add_runtime_import_roots
-
-add_runtime_import_roots()
-from scripts.patch_deepagents_runtime import (
-    patch_headless_mcp_guard,
-    patch_mcp_tools,
-    patch_stdio_lookup,
-    patch_windows_lookup,
+_PATCH_MODULE_SPEC = importlib.util.spec_from_file_location(
+    "project_patch_deepagents_runtime",
+    Path(__file__).resolve().parents[1] / "scripts" / "patch_deepagents_runtime.py",
 )
+assert _PATCH_MODULE_SPEC is not None and _PATCH_MODULE_SPEC.loader is not None
+_PATCH_MODULE = importlib.util.module_from_spec(_PATCH_MODULE_SPEC)
+sys.modules[_PATCH_MODULE_SPEC.name] = _PATCH_MODULE
+_PATCH_MODULE_SPEC.loader.exec_module(_PATCH_MODULE)
+patch_headless_mcp_guard = _PATCH_MODULE.patch_headless_mcp_guard
+patch_mcp_tools = _PATCH_MODULE.patch_mcp_tools
+patch_model_retry_budget = _PATCH_MODULE.patch_model_retry_budget
+patch_stdio_lookup = _PATCH_MODULE.patch_stdio_lookup
+patch_windows_lookup = _PATCH_MODULE.patch_windows_lookup
 
 
 def test_patch_mcp_tools_avoids_async_path_resolution(tmp_path: Path) -> None:
@@ -109,3 +115,25 @@ def test_patch_windows_lookup_accepts_legacy_mcp_source_shape(tmp_path: Path) ->
 
     assert patch_windows_lookup(target) is True
     assert patch_windows_lookup(target) is False
+
+
+def test_patch_model_retry_budget_caps_auxiliary_defaults(tmp_path: Path) -> None:
+    target = tmp_path / "model_retry.py"
+    target.write_text(
+        "# Total sleep the interactive model node may spend across one call's retries.\n"
+        "# Per-delay caps bound nothing (see `_delay_budget_guard`): five honoured\n"
+        "# `Retry-After` hints of `_MAX_RETRY_AFTER_SECONDS` each would stall a turn for\n"
+        "# five minutes behind a spinner. One full honoured hint still fits.\n"
+        "_MAX_INTERACTIVE_TOTAL_DELAY_SECONDS = 60.0\n"
+        "def retry_model_call(*, max_total_delay: float | None = None): pass\n"
+        "def aretry_model_call(*, max_total_delay: float | None = None): pass\n",
+        encoding="utf-8",
+    )
+
+    assert patch_model_retry_budget(target) is True
+    patched = target.read_text(encoding="utf-8")
+    assert "_MAX_INTERACTIVE_TOTAL_DELAY_SECONDS = 10.0" in patched
+    assert patched.count(
+        "max_total_delay: float | None = _MAX_INTERACTIVE_TOTAL_DELAY_SECONDS"
+    ) == 2
+    assert patch_model_retry_budget(target) is False
