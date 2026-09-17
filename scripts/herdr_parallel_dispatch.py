@@ -19,6 +19,7 @@ try:
     from scripts.herdr_attempt_contract import (
         NATIVE_GRANT_VALUE,
         NATIVE_WORKER_WALL_CLOCK_SECONDS,
+        assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
     )
     from scripts.herdr_main_launcher import (
@@ -29,6 +30,7 @@ except ModuleNotFoundError:
     from herdr_attempt_contract import (
         NATIVE_GRANT_VALUE,
         NATIVE_WORKER_WALL_CLOCK_SECONDS,
+        assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
     )
     from herdr_main_launcher import (
@@ -43,6 +45,8 @@ TIMEOUT_OWNER = "dcode-project"
 WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = 1800
 _REQUIRED_FIELDS = (
     "lane_id",
+    "repository_identity",
+    "plan_identity",
     "task",
     "executor",
     "profile",
@@ -149,6 +153,13 @@ def _bind_requested_grant(lane: dict[str, Any]) -> None:
     )
     if not requested:
         lane.pop("local_capabilities", None)
+    if "repository_identity" in lane and "plan_identity" in lane:
+        computed_assignment_id = _assignment_id(
+            lane["repository_identity"], lane["plan_identity"], str(lane["lane_id"])
+        )
+        if lane.get("assignment_id") not in (None, computed_assignment_id):
+            raise ValueError("assignment_id does not match coordinated identity")
+        lane["assignment_id"] = computed_assignment_id
 
 
 def _normalize_local_capabilities(values: object) -> list[str]:
@@ -226,9 +237,17 @@ def _admit_lanes(
             continue
         try:
             _bind_requested_grant(lane)
+            computed_assignment_id = _assignment_id(
+                lane["repository_identity"], lane["plan_identity"], lane_id
+            )
         except (TypeError, ValueError, RuntimeError) as exc:
             rejected.append(_reject(lane, str(exc)))
             continue
+        supplied_assignment_id = lane.get("assignment_id")
+        if supplied_assignment_id is not None and supplied_assignment_id != computed_assignment_id:
+            rejected.append(_reject(lane, "assignment_id does not match coordinated identity"))
+            continue
+        lane["assignment_id"] = computed_assignment_id
 
         worktree = _canonical_path(lane["worktree"])
         if worktree in seen_worktrees:
@@ -294,6 +313,17 @@ def _launcher_command(
     launcher_path: str | os.PathLike[str] | None,
 ) -> list[str]:
     script = Path(launcher_path) if launcher_path else Path(__file__).with_name("herdr_main_launcher.py")
+    assignment_value = lane.get("assignment_id") or _assignment_id(
+        lane["repository_identity"], lane["plan_identity"], str(lane["lane_id"])
+    )
+    grant = lane.get("runtime_grant")
+    if not isinstance(grant, Mapping):
+        bound_lane = dict(lane)
+        _bind_requested_grant(bound_lane)
+        grant = bound_lane["runtime_grant"]
+    grant_digest_value = lane.get("grant_digest") or _grant_digest(
+        str(lane["executor"]), grant
+    )
     command = [
         python_executable,
         str(script),
@@ -307,6 +337,16 @@ def _launcher_command(
         str(lane["worktree"]),
         "--expected-base",
         str(lane["expected_base"]),
+        "--assignment-id",
+        str(assignment_value),
+        "--repository-identity",
+        str(lane["repository_identity"]),
+        "--plan-identity",
+        str(lane["plan_identity"]),
+        "--task-sha256",
+        _sha256_text(str(lane["task"])),
+        "--grant-digest",
+        str(grant_digest_value),
         "--executor",
         str(lane["executor"]),
         "--task",
@@ -315,11 +355,6 @@ def _launcher_command(
     for name, flag in (("name", "--name"), ("codex_home", "--codex-home")):
         if lane.get(name):
             command.extend([flag, str(lane[name])])
-    grant = lane.get("runtime_grant")
-    if not isinstance(grant, Mapping):
-        bound_lane = dict(lane)
-        _bind_requested_grant(bound_lane)
-        grant = bound_lane["runtime_grant"]
     command.extend(
         [
             "--grant-turns",
@@ -684,6 +719,7 @@ def run_lane(
                 records.append(_tagged(lane_id, "unresolved", {"reason": "transport timeout"}))
                 return {
                     "lane_id": lane_id,
+                    "assignment_id": bound_lane.get("assignment_id"),
                     "command": command,
                     "exit_code": process.returncode,
                     "records": records,
@@ -742,7 +778,7 @@ def run_lane(
         if not resource_settled:
             return "occupied", True, "execution or cleanup unsettled", False
         if assignment.get("reconciliation_required") is True:
-            return "retired", True, "task result unresolved", False
+            return "occupied", True, "reconciliation required", False
         task_result = assignment.get("task_result")
         task_uncertain = not isinstance(task_result, Mapping) or (
             task_result.get("accepted") is None
@@ -767,6 +803,7 @@ def run_lane(
         records.append(_tagged(lane_id, "unresolved", {"reason": unresolved_reason}))
     result = {
         "lane_id": lane_id,
+        "assignment_id": bound_lane.get("assignment_id"),
         "command": command,
         "exit_code": process.returncode,
         "records": records,

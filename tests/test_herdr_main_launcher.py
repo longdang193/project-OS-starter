@@ -2419,7 +2419,12 @@ def test_deepagents_zero_exit_failed_report_is_not_completion() -> None:
     )
 
     assert result["execution"]["state"] == "completed"
-    assert result["task_result"] == {"state": "reported_failed", "accepted": False}
+    assert result["task_result"] == {
+        "state": "reported_failed",
+        "accepted": False,
+        "source": "herdr_pane",
+        "authoritative": False,
+    }
     assert result["status"] == "failed"
     assert result["failure_kind"] == "task_report_failed"
     assert result["launcher_exit_code"] == 2
@@ -2680,7 +2685,12 @@ def test_deepagents_main_reports_terminal_failure_verdict(
     ) == 2
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
     assert assignment["status"] == "failed"
-    assert assignment["task_result"] == {"state": "reported_failed", "accepted": False}
+    assert assignment["task_result"] == {
+        "state": "reported_failed",
+        "accepted": False,
+        "source": "herdr_pane",
+        "authoritative": False,
+    }
     assert assignment["task_accepted"] is False
     assert assignment["execution"]["worker_exit_code"] == 0
     assert assignment["exit_code"] == assignment["launcher_exit_code"] == 2
@@ -4202,7 +4212,12 @@ def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
         LAUNCHER._DEEPAGENTS_RUN_TIMEOUT - LAUNCHER._DEEPAGENTS_RECEIPT_GRACE_SECONDS
     )
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert assignment["task_result"] == {"state": "reported_completed", "accepted": None}
+    assert assignment["task_result"] == {
+        "state": "reported_completed",
+        "accepted": None,
+        "source": "herdr_pane",
+        "authoritative": False,
+    }
     assert assignment["task_accepted"] is None
 
 

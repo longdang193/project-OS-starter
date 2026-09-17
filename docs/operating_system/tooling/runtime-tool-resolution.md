@@ -117,9 +117,14 @@ one bounded marker wait, then fresh final probes. Use `pane wait-output` for
 DeepAgents marker observation; use `agent get`/`agent read` for Codex.
 `agent wait` is a documented Herdr capability, not current launcher integration.
 Tura uses `project-delegate` outside the Herdr main-lane path. Normalize evidence
-fields, not transport internals. Missing, unchanged, or timed-out waits/reads
-produce `unknown` or `stuck_suspected`; they do not prove completion or authorize
-kill, retry, or plan advancement.
+fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds
+repository identity, canonical plan identity, and stable lane identity across
+retries; `dcode-project` claims before worker spawn and settles only after
+correlated receipt plus verified cleanup and descendant retirement. Missing,
+unchanged, or timed-out waits/reads produce `unknown` or `stuck_suspected`; they
+do not prove completion or authorize kill, retry, plan advancement, or assignment
+release. Routine observation cannot replace `RECOVERY_REQUIRED` reconciliation or
+canonical settlement evidence.
 Keep raw terminal output out of durable evidence unless an explicit disposable
 probe bounds and redacts it.
 

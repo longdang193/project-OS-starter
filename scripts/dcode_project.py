@@ -43,6 +43,18 @@ try:
     from deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
 except ModuleNotFoundError:
     from scripts.deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
+try:
+    from herdr_attempt_contract import (
+        AttemptContractError,
+        derive_lifecycle_state,
+        same_attempt_binding,
+    )
+except ModuleNotFoundError:
+    from scripts.herdr_attempt_contract import (
+        AttemptContractError,
+        derive_lifecycle_state,
+        same_attempt_binding,
+    )
 
 
 
@@ -83,6 +95,9 @@ _DIRECT_MCP_OWNER_MARKER = ".owner"
 _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
 _DIRECT_MCP_STALE_AGE = timedelta(hours=24)
 _ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
+_ATTEMPT_GUARD_PARENT = "attempts"
+_ATTEMPT_GUARD_SCHEMA = "dcode-project.attempt.v1"
+_ATTEMPT_GUARD_MAX_BYTES = 16 * 1024
 _RESULT_SCHEMA = RESULT_SCHEMA
 _RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _ALLOWED_RUNTIME_FLAGS = {
@@ -108,6 +123,11 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--executor",
     "--result-file",
     "--attempt-id",
+    "--assignment-id",
+    "--repository-identity",
+    "--task-sha256",
+    "--grant-digest",
+    "--prior-attempt-known",
     "--local-capability",
 }
 _FIXED_LOCAL_CAPABILITY_OPTIONS = (
@@ -494,6 +514,126 @@ def _role_views_lock(repo_root: Path):
                 _unlock_file(fd)
         finally:
             os.close(fd)
+
+
+def _attempt_guard_root() -> Path:
+    return Path.home() / ".local" / "share" / "dcode-project" / _ATTEMPT_GUARD_PARENT
+
+
+def _attempt_guard_path(assignment_id: str) -> Path:
+    if not isinstance(assignment_id, str) or not assignment_id.strip():
+        raise RuntimeError("dcode-project requires a non-empty `--assignment-id`.")
+    digest = hashlib.sha256(assignment_id.strip().encode("utf-8")).hexdigest()
+    return _attempt_guard_root() / f"{digest}.json"
+
+
+def _read_attempt_guard(path: Path) -> dict[str, object] | None:
+    try:
+        if not path.exists():
+            return None
+        if not path.is_file() or path.stat().st_size > _ATTEMPT_GUARD_MAX_BYTES:
+            raise RuntimeError("dcode-project attempt guard is malformed or oversized.")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("dcode-project attempt guard is unreadable.") from exc
+    if not isinstance(payload, dict) or payload.get("schema") != _ATTEMPT_GUARD_SCHEMA:
+        raise RuntimeError("dcode-project attempt guard schema mismatch.")
+    return payload
+
+
+def _write_attempt_guard(path: Path, payload: dict[str, object]) -> None:
+    encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode(
+        "utf-8"
+    )
+    if len(encoded) > _ATTEMPT_GUARD_MAX_BYTES:
+        raise RuntimeError("dcode-project attempt guard exceeds size limit.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _claim_attempt(
+    *,
+    assignment_id: str,
+    attempt_id: str,
+    executor: str,
+    repository_identity: str,
+    task_sha256: str,
+    grant_digest: str,
+    repo_root: Path,
+    result_file: Path | None,
+    task_result_file: Path | None = None,
+    prior_attempt_known: bool = False,
+) -> dict[str, object]:
+    path = _attempt_guard_path(assignment_id)
+    existing = _read_attempt_guard(path)
+    candidate = {
+        "schema": _ATTEMPT_GUARD_SCHEMA,
+        "state": "active",
+        "assignment_id": assignment_id,
+        "attempt_id": attempt_id,
+        "executor": executor,
+        "repository_identity": repository_identity,
+        "task_sha256": task_sha256,
+        "grant_digest": grant_digest,
+        "worktree": str(repo_root.resolve()),
+        "receipt_path": str(result_file) if result_file is not None else None,
+        "task_result_path": str(task_result_file) if task_result_file is not None else None,
+        "claimed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if existing is None:
+        if prior_attempt_known:
+            return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE"}
+        _write_attempt_guard(path, candidate)
+        return {"state": "ACTIVE", "action": "BLOCKED", "claimed": True, "record": candidate}
+    if same_attempt_binding(existing, candidate):
+        state = str(existing.get("state", "")).upper()
+        if state not in {"ACTIVE", "SETTLED"}:
+            return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE"}
+        return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "idempotent": True, "record": existing}
+    existing_state = str(existing.get("state", "")).lower()
+    if existing_state == "settled":
+        _write_attempt_guard(path, candidate)
+        return {"state": "ACTIVE", "action": "BLOCKED", "claimed": True, "replaced_settled": True, "record": candidate}
+    state = "ACTIVE" if existing_state == "active" else "RECOVERY_REQUIRED"
+    action = "BLOCKED" if state == "ACTIVE" else "RECONCILE"
+    return {"state": state, "action": action, "record": existing}
+
+
+def _settle_attempt(
+    *,
+    assignment_id: str,
+    binding: dict[str, object],
+    settlement_proven: bool,
+) -> dict[str, object]:
+    path = _attempt_guard_path(assignment_id)
+    existing = _read_attempt_guard(path)
+    if existing is None or not same_attempt_binding(existing, binding):
+        raise RuntimeError("dcode-project attempt guard binding mismatch during settlement.")
+    if not settlement_proven:
+        return existing
+    settled = dict(existing)
+    settled.update(
+        {
+            "state": "settled",
+            "settlement_proven": True,
+            "settled_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    _write_attempt_guard(path, settled)
+    return settled
 
 
 def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
@@ -908,6 +1048,11 @@ def _controller_options(
     str | None,
     str | None,
     str | None,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    bool,
 ]:
     child: list[str] = []
     selections: list[str] = []
@@ -916,6 +1061,11 @@ def _controller_options(
     executor: str | None = None
     result_file: str | None = None
     attempt_id: str | None = None
+    assignment_id_value: str | None = None
+    repository_identity: str | None = None
+    task_sha256: str | None = None
+    grant_digest_value: str | None = None
+    prior_attempt_known = False
     index = 0
     while index < len(argv):
         argument = argv[index]
@@ -927,6 +1077,11 @@ def _controller_options(
             "--executor",
             "--result-file",
             "--attempt-id",
+            "--assignment-id",
+            "--repository-identity",
+            "--task-sha256",
+            "--grant-digest",
+            "--prior-attempt-known",
         }:
             if separator:
                 value = inline_value
@@ -955,6 +1110,26 @@ def _controller_options(
                 if attempt_id is not None:
                     raise RuntimeError("dcode-project accepts only one `--attempt-id`.")
                 attempt_id = value
+            elif option == "--assignment-id":
+                if assignment_id_value is not None:
+                    raise RuntimeError("dcode-project accepts only one `--assignment-id`.")
+                assignment_id_value = value
+            elif option == "--repository-identity":
+                if repository_identity is not None:
+                    raise RuntimeError("dcode-project accepts only one `--repository-identity`.")
+                repository_identity = value
+            elif option == "--task-sha256":
+                if task_sha256 is not None:
+                    raise RuntimeError("dcode-project accepts only one `--task-sha256`.")
+                task_sha256 = value
+            elif option == "--grant-digest":
+                if grant_digest_value is not None:
+                    raise RuntimeError("dcode-project accepts only one `--grant-digest`.")
+                grant_digest_value = value
+            elif option == "--prior-attempt-known":
+                if value.casefold() not in {"true", "false"}:
+                    raise RuntimeError("dcode-project requires `--prior-attempt-known` to be true or false.")
+                prior_attempt_known = value.casefold() == "true"
             elif executor is not None:
                 raise RuntimeError("dcode-project accepts only one `--executor`.")
             else:
@@ -962,7 +1137,20 @@ def _controller_options(
         else:
             child.append(argument)
         index += 1
-    return child, selections, handoff_file, role_name, executor, result_file, attempt_id
+    return (
+        child,
+        selections,
+        handoff_file,
+        role_name,
+        executor,
+        result_file,
+        attempt_id,
+        assignment_id_value,
+        repository_identity,
+        task_sha256,
+        grant_digest_value,
+        prior_attempt_known,
+    )
 
 
 def _extract_local_capabilities(argv: list[str]) -> tuple[list[str], list[str]]:
@@ -1524,6 +1712,11 @@ def main(argv: list[str]) -> int:
         explicit_executor,
         result_file_value,
         attempt_id,
+        assignment_id_value,
+        repository_identity,
+        task_sha256,
+        grant_digest_value,
+        prior_attempt_known,
     ) = _controller_options(argv)
     child_argv, local_capabilities = _extract_local_capabilities(child_argv)
     config = _load_toml(_config_path(), "dcode-project config")
@@ -1534,6 +1727,13 @@ def main(argv: list[str]) -> int:
         raise RuntimeError("dcode-project requires `--attempt-id` with `--result-file`.")
     if result_file is not None and executor != "deepagents":
         raise RuntimeError("`--result-file` is supported only for DeepAgents task execution.")
+    if assignment_id_value is not None and executor != "deepagents":
+        raise RuntimeError("`--assignment-id` is supported only for DeepAgents task execution.")
+    if assignment_id_value is not None:
+        if attempt_id is None or repository_identity is None or task_sha256 is None or grant_digest_value is None:
+            raise RuntimeError(
+                "dcode-project requires attempt, repository, task, and grant bindings with `--assignment-id`."
+            )
     binding = _runtime_binding(config)
     model = binding.model
     base_url = binding.base_url
@@ -1654,7 +1854,29 @@ def main(argv: list[str]) -> int:
         raise RuntimeError("DeepAgents Code is not installed. Run scripts/setup_deepagents_runtime.ps1.")
     environment = _runtime_environment(base_url, binding.read_api_key())
     shell_capabilities = _resolve_worker_shell_capabilities(local_capabilities, environment)
+    attempt_guard_binding = None
+    if assignment_id_value is not None:
+        attempt_guard_binding = {
+            "assignment_id": assignment_id_value,
+            "attempt_id": str(attempt_id),
+            "executor": executor,
+            "repository_identity": str(repository_identity),
+            "task_sha256": str(task_sha256),
+            "grant_digest": str(grant_digest_value),
+        }
     with _role_views_lock(repo_root):
+        attempt_claim = None
+        if attempt_guard_binding is not None:
+            attempt_claim = _claim_attempt(
+                **attempt_guard_binding,
+                repo_root=repo_root,
+                result_file=result_file,
+                prior_attempt_known=prior_attempt_known,
+            )
+            if attempt_claim.get("action") == "RECONCILE":
+                raise RuntimeError("DeepAgents assignment requires explicit reconciliation before launch.")
+            if attempt_claim.get("idempotent"):
+                raise RuntimeError("DeepAgents attempt already has an active or settled claim; no launch performed.")
         _write_role_views(repo_root, roles)
         cleanup_allowed = True
         worker_state = "not_started"
@@ -1767,6 +1989,17 @@ def main(argv: list[str]) -> int:
                     recovery_required=recovery_required,
                     shell_capabilities=shell_capabilities,
                     cleanup_details=cleanup_details,
+                )
+            if attempt_guard_binding is not None:
+                _settle_attempt(
+                    assignment_id=str(attempt_guard_binding["assignment_id"]),
+                    binding=attempt_guard_binding,
+                    settlement_proven=(
+                        worker_state in {"exited", "failed", "start_failed"}
+                        and descendant_state in {"terminated", "not_started"}
+                        and role_views_state == "removed"
+                        and not recovery_required
+                    ),
                 )
             if cleanup_error is not None:
                 raise cleanup_error
