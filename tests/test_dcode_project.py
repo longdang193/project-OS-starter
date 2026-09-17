@@ -876,6 +876,81 @@ def test_attempt_guard_retains_terminal_settlement_evidence(
     assert settled["settlement_evidence"] == evidence
 
 
+def test_attempt_guard_reconciles_correlated_terminal_receipt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(
+        **binding,
+        repo_root=tmp_path,
+        result_file=result_file,
+    )
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="exited",
+        worker_exit_code=0,
+        descendant_state="terminated",
+        role_views_state="removed",
+        recovery_required=False,
+        shell_capabilities={"requested": [], "effective": []},
+        cleanup_details={"state": "removed", "remaining_paths": [], "marker_state": "removed"},
+    )
+
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        repo_root=tmp_path,
+    )
+
+    assert reconciled["state"] == "SETTLED"
+    assert reconciled["admission"] == "IDEMPOTENT"
+
+
+def test_attempt_guard_reconciles_persisted_terminal_evidence_without_receipt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        settlement_proven=True,
+        settlement_evidence={
+            "attempt_id": "attempt-1",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+        },
+    )
+
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        repo_root=tmp_path,
+    )
+
+    assert reconciled["state"] == "SETTLED"
+
+
 def test_attempt_guard_blocks_relaunch_after_receipt_publication_or_deletion(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

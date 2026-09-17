@@ -19,6 +19,9 @@ Request independent review to catch issues before they cascade. Select review to
 
 **Core principle:** Review early, review often.
 
+Review does not own execution or acceptance. The lead reconciles review
+evidence with Plan plus Git and the shared attempt contract before integration.
+
 ## When to Request Review
 
 **Mandatory:**

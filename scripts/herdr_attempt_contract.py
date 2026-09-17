@@ -190,6 +190,8 @@ def normalize_attempt(attempt: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(attempt, Mapping):
         raise AttemptContractError("attempt must be a mapping")
     values = dict(attempt)
+    if "prior_attempt_known" in values and not isinstance(values["prior_attempt_known"], bool):
+        raise AttemptContractError("prior_attempt_known must be boolean")
     for field in ("lane_id", "attempt_id"):
         value = values.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -364,7 +366,6 @@ def resolve_attempt_budget(
     return requested
 
 
-_normalize_runtime_grant = normalize_runtime_grant
 _grant_digest = grant_digest
 _normalize_attempt = normalize_attempt
 _resolve_attempt_budget = resolve_attempt_budget

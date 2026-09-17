@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -22,11 +23,10 @@ try:
         assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
         normalize_runtime_grant,
+        resolve_attempt_budget,
+        terminal_settlement_proven,
     )
-    from scripts.herdr_main_launcher import (
-        _normalize_runtime_grant,
-        _sha256_text,
-    )
+    from scripts.herdr_main_launcher import _sha256_text
 except ModuleNotFoundError:
     from herdr_attempt_contract import (
         NATIVE_GRANT_VALUE,
@@ -34,11 +34,10 @@ except ModuleNotFoundError:
         assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
         normalize_runtime_grant,
+        resolve_attempt_budget,
+        terminal_settlement_proven,
     )
-    from herdr_main_launcher import (
-        _normalize_runtime_grant,
-        _sha256_text,
-    )
+    from herdr_main_launcher import _sha256_text
 
 
 MAX_CONCURRENCY = 2
@@ -64,6 +63,7 @@ _REQUIRED_FIELDS = (
     "grant_wall_clock_seconds",
     "grant_child_agents",
     "mcp_select",
+    "remaining_authorized_task_allowance",
 )
 
 
@@ -231,6 +231,15 @@ def _admit_lanes(
         if lane.get("dependency_ready") is not True:
             rejected.append(_reject(lane, "dependency not ready"))
             continue
+        allowance = lane["remaining_authorized_task_allowance"]
+        if (
+            isinstance(allowance, bool)
+            or not isinstance(allowance, (int, float))
+            or not math.isfinite(float(allowance))
+            or allowance < 0
+        ):
+            rejected.append(_reject(lane, "remaining_authorized_task_allowance must be a finite non-negative number"))
+            continue
         if not isinstance(lane["allowed_write_set"], list) or not isinstance(
             lane["mutable_resources"], list
         ):
@@ -238,6 +247,11 @@ def _admit_lanes(
             continue
         try:
             _bind_requested_grant(lane)
+            resolve_attempt_budget(
+                lane["grant_wall_clock_seconds"],
+                allowance,
+                WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+            )
             computed_assignment_id = _assignment_id(
                 lane["repository_identity"], lane["plan_identity"], lane_id
             )
@@ -325,6 +339,9 @@ def _launcher_command(
     grant_digest_value = lane.get("grant_digest") or _grant_digest(
         str(lane["executor"]), grant
     )
+    prior_attempt_known = lane.get("prior_attempt_known", False)
+    if not isinstance(prior_attempt_known, bool):
+        raise ValueError("prior_attempt_known must be boolean")
     command = [
         python_executable,
         str(script),
@@ -353,7 +370,9 @@ def _launcher_command(
         "--task",
         str(lane["task"]),
         "--prior-attempt-known",
-        str(bool(lane.get("prior_attempt_known", False))).lower(),
+        str(prior_attempt_known).lower(),
+        "--remaining-authorized-task-allowance",
+        str(lane["remaining_authorized_task_allowance"]),
     ]
     for name, flag in (("name", "--name"), ("codex_home", "--codex-home")):
         if lane.get(name):
@@ -607,7 +626,13 @@ def validate_local_capabilities(required: list[str], available: list[str]) -> bo
 
 
 def validate_plan_authority(authority: Mapping[str, Any]) -> bool:
-    return isinstance(authority.get("cumulative_wall_clock_seconds"), (int, float)) and authority["cumulative_wall_clock_seconds"] > 0
+    value = authority.get("cumulative_wall_clock_seconds")
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and value > 0
+    )
 
 
 def validate_git_checkpoint(checkpoint: Mapping[str, Any]) -> bool:
@@ -765,13 +790,18 @@ def run_lane(
         execution = assignment.get("execution")
         cleanup = assignment.get("cleanup")
         descendant_state = execution.get("descendant_state") if isinstance(execution, Mapping) else None
-        resource_settled = (
-            isinstance(execution, Mapping)
-            and execution.get("state") in {"exited", "completed", "failed", "start_failed"}
-            and descendant_state in {"terminated", "not_started"}
-            and isinstance(cleanup, Mapping)
-            and cleanup.get("state") == "removed"
-            and cleanup.get("recovery_required") is False
+        execution_state = execution.get("state") if isinstance(execution, Mapping) else None
+        settlement = {
+            "state": "confirmed",
+            "recovery_required": cleanup.get("recovery_required") if isinstance(cleanup, Mapping) else None,
+            "worker_state": "exited" if execution_state == "completed" else execution_state,
+            "cleanup_state": cleanup.get("state") if isinstance(cleanup, Mapping) else None,
+            "descendant_state": descendant_state,
+        }
+        resource_settled = terminal_settlement_proven(
+            settlement,
+            cleanup_confirmed=isinstance(cleanup, Mapping) and cleanup.get("state") == "removed",
+            descendants_retired=descendant_state in {"terminated", "not_started"},
         )
         if not resource_settled:
             return "occupied", True, "execution or cleanup unsettled", False

@@ -41,10 +41,12 @@ dispatched task contract and applicable worker or validator skills.
 - If direct MCP is not selected and mid-task MCP data is missing, stale, or
   requires live refresh, return `NEEDS_CONTEXT` with missing capability,
   required facts, and freshness requirement.
-- The outer Codex controller validates any handoff, writes a fresh
-  `codex.mcp.handoff.v1`, and retries same plan task. Handoff carries facts and
-  provenance only, not tool access. When CoS is active, CoS coordinates refresh
-  and retry.
+- `NEEDS_CONTEXT` requests information; it does not authorize replay. The
+  controller reconciles ownership and writes a fresh `codex.mcp.handoff.v1`.
+  Continuation requires settled prior resources, explicit CoS continuation when
+  CoS is active (otherwise lead-controller decision), remaining plan authority,
+  and updated task context. Handoff carries facts and provenance only, not tool
+  access.
 - CoS does not advance the task ledger from `NEEDS_CONTEXT`.
 - Acceptance requires handoff identity, capability digest, freshness, and
   returned evidence.
@@ -74,7 +76,10 @@ Before dispatch, Codex must:
 
 ## Launch Contract
 
-Launch from repository root through user-local `dcode-project`:
+Ordinary personal-local probes may call user-local `dcode-project` directly.
+Git-tracked coordinated work uses the controller-owned Herdr launcher or
+`herdr_parallel_dispatch.py`, which supplies correlated identity and grant
+evidence internally:
 
 ```powershell
 dcode-project --role <profile> -n "<bounded-task>"
@@ -93,7 +98,7 @@ Each dispatch belongs to exactly one active plan task. One plan task may use
 multiple evidence-recorded implementation, debugging, retry, or validation
 attempts.
 
-One `dcode-project` invocation equals one active plan task. Runtime-internal
+One coordinated attempt equals one active plan task. Runtime-internal
 decomposition never becomes plan-level coordination. Nested writers remain
 inside active task workspace, authority, dependencies, and declared write
 ownership. A MAIN AGENT may spawn DeepAgents sub-agents when needed within its

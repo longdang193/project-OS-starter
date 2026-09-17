@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
+import importlib.util
 import math
 import os
 from pathlib import Path
@@ -41,25 +42,44 @@ except ModuleNotFoundError:
     )
 try:
     from deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
+    from deepagents_result_contract import parse_result_receipt
 except ModuleNotFoundError:
     from scripts.deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
+    from scripts.deepagents_result_contract import parse_result_receipt
 try:
     from herdr_attempt_contract import (
         AttemptContractError,
         derive_lifecycle_state,
         same_attempt_binding,
+        terminal_settlement_proven,
     )
+    try:
+        from herdr_attempt_contract import ADMISSION_RESULTS
+    except ImportError:
+        ADMISSION_RESULTS = frozenset({"ADMITTED", "IDEMPOTENT", "BLOCKED", "RECONCILE"})
 except ModuleNotFoundError:
     from scripts.herdr_attempt_contract import (
         AttemptContractError,
         derive_lifecycle_state,
         same_attempt_binding,
+        terminal_settlement_proven,
     )
+    try:
+        from scripts.herdr_attempt_contract import ADMISSION_RESULTS
+    except ImportError:
+        _contract_path = Path(__file__).with_name("herdr_attempt_contract.py")
+        _contract_spec = importlib.util.spec_from_file_location(
+            "_project_herdr_attempt_contract", _contract_path
+        )
+        if _contract_spec is None or _contract_spec.loader is None:
+            raise
+        _contract_module = importlib.util.module_from_spec(_contract_spec)
+        _contract_spec.loader.exec_module(_contract_module)
+        ADMISSION_RESULTS = _contract_module.ADMISSION_RESULTS
 
 
 
 _ROLE_VIEWS_MARKER = ".dcode-project-owned"
-_ADMISSION_RESULTS = frozenset({"ADMITTED", "IDEMPOTENT", "BLOCKED", "RECONCILE"})
 _ROLE_VIEWS_SCHEMA = 1
 _LEGACY_ROLE_VIEWS_MARKER = "dcode-project owns this directory.\n"
 _HANDOFF_SCHEMA = "codex.mcp.handoff.v1"
@@ -599,6 +619,12 @@ def _claim_attempt(
             return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE"}
         _write_attempt_guard(path, candidate)
         return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "record": candidate}
+    if existing.get("state") == "active":
+        existing = _reconcile_attempt(
+            assignment_id=assignment_id,
+            binding=candidate,
+            repo_root=repo_root,
+        ).get("record", existing)
     if same_attempt_binding(existing, candidate):
         state = str(existing.get("state", "")).upper()
         if state not in {"ACTIVE", "SETTLED"}:
@@ -612,6 +638,51 @@ def _claim_attempt(
     action = "BLOCKED" if state == "ACTIVE" else "RECONCILE"
     admission = "BLOCKED" if state == "ACTIVE" else "RECONCILE"
     return {"state": state, "action": action, "admission": admission, "record": existing}
+
+
+def _reconcile_attempt(
+    *,
+    assignment_id: str,
+    binding: dict[str, object],
+    repo_root: Path,
+) -> dict[str, object]:
+    path = _attempt_guard_path(assignment_id)
+    existing = _read_attempt_guard(path)
+    if existing is None:
+        return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE"}
+    if not same_attempt_binding(existing, binding):
+        return {"state": "RECOVERY_REQUIRED", "action": "BLOCKED", "admission": "BLOCKED", "record": existing}
+    evidence = existing.get("settlement_evidence")
+    receipt = None
+    receipt_path = existing.get("receipt_path")
+    if isinstance(receipt_path, str) and receipt_path:
+        receipt = parse_result_receipt(Path(receipt_path), str(existing["attempt_id"]))
+    if not isinstance(evidence, dict):
+        evidence = None
+    if evidence is not None:
+        evidence = dict(evidence)
+        evidence.setdefault("state", "confirmed")
+        evidence.setdefault("recovery_required", False)
+    settlement = receipt if receipt and receipt.get("state") == "confirmed" else evidence
+    proven = terminal_settlement_proven(
+        settlement,
+        cleanup_confirmed=(
+            isinstance(settlement, dict) and settlement.get("cleanup_state") == "removed"
+        ),
+        descendants_retired=(
+            isinstance(settlement, dict)
+            and settlement.get("descendant_state") in {"terminated", "not_started"}
+        ),
+    )
+    if not proven:
+        return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE", "record": existing}
+    settled = _settle_attempt(
+        assignment_id=assignment_id,
+        binding=binding,
+        settlement_proven=True,
+        settlement_evidence=dict(settlement),
+    )
+    return {"state": "SETTLED", "action": "ELIGIBLE", "admission": "IDEMPOTENT", "record": settled}
 
 
 def _settle_attempt(
@@ -1879,7 +1950,7 @@ def main(argv: list[str]) -> int:
                 prior_attempt_known=prior_attempt_known,
             )
             admission = attempt_claim.get("admission")
-            if admission not in _ADMISSION_RESULTS:
+            if admission not in ADMISSION_RESULTS:
                 raise RuntimeError("DeepAgents attempt admission result is invalid.")
             if admission == "RECONCILE":
                 raise RuntimeError("DeepAgents assignment requires explicit reconciliation before launch.")

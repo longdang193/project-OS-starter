@@ -38,6 +38,7 @@ def lane(
         "grant_wall_clock_seconds": "native",
         "grant_child_agents": "deny",
         "mcp_select": [],
+        "remaining_authorized_task_allowance": 1800,
     }
 
 
@@ -88,6 +89,31 @@ def test_load_lane_descriptors_rejects_unready_dependency(tmp_path: Path) -> Non
 
     assert result["admitted"] == []
     assert result["rejected"][0]["reason"] == "dependency not ready"
+
+
+def test_load_lane_descriptors_requires_remaining_authorized_allowance(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    item.pop("remaining_authorized_task_allowance")
+    result = dispatcher.load_lane_descriptors(
+        write_lanes(tmp_path, [item])
+    )
+
+    assert result["admitted"] == []
+    assert "remaining_authorized_task_allowance" in result["rejected"][0]["reason"]
+
+
+def test_launcher_command_preserves_boolean_prior_attempt_known(
+    tmp_path: Path,
+) -> None:
+    item = lane("a", tmp_path)
+    item["prior_attempt_known"] = "false"
+
+    with pytest.raises(ValueError, match="prior_attempt_known"):
+        dispatcher._launcher_command(
+            item,
+            python_executable="python",
+            launcher_path="launcher.py",
+        )
 
 
 def test_load_lane_descriptors_caps_capacity_and_reports_queued_lane(tmp_path: Path) -> None:

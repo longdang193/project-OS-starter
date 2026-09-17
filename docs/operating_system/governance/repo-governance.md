@@ -6,6 +6,14 @@ Define durable ownership boundaries for private development, reusable agent meth
 
 ## Repository Roles
 
+### DeepAgents Runtime Ownership
+
+The shared attempt contract owns admission, budget, settlement, lifecycle, and
+eligibility. `dcode-project` owns worker execution, deadlines, descendants,
+cleanup, receipts, and attempt claims. Herdr owns target selection, transport,
+and diagnostic observation. Plan plus Git and CoS retain workflow truth and
+acceptance authority.
+
 ### Private Source Repository
 
 `project-OS-starter` is development source of truth. It may contain internal governance, planning history, private analysis tools, generated provider adapters, and publication tooling.

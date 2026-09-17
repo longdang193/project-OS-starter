@@ -647,6 +647,8 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "--role",
         "normal",
         "--json",
+        "--timeout",
+        "420",
         "--no-mcp",
         "-n",
     ]
@@ -749,9 +751,9 @@ def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     assert evidence["deepagents"]["mcp_selection"] == ["context7.query_docs"]
 
 
-def test_normalize_runtime_grant_rejects_unsupported_codex_turn_limit() -> None:
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="turn budget"):
-        LAUNCHER._normalize_runtime_grant(
+def test_shared_grant_rejects_unsupported_codex_turn_limit() -> None:
+    with pytest.raises(LAUNCHER.AttemptContractError, match="turn budget"):
+        LAUNCHER.normalize_runtime_grant(
             executor="codex",
             grant_turns="8",
             grant_wall_clock_seconds="native",
@@ -760,8 +762,8 @@ def test_normalize_runtime_grant_rejects_unsupported_codex_turn_limit() -> None:
 
 
 @pytest.mark.parametrize("child_agents", ["allow", "deny", None])
-def test_normalize_runtime_grant_projects_child_agent_authority(child_agents: str | None) -> None:
-    grant = LAUNCHER._normalize_runtime_grant(
+def test_shared_grant_projects_child_agent_authority(child_agents: str | None) -> None:
+    grant = LAUNCHER.normalize_runtime_grant(
         executor="codex",
         grant_turns="native",
         grant_wall_clock_seconds="native",
@@ -772,9 +774,9 @@ def test_normalize_runtime_grant_projects_child_agent_authority(child_agents: st
     assert grant["delegation"]["child_agents"] == (child_agents or "deny")
 
 
-def test_normalize_runtime_grant_rejects_invalid_child_agent_authority() -> None:
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="child_agents"):
-        LAUNCHER._normalize_runtime_grant(
+def test_shared_grant_rejects_invalid_child_agent_authority() -> None:
+    with pytest.raises(LAUNCHER.AttemptContractError, match="child_agents"):
+        LAUNCHER.normalize_runtime_grant(
             executor="codex",
             grant_turns="native",
             grant_wall_clock_seconds="native",
@@ -783,9 +785,9 @@ def test_normalize_runtime_grant_rejects_invalid_child_agent_authority() -> None
         )
 
 
-def test_normalize_runtime_grant_rejects_unsupported_codex_wall_clock_watchdog() -> None:
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="wall-clock enforcement"):
-        LAUNCHER._normalize_runtime_grant(
+def test_shared_grant_rejects_unsupported_codex_wall_clock_watchdog() -> None:
+    with pytest.raises(LAUNCHER.AttemptContractError, match="numeric wall-clock budget"):
+        LAUNCHER.normalize_runtime_grant(
             executor="codex",
             grant_turns="native",
             grant_wall_clock_seconds="600",
@@ -815,9 +817,9 @@ def test_codex_wall_clock_rejection_happens_before_runtime_side_effects(
         )
 
 
-def test_normalize_runtime_grant_rejects_wall_clock_above_watchdog() -> None:
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="1800"):
-        LAUNCHER._normalize_runtime_grant(
+def test_shared_grant_rejects_wall_clock_above_watchdog() -> None:
+    with pytest.raises(LAUNCHER.AttemptContractError, match="1800"):
+        LAUNCHER.normalize_runtime_grant(
             executor="deepagents",
             grant_turns="native",
             grant_wall_clock_seconds="1801",
@@ -882,6 +884,64 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]"
     )
     assert evidence["registry_launcher"]["completion_marker"] in command[-1]
+
+
+def test_resolve_launch_uses_contained_effective_worker_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"), "normal", "9router", "combo-normal", 20, "test", "test"
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {"pane": {"cwd": str(ROOT)}, "process_info": {}},
+    )
+
+    command, evidence = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="session",
+        pane="pane",
+        cwd=ROOT,
+        expected_base="HEAD",
+        executor="deepagents",
+        grant_wall_clock_seconds="600",
+        remaining_authorized_task_allowance=1000,
+        task="task",
+    )
+
+    assert command[command.index("--timeout") + 1] == "600"
+    assert evidence["registry_launcher"]["runtime_grant"]["wall_clock_seconds"] == {
+        "requested": 600,
+        "effective": 600,
+        "enforcement": "runtime",
+    }
+
+
+def test_resolve_launch_rejects_budget_before_runtime_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_executable",
+        lambda name: (_ for _ in ()).throw(AssertionError(name)),
+    )
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="does not fit"):
+        LAUNCHER.resolve_launch(
+            profile_name="normal",
+            session="session",
+            pane="pane",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="deepagents",
+            grant_wall_clock_seconds="600",
+            remaining_authorized_task_allowance=500,
+            task="task",
+        )
 
 
 def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(

@@ -4,6 +4,11 @@ Project OS owns capability requirements and evidence requirements. The active
 executor resolves those requirements to tools available in its current runtime.
 Resolution never changes authority, permissions, or source ownership.
 
+For coordinated DeepAgents work, capability selection is controller-owned:
+Herdr forwards approved selectors, `dcode-project` validates and enforces
+them, and handoff records facts and provenance only. No tool observation can
+settle ownership or authorize replay.
+
 ## Requirement Contract
 
 Before selecting a tool, record:

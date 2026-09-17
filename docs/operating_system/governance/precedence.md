@@ -29,6 +29,12 @@ drift, not a precedence decision.
 
 ## Conflict Policy
 
+Within canonical hard invariants, scoped instructions may specialize
+execution but may not transfer ownership. Plan plus Git remains workflow truth;
+the attempt contract owns lifecycle semantics; worker wrappers own execution
+facts; transport layers own delivery and diagnostics only. Missing observation
+does not override durable uncertainty.
+
 - no procedure, skill, template, example, or generated projection may weaken a canonical hard invariant
 - fail on duplicate rule or prompt names in same layer
 - fail on missing `required_reads` targets

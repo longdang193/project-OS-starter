@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -47,13 +48,29 @@ except ModuleNotFoundError:
         parse_result_receipt,
     )
 try:
-    from herdr_attempt_contract import AttemptContractError, grant_digest, normalize_runtime_grant
-except ModuleNotFoundError:
-    from scripts.herdr_attempt_contract import (
+    from herdr_attempt_contract import (
         AttemptContractError,
+        WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         grant_digest,
         normalize_runtime_grant,
+        remaining_attempt_seconds,
+        resolve_attempt_budget,
     )
+except (ModuleNotFoundError, ImportError):
+    _contract_path = Path(__file__).with_name("herdr_attempt_contract.py")
+    _contract_spec = importlib.util.spec_from_file_location(
+        "_project_herdr_attempt_contract", _contract_path
+    )
+    if _contract_spec is None or _contract_spec.loader is None:
+        raise
+    _contract_module = importlib.util.module_from_spec(_contract_spec)
+    _contract_spec.loader.exec_module(_contract_module)
+    AttemptContractError = _contract_module.AttemptContractError
+    WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = _contract_module.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
+    grant_digest = _contract_module.grant_digest
+    normalize_runtime_grant = _contract_module.normalize_runtime_grant
+    remaining_attempt_seconds = _contract_module.remaining_attempt_seconds
+    resolve_attempt_budget = _contract_module.resolve_attempt_budget
 
 
 class LaunchBlocked(RuntimeError):
@@ -1366,33 +1383,6 @@ def _unique_agent_name(agent_name: str) -> str:
     return f"{agent_name[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix) - 1]}-{suffix}"
 
 
-def _normalize_runtime_grant(
-    *,
-    executor: str,
-    grant_turns: str | int | None,
-    grant_wall_clock_seconds: str | int | None,
-    mcp_select: list[str] | None,
-    grant_child_agents: str | None = None,
-) -> dict[str, Any]:
-    try:
-        runtime_grant = normalize_runtime_grant(
-            executor=executor,
-            grant_turns=grant_turns,
-            grant_wall_clock_seconds=grant_wall_clock_seconds,
-            mcp_select=mcp_select,
-            grant_child_agents=grant_child_agents,
-        )
-    except AttemptContractError as exc:
-        message = str(exc)
-        if executor == "codex" and "numeric wall-clock budget" in message:
-            message = "Codex strict wall-clock enforcement is unavailable; use `native`."
-        raise LaunchBlocked(message) from exc
-    runtime_grant["outer_watchdog_seconds"] = (
-        int(_DEEPAGENTS_RUN_TIMEOUT) if executor == "deepagents" else None
-    )
-    return runtime_grant
-
-
 def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
     registry = evidence.get("registry_launcher")
     grant = registry.get("runtime_grant") if isinstance(registry, dict) else None
@@ -1988,18 +1978,42 @@ def resolve_launch(
     plan_identity: str | None = None,
     task_sha256: str | None = None,
     grant_digest_value: str | None = None,
+    remaining_authorized_task_allowance: int | float | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     launch_started = time.monotonic()
     if executor not in _EXECUTORS:
         raise LaunchBlocked(f"Unsupported executor: {executor}")
     task_text = _validate_task(task)
-    runtime_grant = _normalize_runtime_grant(
-        executor=executor,
-        grant_turns=grant_turns,
-        grant_wall_clock_seconds=grant_wall_clock_seconds,
-        mcp_select=mcp_select,
-        grant_child_agents=grant_child_agents,
-    )
+    try:
+        runtime_grant = normalize_runtime_grant(
+            executor=executor,
+            grant_turns=grant_turns,
+            grant_wall_clock_seconds=grant_wall_clock_seconds,
+            mcp_select=mcp_select,
+            grant_child_agents=grant_child_agents,
+        )
+    except AttemptContractError as exc:
+        message = str(exc)
+        if executor == "codex" and "numeric wall-clock budget" in message:
+            message = "Codex strict wall-clock enforcement is unavailable; use `native`."
+        raise LaunchBlocked(message) from exc
+    runtime_grant["outer_watchdog_seconds"] = int(_DEEPAGENTS_RUN_TIMEOUT) if executor == "deepagents" else None
+    if executor == "deepagents":
+        allowance = (
+            WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
+            if remaining_authorized_task_allowance is None
+            else remaining_authorized_task_allowance
+        )
+        try:
+            effective_budget = resolve_attempt_budget(
+                runtime_grant["wall_clock_seconds"]["requested"],
+                allowance,
+                remaining_attempt_seconds(time.monotonic() - launch_started),
+            )
+        except AttemptContractError as exc:
+            raise LaunchBlocked(str(exc)) from exc
+        runtime_grant["wall_clock_seconds"]["effective"] = effective_budget
+        runtime_grant["wall_clock_seconds"]["enforcement"] = "runtime"
     requested_local_capabilities = list(local_capabilities or [])
     effective_local_capabilities = _normalize_local_capabilities(requested_local_capabilities)
     delivery_task = _project_runtime_grant(task_text, runtime_grant)
@@ -2106,8 +2120,8 @@ def resolve_launch(
             *(["--max-turns", str(runtime_grant["turns"]["requested"])]
               if runtime_grant["turns"]["requested"] != _NATIVE_GRANT_VALUE
               else []),
-            *(["--timeout", str(runtime_grant["wall_clock_seconds"]["requested"])]
-              if runtime_grant["wall_clock_seconds"]["requested"] != _NATIVE_GRANT_VALUE
+            *(["--timeout", str(runtime_grant["wall_clock_seconds"]["effective"])]
+              if runtime_grant["wall_clock_seconds"]["effective"] != _NATIVE_GRANT_VALUE
               else []),
             *sum(
                 (["--mcp-select", _powershell_literal(value)] for value in (mcp_select or [])),
@@ -2248,6 +2262,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-sha256")
     parser.add_argument("--grant-digest")
     parser.add_argument("--prior-attempt-known", choices=["true", "false"], default="false")
+    parser.add_argument("--remaining-authorized-task-allowance", type=float)
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -2372,6 +2387,7 @@ def _main_body(args: argparse.Namespace) -> int:
             plan_identity=args.plan_identity,
             task_sha256=args.task_sha256,
             grant_digest_value=args.grant_digest,
+            remaining_authorized_task_allowance=args.remaining_authorized_task_allowance,
         )
         if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
             raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")

@@ -4,6 +4,11 @@ Use `Artifact Selection` when artifact choice is unclear. Use `Executor
 Selection` when task runtime choice is unclear. Create the smallest policy or
 artifact needed for safe execution.
 
+CoS owns assignment, continuation, escalation, and acceptance. The shared
+attempt contract owns admission and settlement semantics. MAIN AGENTS own only
+bounded execution and lane-local evidence; `NEEDS_CONTEXT` requires explicit
+continuation after prior ownership settles.
+
 ## Artifact Selection
 
 | Condition | Action |

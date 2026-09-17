@@ -37,7 +37,10 @@ cross-repository work.
 
 CoS activates only under a native Codex lead controller. CoS assigns top-level
 MAIN AGENTS through Herdr. Each MAIN AGENT receives a bounded task and owns
-execution, evidence, lane-local Git state, and lifecycle for its assigned lane. A MAIN
+execution, evidence, and lane-local changes. The shared attempt contract owns
+admission and settlement semantics; the worker wrapper owns execution,
+deadlines, descendants, cleanup, and receipts; Herdr owns delivery and
+diagnostic observation. A MAIN
 AGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
 that lane when `delegation.child_agents: allow`. Sub-agents must not spawn peer
 MAIN AGENTS, activate CoS, or

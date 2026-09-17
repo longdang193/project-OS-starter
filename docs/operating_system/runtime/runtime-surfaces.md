@@ -45,6 +45,16 @@ runtime, rules, skills, root instructions, and hooks.
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 
+## DeepAgents Boundary Contract
+
+- Plan plus Git owns workflow truth, authority, dependencies, checkpoints, and acceptance history.
+- CoS owns assignment, continuation, escalation, and acceptance decisions.
+- `scripts/herdr_attempt_contract.py` owns admission, budget containment, settlement proof, lifecycle, and eligibility semantics.
+- `scripts/dcode_project.py` owns worker execution, deadlines, descendants, cleanup, receipts, and same-worktree attempt claims.
+- Herdr owns target selection, transport, and diagnostic observation; pane reads, waits, and markers never prove retirement, authorize retry, or accept work.
+- Ordinary personal-local probes may invoke `dcode-project` directly. Coordinated Git-tracked work enters through `herdr_main_launcher.py` or `herdr_parallel_dispatch.py`, which supplies correlated identity and grant evidence.
+- `NEEDS_CONTEXT` requests information, not replay. Continuation requires settled ownership, explicit controller decision, remaining durable authority, and updated context.
+
 ## Policy
 
 - Canonical repo sources remain source of truth.

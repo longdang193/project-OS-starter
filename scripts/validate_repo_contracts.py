@@ -334,6 +334,50 @@ def validate_ssot_contracts(root: Path) -> list[ValidationIssue]:
     return issues
 
 
+def validate_runtime_boundary_guidance(root: Path) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    dispatcher = root / "scripts" / "herdr_parallel_dispatch.py"
+    launcher = root / "scripts" / "herdr_main_launcher.py"
+    dcode = root / "scripts" / "dcode_project.py"
+    contract = root / "scripts" / "herdr_attempt_contract.py"
+    if not all(path.is_file() for path in (dispatcher, launcher, dcode, contract)):
+        return issues
+
+    dispatcher_text = dispatcher.read_text(encoding="utf-8", errors="ignore")
+    launcher_text = launcher.read_text(encoding="utf-8", errors="ignore")
+    dcode_text = dcode.read_text(encoding="utf-8", errors="ignore")
+    contract_text = contract.read_text(encoding="utf-8", errors="ignore")
+    if "_normalize_runtime_grant" in dispatcher_text or "_normalize_runtime_grant" in launcher_text:
+        issues.append(ValidationIssue(
+            "runtime_boundary", "scripts/herdr_parallel_dispatch.py",
+            "production launcher and dispatcher must use public normalize_runtime_grant",
+        ))
+    if re.search(r"^_ADMISSION_RESULTS\s*=", dcode_text, re.MULTILINE):
+        issues.append(ValidationIssue(
+            "runtime_boundary", "scripts/dcode_project.py",
+            "admission results must come from herdr_attempt_contract",
+        ))
+    if "ADMISSION_RESULTS" not in contract_text:
+        issues.append(ValidationIssue(
+            "runtime_boundary", "scripts/herdr_attempt_contract.py",
+            "shared attempt contract must define ADMISSION_RESULTS",
+        ))
+    canonical = root / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md"
+    if canonical.is_file():
+        text = canonical.read_text(encoding="utf-8", errors="ignore")
+        for marker in (
+            "scripts/herdr_attempt_contract.py",
+            "scripts/dcode_project.py",
+            "Herdr owns top-level lane/session/pane lifecycle and diagnostic observation",
+        ):
+            if marker not in text:
+                issues.append(ValidationIssue(
+                    "runtime_boundary", relative_path(canonical, root),
+                    f"canonical runtime guidance must reference `{marker}`",
+                ))
+    return issues
+
+
 def _is_metadata_capable(path: Path) -> bool:
     analysis = _analyze_metadata_file(path)
     return analysis[0]
@@ -557,6 +601,10 @@ def main(argv: list[str] | None = None) -> int:
     ssot_issues = validate_ssot_contracts(root)
     if ssot_issues:
         return report_issues(ssot_issues)
+
+    boundary_issues = validate_runtime_boundary_guidance(root)
+    if boundary_issues:
+        return report_issues(boundary_issues)
 
     if args.sync_starter_kit_tier:
         patched = sync_starter_kit_distribution_tier(root)

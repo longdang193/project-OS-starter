@@ -99,6 +99,20 @@ back to Codex browser or web MCPs.
 Keep DeepAgents work inside trusted one-user workspace, retain controller path
 checks, and verify Git scope before acceptance.
 
+### Coordinated Attempt Boundary
+
+Ordinary personal-local probes may call `dcode-project` directly. Coordinated
+Git-tracked DeepAgents work uses `herdr_main_launcher.py` or
+`herdr_parallel_dispatch.py`; those paths bind assignment identity, grant
+digest, prior-attempt evidence, remaining authority, and effective budget.
+The shared attempt contract owns admission, settlement, lifecycle, and
+eligibility. `dcode-project` owns worker execution, descendants, cleanup, and
+receipts. Herdr owns transport and diagnostics only.
+
+`NEEDS_CONTEXT` requests information; it does not authorize replay. Continue
+only after ownership settles, controller authorizes continuation, durable
+authority remains, and task context is updated.
+
 ### Herdr Observation
 
 Herdr remains transient diagnostic observation. Use `api snapshot`, `pane list`,
@@ -187,9 +201,7 @@ credentials, config secrets, raw headers, cookies, or approval authority through
 task text. `codex.mcp.handoff.v1` stays validated facts and provenance, not tool
 access; controller deletes handoff after use.
 
-Herdr does not inject `--max-turns` or `--timeout` into normal DeepAgents runs;
-DeepAgents keeps control of its native execution budget. Direct `dcode-project`
-launches apply a `420`-second wrapper safety ceiling when callers omit
+Direct `dcode-project` launches apply a `420`-second wrapper safety ceiling when callers omit
 `--timeout`; explicit `--timeout N` remains authoritative. Herdr retains one
 30-minute outer watchdog to prevent an abandoned pane process from blocking the
 controller. Upgrade smoke probes may pass explicit shorter bounds because they
@@ -200,7 +212,9 @@ observation transport window. Remove this migration/backoff cap only after
 provider retry behavior has a bounded contract and matching live proof.
 
 An optional CoS Runtime Grant may project explicit DeepAgents `--max-turns` or
-`--timeout` values. DeepAgents native defaults remain unchanged. Direct
+`--timeout` values. DeepAgents native defaults remain unchanged. Coordinated
+launches resolve effective worker timeout from remaining task authority,
+remaining attempt time, and settlement reserve before forwarding it. Direct
 `dcode-project` accepts any positive explicit `--timeout N`; that value is
 enforced by both the native DeepAgents process and its wrapper. Herdr-mediated
 DeepAgents wall-clock grants above its 1800-second watchdog fail closed, while

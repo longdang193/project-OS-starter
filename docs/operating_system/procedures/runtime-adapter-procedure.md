@@ -2,6 +2,12 @@
 
 ## Contract
 
+Coordinated DeepAgents enters through the controller-owned launcher or
+dispatcher. Direct `dcode-project` remains for ordinary personal-local probes;
+it is not a second coordination system. The attempt contract owns lifecycle
+semantics, `dcode-project` owns worker facts, and Herdr owns transport and
+diagnostic observation.
+
 1. `AGENTS.md` is the generated shared global baseline contract.
 2. `~/.codex`, `~/.claude`, `~/.gemini` are runtime targets.
 3. Runtime targets are generated and deployed only.

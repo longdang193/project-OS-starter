@@ -16,7 +16,7 @@ def test_deepagents_mcp_escalation_stays_controller_mediated() -> None:
         "Classify each required MCP capability as pre-dispatch or mid-task.",
         "DeepAgents may use MCP only when launcher receives explicit `--mcp-select`",
         "return `NEEDS_CONTEXT` with missing capability",
-        "retries same plan task.",
+        "`NEEDS_CONTEXT` requests information; it does not authorize replay.",
         "CoS does not advance the task ledger from `NEEDS_CONTEXT`.",
     ):
         assert text in skill

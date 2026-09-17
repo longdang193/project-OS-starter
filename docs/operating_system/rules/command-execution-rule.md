@@ -17,6 +17,10 @@ distribution_tier: starter_kit
 Use approved command patterns by default, escalate before risky operations, and
 prevent destructive execution without explicit approval flow.
 
+Exact authority must match repository, branch or ref, operation, lane or task,
+and conditions. Missing or exceptional authority still requires confirmation;
+scope specificity cannot create authority.
+
 ## Allow
 
 - `git status`

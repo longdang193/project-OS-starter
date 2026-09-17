@@ -10,6 +10,11 @@ distribution_tier: starter_kit
 
 Execute an approved implementation plan against current repository truth, preserve unrelated work, and verify each material task before advancing.
 
+Runtime completion, pane output, and transport acknowledgement never replace
+plan plus Git reconciliation or task acceptance. Continuation requires settled
+prior ownership, explicit controller authority, remaining plan allowance, and
+updated context.
+
 This skill owns plan execution. It does not own design decisions, planning structure, final completion claims, Git safety rules, debugging technique, or parallel-lane coordination.
 
 ## Preconditions

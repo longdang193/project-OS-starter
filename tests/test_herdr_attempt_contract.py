@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib.util
 from pathlib import Path
 
 import pytest
 
-from scripts import herdr_attempt_contract as contract
-
-
 ROOT = Path(__file__).parents[1]
+_SPEC = importlib.util.spec_from_file_location(
+    "local_herdr_attempt_contract", ROOT / "scripts" / "herdr_attempt_contract.py"
+)
+assert _SPEC is not None and _SPEC.loader is not None
+contract = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(contract)
 
 
 def test_contract_module_uses_stdlib_only() -> None:
@@ -230,3 +234,15 @@ def test_remaining_attempt_seconds_enforces_ceiling_boundary() -> None:
     assert contract.remaining_attempt_seconds(1800) == 0
     with pytest.raises(contract.AttemptContractError, match="ceiling"):
         contract.remaining_attempt_seconds(1801)
+
+
+def test_normalize_attempt_rejects_string_prior_attempt_known() -> None:
+    with pytest.raises(contract.AttemptContractError, match="prior_attempt_known"):
+        contract.normalize_attempt(
+            {
+                "lane_id": "lane-7",
+                "task": "run verification",
+                "attempt_id": "attempt-3",
+                "prior_attempt_known": "false",
+            }
+        )

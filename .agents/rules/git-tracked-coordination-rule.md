@@ -18,6 +18,11 @@ To update: edit canonical source, then run sync.
 
 For Git-tracked coordinated work:
 
+- The shared attempt contract owns admission, resource settlement, lifecycle,
+  budget containment, and eligibility. The worker wrapper owns execution,
+  deadlines, descendants, cleanup, and receipts. Herdr owns transport and
+  diagnostic observation only.
+
 - Git owns workspace identity, branch, base ancestry, `HEAD`, history,
   worktrees, and actual repository changes.
 - The active implementation plan owns task order, dependencies, active task or
