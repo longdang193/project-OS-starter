@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -2487,6 +2488,135 @@ def test_deepagents_main_waits_for_receipt_after_terminal_observation(
     assert assignment["status"] == ("completed" if worker_exit_code == 0 else "failed")
     assert assignment["execution"]["worker_exit_code"] == worker_exit_code
     assert assignment["launcher_exit_code"] == assignment["exit_code"] == expected_return
+
+
+def test_deepagents_main_exposes_confirmed_receipt_capability_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    capability_digest = hashlib.sha256(b'["git"]').hexdigest()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+            "local_capabilities": {
+                "requested": ["git"],
+                "effective": ["git"],
+                "verification_commands": ["git"],
+                "source_task_sha256": LAUNCHER._sha256_text("assign lane"),
+                "digest": capability_digest,
+            },
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    receipt = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "recovery_required": False,
+        "capability_state": "confirmed",
+        "capabilities": {
+            "requested": ["git"],
+            "passed_to_worker": ["git"],
+            "validated_available": ["git"],
+            "digest": capability_digest,
+            "validation_error": None,
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr", "-n", "task"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+            "lifecycle_receipt": receipt,
+        },
+    )
+
+    assert LAUNCHER.main([
+        "--profile", "normal", "--session", "session", "--pane", "pane",
+        "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+        "--local-capability", "git", "--task", "assign lane",
+    ]) == 0
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["capability_state"] == "confirmed"
+    assert assignment["capabilities"] == receipt["capabilities"]
+
+
+def test_deepagents_main_does_not_promote_projected_capabilities_without_receipt_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+            "local_capabilities": {
+                "requested": ["git"],
+                "effective": ["git"],
+                "verification_commands": ["git"],
+                "source_task_sha256": LAUNCHER._sha256_text("assign lane"),
+                "digest": hashlib.sha256(b'["git"]').hexdigest(),
+            },
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr", "-n", "task"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+            "lifecycle_receipt": {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 0,
+                "descendant_state": "terminated",
+                "cleanup_state": "removed",
+                "recovery_required": False,
+                "capability_state": "unavailable",
+            },
+        },
+    )
+
+    assert LAUNCHER.main([
+        "--profile", "normal", "--session", "session", "--pane", "pane",
+        "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+        "--local-capability", "git", "--task", "assign lane",
+    ]) == 0
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["capability_state"] == "unavailable"
+    assert "capabilities" not in assignment
 
 
 def test_deepagents_zero_exit_failed_report_is_not_completion() -> None:

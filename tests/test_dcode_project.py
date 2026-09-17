@@ -107,6 +107,13 @@ def test_result_receipt_keeps_capability_and_lifecycle_evidence(tmp_path: Path) 
         "available": ["git"],
         "effective": ["git"],
     }
+    assert payload["capabilities"] == {
+        "requested": ["git"],
+        "passed_to_worker": ["git"],
+        "validated_available": ["git"],
+        "digest": LAUNCHER._sha256_json(["git"]),
+        "validation_error": None,
+    }
     assert payload["worker"]["descendant_state"] == "unknown"
     assert payload["recovery_required"] is True
 

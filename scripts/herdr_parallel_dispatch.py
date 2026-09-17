@@ -23,7 +23,6 @@ try:
         NATIVE_GRANT_VALUE,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         assignment_id as _assignment_id,
-        attempt_decision,
         grant_digest as _contract_grant_digest,
         normalize_runtime_grant,
         resolve_attempt_budget,
@@ -42,7 +41,6 @@ except (ModuleNotFoundError, ImportError):
     NATIVE_GRANT_VALUE = _contract_module.NATIVE_GRANT_VALUE
     WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = _contract_module.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
     _assignment_id = _contract_module.assignment_id
-    attempt_decision = _contract_module.attempt_decision
     _contract_grant_digest = _contract_module.grant_digest
     normalize_runtime_grant = _contract_module.normalize_runtime_grant
     resolve_attempt_budget = _contract_module.resolve_attempt_budget
@@ -54,6 +52,7 @@ MAX_CONCURRENCY = 2
 _LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 TIMEOUT_OWNER = "dcode-project"
 _REAPING_RESERVE_SECONDS = 30.0
+_DISPATCH_DEADLINE_SECONDS = 5.0
 _REQUIRED_FIELDS = (
     "lane_id",
     "repository_identity",
@@ -578,11 +577,11 @@ def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) 
     if not isinstance(expected_capabilities, Mapping):
         return grant_matches
     prep_capabilities = registry.get("local_capabilities") if isinstance(registry, Mapping) else None
-    assignment_capabilities = assignment.get("local_capabilities") if isinstance(assignment, Mapping) else None
+    assignment_capabilities = assignment if isinstance(assignment, Mapping) else None
     return (
         grant_matches
         and _capability_evidence_matches(expected_capabilities, prep_capabilities)
-        and _capability_evidence_matches(expected_capabilities, assignment_capabilities)
+        and _worker_capability_evidence_matches(expected_capabilities, assignment_capabilities)
     )
 
 
@@ -598,6 +597,23 @@ def _capability_evidence_matches(
         if key in actual and actual.get(key) != expected.get("effective", []):
             return False
     return True
+
+
+def _worker_capability_evidence_matches(
+    expected: Mapping[str, Any], assignment: object
+) -> bool:
+    if not isinstance(assignment, Mapping) or assignment.get("capability_state") != "confirmed":
+        return False
+    actual = assignment.get("capabilities")
+    if not isinstance(actual, Mapping):
+        return False
+    return (
+        actual.get("requested") == expected.get("requested", [])
+        and actual.get("passed_to_worker") == expected.get("effective", [])
+        and actual.get("validated_available") == expected.get("effective", [])
+        and actual.get("digest") == expected.get("digest")
+        and actual.get("validation_error") is None
+    )
 
 
 def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:
@@ -673,11 +689,16 @@ def run_lane(
                 "exit_code": None,
                 "records": [],
                 "stderr": "missing finite attempt deadline",
-                "unresolved": True,
-                "capacity": "occupied",
+                "unresolved": False,
+                "capacity": "retired",
                 "failure_kind": "deadline_missing",
             }
         timeout_seconds = max(0.0, float(deadline) - time.monotonic()) + _REAPING_RESERVE_SECONDS
+    dispatch_started = time.monotonic()
+    attempt_deadline = lane.get("attempt_deadline")
+    dispatch_deadline = dispatch_started + _DISPATCH_DEADLINE_SECONDS
+    if isinstance(attempt_deadline, (int, float)) and not isinstance(attempt_deadline, bool):
+        dispatch_deadline = min(dispatch_deadline, float(attempt_deadline))
     bound_lane = dict(lane)
     try:
         _bind_requested_grant(bound_lane)
@@ -688,15 +709,27 @@ def run_lane(
             "exit_code": None,
             "records": [],
             "stderr": str(exc),
-            "unresolved": True,
-            "capacity": "occupied",
+            "unresolved": False,
+            "capacity": "retired",
             "failure_kind": "grant_invalid",
         }
-    command = _launcher_command(
-        bound_lane,
-        python_executable=python_executable,
-        launcher_path=launcher_path,
-    )
+    try:
+        command = _launcher_command(
+            bound_lane,
+            python_executable=python_executable,
+            launcher_path=launcher_path,
+        )
+    except (TypeError, ValueError, OSError, RuntimeError) as exc:
+        return {
+            "lane_id": lane_id,
+            "command": [],
+            "exit_code": None,
+            "records": [],
+            "stderr": str(exc),
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "launch_preparation_failed",
+        }
     capture_dir = Path(tempfile.mkdtemp(prefix=f"herdr-timeout-{lane_id}-"))
     stdout_path = capture_dir / "stdout.log"
     stderr_path = capture_dir / "stderr.log"
@@ -705,6 +738,17 @@ def run_lane(
         with stdout_path.open("w+", encoding="utf-8") as stdout_file, stderr_path.open(
             "w+", encoding="utf-8"
         ) as stderr_file:
+            if time.monotonic() >= dispatch_deadline:
+                return {
+                    "lane_id": lane_id,
+                    "command": command,
+                    "exit_code": None,
+                    "records": [_tagged(lane_id, "capacity", {"state": "retired"})],
+                    "stderr": "dispatch deadline exceeded before worker launch",
+                    "unresolved": False,
+                    "capacity": "retired",
+                    "failure_kind": "dispatch_deadline_exceeded",
+                }
             process = popen_factory(
                 command,
                 cwd=str(lane["worktree"]),
@@ -811,13 +855,11 @@ def run_lane(
             "cleanup_state": cleanup.get("state") if isinstance(cleanup, Mapping) else None,
             "descendant_state": descendant_state,
         }
-        resource_settled = attempt_decision(
-            {"state": "active"},
-            prior_attempt_known=True,
-            receipt=settlement,
+        resource_settled = terminal_settlement_proven(
+            settlement,
             cleanup_confirmed=isinstance(cleanup, Mapping) and cleanup.get("state") == "removed",
             descendants_retired=descendant_state in {"terminated", "not_started"},
-        )["settlement_proven"]
+        )
         if not resource_settled:
             return "occupied", True, "execution or cleanup unsettled", False
         task_result = assignment.get("task_result")
@@ -883,6 +925,7 @@ def run_parallel(
     *,
     max_concurrency: int = MAX_CONCURRENCY,
     stop_event: Any | None = None,
+    event_callback: Any | None = None,
     **run_kwargs: Any,
 ) -> dict[str, Any]:
     """Run admitted lanes concurrently; return derived evidence only."""
@@ -894,12 +937,40 @@ def run_parallel(
         if not isinstance(admitted, list):
             raise ValueError("admitted lanes must be a list")
         admission = _admit_lanes(admitted, max_concurrency=max_concurrency)
-        admission["rejected"] = list(source.get("rejected", [])) + admission["rejected"]
+        for category in ("deferred", "blocked", "rejected"):
+            supplied = source.get(category, [])
+            if not isinstance(supplied, list):
+                raise ValueError(f"{category} lanes must be a list")
+            admission[category] = list(supplied) + admission.get(category, [])
     else:
         admission = load_lane_descriptors_from_items(source, max_concurrency=max_concurrency)
 
     if not 1 <= max_concurrency <= MAX_CONCURRENCY:
         raise ValueError(f"max_concurrency must be between 1 and {MAX_CONCURRENCY}")
+
+    callback_errors: list[dict[str, Any]] = []
+
+    def emit(event: dict[str, Any]) -> None:
+        if event_callback is None:
+            return
+        try:
+            event_callback(event)
+        except BaseException as exc:
+            callback_errors.append({"event": event, "error": str(exc)})
+
+    emitted_admission_ids: set[str] = set()
+    for category in ("admitted", "deferred", "blocked", "rejected"):
+        for item in admission.get(category, []):
+            lane_id = str(item.get("lane_id", "<missing>"))
+            if lane_id in emitted_admission_ids:
+                continue
+            emitted_admission_ids.add(lane_id)
+            emit({
+                "tag": "lane_admission",
+                "category": category,
+                "lane_id": lane_id,
+                "lane": item,
+            })
 
     results: dict[str, dict[str, Any]] = {}
     completion_order: list[str] = []
@@ -928,12 +999,14 @@ def run_parallel(
                     "failure_kind": "coordinator_error",
                 }
                 completion_order.append(lane_id)
+            emit({"tag": "lane_result", **results[lane_id]})
     return {
         "admitted": admission["admitted"],
         "deferred": admission.get("deferred", []),
         "blocked": admission.get("blocked", []),
         "rejected": admission["rejected"],
         "interrupted": interrupted,
+        "callback_errors": callback_errors,
         "results": [
             results[lane_id]
             for lane_id in completion_order
@@ -951,11 +1024,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    result = run_parallel(args.lanes_file, max_concurrency=args.max_concurrency)
-    for item in result["results"]:
-        print(json.dumps({"tag": "lane_result", **item}, sort_keys=True))
-    for item in result["rejected"]:
-        print(json.dumps({"tag": "lane_rejected", **item}, sort_keys=True))
+    result = run_parallel(
+        args.lanes_file,
+        max_concurrency=args.max_concurrency,
+        event_callback=lambda event: print(json.dumps(event, sort_keys=True), flush=True),
+    )
     return 0 if not result["rejected"] and all(not item.get("unresolved") for item in result["results"]) else 2
 
 

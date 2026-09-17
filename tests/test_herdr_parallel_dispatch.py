@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -158,6 +159,178 @@ def test_run_parallel_starts_both_lanes_before_either_finishes(tmp_path: Path, m
     assert started == {"a", "b"}
     assert finished == {"a", "b"}
     assert {item["lane_id"] for item in result["results"]} == {"a", "b"}
+
+
+def test_run_parallel_emits_admission_and_terminal_events_once(tmp_path: Path, monkeypatch) -> None:
+    events: list[dict[str, object]] = []
+
+    def fake_run_lane(item, **kwargs):
+        return {"lane_id": item["lane_id"], "unresolved": False, "capacity": "retired"}
+
+    monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
+    result = dispatcher.run_parallel(
+        [lane("a", tmp_path), lane("b", tmp_path), lane("c", tmp_path)],
+        event_callback=events.append,
+    )
+
+    assert [event["category"] for event in events[:3]] == [
+        "admitted",
+        "admitted",
+        "deferred",
+    ]
+    assert [event["tag"] for event in events[3:]] == ["lane_result", "lane_result"]
+    assert {event["lane_id"] for event in events[3:]} == {"a", "b"}
+    assert len(result["results"]) == 2
+    assert result["callback_errors"] == []
+
+
+def test_run_parallel_preserves_callback_errors_without_replacing_result(
+    tmp_path: Path, monkeypatch
+) -> None:
+    def fake_run_lane(item, **kwargs):
+        return {"lane_id": item["lane_id"], "unresolved": False, "capacity": "retired"}
+
+    monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
+
+    def callback(event):
+        if event["tag"] == "lane_result":
+            raise RuntimeError("observer failed")
+
+    result = dispatcher.run_parallel([lane("a", tmp_path)], event_callback=callback)
+
+    assert result["results"][0]["lane_id"] == "a"
+    assert result["callback_errors"][0]["error"] == "observer failed"
+
+
+def test_run_parallel_observes_fast_lane_before_slow_sibling_finishes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    slow_started = threading.Event()
+    release_slow = threading.Event()
+    fast_observed = threading.Event()
+
+    def fake_run_lane(item, **kwargs):
+        if item["lane_id"] == "b":
+            slow_started.set()
+            assert release_slow.wait(timeout=2)
+        else:
+            assert slow_started.wait(timeout=2)
+        return {"lane_id": item["lane_id"], "unresolved": False, "capacity": "retired"}
+
+    def callback(event):
+        if event["tag"] == "lane_result" and event["lane_id"] == "a":
+            fast_observed.set()
+            release_slow.set()
+
+    monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
+    result = dispatcher.run_parallel(
+        [lane("a", tmp_path), lane("b", tmp_path)],
+        event_callback=callback,
+    )
+
+    assert fast_observed.is_set()
+    assert {item["lane_id"] for item in result["results"]} == {"a", "b"}
+
+
+def test_run_parallel_preserves_pre_admitted_mapping_categories(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        dispatcher,
+        "run_lane",
+        lambda item, **kwargs: {
+            "lane_id": item["lane_id"],
+            "unresolved": False,
+            "capacity": "retired",
+        },
+    )
+    deferred = {"lane_id": "deferred", "reason": "capacity limit 2"}
+    blocked = {"lane_id": "blocked", "reason": "resource conflict"}
+    result = dispatcher.run_parallel({
+        "admitted": [lane("a", tmp_path)],
+        "deferred": [deferred],
+        "blocked": [blocked],
+        "rejected": [],
+    })
+
+    assert result["deferred"] == [deferred]
+    assert result["blocked"] == [blocked]
+
+
+def test_dispatch_cli_flushes_fast_result_before_slow_sibling(tmp_path: Path) -> None:
+    lanes_file = write_lanes(tmp_path, [lane("fast", tmp_path), lane("slow", tmp_path)])
+    child_code = """
+import sys
+import time
+from scripts import herdr_parallel_dispatch as dispatcher
+
+def fake_run_lane(item, **kwargs):
+    if item["lane_id"] == "slow":
+        time.sleep(1.0)
+    return {"lane_id": item["lane_id"], "unresolved": False, "capacity": "retired"}
+
+dispatcher.run_lane = fake_run_lane
+raise SystemExit(dispatcher.main(["--lanes-file", sys.argv[1]]))
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", child_code, str(lanes_file)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdout is not None
+    try:
+        admissions = [json.loads(process.stdout.readline()) for _ in range(2)]
+        fast_result = json.loads(process.stdout.readline())
+        assert all(item["tag"] == "lane_admission" for item in admissions)
+        assert fast_result["tag"] == "lane_result"
+        assert fast_result["lane_id"] == "fast"
+        assert process.poll() is None
+    finally:
+        process.terminate()
+        process.wait(timeout=3)
+
+
+def test_run_lane_expired_dispatch_deadline_retires_unowned_capacity(tmp_path: Path) -> None:
+    launched = False
+
+    def popen(*args, **kwargs):
+        nonlocal launched
+        launched = True
+        raise AssertionError("expired dispatch launched")
+
+    item = lane("a", tmp_path)
+    item["attempt_deadline"] = time.monotonic() - 1
+    result = dispatcher.run_lane(item, popen_factory=popen)
+
+    assert launched is False
+    assert result["capacity"] == "retired"
+    assert result["unresolved"] is False
+    assert result["failure_kind"] == "dispatch_deadline_exceeded"
+
+
+def test_run_lane_capability_projection_does_not_prove_worker_capability(
+    tmp_path: Path,
+) -> None:
+    item = lane("a", tmp_path)
+    item["local_capabilities"] = ["git"]
+    dispatcher._bind_requested_grant(item)
+    parsed = {
+        "preparation": {
+            "registry_launcher": {
+                "runtime_grant": item["runtime_grant"],
+                "grant_digest": item["grant_digest"],
+                "local_capabilities": item["local_capabilities"],
+            }
+        },
+        "assignment": {
+            "grant_digest": item["grant_digest"],
+            "local_capabilities": item["local_capabilities"],
+            "capability_state": "unavailable",
+        },
+    }
+
+    assert dispatcher._grant_evidence_matches(item, parsed) is False
 
 
 def test_run_parallel_preserves_sibling_failure(monkeypatch, tmp_path: Path) -> None:

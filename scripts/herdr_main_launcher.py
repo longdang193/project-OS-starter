@@ -2565,12 +2565,27 @@ def _main_body(args: argparse.Namespace) -> int:
                 else None,
             )
             receipt_capabilities = receipt.get("capabilities")
-            if not isinstance(receipt_capabilities, dict):
-                receipt_capabilities = receipt.get("shell_capabilities")
-            if isinstance(receipt_capabilities, dict):
+            capability_state = receipt.get("capability_state", "unavailable")
+            assignment["capability_state"] = capability_state
+            if capability_state == "confirmed" and isinstance(receipt_capabilities, dict) and all(
+                name in receipt_capabilities
+                for name in ("requested", "passed_to_worker", "validated_available", "digest")
+            ):
                 projected_capabilities = dict(local_capabilities or {})
-                projected_capabilities.update(receipt_capabilities)
+                projected_capabilities.update(
+                    {
+                        "requested": receipt_capabilities["requested"],
+                        "effective": receipt_capabilities["passed_to_worker"],
+                        "verification_commands": receipt_capabilities["passed_to_worker"],
+                        "digest": receipt_capabilities["digest"],
+                    }
+                )
                 assignment["local_capabilities"] = projected_capabilities
+                assignment["capabilities"] = dict(receipt_capabilities)
+            else:
+                assignment["capability_detail"] = receipt.get(
+                    "capability_detail", "worker capability evidence unavailable"
+                )
             if args.executor == "deepagents":
                 assignment["lifecycle_receipt"] = receipt
                 classified = _classify_deepagents_outcome(

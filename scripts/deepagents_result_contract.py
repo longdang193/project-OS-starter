@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,73 @@ DESCENDANT_STATES = frozenset({"terminated", "not_started", "unknown"})
 TASK_RESULT_SCHEMA = "dcode-project.task-result.v1"
 TASK_RESULT_MAX_BYTES = 16 * 1024
 TASK_RESULT_STATUSES = frozenset({"in_progress", "completed", "failed", "blocked", "unknown"})
+_CAPABILITY_DIGEST_FIELDS = ("requested", "passed_to_worker", "validated_available")
+
+
+def _capability_digest(values: list[str]) -> str:
+    return hashlib.sha256(
+        json.dumps(values, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _capability_list(value: object, name: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise ValueError(f"receipt capability {name} invalid")
+    return list(value)
+
+
+def _capability_evidence(payload: dict[str, Any]) -> dict[str, Any]:
+    canonical = payload.get("capabilities")
+    compatibility = payload.get("shell_capabilities")
+    unavailable = {
+        "capability_state": "unavailable",
+        "capabilities": None,
+        "shell_capabilities": compatibility if isinstance(compatibility, dict) else None,
+    }
+    if canonical is None and compatibility is None:
+        return unavailable
+    if not isinstance(canonical, dict):
+        return {**unavailable, "capability_detail": "canonical capability evidence missing"}
+    try:
+        normalized = {
+            name: _capability_list(canonical.get(name), name)
+            for name in _CAPABILITY_DIGEST_FIELDS
+        }
+        digest = canonical.get("digest")
+        if not isinstance(digest, str) or len(digest) != 64 or any(
+            character not in "0123456789abcdef" for character in digest
+        ):
+            raise ValueError("receipt capability digest invalid")
+        validation_error = canonical.get("validation_error")
+        if validation_error is not None and not isinstance(validation_error, str):
+            raise ValueError("receipt capability validation error invalid")
+        if validation_error is not None:
+            raise ValueError(validation_error or "worker capability validation failed")
+        if digest != _capability_digest(normalized["validated_available"]):
+            raise ValueError("receipt capability digest mismatch")
+        if isinstance(compatibility, dict):
+            shell_requested = _capability_list(compatibility.get("requested"), "requested")
+            shell_available = _capability_list(compatibility.get("available"), "available")
+            shell_effective = _capability_list(compatibility.get("effective"), "effective")
+            if (
+                shell_requested != normalized["requested"]
+                or shell_effective != normalized["passed_to_worker"]
+                or shell_available != normalized["validated_available"]
+            ):
+                raise ValueError("receipt capability evidence disagreement")
+        elif compatibility is not None:
+            raise ValueError("receipt shell capability evidence invalid")
+    except ValueError as exc:
+        return {**unavailable, "capability_detail": str(exc)}
+    return {
+        "capability_state": "confirmed",
+        "capabilities": {
+            **normalized,
+            "digest": digest,
+            "validation_error": None,
+        },
+        "shell_capabilities": compatibility if isinstance(compatibility, dict) else None,
+    }
 
 
 def _validate_payload(payload: object) -> dict[str, Any]:
@@ -68,6 +136,7 @@ def _validate_payload(payload: object) -> dict[str, Any]:
         "recovery_required": recovery_required,
         "remaining_paths": remaining_paths,
         "marker_state": marker_state,
+        "capability_evidence": _capability_evidence(payload),
     }
 
 
@@ -102,6 +171,7 @@ def parse_result_receipt(path: Path, attempt_id: str) -> dict[str, Any]:
         return {"state": "unknown", "detail": str(exc)}
     if payload.get("attempt_id") != attempt_id:
         return {"state": "unknown", "detail": "receipt correlation mismatch"}
+    capability_evidence = fields["capability_evidence"]
     return {
         "state": "confirmed",
         "worker_state": fields["worker_state"],
@@ -112,6 +182,7 @@ def parse_result_receipt(path: Path, attempt_id: str) -> dict[str, Any]:
         "remaining_paths": fields["remaining_paths"],
         "marker_state": fields["marker_state"],
         "recovery_required": fields["recovery_required"],
+        **capability_evidence,
     }
 
 
