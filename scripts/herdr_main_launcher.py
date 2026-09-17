@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
 import json
@@ -89,6 +90,7 @@ _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
 _HERDR_DEFAULT_SESSION = "default"
+_PANE_LOCK_PARENT = "herdr-pane-ownership"
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
@@ -466,6 +468,71 @@ def _herdr_pane(
     if conflicting:
         raise TargetCandidateRejected(f"Pane has conflicting foreground process: {', '.join(conflicting)}")
     return {"pane": selected, "process_info": process_info}
+
+
+def _pane_ownership_lock_path(cwd: Path, session: str, pane: str) -> Path:
+    identity = f"{session}\0{pane}"
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return Path(tempfile.gettempdir()) / _PANE_LOCK_PARENT / f"{digest}.lock"
+
+
+@contextmanager
+def _pane_ownership_lock(cwd: Path, session: str, pane: str):
+    path = _pane_ownership_lock_path(cwd, session, pane)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    if os.name == "nt" and os.fstat(fd).st_size == 0:
+        os.write(fd, b"\0")
+    os.set_inheritable(fd, False)
+    acquired = False
+    try:
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise LaunchBlocked(
+                f"Another launch owns pane `{session}:{pane}`."
+            ) from exc
+        acquired = True
+        yield
+    finally:
+        try:
+            if acquired:
+                if os.name == "nt":
+                    import msvcrt
+
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def _run_with_pane_ownership(
+    cwd: Path,
+    session: str,
+    pane: str,
+    herdr: str,
+    executor: str,
+    command: list[str],
+    env: dict[str, str],
+    timeout: float,
+    verify: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    with _pane_ownership_lock(cwd, session, pane):
+        if verify:
+            _herdr_pane(cwd, session, pane, herdr, executor=executor, env=env)
+        return _run(command, env=env, timeout=timeout)
 
 
 def _resolve_target_selector(
@@ -2472,14 +2539,20 @@ def _main_body(args: argparse.Namespace) -> int:
             pane_run_started = time.monotonic()
             try:
                 try:
-                    result = _run(
-                        command,
-                        env=environment,
-                        timeout=(
+                        result = _run_with_pane_ownership(
+                            args.cwd,
+                            resolved_session,
+                            resolved_pane,
+                            str(evidence["herdr"].get("executable", "")),
+                            args.executor,
+                            command,
+                            environment,
+                        (
                             max(0.01, attempt_deadline - time.monotonic())
                             if args.executor == "deepagents"
                             else _CODEX_START_TIMEOUT
                         ),
+                        verify=bool(evidence["herdr"].get("pane_cwd")),
                     )
                 finally:
                     if args.executor == "deepagents":

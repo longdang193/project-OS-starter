@@ -1644,6 +1644,11 @@ def test_main_watchdog_cleanup_failure_blocks_timeout_completion(
         "_terminate_codex_lane",
         lambda *args, **kwargs: {"requested": True, "verified": False, "state": "processes-remain"},
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {"pane": {"cwd": str(ROOT)}, "process_info": {"foreground_processes": []}},
+    )
 
     def fake_run(command, **kwargs):
         nonlocal calls
@@ -1802,6 +1807,11 @@ def test_main_retries_default_agent_name_after_name_taken(
         "_reconcile_failed_codex_start",
         lambda *args, **kwargs: {"state": "absent", "cleanup": None, "process_ids": []},
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {"pane": {"cwd": str(ROOT)}, "process_info": {"foreground_processes": []}},
+    )
 
     def fake_run(command, **kwargs):
         commands.append(command)
@@ -1888,6 +1898,11 @@ def test_main_preserves_replacement_attempt_when_start_confirmation_fails(
         "_reconcile_failed_codex_start",
         lambda *args, **kwargs: {"state": "absent", "cleanup": None, "process_ids": []},
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {"pane": {"cwd": str(ROOT)}, "process_info": {"foreground_processes": []}},
+    )
 
     def fake_run(command, **kwargs):
         commands.append(command)
@@ -1938,6 +1953,18 @@ def test_launcher_allows_external_codex_controller(monkeypatch: pytest.MonkeyPat
 def test_target_selector_requires_both_auto_values() -> None:
     with pytest.raises(LAUNCHER.LaunchBlocked, match="must be used together"):
         LAUNCHER._resolve_target_selector(ROOT, "auto", "w1:p5", "herdr.exe")
+
+
+def test_pane_ownership_lock_blocks_same_pane_and_releases_after_failure(
+    tmp_path: Path,
+) -> None:
+    with LAUNCHER._pane_ownership_lock(tmp_path, "session", "pane"):
+        with pytest.raises(LAUNCHER.LaunchBlocked, match="owns pane"):
+            with LAUNCHER._pane_ownership_lock(tmp_path, "session", "pane"):
+                pytest.fail("same pane lock acquired")
+
+    with LAUNCHER._pane_ownership_lock(tmp_path, "session", "pane"):
+        pass
 
 
 def test_target_selector_uses_default_session_for_workspace_qualified_pane(
@@ -2175,6 +2202,11 @@ def test_deepagents_main_strips_herdr_environment(
             "role_views_state": "removed",
             "recovery_required": False,
         },
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {"pane": {"cwd": str(ROOT)}, "process_info": {"foreground_processes": []}},
     )
 
     def fake_run(command, **kwargs):
