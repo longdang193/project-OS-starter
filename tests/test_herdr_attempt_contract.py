@@ -60,6 +60,86 @@ def test_normalize_attempt_keeps_identity_fields_separate() -> None:
     assert attempt["runtime_grant"]["delegation"] == {"child_agents": "allow"}
 
 
+def test_assignment_id_uses_repository_plan_and_lane_identity() -> None:
+    first = contract.assignment_id("repo", "plan", "lane-7")
+    second = contract.assignment_id("repo", "plan", "lane-7")
+
+    assert first == second
+    assert first != contract.assignment_id("other-repo", "plan", "lane-7")
+    assert first != contract.assignment_id("repo", "other-plan", "lane-7")
+    assert first != contract.assignment_id("repo", "plan", "lane-8")
+
+
+def test_normalize_attempt_adds_coordinated_assignment_identity() -> None:
+    attempt = contract.normalize_attempt(
+        {
+            "lane_id": "lane-7",
+            "task": "run verification",
+            "attempt_id": "attempt-3",
+            "repository_identity": "repo",
+            "plan_identity": "plan",
+        }
+    )
+
+    assert attempt["assignment_id"] == contract.assignment_id("repo", "plan", "lane-7")
+
+
+@pytest.mark.parametrize(
+    ("claim", "prior_attempt_known", "receipt", "cleanup_confirmed", "descendants_retired", "expected"),
+    [
+        (None, False, None, None, None, "UNCLAIMED"),
+        (None, True, None, None, None, "RECOVERY_REQUIRED"),
+        ({"state": "active"}, False, None, None, None, "ACTIVE"),
+        ({"state": "active"}, False, {"state": "unknown"}, None, None, "ACTIVE"),
+        ({"state": "active"}, False, {"state": "confirmed", "worker_state": "exited", "worker_exit_code": 0, "cleanup_state": "removed", "descendant_state": "terminated", "recovery_required": False}, True, True, "SETTLED"),
+        ({"state": "settled"}, False, {"state": "confirmed", "worker_state": "exited", "worker_exit_code": 0, "cleanup_state": "removed", "descendant_state": "terminated", "recovery_required": False}, True, True, "SETTLED"),
+        ({"state": "settled"}, False, None, None, None, "RECOVERY_REQUIRED"),
+        ({"state": "invalid"}, False, None, None, None, "RECOVERY_REQUIRED"),
+    ],
+)
+def test_derive_lifecycle_state_preserves_unknown_evidence(
+    claim, prior_attempt_known, receipt, cleanup_confirmed, descendants_retired, expected
+) -> None:
+    assert contract.derive_lifecycle_state(
+        claim,
+        prior_attempt_known=prior_attempt_known,
+        receipt=receipt,
+        cleanup_confirmed=cleanup_confirmed,
+        descendants_retired=descendants_retired,
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ("UNCLAIMED", "ELIGIBLE"),
+        ("ACTIVE", "BLOCKED"),
+        ("SETTLED", "ELIGIBLE"),
+        ("RECOVERY_REQUIRED", "RECONCILE"),
+    ],
+)
+def test_eligibility_action_mapping(state: str, expected: str) -> None:
+    assert contract.eligibility_action(state) == expected
+
+
+def test_same_attempt_is_idempotent_only_for_full_binding_match() -> None:
+    binding = {
+        "attempt_id": "attempt-3",
+        "assignment_id": "assignment-1",
+        "repository_identity": "repo",
+        "executor": "deepagents",
+        "task_sha256": "task",
+        "grant_digest": "grant",
+    }
+
+    assert contract.same_attempt_binding(binding, dict(binding)) is True
+    changed = dict(binding, assignment_id="assignment-2")
+    assert contract.same_attempt_binding(binding, changed) is False
+    incomplete = dict(binding)
+    del incomplete["grant_digest"]
+    assert contract.same_attempt_binding(binding, incomplete) is False
+
+
 def test_normalize_attempt_rejects_task_hash_mismatch() -> None:
     with pytest.raises(contract.AttemptContractError, match="does not match"):
         contract.normalize_attempt(

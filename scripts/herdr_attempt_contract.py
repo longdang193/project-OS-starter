@@ -13,6 +13,8 @@ NATIVE_WORKER_WALL_CLOCK_SECONDS = 420
 SETTLEMENT_RESERVE_SECONDS = 30
 NATIVE_GRANT_VALUE = "native"
 CHILD_AGENT_GRANT_VALUES = frozenset({"allow", "deny"})
+LIFECYCLE_STATES = frozenset({"UNCLAIMED", "ACTIVE", "SETTLED", "RECOVERY_REQUIRED"})
+ELIGIBILITY_ACTIONS = frozenset({"BLOCKED", "RECONCILE", "ELIGIBLE"})
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -166,6 +168,23 @@ def grant_digest(executor: str, runtime_grant: Mapping[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _identity_component(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise AttemptContractError(f"{label} must be a non-empty string")
+    return value.strip()
+
+
+def assignment_id(repository_identity: str, plan_identity: str, task_lane_id: str) -> str:
+    payload = {
+        "repository_identity": _identity_component(repository_identity, "repository_identity"),
+        "plan_identity": _identity_component(plan_identity, "plan_identity"),
+        "task_lane_id": _identity_component(task_lane_id, "task_lane_id"),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def normalize_attempt(attempt: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(attempt, Mapping):
         raise AttemptContractError("attempt must be a mapping")
@@ -186,6 +205,29 @@ def normalize_attempt(attempt: Mapping[str, Any]) -> dict[str, Any]:
         raise AttemptContractError("task_sha256 must be a lowercase SHA-256 digest")
     if task_sha256 != computed_sha256:
         raise AttemptContractError("task_sha256 does not match task")
+    repository_identity = values.get("repository_identity")
+    plan_identity = values.get("plan_identity")
+    supplied_assignment_id = values.get("assignment_id")
+    if repository_identity is not None or plan_identity is not None or supplied_assignment_id is not None:
+        if repository_identity is None or plan_identity is None:
+            if supplied_assignment_id is None:
+                raise AttemptContractError(
+                    "coordinated attempts require repository_identity, plan_identity, and assignment_id"
+                )
+            values["assignment_id"] = _identity_component(supplied_assignment_id, "assignment_id")
+        else:
+            repository_identity = _identity_component(repository_identity, "repository_identity")
+            plan_identity = _identity_component(plan_identity, "plan_identity")
+            computed_assignment_id = assignment_id(repository_identity, plan_identity, values["lane_id"])
+            if supplied_assignment_id is not None and supplied_assignment_id != computed_assignment_id:
+                raise AttemptContractError("assignment_id does not match coordinated identity")
+            values.update(
+                {
+                    "repository_identity": repository_identity,
+                    "plan_identity": plan_identity,
+                    "assignment_id": computed_assignment_id,
+                }
+            )
     executor = values.get("executor", "deepagents")
     runtime_grant = normalize_runtime_grant(
         values.get("runtime_grant"),
@@ -203,6 +245,80 @@ def normalize_attempt(attempt: Mapping[str, Any]) -> dict[str, Any]:
         }
     )
     return values
+
+
+def terminal_settlement_proven(
+    receipt: Mapping[str, Any] | None,
+    *,
+    cleanup_confirmed: bool,
+    descendants_retired: bool,
+) -> bool:
+    if not isinstance(receipt, Mapping) or receipt.get("state") != "confirmed":
+        return False
+    if receipt.get("recovery_required") is not False:
+        return False
+    if receipt.get("worker_state") not in {"exited", "failed", "start_failed"}:
+        return False
+    if receipt.get("cleanup_state") != "removed":
+        return False
+    if receipt.get("descendant_state") not in {"terminated", "not_started"}:
+        return False
+    return cleanup_confirmed is True and descendants_retired is True
+
+
+def derive_lifecycle_state(
+    claim: Mapping[str, Any] | None,
+    *,
+    prior_attempt_known: bool,
+    receipt: Mapping[str, Any] | None,
+    cleanup_confirmed: bool | None,
+    descendants_retired: bool | None,
+) -> str:
+    if not isinstance(prior_attempt_known, bool):
+        raise AttemptContractError("prior_attempt_known must be boolean")
+    if claim is None:
+        return "RECOVERY_REQUIRED" if prior_attempt_known else "UNCLAIMED"
+    if not isinstance(claim, Mapping) or claim.get("state") not in {"active", "settled"}:
+        return "RECOVERY_REQUIRED"
+    settled = terminal_settlement_proven(
+        receipt,
+        cleanup_confirmed=cleanup_confirmed is True,
+        descendants_retired=descendants_retired is True,
+    )
+    if settled:
+        return "SETTLED"
+    return "ACTIVE" if claim["state"] == "active" else "RECOVERY_REQUIRED"
+
+
+def eligibility_action(state: str) -> str:
+    mapping = {
+        "UNCLAIMED": "ELIGIBLE",
+        "ACTIVE": "BLOCKED",
+        "SETTLED": "ELIGIBLE",
+        "RECOVERY_REQUIRED": "RECONCILE",
+    }
+    if state not in mapping:
+        raise AttemptContractError("unknown lifecycle state")
+    return mapping[state]
+
+
+def same_attempt_binding(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool:
+    fields = (
+        "attempt_id",
+        "assignment_id",
+        "repository_identity",
+        "executor",
+        "task_sha256",
+        "grant_digest",
+    )
+    if not isinstance(first, Mapping) or not isinstance(second, Mapping):
+        return False
+    return all(
+        isinstance(first.get(field), str)
+        and bool(first[field])
+        and first.get(field) == second.get(field)
+        for field in fields
+    )
 
 
 def remaining_attempt_seconds(
@@ -260,9 +376,14 @@ __all__ = [
     "SETTLEMENT_RESERVE_SECONDS",
     "WHOLE_ATTEMPT_WALL_CLOCK_SECONDS",
     "default_runtime_grant",
+    "assignment_id",
+    "derive_lifecycle_state",
+    "eligibility_action",
     "grant_digest",
     "normalize_attempt",
     "normalize_runtime_grant",
     "remaining_attempt_seconds",
     "resolve_attempt_budget",
+    "same_attempt_binding",
+    "terminal_settlement_proven",
 ]

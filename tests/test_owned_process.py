@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import subprocess
+import signal
 
 import pytest
 
@@ -19,6 +20,35 @@ def test_run_owned_process_captures_bytes_and_status(tmp_path) -> None:
     assert result.status == "success"
     assert result.stdout.replace(b"\r\n", b"\n") == b"out\n"
     assert result.stderr.replace(b"\r\n", b"\n") == b"err\n"
+
+
+def test_run_owned_process_verifies_descendants_after_normal_parent_exit(tmp_path, monkeypatch) -> None:
+    class FakeProcess:
+        pid = 42
+        returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+    group_checks = iter([False, True])
+    kill_calls = []
+    monkeypatch.setattr(owned_process, "_group_gone", lambda pid: next(group_checks))
+    monkeypatch.setattr(owned_process.os, "killpg", lambda pid, sig: kill_calls.append((pid, sig)), raising=False)
+    result = run_owned_process(
+        ["worker"],
+        cwd=tmp_path,
+        timeout=5,
+        capture_output=False,
+        platform_name="posix",
+        popen_factory=lambda *args, **kwargs: FakeProcess(),
+    )
+
+    assert result.status == "success"
+    assert result.cleanup_confirmed is True
+    assert kill_calls == [(42, signal.SIGTERM)]
 
 
 def test_run_owned_process_rejects_output_overflow(tmp_path) -> None:

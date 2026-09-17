@@ -354,6 +354,30 @@ def test_owned_shared_skill_updates_without_force(tmp_path: Path) -> None:
     assert any(destination == deployed_skill / "SKILL.md" for _, destination, _ in pairs)
 
 
+def test_owned_shared_skill_accepts_same_repository_worktree(tmp_path: Path, monkeypatch) -> None:
+    skills_root = tmp_path / "repo-worktree" / ".agents" / "skills"
+    target_root = tmp_path / "user-skills"
+    repo_skill = skills_root / "skill-demo"
+    repo_skill.mkdir(parents=True)
+    (repo_skill / "SKILL.md").write_text("new skill\n", encoding="utf-8")
+    deployed_skill = target_root / "skill-demo"
+    deployed_skill.mkdir(parents=True)
+    (deployed_skill / "SKILL.md").write_text("old skill\n", encoding="utf-8")
+
+    marker = DEPLOY._shared_skill_marker(tmp_path / "repo-main" / ".agents" / "skills", "skill-demo")
+    (deployed_skill / DEPLOY.SHARED_SKILL_MARKER).write_text(json.dumps(marker), encoding="utf-8")
+    monkeypatch.setattr(DEPLOY, "_git_common_dir", lambda path: tmp_path / "repo-main" / ".git")
+
+    changes, issues, pairs = DEPLOY._plan_shared_skill_deploy(
+        skills_root,
+        target_root,
+        force=False,
+    )
+
+    assert issues == []
+    assert any(destination == deployed_skill / "SKILL.md" for _, destination, _ in pairs)
+
+
 def test_unmarked_differing_skill_requires_shared_skill_adoption(tmp_path: Path) -> None:
     skills_root = tmp_path / "repo" / ".agents" / "skills"
     target_root = tmp_path / "user-skills"
@@ -488,6 +512,10 @@ def test_shared_assets_deploy_and_update_without_adoption(tmp_path: Path, monkey
     _, issues, pairs = DEPLOY._shared_asset_plan(root, "docs", adopt=False)
     assert issues == []
     assert any(destination.name == "rule.md" for _, destination, _ in pairs)
+
+
+def test_shared_scripts_include_attempt_contract() -> None:
+    assert "scripts/herdr_attempt_contract.py" in DEPLOY._shared_asset_paths(DEPLOY.repo_root())["scripts"]
 
 
 def test_unowned_shared_asset_collision_requires_adoption(tmp_path: Path, monkeypatch) -> None:

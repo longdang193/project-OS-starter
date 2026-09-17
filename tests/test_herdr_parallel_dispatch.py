@@ -20,6 +20,8 @@ def lane(
 ) -> dict[str, object]:
     return {
         "lane_id": lane_id,
+        "repository_identity": "project-OS-starter",
+        "plan_identity": "test-plan",
         "task": f"task {lane_id}",
         "executor": "deepagents",
         "profile": "normal",
@@ -333,7 +335,7 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
     )
 
     assert result["unresolved"] is True
-    assert result["capacity"] == "retired"
+    assert result["capacity"] == "occupied"
 
 
 def test_run_lane_malformed_evidence_keeps_capacity_occupied(tmp_path: Path) -> None:
@@ -648,6 +650,12 @@ def test_launcher_command_forwards_admitted_runtime_grant_and_mcp_select(tmp_pat
     assert command[command.index("--grant-wall-clock-seconds") + 1] == "600"
     assert command[command.index("--grant-child-agents") + 1] == "allow"
     assert command[command.index("--mcp-select") + 1] == "context7.query_docs"
+    assert command[command.index("--repository-identity") + 1] == "project-OS-starter"
+    assert command[command.index("--plan-identity") + 1] == "test-plan"
+    assert command[command.index("--task-sha256") + 1] == dispatcher._sha256_text("task a")
+    assert command[command.index("--assignment-id") + 1] == dispatcher._assignment_id(
+        "project-OS-starter", "test-plan", "a"
+    )
 
 
 def test_run_lane_grant_digest_mismatch_blocks_capacity(tmp_path: Path) -> None:
@@ -738,7 +746,8 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
 
     result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
 
-    assert result["assignment"]["task_result"] == {"state": "reported_completed", "accepted": None}
+    assert result["assignment"]["task_result"]["state"] == "reported_completed"
+    assert result["assignment"]["task_result"]["accepted"] is None
     assert result["capacity"] == "retired"
     assert result["unresolved"] is False
     assert result["acceptance_pending"] is True

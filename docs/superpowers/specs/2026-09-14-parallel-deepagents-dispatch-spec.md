@@ -80,9 +80,9 @@ targets:
 ### Change Summary
 
 - baseline reference: commit `c086339c08bb396d32be44a2b848b1ab473fa52c`, Herdr lifecycle evidence hardening.
-- added, changed, or removed behavior summary: add admission, bounded concurrent coordination, attempt-safe aggregation, and pilot evidence around existing lane lifecycle records.
-- intentionally unchanged behavior: existing process ownership checks, DeepAgents receipt schema, role-view lock, full auto-discovery eligible-set semantics, Codex executor control flow, and CoS acceptance authority.
-- affected maintained contracts: Herdr assignment result composition, DeepAgents receipt correlation, plan-ledger lane ownership, runtime-surface ownership documentation, and focused launcher/receipt tests.
+- added, changed, or removed behavior summary: add admission, bounded concurrent coordination, assignment-scoped attempt claims, process-tree retirement proof, attempt-safe aggregation, and pilot evidence around existing lane lifecycle records.
+- intentionally unchanged behavior: existing DeepAgents receipt schema, one same-worktree execution lock, full auto-discovery eligible-set semantics, Codex executor control flow, and CoS acceptance authority.
+- affected maintained contracts: Herdr assignment result composition, DeepAgents receipt correlation, assignment claim settlement, plan-ledger lane ownership, runtime-surface ownership documentation, and focused launcher/receipt tests.
 
 ### Current State and Evidence
 
@@ -91,6 +91,8 @@ targets:
 | Where does lifecycle evidence compose? | `_build_assignment_result()` emits delivery, execution, observation, task result, cleanup, performance, and compatibility fields. | `scripts/herdr_main_launcher.py` | high | Extend this boundary; do not add a second verdict layer. |
 | How are DeepAgents results correlated? | Receipt parsing requires matching `attempt_id`; malformed, missing, or mismatched receipts remain unknown. | `scripts/deepagents_result_contract.py`, `scripts/herdr_main_launcher.py` | high | Retries require new attempt IDs and stale receipts must be rejected. |
 | Who owns same-worktree role views? | `dcode-project` holds an exclusive role-view lock for one worktree attempt and publishes cleanup evidence. | `scripts/dcode_project.py` | high | Concurrent write lanes require separate worktrees. |
+| How does replacement avoid crash ambiguity? | `dcode-project` claims one assignment-scoped guard before worker spawn and settles it only after correlated receipt plus verified cleanup and descendant retirement. | `scripts/dcode_project.py`, `scripts/herdr_attempt_contract.py` | high | Lock release alone never authorizes replacement; unresolved claims require reconciliation. |
+| What proves semantic task result? | Lifecycle receipt proves worker/resource facts; pane report observation is bounded, explicitly sourced, and non-authoritative. | `scripts/deepagents_result_contract.py`, `scripts/herdr_main_launcher.py` | high | Clean lifecycle settlement without report evidence remains `unverified`. |
 | What does dry-run prove? | Main dry-run emits resolved JSON and returns before launch. | `scripts/herdr_main_launcher.py`, `tests/test_herdr_main_launcher.py` | high | Dry-run proves resolution only, not worker concurrency or cleanup. |
 | Who owns durable coordination? | Plan owns task/dependency/acceptance state; Git owns workspace and changes; runtime state is not recovery truth. | `docs/operating_system/rules/git-tracked-coordination-rule.md` | high | Batch aggregation remains a derived view over plan and lane evidence. |
 | Does Herdr expose atomic correlated delivery? | Current APIs provide process/pane observations and prompt operations, but no proven atomic attempt/pane/process-generation conditional delivery primitive. | reviewed verdicts and current launcher code | medium | Do not assume stronger delivery semantics; retain unknown and reconciliation paths. |
@@ -111,10 +113,10 @@ Herdr capability but is not wired into the launcher; CoS retains final
 
 | Interface item | Contract |
 |---|---|
-| Input | Dependency-ready lane descriptors: stable plan task/lane ID, task text/hash, executor/profile, repo/worktree, expected base, session/pane, allowed write set, fixed shared contracts, mutable-resource policy, and dependency status. |
+| Input | Dependency-ready lane descriptors: stable repository and plan identity, task/lane ID, task text/hash, executor/profile, repo/worktree, expected base, session/pane, allowed write set, fixed shared contracts, mutable-resource policy, and dependency status. |
 | Launch | CoS invokes `py -3 scripts/herdr_parallel_dispatch.py --lanes-file <path> --max-concurrency 2`; helper starts each admitted lane as one blocking `py -3 scripts/herdr_main_launcher.py ...` subprocess with separate stdout/stderr capture. |
-| Preparation output | First launcher JSON record: resolved target, generated `dispatch_id`, generated `attempt_id`, task/grant hashes, runtime binding, and target-discovery evidence. Preparation is not final assignment output and does not prove delivery or completion. |
-| Final output | Final assignment JSON record, or explicit transport/launch failure record, keyed by lane ID and `attempt_id`; normalized `lifecycle_receipt` is retained in assignment evidence before any raw receipt deletion. |
+| Preparation output | First launcher JSON record: resolved target, assignment identity, generated `dispatch_id`, generated `attempt_id`, task/grant hashes, runtime binding, and target-discovery evidence. Preparation is not final assignment output and does not prove delivery or completion. |
+| Final output | Final assignment JSON record, or explicit transport/launch failure record, keyed by lane ID and `attempt_id`; normalized `lifecycle_receipt` and claim-settlement evidence are retained in assignment evidence before any raw receipt deletion. |
 | Controller result | Per-lane normalized evidence, child exit status, stream diagnostics, capacity state, and unresolved conditions on stdout as tagged JSONL. Helper does not update plan ledger or assign `PASS`, `FAIL`, or `BLOCKED`. |
 | Interruption | Stop admitting new lanes; retain running or uncertain attempts; reconcile plan, Git, and runtime ownership before any replacement launch. |
 
@@ -213,6 +215,15 @@ required.
 - failure behavior: retain known facts and mark unknown fields/reconciliation when evidence is incomplete.
 - observable acceptance: builder tests show later errors do not erase prior identity or phase facts and compatibility fields agree with structured sections.
 
+#### Requirement: Assignment ownership and settlement
+
+- trigger or actor: coordinated DeepAgents admission and `dcode-project` wrapper.
+- preconditions: explicit repository identity, canonical plan identity, stable lane ID, unique attempt binding, and one current worktree.
+- required behavior: derive one stable `assignment_id`; claim before worker spawn; settle only after correlated lifecycle receipt, verified cleanup, and verified descendant retirement.
+- output or state change: claim state is `ACTIVE` until terminal settlement is proven; `SETTLED` permits later admission; `RECOVERY_REQUIRED` requires explicit reconciliation.
+- failure behavior: missing guard after known prior work, malformed claim, mismatched binding, unknown cleanup, or live descendants never becomes safe retry evidence.
+- observable acceptance: deterministic tests prove claim-before-spawn, full-binding idempotency, cross-worktree duplicate blocking, and settlement preservation after failure.
+
 #### Requirement: Delivery, execution, and acceptance separation
 
 - trigger or actor: launcher result consumer.
@@ -232,14 +243,14 @@ acceptance remains unresolved.
 - trigger or actor: launcher completion observer and coordinator capacity tracker.
 - required behavior: receipt confirmation precedes marker waiting; confirmed receipts skip blocking marker wait but retain one bounded pane read and process probe. Unresolved receipts receive one bounded marker wait with reserved time for receipt reread and fresh final probes. DeepAgents explicit `runtime_grant.wall_clock_seconds.requested` supplies completion observation budget; `native` uses shared `420s` worker default, while whole-attempt ceiling is `1800s` and receipt grace remains separate.
 - output or state change: marker observation is recorded as `observed`, `expired`, or `transport_failed`; interval expiry is distinct from transport failure; stale markers never settle a current attempt.
-- retirement rule: missing or unknown `descendant_state`, ownership, cleanup, or task evidence never proves retirement. Capacity may retire only when ownership and cleanup are explicitly settled, even if task-result evidence remains unresolved.
+- retirement rule: missing or unknown `descendant_state`, ownership, or cleanup never proves retirement. Routine pane markers, reads, waits, and process observations are diagnostic only; verified native process-retirement evidence enters settlement only through named `RECOVERY_REQUIRED` handling. Capacity may retire only when ownership and cleanup are explicitly settled, even if task-result evidence remains unresolved.
 - observable acceptance: regression proof covers receipt-aware ordering, stale-marker rejection, bounded timeout uncertainty, process-state change before final probe, and `reported_completed` with `accepted: null`.
 
 #### Requirement: Retry and stale-receipt protection
 
 - trigger or actor: coordinator handling timeout, failure, or uncertain result.
 - preconditions: current attempt evidence and ownership state are available.
-- required behavior: reconcile the same attempt for uncertain delivery; create a new `attempt_id` only after confirmed failure/timeout and settled ownership; parse receipts only when attempt correlation matches; keep uncertain attempts consuming capacity until retirement is proven.
+- required behavior: reconcile the same assignment for uncertain delivery; create a new `attempt_id` only after confirmed failure/timeout and settled ownership; parse receipts only when attempt correlation matches; keep uncertain attempts consuming capacity until retirement is proven. No automatic retry is performed by Herdr or dispatcher.
 - output or state change: retry result is a new lane attempt linked to same stable task identity; old result remains preserved.
 - failure behavior: block retry when worker, descendant, worktree, or task-owned resource retirement is uncertain.
 - observable acceptance: late receipt from attempt A cannot settle replacement attempt B; uncertain delivery cannot trigger blind resend.
@@ -342,15 +353,15 @@ Aggregate precedence:
 ### Invariants
 
 - stable plan task/lane identity survives retries; `dispatch_id` identifies one launcher invocation; each retry has a new `attempt_id`.
-- one attempt identity binds delivery, execution, observation, task result, cleanup, and performance facts.
+- one attempt identity binds delivery, execution, observation, task result, cleanup, and performance facts; one assignment identity binds retry continuity across attempts and worktrees.
 - launcher start never proves delivery; worker completion never proves task acceptance.
 - old-attempt receipts never settle replacement attempts.
 - same-worktree write-capable DeepAgents launches remain mutually exclusive.
 - automatic discovery retains full validated eligible-set semantics.
-- unknown ownership, cleanup, delivery, cancellation, or verification remains unknown and blocks unsafe retry or acceptance.
+- unknown ownership, cleanup, delivery, cancellation, or verification remains unknown and blocks unsafe retry or acceptance; `RECOVERY_REQUIRED` derives `RECONCILE`, never `ELIGIBLE`.
 - one lane failure does not erase independent sibling evidence.
 - final acceptance reviews exact combined revision.
-- CoS/task plan owns dependencies, concurrency budget, aggregation, and acceptance; Herdr owns target binding and top-level lifecycle; `dcode-project` owns worker/descendant/role-view receipt facts; Git owns worktree/branch/base/change truth.
+- CoS/task plan owns dependencies, concurrency budget, aggregation, and acceptance; Herdr owns target binding and top-level lifecycle/diagnostic observation; `dcode-project` owns worker/descendant/role-view receipt facts and assignment claim settlement; Git owns worktree/branch/base/change truth.
 
 ### Edge Cases
 

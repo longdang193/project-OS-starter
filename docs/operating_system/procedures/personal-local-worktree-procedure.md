@@ -166,6 +166,13 @@ proved, use recorded sequential fallback.
 DeepAgents local runtime state may support temporary diagnostics such as task
 timing or failure analysis. It is not repository coordination state, durable
 acceptance evidence, or required recovery input. Plan plus Git remain SSOT.
+For coordinated DeepAgents, dispatcher and launcher pass stable repository,
+plan, lane, task, and grant bindings; `dcode-project` persists one assignment-
+scoped `dcode-project.attempt.v1` claim before worker spawn. Lock release does
+not release assignment ownership. Only correlated lifecycle receipt plus verified
+cleanup and descendant retirement settles claim; missing or stale claim evidence
+requires `RECOVERY_REQUIRED` reconciliation. Routine pane observation stays
+diagnostic and cannot resume, retry, release, or accept work.
 
 `dcode-project` consumes its own required `--role` selector and rejects direct
 model/profile, agent/thread, MCP/hook trust, approval/Yolo, sandbox,

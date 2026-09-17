@@ -113,6 +113,14 @@ def _terminate_process_tree(process: subprocess.Popen[bytes], job: object | None
     return _returncode(process) is not None and _group_gone(process.pid)
 
 
+def _confirm_process_tree_retired(process: subprocess.Popen[bytes], *, platform_name: str, job: object | None, close_job: Callable[[object | None], bool], kill_tree: Callable[[int], bool]) -> bool:
+    if platform_name == "nt":
+        return True
+    if _group_gone(process.pid):
+        return True
+    return _terminate_process_tree(process, job, platform_name=platform_name, close_job=close_job, kill_tree=kill_tree)
+
+
 def _returncode(process: object) -> int | None:
     value = getattr(process, "poll", lambda: getattr(process, "returncode", None))()
     return value if isinstance(value, int) else None
@@ -173,6 +181,14 @@ def run_owned_process(argv: list[str], *, cwd: str | os.PathLike[str], env: dict
             result = OwnedProcessResult("timeout" if confirmed else "BLOCKED", returncode=_returncode(process), cleanup_confirmed=confirmed, reason="timeout")
         except OSError as exc:
             result = OwnedProcessResult("command_failed", returncode=_returncode(process), cleanup_confirmed=False, error=exc)
+        if platform_name != "nt" and not _confirm_process_tree_retired(process, platform_name=platform_name, job=job, close_job=close_job, kill_tree=kill_tree):
+            return OwnedProcessResult(
+                "BLOCKED",
+                returncode=_returncode(process),
+                cleanup_confirmed=False,
+                error=result.error,
+                reason=result.reason or "cleanup_unconfirmed",
+            )
         if platform_name == "nt" and job is not None:
             try:
                 closed = bool(close_job(job))

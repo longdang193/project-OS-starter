@@ -70,6 +70,44 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n")
 
 
+def _git_common_dir(root: Path) -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    common_dir = Path(result.stdout.strip())
+    return (root / common_dir if not common_dir.is_absolute() else common_dir).resolve()
+
+
+def _same_repository(first_root: Path, second_root: Path) -> bool:
+    if first_root.resolve() == second_root.resolve():
+        return True
+    first_git = _git_common_dir(first_root)
+    second_git = _git_common_dir(second_root)
+    return first_git is not None and first_git == second_git
+
+
+def _marker_owned(marker: dict[str, object] | None, expected: dict[str, object]) -> bool:
+    if marker is None:
+        return False
+    for key, value in expected.items():
+        if key not in {"source_root", "source_paths", "source_revision", "source_digest"} and marker.get(key) != value:
+            return False
+    marker_root = marker.get("source_root")
+    expected_root = expected.get("source_root")
+    if not isinstance(marker_root, str) or not isinstance(expected_root, str):
+        return False
+    return _same_repository(Path(marker_root), Path(expected_root))
+
+
 SHARED_ASSET_TEXT_SUFFIXES = {".md", ".py", ".ps1", ".sh", ".yaml", ".yml", ".json", ".toml"}
 
 
@@ -618,9 +656,9 @@ def _read_shared_skill_marker(path: Path) -> dict[str, object] | None:
 
 
 def _shared_skill_is_owned(skills_root: Path, target_root: Path, skill_name: str) -> bool:
-    return _read_shared_skill_marker(_shared_skill_marker_path(target_root, skill_name)) == _shared_skill_marker(
-        skills_root,
-        skill_name,
+    return _marker_owned(
+        _read_shared_skill_marker(_shared_skill_marker_path(target_root, skill_name)),
+        _shared_skill_marker(skills_root, skill_name),
     )
 
 
@@ -705,9 +743,7 @@ def _shared_asset_marker_path(bundle_name: str) -> Path:
 
 
 def _shared_asset_owned(marker: dict[str, object] | None, expected: dict[str, object]) -> bool:
-    if marker is None:
-        return False
-    return all(marker.get(key) == expected.get(key) for key in ("bundle", "source_root", "source_paths"))
+    return _marker_owned(marker, expected)
 
 
 def _read_json_marker(path: Path) -> dict[str, object] | None:
@@ -822,7 +858,7 @@ def _shared_skill_stale_files(skills_root: Path, target_root: Path) -> list[Path
         marker = _read_shared_skill_marker(deployed_root / SHARED_SKILL_MARKER)
         if marker is None:
             continue
-        if marker != _shared_skill_marker(skills_root, skill_name):
+        if not _marker_owned(marker, _shared_skill_marker(skills_root, skill_name)):
             continue
         owned_files = (
             _shared_skill_expected_files(skills_root, target_root, skill_name)

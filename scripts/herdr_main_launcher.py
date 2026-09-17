@@ -934,6 +934,9 @@ def _build_assignment_result(
     assignment = {
         "agent_name": agent_name,
         "attempt_id": attempt_id,
+        "assignment_id": legacy_values.get("assignment_id"),
+        "repository_identity": legacy_values.get("repository_identity"),
+        "plan_identity": legacy_values.get("plan_identity"),
         "dispatch_id": dispatch_id,
         "delivery": delivery,
         "execution": execution,
@@ -1014,7 +1017,12 @@ def _classify_deepagents_outcome(
                     and observation.get("observation_error") is None
                 )
                 if observation.get("state") == "failed" and report_observed:
-                    task_result = {"state": "reported_failed", "accepted": False}
+                    task_result = {
+                        "state": "reported_failed",
+                        "accepted": False,
+                        "source": "herdr_pane",
+                        "authoritative": False,
+                    }
                     status = "failed"
                     failure_kind = "task_report_failed"
                 else:
@@ -1022,6 +1030,8 @@ def _classify_deepagents_outcome(
                         "state": "reported_completed" if report_observed else "unverified",
                         "accepted": None,
                     }
+                    if report_observed:
+                        task_result.update({"source": "herdr_pane", "authoritative": False})
                 if not report_observed:
                     failure_kind = "completion_evidence_missing"
             else:
@@ -1973,6 +1983,11 @@ def resolve_launch(
     task: str | None = None,
     name: str | None = None,
     codex_home: Path | None = None,
+    assignment_id: str | None = None,
+    repository_identity: str | None = None,
+    plan_identity: str | None = None,
+    task_sha256: str | None = None,
+    grant_digest_value: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     launch_started = time.monotonic()
     if executor not in _EXECUTORS:
@@ -1995,7 +2010,23 @@ def resolve_launch(
             " Output these two final lines exactly when task is complete: "
             f"COMPLETED, then {completion_marker}."
         )
-    grant_digest_value = grant_digest(executor, runtime_grant)
+    computed_grant_digest = grant_digest(executor, runtime_grant)
+    if assignment_id is not None:
+        if not isinstance(repository_identity, str) or not repository_identity.strip():
+            raise LaunchBlocked("Coordinated launch requires repository identity.")
+        if not isinstance(plan_identity, str) or not plan_identity.strip():
+            raise LaunchBlocked("Coordinated launch requires plan identity.")
+        if not isinstance(task_sha256, str) or not task_sha256:
+            raise LaunchBlocked("Coordinated launch requires task identity.")
+        if not isinstance(grant_digest_value, str) or not grant_digest_value:
+            raise LaunchBlocked("Coordinated launch requires grant identity.")
+        if task_sha256 != _sha256_text(task_text):
+            raise LaunchBlocked("Launcher task identity does not match task text.")
+        if grant_digest_value != computed_grant_digest:
+            raise LaunchBlocked("Launcher grant identity does not match runtime grant.")
+        expected_grant_digest = computed_grant_digest
+    else:
+        expected_grant_digest = computed_grant_digest
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
     if name is not None:
@@ -2094,6 +2125,9 @@ def resolve_launch(
     evidence = {
         "registry_launcher": {
             "dispatch_id": uuid.uuid4().hex,
+            "assignment_id": assignment_id,
+            "repository_identity": repository_identity,
+            "plan_identity": plan_identity,
             "profile": selected.name,
             "profile_source": str(selected.source),
             "executor": executor,
@@ -2107,7 +2141,7 @@ def resolve_launch(
             ],
             "redacted_runtime_argv": _redacted_arguments(runtime_arguments),
             "assignment_task_sha256": _sha256_text(task_text),
-            "grant_digest": grant_digest_value,
+            "grant_digest": expected_grant_digest,
             "runtime_grant": runtime_grant,
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
@@ -2147,7 +2181,7 @@ def resolve_launch(
             "agent_name": agent_name,
             "task_sha256": _sha256_text(task_text),
             "delivery_task_sha256": _sha256_text(delivery_task),
-            "grant_digest": grant_digest_value,
+            "grant_digest": expected_grant_digest,
             "state": "unknown",
             "source": "herdr.agent" if executor == "codex" else "herdr.pane_process",
             "read_commands": (
@@ -2208,6 +2242,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task", required=True)
     parser.add_argument("--name")
     parser.add_argument("--codex-home", type=Path)
+    parser.add_argument("--assignment-id")
+    parser.add_argument("--repository-identity")
+    parser.add_argument("--plan-identity")
+    parser.add_argument("--task-sha256")
+    parser.add_argument("--grant-digest")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -2232,6 +2271,9 @@ def _main_body(args: argparse.Namespace) -> int:
         "task_sha256": None,
         "delivery_task_sha256": None,
         "grant_digest": None,
+        "assignment_id": args.assignment_id,
+        "repository_identity": args.repository_identity,
+        "plan_identity": args.plan_identity,
     }
 
     def emit_failure(message: str, resolution: dict[str, Any] | None = None) -> int:
@@ -2277,6 +2319,10 @@ def _main_body(args: argparse.Namespace) -> int:
                 else False
             ),
         }
+        for key in ("assignment_id", "repository_identity", "plan_identity"):
+            value = attempt_context.get(key)
+            if isinstance(value, str):
+                legacy[key] = value
         if isinstance(attempt_context.get("session"), str):
             legacy["session"] = attempt_context["session"]
         if isinstance(attempt_context.get("task_sha256"), str):
@@ -2319,6 +2365,11 @@ def _main_body(args: argparse.Namespace) -> int:
             task=args.task,
             name=args.name,
             codex_home=args.codex_home,
+            assignment_id=args.assignment_id,
+            repository_identity=args.repository_identity,
+            plan_identity=args.plan_identity,
+            task_sha256=args.task_sha256,
+            grant_digest_value=args.grant_digest,
         )
         if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
             raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")
@@ -2337,6 +2388,9 @@ def _main_body(args: argparse.Namespace) -> int:
         if not isinstance(performance_evidence, dict):
             raise LaunchBlocked("Launcher evidence has invalid performance section.")
         dispatch_id = str(registry_evidence.setdefault("dispatch_id", dispatch_id))
+        for key in ("assignment_id", "repository_identity", "plan_identity"):
+            if registry_evidence.get(key) is not None:
+                attempt_context[key] = registry_evidence[key]
         receipt_file: Path | None = None
         if args.executor == "deepagents" and not args.dry_run and "-n" in command:
             receipt_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
@@ -2348,6 +2402,17 @@ def _main_body(args: argparse.Namespace) -> int:
                 "--attempt-id",
                 _powershell_literal(attempt_id),
             ]
+            if args.assignment_id is not None:
+                command[command.index("-n"):command.index("-n")] = [
+                    "--assignment-id",
+                    _powershell_literal(args.assignment_id),
+                    "--repository-identity",
+                    _powershell_literal(str(args.repository_identity)),
+                    "--task-sha256",
+                    _powershell_literal(str(args.task_sha256)),
+                    "--grant-digest",
+                    _powershell_literal(str(args.grant_digest)),
+                ]
             registry_evidence["result_file"] = str(receipt_file)
 
         def record_phase(name: str, started: float, *, attempt_id: str | None = None) -> None:
@@ -2961,6 +3026,11 @@ def _main_body(args: argparse.Namespace) -> int:
                 "task_result": {
                     "state": "reported_completed" if task_verified else "unknown",
                     "accepted": None,
+                    **(
+                        {"source": "herdr_pane", "authoritative": False}
+                        if task_verified
+                        else {}
+                    ),
                 },
                 "cleanup": {
                     "state": "unknown" if worker_live else ("unverified" if completed else "unknown"),

@@ -217,7 +217,20 @@ def test_executor_resolution_rejects_missing_or_invalid_values(
 
 
 def test_controller_options_extracts_executor_once() -> None:
-    child, selections, handoff, role, executor, result_file, attempt_id = LAUNCHER._controller_options(
+    (
+        child,
+        selections,
+        handoff,
+        role,
+        executor,
+        result_file,
+        attempt_id,
+        assignment_id,
+        repository_identity,
+        task_sha256,
+        grant_digest,
+        prior_attempt_known,
+    ) = LAUNCHER._controller_options(
         ["--executor", "tura", "--role", "normal", "-n", "task"]
     )
 
@@ -228,6 +241,11 @@ def test_controller_options_extracts_executor_once() -> None:
     assert executor == "tura"
     assert result_file is None
     assert attempt_id is None
+    assert assignment_id is None
+    assert repository_identity is None
+    assert task_sha256 is None
+    assert grant_digest is None
+    assert prior_attempt_known is False
 
 
 def test_controller_options_extracts_correlated_receipt_arguments(tmp_path: Path) -> None:
@@ -237,7 +255,24 @@ def test_controller_options_extracts_correlated_receipt_arguments(tmp_path: Path
         "--result-file", str(result_file), "--attempt-id", "attempt-1", "-n", "task"
     ])
 
-    assert parsed[-2:] == (str(result_file), "attempt-1")
+    assert parsed[5:7] == (str(result_file), "attempt-1")
+
+
+def test_runtime_option_gate_allows_coordinated_attempt_bindings() -> None:
+    LAUNCHER._reject_unmanaged_runtime_options(
+        [
+            "--assignment-id",
+            "assignment-1",
+            "--repository-identity",
+            "repo-1",
+            "--task-sha256",
+            "a" * 64,
+            "--grant-digest",
+            "b" * 64,
+            "--prior-attempt-known",
+            "false",
+        ]
+    )
 
 
 def test_result_receipt_is_bounded_and_atomic(tmp_path: Path) -> None:
@@ -473,6 +508,7 @@ def test_bounded_worker_preserves_stdin_and_status(
     handoff_stdin: str | None,
 ) -> None:
     class FakeProcess:
+        pid = 42
         returncode = 7
 
         def communicate(self, input: str, timeout: float | None = None) -> None:
@@ -490,6 +526,7 @@ def test_bounded_worker_preserves_stdin_and_status(
         return FakeProcess()
 
     monkeypatch.setattr(LAUNCHER.os, "name", "posix")
+    monkeypatch.setattr(LAUNCHER._owned_process, "_group_gone", lambda pid: True)
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
 
     assert LAUNCHER._run_bounded_worker(
@@ -537,6 +574,12 @@ def test_bounded_worker_terminates_timed_out_posix_process(
 
     process = FakeProcess()
     monkeypatch.setattr(LAUNCHER.os, "name", "posix")
+    monkeypatch.setattr(LAUNCHER._owned_process, "_group_gone", lambda pid: False)
+
+    def killpg(pid: int, sig: int) -> None:
+        raise OSError("group signal unavailable")
+
+    monkeypatch.setattr(LAUNCHER._owned_process.os, "killpg", killpg, raising=False)
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: process)
 
     with pytest.raises(LAUNCHER._WorkerLifecycleError, match="worker timed out") as error:
@@ -545,7 +588,7 @@ def test_bounded_worker_terminates_timed_out_posix_process(
         )
 
     assert process.killed is True
-    assert process.waits == 2
+    assert process.waits == 3
     assert error.value.facts.worker_state == "failed"
     assert error.value.facts.descendant_state == "unknown"
     assert error.value.facts.termination_proven is False
@@ -563,6 +606,7 @@ def test_bounded_worker_reports_post_start_error_facts(
             raise OSError("wait failed")
 
     monkeypatch.setattr(LAUNCHER.os, "name", "posix")
+    monkeypatch.setattr(LAUNCHER._owned_process, "_group_gone", lambda pid: True)
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
 
     with pytest.raises(LAUNCHER._WorkerLifecycleError, match="failed after process creation") as error:
@@ -657,6 +701,96 @@ def test_role_views_lock_allows_separate_worktrees(tmp_path: Path) -> None:
         process.stdin.flush()
     assert first.wait(timeout=5) == 0
     assert second.wait(timeout=5) == 0
+
+
+def test_attempt_guard_claim_is_atomic_and_idempotent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    guard_root = tmp_path / "guards"
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: guard_root)
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+
+    first = LAUNCHER._claim_attempt(
+        **binding,
+        repo_root=tmp_path,
+        result_file=tmp_path / "receipt.json",
+    )
+    assert first["claimed"] is True
+    assert first["state"] == "ACTIVE"
+    record = LAUNCHER._read_attempt_guard(next(guard_root.glob("*.json")))
+    assert record is not None
+    assert record["worktree"] == str(tmp_path.resolve())
+
+    repeated = LAUNCHER._claim_attempt(
+        **binding,
+        repo_root=tmp_path,
+        result_file=tmp_path / "receipt.json",
+    )
+    assert repeated["idempotent"] is True
+    assert repeated["state"] == "ACTIVE"
+
+    mismatch = LAUNCHER._claim_attempt(
+        **dict(binding, attempt_id="attempt-2"),
+        repo_root=tmp_path / "other",
+        result_file=tmp_path / "other-receipt.json",
+    )
+    assert mismatch["action"] == "BLOCKED"
+
+
+def test_attempt_guard_missing_after_known_attempt_requires_reconciliation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+
+    result = LAUNCHER._claim_attempt(
+        assignment_id="assignment-1",
+        attempt_id="attempt-1",
+        executor="deepagents",
+        repository_identity="repo-1",
+        task_sha256="task-1",
+        grant_digest="grant-1",
+        repo_root=tmp_path,
+        result_file=None,
+        prior_attempt_known=True,
+    )
+
+    assert result == {"state": "RECOVERY_REQUIRED", "action": "RECONCILE"}
+
+
+def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+
+    settled = LAUNCHER._settle_attempt(
+        assignment_id="assignment-1", binding=binding, settlement_proven=True
+    )
+    assert settled["state"] == "settled"
+    assert settled["settlement_proven"] is True
+
+    replacement = LAUNCHER._claim_attempt(
+        **dict(binding, attempt_id="attempt-2"),
+        repo_root=tmp_path,
+        result_file=None,
+    )
+    assert replacement["replaced_settled"] is True
+    assert replacement["state"] == "ACTIVE"
 
 
 def test_tura_worker_does_not_supply_adapter_cache_key() -> None:
