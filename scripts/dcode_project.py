@@ -42,17 +42,28 @@ except ModuleNotFoundError:
     )
 try:
     from deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
-    from deepagents_result_contract import parse_result_receipt
-except ModuleNotFoundError:
+    from deepagents_result_contract import parse_result_receipt, publish_task_result
+except (ModuleNotFoundError, ImportError):
     from scripts.deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
     from scripts.deepagents_result_contract import parse_result_receipt
+    try:
+        from scripts.deepagents_result_contract import publish_task_result
+    except ImportError:
+        _result_contract_path = Path(__file__).with_name("deepagents_result_contract.py")
+        _result_contract_spec = importlib.util.spec_from_file_location(
+            "_project_deepagents_result_contract", _result_contract_path
+        )
+        if _result_contract_spec is None or _result_contract_spec.loader is None:
+            raise
+        _result_contract_module = importlib.util.module_from_spec(_result_contract_spec)
+        _result_contract_spec.loader.exec_module(_result_contract_module)
+        publish_task_result = _result_contract_module.publish_task_result
 try:
     from herdr_attempt_contract import (
         AttemptContractError,
-        derive_lifecycle_state,
         same_attempt_binding,
-        terminal_settlement_proven,
     )
+    from herdr_attempt_contract import attempt_decision
     try:
         from herdr_attempt_contract import ADMISSION_RESULTS
     except ImportError:
@@ -60,12 +71,10 @@ try:
 except ModuleNotFoundError:
     from scripts.herdr_attempt_contract import (
         AttemptContractError,
-        derive_lifecycle_state,
         same_attempt_binding,
-        terminal_settlement_proven,
     )
     try:
-        from scripts.herdr_attempt_contract import ADMISSION_RESULTS
+        from scripts.herdr_attempt_contract import ADMISSION_RESULTS, attempt_decision
     except ImportError:
         _contract_path = Path(__file__).with_name("herdr_attempt_contract.py")
         _contract_spec = importlib.util.spec_from_file_location(
@@ -76,6 +85,7 @@ except ModuleNotFoundError:
         _contract_module = importlib.util.module_from_spec(_contract_spec)
         _contract_spec.loader.exec_module(_contract_module)
         ADMISSION_RESULTS = _contract_module.ADMISSION_RESULTS
+        attempt_decision = _contract_module.attempt_decision
 
 
 
@@ -483,20 +493,22 @@ def _role_views_lock_path(repo_root: Path) -> Path:
     return Path(tempfile.gettempdir()) / _ROLE_VIEWS_LOCK_PARENT / f"{digest}.lock"
 
 
-def _lock_file(fd: int) -> None:
+def _lock_file(fd: int, *, blocking: bool = False) -> None:
     if os.name == "nt":
         import msvcrt
 
         os.lseek(fd, 0, os.SEEK_SET)
         try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            mode = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
+            msvcrt.locking(fd, mode, 1)
         except OSError as exc:
             raise BlockingIOError from exc
         return
     import fcntl
 
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        mode = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
+        fcntl.flock(fd, mode)
     except OSError as exc:
         raise BlockingIOError from exc
 
@@ -546,6 +558,32 @@ def _attempt_guard_path(assignment_id: str) -> Path:
         raise RuntimeError("dcode-project requires a non-empty `--assignment-id`.")
     digest = hashlib.sha256(assignment_id.strip().encode("utf-8")).hexdigest()
     return _attempt_guard_root() / f"{digest}.json"
+
+
+def _attempt_lock_path(assignment_id: str) -> Path:
+    if not isinstance(assignment_id, str) or not assignment_id.strip():
+        raise RuntimeError("dcode-project requires a non-empty `--assignment-id`.")
+    digest = hashlib.sha256(assignment_id.strip().encode("utf-8")).hexdigest()
+    return _attempt_guard_root().parent / "locks" / f"{digest}.lock"
+
+
+@contextmanager
+def _attempt_lock(assignment_id: str):
+    lock_path = _attempt_lock_path(assignment_id)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    os.set_inheritable(fd, False)
+    acquired = False
+    try:
+        _lock_file(fd, blocking=True)
+        acquired = True
+        yield
+    finally:
+        try:
+            if acquired:
+                _unlock_file(fd)
+        finally:
+            os.close(fd)
 
 
 def _read_attempt_guard(path: Path) -> dict[str, object] | None:
@@ -598,6 +636,34 @@ def _claim_attempt(
     task_result_file: Path | None = None,
     prior_attempt_known: bool = False,
 ) -> dict[str, object]:
+    with _attempt_lock(assignment_id):
+        return _claim_attempt_unlocked(
+            assignment_id=assignment_id,
+            attempt_id=attempt_id,
+            executor=executor,
+            repository_identity=repository_identity,
+            task_sha256=task_sha256,
+            grant_digest=grant_digest,
+            repo_root=repo_root,
+            result_file=result_file,
+            task_result_file=task_result_file,
+            prior_attempt_known=prior_attempt_known,
+        )
+
+
+def _claim_attempt_unlocked(
+    *,
+    assignment_id: str,
+    attempt_id: str,
+    executor: str,
+    repository_identity: str,
+    task_sha256: str,
+    grant_digest: str,
+    repo_root: Path,
+    result_file: Path | None,
+    task_result_file: Path | None,
+    prior_attempt_known: bool,
+) -> dict[str, object]:
     path = _attempt_guard_path(assignment_id)
     existing = _read_attempt_guard(path)
     candidate = {
@@ -620,7 +686,7 @@ def _claim_attempt(
         _write_attempt_guard(path, candidate)
         return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "record": candidate}
     if existing.get("state") == "active":
-        existing = _reconcile_attempt(
+        existing = _reconcile_attempt_unlocked(
             assignment_id=assignment_id,
             binding=candidate,
             repo_root=repo_root,
@@ -646,6 +712,20 @@ def _reconcile_attempt(
     binding: dict[str, object],
     repo_root: Path,
 ) -> dict[str, object]:
+    with _attempt_lock(assignment_id):
+        return _reconcile_attempt_unlocked(
+            assignment_id=assignment_id,
+            binding=binding,
+            repo_root=repo_root,
+        )
+
+
+def _reconcile_attempt_unlocked(
+    *,
+    assignment_id: str,
+    binding: dict[str, object],
+    repo_root: Path,
+) -> dict[str, object]:
     path = _attempt_guard_path(assignment_id)
     existing = _read_attempt_guard(path)
     if existing is None:
@@ -664,19 +744,22 @@ def _reconcile_attempt(
         evidence.setdefault("state", "confirmed")
         evidence.setdefault("recovery_required", False)
     settlement = receipt if receipt and receipt.get("state") == "confirmed" else evidence
-    proven = terminal_settlement_proven(
-        settlement,
-        cleanup_confirmed=(
-            isinstance(settlement, dict) and settlement.get("cleanup_state") == "removed"
-        ),
-        descendants_retired=(
-            isinstance(settlement, dict)
-            and settlement.get("descendant_state") in {"terminated", "not_started"}
-        ),
+    decision = attempt_decision(
+        existing,
+        prior_attempt_known=True,
+        receipt=settlement,
+        cleanup_confirmed=(isinstance(settlement, dict) and settlement.get("cleanup_state") == "removed"),
+        descendants_retired=(isinstance(settlement, dict) and settlement.get("descendant_state") in {"terminated", "not_started"}),
     )
+    proven = decision["settlement_proven"]
     if not proven:
-        return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE", "record": existing}
-    settled = _settle_attempt(
+        return {
+            "state": decision["lifecycle"],
+            "action": decision["action"],
+            "admission": decision["admission"],
+            "record": existing,
+        }
+    settled = _settle_attempt_unlocked(
         assignment_id=assignment_id,
         binding=binding,
         settlement_proven=True,
@@ -686,6 +769,22 @@ def _reconcile_attempt(
 
 
 def _settle_attempt(
+    *,
+    assignment_id: str,
+    binding: dict[str, object],
+    settlement_proven: bool,
+    settlement_evidence: dict[str, object] | None = None,
+) -> dict[str, object]:
+    with _attempt_lock(assignment_id):
+        return _settle_attempt_unlocked(
+            assignment_id=assignment_id,
+            binding=binding,
+            settlement_proven=settlement_proven,
+            settlement_evidence=settlement_evidence,
+        )
+
+
+def _settle_attempt_unlocked(
     *,
     assignment_id: str,
     binding: dict[str, object],
@@ -1799,6 +1898,7 @@ def main(argv: list[str]) -> int:
     repo_root = _repo_root()
     executor = _resolve_executor(config, explicit_executor)
     result_file = _result_file_path(result_file_value) if result_file_value is not None else None
+    task_result_file = result_file.with_name("task-result.json") if result_file is not None else None
     if result_file is not None and attempt_id is None:
         raise RuntimeError("dcode-project requires `--attempt-id` with `--result-file`.")
     if result_file is not None and executor != "deepagents":
@@ -1840,7 +1940,21 @@ def main(argv: list[str]) -> int:
     selected_role = role_by_name.get(role_name) if role_name is not None else None
     if role_name is not None and selected_role is None:
         raise RuntimeError(f"Unknown role `{role_name}`.")
-    if "--print-config" in child_argv and len(child_argv) == 1:
+    if "--print-config" in child_argv:
+        allowed_print_config_args = {
+            "--print-config",
+            "--json",
+            "--no-mcp",
+            "--no-stream",
+            "-q",
+        }
+        unexpected_print_config_args = [
+            argument for argument in child_argv if argument not in allowed_print_config_args
+        ]
+        if unexpected_print_config_args:
+            raise RuntimeError(
+                "`--print-config` cannot be combined with task execution options."
+            )
         payload: dict[str, object] = {
             "controller_model": f"openai:{model}",
             "provider": provider_name,
@@ -1929,7 +2043,7 @@ def main(argv: list[str]) -> int:
     if not dcode:
         raise RuntimeError("DeepAgents Code is not installed. Run scripts/setup_deepagents_runtime.ps1.")
     environment = _runtime_environment(base_url, binding.read_api_key())
-    shell_capabilities = _resolve_worker_shell_capabilities(local_capabilities, environment)
+    shell_capabilities: dict[str, object] | None = None
     attempt_guard_binding = None
     if assignment_id_value is not None:
         attempt_guard_binding = {
@@ -1947,6 +2061,7 @@ def main(argv: list[str]) -> int:
                 **attempt_guard_binding,
                 repo_root=repo_root,
                 result_file=result_file,
+                task_result_file=task_result_file,
                 prior_attempt_known=prior_attempt_known,
             )
             admission = attempt_claim.get("admission")
@@ -1968,6 +2083,14 @@ def main(argv: list[str]) -> int:
         recovery_required = False
         cleanup_error: Exception | None = None
         try:
+            try:
+                shell_capabilities = _resolve_worker_shell_capabilities(
+                    local_capabilities, environment
+                )
+            except RuntimeError:
+                worker_state = "start_failed"
+                descendant_state = "not_started"
+                raise
             dcode_argv = [
                 dcode,
                 "-M",
@@ -2071,6 +2194,28 @@ def main(argv: list[str]) -> int:
                     shell_capabilities=shell_capabilities,
                     cleanup_details=cleanup_details,
                 )
+            if task_result_file is not None and attempt_guard_binding is not None:
+                try:
+                    publish_task_result(
+                        task_result_file,
+                        {
+                            "schema": "dcode-project.task-result.v1",
+                            "assignment_id": str(attempt_guard_binding["assignment_id"]),
+                            "attempt_id": str(attempt_id),
+                            "task_sha256": str(attempt_guard_binding["task_sha256"]),
+                            "grant_digest": str(attempt_guard_binding["grant_digest"]),
+                            "producer": "dcode-project",
+                            "status": "completed" if worker_exit_code == 0 else "failed",
+                            "progress": {"worker_state": worker_state},
+                            "checkpoint": None,
+                            "remaining_work": [],
+                            "verification": {"references": []},
+                            "continuation": {"requested": False},
+                            "accepted": None,
+                        },
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    task_result_file.unlink(missing_ok=True)
             if attempt_guard_binding is not None:
                 _settle_attempt(
                     assignment_id=str(attempt_guard_binding["assignment_id"]),

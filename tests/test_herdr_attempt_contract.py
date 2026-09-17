@@ -126,6 +126,77 @@ def test_eligibility_action_mapping(state: str, expected: str) -> None:
     assert contract.eligibility_action(state) == expected
 
 
+@pytest.mark.parametrize(
+    ("claim", "prior_known", "receipt", "cleanup", "descendants", "expected"),
+    [
+        (None, False, None, False, False, ("UNCLAIMED", "ADMITTED", "ELIGIBLE")),
+        ({"state": "active"}, True, None, False, False, ("ACTIVE", "BLOCKED", "BLOCKED")),
+        ({"state": "settled"}, True, None, False, False, ("RECOVERY_REQUIRED", "RECONCILE", "RECONCILE")),
+    ],
+)
+def test_attempt_decision_reduces_lifecycle_and_admission(
+    claim, prior_known, receipt, cleanup, descendants, expected
+) -> None:
+    decision = contract.attempt_decision(
+        claim,
+        prior_attempt_known=prior_known,
+        receipt=receipt,
+        cleanup_confirmed=cleanup,
+        descendants_retired=descendants,
+    )
+
+    assert (decision["lifecycle"], decision["admission"], decision["action"]) == expected
+
+
+def test_attempt_decision_blocks_binding_mismatch() -> None:
+    decision = contract.attempt_decision(
+        {"state": "settled"},
+        prior_attempt_known=True,
+        receipt=None,
+        cleanup_confirmed=None,
+        descendants_retired=None,
+        binding_matches=False,
+    )
+
+    assert decision["admission"] == "BLOCKED"
+    assert decision["recovery_required"] is True
+
+
+def test_continuation_decision_requires_settlement_checkpoint_and_unchanged_authority() -> None:
+    decision = contract.continuation_decision(
+        lifecycle="SETTLED",
+        task_result={"status": "completed", "checkpoint": {"revision": "abc"}},
+        authority_unchanged=True,
+        dependencies_ready=True,
+        requested_seconds=60,
+        remaining_authorized_task_allowance=120,
+    )
+
+    assert decision["state"] == "CONTINUATION_ELIGIBLE"
+
+
+def test_continuation_decision_escalates_unsettled_or_changed_work() -> None:
+    decision = contract.continuation_decision(
+        lifecycle="ACTIVE",
+        task_result={"status": "completed", "checkpoint": {"revision": "abc"}},
+        authority_unchanged=True,
+        dependencies_ready=True,
+        requested_seconds=60,
+        remaining_authorized_task_allowance=120,
+    )
+    assert decision["state"] == "RECONCILE"
+
+    decision = contract.continuation_decision(
+        lifecycle="SETTLED",
+        task_result={"status": "completed", "checkpoint": {"revision": "abc"}},
+        authority_unchanged=False,
+        dependencies_ready=True,
+        requested_seconds=60,
+        remaining_authorized_task_allowance=120,
+    )
+    assert decision["state"] == "ESCALATE"
+
+
 def test_same_attempt_is_idempotent_only_for_full_binding_match() -> None:
     binding = {
         "attempt_id": "attempt-3",
@@ -221,6 +292,20 @@ def test_resolve_attempt_budget_rejects_numeric_grant_over_whole_attempt_ceiling
 
 def test_resolve_attempt_budget_caps_remaining_time_to_whole_attempt_ceiling() -> None:
     assert contract.resolve_attempt_budget("native", 2000, 5000, 30) == 420
+
+
+def test_resolve_attempt_budget_returns_integer_for_fractional_allowance() -> None:
+    result = contract.resolve_attempt_budget("native", 100.0, 1800.0, 0.0)
+
+    assert result == 100
+    assert isinstance(result, int)
+
+
+def test_resolve_attempt_budget_floors_fractional_remaining_time() -> None:
+    result = contract.resolve_attempt_budget("native", 1000, 450.9, 30.0)
+
+    assert result == 420
+    assert isinstance(result, int)
 
 
 @pytest.mark.parametrize("value", [True, 0, -1, 1.5, "1.5", ""])

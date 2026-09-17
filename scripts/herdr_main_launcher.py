@@ -38,15 +38,23 @@ try:
         RESULT_MAX_AGE_SECONDS,
         RESULT_MAX_BYTES,
         RESULT_SCHEMA,
+        parse_task_result,
         parse_result_receipt,
     )
-except ModuleNotFoundError:
-    from scripts.deepagents_result_contract import (
-        RESULT_MAX_AGE_SECONDS,
-        RESULT_MAX_BYTES,
-        RESULT_SCHEMA,
-        parse_result_receipt,
+except (ModuleNotFoundError, ImportError):
+    _result_contract_path = Path(__file__).with_name("deepagents_result_contract.py")
+    _result_contract_spec = importlib.util.spec_from_file_location(
+        "_project_deepagents_result_contract", _result_contract_path
     )
+    if _result_contract_spec is None or _result_contract_spec.loader is None:
+        raise
+    _result_contract_module = importlib.util.module_from_spec(_result_contract_spec)
+    _result_contract_spec.loader.exec_module(_result_contract_module)
+    RESULT_MAX_AGE_SECONDS = _result_contract_module.RESULT_MAX_AGE_SECONDS
+    RESULT_MAX_BYTES = _result_contract_module.RESULT_MAX_BYTES
+    RESULT_SCHEMA = _result_contract_module.RESULT_SCHEMA
+    parse_task_result = _result_contract_module.parse_task_result
+    parse_result_receipt = _result_contract_module.parse_result_receipt
 try:
     from herdr_attempt_contract import (
         AttemptContractError,
@@ -256,6 +264,29 @@ def _read_deepagents_receipt(path: Path | None, attempt_id: str) -> dict[str, An
     if path is None:
         return {"state": "unknown", "detail": "receipt unavailable"}
     return parse_result_receipt(path, attempt_id)
+
+
+def _read_deepagents_task_result(
+    path: Path | None,
+    *,
+    assignment_id: str | None,
+    attempt_id: str,
+    task_sha256: str | None,
+    grant_digest_value: str | None,
+) -> dict[str, Any]:
+    if path is None or not all(
+        isinstance(value, str) and value for value in (
+            assignment_id, task_sha256, grant_digest_value
+        )
+    ):
+        return {"state": "unknown", "continuation_eligible": False, "detail": "task result binding unavailable"}
+    return parse_task_result(
+        path,
+        assignment_id=assignment_id,
+        attempt_id=attempt_id,
+        task_sha256=task_sha256,
+        grant_digest=grant_digest_value,
+    )
 
 
 def _discard_deepagents_receipt(path: Path | None) -> None:
@@ -990,10 +1021,18 @@ def _classify_deepagents_outcome(
     observation: dict[str, Any],
     receipt: dict[str, Any],
     fallback_failure_kind: str | None,
+    task_result_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     execution = {"state": "unknown", "worker_exit_code": None}
     cleanup = {"state": "unknown"}
     task_result = {"state": "unverified", "accepted": None}
+    if isinstance(task_result_evidence, dict) and task_result_evidence.get("state") == "confirmed":
+        task_result = dict(task_result_evidence)
+        task_result["state"] = {
+            "completed": "reported_completed",
+            "failed": "reported_failed",
+        }.get(str(task_result.get("status")), "unverified")
+        task_result["accepted"] = None
     status = "unknown"
     failure_kind = fallback_failure_kind
     reconciliation_required = True
@@ -1043,11 +1082,12 @@ def _classify_deepagents_outcome(
                     status = "failed"
                     failure_kind = "task_report_failed"
                 else:
-                    task_result = {
-                        "state": "reported_completed" if report_observed else "unverified",
-                        "accepted": None,
-                    }
-                    if report_observed:
+                    if task_result["state"] not in {"reported_completed", "reported_failed"}:
+                        task_result = {
+                            "state": "reported_completed" if report_observed else "unverified",
+                            "accepted": None,
+                        }
+                    if report_observed and task_result.get("source") is None:
                         task_result.update({"source": "herdr_pane", "authoritative": False})
                 if not report_observed:
                     failure_kind = "completion_evidence_missing"
@@ -1979,11 +2019,15 @@ def resolve_launch(
     task_sha256: str | None = None,
     grant_digest_value: str | None = None,
     remaining_authorized_task_allowance: int | float | None = None,
+    attempt_deadline: float | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     launch_started = time.monotonic()
+    attempt_deadline = attempt_deadline or launch_started + _DEEPAGENTS_RUN_TIMEOUT
     if executor not in _EXECUTORS:
         raise LaunchBlocked(f"Unsupported executor: {executor}")
     task_text = _validate_task(task)
+    if executor == "deepagents" and assignment_id is not None and remaining_authorized_task_allowance is None:
+        raise LaunchBlocked("Coordinated launch requires remaining authorized task allowance.")
     try:
         runtime_grant = normalize_runtime_grant(
             executor=executor,
@@ -2005,25 +2049,15 @@ def resolve_launch(
             else remaining_authorized_task_allowance
         )
         try:
-            effective_budget = resolve_attempt_budget(
+            resolve_attempt_budget(
                 runtime_grant["wall_clock_seconds"]["requested"],
                 allowance,
                 remaining_attempt_seconds(time.monotonic() - launch_started),
             )
         except AttemptContractError as exc:
             raise LaunchBlocked(str(exc)) from exc
-        runtime_grant["wall_clock_seconds"]["effective"] = effective_budget
-        runtime_grant["wall_clock_seconds"]["enforcement"] = "runtime"
     requested_local_capabilities = list(local_capabilities or [])
     effective_local_capabilities = _normalize_local_capabilities(requested_local_capabilities)
-    delivery_task = _project_runtime_grant(task_text, runtime_grant)
-    completion_marker = None
-    if executor == "deepagents":
-        completion_marker = f"DEEPAGENTS_COMPLETED_{uuid.uuid4().hex[:16]}"
-        delivery_task += (
-            " Output these two final lines exactly when task is complete: "
-            f"COMPLETED, then {completion_marker}."
-        )
     computed_grant_digest = grant_digest(executor, runtime_grant)
     if assignment_id is not None:
         if not isinstance(repository_identity, str) or not repository_identity.strip():
@@ -2069,6 +2103,30 @@ def resolve_launch(
     _record_performance_phase(performance, "target_discovery", target_started)
     worker_started = time.monotonic()
     pane_state = _herdr_pane(cwd, session, pane, herdr, executor=executor, env=environment)
+    if executor == "deepagents":
+        allowance = (
+            WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
+            if remaining_authorized_task_allowance is None
+            else remaining_authorized_task_allowance
+        )
+        try:
+            effective_budget = resolve_attempt_budget(
+                runtime_grant["wall_clock_seconds"]["requested"],
+                allowance,
+                max(0.0, attempt_deadline - time.monotonic()),
+            )
+        except AttemptContractError as exc:
+            raise LaunchBlocked(str(exc)) from exc
+        runtime_grant["wall_clock_seconds"]["effective"] = effective_budget
+        runtime_grant["wall_clock_seconds"]["enforcement"] = "runtime"
+    delivery_task = _project_runtime_grant(task_text, runtime_grant)
+    completion_marker = None
+    if executor == "deepagents":
+        completion_marker = f"DEEPAGENTS_COMPLETED_{uuid.uuid4().hex[:16]}"
+        delivery_task += (
+            " Output these two final lines exactly when task is complete: "
+            f"COMPLETED, then {completion_marker}."
+        )
     agent_name = name or (
         _unique_agent_name(f"{selected.name}-main")
         if executor == "codex"
@@ -2388,6 +2446,7 @@ def _main_body(args: argparse.Namespace) -> int:
             task_sha256=args.task_sha256,
             grant_digest_value=args.grant_digest,
             remaining_authorized_task_allowance=args.remaining_authorized_task_allowance,
+            attempt_deadline=attempt_deadline,
         )
         if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
             raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")
@@ -2410,9 +2469,11 @@ def _main_body(args: argparse.Namespace) -> int:
             if registry_evidence.get(key) is not None:
                 attempt_context[key] = registry_evidence[key]
         receipt_file: Path | None = None
+        task_result_file: Path | None = None
         if args.executor == "deepagents" and not args.dry_run and "-n" in command:
             receipt_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
             receipt_file = receipt_dir / "result.json"
+            task_result_file = receipt_dir / "task-result.json"
             command = command.copy()
             command[command.index("-n"):command.index("-n")] = [
                 "--result-file",
@@ -2434,6 +2495,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     _powershell_literal(args.prior_attempt_known),
                 ]
             registry_evidence["result_file"] = str(receipt_file)
+            registry_evidence["task_result_file"] = str(task_result_file)
 
         def record_phase(name: str, started: float, *, attempt_id: str | None = None) -> None:
             if args.executor == "deepagents" and name == "delivery":
@@ -2489,13 +2551,41 @@ def _main_body(args: argparse.Namespace) -> int:
                     receipt_file,
                     str(assignment.get("attempt_id", attempt_id)),
                 )
+            task_result_evidence = _read_deepagents_task_result(
+                task_result_file,
+                assignment_id=str(assignment.get("assignment_id", args.assignment_id))
+                if assignment.get("assignment_id", args.assignment_id) is not None
+                else None,
+                attempt_id=str(assignment.get("attempt_id", attempt_id)),
+                task_sha256=str(assignment.get("task_sha256", args.task_sha256))
+                if assignment.get("task_sha256", args.task_sha256) is not None
+                else None,
+                grant_digest_value=str(assignment.get("grant_digest", args.grant_digest))
+                if assignment.get("grant_digest", args.grant_digest) is not None
+                else None,
+            )
             receipt_capabilities = receipt.get("capabilities")
-            if not isinstance(receipt_capabilities, dict):
-                receipt_capabilities = receipt.get("shell_capabilities")
-            if isinstance(receipt_capabilities, dict):
+            capability_state = receipt.get("capability_state", "unavailable")
+            assignment["capability_state"] = capability_state
+            if capability_state == "confirmed" and isinstance(receipt_capabilities, dict) and all(
+                name in receipt_capabilities
+                for name in ("requested", "passed_to_worker", "validated_available", "digest")
+            ):
                 projected_capabilities = dict(local_capabilities or {})
-                projected_capabilities.update(receipt_capabilities)
+                projected_capabilities.update(
+                    {
+                        "requested": receipt_capabilities["requested"],
+                        "effective": receipt_capabilities["passed_to_worker"],
+                        "verification_commands": receipt_capabilities["passed_to_worker"],
+                        "digest": receipt_capabilities["digest"],
+                    }
+                )
                 assignment["local_capabilities"] = projected_capabilities
+                assignment["capabilities"] = dict(receipt_capabilities)
+            else:
+                assignment["capability_detail"] = receipt.get(
+                    "capability_detail", "worker capability evidence unavailable"
+                )
             if args.executor == "deepagents":
                 assignment["lifecycle_receipt"] = receipt
                 classified = _classify_deepagents_outcome(
@@ -2503,6 +2593,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     observation=observation,
                     receipt=receipt,
                     fallback_failure_kind=assignment.get("failure_kind"),
+                    task_result_evidence=task_result_evidence,
                 )
                 delivery = classified["delivery"]
                 execution = classified["execution"]

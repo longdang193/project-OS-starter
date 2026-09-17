@@ -107,6 +107,13 @@ def test_result_receipt_keeps_capability_and_lifecycle_evidence(tmp_path: Path) 
         "available": ["git"],
         "effective": ["git"],
     }
+    assert payload["capabilities"] == {
+        "requested": ["git"],
+        "passed_to_worker": ["git"],
+        "validated_available": ["git"],
+        "digest": LAUNCHER._sha256_json(["git"]),
+        "validation_error": None,
+    }
     assert payload["worker"]["descendant_state"] == "unknown"
     assert payload["recovery_required"] is True
 
@@ -744,6 +751,34 @@ def test_attempt_guard_claim_is_atomic_and_idempotent(
     assert mismatch["action"] == "BLOCKED"
 
 
+def test_attempt_guard_serializes_distinct_process_claims(tmp_path: Path) -> None:
+    script = (
+        "import importlib.util, json, sys; "
+        "from pathlib import Path; "
+        "root=Path(sys.argv[1]); guard=Path(sys.argv[2]); attempt=sys.argv[3]; "
+        "spec=importlib.util.spec_from_file_location('dcode_probe', root/'scripts'/'dcode_project.py'); "
+        "module=importlib.util.module_from_spec(spec); sys.modules[spec.name]=module; spec.loader.exec_module(module); "
+        "module._attempt_guard_root=lambda: guard; "
+        "binding={'assignment_id':'assignment-race','attempt_id':attempt,'executor':'deepagents','repository_identity':'repo-1','task_sha256':'task-1','grant_digest':'grant-1'}; "
+        "print(json.dumps(module._claim_attempt(**binding, repo_root=root, result_file=None)))"
+    )
+    guard = tmp_path / "guards"
+    processes = [
+        subprocess.Popen(
+            [sys.executable, "-c", script, str(ROOT), str(guard), attempt],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for attempt in ("attempt-a", "attempt-b")
+    ]
+    outputs = [json.loads(process.communicate(timeout=10)[0]) for process in processes]
+
+    assert sorted(item["admission"] for item in outputs) == ["ADMITTED", "BLOCKED"]
+    guard_files = list(guard.glob("*.json"))
+    assert len(guard_files) == 1
+
+
 def test_competing_attempt_stops_before_execution_side_effects(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1149,6 +1184,7 @@ def test_main_cleans_owned_role_views_after_dcode_failure(
     )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
 
     def fail_dcode(*args: object, **kwargs: object) -> None:
         assert (tmp_path / ".deepagents" / "agents" / "normal" / "AGENTS.md").is_file()
@@ -1416,6 +1452,7 @@ def test_main_uses_selected_role_model_and_fixed_local_capabilities(
     )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
     invoked: list[object] = []
     invoked_kwargs: dict[str, object] = {}
 
@@ -1507,8 +1544,13 @@ def test_print_config_reports_selected_role_effective_model(
             "mcp_capability_digest": "digest",
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run_deepagents_worker",
+        lambda *args, **kwargs: pytest.fail("print-config reached worker runtime"),
+    )
 
-    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
+    assert LAUNCHER.main(["--role", "normal", "--print-config", "--no-mcp", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["selected_role"] == "normal"
@@ -1606,6 +1648,7 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
     if executor == "deepagents":
         monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
         monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+        _stub_worker_shell_capabilities(monkeypatch)
         monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
     else:
         monkeypatch.setattr(LAUNCHER, "_run_tura_worker", lambda *args: 0)
@@ -1980,6 +2023,20 @@ def test_native_mcp_config_normalizes_integral_float_startup_timeout() -> None:
     assert projected["mcpServers"]["serena"]["startup_timeout_sec"] == 120
 
 
+def _stub_worker_shell_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_resolve_worker_shell_capabilities",
+        lambda requested, environment: {
+            "requested": list(requested),
+            "available": list(requested or ["git", "py"]),
+            "effective": list(requested or ["git", "py"]),
+            "passed_to_worker": list(requested or ["git", "py"]),
+            "validated_available": list(requested or ["git", "py"]),
+        },
+    )
+
+
 def _prepare_deepagents_main(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2016,6 +2073,7 @@ def _prepare_deepagents_main(
     )
     monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
     monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
     return codex_config
 
 

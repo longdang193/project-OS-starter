@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -49,6 +50,7 @@ def test_resolve_launch_rejects_explicit_over_limit_agent_name_before_start(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     pane_calls: list[object] = []
 
@@ -615,6 +617,7 @@ def test_resolve_launch_builds_deepagents_pane_command(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -724,6 +727,7 @@ def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -841,6 +845,7 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -894,6 +899,7 @@ def test_resolve_launch_uses_contained_effective_worker_budget(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -944,6 +950,33 @@ def test_resolve_launch_rejects_budget_before_runtime_side_effects(
         )
 
 
+def test_resolve_launch_rejects_coordinated_launch_without_remaining_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_executable",
+        lambda name: (_ for _ in ()).throw(AssertionError(name)),
+    )
+
+    grant = LAUNCHER.normalize_runtime_grant(executor="deepagents")
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="remaining authorized task allowance"):
+        LAUNCHER.resolve_launch(
+            profile_name="normal",
+            session="session",
+            pane="pane",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="deepagents",
+            task="task",
+            assignment_id="assignment-1",
+            repository_identity="repo-1",
+            plan_identity="plan-1",
+            task_sha256=LAUNCHER._sha256_text("task"),
+            grant_digest_value=LAUNCHER.grant_digest("deepagents", grant),
+        )
+
+
 def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -967,6 +1000,7 @@ def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
         "_codex_runtime",
         lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
     )
+    monkeypatch.setattr(LAUNCHER, "_codex_runtime_mcp_servers", lambda *args, **kwargs: {})
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -1028,6 +1062,11 @@ def test_resolve_launch_projects_selected_codex_mcp_server(
         "_codex_runtime",
         lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_runtime_mcp_servers",
+        lambda *args, **kwargs: {"context7": True, "open-design": True},
+    )
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -1069,6 +1108,7 @@ def test_resolve_launch_quotes_mcp_selectors_for_powershell(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
         LAUNCHER,
@@ -2460,6 +2500,135 @@ def test_deepagents_main_waits_for_receipt_after_terminal_observation(
     assert assignment["status"] == ("completed" if worker_exit_code == 0 else "failed")
     assert assignment["execution"]["worker_exit_code"] == worker_exit_code
     assert assignment["launcher_exit_code"] == assignment["exit_code"] == expected_return
+
+
+def test_deepagents_main_exposes_confirmed_receipt_capability_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    capability_digest = hashlib.sha256(b'["git"]').hexdigest()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+            "local_capabilities": {
+                "requested": ["git"],
+                "effective": ["git"],
+                "verification_commands": ["git"],
+                "source_task_sha256": LAUNCHER._sha256_text("assign lane"),
+                "digest": capability_digest,
+            },
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    receipt = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "recovery_required": False,
+        "capability_state": "confirmed",
+        "capabilities": {
+            "requested": ["git"],
+            "passed_to_worker": ["git"],
+            "validated_available": ["git"],
+            "digest": capability_digest,
+            "validation_error": None,
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr", "-n", "task"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+            "lifecycle_receipt": receipt,
+        },
+    )
+
+    assert LAUNCHER.main([
+        "--profile", "normal", "--session", "session", "--pane", "pane",
+        "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+        "--local-capability", "git", "--task", "assign lane",
+    ]) == 0
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["capability_state"] == "confirmed"
+    assert assignment["capabilities"] == receipt["capabilities"]
+
+
+def test_deepagents_main_does_not_promote_projected_capabilities_without_receipt_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+            "local_capabilities": {
+                "requested": ["git"],
+                "effective": ["git"],
+                "verification_commands": ["git"],
+                "source_task_sha256": LAUNCHER._sha256_text("assign lane"),
+                "digest": hashlib.sha256(b'["git"]').hexdigest(),
+            },
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr", "-n", "task"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+            "lifecycle_receipt": {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 0,
+                "descendant_state": "terminated",
+                "cleanup_state": "removed",
+                "recovery_required": False,
+                "capability_state": "unavailable",
+            },
+        },
+    )
+
+    assert LAUNCHER.main([
+        "--profile", "normal", "--session", "session", "--pane", "pane",
+        "--cwd", str(ROOT), "--expected-base", "HEAD", "--executor", "deepagents",
+        "--local-capability", "git", "--task", "assign lane",
+    ]) == 0
+    assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert assignment["capability_state"] == "unavailable"
+    assert "capabilities" not in assignment
 
 
 def test_deepagents_zero_exit_failed_report_is_not_completion() -> None:
