@@ -944,6 +944,33 @@ def test_resolve_launch_rejects_budget_before_runtime_side_effects(
         )
 
 
+def test_resolve_launch_rejects_coordinated_launch_without_remaining_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_executable",
+        lambda name: (_ for _ in ()).throw(AssertionError(name)),
+    )
+
+    grant = LAUNCHER.normalize_runtime_grant(executor="deepagents")
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="remaining authorized task allowance"):
+        LAUNCHER.resolve_launch(
+            profile_name="normal",
+            session="session",
+            pane="pane",
+            cwd=ROOT,
+            expected_base="HEAD",
+            executor="deepagents",
+            task="task",
+            assignment_id="assignment-1",
+            repository_identity="repo-1",
+            plan_identity="plan-1",
+            task_sha256=LAUNCHER._sha256_text("task"),
+            grant_digest_value=LAUNCHER.grant_digest("deepagents", grant),
+        )
+
+
 def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

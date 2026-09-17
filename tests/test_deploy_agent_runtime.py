@@ -542,6 +542,21 @@ def _apply_shared_pairs(pairs: list[tuple[Path | None, Path, str | None]]) -> No
             destination.write_text(rendered or source.read_text(encoding="utf-8"), encoding="utf-8")
 
 
+def test_apply_pairs_staged_never_leaves_partial_target(tmp_path: Path) -> None:
+    target = tmp_path / "runtime"
+    (target / "old").mkdir(parents=True)
+    (target / "old" / "keep.txt").write_text("keep\n", encoding="utf-8")
+    pairs = [
+        (None, target / "old" / "keep.txt", None),
+        (None, target / "new" / "one.txt", "one"),
+        (None, target / "new" / "two.txt", "two"),
+    ]
+
+    DEPLOY._apply_pairs_staged(pairs, target)
+
+    assert not (target / "old" / "keep.txt").exists()
+    assert (target / "new" / "one.txt").read_text(encoding="utf-8") == "one\n"
+    assert (target / "new" / "two.txt").read_text(encoding="utf-8") == "two\n"
 def test_shared_assets_deploy_and_update_without_adoption(tmp_path: Path, monkeypatch) -> None:
     root = _shared_asset_repo(tmp_path)
     monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", tmp_path / "global" / "project-os")

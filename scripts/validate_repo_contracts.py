@@ -378,6 +378,23 @@ def validate_runtime_boundary_guidance(root: Path) -> list[ValidationIssue]:
     return issues
 
 
+def validate_parallel_dispatch_spec(root: Path) -> list[ValidationIssue]:
+    path = root / "docs" / "superpowers" / "specs" / "2026-09-14-parallel-deepagents-dispatch-spec.md"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    required = ("## Runtime Boundary Amendment", "CONTINUATION_ELIGIBLE")
+    missing = [marker for marker in required if marker not in text]
+    return [
+        ValidationIssue(
+            "runtime_boundary_spec",
+            relative_path(path, root),
+            f"parallel dispatch spec requires `{marker}`",
+        )
+        for marker in missing
+    ]
+
+
 def _is_metadata_capable(path: Path) -> bool:
     analysis = _analyze_metadata_file(path)
     return analysis[0]
@@ -601,6 +618,10 @@ def main(argv: list[str] | None = None) -> int:
     ssot_issues = validate_ssot_contracts(root)
     if ssot_issues:
         return report_issues(ssot_issues)
+
+    spec_issues = validate_parallel_dispatch_spec(root)
+    if spec_issues:
+        return report_issues(spec_issues)
 
     boundary_issues = validate_runtime_boundary_guidance(root)
     if boundary_issues:

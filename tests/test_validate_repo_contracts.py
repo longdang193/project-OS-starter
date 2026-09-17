@@ -307,6 +307,22 @@ def test_runtime_boundary_guidance_rejects_private_launcher_policy(tmp_path: Pat
     assert any("public normalize_runtime_grant" in issue.message for issue in issues)
 
 
+def test_parallel_dispatch_spec_requires_runtime_boundary_amendment(tmp_path: Path) -> None:
+    spec_path = tmp_path / "docs" / "superpowers" / "specs" / "2026-09-14-parallel-deepagents-dispatch-spec.md"
+    write_text(spec_path, "## Runtime Boundary Amendment\n\nCONTINUATION_ELIGIBLE\n")
+
+    assert VALIDATOR.validate_parallel_dispatch_spec(tmp_path) == []
+
+
+def test_parallel_dispatch_spec_rejects_missing_runtime_boundary_amendment(tmp_path: Path) -> None:
+    spec_path = tmp_path / "docs" / "superpowers" / "specs" / "2026-09-14-parallel-deepagents-dispatch-spec.md"
+    write_text(spec_path, "# Parallel DeepAgents Dispatch\n")
+
+    issues = VALIDATOR.validate_parallel_dispatch_spec(tmp_path)
+
+    assert any("Runtime Boundary Amendment" in issue.message for issue in issues)
+
+
 def test_starter_kit_classification_detects_out_of_manifest_tier(tmp_path: Path) -> None:
     write_text(
         tmp_path / "repo_config" / "starter-kit-manifest.json",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,7 @@ def lane(
         "grant_child_agents": "deny",
         "mcp_select": [],
         "remaining_authorized_task_allowance": 1800,
+        "attempt_deadline": time.monotonic() + 1800,
     }
 
 
@@ -78,7 +80,8 @@ def test_load_lane_descriptors_rejects_shared_resources(
 
     result = dispatcher.load_lane_descriptors(write_lanes(tmp_path, lanes))
 
-    assert result["admitted"] == []
+    assert [item["lane_id"] for item in result["admitted"]] == ["a"]
+    assert [item["lane_id"] for item in result["blocked"]] == ["b"]
     assert all(reason in item["reason"] for item in result["rejected"])
 
 
@@ -123,6 +126,18 @@ def test_load_lane_descriptors_caps_capacity_and_reports_queued_lane(tmp_path: P
 
     assert [item["lane_id"] for item in result["admitted"]] == ["a", "b"]
     assert result["rejected"] == [{"lane_id": "c", "reason": "capacity limit 2"}]
+    assert [item["lane_id"] for item in result["deferred"]] == ["c"]
+
+
+def test_later_conflict_does_not_invalidate_ready_lane(tmp_path: Path) -> None:
+    first = lane("a", tmp_path, writes=["shared/file.txt"])
+    conflicting = lane("b", tmp_path, writes=["shared/file.txt"])
+
+    result = dispatcher.load_lane_descriptors_from_items([first, conflicting])
+
+    assert [item["lane_id"] for item in result["admitted"]] == ["a"]
+    assert [item["lane_id"] for item in result["blocked"]] == ["b"]
+    assert result["rejected"] == [{"lane_id": "b", "reason": "write set or mutable resource conflicts"}]
 
 
 def test_run_parallel_starts_both_lanes_before_either_finishes(tmp_path: Path, monkeypatch) -> None:
@@ -142,7 +157,7 @@ def test_run_parallel_starts_both_lanes_before_either_finishes(tmp_path: Path, m
 
     assert started == {"a", "b"}
     assert finished == {"a", "b"}
-    assert [item["lane_id"] for item in result["results"]] == ["a", "b"]
+    assert {item["lane_id"] for item in result["results"]} == {"a", "b"}
 
 
 def test_run_parallel_preserves_sibling_failure(monkeypatch, tmp_path: Path) -> None:

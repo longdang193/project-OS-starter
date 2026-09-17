@@ -305,6 +305,97 @@ def eligibility_action(state: str) -> str:
     return mapping[state]
 
 
+def attempt_decision(
+    claim: Mapping[str, Any] | None,
+    *,
+    prior_attempt_known: bool,
+    receipt: Mapping[str, Any] | None,
+    cleanup_confirmed: bool | None,
+    descendants_retired: bool | None,
+    binding_matches: bool = True,
+) -> dict[str, Any]:
+    """Derive one lifecycle, admission, settlement, and recovery decision."""
+    if not isinstance(binding_matches, bool):
+        raise AttemptContractError("binding_matches must be boolean")
+    if not binding_matches:
+        return {
+            "lifecycle": "RECOVERY_REQUIRED",
+            "admission": "BLOCKED",
+            "action": "BLOCKED",
+            "eligibility": "BLOCKED",
+            "settlement_proven": False,
+            "recovery_required": True,
+            "reason": "attempt binding mismatch",
+        }
+    lifecycle = derive_lifecycle_state(
+        claim,
+        prior_attempt_known=prior_attempt_known,
+        receipt=receipt,
+        cleanup_confirmed=cleanup_confirmed,
+        descendants_retired=descendants_retired,
+    )
+    settlement_proven = terminal_settlement_proven(
+        receipt,
+        cleanup_confirmed=cleanup_confirmed is True,
+        descendants_retired=descendants_retired is True,
+    )
+    admission = {
+        "UNCLAIMED": "ADMITTED",
+        "ACTIVE": "BLOCKED",
+        "SETTLED": "IDEMPOTENT",
+        "RECOVERY_REQUIRED": "RECONCILE",
+    }[lifecycle]
+    return {
+        "lifecycle": lifecycle,
+        "admission": admission,
+        "action": eligibility_action(lifecycle),
+        "eligibility": eligibility_action(lifecycle),
+        "settlement_proven": settlement_proven,
+        "recovery_required": lifecycle == "RECOVERY_REQUIRED",
+        "reason": lifecycle.casefold().replace("_", " "),
+    }
+
+
+def continuation_decision(
+    *,
+    lifecycle: str,
+    task_result: Mapping[str, Any] | None,
+    authority_unchanged: bool,
+    dependencies_ready: bool,
+    requested_seconds: object,
+    remaining_authorized_task_allowance: Real,
+) -> dict[str, Any]:
+    """Decide whether CoS may continue from one settled checkpoint."""
+    if not isinstance(authority_unchanged, bool) or not isinstance(dependencies_ready, bool):
+        raise AttemptContractError("continuation flags must be boolean")
+    if lifecycle != "SETTLED":
+        return {"state": "RECONCILE", "reason": "prior attempt is not settled"}
+    if not authority_unchanged:
+        return {"state": "ESCALATE", "reason": "continuation authority changed"}
+    if not dependencies_ready:
+        return {"state": "ESCALATE", "reason": "continuation dependencies are not ready"}
+    if (
+        not isinstance(task_result, Mapping)
+        or task_result.get("status") != "completed"
+        or not isinstance(task_result.get("checkpoint"), Mapping)
+        or not task_result["checkpoint"].get("revision")
+    ):
+        return {"state": "RECONCILE", "reason": "valid continuation checkpoint is missing"}
+    requested = _positive_integer(requested_seconds, "requested_seconds")
+    remaining = _non_negative_real(
+        remaining_authorized_task_allowance,
+        "remaining_authorized_task_allowance",
+    )
+    if requested > remaining:
+        return {"state": "ESCALATE", "reason": "continuation exceeds remaining authority"}
+    return {
+        "state": "CONTINUATION_ELIGIBLE",
+        "reason": "settled checkpoint is within unchanged authority",
+        "requested_seconds": requested,
+        "remaining_authorized_task_allowance": remaining,
+    }
+
+
 def same_attempt_binding(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool:
     fields = (
         "attempt_id",
@@ -352,9 +443,9 @@ def resolve_attempt_budget(
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
     )
     reserve = _non_negative_real(settlement_reserve_seconds, "settlement_reserve_seconds")
-    available = min(authorized, remaining - reserve)
+    available = math.floor(min(authorized, remaining - reserve))
     requested = _grant_value(grant_wall_clock_seconds, "grant_wall_clock_seconds")
-    if available <= 0:
+    if available < 1:
         raise AttemptContractError("attempt has no worker budget after settlement reserve")
     if requested == NATIVE_GRANT_VALUE:
         return min(NATIVE_WORKER_WALL_CLOCK_SECONDS, available)
@@ -380,6 +471,8 @@ __all__ = [
     "WHOLE_ATTEMPT_WALL_CLOCK_SECONDS",
     "default_runtime_grant",
     "assignment_id",
+    "attempt_decision",
+    "continuation_decision",
     "derive_lifecycle_state",
     "eligibility_action",
     "grant_digest",

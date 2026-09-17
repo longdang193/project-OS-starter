@@ -8,10 +8,12 @@ import argparse
 from datetime import UTC, datetime
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import uuid
 
 import yaml
 
@@ -68,6 +70,52 @@ def parse_args() -> argparse.Namespace:
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n")
+
+
+def _apply_pairs_staged(
+    pairs: list[tuple[Path | None, Path, str | None]],
+    target_root: Path,
+    *,
+    backup_root: Path | None = None,
+) -> None:
+    target_root.parent.mkdir(parents=True, exist_ok=True)
+    stage = target_root.parent / f".{target_root.name}.staging-{uuid.uuid4().hex}"
+    previous = target_root.parent / f".{target_root.name}.previous-{uuid.uuid4().hex}"
+    backup_stage = target_root.parent / f".{target_root.name}.backup-{uuid.uuid4().hex}"
+    try:
+        if target_root.exists():
+            shutil.copytree(target_root, stage)
+            if backup_root is not None:
+                shutil.copytree(target_root, backup_stage)
+        else:
+            stage.mkdir()
+        for source, destination, rendered in pairs:
+            relative = destination.relative_to(target_root)
+            staged_destination = stage / relative
+            if source is None and rendered is None:
+                staged_destination.unlink(missing_ok=True)
+                continue
+            staged_destination.parent.mkdir(parents=True, exist_ok=True)
+            content = rendered if rendered is not None else source.read_text(encoding="utf-8")
+            staged_destination.write_text(content + ("\n" if not content.endswith("\n") else ""), encoding="utf-8")
+        if target_root.exists():
+            os.replace(target_root, previous)
+        try:
+            os.replace(stage, target_root)
+        except Exception:
+            if previous.exists() and not target_root.exists():
+                os.replace(previous, target_root)
+            raise
+        if backup_root is not None and backup_stage.exists():
+            backup_root.parent.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(backup_root, ignore_errors=True)
+            shutil.move(str(backup_stage), str(backup_root))
+        else:
+            shutil.rmtree(previous, ignore_errors=True)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+        shutil.rmtree(previous, ignore_errors=True)
+        shutil.rmtree(backup_stage, ignore_errors=True)
 
 
 def _git_common_dir(root: Path) -> Path | None:
@@ -1003,19 +1051,7 @@ def run() -> int:
             if args.backup:
                 stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
                 backup_root = SHARED_ASSETS_TARGET / ".backups" / stamp / bundle_name
-            for source, destination, rendered in pairs:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if backup_root is not None and destination.exists():
-                    backup_path = backup_root / destination.relative_to(SHARED_ASSETS_TARGET)
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(destination, backup_path)
-                if source is None:
-                    if rendered is None:
-                        destination.unlink(missing_ok=True)
-                    else:
-                        destination.write_text(rendered + "\n", encoding="utf-8")
-                else:
-                    destination.write_text(rendered if rendered is not None else source.read_text(encoding="utf-8"), encoding="utf-8")
+            _apply_pairs_staged(pairs, SHARED_ASSETS_TARGET / bundle_name, backup_root=backup_root)
             print(f"Deployed shared {bundle_name} -> {(SHARED_ASSETS_TARGET / bundle_name).as_posix()} ({len(pairs)} changed)")
         changes, plan_issues, pairs = _plan_shared_skill_deploy(
             shared_skills_root,
@@ -1034,19 +1070,7 @@ def run() -> int:
                 if args.backup:
                     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
                     backup_root = SHARED_SKILLS_TARGET / ".backups" / stamp
-                for src, dst, rendered in pairs:
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    if backup_root is not None and dst.exists():
-                        backup_path = backup_root / dst.relative_to(SHARED_SKILLS_TARGET)
-                        backup_path.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(dst, backup_path)
-                    if src is None:
-                        if rendered is None:
-                            dst.unlink(missing_ok=True)
-                        else:
-                            dst.write_text(rendered + "\n", encoding="utf-8")
-                        continue
-                    dst.write_text(rendered + "\n", encoding="utf-8")
+                _apply_pairs_staged(pairs, SHARED_SKILLS_TARGET, backup_root=backup_root)
                 print(
                     f"Deployed shared skills -> {SHARED_SKILLS_TARGET.as_posix()} ({len(pairs)} changed)"
                 )
@@ -1087,16 +1111,7 @@ def run() -> int:
         if args.backup:
             stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             backup_root = target_root / ".backups" / stamp
-        for src, dst, rendered in pairs:
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            if backup_root is not None and dst.exists():
-                backup_path = backup_root / dst.relative_to(target_root)
-                backup_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(dst, backup_path)
-            if src is None:
-                dst.unlink(missing_ok=True)
-                continue
-            dst.write_text(rendered + "\n", encoding="utf-8")
+        _apply_pairs_staged(pairs, target_root, backup_root=backup_root)
         print(f"Deployed {platform} -> {target_root.as_posix()} ({len(pairs)} changed)")
     if issues:
         print("Deploy check failed:")

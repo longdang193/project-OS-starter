@@ -373,6 +373,50 @@ Aggregate precedence:
 - generated-source consistency: runtime surface documentation remains aligned with canonical scripts; no generated agent surface changes unless a canonical skill is changed.
 - security or accessibility boundary: no new credential path, external write, destructive cleanup, or access broadening.
 
+## Runtime Boundary Amendment
+
+This amendment refines existing pilot contracts without adding a coordinator,
+scheduler service, heartbeat store, runtime ledger, or lifecycle registry.
+
+### Boundary ownership
+
+- CoS/task plan owns scope, dependencies, acceptance, continuation decisions,
+  and plan-owned attempt charges.
+- The shared attempt contract owns admission, budget, lifecycle, settlement,
+  and continuation eligibility facts.
+- The worker wrapper owns execution, the original deadline, descendants,
+  cleanup, lifecycle receipts, and atomic task-result publication.
+- Herdr owns target selection, transport, and diagnostic observation only.
+- Git owns worktree, branch, base, and change truth.
+
+Admission, resource state, and task outcome remain independent. `DEFERRED`
+means temporary capacity or explicitly shareable-resource contention only.
+Dependency acceptance waits, overlapping writes, duplicate assignments, and
+uncertain ownership are `BLOCKED` or reconciliation states and never trigger
+automatic refill, replay, acceptance, or capacity release.
+
+### Deadline and retry boundary
+
+The 1,800-second whole-attempt ceiling starts when launcher invocation begins.
+It includes preflight, wrapper setup, lock acquisition, MCP setup, transport,
+worker execution, output drain, descendant retirement, cleanup, settlement,
+and any bounded collection reserve. Observation timeout cannot extend this
+ceiling or authorize replacement. One plan-owned charge is recorded for every
+attempt, including interruption. A fresh attempt requires settled prior
+ownership and a newly validated worktree binding; exhausted authority stops or
+escalates instead of retrying.
+
+### Evidence and continuation boundary
+
+Lifecycle receipts prove process, descendant, cleanup, and settlement facts.
+`TaskResult` reports progress and references checkpoint, remaining-work, and
+verification evidence. The wrapper creates the controller-selected absolute
+result path; the worker publishes bounded, identity-bound, versioned JSON
+atomically. Missing, malformed, stale, or contradictory evidence requires
+reconciliation and never proves verification, acceptance, replay safety, or
+capacity release. `CONTINUATION_ELIGIBLE` is a fact consumed by CoS; worker,
+wrapper, launcher, and dispatcher cannot authorize continuation or replay.
+
 ## Validation Plan
 
 ### Backend Verification Claims

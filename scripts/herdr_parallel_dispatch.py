@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import importlib.util
 import json
 import math
 import os
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 
 try:
@@ -21,28 +23,37 @@ try:
         NATIVE_GRANT_VALUE,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         assignment_id as _assignment_id,
+        attempt_decision,
         grant_digest as _contract_grant_digest,
         normalize_runtime_grant,
         resolve_attempt_budget,
         terminal_settlement_proven,
     )
     from scripts.herdr_main_launcher import _sha256_text
-except ModuleNotFoundError:
-    from herdr_attempt_contract import (
-        NATIVE_GRANT_VALUE,
-        WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
-        assignment_id as _assignment_id,
-        grant_digest as _contract_grant_digest,
-        normalize_runtime_grant,
-        resolve_attempt_budget,
-        terminal_settlement_proven,
+except (ModuleNotFoundError, ImportError):
+    _contract_path = Path(__file__).with_name("herdr_attempt_contract.py")
+    _contract_spec = importlib.util.spec_from_file_location(
+        "_project_herdr_attempt_contract", _contract_path
     )
-    from herdr_main_launcher import _sha256_text
+    if _contract_spec is None or _contract_spec.loader is None:
+        raise
+    _contract_module = importlib.util.module_from_spec(_contract_spec)
+    _contract_spec.loader.exec_module(_contract_module)
+    NATIVE_GRANT_VALUE = _contract_module.NATIVE_GRANT_VALUE
+    WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = _contract_module.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
+    _assignment_id = _contract_module.assignment_id
+    attempt_decision = _contract_module.attempt_decision
+    _contract_grant_digest = _contract_module.grant_digest
+    normalize_runtime_grant = _contract_module.normalize_runtime_grant
+    resolve_attempt_budget = _contract_module.resolve_attempt_budget
+    terminal_settlement_proven = _contract_module.terminal_settlement_proven
+    from scripts.herdr_main_launcher import _sha256_text
 
 
 MAX_CONCURRENCY = 2
 _LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 TIMEOUT_OWNER = "dcode-project"
+_REAPING_RESERVE_SECONDS = 30.0
 _REQUIRED_FIELDS = (
     "lane_id",
     "repository_identity",
@@ -187,17 +198,6 @@ def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
     return {"lane_id": str(lane.get("lane_id", "<missing>")), "reason": reason}
 
 
-def _invalidate_wave(
-    admitted: list[dict[str, Any]],
-    rejected: list[dict[str, str]],
-    lane: Mapping[str, Any],
-    reason: str,
-) -> None:
-    rejected.extend(_reject(item, reason) for item in admitted)
-    admitted.clear()
-    rejected.append(_reject(lane, reason))
-
-
 def _admit_lanes(
     lanes: Iterable[Mapping[str, Any]],
     *,
@@ -209,6 +209,8 @@ def _admit_lanes(
 
     admitted: list[dict[str, Any]] = []
     rejected: list[dict[str, str]] = []
+    deferred: list[dict[str, Any]] = []
+    blocked: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     seen_worktrees: dict[str, str] = {}
     seen_panes: dict[str, str] = {}
@@ -230,6 +232,7 @@ def _admit_lanes(
         seen_ids.add(lane_id)
         if lane.get("dependency_ready") is not True:
             rejected.append(_reject(lane, "dependency not ready"))
+            blocked.append(lane)
             continue
         allowance = lane["remaining_authorized_task_allowance"]
         if (
@@ -266,21 +269,15 @@ def _admit_lanes(
 
         worktree = _canonical_path(lane["worktree"])
         if worktree in seen_worktrees:
-            _invalidate_wave(
-                admitted,
-                rejected,
-                lane,
-                "worktree conflicts with " + seen_worktrees[worktree],
-            )
+            reason = "worktree conflicts with " + seen_worktrees[worktree]
+            rejected.append(_reject(lane, reason))
+            blocked.append(lane)
             continue
         pane = _canonical_token(lane["pane"])
         if pane in seen_panes:
-            _invalidate_wave(
-                admitted,
-                rejected,
-                lane,
-                "pane conflicts with " + seen_panes[pane],
-            )
+            reason = "pane conflicts with " + seen_panes[pane]
+            rejected.append(_reject(lane, reason))
+            blocked.append(lane)
             continue
         contracts = tuple(sorted(map(str, lane["fixed_contracts"])))
         if shared_contracts is None:
@@ -293,22 +290,24 @@ def _admit_lanes(
             or _set_conflicts(lane["mutable_resources"], other["mutable_resources"])
             for other in admitted
         ):
-            _invalidate_wave(
-                admitted,
-                rejected,
-                lane,
-                "write set or mutable resource conflicts",
-            )
+            rejected.append(_reject(lane, "write set or mutable resource conflicts"))
+            blocked.append(lane)
             continue
         if len(admitted) >= capacity:
             rejected.append(_reject(lane, f"capacity limit {capacity}"))
+            deferred.append(lane)
             continue
 
         admitted.append(lane)
         seen_worktrees[worktree] = lane_id
         seen_panes[pane] = lane_id
 
-    return {"admitted": admitted, "rejected": rejected}
+    return {
+        "admitted": admitted,
+        "deferred": deferred,
+        "blocked": blocked,
+        "rejected": rejected,
+    }
 
 
 def load_lane_descriptors(
@@ -665,6 +664,20 @@ def run_lane(
             "capacity": "retired",
             "failure_kind": "unsupported_executor",
         }
+    if timeout_seconds is None:
+        deadline = lane.get("attempt_deadline")
+        if isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(float(deadline)):
+            return {
+                "lane_id": lane_id,
+                "command": [],
+                "exit_code": None,
+                "records": [],
+                "stderr": "missing finite attempt deadline",
+                "unresolved": True,
+                "capacity": "occupied",
+                "failure_kind": "deadline_missing",
+            }
+        timeout_seconds = max(0.0, float(deadline) - time.monotonic()) + _REAPING_RESERVE_SECONDS
     bound_lane = dict(lane)
     try:
         _bind_requested_grant(bound_lane)
@@ -798,11 +811,13 @@ def run_lane(
             "cleanup_state": cleanup.get("state") if isinstance(cleanup, Mapping) else None,
             "descendant_state": descendant_state,
         }
-        resource_settled = terminal_settlement_proven(
-            settlement,
+        resource_settled = attempt_decision(
+            {"state": "active"},
+            prior_attempt_known=True,
+            receipt=settlement,
             cleanup_confirmed=isinstance(cleanup, Mapping) and cleanup.get("state") == "removed",
             descendants_retired=descendant_state in {"terminated", "not_started"},
-        )
+        )["settlement_proven"]
         if not resource_settled:
             return "occupied", True, "execution or cleanup unsettled", False
         task_result = assignment.get("task_result")
@@ -887,6 +902,7 @@ def run_parallel(
         raise ValueError(f"max_concurrency must be between 1 and {MAX_CONCURRENCY}")
 
     results: dict[str, dict[str, Any]] = {}
+    completion_order: list[str] = []
     interrupted = bool(stop_event is not None and stop_event.is_set())
     with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
         futures = {}
@@ -900,6 +916,7 @@ def run_parallel(
             lane_id = futures[future]
             try:
                 results[lane_id] = future.result()
+                completion_order.append(lane_id)
             except BaseException as exc:  # preserve sibling evidence
                 results[lane_id] = {
                     "lane_id": lane_id,
@@ -910,14 +927,17 @@ def run_parallel(
                     "capacity": "occupied",
                     "failure_kind": "coordinator_error",
                 }
+                completion_order.append(lane_id)
     return {
         "admitted": admission["admitted"],
+        "deferred": admission.get("deferred", []),
+        "blocked": admission.get("blocked", []),
         "rejected": admission["rejected"],
         "interrupted": interrupted,
         "results": [
-            results[lane["lane_id"]]
-            for lane in admission["admitted"]
-            if lane["lane_id"] in results
+            results[lane_id]
+            for lane_id in completion_order
+            if lane_id in results
         ],
     }
 

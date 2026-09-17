@@ -744,6 +744,34 @@ def test_attempt_guard_claim_is_atomic_and_idempotent(
     assert mismatch["action"] == "BLOCKED"
 
 
+def test_attempt_guard_serializes_distinct_process_claims(tmp_path: Path) -> None:
+    script = (
+        "import importlib.util, json, sys; "
+        "from pathlib import Path; "
+        "root=Path(sys.argv[1]); guard=Path(sys.argv[2]); attempt=sys.argv[3]; "
+        "spec=importlib.util.spec_from_file_location('dcode_probe', root/'scripts'/'dcode_project.py'); "
+        "module=importlib.util.module_from_spec(spec); sys.modules[spec.name]=module; spec.loader.exec_module(module); "
+        "module._attempt_guard_root=lambda: guard; "
+        "binding={'assignment_id':'assignment-race','attempt_id':attempt,'executor':'deepagents','repository_identity':'repo-1','task_sha256':'task-1','grant_digest':'grant-1'}; "
+        "print(json.dumps(module._claim_attempt(**binding, repo_root=root, result_file=None)))"
+    )
+    guard = tmp_path / "guards"
+    processes = [
+        subprocess.Popen(
+            [sys.executable, "-c", script, str(ROOT), str(guard), attempt],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for attempt in ("attempt-a", "attempt-b")
+    ]
+    outputs = [json.loads(process.communicate(timeout=10)[0]) for process in processes]
+
+    assert sorted(item["admission"] for item in outputs) == ["ADMITTED", "BLOCKED"]
+    guard_files = list(guard.glob("*.json"))
+    assert len(guard_files) == 1
+
+
 def test_competing_attempt_stops_before_execution_side_effects(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
