@@ -2,7 +2,7 @@
 
 ## A starter kit for governed multi-agent development with AI coding agents.
 
-Define how coding agents are assigned, bounded, equipped, observed, and accepted across multiple runtimes.
+Define how coding agents are assigned, bounded, equipped, observed, and accepted across multiple runtimes. Use it when one task needs explicit ownership, bounded execution, and evidence-backed acceptance.
 
 **One controller. Bounded lanes. Evidence before acceptance.**
 
@@ -11,7 +11,7 @@ Define how coding agents are assigned, bounded, equipped, observed, and accepted
 - Explicit Git and workspace boundaries
 - Observable lifecycle and acceptance evidence
 
-[GitHub](https://github.com/longdang193/project-OS-starter) · [Issues](https://github.com/longdang193/project-OS-starter/issues)
+[GitHub](https://github.com/longdang193/project-OS-starter) · [Issues](https://github.com/longdang193/project-OS-starter/issues) · [Setup](docs/setup.md) · [Usage](docs/usage.md) · [Adoption guide](docs/operating_system/adoption/project-adoption-migration-guide.md)
 
 ## Why Project OS Starter?
 
@@ -34,7 +34,7 @@ Task Request → Lead Controller → Git-Tracked Plan → Bounded Admission
                                                         │
                                                Selected Runtime
                                                         │
-                                              Accepted Evidence
+                                              Runtime Evidence
                                                         │
                                              Acceptance Decision
 ```
@@ -51,7 +51,7 @@ and no unresolved executed result; all-deferred scheduling is normal output.
 
 [![Project OS Starter Guided Story](docs/architecture/project-OS-starter-guided-story.svg)](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html)
 
-Open the [interactive Guided Story](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html), or read [`docs/architecture.md`](docs/architecture.md), [`docs/pipeline.md`](docs/pipeline.md), and the [Archify workflow source](docs/architecture/project-OS-starter-guided-story.workflow.json).
+Open the [interactive Guided Story](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html), or read [`docs/architecture.md`](docs/architecture.md), [`docs/pipeline.md`](docs/pipeline.md), and the [canonical Archify workflow source](docs/architecture/project-OS-starter-guided-story.workflow.json). Edit canonical sources; regenerate SVG, HTML, adapters, and kit outputs; never hand-edit generated projections.
 
 ## Example Workflow
 

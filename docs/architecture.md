@@ -38,7 +38,8 @@ The path uses three boundaries:
 
 Recovery remains explicit. Unsafe admission or incomplete evidence enters
 `BLOCKED`. `RECONCILE` settles plan and Git state; it does not silently return
-to execution. A fresh attempt requires settled evidence and a new admission.
+to execution. The current attempt ends at reconciliation; a fresh attempt
+restarts at bounded admission after settled evidence.
 
 State namespaces stay separate: admission uses
 `ADMITTED | DEFERRED | BLOCKED | REJECTED`; runtime facts use

@@ -14,8 +14,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt
       - run: python scripts/validate_repo_contracts.py
+      - name: Check guided story projections
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+          files=(
+            "docs/architecture/project-OS-starter-guided-story.workflow.json"
+            "docs/architecture/project-OS-starter-guided-story.svg"
+            "docs/architecture/project-OS-starter-guided-story.html"
+          )
+          touched=0
+          for file in "${files[@]}"; do
+            if grep -Fxq "$file" <<<"$changed"; then
+              touched=1
+            fi
+          done
+          if [[ "$touched" -eq 1 ]]; then
+            for file in "${files[@]}"; do
+              grep -Fxq "$file" <<<"$changed" || {
+                echo "Guided Story projection drift: missing $file"
+                exit 1
+              }
+            done
+          fi
