@@ -339,7 +339,7 @@ def test_result_contract_parses_once_without_waiting(tmp_path: Path, monkeypatch
         role_views_state="removed",
         recovery_required=False,
     )
-    monkeypatch.setattr("scripts.deepagents_result_contract.time.sleep", lambda *_: pytest.fail("receipt parser waited"))
+    monkeypatch.setattr("scripts.project_os_runtime.results.time.sleep", lambda *_: pytest.fail("receipt parser waited"))
 
     receipt = parse_result_receipt(result_file, "attempt-1")
 
