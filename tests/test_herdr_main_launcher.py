@@ -4,6 +4,7 @@ import ast
 import hashlib
 import importlib.util
 import json
+import math
 from pathlib import Path
 import subprocess
 
@@ -4440,7 +4441,10 @@ def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
     ) == 0
 
     assert float(captured["worker_timeout"]) <= LAUNCHER._DEEPAGENTS_RUN_TIMEOUT
-    assert float(captured["attempt_deadline"]) - LAUNCHER.time.monotonic() <= LAUNCHER._DEEPAGENTS_RUN_TIMEOUT
+    assert float(captured["attempt_deadline"]) - LAUNCHER.time.monotonic() <= math.nextafter(
+        LAUNCHER._DEEPAGENTS_RUN_TIMEOUT,
+        math.inf,
+    )
     assert float(captured["completion_wait_seconds"]) <= (
         LAUNCHER._DEEPAGENTS_RUN_TIMEOUT - LAUNCHER._DEEPAGENTS_RECEIPT_GRACE_SECONDS
     )
