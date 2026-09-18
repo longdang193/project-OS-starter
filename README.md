@@ -43,6 +43,12 @@ The system separates task delivery, bounded execution, evidence, recovery, and f
 
 If admission or evidence fails, work enters `BLOCKED`. Reconciliation settles plan and Git state before any fresh attempt; retry is never automatic.
 
+Runtime state uses separate namespaces: admission is
+`ADMITTED | DEFERRED | BLOCKED | REJECTED`; runtime facts are
+`settled | unresolved | recovery-required`; CoS acceptance is
+`PASS | FAIL | BLOCKED`. Dispatcher exit `0` means no rejected/blocked admission
+and no unresolved executed result; all-deferred scheduling is normal output.
+
 [![Project OS Starter Guided Story](docs/architecture/project-OS-starter-guided-story.svg)](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html)
 
 Open the [interactive Guided Story](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html), or read [`docs/architecture.md`](docs/architecture.md), [`docs/pipeline.md`](docs/pipeline.md), and the [Archify workflow source](docs/architecture/project-OS-starter-guided-story.workflow.json).

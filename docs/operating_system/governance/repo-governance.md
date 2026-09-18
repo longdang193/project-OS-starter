@@ -45,7 +45,7 @@ Public repository receives curated product-facing output through publication pro
 - `docs/operating_system/procedures/`: maintainer commands and runbooks.
 - `repo_config/`: actively consumed repository, starter-kit, adapter, planning-schema, and publication configuration.
 - `agents/*.toml`: canonical agent-profile registry; owns profile identity, provider, model, optional rank, description, and instructions.
-- `scripts/herdr_main_launcher.py`: owns top-level Herdr lane resolution and lifecycle.
+- `scripts/herdr_main_launcher.py`: owns Herdr target resolution, transport, and diagnostic observation; shared runtime code owns lifecycle classification and eligibility.
 - `scripts/dcode_project.py`: owns DeepAgents projection, worker lifecycle, and generated role-view ownership; it does not own profile identity or provider protocol facts.
 - code, tests, configuration, and validators: executable truth.
 

@@ -315,7 +315,7 @@ def test_planning_dispatch_selects_cos_for_sustained_implementation_coordination
     assert "Select `skill-chief-of-staff` in `advisory` mode" in dispatch
     assert "Advisory mode needs no plan or" in dispatch
     assert "does not add an executor, profile, plan field, or durable state artifact" in " ".join(dispatch.split())
-    assert "Herdr is\nruntime observation and top-level lane supervision" in dispatch
+    assert "Herdr is\nruntime transport and diagnostic observation, not lifecycle ownership" in dispatch
     assert "only independent Herdr top-level MAIN AGENT\nlanes" in dispatch
     assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch
     assert "`tura` retains\nits existing peer executor path" in dispatch

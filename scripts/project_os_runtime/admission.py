@@ -14,6 +14,63 @@ class AdmissionResult:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class AdmissionBatch:
+    prepared: tuple[Mapping[str, Any], ...]
+    results: tuple[AdmissionResult, ...]
+
+
+def canonical_token(value: object) -> str:
+    return str(value).replace("\\", "/").strip("/").casefold()
+
+
+def path_conflicts(left: object, right: object) -> bool:
+    left_value = canonical_token(left)
+    right_value = canonical_token(right)
+    return (
+        left_value == right_value
+        or left_value.startswith(f"{right_value}/")
+        or right_value.startswith(f"{left_value}/")
+    )
+
+
+def resource_sets_conflict(left: Any, right: Any) -> bool:
+    return any(
+        path_conflicts(left_item, right_item)
+        for left_item in left
+        for right_item in right
+    )
+
+
+def classify_admission(
+    lane_id: str,
+    *,
+    duplicate_id: bool = False,
+    executor: str | None = "deepagents",
+    dependency_ready: bool = True,
+    preparation_error: str | None = None,
+    conflict_reason: str | None = None,
+    fixed_contracts_match: bool = True,
+    capacity_available: bool = True,
+    capacity_reason: str = "capacity unavailable",
+) -> AdmissionResult:
+    if duplicate_id:
+        return AdmissionResult(lane_id, "REJECTED", "duplicate lane ID")
+    if executor != "deepagents":
+        return AdmissionResult(lane_id, "REJECTED", f"unsupported executor: {executor}")
+    if not dependency_ready:
+        return AdmissionResult(lane_id, "BLOCKED", "dependency not ready")
+    if preparation_error is not None:
+        return AdmissionResult(lane_id, "REJECTED", preparation_error)
+    if not fixed_contracts_match:
+        return AdmissionResult(lane_id, "REJECTED", "fixed contracts differ")
+    if conflict_reason is not None:
+        return AdmissionResult(lane_id, "BLOCKED", conflict_reason)
+    if not capacity_available:
+        return AdmissionResult(lane_id, "DEFERRED", capacity_reason)
+    return AdmissionResult(lane_id, "ADMITTED", "ready")
+
+
 def validate_admission_results(results: list[AdmissionResult] | tuple[AdmissionResult, ...]) -> tuple[AdmissionResult, ...]:
     seen: set[str] = set()
     for result in results:

@@ -32,7 +32,10 @@ from .capabilities import (
 from .lane import PreparedLane, prepare_lane
 from .admission import (
     ADMISSION_STATES,
+    AdmissionBatch,
     AdmissionResult,
+    classify_admission,
+    resource_sets_conflict,
     legacy_admission_lists,
     validate_admission_results,
 )
@@ -74,6 +77,7 @@ __all__ = [
     "TASK_RESULT_STATUSES",
     "WHOLE_ATTEMPT_WALL_CLOCK_SECONDS",
     "AttemptContractError",
+    "AdmissionBatch",
     "AdmissionResult",
     "PreparedLane",
     "WORKER_STATES",
@@ -82,6 +86,7 @@ __all__ = [
     "capability_digest",
     "capability_evidence_matches",
     "continuation_decision",
+    "classify_admission",
     "default_runtime_grant",
     "derive_lifecycle_state",
     "effective_local_capabilities",
@@ -96,6 +101,7 @@ __all__ = [
     "prepare_lane",
     "publish_task_result",
     "remaining_attempt_seconds",
+    "resource_sets_conflict",
     "resolve_attempt_budget",
     "same_attempt_binding",
     "settlement_decision",

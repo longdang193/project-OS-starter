@@ -66,6 +66,18 @@ def test_admission_result_is_immutable_and_states_are_disjoint() -> None:
         validate_admission_results([result, AdmissionResult("lane-a", "BLOCKED", "conflict")])
 
 
+def test_classify_admission_owns_exclusive_state_and_supplied_capacity() -> None:
+    from scripts.project_os_runtime.admission import AdmissionResult, classify_admission
+
+    assert classify_admission(
+        "lane-a", capacity_available=False, capacity_reason="capacity limit 2"
+    ) == AdmissionResult("lane-a", "DEFERRED", "capacity limit 2")
+    assert classify_admission(
+        "lane-a", conflict_reason="write conflict"
+    ) == AdmissionResult("lane-a", "BLOCKED", "write conflict")
+    assert classify_admission("lane-a", duplicate_id=True, capacity_available=False).state == "REJECTED"
+
+
 def test_settlement_decision_reads_lifecycle_receipt_without_capability_or_acceptance() -> None:
     from scripts.project_os_runtime.attempt import settlement_decision
 

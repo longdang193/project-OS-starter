@@ -41,6 +41,11 @@ dispatched task contract and applicable worker or validator skills.
 
 ## MCP Escalation Contract
 
+Capability policy SSOT is
+`docs/operating_system/tooling/runtime-tool-resolution.md`. This skill defines
+plan-execution method only; it does not redefine command, MCP, approval, or
+sandbox policy.
+
 - Classify each required MCP capability as pre-dispatch or mid-task.
 - DeepAgents may use MCP only when launcher receives explicit `--mcp-select`
   selectors for approved Codex `[mcp_servers]`; no selection keeps `--no-mcp`.
@@ -84,7 +89,8 @@ Before dispatch, Codex must:
 
 ## Launch Contract
 
-Ordinary personal-local probes may call user-local `dcode-project` directly.
+Ordinary personal-local probes may call user-local `dcode-project` directly;
+this example is not a coordinated launch path.
 Git-tracked coordinated work uses the controller-owned Herdr launcher or
 `herdr_parallel_dispatch.py`, which supplies correlated identity and grant
 evidence internally:

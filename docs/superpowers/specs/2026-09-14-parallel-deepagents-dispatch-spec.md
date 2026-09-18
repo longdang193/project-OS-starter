@@ -362,7 +362,7 @@ Aggregate precedence:
 - unknown ownership, cleanup, delivery, cancellation, or verification remains unknown and blocks unsafe retry or acceptance; `RECOVERY_REQUIRED` derives `RECONCILE`, never `ELIGIBLE`.
 - one lane failure does not erase independent sibling evidence.
 - final acceptance reviews exact combined revision.
-- CoS/task plan owns dependencies, concurrency budget, aggregation, and acceptance; Herdr owns target binding and top-level lifecycle/diagnostic observation; `dcode-project` owns worker/descendant/role-view receipt facts and assignment claim settlement; Git owns worktree/branch/base/change truth.
+- CoS/task plan owns dependencies, concurrency budget, aggregation, and acceptance; the shared runtime core owns lifecycle classification and eligibility; Herdr owns target binding, transport, and diagnostic observation; `dcode-project` owns worker/descendant/role-view receipt facts and assignment claim settlement; Git owns worktree/branch/base/change truth.
 
 ### Edge Cases
 

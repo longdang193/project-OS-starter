@@ -8,6 +8,11 @@ it is not a second coordination system. The attempt contract owns lifecycle
 semantics, `dcode-project` owns worker facts, and Herdr owns transport and
 diagnostic observation.
 
+Capability policy is canonical in
+`docs/operating_system/tooling/runtime-tool-resolution.md`. This procedure is
+the operational projection: it supplies launcher commands and recovery steps,
+but does not define a second capability contract.
+
 1. `AGENTS.md` is the generated shared global baseline contract.
 2. `~/.codex`, `~/.claude`, `~/.gemini` are runtime targets.
 3. Runtime targets are generated and deployed only.
@@ -209,10 +214,12 @@ or performance evidence. A changed hash invalidates old performance evidence,
 not necessarily the adapter contract.
 
 Current `dcode-project` defaults DeepAgents to `--no-mcp`, fixes child CWD to selected
-Git root, and rejects direct runtime-authority flags. It does not translate Codex
-`mcp_servers`, approval policy, sandbox mode, profiles, or threads. It supplies
-fixed launcher-owned built-ins: filesystem tools plus `git` and `py` shell
-commands; task input cannot widen them. Launcher injects exact native file-tool
+Git root, and rejects direct runtime-authority flags. Direct `dcode-project` does
+not independently translate Codex `mcp_servers`, approval policy, sandbox mode,
+profiles, or threads; coordinated Herdr projection supplies only approved MCP
+selectors, then `dcode-project` validates them. It supplies fixed
+launcher-owned built-ins: filesystem tools plus `git` and `py` shell commands;
+task input cannot widen them. Launcher injects exact native file-tool
 root into every bounded task. On Windows it looks like
 `/Users/<user>/repos/<repo>`; append repository-relative paths. Never guess
 `/workspace/...` or use Windows drive syntax. It also injects filesystem safety:

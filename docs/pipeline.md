@@ -21,5 +21,11 @@ Frame → Govern → Execute → Prove
 next attempt must use reconciled plan and Git state, fresh evidence, and new
 bounded admission.
 
+Admission state is `ADMITTED | DEFERRED | BLOCKED | REJECTED`. Runtime facts use
+`settled | unresolved | recovery-required`. CoS acceptance uses `PASS | FAIL |
+BLOCKED`; these namespaces are not interchangeable. All-deferred scheduling
+returns normally, while rejected, blocked, or unresolved execution returns a
+nonzero dispatcher result.
+
 Stage-specific detail belongs in the owning procedure, rule, or runtime
 documentation rather than in this high-level pipeline.

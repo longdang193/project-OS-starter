@@ -218,11 +218,14 @@ remaining attempt time, and settlement reserve before forwarding it. Direct
 `dcode-project` accepts any positive explicit `--timeout N`; that value is
 enforced by both the native DeepAgents process and its wrapper. Herdr-mediated
 DeepAgents wall-clock grants above its 1800-second watchdog fail closed, while
-the Herdr outer watchdog remains 1800 seconds. Codex keeps native turn limits;
-numeric Codex wall-clock grants fail closed because no Herdr runtime owner
-enforces them. On deadline, the
-launcher closes the assigned pane, verifies executor retirement, preserves
-partial Git/filesystem state, and returns `TIMEOUT` or `BLOCKED`, never success.
+the Herdr observation watchdog remains 1800 seconds. Codex keeps native turn
+limits; numeric Codex wall-clock grants fail closed because no runtime owner
+enforces them. On deadline, `dcode-project` enforces worker and descendant
+termination and cleanup, then publishes receipt evidence. The launcher and
+dispatcher preserve that evidence and classify observation expiry as unresolved
+when retirement cannot be proven. CoS reconciles before retry or worktree
+cleanup; partial Git/filesystem state returns `TIMEOUT` or `BLOCKED`, never
+success.
 DeepAgents direct MCP projection remains default-deny unless approved selectors
 are passed through the launcher; concrete selectors and the transient
 `grant_digest` and the projected child-agent authority belong to launch

@@ -220,6 +220,24 @@ def test_run_parallel_preserves_callback_errors_without_replacing_result(
     assert result["callback_errors"][0]["error"] == "observer failed"
 
 
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ({"rejected": [], "blocked": [], "results": []}, 0),
+        ({"rejected": [], "blocked": [{"lane_id": "a"}], "results": []}, 2),
+        ({"rejected": [{"lane_id": "a"}], "blocked": [], "results": []}, 2),
+        ({"rejected": [], "blocked": [], "results": [{"unresolved": True}]}, 2),
+        ({"rejected": [], "blocked": [], "results": [{"unresolved": False}]}, 0),
+    ],
+)
+def test_main_exit_code_separates_deferred_from_failures(
+    monkeypatch, tmp_path: Path, result: dict[str, object], expected: int
+) -> None:
+    monkeypatch.setattr(dispatcher, "run_parallel", lambda *args, **kwargs: result)
+
+    assert dispatcher.main(["--lanes-file", str(tmp_path / "lanes.json")]) == expected
+
+
 def test_run_parallel_observes_fast_lane_before_slow_sibling_finishes(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -332,7 +350,7 @@ def test_run_lane_capability_projection_does_not_prove_worker_capability(
 ) -> None:
     item = lane("a", tmp_path)
     item["local_capabilities"] = ["git"]
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     parsed = {
         "preparation": {
             "registry_launcher": {
@@ -532,7 +550,7 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
     tmp_path: Path,
 ) -> None:
     item = lane("a", tmp_path)
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     class CompletedProcess:
         returncode = 2
 
@@ -853,7 +871,7 @@ def test_run_lane_explicit_descendant_retirement_requires_cleanup(
     tmp_path: Path, descendant_state: str,
 ) -> None:
     item = lane("a", tmp_path)
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     assignment = {
         "attempt_id": "a",
         "grant_digest": item["grant_digest"],
@@ -962,7 +980,7 @@ def test_run_lane_grant_digest_mismatch_keeps_settled_capacity_reusable(tmp_path
 
 def test_run_lane_stale_assignment_identity_keeps_capacity_occupied(tmp_path: Path) -> None:
     item = lane("a", tmp_path)
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     task_sha256 = dispatcher._sha256_text(str(item["task"]))
 
     class CompletedProcess:
@@ -1019,7 +1037,7 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
     from scripts import herdr_main_launcher as launcher
 
     item = lane("a", tmp_path)
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
 
     classified = launcher._classify_deepagents_outcome(
         delivery={"state": "delivered", "certainty": "confirmed", "prompt_accepted": True},
@@ -1125,7 +1143,7 @@ def test_local_capabilities_admission_normalizes_without_host_availability_check
 ) -> None:
     item = lane("a", tmp_path)
     item["local_capabilities"] = ["Node"]
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     assert item["local_capabilities"]["effective"] == ["node"]
     assert "--local-capability" in dispatcher._launcher_command(
         item, python_executable="python", launcher_path="launcher.py"
@@ -1135,7 +1153,7 @@ def test_local_capabilities_admission_normalizes_without_host_availability_check
 def test_local_capability_evidence_mismatch_stays_unverified(tmp_path: Path) -> None:
     item = lane("a", tmp_path)
     item["local_capabilities"] = ["git"]
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     parsed = {
         "preparation": {"registry_launcher": {
             "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"],
@@ -1148,7 +1166,7 @@ def test_local_capability_evidence_mismatch_stays_unverified(tmp_path: Path) -> 
 
 def test_grant_evidence_uses_stable_requested_binding_for_dynamic_budget(tmp_path: Path) -> None:
     item = lane("a", tmp_path)
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     effective = dict(item["runtime_grant"])
     effective["turns"] = {"requested": "native", "effective": 8, "enforcement": "runtime"}
     effective["wall_clock_seconds"] = {
@@ -1166,7 +1184,7 @@ def test_grant_evidence_uses_stable_requested_binding_for_dynamic_budget(tmp_pat
 
 def test_mismatched_stable_grant_digest_stays_unverified(tmp_path: Path) -> None:
     item = lane("a", tmp_path)
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     parsed = {
         "preparation": {"registry_launcher": {
             "runtime_grant": item["runtime_grant"], "grant_digest": "wrong",
@@ -1178,7 +1196,7 @@ def test_mismatched_stable_grant_digest_stays_unverified(tmp_path: Path) -> None
 
 def test_empty_capability_evidence_defaults_without_rejection(tmp_path: Path) -> None:
     item = lane("a", tmp_path)
-    dispatcher._bind_requested_grant(item)
+    item = dispatcher.prepare_lane(item).to_dict()
     parsed = {
         "preparation": {"registry_launcher": {
             "runtime_grant": item["runtime_grant"],
@@ -1190,7 +1208,7 @@ def test_empty_capability_evidence_defaults_without_rejection(tmp_path: Path) ->
             "local_capabilities": {},
         },
     }
-    assert "local_capabilities" not in item
+    assert item["local_capabilities"]["requested"] == []
     assert dispatcher._grant_evidence_matches(item, parsed) is True
 
 

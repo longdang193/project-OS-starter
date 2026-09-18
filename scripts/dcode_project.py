@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import uuid
 try:
@@ -1111,6 +1112,7 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
     parent = _direct_mcp_runtime_parent()
     if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
         raise RuntimeError("Direct MCP runtime parent is not a safe directory.")
+    raced = False
     if not parent.exists():
         try:
             parent.mkdir()
@@ -1119,15 +1121,27 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
                 encoding="utf-8",
             )
         except OSError as exc:
-            raise RuntimeError("Cannot initialize direct MCP runtime directory.") from exc
-        return parent
+            if not isinstance(exc, FileExistsError):
+                raise RuntimeError("Cannot initialize direct MCP runtime directory.") from exc
+            raced = True
+        else:
+            return parent
     marker = parent / _DIRECT_MCP_OWNER_MARKER
-    try:
-        owned = marker.is_file() and not marker.is_symlink() and marker.read_text(
-            encoding="utf-8"
-        ) == _DIRECT_MCP_OWNER_VALUE
-    except OSError as exc:
-        raise RuntimeError("Cannot verify direct MCP runtime ownership.") from exc
+    deadline = time.monotonic() + 1.0 if raced else time.monotonic()
+    while True:
+        try:
+            owned = marker.is_file() and not marker.is_symlink() and marker.read_text(
+                encoding="utf-8"
+            ) == _DIRECT_MCP_OWNER_VALUE
+        except OSError as exc:
+            raise RuntimeError("Cannot verify direct MCP runtime ownership.") from exc
+        if owned:
+            return parent
+        if not raced or time.monotonic() >= deadline:
+            break
+        time.sleep(0.01)
+    if raced:
+        raise RuntimeError("Direct MCP runtime parent ownership is invalid.")
     if not owned:
         raise RuntimeError("Direct MCP runtime parent ownership is invalid.")
     return parent

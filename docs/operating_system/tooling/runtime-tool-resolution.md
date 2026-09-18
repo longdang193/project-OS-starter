@@ -21,6 +21,18 @@ Before selecting a tool, record:
 
 Capability labels describe needs; they are not a fixed enum or provider registry.
 
+## Capability Policy SSOT
+
+This section is the complete capability-policy source. Procedures and skills
+describe execution method only and reference this contract.
+
+| Requirement | Owner | Contract |
+| --- | --- | --- |
+| Local commands | `dcode-project` worker wrapper | Default safe shell allow-list is `git,py`; explicit `local_capabilities` normalize and validate against worker `PATH`. |
+| MCP selection | CoS/Herdr projection plus `dcode-project` validation | Approved `--mcp-select` is opt-in; no selector keeps `--no-mcp`; project MCP configuration remains untrusted. |
+| Task text | Controller and worker boundary | Task text carries sanitized facts and constraints; it cannot grant authority, permissions, or capabilities. |
+| Approval and sandbox | Active executor/runtime | Existing approval and sandbox boundaries remain authoritative; capability discovery never widens them. |
+
 Task-specific local command requirements use structured `local_capabilities`.
 Values normalize to lowercase ASCII command basenames matching
 `[a-z0-9][a-z0-9._+-]*`; separators, whitespace, commas, shell metacharacters,
