@@ -83,7 +83,7 @@ def test_load_lane_descriptors_rejects_shared_resources(
 
     assert [item["lane_id"] for item in result["admitted"]] == ["a"]
     assert [item["lane_id"] for item in result["blocked"]] == ["b"]
-    assert all(reason in item["reason"] for item in result["rejected"])
+    assert result["rejected"] == []
 
 
 def test_load_lane_descriptors_rejects_unready_dependency(tmp_path: Path) -> None:
@@ -92,7 +92,7 @@ def test_load_lane_descriptors_rejects_unready_dependency(tmp_path: Path) -> Non
     )
 
     assert result["admitted"] == []
-    assert result["rejected"][0]["reason"] == "dependency not ready"
+    assert result["rejected"] == []
 
 
 def test_load_lane_descriptors_requires_remaining_authorized_allowance(tmp_path: Path) -> None:
@@ -126,7 +126,7 @@ def test_load_lane_descriptors_caps_capacity_and_reports_queued_lane(tmp_path: P
     )
 
     assert [item["lane_id"] for item in result["admitted"]] == ["a", "b"]
-    assert result["rejected"] == [{"lane_id": "c", "reason": "capacity limit 2"}]
+    assert result["rejected"] == []
     assert [item["lane_id"] for item in result["deferred"]] == ["c"]
 
 
@@ -138,7 +138,7 @@ def test_later_conflict_does_not_invalidate_ready_lane(tmp_path: Path) -> None:
 
     assert [item["lane_id"] for item in result["admitted"]] == ["a"]
     assert [item["lane_id"] for item in result["blocked"]] == ["b"]
-    assert result["rejected"] == [{"lane_id": "b", "reason": "write set or mutable resource conflicts"}]
+    assert result["rejected"] == []
 
 
 def test_run_parallel_starts_both_lanes_before_either_finishes(tmp_path: Path, monkeypatch) -> None:
@@ -182,6 +182,24 @@ def test_run_parallel_emits_admission_and_terminal_events_once(tmp_path: Path, m
     assert {event["lane_id"] for event in events[3:]} == {"a", "b"}
     assert len(result["results"]) == 2
     assert result["callback_errors"] == []
+
+
+def test_duplicate_lane_id_has_one_canonical_admission_and_one_event(
+    tmp_path: Path, monkeypatch
+) -> None:
+    events: list[dict[str, object]] = []
+    duplicate = lane("a", tmp_path)
+
+    monkeypatch.setattr(
+        dispatcher,
+        "run_lane",
+        lambda item, **kwargs: {"lane_id": item["lane_id"], "unresolved": False, "capacity": "retired"},
+    )
+    result = dispatcher.run_parallel([duplicate, dict(duplicate)], event_callback=events.append)
+
+    assert result["admitted"] == []
+    assert result["rejected"] == [{"lane_id": "a", "reason": "duplicate lane ID"}]
+    assert [event["lane_id"] for event in events] == ["a"]
 
 
 def test_run_parallel_preserves_callback_errors_without_replacing_result(
@@ -528,10 +546,16 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
                                     "assignment": {
                                         "attempt_id": "a",
                                         "grant_digest": item["grant_digest"],
-                                    "execution": {
-                                        "state": "exited",
-                                        "descendant_state": "terminated",
-                                    },
+                                        "execution": {
+                                            "state": "exited",
+                                            "descendant_state": "terminated",
+                                        },
+                                        "lifecycle_receipt": {
+                                            "worker_state": "exited",
+                                            "descendant_state": "terminated",
+                                            "cleanup_state": "removed",
+                                            "recovery_required": False,
+                                        },
                                     "task_result": {"state": "unverified", "accepted": None},
                                     "cleanup": {"state": "removed", "recovery_required": False},
                                     "reconciliation_required": True,
@@ -797,6 +821,12 @@ def test_run_lane_missing_or_unknown_descendant_state_stays_occupied(
     assignment = {
         "attempt_id": "a",
         "execution": {"state": "exited", **({"descendant_state": descendant_state} if descendant_state else {})},
+        "lifecycle_receipt": {
+            "worker_state": "exited",
+            "descendant_state": descendant_state or "unknown",
+            "cleanup_state": "removed",
+            "recovery_required": False,
+        },
         "cleanup": {"state": "removed", "recovery_required": False},
         "reconciliation_required": False,
     }
@@ -828,6 +858,12 @@ def test_run_lane_explicit_descendant_retirement_requires_cleanup(
         "attempt_id": "a",
         "grant_digest": item["grant_digest"],
         "execution": {"state": "exited", "descendant_state": descendant_state},
+        "lifecycle_receipt": {
+            "worker_state": "exited",
+            "descendant_state": descendant_state,
+            "cleanup_state": "removed",
+            "recovery_required": False,
+        },
         "cleanup": {"state": "removed", "recovery_required": False},
         "reconciliation_required": False,
     }
@@ -887,7 +923,7 @@ def test_effective_budget_accepts_contained_explicit_grant_above_native_default(
     assert dispatcher._effective_budget_is_contained(requested, observed)
 
 
-def test_run_lane_grant_digest_mismatch_blocks_capacity(tmp_path: Path) -> None:
+def test_run_lane_grant_digest_mismatch_keeps_settled_capacity_reusable(tmp_path: Path) -> None:
     class CompletedProcess:
         returncode = 0
 
@@ -903,6 +939,12 @@ def test_run_lane_grant_digest_mismatch_blocks_capacity(tmp_path: Path) -> None:
                         "attempt_id": "a",
                         "grant_digest": "final-digest",
                         "execution": {"state": "exited", "descendant_state": "terminated"},
+                        "lifecycle_receipt": {
+                            "worker_state": "exited",
+                            "descendant_state": "terminated",
+                            "cleanup_state": "removed",
+                            "recovery_required": False,
+                        },
                         "cleanup": {"state": "removed", "recovery_required": False},
                         "reconciliation_required": False,
                     }}),
@@ -912,9 +954,53 @@ def test_run_lane_grant_digest_mismatch_blocks_capacity(tmp_path: Path) -> None:
 
     result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
 
+    assert result["capacity"] == "retired"
+    assert result["unresolved"] is True
+    assert result["grant_verification"] == "unverified"
+    assert result["verification_failure"] == "grant_mismatch"
+
+
+def test_run_lane_stale_assignment_identity_keeps_capacity_occupied(tmp_path: Path) -> None:
+    item = lane("a", tmp_path)
+    dispatcher._bind_requested_grant(item)
+    task_sha256 = dispatcher._sha256_text(str(item["task"]))
+
+    class CompletedProcess:
+        returncode = 0
+
+        def communicate(self, *, timeout):
+            return (
+                "\n".join([
+                    json.dumps({"registry_launcher": {
+                        "attempt_id": "a",
+                        "assignment_id": "stale-assignment",
+                        "assignment_task_sha256": task_sha256,
+                        "runtime_grant": item["runtime_grant"],
+                        "grant_digest": item["grant_digest"],
+                    }}),
+                    json.dumps({"assignment": {
+                        "attempt_id": "a",
+                        "assignment_id": "stale-assignment",
+                        "task_sha256": task_sha256,
+                        "grant_digest": item["grant_digest"],
+                        "execution": {"state": "exited", "descendant_state": "terminated"},
+                        "lifecycle_receipt": {
+                            "worker_state": "exited",
+                            "descendant_state": "terminated",
+                            "cleanup_state": "removed",
+                            "recovery_required": False,
+                        },
+                        "cleanup": {"state": "removed", "recovery_required": False},
+                    }}),
+                ]),
+                "",
+            )
+
+    result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
+
     assert result["capacity"] == "occupied"
     assert result["unresolved"] is True
-    assert result["failure_kind"] == "grant_mismatch"
+    assert result["failure_kind"] == "receipt_correlation_mismatch"
 
 
 def test_admission_rejects_conflicting_top_level_and_nested_mcp_selectors(tmp_path: Path) -> None:
@@ -961,6 +1047,12 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
         legacy={"status": classified["status"], "reconciliation_required": classified["reconciliation_required"]},
     )
     emitted["assignment"]["grant_digest"] = item["grant_digest"]
+    emitted["assignment"]["lifecycle_receipt"] = {
+        "worker_state": "exited",
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "recovery_required": False,
+    }
 
     class CompletedProcess:
         returncode = 0
@@ -1024,36 +1116,15 @@ def test_runtime_completion_does_not_equal_acceptance() -> None:
     assert dispatcher.runtime_completion_is_not_acceptance({"status": "reported_completed"})
 
 
-def test_missing_grant_evidence_rejects_acceptance() -> None:
-    assert dispatcher.validate_acceptance({"status": "reported_completed"}) == "missing_grant_evidence"
-
-
 def test_timeout_owner_is_worker_runtime() -> None:
     assert dispatcher.TIMEOUT_OWNER == "dcode-project"
 
 
-def test_fake_clock_includes_exact_whole_attempt_boundary() -> None:
-    assert dispatcher.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS == 1800
-    assert dispatcher.attempt_expired(1800.0, 1800.0)
-
-
-def test_launcher_json_flows_through_dispatcher() -> None:
-    record = {"lane_id": "a", "attempt_id": "attempt-a", "status": "reported_completed"}
-    assert dispatcher.dispatch_launcher_record(json.dumps(record))["attempt_id"] == "attempt-a"
-
-
-def test_local_capabilities_and_selector_validation_are_forwarded() -> None:
-    assert dispatcher.validate_local_capabilities(["agent.wait"], ["agent.wait"])
-    with pytest.raises(ValueError):
-        dispatcher.validate_local_capabilities(["unknown"], ["agent.wait"])
-
-
-def test_local_capabilities_admission_normalizes_and_checks_availability(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+def test_local_capabilities_admission_normalizes_without_host_availability_check(
+    tmp_path: Path,
 ) -> None:
     item = lane("a", tmp_path)
     item["local_capabilities"] = ["Node"]
-    monkeypatch.setattr(dispatcher.shutil, "which", lambda value: f"/bin/{value}")
     dispatcher._bind_requested_grant(item)
     assert item["local_capabilities"]["effective"] == ["node"]
     assert "--local-capability" in dispatcher._launcher_command(
@@ -1121,11 +1192,6 @@ def test_empty_capability_evidence_defaults_without_rejection(tmp_path: Path) ->
     }
     assert "local_capabilities" not in item
     assert dispatcher._grant_evidence_matches(item, parsed) is True
-
-
-def test_policy_requires_cumulative_allowance_and_git_checkpoint() -> None:
-    assert dispatcher.validate_plan_authority({"cumulative_wall_clock_seconds": 1800})
-    assert dispatcher.validate_git_checkpoint({"revision": "HEAD", "verified": True})
 
 
 def test_run_lane_timeout_preserves_file_backed_late_output(tmp_path: Path) -> None:

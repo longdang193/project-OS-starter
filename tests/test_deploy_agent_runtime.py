@@ -21,6 +21,9 @@ import importlib.util
 import sys
 from pathlib import Path
 import json
+from types import SimpleNamespace
+
+import pytest
 
 import yaml
 
@@ -557,6 +560,151 @@ def test_apply_pairs_staged_never_leaves_partial_target(tmp_path: Path) -> None:
     assert not (target / "old" / "keep.txt").exists()
     assert (target / "new" / "one.txt").read_text(encoding="utf-8") == "one\n"
     assert (target / "new" / "two.txt").read_text(encoding="utf-8") == "two\n"
+
+
+def test_apply_pairs_staged_noop_does_not_stage_or_swap(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "runtime"
+    replace_calls: list[tuple[Path, Path]] = []
+
+    def fail_replace(source: Path, destination: Path) -> None:
+        replace_calls.append((source, destination))
+        raise AssertionError("no-op must not swap")
+
+    monkeypatch.setattr(DEPLOY.os, "replace", fail_replace)
+    DEPLOY._apply_pairs_staged([], target)
+
+    assert not target.exists()
+    assert replace_calls == []
+
+
+def test_apply_pairs_staged_preserves_unrelated_sentinel(tmp_path: Path) -> None:
+    target = tmp_path / "runtime"
+    (target / "sentinel.txt").parent.mkdir(parents=True)
+    (target / "sentinel.txt").write_text("keep\n", encoding="utf-8")
+    managed = target / "managed.txt"
+
+    DEPLOY._apply_pairs_staged([(None, managed, "managed")], target)
+
+    assert managed.read_text(encoding="utf-8") == "managed\n"
+    assert (target / "sentinel.txt").read_text(encoding="utf-8") == "keep\n"
+
+
+def test_apply_pairs_staged_rolls_back_only_failing_bundle(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "runtime"
+    first = target / "first.txt"
+    second = target / "second.txt"
+    first.parent.mkdir(parents=True)
+    first.write_text("old first\n", encoding="utf-8")
+    second.write_text("old second\n", encoding="utf-8")
+    original_replace = DEPLOY.os.replace
+    failed = False
+
+    def fail_second(source: Path, destination: Path) -> None:
+        nonlocal failed
+        if destination == second and not failed:
+            failed = True
+            raise OSError("second file failed")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(DEPLOY.os, "replace", fail_second)
+    with pytest.raises(OSError, match="second file failed"):
+        DEPLOY._apply_pairs_staged(
+            [(None, first, "new first"), (None, second, "new second")],
+            target,
+        )
+
+    assert first.read_text(encoding="utf-8") == "old first\n"
+    assert second.read_text(encoding="utf-8") == "old second\n"
+
+
+def test_run_preflights_all_plans_before_writes(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    (root / "generated_agents" / "codex").mkdir(parents=True)
+    docs_target = tmp_path / "global" / "project-os" / "docs"
+    skills_target = tmp_path / "global" / "skills"
+    sentinel = tmp_path / "sentinel.txt"
+    sentinel.write_text("keep\n", encoding="utf-8")
+    monkeypatch.setattr(DEPLOY, "repo_root", lambda: root)
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", tmp_path / "global" / "project-os")
+    monkeypatch.setattr(DEPLOY, "SHARED_SKILLS_TARGET", skills_target)
+    monkeypatch.setattr(DEPLOY, "PLATFORM_TARGETS", {"codex": tmp_path / "runtime" / "codex"})
+    monkeypatch.setattr(DEPLOY, "_shared_asset_root_owned", lambda *args: False)
+    monkeypatch.setattr(
+        DEPLOY,
+        "parse_args",
+        lambda: SimpleNamespace(
+            target="codex",
+            check=False,
+            dry_run=False,
+            backup=False,
+            force=False,
+            adopt_shared_skill=None,
+            adopt_shared_asset=None,
+            rewrite_mode="relative",
+        ),
+    )
+    changed_pair = (None, docs_target / "changed.txt", "changed")
+    monkeypatch.setattr(
+        DEPLOY,
+        "_shared_asset_plan",
+        lambda root, bundle_name, *, adopt: (["update"], ["preflight failed"] if bundle_name == "docs" else [], [changed_pair]),
+    )
+    monkeypatch.setattr(DEPLOY, "_plan_shared_skill_deploy", lambda *args, **kwargs: ([], [], []))
+    monkeypatch.setattr(DEPLOY, "_plan_deploy", lambda *args, **kwargs: ([], [], []))
+    apply_calls: list[Path] = []
+    monkeypatch.setattr(DEPLOY, "_apply_pairs_staged", lambda pairs, target_root, **kwargs: apply_calls.append(target_root))
+
+    assert DEPLOY.run() == 1
+    assert apply_calls == []
+    assert sentinel.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_run_reports_applied_bundles_when_later_bundle_fails(tmp_path: Path, monkeypatch, capsys) -> None:
+    root = tmp_path / "repo"
+    (root / "generated_agents" / "codex").mkdir(parents=True)
+    shared_target = tmp_path / "global" / "project-os"
+    skills_target = tmp_path / "global" / "skills"
+    platform_target = tmp_path / "runtime" / "codex"
+    monkeypatch.setattr(DEPLOY, "repo_root", lambda: root)
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", shared_target)
+    monkeypatch.setattr(DEPLOY, "SHARED_SKILLS_TARGET", skills_target)
+    monkeypatch.setattr(DEPLOY, "PLATFORM_TARGETS", {"codex": platform_target})
+    monkeypatch.setattr(DEPLOY, "_shared_asset_root_owned", lambda *args: False)
+    monkeypatch.setattr(
+        DEPLOY,
+        "parse_args",
+        lambda: SimpleNamespace(
+            target="codex",
+            check=False,
+            dry_run=False,
+            backup=False,
+            force=False,
+            adopt_shared_skill=None,
+            adopt_shared_asset=None,
+            rewrite_mode="relative",
+        ),
+    )
+    monkeypatch.setattr(
+        DEPLOY,
+        "_shared_asset_plan",
+        lambda root, bundle_name, *, adopt: ([f"{bundle_name} change"], [], [(None, shared_target / bundle_name / "file", bundle_name)]),
+    )
+    monkeypatch.setattr(DEPLOY, "_plan_shared_skill_deploy", lambda *args, **kwargs: (["skills change"], [], [(None, skills_target / "file", "skills")]))
+    monkeypatch.setattr(DEPLOY, "_plan_deploy", lambda *args, **kwargs: (["codex change"], [], [(None, platform_target / "file", "codex")]))
+    apply_calls: list[Path] = []
+
+    def apply(pairs, target_root, **kwargs):
+        apply_calls.append(target_root)
+        if target_root == shared_target / "scripts":
+            raise OSError("scripts failed")
+
+    monkeypatch.setattr(DEPLOY, "_apply_pairs_staged", apply)
+
+    assert DEPLOY.run() == 1
+    output = capsys.readouterr().out
+    assert apply_calls == [shared_target / "docs", shared_target / "scripts"]
+    assert "Deployment failed for shared scripts" in output
+    assert "shared docs" in output
 def test_shared_assets_deploy_and_update_without_adoption(tmp_path: Path, monkeypatch) -> None:
     root = _shared_asset_repo(tmp_path)
     monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", tmp_path / "global" / "project-os")

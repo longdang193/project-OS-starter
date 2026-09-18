@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -34,51 +33,45 @@ except ModuleNotFoundError:
         normalize_mcp_selection,
     )
 try:
-    from deepagents_result_contract import (
+    from project_os_runtime.results import (
         RESULT_MAX_AGE_SECONDS,
         RESULT_MAX_BYTES,
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
     )
-except (ModuleNotFoundError, ImportError):
-    _result_contract_path = Path(__file__).with_name("deepagents_result_contract.py")
-    _result_contract_spec = importlib.util.spec_from_file_location(
-        "_project_deepagents_result_contract", _result_contract_path
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.results import (
+        RESULT_MAX_AGE_SECONDS,
+        RESULT_MAX_BYTES,
+        RESULT_SCHEMA,
+        parse_task_result,
+        parse_result_receipt,
     )
-    if _result_contract_spec is None or _result_contract_spec.loader is None:
-        raise
-    _result_contract_module = importlib.util.module_from_spec(_result_contract_spec)
-    _result_contract_spec.loader.exec_module(_result_contract_module)
-    RESULT_MAX_AGE_SECONDS = _result_contract_module.RESULT_MAX_AGE_SECONDS
-    RESULT_MAX_BYTES = _result_contract_module.RESULT_MAX_BYTES
-    RESULT_SCHEMA = _result_contract_module.RESULT_SCHEMA
-    parse_task_result = _result_contract_module.parse_task_result
-    parse_result_receipt = _result_contract_module.parse_result_receipt
 try:
-    from herdr_attempt_contract import (
+    from project_os_runtime.attempt import (
         AttemptContractError,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+        capability_digest,
         grant_digest,
+        normalize_local_capabilities,
         normalize_runtime_grant,
         remaining_attempt_seconds,
         resolve_attempt_budget,
+        terminal_settlement_proven,
     )
-except (ModuleNotFoundError, ImportError):
-    _contract_path = Path(__file__).with_name("herdr_attempt_contract.py")
-    _contract_spec = importlib.util.spec_from_file_location(
-        "_project_herdr_attempt_contract", _contract_path
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.attempt import (
+        AttemptContractError,
+        WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+        capability_digest,
+        grant_digest,
+        normalize_local_capabilities,
+        normalize_runtime_grant,
+        remaining_attempt_seconds,
+        resolve_attempt_budget,
+        terminal_settlement_proven,
     )
-    if _contract_spec is None or _contract_spec.loader is None:
-        raise
-    _contract_module = importlib.util.module_from_spec(_contract_spec)
-    _contract_spec.loader.exec_module(_contract_module)
-    AttemptContractError = _contract_module.AttemptContractError
-    WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = _contract_module.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
-    grant_digest = _contract_module.grant_digest
-    normalize_runtime_grant = _contract_module.normalize_runtime_grant
-    remaining_attempt_seconds = _contract_module.remaining_attempt_seconds
-    resolve_attempt_budget = _contract_module.resolve_attempt_budget
 
 
 class LaunchBlocked(RuntimeError):
@@ -120,7 +113,6 @@ _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
-_LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 _HERDR_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 _HERDR_AGENT_NAME_MAX_LENGTH = 32
 _DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
@@ -241,23 +233,10 @@ def _sha256_text(value: str) -> str:
 
 
 def _normalize_local_capabilities(values: object) -> list[str]:
-    if values is None:
-        return []
-    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-        raise LaunchBlocked("local_capabilities must be a list of strings.")
-    normalized = [value.lower() for value in values]
-    if any(not _LOCAL_CAPABILITY_PATTERN.fullmatch(value) or ".." in value for value in normalized):
-        raise LaunchBlocked("local_capabilities must contain safe command basenames.")
-    if len(normalized) != len(set(normalized)):
-        raise LaunchBlocked("local_capabilities cannot contain duplicates.")
-    return normalized
-
-
-def _verify_local_capabilities(values: list[str]) -> list[str]:
-    unavailable = [value for value in values if shutil.which(value) is None]
-    if unavailable:
-        raise LaunchBlocked("Unavailable local capabilities: " + ", ".join(unavailable))
-    return list(values)
+    try:
+        return normalize_local_capabilities(values)
+    except AttemptContractError as exc:
+        raise LaunchBlocked(str(exc)) from exc
 
 
 def _read_deepagents_receipt(path: Path | None, attempt_id: str) -> dict[str, Any]:
@@ -1102,11 +1081,14 @@ def _classify_deepagents_outcome(
         else:
             failure_kind = "worker_exit_unknown"
 
-        cleanup_settled = cleanup_state == "removed" and not recovery_required
+        cleanup_settled = terminal_settlement_proven(
+            receipt,
+            cleanup_confirmed=cleanup_state == "removed",
+            descendants_retired=descendant_state in {"terminated", "not_started"},
+        )
         completed_evidence = (
             worker_state == "exited"
             and worker_exit_code == 0
-            and descendant_state == "terminated"
             and cleanup_settled
             and task_result["state"] == "reported_completed"
         )
@@ -2223,7 +2205,7 @@ def resolve_launch(
                 "effective": effective_local_capabilities,
                 "verification_commands": list(effective_local_capabilities),
                 "source_task_sha256": _sha256_text(task_text),
-                "digest": _sha256_text(json.dumps(effective_local_capabilities, separators=(",", ":"))),
+                "digest": capability_digest(effective_local_capabilities),
             },
         },
         "git": git,

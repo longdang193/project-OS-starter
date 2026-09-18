@@ -77,11 +77,71 @@ def _apply_pairs_staged(
     target_root: Path,
     *,
     backup_root: Path | None = None,
+    replace_root: bool = False,
 ) -> None:
+    if not pairs:
+        return
     target_root.parent.mkdir(parents=True, exist_ok=True)
     stage = target_root.parent / f".{target_root.name}.staging-{uuid.uuid4().hex}"
     previous = target_root.parent / f".{target_root.name}.previous-{uuid.uuid4().hex}"
     backup_stage = target_root.parent / f".{target_root.name}.backup-{uuid.uuid4().hex}"
+    if not replace_root:
+        snapshots: dict[Path, bytes | None] = {}
+        created_dirs: set[Path] = set()
+        try:
+            stage.mkdir()
+            for source, destination, rendered in pairs:
+                relative = destination.relative_to(target_root)
+                staged_destination = stage / relative
+                if destination not in snapshots:
+                    snapshots[destination] = destination.read_bytes() if destination.is_file() else None
+                if source is None and rendered is None:
+                    continue
+                staged_destination.parent.mkdir(parents=True, exist_ok=True)
+                content = rendered if rendered is not None else source.read_text(encoding="utf-8")
+                staged_destination.write_text(
+                    content + ("\n" if not content.endswith("\n") else ""),
+                    encoding="utf-8",
+                )
+            if target_root.exists() and backup_root is not None:
+                shutil.copytree(target_root, backup_stage)
+            for source, destination, rendered in pairs:
+                relative = destination.relative_to(target_root)
+                staged_destination = stage / relative
+                if source is None and rendered is None:
+                    if destination.is_file():
+                        destination.unlink()
+                    continue
+                for parent in destination.parent.parents:
+                    if parent == target_root.parent:
+                        break
+                    if not parent.exists():
+                        created_dirs.add(parent)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(staged_destination, destination)
+            if backup_root is not None and backup_stage.exists():
+                backup_root.parent.mkdir(parents=True, exist_ok=True)
+                shutil.rmtree(backup_root, ignore_errors=True)
+                shutil.move(str(backup_stage), str(backup_root))
+        except Exception:
+            for destination, original in reversed(list(snapshots.items())):
+                if original is None:
+                    destination.unlink(missing_ok=True)
+                    continue
+                restore = stage / f"restore-{uuid.uuid4().hex}"
+                restore.write_bytes(original)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(restore, destination)
+            for directory in sorted(created_dirs, key=lambda path: len(path.parts), reverse=True):
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
+            raise
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
+            shutil.rmtree(backup_stage, ignore_errors=True)
+        return
     try:
         if target_root.exists():
             shutil.copytree(target_root, stage)
@@ -811,6 +871,14 @@ def _shared_asset_owned(marker: dict[str, object] | None, expected: dict[str, ob
     return _marker_owned(marker, expected)
 
 
+def _shared_asset_root_owned(root: Path, bundle_name: str) -> bool:
+    entries = _shared_asset_entries(root, bundle_name)
+    return _shared_asset_owned(
+        _read_json_marker(_shared_asset_marker_path(bundle_name)),
+        _shared_asset_marker(root, bundle_name, entries),
+    )
+
+
 def _read_json_marker(path: Path) -> dict[str, object] | None:
     if not path.is_file():
         return None
@@ -1032,87 +1100,116 @@ def run() -> int:
     if args.check:
         issues.extend(_check_shared_assets(root))
         issues.extend(_check_shared_skills(shared_skills_root, SHARED_SKILLS_TARGET))
-    else:
-        for bundle_name in ("docs", "scripts"):
-            changes, plan_issues, pairs = _shared_asset_plan(
-                root,
-                bundle_name,
-                adopt=args.adopt_shared_asset == bundle_name,
-            )
-            issues.extend(plan_issues)
-            if plan_issues:
+        for platform in targets:
+            generated_root = root / "generated_agents" / platform
+            if not generated_root.exists():
+                issues.append(f"Missing generated platform directory: {generated_root.as_posix()}")
                 continue
-            if args.dry_run:
-                print(f"[dry-run] shared {bundle_name} -> {(SHARED_ASSETS_TARGET / bundle_name).as_posix()}")
-                for change in changes:
-                    print(f"- {change}")
-                continue
-            backup_root: Path | None = None
-            if args.backup:
-                stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-                backup_root = SHARED_ASSETS_TARGET / ".backups" / stamp / bundle_name
-            _apply_pairs_staged(pairs, SHARED_ASSETS_TARGET / bundle_name, backup_root=backup_root)
-            print(f"Deployed shared {bundle_name} -> {(SHARED_ASSETS_TARGET / bundle_name).as_posix()} ({len(pairs)} changed)")
-        changes, plan_issues, pairs = _plan_shared_skill_deploy(
-            shared_skills_root,
-            SHARED_SKILLS_TARGET,
-            force=args.force,
-            adopt_shared_skill=args.adopt_shared_skill,
-        )
-        issues.extend(plan_issues)
-        if not plan_issues:
-            if args.dry_run:
-                print(f"[dry-run] shared skills -> {SHARED_SKILLS_TARGET.as_posix()}")
-                for change in changes:
-                    print(f"- {change}")
-            else:
-                backup_root: Path | None = None
-                if args.backup:
-                    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-                    backup_root = SHARED_SKILLS_TARGET / ".backups" / stamp
-                _apply_pairs_staged(pairs, SHARED_SKILLS_TARGET, backup_root=backup_root)
-                print(
-                    f"Deployed shared skills -> {SHARED_SKILLS_TARGET.as_posix()} ({len(pairs)} changed)"
-                )
-    for platform in targets:
-        generated_root = root / "generated_agents" / platform
-        if not generated_root.exists():
-            issues.append(f"Missing generated platform directory: {generated_root.as_posix()}")
-            continue
-        target_root = PLATFORM_TARGETS[platform]
-        if args.check:
             issues.extend(
                 _check_platform(
                     generated_root,
-                    target_root,
+                    PLATFORM_TARGETS[platform],
                     repo_root=root,
                     rewrite_mode=args.rewrite_mode,
                     platform=platform,
                 )
             )
-            continue
-        changes, plan_issues, pairs = _plan_deploy(
-            generated_root,
-            target_root,
-            repo_root=root,
-            force=args.force,
-            rewrite_mode=args.rewrite_mode,
-            platform=platform,
-        )
-        issues.extend(plan_issues)
-        if plan_issues:
-            continue
-        if args.dry_run:
-            print(f"[dry-run] {platform} -> {target_root.as_posix()}")
-            for change in changes:
-                print(f"- {change}")
-            continue
-        backup_root: Path | None = None
-        if args.backup:
-            stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-            backup_root = target_root / ".backups" / stamp
-        _apply_pairs_staged(pairs, target_root, backup_root=backup_root)
-        print(f"Deployed {platform} -> {target_root.as_posix()} ({len(pairs)} changed)")
+    else:
+        plans: list[
+            tuple[
+                str,
+                Path,
+                list[str],
+                list[str],
+                list[tuple[Path | None, Path, str | None]],
+                bool,
+            ]
+        ] = []
+        for bundle_name in ("docs", "scripts"):
+            target_root = SHARED_ASSETS_TARGET / bundle_name
+            try:
+                changes, plan_issues, pairs = _shared_asset_plan(
+                    root,
+                    bundle_name,
+                    adopt=args.adopt_shared_asset == bundle_name,
+                )
+                owned = _shared_asset_root_owned(root, bundle_name)
+            except (OSError, ValueError) as exc:
+                changes, pairs, owned = [], [], False
+                plan_issues = [f"Unable to plan shared {bundle_name}: {exc}"]
+            plans.append((f"shared {bundle_name}", target_root, changes, plan_issues, pairs, owned))
+        try:
+            changes, plan_issues, pairs = _plan_shared_skill_deploy(
+                shared_skills_root,
+                SHARED_SKILLS_TARGET,
+                force=args.force,
+                adopt_shared_skill=args.adopt_shared_skill,
+            )
+        except (OSError, ValueError) as exc:
+            changes, pairs = [], []
+            plan_issues = [f"Unable to plan shared skills: {exc}"]
+        plans.append(("shared skills", SHARED_SKILLS_TARGET, changes, plan_issues, pairs, False))
+        for platform in targets:
+            generated_root = root / "generated_agents" / platform
+            if not generated_root.exists():
+                plans.append(
+                    (
+                        platform,
+                        PLATFORM_TARGETS[platform],
+                        [],
+                        [f"Missing generated platform directory: {generated_root.as_posix()}"],
+                        [],
+                        False,
+                    )
+                )
+                continue
+            target_root = PLATFORM_TARGETS[platform]
+            try:
+                changes, plan_issues, pairs = _plan_deploy(
+                    generated_root,
+                    target_root,
+                    repo_root=root,
+                    force=args.force,
+                    rewrite_mode=args.rewrite_mode,
+                    platform=platform,
+                )
+            except (OSError, ValueError) as exc:
+                changes, pairs = [], []
+                plan_issues = [f"Unable to plan {platform}: {exc}"]
+            plans.append((platform, target_root, changes, plan_issues, pairs, False))
+        for _, _, _, plan_issues, _, _ in plans:
+            issues.extend(plan_issues)
+        if not issues:
+            if args.dry_run:
+                for label, target_root, changes, _, _, _ in plans:
+                    print(f"[dry-run] {label} -> {target_root.as_posix()}")
+                    for change in changes:
+                        print(f"- {change}")
+            else:
+                applied: list[str] = []
+                for label, target_root, changes, _, pairs, replace_root in plans:
+                    if not changes:
+                        continue
+                    backup_root: Path | None = None
+                    if args.backup:
+                        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+                        backup_root = target_root / ".backups" / stamp
+                    try:
+                        _apply_pairs_staged(
+                            pairs,
+                            target_root,
+                            backup_root=backup_root,
+                            replace_root=replace_root,
+                        )
+                    except Exception as exc:
+                        print(f"Deployment failed for {label}: {exc}")
+                        if applied:
+                            print("Bundles already applied:")
+                            for applied_label in applied:
+                                print(f"- {applied_label}")
+                        return 1
+                    print(f"Deployed {label} -> {target_root.as_posix()} ({len(pairs)} changed)")
+                    applied.append(label)
     if issues:
         print("Deploy check failed:")
         for issue in issues:

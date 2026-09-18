@@ -217,6 +217,10 @@ def test_canonical_manifest_ships_herdr_launcher_and_consumers() -> None:
     assert "scripts/patch_deepagents_runtime.py" in manifest["sharedPaths"]["scripts"]
     assert "scripts/publish_public_repo.ps1" in manifest["sharedPaths"]["scripts"]
     assert "scripts/ocr_delegate_adapter.py" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/project_os_runtime" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/herdr_parallel_dispatch.py" in manifest["sharedPaths"]["scripts"]
+    assert "scripts/project_os_runtime" not in manifest["copyPaths"]
+    assert "scripts/herdr_parallel_dispatch.py" not in manifest["copyPaths"]
     assert not any(path == "tests" or path.startswith("tests/") for path in manifest["copyPaths"])
     assert "tests" in manifest["forbiddenPaths"]
     assert not any(path == ".agents/skills" or path.startswith(".agents/skills/") for path in manifest["copyPaths"])

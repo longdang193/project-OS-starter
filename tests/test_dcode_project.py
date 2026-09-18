@@ -118,6 +118,31 @@ def test_result_receipt_keeps_capability_and_lifecycle_evidence(tmp_path: Path) 
     assert payload["recovery_required"] is True
 
 
+def test_result_receipt_preserves_worker_capability_failure(tmp_path: Path) -> None:
+    result_file = tmp_path / "result.json"
+
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="start_failed",
+        worker_exit_code=None,
+        descendant_state="not_started",
+        role_views_state="removed",
+        recovery_required=False,
+        shell_capabilities={
+            "requested": ["missing-tool"],
+            "effective": ["missing-tool"],
+            "passed_to_worker": [],
+            "validated_available": [],
+            "validation_error": "Unavailable local capabilities: missing-tool",
+        },
+    )
+
+    payload = json.loads(result_file.read_text(encoding="utf-8"))
+    assert payload["capabilities"]["validation_error"] == "Unavailable local capabilities: missing-tool"
+    assert payload["cleanup"]["state"] == "removed"
+
+
 def write_role(
     root: Path,
     name: str,
@@ -314,7 +339,7 @@ def test_result_contract_parses_once_without_waiting(tmp_path: Path, monkeypatch
         role_views_state="removed",
         recovery_required=False,
     )
-    monkeypatch.setattr("scripts.deepagents_result_contract.time.sleep", lambda *_: pytest.fail("receipt parser waited"))
+    monkeypatch.setattr("scripts.project_os_runtime.results.time.sleep", lambda *_: pytest.fail("receipt parser waited"))
 
     receipt = parse_result_receipt(result_file, "attempt-1")
 
