@@ -19,6 +19,10 @@ import time
 from typing import Any
 
 try:
+    from project_os_runtime.lane import PreparedLane, prepare_lane
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.lane import PreparedLane, prepare_lane
+try:
     from project_os_runtime.attempt import (
         NATIVE_GRANT_VALUE,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
@@ -65,30 +69,6 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-_REQUIRED_FIELDS = (
-    "lane_id",
-    "repository_identity",
-    "plan_identity",
-    "task",
-    "executor",
-    "profile",
-    "worktree",
-    "expected_base",
-    "session",
-    "pane",
-    "allowed_write_set",
-    "dependencies",
-    "dependency_ready",
-    "fixed_contracts",
-    "mutable_resources",
-    "grant_turns",
-    "grant_wall_clock_seconds",
-    "grant_child_agents",
-    "mcp_select",
-    "remaining_authorized_task_allowance",
-)
-
-
 def _read_descriptors(source: str | os.PathLike[str]) -> list[dict[str, Any]]:
     payload = json.loads(Path(source).read_text(encoding="utf-8"))
     if isinstance(payload, Mapping):
@@ -120,86 +100,17 @@ def _set_conflicts(left: Iterable[object], right: Iterable[object]) -> bool:
     return any(_path_conflicts(left_item, right_item) for left_item in left for right_item in right)
 
 
-def _canonical_mcp_selectors(values: object) -> list[str]:
-    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-        raise ValueError("MCP selectors must be a list of strings")
-    selectors = [selector.strip() for value in values for selector in value.split(",")]
-    if any(not selector for selector in selectors):
-        raise ValueError("MCP selectors cannot be empty")
-    return sorted(set(selectors))
-
-
 def _grant_digest(executor: str, runtime_grant: Mapping[str, Any]) -> str:
     return _contract_grant_digest(executor, runtime_grant)
 
 
-def _capability_digest(values: list[str]) -> str:
-    return _sha256_text(json.dumps(values, separators=(",", ":")))
-
-
 def _bind_requested_grant(lane: dict[str, Any]) -> None:
-    selectors = _canonical_mcp_selectors(lane["mcp_select"])
-    nested = lane.get("runtime_grant")
-    if isinstance(nested, Mapping) and "mcp_select" in nested:
-        if _canonical_mcp_selectors(nested["mcp_select"]) != selectors:
-            raise ValueError("conflicting top-level and nested MCP selectors")
-    runtime_grant = normalize_runtime_grant(
-        executor=str(lane["executor"]),
-        grant_turns=lane["grant_turns"],
-        grant_wall_clock_seconds=lane["grant_wall_clock_seconds"],
-        mcp_select=selectors,
-        grant_child_agents=lane["grant_child_agents"],
-    )
-    requested_value = lane.get("local_capabilities", [])
-    requested = (
-        requested_value.get("requested", [])
-        if isinstance(requested_value, Mapping)
-        else requested_value
-    )
-    effective = _normalize_local_capabilities(requested)
-    lane.update(
-        {
-            "mcp_select": selectors,
-            "grant_turns": runtime_grant["turns"]["requested"],
-            "grant_wall_clock_seconds": runtime_grant["wall_clock_seconds"]["requested"],
-            "grant_child_agents": runtime_grant["delegation"]["child_agents"],
-            "runtime_grant": runtime_grant,
-            "grant_digest": _grant_digest(str(lane["executor"]), runtime_grant),
-            "local_capabilities": {
-                "requested": requested,
-                "effective": effective,
-                "verification_commands": list(effective),
-                "source_task_sha256": _sha256_text(str(lane["task"])),
-                "digest": _capability_digest(effective),
-            },
-        }
-    )
-    if not requested:
+    requested_capabilities = lane.get("local_capabilities")
+    prepared = prepare_lane(lane)
+    lane.clear()
+    lane.update(prepared.to_dict())
+    if requested_capabilities is None or requested_capabilities == []:
         lane.pop("local_capabilities", None)
-    if "repository_identity" in lane and "plan_identity" in lane:
-        computed_assignment_id = _assignment_id(
-            lane["repository_identity"], lane["plan_identity"], str(lane["lane_id"])
-        )
-        if lane.get("assignment_id") not in (None, computed_assignment_id):
-            raise ValueError("assignment_id does not match coordinated identity")
-        lane["assignment_id"] = computed_assignment_id
-
-
-def _normalize_local_capabilities(values: object) -> list[str]:
-    if values is None:
-        return []
-    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-        raise ValueError("local_capabilities must be a list of strings")
-    normalized = [value.lower() for value in values]
-    if any(not _LOCAL_CAPABILITY_PATTERN.fullmatch(value) or ".." in value for value in normalized):
-        raise ValueError("local_capabilities must contain safe command basenames")
-    if len(normalized) != len(set(normalized)):
-        raise ValueError("local_capabilities cannot contain duplicates")
-    return normalized
-
-
-def _verify_local_capabilities(values: list[str]) -> list[str]:
-    return _normalize_local_capabilities(values)
 
 
 def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
@@ -216,9 +127,15 @@ def _admit_lanes(
         raise ValueError("max_concurrency must be positive")
 
     raw_lanes = [dict(raw_lane) for raw_lane in lanes]
-    lane_ids = [str(lane.get("lane_id", "<missing>")) for lane in raw_lanes]
+    lane_ids = [
+        str(lane["lane_id"]) if isinstance(lane.get("lane_id"), str) and lane["lane_id"].strip()
+        else f"<missing:{index}>"
+        for index, lane in enumerate(raw_lanes)
+    ]
     duplicate_ids = {lane_id for lane_id in lane_ids if lane_ids.count(lane_id) > 1}
-    lanes_by_id = {lane_id: lane for lane_id, lane in zip(lane_ids, raw_lanes)}
+    lanes_by_id: dict[str, Mapping[str, Any]] = {}
+    for lane_id, lane in zip(lane_ids, raw_lanes):
+        lanes_by_id.setdefault(lane_id, lane)
     admission_results: list[AdmissionResult] = []
     recorded_ids: set[str] = set()
 
@@ -228,58 +145,32 @@ def _admit_lanes(
             admission_results.append(AdmissionResult(lane_id, state, reason))
             recorded_ids.add(lane_id)
 
-    admitted: list[dict[str, Any]] = []
+    admitted: list[PreparedLane] = []
     seen_worktrees: dict[str, str] = {}
     seen_panes: dict[str, str] = {}
     shared_contracts: tuple[str, ...] | None = None
 
-    for lane in raw_lanes:
-        lane_id = str(lane.get("lane_id", "<missing>"))
+    for raw_lane, lane_id in zip(raw_lanes, lane_ids):
+        lane: Mapping[str, Any] = raw_lane
         if lane_id in duplicate_ids:
             record(lane, "REJECTED", "duplicate lane ID")
             continue
-        missing = [field for field in _REQUIRED_FIELDS if field not in lane]
-        if missing:
-            record(lane, "REJECTED", f"missing fields: {', '.join(missing)}")
-            continue
-        if lane["executor"] != "deepagents":
-            record(lane, "REJECTED", f"unsupported executor: {lane['executor']}")
+        if lane.get("executor") != "deepagents":
+            record(lane, "REJECTED", f"unsupported executor: {lane.get('executor')}")
             continue
         if lane.get("dependency_ready") is not True:
             record(lane, "BLOCKED", "dependency not ready")
             continue
-        allowance = lane["remaining_authorized_task_allowance"]
-        if (
-            isinstance(allowance, bool)
-            or not isinstance(allowance, (int, float))
-            or not math.isfinite(float(allowance))
-            or allowance < 0
-        ):
-            record(lane, "REJECTED", "remaining_authorized_task_allowance must be a finite non-negative number")
-            continue
-        if not isinstance(lane["allowed_write_set"], list) or not isinstance(
-            lane["mutable_resources"], list
-        ):
-            record(lane, "REJECTED", "resource sets must be lists")
-            continue
         try:
-            _bind_requested_grant(lane)
+            lane = prepare_lane(lane)
             resolve_attempt_budget(
                 lane["grant_wall_clock_seconds"],
-                allowance,
+                lane["remaining_authorized_task_allowance"],
                 WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
             )
-            computed_assignment_id = _assignment_id(
-                lane["repository_identity"], lane["plan_identity"], lane_id
-            )
         except (TypeError, ValueError, RuntimeError) as exc:
-            record(lane, "REJECTED", str(exc))
+            record(raw_lane, "REJECTED", str(exc))
             continue
-        supplied_assignment_id = lane.get("assignment_id")
-        if supplied_assignment_id is not None and supplied_assignment_id != computed_assignment_id:
-            record(lane, "REJECTED", "assignment_id does not match coordinated identity")
-            continue
-        lane["assignment_id"] = computed_assignment_id
 
         worktree = _canonical_path(lane["worktree"])
         if worktree in seen_worktrees:
@@ -691,20 +582,22 @@ def run_lane(
     dispatch_deadline = dispatch_started + _DISPATCH_DEADLINE_SECONDS
     if isinstance(attempt_deadline, (int, float)) and not isinstance(attempt_deadline, bool):
         dispatch_deadline = min(dispatch_deadline, float(attempt_deadline))
-    bound_lane = dict(lane)
-    try:
-        _bind_requested_grant(bound_lane)
-    except (TypeError, ValueError, RuntimeError) as exc:
-        return {
-            "lane_id": lane_id,
-            "command": [],
-            "exit_code": None,
-            "records": [],
-            "stderr": str(exc),
-            "unresolved": False,
-            "capacity": "retired",
-            "failure_kind": "grant_invalid",
-        }
+    bound_lane: Mapping[str, Any] = lane
+    if not isinstance(lane.get("runtime_grant"), Mapping):
+        bound_lane = dict(lane)
+        try:
+            _bind_requested_grant(bound_lane)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            return {
+                "lane_id": lane_id,
+                "command": [],
+                "exit_code": None,
+                "records": [],
+                "stderr": str(exc),
+                "unresolved": False,
+                "capacity": "retired",
+                "failure_kind": "grant_invalid",
+            }
     try:
         command = _launcher_command(
             bound_lane,
@@ -839,6 +732,8 @@ def run_lane(
         lifecycle_receipt = assignment.get("lifecycle_receipt")
         if not isinstance(lifecycle_receipt, Mapping):
             return "occupied", True, "lifecycle receipt unavailable", False
+        if "state" not in lifecycle_receipt and "worker_state" in lifecycle_receipt:
+            lifecycle_receipt = {"state": "confirmed", **lifecycle_receipt}
         settlement = settlement_decision(lifecycle_receipt)
         if not settlement["resource_settled"]:
             return "occupied", True, settlement["reason"], False
@@ -948,7 +843,7 @@ def run_parallel(
                 "tag": "lane_admission",
                 "category": category,
                 "lane_id": lane_id,
-                "lane": item,
+                "lane": item.to_dict() if isinstance(item, PreparedLane) else item,
             })
 
     results: dict[str, dict[str, Any]] = {}

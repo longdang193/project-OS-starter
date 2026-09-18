@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from hashlib import sha256
 import math
 from types import MappingProxyType
@@ -46,6 +46,14 @@ def _freeze(value: Any) -> Any:
     return value
 
 
+def _thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
+    return value
+
+
 def _text(raw: Mapping[str, Any], name: str) -> str:
     value = raw.get(name)
     if not isinstance(value, str) or not value.strip():
@@ -73,8 +81,22 @@ def _remaining_authority(raw: Mapping[str, Any]) -> int | float:
 
 
 @dataclass(frozen=True, slots=True)
-class PreparedLane:
+class PreparedLane(Mapping[str, Any]):
     lane_id: str
+    repository_identity: str
+    plan_identity: str
+    task: str
+    executor: str
+    profile: str
+    expected_base: str
+    session: str
+    pane: str
+    allowed_write_set: tuple[Any, ...]
+    dependencies: tuple[Any, ...]
+    dependency_ready: bool
+    fixed_contracts: tuple[Any, ...]
+    mutable_resources: tuple[Any, ...]
+    mcp_select: tuple[str, ...]
     assignment_id: str
     task_hash: str
     grant: Mapping[str, Any]
@@ -83,6 +105,49 @@ class PreparedLane:
     worktree: str
     target: str | None
     remaining_authority: int | float
+    name: str | None
+    codex_home: str | None
+    prior_attempt_known: bool
+    attempt_deadline: int | float | None
+
+    _MAPPING_FIELDS = (
+        "lane_id", "repository_identity", "plan_identity", "task", "executor",
+        "profile", "worktree", "expected_base", "session", "pane",
+        "allowed_write_set", "dependencies", "dependency_ready", "fixed_contracts",
+        "mutable_resources", "mcp_select", "assignment_id", "task_sha256",
+        "runtime_grant", "grant_digest", "local_capabilities", "target", "name",
+        "codex_home", "prior_attempt_known", "attempt_deadline",
+        "remaining_authorized_task_allowance", "grant_turns",
+        "grant_wall_clock_seconds", "grant_child_agents",
+    )
+
+    def __getitem__(self, key: str) -> Any:
+        if key == "task_sha256":
+            return self.task_hash
+        if key == "runtime_grant":
+            return self.grant
+        if key == "local_capabilities":
+            return self.capabilities
+        if key == "remaining_authorized_task_allowance":
+            return self.remaining_authority
+        if key == "grant_turns":
+            return self.grant["turns"]["requested"]
+        if key == "grant_wall_clock_seconds":
+            return self.grant["wall_clock_seconds"]["requested"]
+        if key == "grant_child_agents":
+            return self.grant["delegation"]["child_agents"]
+        if key in self._MAPPING_FIELDS:
+            return getattr(self, key)
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._MAPPING_FIELDS)
+
+    def __len__(self) -> int:
+        return len(self._MAPPING_FIELDS)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _thaw(dict(self))
 
     @property
     def task_sha256(self) -> str:
@@ -109,7 +174,23 @@ def prepare_lane(raw_descriptor: Mapping[str, Any]) -> PreparedLane:
     plan = _text(raw_descriptor, "plan_identity")
     task = _text(raw_descriptor, "task")
     executor = _text(raw_descriptor, "executor")
+    profile = _text(raw_descriptor, "profile")
     worktree = _text(raw_descriptor, "worktree")
+    expected_base = _text(raw_descriptor, "expected_base")
+    session = _text(raw_descriptor, "session")
+    pane = _text(raw_descriptor, "pane")
+    if not isinstance(raw_descriptor["dependency_ready"], bool):
+        raise ValueError("dependency_ready must be boolean")
+    prior_attempt_known = raw_descriptor.get("prior_attempt_known", False)
+    if not isinstance(prior_attempt_known, bool):
+        raise ValueError("prior_attempt_known must be boolean")
+    attempt_deadline = raw_descriptor.get("attempt_deadline")
+    if attempt_deadline is not None and (
+        isinstance(attempt_deadline, bool)
+        or not isinstance(attempt_deadline, (int, float))
+        or not math.isfinite(float(attempt_deadline))
+    ):
+        raise ValueError("attempt_deadline must be finite when provided")
     target = raw_descriptor.get("target")
     if target is not None and (not isinstance(target, str) or not target.strip()):
         raise ValueError("target must be a non-empty string when provided")
@@ -161,6 +242,20 @@ def prepare_lane(raw_descriptor: Mapping[str, Any]) -> PreparedLane:
     })
     return PreparedLane(
         lane_id=lane_id,
+        repository_identity=repository,
+        plan_identity=plan,
+        task=task,
+        executor=executor,
+        profile=profile,
+        expected_base=expected_base,
+        session=session,
+        pane=pane,
+        allowed_write_set=_sequence(raw_descriptor, "allowed_write_set"),
+        dependencies=_sequence(raw_descriptor, "dependencies"),
+        dependency_ready=raw_descriptor["dependency_ready"],
+        fixed_contracts=_sequence(raw_descriptor, "fixed_contracts"),
+        mutable_resources=_sequence(raw_descriptor, "mutable_resources"),
+        mcp_select=tuple(selectors),
         assignment_id=computed_assignment_id,
         task_hash=sha256(task.encode("utf-8")).hexdigest(),
         grant=_freeze(grant),
@@ -169,6 +264,10 @@ def prepare_lane(raw_descriptor: Mapping[str, Any]) -> PreparedLane:
         worktree=worktree,
         target=target,
         remaining_authority=_remaining_authority(raw_descriptor),
+        name=raw_descriptor.get("name") if isinstance(raw_descriptor.get("name"), str) else None,
+        codex_home=raw_descriptor.get("codex_home") if isinstance(raw_descriptor.get("codex_home"), str) else None,
+        prior_attempt_known=prior_attempt_known,
+        attempt_deadline=attempt_deadline,
     )
 
 

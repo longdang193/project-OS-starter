@@ -291,6 +291,34 @@ def test_runtime_dependency_boundaries_ignore_prose_and_allow_shared_modules(tmp
     assert VALIDATOR.validate_runtime_dependency_boundaries(tmp_path) == []
 
 
+def test_runtime_dependency_boundaries_normalize_import_spellings(tmp_path: Path) -> None:
+    for index, source in enumerate(
+        (
+            "import herdr_main_launcher\n",
+            "import scripts.herdr_main_launcher\n",
+            "from scripts import herdr_main_launcher\n",
+            "from . import herdr_main_launcher\n",
+        )
+    ):
+        root = tmp_path / str(index)
+        write_text(root / "scripts" / "dcode_project.py", source)
+
+        issues = VALIDATOR.validate_runtime_dependency_boundaries(root)
+
+        assert len(issues) == 1
+        assert "scripts.herdr_main_launcher" in issues[0].message
+
+
+def test_runtime_dependency_boundaries_reject_pure_core_process_imports(tmp_path: Path) -> None:
+    for module in ("attempt", "lane", "admission", "capabilities"):
+        write_text(tmp_path / "scripts" / "project_os_runtime" / f"{module}.py", "import subprocess\n")
+
+    issues = VALIDATOR.validate_runtime_dependency_boundaries(tmp_path)
+
+    assert len(issues) == 4
+    assert all("subprocess" in issue.message for issue in issues)
+
+
 def test_runtime_boundary_guidance_accepts_shared_contract_sources(tmp_path: Path) -> None:
     for relative in (
         "scripts/herdr_parallel_dispatch.py",

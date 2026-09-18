@@ -1011,6 +1011,48 @@ def test_attempt_guard_reconciles_persisted_terminal_evidence_without_receipt(
     assert reconciled["state"] == "SETTLED"
 
 
+def test_attempt_guard_does_not_promote_incomplete_legacy_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        settlement_proven=True,
+        settlement_evidence={
+            "attempt_id": "attempt-1",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+        },
+    )
+
+    record = LAUNCHER._read_attempt_guard(next((tmp_path / "guards").glob("*.json")))
+    record["state"] = "active"
+    LAUNCHER._write_attempt_guard(
+        next((tmp_path / "guards").glob("*.json")), record
+    )
+
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        repo_root=tmp_path,
+    )
+
+    assert reconciled["state"] == "RECOVERY_REQUIRED"
+    assert reconciled["action"] == "RECONCILE"
+
+
 def test_attempt_guard_blocks_relaunch_after_receipt_publication_or_deletion(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

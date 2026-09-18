@@ -8,6 +8,7 @@ targets:
   - scripts/herdr_parallel_dispatch.py
   - scripts/herdr_main_launcher.py
   - scripts/dcode_project.py
+  - scripts/project_os_runtime/
   - scripts/deepagents_result_contract.py
   - tests/test_herdr_main_launcher.py
   - tests/test_herdr_parallel_dispatch.py
@@ -91,7 +92,7 @@ targets:
 | Where does lifecycle evidence compose? | `_build_assignment_result()` emits delivery, execution, observation, task result, cleanup, performance, and compatibility fields. | `scripts/herdr_main_launcher.py` | high | Extend this boundary; do not add a second verdict layer. |
 | How are DeepAgents results correlated? | Receipt parsing requires matching `attempt_id`; malformed, missing, or mismatched receipts remain unknown. | `scripts/deepagents_result_contract.py`, `scripts/herdr_main_launcher.py` | high | Retries require new attempt IDs and stale receipts must be rejected. |
 | Who owns same-worktree role views? | `dcode-project` holds an exclusive role-view lock for one worktree attempt and publishes cleanup evidence. | `scripts/dcode_project.py` | high | Concurrent write lanes require separate worktrees. |
-| How does replacement avoid crash ambiguity? | `dcode-project` claims one assignment-scoped guard before worker spawn and settles it only after correlated receipt plus verified cleanup and descendant retirement. | `scripts/dcode_project.py`, `scripts/herdr_attempt_contract.py` | high | Lock release alone never authorizes replacement; unresolved claims require reconciliation. |
+| How does replacement avoid crash ambiguity? | `dcode-project` claims one assignment-scoped guard before worker spawn and settles it only after correlated receipt plus verified cleanup and descendant retirement. | `scripts/dcode_project.py`, `scripts/project_os_runtime/attempt.py` | high | Lock release alone never authorizes replacement; unresolved claims require reconciliation. |
 | What proves semantic task result? | Lifecycle receipt proves worker/resource facts; pane report observation is bounded, explicitly sourced, and non-authoritative. | `scripts/deepagents_result_contract.py`, `scripts/herdr_main_launcher.py` | high | Clean lifecycle settlement without report evidence remains `unverified`. |
 | What does dry-run prove? | Main dry-run emits resolved JSON and returns before launch. | `scripts/herdr_main_launcher.py`, `tests/test_herdr_main_launcher.py` | high | Dry-run proves resolution only, not worker concurrency or cleanup. |
 | Who owns durable coordination? | Plan owns task/dependency/acceptance state; Git owns workspace and changes; runtime state is not recovery truth. | `docs/operating_system/rules/git-tracked-coordination-rule.md` | high | Batch aggregation remains a derived view over plan and lane evidence. |
@@ -388,6 +389,10 @@ scheduler service, heartbeat store, runtime ledger, or lifecycle registry.
   cleanup, lifecycle receipts, and atomic task-result publication.
 - Herdr owns target selection, transport, and diagnostic observation only.
 - Git owns worktree, branch, base, and change truth.
+
+The compatibility modules `scripts/herdr_attempt_contract.py` and
+`scripts/deepagents_result_contract.py` forward to `scripts/project_os_runtime/`
+and do not own independent normalization, admission, or settlement semantics.
 
 Admission, resource state, and task outcome remain independent. `DEFERRED`
 means temporary capacity or explicitly shareable-resource contention only.

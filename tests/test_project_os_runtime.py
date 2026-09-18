@@ -83,6 +83,20 @@ def test_settlement_decision_reads_lifecycle_receipt_without_capability_or_accep
     assert decision["reason"] == "settled"
 
 
+def test_settlement_decision_rejects_missing_normalized_recovery_evidence() -> None:
+    from scripts.project_os_runtime.attempt import settlement_decision
+
+    decision = settlement_decision({
+        "state": "confirmed",
+        "worker_state": "exited",
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+    })
+
+    assert decision["resource_settled"] is False
+    assert decision["reason"] == "settlement evidence incomplete"
+
+
 def test_settlement_decision_keeps_cleanup_uncertainty_occupied() -> None:
     from scripts.project_os_runtime.attempt import settlement_decision
 

@@ -140,6 +140,18 @@ def test_result_receipt_keeps_lifecycle_proof_without_capability_proof(tmp_path:
     assert result["capabilities"] is None
 
 
+def test_result_receipt_requires_explicit_recovery_flag(tmp_path: Path) -> None:
+    path = tmp_path / "result.json"
+    payload = lifecycle_receipt()
+    payload.pop("recovery_required")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = contract.parse_result_receipt(path, "attempt-1")
+
+    assert result["state"] == "unknown"
+    assert result["detail"] == "receipt recovery flag missing"
+
+
 def test_result_receipt_rejects_disagreeing_or_invalid_capability_evidence(
     tmp_path: Path,
 ) -> None:

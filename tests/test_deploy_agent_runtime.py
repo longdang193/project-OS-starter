@@ -18,6 +18,9 @@ lifecycle:
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 import json
@@ -589,6 +592,36 @@ def test_apply_pairs_staged_preserves_unrelated_sentinel(tmp_path: Path) -> None
     assert (target / "sentinel.txt").read_text(encoding="utf-8") == "keep\n"
 
 
+def test_apply_pairs_staged_scopes_backup_to_affected_destinations(tmp_path: Path) -> None:
+    target = tmp_path / "runtime"
+    managed = target / "managed.txt"
+    unrelated = target / "unrelated.txt"
+    target.mkdir()
+    managed.write_text("old managed\n", encoding="utf-8")
+    unrelated.write_text("old unrelated\n", encoding="utf-8")
+    backup = tmp_path / "backups" / "runtime" / "one"
+
+    DEPLOY._apply_pairs_staged(
+        [(None, managed, "new managed")],
+        target,
+        backup_root=backup,
+    )
+
+    assert (backup / "managed.txt").read_text(encoding="utf-8") == "old managed\n"
+    assert not (backup / "unrelated.txt").exists()
+    assert unrelated.read_text(encoding="utf-8") == "old unrelated\n"
+
+
+def test_apply_pairs_staged_rejects_backup_inside_target(tmp_path: Path) -> None:
+    target = tmp_path / "runtime"
+    with pytest.raises(ValueError, match="outside target root"):
+        DEPLOY._apply_pairs_staged(
+            [(None, target / "managed.txt", "managed")],
+            target,
+            backup_root=target / ".backups" / "one",
+        )
+
+
 def test_apply_pairs_staged_rolls_back_only_failing_bundle(tmp_path: Path, monkeypatch) -> None:
     target = tmp_path / "runtime"
     first = target / "first.txt"
@@ -744,6 +777,9 @@ def test_shared_asset_check_detects_missing_and_stale_files(tmp_path: Path, monk
     assert issues == []
     _apply_shared_pairs(pairs)
     target_root = DEPLOY.SHARED_ASSETS_TARGET / "scripts"
+    legacy_backup = target_root / ".backups" / "old" / "managed.py"
+    legacy_backup.parent.mkdir(parents=True)
+    legacy_backup.write_text("legacy\n", encoding="utf-8")
     (target_root / "stale.py").write_text("stale\n", encoding="utf-8")
     (target_root / "__pycache__").mkdir()
     (target_root / "__pycache__" / "tool.cpython-313.pyc").write_bytes(b"cache")
@@ -753,6 +789,8 @@ def test_shared_asset_check_detects_missing_and_stale_files(tmp_path: Path, monk
     assert f"Missing deployed shared asset file: {(target_root / 'tool.py').as_posix()}" in issues
     assert f"Stale deployed shared asset file: {(target_root / 'stale.py').as_posix()}" in issues
     assert not any("__pycache__" in issue for issue in issues)
+    assert not any(".backups" in issue for issue in issues)
+    assert legacy_backup.read_text(encoding="utf-8") == "legacy\n"
 
 
 def test_shared_asset_check_ignores_text_line_ending_changes(tmp_path: Path, monkeypatch) -> None:
@@ -767,6 +805,38 @@ def test_shared_asset_check_ignores_text_line_ending_changes(tmp_path: Path, mon
     (DEPLOY.SHARED_ASSETS_TARGET / "docs" / "operating_system" / "rule.md").write_bytes(b"rule\r\n")
 
     assert DEPLOY._check_shared_assets(root) == []
+
+
+def test_deployed_entrypoints_import_runtime_outside_repository(tmp_path: Path) -> None:
+    runtime_root = tmp_path / "deployed-runtime"
+    scripts_root = runtime_root / "scripts"
+    scripts_root.mkdir(parents=True)
+    source_scripts = REPO_ROOT / "scripts"
+    shutil.copytree(
+        source_scripts,
+        scripts_root,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
+
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    outside_repo = tmp_path / "outside-repository"
+    outside_repo.mkdir()
+    for name in ("herdr_main_launcher.py", "herdr_parallel_dispatch.py", "dcode_project.py"):
+        completed = subprocess.run(
+            [sys.executable, str(scripts_root / name), "--help"],
+            cwd=outside_repo,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if name == "dcode_project.py":
+            assert completed.returncode == 2
+            assert "does not permit `--help`" in completed.stderr
+        else:
+            assert completed.returncode == 0, completed.stderr
 
 
 def test_runtime_paths_use_owned_global_shared_asset(tmp_path: Path, monkeypatch) -> None:

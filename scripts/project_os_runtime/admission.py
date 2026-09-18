@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import Any
 
 ADMISSION_STATES = frozenset({"ADMITTED", "DEFERRED", "BLOCKED", "REJECTED"})
@@ -26,8 +27,8 @@ def validate_admission_results(results: list[AdmissionResult] | tuple[AdmissionR
 
 def legacy_admission_lists(
     results: list[AdmissionResult] | tuple[AdmissionResult, ...],
-    lanes_by_id: dict[str, dict[str, Any]],
-) -> dict[str, list[dict[str, Any]]]:
+    lanes_by_id: Mapping[str, Mapping[str, Any]],
+) -> dict[str, list[Mapping[str, Any]]]:
     validate_admission_results(results)
     output = {"admitted": [], "deferred": [], "blocked": [], "rejected": []}
     for result in results:

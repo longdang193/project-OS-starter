@@ -59,6 +59,12 @@ FORBIDDEN_RUNTIME_DEPENDENCIES = {
     "scripts.project_os_runtime.admission": {"scripts.dcode_project", "scripts.herdr_main_launcher", "scripts.herdr_parallel_dispatch"},
     "scripts.project_os_runtime.results": {"scripts.dcode_project", "scripts.herdr_main_launcher", "scripts.herdr_parallel_dispatch"},
 }
+PURE_RUNTIME_MODULES = {
+    "scripts.project_os_runtime.attempt",
+    "scripts.project_os_runtime.lane",
+    "scripts.project_os_runtime.admission",
+    "scripts.project_os_runtime.capabilities",
+}
 
 
 @dataclass(frozen=True)
@@ -344,19 +350,42 @@ def validate_ssot_contracts(root: Path) -> list[ValidationIssue]:
     return issues
 
 
-def _imported_module_names(tree: ast.AST) -> set[str]:
+def _canonical_import_name(name: str, module_name: str) -> str:
+    if name.startswith("scripts."):
+        return name
+    if name in {"dcode_project", "herdr_main_launcher", "herdr_parallel_dispatch"}:
+        return f"scripts.{name}"
+    if module_name.startswith("scripts.project_os_runtime.") and name in {
+        "attempt", "lane", "admission", "capabilities", "results"
+    }:
+        return f"scripts.project_os_runtime.{name}"
+    return name
+
+
+def _imported_module_names(tree: ast.AST, module_name: str = "") -> set[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            names.add(node.module)
+            names.update(_canonical_import_name(alias.name, module_name) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                package = module_name.split(".")[:-node.level]
+                base = ".".join(package)
+                if node.module:
+                    base = f"{base}.{node.module}" if base else node.module
+            else:
+                base = node.module or ""
+            for alias in node.names:
+                imported = f"{base}.{alias.name}" if base else alias.name
+                names.add(_canonical_import_name(imported, module_name))
     return names
 
 
 def validate_runtime_dependency_boundaries(root: Path) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
-    for module_name, forbidden in FORBIDDEN_RUNTIME_DEPENDENCIES.items():
+    module_names = set(FORBIDDEN_RUNTIME_DEPENDENCIES) | PURE_RUNTIME_MODULES
+    for module_name in sorted(module_names):
+        forbidden = FORBIDDEN_RUNTIME_DEPENDENCIES.get(module_name, set())
         path = root / (module_name.replace(".", "/") + ".py")
         if not path.is_file():
             continue
@@ -365,8 +394,19 @@ def validate_runtime_dependency_boundaries(root: Path) -> list[ValidationIssue]:
         except SyntaxError as exc:
             issues.append(ValidationIssue("runtime_dependency", relative_path(path, root), f"cannot parse production module: {exc}"))
             continue
-        for imported in sorted(_imported_module_names(tree) & forbidden):
+        imported_names = _imported_module_names(tree, module_name)
+        for imported in sorted(
+            name for name in imported_names
+            if name in forbidden or any(name.startswith(f"{blocked}.") for blocked in forbidden)
+        ):
             issues.append(ValidationIssue("runtime_dependency", relative_path(path, root), f"forbidden runtime dependency on `{imported}`"))
+        if module_name in PURE_RUNTIME_MODULES:
+            for imported in sorted(imported_names & {"subprocess", "shutil"}):
+                issues.append(ValidationIssue(
+                    "runtime_dependency",
+                    relative_path(path, root),
+                    f"pure runtime module must not import `{imported}`",
+                ))
     return issues
 
 
