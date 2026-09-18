@@ -25,6 +25,7 @@ lifecycle:
 from __future__ import annotations
 
 import argparse
+import ast
 from dataclasses import dataclass
 from functools import lru_cache
 import importlib.util
@@ -49,6 +50,15 @@ except ModuleNotFoundError:
 
 STARTER_KIT_CLASSIFICATION_ENFORCEMENT = "fail"
 STARTER_KIT_DISTRIBUTION_TIER = "starter_kit"
+
+FORBIDDEN_RUNTIME_DEPENDENCIES = {
+    "scripts.dcode_project": {"scripts.herdr_main_launcher", "scripts.herdr_parallel_dispatch"},
+    "scripts.herdr_main_launcher": {"scripts.dcode_project", "scripts.herdr_parallel_dispatch"},
+    "scripts.herdr_parallel_dispatch": {"scripts.dcode_project", "scripts.herdr_main_launcher"},
+    "scripts.project_os_runtime.attempt": {"scripts.dcode_project", "scripts.herdr_main_launcher", "scripts.herdr_parallel_dispatch"},
+    "scripts.project_os_runtime.admission": {"scripts.dcode_project", "scripts.herdr_main_launcher", "scripts.herdr_parallel_dispatch"},
+    "scripts.project_os_runtime.results": {"scripts.dcode_project", "scripts.herdr_main_launcher", "scripts.herdr_parallel_dispatch"},
+}
 
 
 @dataclass(frozen=True)
@@ -331,6 +341,32 @@ def validate_ssot_contracts(root: Path) -> list[ValidationIssue]:
             break
     require("coordination", "durable Git-tracked coordination SSOT", "coordination SSOT must be durable and Git-tracked, not static")
     require("adapter", "- `.agents/rules/`", "adapter outputs must include `.agents/rules/`")
+    return issues
+
+
+def _imported_module_names(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+    return names
+
+
+def validate_runtime_dependency_boundaries(root: Path) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    for module_name, forbidden in FORBIDDEN_RUNTIME_DEPENDENCIES.items():
+        path = root / (module_name.replace(".", "/") + ".py")
+        if not path.is_file():
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:
+            issues.append(ValidationIssue("runtime_dependency", relative_path(path, root), f"cannot parse production module: {exc}"))
+            continue
+        for imported in sorted(_imported_module_names(tree) & forbidden):
+            issues.append(ValidationIssue("runtime_dependency", relative_path(path, root), f"forbidden runtime dependency on `{imported}`"))
     return issues
 
 
@@ -622,6 +658,10 @@ def main(argv: list[str] | None = None) -> int:
     spec_issues = validate_parallel_dispatch_spec(root)
     if spec_issues:
         return report_issues(spec_issues)
+
+    dependency_issues = validate_runtime_dependency_boundaries(root)
+    if dependency_issues:
+        return report_issues(dependency_issues)
 
     boundary_issues = validate_runtime_boundary_guidance(root)
     if boundary_issues:

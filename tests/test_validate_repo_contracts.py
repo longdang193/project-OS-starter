@@ -272,6 +272,25 @@ type: script
     assert any("missing `distribution_tier: starter_kit`" in issue.message for issue in issues)
 
 
+def test_runtime_dependency_boundaries_reject_forbidden_import(tmp_path: Path) -> None:
+    write_text(tmp_path / "scripts" / "dcode_project.py", "from scripts.herdr_main_launcher import launch\n")
+
+    issues = VALIDATOR.validate_runtime_dependency_boundaries(tmp_path)
+
+    assert len(issues) == 1
+    assert "forbidden runtime dependency" in issues[0].message
+
+
+def test_runtime_dependency_boundaries_ignore_prose_and_allow_shared_modules(tmp_path: Path) -> None:
+    write_text(
+        tmp_path / "scripts" / "dcode_project.py",
+        "from scripts.project_os_runtime.attempt import normalize_attempt\n"
+        "# scripts.herdr_main_launcher is prose, not an import\n",
+    )
+
+    assert VALIDATOR.validate_runtime_dependency_boundaries(tmp_path) == []
+
+
 def test_runtime_boundary_guidance_accepts_shared_contract_sources(tmp_path: Path) -> None:
     for relative in (
         "scripts/herdr_parallel_dispatch.py",

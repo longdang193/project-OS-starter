@@ -713,6 +713,10 @@ def test_local_capabilities_normalize_and_reject_unsafe_values() -> None:
         LAUNCHER._normalize_local_capabilities(["node", "NODE"])
 
 
+def test_launcher_has_no_controller_capability_availability_owner() -> None:
+    assert not hasattr(LAUNCHER, "_verify_local_capabilities")
+
+
 def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

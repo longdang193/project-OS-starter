@@ -18,9 +18,9 @@ _SPEC.loader.exec_module(contract)
 
 def test_contract_module_uses_stdlib_only() -> None:
     tree = ast.parse(
-        (ROOT / "scripts" / "herdr_attempt_contract.py").read_text(encoding="utf-8")
+        (ROOT / "scripts" / "project_os_runtime" / "capabilities.py").read_text(encoding="utf-8")
     )
-    allowed = {"__future__", "hashlib", "json", "math", "re", "collections", "numbers", "typing"}
+    allowed = {"__future__", "hashlib", "json", "re", "collections", "typing"}
     imports = [
         alias.name.split(".")[0]
         for node in ast.walk(tree)
@@ -331,3 +331,63 @@ def test_normalize_attempt_rejects_string_prior_attempt_known() -> None:
                 "prior_attempt_known": "false",
             }
         )
+
+
+def test_local_capabilities_have_one_pure_canonical_representation() -> None:
+    assert contract.normalize_local_capabilities(["Node", "npm-bin"]) == [
+        "node",
+        "npm-bin",
+    ]
+    assert contract.normalize_local_capabilities([]) == []
+    assert contract.effective_local_capabilities([]) == ["git", "py"]
+    assert contract.capability_digest(["Node"]) == contract.capability_digest(["node"])
+    with pytest.raises(contract.AttemptContractError):
+        contract.normalize_local_capabilities(["node/npm"])
+
+
+def test_capability_evidence_comparison_accepts_worker_shape_and_rejects_mismatch() -> None:
+    expected = {
+        "requested": ["node"],
+        "effective": ["node"],
+        "digest": contract.capability_digest(["node"]),
+    }
+    actual = {
+        "requested": ["Node"],
+        "passed_to_worker": ["node"],
+        "validated_available": ["node"],
+        "digest": expected["digest"],
+        "validation_error": None,
+    }
+
+    assert contract.capability_evidence_matches(expected, actual) is True
+    assert contract.capability_evidence_matches(
+        expected, dict(actual, validated_available=["git"])
+    ) is False
+    assert contract.capability_evidence_matches(
+        expected, dict(actual, effective=["git"])
+    ) is False
+    assert contract.capability_evidence_matches(expected, {}) is False
+
+
+def test_attempt_decision_keeps_settlement_when_verification_fails() -> None:
+    receipt = {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "cleanup_state": "removed",
+        "descendant_state": "terminated",
+        "recovery_required": False,
+    }
+
+    decision = contract.attempt_decision(
+        {"state": "active"},
+        prior_attempt_known=True,
+        receipt=receipt,
+        cleanup_confirmed=True,
+        descendants_retired=True,
+        verification_matches=False,
+    )
+
+    assert decision["settlement_proven"] is True
+    assert decision["verification_proven"] is False
+    assert decision["admission"] == "IDEMPOTENT"

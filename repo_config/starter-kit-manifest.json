@@ -41,8 +41,7 @@
     "tests",
     ".deepagents"
   ],
-  "omitPaths": [
-  ],
+  "omitPaths": [],
   "createEmptyDirs": [
     "docs/superpowers/plans",
     "docs/superpowers/specs"
@@ -55,15 +54,15 @@
       "docs/operating_system"
     ],
     "scripts": [
-    "scripts/planning_artifact_schema.py",
+      "scripts/planning_artifact_schema.py",
       "scripts/project_root.py",
-    "scripts/dcode_project.py",
-    "scripts/herdr_attempt_contract.py",
-    "scripts/deepagents_result_contract.py",
-    "scripts/agent_profile_registry.py",
-    "scripts/herdr_main_launcher.py",
+      "scripts/dcode_project.py",
+      "scripts/herdr_attempt_contract.py",
+      "scripts/deepagents_result_contract.py",
+      "scripts/agent_profile_registry.py",
+      "scripts/herdr_main_launcher.py",
       "scripts/mcp_selection.py",
-    "scripts/opendesign_profile_adapter.py",
+      "scripts/opendesign_profile_adapter.py",
       "scripts/setup_deepagents_runtime.ps1",
       "scripts/patch_deepagents_runtime.py",
       "scripts/validate_agent_metadata_schema.py",
@@ -77,7 +76,9 @@
       "scripts/publish_public_repo.ps1",
       "scripts/ocr_delegate_adapter.py",
       "scripts/owned_process.py",
-      "scripts/review_content_policy.py"
+      "scripts/review_content_policy.py",
+      "scripts/project_os_runtime",
+      "scripts/herdr_parallel_dispatch.py"
     ]
   }
 }

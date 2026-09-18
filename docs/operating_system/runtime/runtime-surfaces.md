@@ -5,6 +5,8 @@ runtime, rules, skills, root instructions, and hooks.
 
 ## Authoring SSOT
 
+Production runtime dependency boundaries are enforced by `scripts/validate_repo_contracts.py` using stdlib `ast` import parsing. CI owns runtime behavior tests; this validator owns structural and prose contract checks, avoiding duplicate validator tests in the runtime matrix.
+
 | Source | Role |
 | --- | --- |
 | `docs/operating_system/rules/*.md` | Canonical rule authoring |

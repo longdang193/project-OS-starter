@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import importlib.util
+import hashlib
 import json
 import math
 import os
@@ -19,33 +19,39 @@ import time
 from typing import Any
 
 try:
-    from scripts.herdr_attempt_contract import (
+    from project_os_runtime.attempt import (
         NATIVE_GRANT_VALUE,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
         normalize_runtime_grant,
         resolve_attempt_budget,
+        settlement_decision,
         terminal_settlement_proven,
     )
-    from scripts.herdr_main_launcher import _sha256_text
-except (ModuleNotFoundError, ImportError):
-    _contract_path = Path(__file__).with_name("herdr_attempt_contract.py")
-    _contract_spec = importlib.util.spec_from_file_location(
-        "_project_herdr_attempt_contract", _contract_path
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.attempt import (
+        NATIVE_GRANT_VALUE,
+        WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+        assignment_id as _assignment_id,
+        grant_digest as _contract_grant_digest,
+        normalize_runtime_grant,
+        resolve_attempt_budget,
+        settlement_decision,
+        terminal_settlement_proven,
     )
-    if _contract_spec is None or _contract_spec.loader is None:
-        raise
-    _contract_module = importlib.util.module_from_spec(_contract_spec)
-    _contract_spec.loader.exec_module(_contract_module)
-    NATIVE_GRANT_VALUE = _contract_module.NATIVE_GRANT_VALUE
-    WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = _contract_module.WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
-    _assignment_id = _contract_module.assignment_id
-    _contract_grant_digest = _contract_module.grant_digest
-    normalize_runtime_grant = _contract_module.normalize_runtime_grant
-    resolve_attempt_budget = _contract_module.resolve_attempt_budget
-    terminal_settlement_proven = _contract_module.terminal_settlement_proven
-    from scripts.herdr_main_launcher import _sha256_text
+try:
+    from project_os_runtime.admission import (
+        AdmissionResult,
+        legacy_admission_lists,
+        validate_admission_results,
+    )
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.admission import (
+        AdmissionResult,
+        legacy_admission_lists,
+        validate_admission_results,
+    )
 
 
 MAX_CONCURRENCY = 2
@@ -53,6 +59,12 @@ _LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 TIMEOUT_OWNER = "dcode-project"
 _REAPING_RESERVE_SECONDS = 30.0
 _DISPATCH_DEADLINE_SECONDS = 5.0
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 _REQUIRED_FIELDS = (
     "lane_id",
     "repository_identity",
@@ -144,7 +156,7 @@ def _bind_requested_grant(lane: dict[str, Any]) -> None:
         if isinstance(requested_value, Mapping)
         else requested_value
     )
-    effective = _verify_local_capabilities(_normalize_local_capabilities(requested))
+    effective = _normalize_local_capabilities(requested)
     lane.update(
         {
             "mcp_select": selectors,
@@ -187,10 +199,7 @@ def _normalize_local_capabilities(values: object) -> list[str]:
 
 
 def _verify_local_capabilities(values: list[str]) -> list[str]:
-    unavailable = [value for value in values if shutil.which(value) is None]
-    if unavailable:
-        raise ValueError("unavailable local capabilities: " + ", ".join(unavailable))
-    return list(values)
+    return _normalize_local_capabilities(values)
 
 
 def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
@@ -206,32 +215,38 @@ def _admit_lanes(
     if capacity < 1:
         raise ValueError("max_concurrency must be positive")
 
+    raw_lanes = [dict(raw_lane) for raw_lane in lanes]
+    lane_ids = [str(lane.get("lane_id", "<missing>")) for lane in raw_lanes]
+    duplicate_ids = {lane_id for lane_id in lane_ids if lane_ids.count(lane_id) > 1}
+    lanes_by_id = {lane_id: lane for lane_id, lane in zip(lane_ids, raw_lanes)}
+    admission_results: list[AdmissionResult] = []
+    recorded_ids: set[str] = set()
+
+    def record(lane: Mapping[str, Any], state: str, reason: str) -> None:
+        lane_id = str(lane.get("lane_id", "<missing>"))
+        if lane_id not in recorded_ids:
+            admission_results.append(AdmissionResult(lane_id, state, reason))
+            recorded_ids.add(lane_id)
+
     admitted: list[dict[str, Any]] = []
-    rejected: list[dict[str, str]] = []
-    deferred: list[dict[str, Any]] = []
-    blocked: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
     seen_worktrees: dict[str, str] = {}
     seen_panes: dict[str, str] = {}
     shared_contracts: tuple[str, ...] | None = None
 
-    for raw_lane in lanes:
-        lane = dict(raw_lane)
+    for lane in raw_lanes:
         lane_id = str(lane.get("lane_id", "<missing>"))
+        if lane_id in duplicate_ids:
+            record(lane, "REJECTED", "duplicate lane ID")
+            continue
         missing = [field for field in _REQUIRED_FIELDS if field not in lane]
         if missing:
-            rejected.append(_reject(lane, f"missing fields: {', '.join(missing)}"))
+            record(lane, "REJECTED", f"missing fields: {', '.join(missing)}")
             continue
         if lane["executor"] != "deepagents":
-            rejected.append(_reject(lane, f"unsupported executor: {lane['executor']}"))
+            record(lane, "REJECTED", f"unsupported executor: {lane['executor']}")
             continue
-        if lane_id in seen_ids:
-            rejected.append(_reject(lane, "duplicate lane ID"))
-            continue
-        seen_ids.add(lane_id)
         if lane.get("dependency_ready") is not True:
-            rejected.append(_reject(lane, "dependency not ready"))
-            blocked.append(lane)
+            record(lane, "BLOCKED", "dependency not ready")
             continue
         allowance = lane["remaining_authorized_task_allowance"]
         if (
@@ -240,12 +255,12 @@ def _admit_lanes(
             or not math.isfinite(float(allowance))
             or allowance < 0
         ):
-            rejected.append(_reject(lane, "remaining_authorized_task_allowance must be a finite non-negative number"))
+            record(lane, "REJECTED", "remaining_authorized_task_allowance must be a finite non-negative number")
             continue
         if not isinstance(lane["allowed_write_set"], list) or not isinstance(
             lane["mutable_resources"], list
         ):
-            rejected.append(_reject(lane, "resource sets must be lists"))
+            record(lane, "REJECTED", "resource sets must be lists")
             continue
         try:
             _bind_requested_grant(lane)
@@ -258,55 +273,47 @@ def _admit_lanes(
                 lane["repository_identity"], lane["plan_identity"], lane_id
             )
         except (TypeError, ValueError, RuntimeError) as exc:
-            rejected.append(_reject(lane, str(exc)))
+            record(lane, "REJECTED", str(exc))
             continue
         supplied_assignment_id = lane.get("assignment_id")
         if supplied_assignment_id is not None and supplied_assignment_id != computed_assignment_id:
-            rejected.append(_reject(lane, "assignment_id does not match coordinated identity"))
+            record(lane, "REJECTED", "assignment_id does not match coordinated identity")
             continue
         lane["assignment_id"] = computed_assignment_id
 
         worktree = _canonical_path(lane["worktree"])
         if worktree in seen_worktrees:
             reason = "worktree conflicts with " + seen_worktrees[worktree]
-            rejected.append(_reject(lane, reason))
-            blocked.append(lane)
+            record(lane, "BLOCKED", reason)
             continue
         pane = _canonical_token(lane["pane"])
         if pane in seen_panes:
             reason = "pane conflicts with " + seen_panes[pane]
-            rejected.append(_reject(lane, reason))
-            blocked.append(lane)
+            record(lane, "BLOCKED", reason)
             continue
         contracts = tuple(sorted(map(str, lane["fixed_contracts"])))
         if shared_contracts is None:
             shared_contracts = contracts
         elif contracts != shared_contracts:
-            rejected.append(_reject(lane, "fixed contracts differ"))
+            record(lane, "REJECTED", "fixed contracts differ")
             continue
         if any(
             _set_conflicts(lane["allowed_write_set"], other["allowed_write_set"])
             or _set_conflicts(lane["mutable_resources"], other["mutable_resources"])
             for other in admitted
         ):
-            rejected.append(_reject(lane, "write set or mutable resource conflicts"))
-            blocked.append(lane)
+            record(lane, "BLOCKED", "write set or mutable resource conflicts")
             continue
         if len(admitted) >= capacity:
-            rejected.append(_reject(lane, f"capacity limit {capacity}"))
-            deferred.append(lane)
+            record(lane, "DEFERRED", f"capacity limit {capacity}")
             continue
 
         admitted.append(lane)
+        record(lane, "ADMITTED", "ready")
         seen_worktrees[worktree] = lane_id
         seen_panes[pane] = lane_id
 
-    return {
-        "admitted": admitted,
-        "deferred": deferred,
-        "blocked": blocked,
-        "rejected": rejected,
-    }
+    return legacy_admission_lists(validate_admission_results(admission_results), lanes_by_id)
 
 
 def load_lane_descriptors(
@@ -616,46 +623,31 @@ def _worker_capability_evidence_matches(
     )
 
 
-def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:
-    return record.get("status") == "reported_completed" and record.get("accepted") is not True
-
-
-def validate_acceptance(record: Mapping[str, Any]) -> str | None:
-    if runtime_completion_is_not_acceptance(record):
-        return "missing_grant_evidence" if not record.get("grant_evidence") else "acceptance_pending"
-    return None
-
-
-def dispatch_launcher_record(output: str) -> dict[str, Any]:
-    record = json.loads(output)
-    if not isinstance(record, Mapping):
-        raise ValueError("launcher record must be an object")
-    return dict(record)
-
-
-def validate_local_capabilities(required: list[str], available: list[str]) -> bool:
-    missing = set(required) - set(available)
-    if missing:
-        raise ValueError('unknown local capabilities: ' + ', '.join(sorted(missing)))
-    return True
-
-
-def validate_plan_authority(authority: Mapping[str, Any]) -> bool:
-    value = authority.get("cumulative_wall_clock_seconds")
-    return (
-        not isinstance(value, bool)
-        and isinstance(value, (int, float))
-        and math.isfinite(float(value))
-        and value > 0
+def _receipt_correlation_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) -> bool:
+    preparation = parsed.get("preparation")
+    assignment = parsed.get("assignment")
+    registry = preparation.get("registry_launcher") if isinstance(preparation, Mapping) else None
+    if not isinstance(registry, Mapping) or not isinstance(assignment, Mapping):
+        return False
+    expected_assignment = str(lane.get("assignment_id") or _assignment_id(
+        lane["repository_identity"], lane["plan_identity"], str(lane["lane_id"])
+    ))
+    expected_task = _sha256_text(str(lane["task"]))
+    attempt_id = registry.get("attempt_id")
+    return all(
+        value in (None, expected)
+        for value, expected in (
+            (registry.get("assignment_id"), expected_assignment),
+            (assignment.get("assignment_id"), expected_assignment),
+            (registry.get("assignment_task_sha256"), expected_task),
+            (assignment.get("task_sha256"), expected_task),
+            (assignment.get("attempt_id"), attempt_id),
+        )
     )
 
 
-def validate_git_checkpoint(checkpoint: Mapping[str, Any]) -> bool:
-    return bool(checkpoint.get("revision")) and checkpoint.get("verified") is True
-
-
-def attempt_expired(started_at: float, now: float) -> bool:
-    return now >= started_at
+def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:
+    return record.get("status") == "reported_completed" and record.get("accepted") is not True
 
 
 def run_lane(
@@ -844,24 +836,12 @@ def run_lane(
     def classify(assignment: Mapping[str, Any] | None) -> tuple[str, bool, str, bool]:
         if not isinstance(assignment, Mapping):
             return "occupied", True, "missing final assignment", False
-        execution = assignment.get("execution")
-        cleanup = assignment.get("cleanup")
-        descendant_state = execution.get("descendant_state") if isinstance(execution, Mapping) else None
-        execution_state = execution.get("state") if isinstance(execution, Mapping) else None
-        settlement = {
-            "state": "confirmed",
-            "recovery_required": cleanup.get("recovery_required") if isinstance(cleanup, Mapping) else None,
-            "worker_state": "exited" if execution_state == "completed" else execution_state,
-            "cleanup_state": cleanup.get("state") if isinstance(cleanup, Mapping) else None,
-            "descendant_state": descendant_state,
-        }
-        resource_settled = terminal_settlement_proven(
-            settlement,
-            cleanup_confirmed=isinstance(cleanup, Mapping) and cleanup.get("state") == "removed",
-            descendants_retired=descendant_state in {"terminated", "not_started"},
-        )
-        if not resource_settled:
-            return "occupied", True, "execution or cleanup unsettled", False
+        lifecycle_receipt = assignment.get("lifecycle_receipt")
+        if not isinstance(lifecycle_receipt, Mapping):
+            return "occupied", True, "lifecycle receipt unavailable", False
+        settlement = settlement_decision(lifecycle_receipt)
+        if not settlement["resource_settled"]:
+            return "occupied", True, settlement["reason"], False
         task_result = assignment.get("task_result")
         task_uncertain = not isinstance(task_result, Mapping) or (
             task_result.get("accepted") is None
@@ -875,8 +855,8 @@ def run_lane(
         return "retired", False, "settled", False
 
     grant_mismatch = not _grant_evidence_matches(bound_lane, parsed)
-    if grant_mismatch:
-        capacity, unresolved, unresolved_reason, acceptance_pending = "occupied", True, "grant mismatch", False
+    if not _receipt_correlation_matches(bound_lane, parsed):
+        capacity, unresolved, unresolved_reason, acceptance_pending = "occupied", True, "receipt correlation mismatch", False
     elif parsed["malformed"]:
         capacity, unresolved, unresolved_reason, acceptance_pending = "occupied", True, "malformed launcher evidence", False
     else:
@@ -899,10 +879,13 @@ def run_lane(
         "unresolved": unresolved,
         "capacity": capacity,
         "grant_verification": "verified" if not grant_mismatch else "unverified",
+        "verification_failure": "grant_mismatch" if grant_mismatch else None,
         "acceptance_pending": acceptance_pending,
     }
     if process.returncode:
         result["failure_kind"] = "command_exit"
+    elif unresolved_reason == "receipt correlation mismatch":
+        result["failure_kind"] = "receipt_correlation_mismatch"
     elif unresolved_reason == "grant mismatch":
         result["failure_kind"] = "grant_mismatch"
     elif unresolved and unresolved_reason == "task result unresolved":
@@ -958,13 +941,9 @@ def run_parallel(
         except BaseException as exc:
             callback_errors.append({"event": event, "error": str(exc)})
 
-    emitted_admission_ids: set[str] = set()
     for category in ("admitted", "deferred", "blocked", "rejected"):
         for item in admission.get(category, []):
             lane_id = str(item.get("lane_id", "<missing>"))
-            if lane_id in emitted_admission_ids:
-                continue
-            emitted_admission_ids.add(lane_id)
             emit({
                 "tag": "lane_admission",
                 "category": category,

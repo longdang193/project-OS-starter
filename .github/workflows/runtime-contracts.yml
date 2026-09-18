@@ -10,6 +10,16 @@ permissions:
   contents: read
 
 jobs:
+  repository-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: python scripts/validate_repo_contracts.py --repo-root . --fast
+
   runtime:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -22,5 +32,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt
-      - run: python -m pytest tests/test_deepagents_result_contract.py tests/test_dcode_project.py tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_herdr_parallel_dispatch.py tests/test_validate_repo_contracts.py -q
-      - run: python scripts/validate_repo_contracts.py --repo-root .
+      - run: python -m pytest tests/test_deepagents_result_contract.py tests/test_dcode_project.py tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_herdr_parallel_dispatch.py -q

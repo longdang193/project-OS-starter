@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
-import importlib.util
 import math
 import os
 from pathlib import Path
@@ -41,51 +40,35 @@ except ModuleNotFoundError:
         normalize_mcp_selection,
     )
 try:
-    from deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
-    from deepagents_result_contract import parse_result_receipt, publish_task_result
-except (ModuleNotFoundError, ImportError):
-    from scripts.deepagents_result_contract import RESULT_MAX_BYTES, RESULT_SCHEMA, encode_result_receipt
-    from scripts.deepagents_result_contract import parse_result_receipt
-    try:
-        from scripts.deepagents_result_contract import publish_task_result
-    except ImportError:
-        _result_contract_path = Path(__file__).with_name("deepagents_result_contract.py")
-        _result_contract_spec = importlib.util.spec_from_file_location(
-            "_project_deepagents_result_contract", _result_contract_path
-        )
-        if _result_contract_spec is None or _result_contract_spec.loader is None:
-            raise
-        _result_contract_module = importlib.util.module_from_spec(_result_contract_spec)
-        _result_contract_spec.loader.exec_module(_result_contract_module)
-        publish_task_result = _result_contract_module.publish_task_result
-try:
-    from herdr_attempt_contract import (
-        AttemptContractError,
-        same_attempt_binding,
+    from project_os_runtime.results import (
+        RESULT_MAX_BYTES,
+        RESULT_SCHEMA,
+        encode_result_receipt,
+        parse_result_receipt,
+        publish_task_result,
     )
-    from herdr_attempt_contract import attempt_decision
-    try:
-        from herdr_attempt_contract import ADMISSION_RESULTS
-    except ImportError:
-        ADMISSION_RESULTS = frozenset({"ADMITTED", "IDEMPOTENT", "BLOCKED", "RECONCILE"})
 except ModuleNotFoundError:
-    from scripts.herdr_attempt_contract import (
+    from scripts.project_os_runtime.results import (
+        RESULT_MAX_BYTES,
+        RESULT_SCHEMA,
+        encode_result_receipt,
+        parse_result_receipt,
+        publish_task_result,
+    )
+try:
+    from project_os_runtime.attempt import (
+        ADMISSION_RESULTS,
         AttemptContractError,
+        attempt_decision,
         same_attempt_binding,
     )
-    try:
-        from scripts.herdr_attempt_contract import ADMISSION_RESULTS, attempt_decision
-    except ImportError:
-        _contract_path = Path(__file__).with_name("herdr_attempt_contract.py")
-        _contract_spec = importlib.util.spec_from_file_location(
-            "_project_herdr_attempt_contract", _contract_path
-        )
-        if _contract_spec is None or _contract_spec.loader is None:
-            raise
-        _contract_module = importlib.util.module_from_spec(_contract_spec)
-        _contract_spec.loader.exec_module(_contract_module)
-        ADMISSION_RESULTS = _contract_module.ADMISSION_RESULTS
-        attempt_decision = _contract_module.attempt_decision
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.attempt import (
+        ADMISSION_RESULTS,
+        AttemptContractError,
+        attempt_decision,
+        same_attempt_binding,
+    )
 
 
 
@@ -470,7 +453,7 @@ def _publish_result_receipt(
                     "validated_available", shell_capabilities.get("effective", [])
                 )
             ),
-            "validation_error": None,
+            "validation_error": shell_capabilities.get("validation_error"),
         }
     encoded = encode_result_receipt(payload)
     temporary = result_file.with_name(f".{result_file.name}.{uuid.uuid4().hex}.tmp")
@@ -1359,7 +1342,7 @@ def _extract_local_capabilities(argv: list[str]) -> tuple[list[str], list[str]]:
 
 def _resolve_worker_shell_capabilities(
     requested: list[str], environment: dict[str, str]
-) -> dict[str, list[str]]:
+) -> dict[str, object]:
     requested_values = list(requested)
     effective = requested_values or ["git", "py"]
     path = environment.get("PATH")
@@ -2087,7 +2070,16 @@ def main(argv: list[str]) -> int:
                 shell_capabilities = _resolve_worker_shell_capabilities(
                     local_capabilities, environment
                 )
-            except RuntimeError:
+            except RuntimeError as exc:
+                effective = list(local_capabilities) or ["git", "py"]
+                shell_capabilities = {
+                    "requested": list(local_capabilities),
+                    "available": [],
+                    "effective": effective,
+                    "passed_to_worker": [],
+                    "validated_available": [],
+                    "validation_error": str(exc),
+                }
                 worker_state = "start_failed"
                 descendant_state = "not_started"
                 raise
