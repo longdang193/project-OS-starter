@@ -87,6 +87,19 @@ Workers own engineering inside assigned scope. The controller owns orchestration
 - **Runtime adapters** — conventions for Native Codex, DeepAgents, Tura, and related local execution paths.
 - **Regression coverage** — tests for delivery, isolation, capability selection, lifecycle, and evidence contracts.
 
+## Open-Source Ecosystem
+
+Project OS Starter composes replaceable runtimes, providers, and validation tools.
+
+- [Codex CLI](https://github.com/openai/codex) — native coding-agent runtime.
+- [DeepAgents](https://github.com/langchain-ai/deepagents) — supported agent-harness ecosystem.
+- [Tura](https://github.com/Tura-AI/tura) — optional executor.
+- [LightRSI](https://github.com/zjunlp/LightRSI) — optional Tura runtime layer.
+- [9router](https://github.com/decolua/9router) — model-routing provider.
+- [LangGraph](https://github.com/langchain-ai/langgraph) — DeepAgents runtime support.
+
+The setup script installs `deepagents-code` as a separate optional coding-agent runtime. Its public repository and license are distinct from the DeepAgents ecosystem project above.
+
 ## Design Principles
 
 - **Evidence before acceptance** — completion is a claim until required proof exists.
