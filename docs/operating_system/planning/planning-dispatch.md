@@ -61,8 +61,8 @@ For `plan-bound-execution`, it applies when the task ledger `Executor` is
 lane. The native Codex lead resolves executor and profile before activation;
 runtime parity, plan binding, lane identity, and profile-binding gates pass
 before dispatch. Herdr is
-runtime observation and top-level lane supervision, not executor selection or
-task acceptance. CoS dispatches only independent Herdr top-level MAIN AGENT
+runtime transport and diagnostic observation, not lifecycle ownership, executor
+selection, or task acceptance. CoS dispatches only independent Herdr top-level MAIN AGENT
 lanes;
 Codex uses a main-agent session and DeepAgents uses a bounded `dcode-project`
 pane process. It never calls

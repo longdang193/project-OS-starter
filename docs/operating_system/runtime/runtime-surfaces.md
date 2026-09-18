@@ -13,7 +13,7 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 | `.agents/skills/*/SKILL.md` | Canonical reusable method authoring in this repository |
 | `docs/operating_system/templates/agents/root-AGENTS.template.md` | Canonical root instruction source |
 | `agents/*.toml` | Canonical agent-profile registry, including optional rank |
-| `scripts/herdr_main_launcher.py` | Canonical existing-target resolution and top-level Herdr lane/lifecycle projection |
+| `scripts/herdr_main_launcher.py` | Canonical existing-target resolution and Herdr transport/observation projection |
 | `scripts/herdr_parallel_dispatch.py` | Canonical bounded foreground coordinator for isolated DeepAgents lanes; no durable ledger or supervisor |
 | `scripts/dcode_project.py` | Canonical DeepAgents projection, worker lifecycle, and generated role-view ownership |
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
@@ -53,7 +53,7 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 - CoS owns assignment, continuation, escalation, and acceptance decisions.
 - `scripts/project_os_runtime/` owns lane preparation, admission, capability/evidence semantics, budget containment, settlement proof, lifecycle, and eligibility semantics. `scripts/herdr_attempt_contract.py` remains a compatibility forwarding surface.
 - `scripts/herdr_parallel_dispatch.py` owns bounded scheduling, invocation, and event delivery; `scripts/herdr_main_launcher.py` owns Herdr transport and observation.
-- `scripts/dcode_project.py` owns worker execution, deadlines, PATH availability, descendants, cleanup, receipts, and same-worktree attempt claims.
+- `scripts/dcode_project.py` owns worker execution, deadlines, PATH availability, descendants, cleanup, receipts, and same-worktree attempt claims; the shared runtime core owns lifecycle classification and eligibility.
 - Herdr observation never proves retirement, authorizes retry, or accepts work.
 - Ordinary personal-local probes may invoke `dcode-project` directly. Coordinated Git-tracked work enters through `herdr_main_launcher.py` or `herdr_parallel_dispatch.py`, which supplies correlated identity and grant evidence.
 - `NEEDS_CONTEXT` requests information, not replay. Continuation requires settled ownership, explicit controller decision, remaining durable authority, and updated context.
@@ -65,7 +65,7 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 - `deploy_agent_runtime.py` syncs approved shared docs/scripts and records ownership metadata. `--check` reports missing, stale, drifted, or foreign-owned bundle files.
 - Globalized scripts resolve project root from explicit `--repo-root`, then Git top-level, and block when neither exists.
 - Project-local paths remain fallback when the shared installation is absent or marker ownership fails.
-- `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, `dcode-project` resolves and projects the selected profile into DeepAgents. Herdr owns top-level lane/session/pane lifecycle and diagnostic observation; `dcode-project` owns DeepAgents projection, worker lifecycle, same-worktree role-view ownership, and assignment-scoped attempt claims. Tura keeps its existing provider and credential path. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
+- `agents/*.toml` owns profile/provider/model/instruction facts. For Codex, `scripts/herdr_main_launcher.py` resolves and projects them into Herdr; for DeepAgents, `dcode-project` resolves and projects the selected profile into DeepAgents. Herdr owns target selection, transport, and diagnostic observation; the shared runtime core owns lifecycle classification and eligibility; `dcode-project` owns DeepAgents projection, worker lifecycle, same-worktree role-view ownership, and assignment-scoped attempt claims. Tura keeps its existing provider and credential path. `scripts/opendesign_profile_adapter.py` reads the same profiles and projects the selected model and instructions into OpenDesign MCP `start_run`; OpenDesign runtime selection remains an explicit MCP `agent` field, and provider configuration remains runtime-owned because MCP exposes no provider field.
 - `scripts/herdr_parallel_dispatch.py` admits at most two independent lanes after worktree, pane, write-set, contract, and mutable-resource checks. It retains uncertain capacity, preserves per-lane evidence, and defers active cancellation claims to existing Herdr/process retirement evidence.
 - Native Herdr Codex workers disable every effective MCP server by default; a
   validated server-level selection enables only selected servers. Tool-level

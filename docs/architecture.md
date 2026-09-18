@@ -40,6 +40,12 @@ Recovery remains explicit. Unsafe admission or incomplete evidence enters
 `BLOCKED`. `RECONCILE` settles plan and Git state; it does not silently return
 to execution. A fresh attempt requires settled evidence and a new admission.
 
+State namespaces stay separate: admission uses
+`ADMITTED | DEFERRED | BLOCKED | REJECTED`; runtime facts use
+`settled | unresolved | recovery-required`; CoS acceptance uses
+`PASS | FAIL | BLOCKED`. All-deferred admission is normal scheduling output;
+rejected, blocked, or unresolved execution is a nonzero dispatcher outcome.
+
 ## Shape Rationale
 
 - One controller prevents competing acceptance authority.

@@ -23,6 +23,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -2258,6 +2259,41 @@ def test_direct_mcp_janitor_removes_only_owned_stale_runtime(tmp_path: Path) -> 
     assert not stale.exists()
     assert foreign.exists()
     assert fresh.exists()
+
+
+def test_direct_mcp_parent_initialization_tolerates_concurrent_creator(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "dcode-project-mcp"
+    monkeypatch.setattr(LAUNCHER, "_direct_mcp_runtime_parent", lambda: parent)
+    original_mkdir = Path.mkdir
+    barrier = threading.Barrier(2)
+
+    def racing_mkdir(self: Path, *args: object, **kwargs: object) -> None:
+        if self == parent:
+            barrier.wait(timeout=2)
+        original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+    results: list[Path] = []
+    errors: list[BaseException] = []
+
+    def initialize() -> None:
+        try:
+            results.append(LAUNCHER._ensure_direct_mcp_runtime_parent())
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=initialize) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=3)
+
+    assert not errors
+    assert results == [parent, parent]
+    assert (parent / LAUNCHER._DIRECT_MCP_OWNER_MARKER).read_text(encoding="utf-8") == LAUNCHER._DIRECT_MCP_OWNER_VALUE
 
 
 def test_direct_mcp_cleans_config_after_worker_failure(

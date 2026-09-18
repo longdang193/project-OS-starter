@@ -46,14 +46,22 @@ except ModuleNotFoundError:
     )
 try:
     from project_os_runtime.admission import (
+        AdmissionBatch,
         AdmissionResult,
+        canonical_token,
+        classify_admission,
         legacy_admission_lists,
+        resource_sets_conflict,
         validate_admission_results,
     )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.admission import (
+        AdmissionBatch,
         AdmissionResult,
+        canonical_token,
+        classify_admission,
         legacy_admission_lists,
+        resource_sets_conflict,
         validate_admission_results,
     )
 
@@ -82,35 +90,8 @@ def _canonical_path(value: object) -> str:
     return os.path.normcase(os.path.normpath(os.path.abspath(os.fspath(value))))
 
 
-def _canonical_token(value: object) -> str:
-    return str(value).replace("\\", "/").strip("/").casefold()
-
-
-def _path_conflicts(left: object, right: object) -> bool:
-    left_value = _canonical_token(left)
-    right_value = _canonical_token(right)
-    return (
-        left_value == right_value
-        or left_value.startswith(f"{right_value}/")
-        or right_value.startswith(f"{left_value}/")
-    )
-
-
-def _set_conflicts(left: Iterable[object], right: Iterable[object]) -> bool:
-    return any(_path_conflicts(left_item, right_item) for left_item in left for right_item in right)
-
-
 def _grant_digest(executor: str, runtime_grant: Mapping[str, Any]) -> str:
     return _contract_grant_digest(executor, runtime_grant)
-
-
-def _bind_requested_grant(lane: dict[str, Any]) -> None:
-    requested_capabilities = lane.get("local_capabilities")
-    prepared = prepare_lane(lane)
-    lane.clear()
-    lane.update(prepared.to_dict())
-    if requested_capabilities is None or requested_capabilities == []:
-        lane.pop("local_capabilities", None)
 
 
 def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
@@ -122,6 +103,21 @@ def _admit_lanes(
     *,
     max_concurrency: int = MAX_CONCURRENCY,
 ) -> dict[str, list[dict[str, Any]]]:
+    raw_lanes = [dict(raw_lane) for raw_lane in lanes]
+    batch = _prepare_admission(raw_lanes, max_concurrency=max_concurrency)
+    lanes_by_id = {
+        str(raw_lane.get("lane_id", f"<missing:{index}>")): raw_lane
+        for index, raw_lane in enumerate(raw_lanes)
+    }
+    lanes_by_id.update({str(lane["lane_id"]): lane for lane in batch.prepared})
+    return legacy_admission_lists(batch.results, lanes_by_id)
+
+
+def _prepare_admission(
+    lanes: Iterable[Mapping[str, Any]],
+    *,
+    max_concurrency: int = MAX_CONCURRENCY,
+) -> AdmissionBatch:
     capacity = min(max_concurrency, MAX_CONCURRENCY)
     if capacity < 1:
         raise ValueError("max_concurrency must be positive")
@@ -139,11 +135,10 @@ def _admit_lanes(
     admission_results: list[AdmissionResult] = []
     recorded_ids: set[str] = set()
 
-    def record(lane: Mapping[str, Any], state: str, reason: str) -> None:
-        lane_id = str(lane.get("lane_id", "<missing>"))
-        if lane_id not in recorded_ids:
-            admission_results.append(AdmissionResult(lane_id, state, reason))
-            recorded_ids.add(lane_id)
+    def record(result: AdmissionResult) -> None:
+        if result.lane_id not in recorded_ids:
+            admission_results.append(result)
+            recorded_ids.add(result.lane_id)
 
     admitted: list[PreparedLane] = []
     seen_worktrees: dict[str, str] = {}
@@ -153,58 +148,64 @@ def _admit_lanes(
     for raw_lane, lane_id in zip(raw_lanes, lane_ids):
         lane: Mapping[str, Any] = raw_lane
         if lane_id in duplicate_ids:
-            record(lane, "REJECTED", "duplicate lane ID")
+            record(classify_admission(lane_id, duplicate_id=True))
             continue
         if lane.get("executor") != "deepagents":
-            record(lane, "REJECTED", f"unsupported executor: {lane.get('executor')}")
+            record(classify_admission(lane_id, executor=lane.get("executor")))
             continue
         if lane.get("dependency_ready") is not True:
-            record(lane, "BLOCKED", "dependency not ready")
+            record(classify_admission(lane_id, dependency_ready=False))
             continue
+        preparation_error: str | None = None
         try:
-            lane = prepare_lane(lane)
+            if not isinstance(lane, PreparedLane):
+                lane = prepare_lane(lane)
             resolve_attempt_budget(
                 lane["grant_wall_clock_seconds"],
                 lane["remaining_authorized_task_allowance"],
                 WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
             )
         except (TypeError, ValueError, RuntimeError) as exc:
-            record(raw_lane, "REJECTED", str(exc))
+            preparation_error = str(exc)
+        if preparation_error is not None:
+            record(classify_admission(lane_id, preparation_error=preparation_error))
             continue
 
         worktree = _canonical_path(lane["worktree"])
-        if worktree in seen_worktrees:
-            reason = "worktree conflicts with " + seen_worktrees[worktree]
-            record(lane, "BLOCKED", reason)
-            continue
-        pane = _canonical_token(lane["pane"])
+        pane = canonical_token(lane["pane"])
+        conflict_reason: str | None = None
         if pane in seen_panes:
-            reason = "pane conflicts with " + seen_panes[pane]
-            record(lane, "BLOCKED", reason)
-            continue
+            conflict_reason = "pane conflicts with " + seen_panes[pane]
         contracts = tuple(sorted(map(str, lane["fixed_contracts"])))
         if shared_contracts is None:
             shared_contracts = contracts
+            fixed_contracts_match = True
         elif contracts != shared_contracts:
-            record(lane, "REJECTED", "fixed contracts differ")
-            continue
-        if any(
-            _set_conflicts(lane["allowed_write_set"], other["allowed_write_set"])
-            or _set_conflicts(lane["mutable_resources"], other["mutable_resources"])
+            fixed_contracts_match = False
+        else:
+            fixed_contracts_match = True
+        if conflict_reason is None and worktree in seen_worktrees:
+            conflict_reason = "worktree conflicts with " + seen_worktrees[worktree]
+        if conflict_reason is None and any(
+            resource_sets_conflict(lane["allowed_write_set"], other["allowed_write_set"])
+            or resource_sets_conflict(lane["mutable_resources"], other["mutable_resources"])
             for other in admitted
         ):
-            record(lane, "BLOCKED", "write set or mutable resource conflicts")
-            continue
-        if len(admitted) >= capacity:
-            record(lane, "DEFERRED", f"capacity limit {capacity}")
-            continue
+            conflict_reason = "write set or mutable resource conflicts"
+        result = classify_admission(
+            lane_id,
+            conflict_reason=conflict_reason,
+            fixed_contracts_match=fixed_contracts_match,
+            capacity_available=len(admitted) < capacity,
+            capacity_reason=f"capacity limit {capacity}",
+        )
+        record(result)
+        if result.state == "ADMITTED":
+            admitted.append(lane)
+            seen_worktrees[worktree] = lane_id
+            seen_panes[pane] = lane_id
 
-        admitted.append(lane)
-        record(lane, "ADMITTED", "ready")
-        seen_worktrees[worktree] = lane_id
-        seen_panes[pane] = lane_id
-
-    return legacy_admission_lists(validate_admission_results(admission_results), lanes_by_id)
+    return AdmissionBatch(tuple(admitted), validate_admission_results(admission_results))
 
 
 def load_lane_descriptors(
@@ -229,9 +230,8 @@ def _launcher_command(
     )
     grant = lane.get("runtime_grant")
     if not isinstance(grant, Mapping):
-        bound_lane = dict(lane)
-        _bind_requested_grant(bound_lane)
-        grant = bound_lane["runtime_grant"]
+        lane = prepare_lane(lane)
+        grant = lane["runtime_grant"]
     grant_digest_value = lane.get("grant_digest") or _grant_digest(
         str(lane["executor"]), grant
     )
@@ -472,7 +472,7 @@ def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) 
         and assignment_digest == expected_digest
         and _effective_budget_is_contained(expected, prep_grant)
     )
-    if not isinstance(expected_capabilities, Mapping):
+    if not isinstance(expected_capabilities, Mapping) or not expected_capabilities.get("requested"):
         return grant_matches
     prep_capabilities = registry.get("local_capabilities") if isinstance(registry, Mapping) else None
     assignment_capabilities = assignment if isinstance(assignment, Mapping) else None
@@ -582,11 +582,9 @@ def run_lane(
     dispatch_deadline = dispatch_started + _DISPATCH_DEADLINE_SECONDS
     if isinstance(attempt_deadline, (int, float)) and not isinstance(attempt_deadline, bool):
         dispatch_deadline = min(dispatch_deadline, float(attempt_deadline))
-    bound_lane: Mapping[str, Any] = lane
-    if not isinstance(lane.get("runtime_grant"), Mapping):
-        bound_lane = dict(lane)
+    if not isinstance(lane, PreparedLane):
         try:
-            _bind_requested_grant(bound_lane)
+            lane = prepare_lane(lane)
         except (TypeError, ValueError, RuntimeError) as exc:
             return {
                 "lane_id": lane_id,
@@ -600,7 +598,7 @@ def run_lane(
             }
     try:
         command = _launcher_command(
-            bound_lane,
+            lane,
             python_executable=python_executable,
             launcher_path=launcher_path,
         )
@@ -684,7 +682,7 @@ def run_lane(
                 records.append(_tagged(lane_id, "unresolved", {"reason": "transport timeout"}))
                 return {
                     "lane_id": lane_id,
-                    "assignment_id": bound_lane.get("assignment_id"),
+                    "assignment_id": lane.get("assignment_id"),
                     "command": command,
                     "exit_code": process.returncode,
                     "records": records,
@@ -749,8 +747,8 @@ def run_lane(
             return "retired", True, "task result unresolved", False
         return "retired", False, "settled", False
 
-    grant_mismatch = not _grant_evidence_matches(bound_lane, parsed)
-    if not _receipt_correlation_matches(bound_lane, parsed):
+    grant_mismatch = not _grant_evidence_matches(lane, parsed)
+    if not _receipt_correlation_matches(lane, parsed):
         capacity, unresolved, unresolved_reason, acceptance_pending = "occupied", True, "receipt correlation mismatch", False
     elif parsed["malformed"]:
         capacity, unresolved, unresolved_reason, acceptance_pending = "occupied", True, "malformed launcher evidence", False
@@ -761,7 +759,7 @@ def run_lane(
         records.append(_tagged(lane_id, "unresolved", {"reason": unresolved_reason}))
     result = {
         "lane_id": lane_id,
-        "assignment_id": bound_lane.get("assignment_id"),
+        "assignment_id": lane.get("assignment_id"),
         "command": command,
         "exit_code": process.returncode,
         "records": records,
@@ -808,20 +806,28 @@ def run_parallel(
 ) -> dict[str, Any]:
     """Run admitted lanes concurrently; return derived evidence only."""
 
+    supplied_categories: dict[str, list[Mapping[str, Any]]] = {}
     if isinstance(source, (str, os.PathLike)):
-        admission = load_lane_descriptors(source, max_concurrency=max_concurrency)
+        raw_lanes = _read_descriptors(source)
     elif isinstance(source, Mapping) and "admitted" in source:
         admitted = source["admitted"]
         if not isinstance(admitted, list):
             raise ValueError("admitted lanes must be a list")
-        admission = _admit_lanes(admitted, max_concurrency=max_concurrency)
+        raw_lanes = admitted
         for category in ("deferred", "blocked", "rejected"):
             supplied = source.get(category, [])
             if not isinstance(supplied, list):
                 raise ValueError(f"{category} lanes must be a list")
-            admission[category] = list(supplied) + admission.get(category, [])
+            supplied_categories[category] = supplied
     else:
-        admission = load_lane_descriptors_from_items(source, max_concurrency=max_concurrency)
+        raw_lanes = list(source)
+
+    batch = _prepare_admission(raw_lanes, max_concurrency=max_concurrency)
+    lanes_by_id = {str(lane["lane_id"]): lane for lane in batch.prepared}
+    admission = legacy_admission_lists(batch.results, lanes_by_id)
+    admission["admitted"] = list(batch.prepared)
+    for category, supplied in supplied_categories.items():
+        admission[category] = list(supplied) + admission.get(category, [])
 
     if not 1 <= max_concurrency <= MAX_CONCURRENCY:
         raise ValueError(f"max_concurrency must be between 1 and {MAX_CONCURRENCY}")
@@ -903,7 +909,9 @@ def main(argv: list[str] | None = None) -> int:
         max_concurrency=args.max_concurrency,
         event_callback=lambda event: print(json.dumps(event, sort_keys=True), flush=True),
     )
-    return 0 if not result["rejected"] and all(not item.get("unresolved") for item in result["results"]) else 2
+    admission_failure = bool(result["rejected"] or result.get("blocked"))
+    runtime_failure = any(item.get("unresolved") for item in result["results"])
+    return 2 if admission_failure or runtime_failure else 0
 
 
 if __name__ == "__main__":

@@ -329,7 +329,7 @@ def test_runtime_boundary_guidance_accepts_shared_contract_sources(tmp_path: Pat
         write_text(tmp_path / relative, "ADMISSION_RESULTS\nnormalize_runtime_grant\n")
     write_text(
         tmp_path / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md",
-        "scripts/herdr_attempt_contract.py scripts/dcode_project.py Herdr owns top-level lane/session/pane lifecycle and diagnostic observation",
+        "scripts/herdr_attempt_contract.py scripts/dcode_project.py scripts/project_os_runtime/ Herdr owns target selection, transport, and diagnostic observation",
     )
 
     assert VALIDATOR.validate_runtime_boundary_guidance(tmp_path) == []
@@ -346,7 +346,7 @@ def test_runtime_boundary_guidance_rejects_private_launcher_policy(tmp_path: Pat
     write_text(tmp_path / "scripts" / "herdr_main_launcher.py", "_normalize_runtime_grant\n")
     write_text(
         tmp_path / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md",
-        "scripts/herdr_attempt_contract.py scripts/dcode_project.py Herdr owns top-level lane/session/pane lifecycle and diagnostic observation",
+        "scripts/herdr_attempt_contract.py scripts/dcode_project.py scripts/project_os_runtime/ Herdr owns target selection, transport, and diagnostic observation",
     )
 
     issues = VALIDATOR.validate_runtime_boundary_guidance(tmp_path)

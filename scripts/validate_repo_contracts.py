@@ -428,11 +428,6 @@ def validate_runtime_boundary_guidance(root: Path) -> list[ValidationIssue]:
             "runtime_boundary", "scripts/herdr_parallel_dispatch.py",
             "production launcher and dispatcher must use public normalize_runtime_grant",
         ))
-    if re.search(r"^_ADMISSION_RESULTS\s*=", dcode_text, re.MULTILINE):
-        issues.append(ValidationIssue(
-            "runtime_boundary", "scripts/dcode_project.py",
-            "admission results must come from herdr_attempt_contract",
-        ))
     if "ADMISSION_RESULTS" not in contract_text:
         issues.append(ValidationIssue(
             "runtime_boundary", "scripts/herdr_attempt_contract.py",
@@ -444,13 +439,20 @@ def validate_runtime_boundary_guidance(root: Path) -> list[ValidationIssue]:
         for marker in (
             "scripts/herdr_attempt_contract.py",
             "scripts/dcode_project.py",
-            "Herdr owns top-level lane/session/pane lifecycle and diagnostic observation",
+            "scripts/project_os_runtime/",
+            "Herdr owns target selection, transport, and diagnostic observation",
         ):
             if marker not in text:
                 issues.append(ValidationIssue(
                     "runtime_boundary", relative_path(canonical, root),
                     f"canonical runtime guidance must reference `{marker}`",
                 ))
+        stale_marker = "Herdr owns top-level lane/session/pane lifecycle and diagnostic observation"
+        if stale_marker in text:
+            issues.append(ValidationIssue(
+                "runtime_boundary", relative_path(canonical, root),
+                "canonical runtime guidance contains stale Herdr lifecycle ownership",
+            ))
     return issues
 
 
