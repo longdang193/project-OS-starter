@@ -113,7 +113,9 @@ def _validate_payload(payload: object) -> dict[str, Any]:
     descendant_state = worker.get("descendant_state", "unknown")
     if not isinstance(descendant_state, str) or descendant_state not in DESCENDANT_STATES:
         raise ValueError("receipt descendant state invalid")
-    recovery_required = payload.get("recovery_required", False)
+    if "recovery_required" not in payload:
+        raise ValueError("receipt recovery flag missing")
+    recovery_required = payload["recovery_required"]
     if not isinstance(recovery_required, bool):
         raise ValueError("receipt recovery flag invalid")
     remaining_paths = cleanup.get("remaining_paths", [])

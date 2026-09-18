@@ -61,6 +61,7 @@ try:
         AttemptContractError,
         attempt_decision,
         same_attempt_binding,
+        settlement_decision,
     )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.attempt import (
@@ -68,6 +69,7 @@ except ModuleNotFoundError:
         AttemptContractError,
         attempt_decision,
         same_attempt_binding,
+        settlement_decision,
     )
 
 
@@ -715,6 +717,8 @@ def _reconcile_attempt_unlocked(
         return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE"}
     if not same_attempt_binding(existing, binding):
         return {"state": "RECOVERY_REQUIRED", "action": "BLOCKED", "admission": "BLOCKED", "record": existing}
+    if existing.get("state") == "settled":
+        return {"state": "SETTLED", "action": "ELIGIBLE", "admission": "IDEMPOTENT", "record": existing}
     evidence = existing.get("settlement_evidence")
     receipt = None
     receipt_path = existing.get("receipt_path")
@@ -724,9 +728,14 @@ def _reconcile_attempt_unlocked(
         evidence = None
     if evidence is not None:
         evidence = dict(evidence)
-        evidence.setdefault("state", "confirmed")
-        evidence.setdefault("recovery_required", False)
     settlement = receipt if receipt and receipt.get("state") == "confirmed" else evidence
+    if settlement is evidence and settlement_decision(settlement)["reason"] == "settlement evidence incomplete":
+        return {
+            "state": "RECOVERY_REQUIRED",
+            "action": "RECONCILE",
+            "admission": "RECONCILE",
+            "record": existing,
+        }
     decision = attempt_decision(
         existing,
         prior_attempt_known=True,
@@ -2209,22 +2218,21 @@ def main(argv: list[str]) -> int:
                 except (OSError, RuntimeError, ValueError):
                     task_result_file.unlink(missing_ok=True)
             if attempt_guard_binding is not None:
+                settlement_evidence = {
+                    "state": "confirmed",
+                    "attempt_id": str(attempt_id),
+                    "worker_state": worker_state,
+                    "worker_exit_code": worker_exit_code,
+                    "descendant_state": descendant_state,
+                    "cleanup_state": role_views_state,
+                    "recovery_required": recovery_required,
+                }
+                settlement = settlement_decision(settlement_evidence)
                 _settle_attempt(
                     assignment_id=str(attempt_guard_binding["assignment_id"]),
                     binding=attempt_guard_binding,
-                    settlement_proven=(
-                        worker_state in {"exited", "failed", "start_failed"}
-                        and descendant_state in {"terminated", "not_started"}
-                        and role_views_state == "removed"
-                        and not recovery_required
-                    ),
-                    settlement_evidence={
-                        "attempt_id": str(attempt_id),
-                        "worker_state": worker_state,
-                        "worker_exit_code": worker_exit_code,
-                        "descendant_state": descendant_state,
-                        "cleanup_state": role_views_state,
-                    },
+                    settlement_proven=settlement["settlement_proven"],
+                    settlement_evidence=settlement_evidence,
                 )
             if cleanup_error is not None:
                 raise cleanup_error

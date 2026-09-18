@@ -81,6 +81,11 @@ def _apply_pairs_staged(
 ) -> None:
     if not pairs:
         return
+    if backup_root is not None:
+        target_resolved = target_root.resolve()
+        backup_resolved = backup_root.resolve()
+        if backup_resolved == target_resolved or target_resolved in backup_resolved.parents:
+            raise ValueError("backup root must be outside target root")
     target_root.parent.mkdir(parents=True, exist_ok=True)
     stage = target_root.parent / f".{target_root.name}.staging-{uuid.uuid4().hex}"
     previous = target_root.parent / f".{target_root.name}.previous-{uuid.uuid4().hex}"
@@ -104,7 +109,17 @@ def _apply_pairs_staged(
                     encoding="utf-8",
                 )
             if target_root.exists() and backup_root is not None:
-                shutil.copytree(target_root, backup_stage)
+                backup_stage.mkdir(parents=True, exist_ok=True)
+                for _, destination, _ in pairs:
+                    if not destination.exists():
+                        continue
+                    relative = destination.relative_to(target_root)
+                    backup_destination = backup_stage / relative
+                    if destination.is_dir():
+                        shutil.copytree(destination, backup_destination)
+                    else:
+                        backup_destination.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(destination, backup_destination)
             for source, destination, rendered in pairs:
                 relative = destination.relative_to(target_root)
                 staged_destination = stage / relative
@@ -807,7 +822,11 @@ def _shared_asset_paths(root: Path) -> dict[str, list[str]]:
 
 
 def _is_shared_asset_ignored(path: Path) -> bool:
-    return "__pycache__" in path.parts or path.suffix.lower() in {".pyc", ".pyo"}
+    return (
+        ".backups" in path.parts
+        or "__pycache__" in path.parts
+        or path.suffix.lower() in {".pyc", ".pyo"}
+    )
 
 
 def _shared_asset_entries(root: Path, bundle_name: str) -> list[tuple[Path, Path]]:
@@ -1193,7 +1212,12 @@ def run() -> int:
                     backup_root: Path | None = None
                     if args.backup:
                         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-                        backup_root = target_root / ".backups" / stamp
+                        backup_root = (
+                            target_root.parent
+                            / ".project-os-backups"
+                            / target_root.name
+                            / stamp
+                        )
                     try:
                         _apply_pairs_staged(
                             pairs,

@@ -261,17 +261,12 @@ def terminal_settlement_proven(
     cleanup_confirmed: bool,
     descendants_retired: bool,
 ) -> bool:
-    if not isinstance(receipt, Mapping) or receipt.get("state") != "confirmed":
-        return False
-    if receipt.get("recovery_required") is not False:
-        return False
-    if receipt.get("worker_state") not in {"exited", "failed", "start_failed"}:
-        return False
-    if receipt.get("cleanup_state") != "removed":
-        return False
-    if receipt.get("descendant_state") not in {"terminated", "not_started"}:
-        return False
-    return cleanup_confirmed is True and descendants_retired is True
+    decision = settlement_decision(
+        receipt,
+        cleanup_confirmed=cleanup_confirmed,
+        descendants_retired=descendants_retired,
+    )
+    return decision["settlement_proven"] is True
 
 
 def derive_lifecycle_state(
@@ -470,19 +465,69 @@ def resolve_attempt_budget(
     return requested
 
 
-def settlement_decision(receipt: Mapping[str, Any]) -> dict[str, Any]:
-    nested_worker = receipt.get("worker") if isinstance(receipt.get("worker"), Mapping) else None
-    nested_cleanup = receipt.get("cleanup") if isinstance(receipt.get("cleanup"), Mapping) else None
-    worker = nested_worker or receipt
-    cleanup = nested_cleanup or receipt
-    if receipt.get("recovery_required") is True:
+def _normalize_settlement_evidence(
+    receipt: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(receipt, Mapping):
+        return None
+    nested_worker = receipt.get("worker")
+    nested_cleanup = receipt.get("cleanup")
+    nested = isinstance(nested_worker, Mapping) or isinstance(nested_cleanup, Mapping)
+    if nested:
+        if not isinstance(nested_worker, Mapping) or not isinstance(nested_cleanup, Mapping):
+            return None
+        if receipt.get("state", "confirmed") != "confirmed":
+            return None
+        worker = nested_worker
+        cleanup = nested_cleanup
+    else:
+        if receipt.get("state") != "confirmed":
+            return None
+        worker = receipt
+        cleanup = receipt
+    recovery_required = receipt.get("recovery_required")
+    if not isinstance(recovery_required, bool):
+        return None
+    if nested:
+        worker_state = worker.get("state")
+        cleanup_state = cleanup.get("state")
+        descendant_state = worker.get("descendant_state")
+        worker_exit_code = worker.get("exit_code")
+    else:
+        worker_state = receipt.get("worker_state")
+        cleanup_state = receipt.get("cleanup_state")
+        descendant_state = receipt.get("descendant_state")
+        worker_exit_code = receipt.get("worker_exit_code")
+    return {
+        "state": "confirmed",
+        "recovery_required": recovery_required,
+        "worker_state": worker_state,
+        "worker_exit_code": worker_exit_code,
+        "descendant_state": descendant_state,
+        "cleanup_state": cleanup_state,
+    }
+
+
+def settlement_decision(
+    receipt: Mapping[str, Any],
+    *,
+    cleanup_confirmed: bool | None = None,
+    descendants_retired: bool | None = None,
+) -> dict[str, Any]:
+    evidence = _normalize_settlement_evidence(receipt)
+    if evidence is None:
+        return {
+            "resource_settled": False,
+            "settlement_proven": False,
+            "reason": "settlement evidence incomplete",
+        }
+    if evidence["recovery_required"] is True:
         return {"resource_settled": False, "settlement_proven": False, "reason": "recovery required"}
-    cleanup_state = cleanup.get("state") if nested_cleanup else receipt.get("cleanup_state")
-    if cleanup_state != "removed":
+    if evidence["cleanup_state"] != "removed" or cleanup_confirmed is False:
         return {"resource_settled": False, "settlement_proven": False, "reason": "cleanup unsettled"}
-    worker_state = worker.get("state") if nested_worker else receipt.get("worker_state")
-    descendant_state = worker.get("descendant_state")
-    if worker_state not in {"exited", "failed", "start_failed"} or descendant_state not in {"terminated", "not_started"}:
+    if descendants_retired is False:
+        return {"resource_settled": False, "settlement_proven": False, "reason": "lifecycle unsettled"}
+    if evidence["worker_state"] not in {"exited", "failed", "start_failed"} or evidence["descendant_state"] not in {"terminated", "not_started"}:
         return {"resource_settled": False, "settlement_proven": False, "reason": "lifecycle unsettled"}
     return {"resource_settled": True, "settlement_proven": True, "reason": "settled"}
 

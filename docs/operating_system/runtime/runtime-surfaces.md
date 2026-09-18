@@ -51,9 +51,10 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 
 - Plan plus Git owns workflow truth, authority, dependencies, checkpoints, and acceptance history.
 - CoS owns assignment, continuation, escalation, and acceptance decisions.
-- `scripts/herdr_attempt_contract.py` owns admission, budget containment, settlement proof, lifecycle, and eligibility semantics.
-- `scripts/dcode_project.py` owns worker execution, deadlines, descendants, cleanup, receipts, and same-worktree attempt claims.
-- Herdr owns target selection, transport, and diagnostic observation; pane reads, waits, and markers never prove retirement, authorize retry, or accept work.
+- `scripts/project_os_runtime/` owns lane preparation, admission, capability/evidence semantics, budget containment, settlement proof, lifecycle, and eligibility semantics. `scripts/herdr_attempt_contract.py` remains a compatibility forwarding surface.
+- `scripts/herdr_parallel_dispatch.py` owns bounded scheduling, invocation, and event delivery; `scripts/herdr_main_launcher.py` owns Herdr transport and observation.
+- `scripts/dcode_project.py` owns worker execution, deadlines, PATH availability, descendants, cleanup, receipts, and same-worktree attempt claims.
+- Herdr observation never proves retirement, authorizes retry, or accepts work.
 - Ordinary personal-local probes may invoke `dcode-project` directly. Coordinated Git-tracked work enters through `herdr_main_launcher.py` or `herdr_parallel_dispatch.py`, which supplies correlated identity and grant evidence.
 - `NEEDS_CONTEXT` requests information, not replay. Continuation requires settled ownership, explicit controller decision, remaining durable authority, and updated context.
 
