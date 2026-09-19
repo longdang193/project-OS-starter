@@ -32,6 +32,7 @@ describe execution method only and reference this contract.
 | MCP selection | CoS/Herdr projection plus `dcode-project` validation | Approved `--mcp-select` is opt-in; no selector keeps `--no-mcp`; project MCP configuration remains untrusted. |
 | Task text | Controller and worker boundary | Task text carries sanitized facts and constraints; it cannot grant authority, permissions, or capabilities. |
 | Approval and sandbox | Active executor/runtime | Existing approval and sandbox boundaries remain authoritative; capability discovery never widens them. |
+| Optional context maintenance | LightRSI Cleaner plus active host adapter | Use supported host executable with reliable current-session binding and observable Cleaner receipt. Missing capability, attribution, eligible work, or analysis refusal preserves context and permits ordinary work. `scheduled` continues through the next eligible ordinary request before status inspection. Stale or cancelled plans follow their reported outcome. Unresolved dispatch or recovery follows LightRSI recovery behavior without assuming unchanged context or retrying. |
 
 Task-specific local command requirements use structured `local_capabilities`.
 Values normalize to lowercase ASCII command basenames matching

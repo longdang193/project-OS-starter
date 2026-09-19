@@ -166,6 +166,7 @@ in the controller does not block launcher-mediated dispatch.
 - For applicable plan-bound review, read `skill-requesting-code-review`, `skill-reviewing-pull-requests`, and `skill-receiving-code-review`.
 - For applicable plan-bound acceptance, read `skill-verification-before-completion` and `skill-finishing-a-development-branch`.
 - Read `docs/operating_system/tooling/runtime-tool-resolution.md` when runtime capability is material.
+- For optional context maintenance, read `docs/operating_system/procedures/personal-local-worktree-procedure.md`. Long-running CoS may maintain its own session; supported workers own their sessions. CoS does not routinely select or execute worker cleanup, while ordinary observation, troubleshooting, and acceptance remain unchanged.
 
 ## Work Binding
 

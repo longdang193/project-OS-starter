@@ -106,6 +106,27 @@ delegation; do not use `dcode --agent` or `dcode -r` for project coordination.
 Use `skill-deepagents-executing-plans` when an approved Git-tracked plan is
 executed through DeepAgents with bounded delegated work.
 
+Context Cleaner may remove exclusively owned completed internal work without
+repeated CoS approval when findings and required evidence are durable. Current
+instructions, unresolved work, shared dependencies, and evidence awaiting
+acceptance remain protected. Cleaner permission does not expand authority,
+budgets, delegation, or external-action permissions. Missing Cleaner capability,
+unreliable session binding, uncertain retention, or ambiguous attribution leaves
+context unchanged.
+
+Context cleaning is optional session-local maintenance, not a project-task
+transition. Consider it after verified milestones when obsolete context is
+substantial and expected continuation justifies overhead. Use only the reliably
+bound current Host session and Cleaner-reported selectable tasks. Treat
+`scheduled` as pending until a later eligible request permits status inspection.
+Preserve current instructions, decisions, dependencies, unresolved issues, and
+evidence awaiting acceptance. For missing capability, attribution, eligible
+work, or analysis refusal, preserve context and continue ordinary work. For
+stale or cancelled plans, follow the reported outcome and reanalyze only when
+worthwhile. For unresolved dispatch or recovery, follow LightRSI's reported
+recovery behavior; do not assume unchanged context or retry the operation. Do
+not create project records solely for cleaning.
+
 Git-tracked coordinated work follows
 `docs/operating_system/rules/git-tracked-coordination-rule.md`: Git owns
 workspace and repository state; the active plan owns workflow state; one lead

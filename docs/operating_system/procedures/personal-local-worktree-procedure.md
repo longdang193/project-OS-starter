@@ -52,6 +52,38 @@ Follow
 Start selected local executor only from actual selected-workspace context. If
 context cannot be proved, work directly in selected workspace or `block`.
 
+## Optional Context Maintenance
+
+Context cleaning is optional session-local maintenance. Consider it after a
+meaningful verified milestone when obsolete context is substantial and expected
+continuation justifies its overhead.
+
+Use runtime-provided current Host session identity and existing LightRSI CLI:
+
+```text
+lightrsi codex clean --session <current-host-session-id>
+lightrsi codex clean --plan <returned-plan-id> --select <eligible-task-ids>
+continue original work through one eligible ordinary request
+lightrsi codex clean --status <returned-plan-id>
+```
+
+Preserve current instructions, decisions, dependencies, unresolved issues, and
+evidence awaiting acceptance. Select only Cleaner-reported tasks belonging to
+bound session.
+
+- Missing capability, attribution, eligible work, or analysis refusal: preserve
+  context and continue ordinary work.
+- `scheduled`: continue through next eligible ordinary request, inspect
+  resulting status, and claim savings only when `applied`.
+- Stale or cancelled plan: follow reported outcome; reanalyze only when
+  worthwhile.
+- Unresolved dispatch or recovery: follow LightRSI reported recovery behavior;
+  do not assume unchanged context or retry operation.
+
+Do not create task, commit, audit document, or ledger solely for cleaning. Do
+not repeatedly retry when conditions did not change. Do not duplicate LightRSI
+recovery internals here.
+
 For delegated profiles, `agents/*.toml` owns profile prompts, provider aliases, models,
 and optional ranks. Positive ranks order only ranked profiles; unranked profiles
 are explicit-only and non-orderable. Ranked profiles are ordered by registry
