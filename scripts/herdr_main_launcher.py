@@ -690,6 +690,9 @@ def _codex_arguments(
         f"model={json.dumps(profile.model)}",
         "-c",
         f"developer_instructions={json.dumps(profile.developer_instructions)}",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "check_for_update_on_startup=false",
     ]
     runtime_only = set(runtime_only_mcp_servers)
     for server in mcp_server_names:
@@ -2192,6 +2195,7 @@ def resolve_launch(
                 "model_provider",
                 "model",
                 "developer_instructions",
+                "check_for_update_on_startup",
             ],
             "redacted_runtime_argv": _redacted_arguments(runtime_arguments),
             "assignment_task_sha256": _sha256_text(task_text),

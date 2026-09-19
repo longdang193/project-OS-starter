@@ -57,7 +57,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--adopt-shared-asset",
         choices=["docs", "scripts"],
-        help="Explicitly adopt one differing unmarked shared asset bundle.",
+        action="append",
+        help="Explicitly adopt differing unmarked shared asset bundles; repeatable.",
     )
     parser.add_argument(
         "--rewrite-mode",
@@ -1150,7 +1151,7 @@ def run() -> int:
                 changes, plan_issues, pairs = _shared_asset_plan(
                     root,
                     bundle_name,
-                    adopt=args.adopt_shared_asset == bundle_name,
+                    adopt=bundle_name in (args.adopt_shared_asset or []),
                 )
                 owned = _shared_asset_root_owned(root, bundle_name)
             except (OSError, ValueError) as exc:

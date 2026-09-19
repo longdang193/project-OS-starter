@@ -101,6 +101,8 @@ def test_codex_arguments_project_complete_contract(tmp_path: Path) -> None:
     assert 'model_provider="9router"' in arguments
     assert 'model="combo-review"' in arguments
     assert 'developer_instructions="do not modify files"' in arguments
+    assert "--dangerously-bypass-hook-trust" in arguments
+    assert "check_for_update_on_startup=false" in arguments
 
 
 def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) -> None:
