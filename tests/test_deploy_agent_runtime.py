@@ -52,6 +52,22 @@ def load_module(name: str, path: Path):
 DEPLOY = load_module("deploy_agent_runtime", DEPLOY_PATH)
 
 
+def test_parse_args_accepts_multiple_shared_asset_adoptions(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "deploy_agent_runtime.py",
+            "--adopt-shared-asset",
+            "docs",
+            "--adopt-shared-asset",
+            "scripts",
+        ],
+    )
+
+    assert DEPLOY.parse_args().adopt_shared_asset == ["docs", "scripts"]
+
+
 def test_looks_generated_accepts_marker_after_long_frontmatter(tmp_path: Path) -> None:
     runtime_file = tmp_path / "SKILL.md"
     runtime_file.write_text(

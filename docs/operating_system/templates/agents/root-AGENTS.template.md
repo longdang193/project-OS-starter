@@ -104,6 +104,17 @@ workspace and repository state; the active plan owns workflow state; one lead
 controller updates coordination state; runtime thread or session state is never
 the recovery source.
 
+Within a bound Host session, an agent may clean context belonging exclusively
+to completed internal work when reusable findings and required evidence are
+durable and no active or dependent work requires the removed content. Current
+instructions, user constraints, unresolved work, shared dependencies, and
+evidence awaiting review remain protected. Cleaning never expands authority,
+budgets, delegation rights, or external-action permissions. Preserve context
+whenever removability or required retention is uncertain. This permission
+applies only when a supported Cleaner capability is available and the current
+session is reliably bound; missing capability, uncertain retention, or
+ambiguous attribution leaves context unchanged.
+
 ## Project Design Rules
 
 ### Use SSOT
