@@ -106,43 +106,26 @@ delegation; do not use `dcode --agent` or `dcode -r` for project coordination.
 Use `skill-deepagents-executing-plans` when an approved Git-tracked plan is
 executed through DeepAgents with bounded delegated work.
 
-Context Cleaner may remove exclusively owned completed internal work without
-repeated CoS approval when findings and required evidence are durable. Current
-instructions, unresolved work, shared dependencies, and evidence awaiting
-acceptance remain protected. Cleaner permission does not expand authority,
-budgets, delegation, or external-action permissions. Missing Cleaner capability,
-unreliable session binding, uncertain retention, or ambiguous attribution leaves
-context unchanged.
-
-Context cleaning is optional session-local maintenance, not a project-task
-transition. Consider it after verified milestones when obsolete context is
-substantial and expected continuation justifies overhead. Use only the reliably
-bound current Host session and Cleaner-reported selectable tasks. Treat
-`scheduled` as pending until a later eligible request permits status inspection.
-Preserve current instructions, decisions, dependencies, unresolved issues, and
-evidence awaiting acceptance. For missing capability, attribution, eligible
-work, or analysis refusal, preserve context and continue ordinary work. For
-stale or cancelled plans, follow the reported outcome and reanalyze only when
-worthwhile. For unresolved dispatch or recovery, follow LightRSI's reported
-recovery behavior; do not assume unchanged context or retry the operation. Do
-not create project records solely for cleaning.
-
 Git-tracked coordinated work follows
 `docs/operating_system/rules/git-tracked-coordination-rule.md`: Git owns
 workspace and repository state; the active plan owns workflow state; one lead
 controller updates coordination state; runtime thread or session state is never
 the recovery source.
 
-Within a bound Host session, an agent may clean context belonging exclusively
-to completed internal work when reusable findings and required evidence are
-durable and no active or dependent work requires the removed content. Current
-instructions, user constraints, unresolved work, shared dependencies, and
-evidence awaiting review remain protected. Cleaning never expands authority,
-budgets, delegation rights, or external-action permissions. Preserve context
-whenever removability or required retention is uncertain. This permission
-applies only when a supported Cleaner capability is available and the current
-session is reliably bound; missing capability, uncertain retention, or
-ambiguous attribution leaves context unchanged.
+Context Cleaner is optional session-local maintenance, not a project-task
+transition. Within a reliably bound Host session, the active agent may request
+removal of exclusively owned completed internal work when reusable findings and
+required evidence are durable and no active or dependent work requires the
+removed content. Project OS owns standing permission and retention; the active
+agent decides whether cleaning is worthwhile; the Host adapter owns session and
+history interpretation plus supported mutation; the Cleaner implementation owns
+selection, scheduling, recovery, and receipts. Current instructions, user
+constraints, unresolved work, shared dependencies, and evidence awaiting review
+remain protected. Cleaning never expands authority, budgets, delegation rights,
+or external-action permissions. Missing capability, reliable binding, trusted
+attribution, retention proof, or supported mutation preserves context and
+ordinary work. Follow the personal-local procedure for execution and do not
+create project records solely for cleaning.
 
 ## Project Design Rules
 

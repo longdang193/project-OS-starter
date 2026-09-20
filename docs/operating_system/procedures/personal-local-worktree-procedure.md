@@ -58,6 +58,12 @@ Context cleaning is optional session-local maintenance. Consider it after a
 meaningful verified milestone when obsolete context is substantial and expected
 continuation justifies its overhead.
 
+History-first attribution is the target contract, not a current LightRSI
+guarantee. Treat ownership as proven only when bound-session history and
+protected-boundary evidence support it. Estimator or registry data may enrich
+analysis but cannot authorize mutation; when attribution is not proven,
+preserve context.
+
 Use runtime-provided current Host session identity and existing LightRSI CLI:
 
 ```text
@@ -68,8 +74,9 @@ lightrsi codex clean --status <returned-plan-id>
 ```
 
 Preserve current instructions, decisions, dependencies, unresolved issues, and
-evidence awaiting acceptance. Select only Cleaner-reported tasks belonging to
-bound session.
+evidence awaiting acceptance. Select only tasks whose ownership is proven by
+bound-session history; Cleaner-reported task IDs are candidate inputs, not
+independent approval.
 
 - Missing capability, attribution, eligible work, or analysis refusal: preserve
   context and continue ordinary work.

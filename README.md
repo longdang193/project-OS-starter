@@ -97,6 +97,7 @@ Project OS Starter composes replaceable runtimes, providers, and validation tool
 - [LightRSI](https://github.com/zjunlp/LightRSI) — optional Tura runtime layer.
 - [9router](https://github.com/decolua/9router) — model-routing provider.
 - [LangGraph](https://github.com/langchain-ai/langgraph) — DeepAgents runtime support.
+- [OpenCodeReview](https://github.com/alibaba/open-code-review) — optional advisory code-review overlay.
 
 The setup script installs `deepagents-code` as a separate optional coding-agent runtime. Its public repository and license are distinct from the DeepAgents ecosystem project above.
 
