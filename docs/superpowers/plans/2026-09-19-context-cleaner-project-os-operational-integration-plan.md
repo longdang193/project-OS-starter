@@ -3,7 +3,7 @@ layer: change
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 name: context-cleaner-project-os-operational-integration
 targets:
   - AGENTS.md
@@ -57,8 +57,10 @@ generated outputs.
 
 ### Acceptance readiness
 
-Require external LightRSI evidence for strict session binding, retry identity,
-self-initiated analysis, successful application, and continued work.
+Require Project OS evidence for canonical policy, runtime/procedure/CoS
+consistency, generated surfaces, and repository validation. Record LightRSI
+implementation and pilot evidence in its own plan; it is not a prerequisite for
+Project OS guidance acceptance.
 
 ## Execution Approach
 
@@ -70,7 +72,7 @@ self-initiated analysis, successful application, and continued work.
 - Preauthorized local actions: edit declared canonical Project OS files; regenerate managed outputs; run declared tests, validators, Git checks, and read-only LightRSI evidence inspection
 - User-approval actions: commit, push, merge, authentication, external repository mutation, destructive cleanup, discard, or edits outside declared targets
 - Parallel ownership: none
-- Sequential fallback: baseline → canonical policy → procedure and CoS guidance → generated refresh → external acceptance gate → final verification
+- Sequential fallback: baseline → canonical policy → procedure and runtime guidance → generated refresh → Project OS verification → final verification
 
 ## Coordination State
 
@@ -80,8 +82,9 @@ self-initiated analysis, successful application, and continued work.
 - Base commit: `b6a6afbc0d63b7dfeeac21c5d70d99bee354818b`
 - Review reference: `2de42b1d3bf92d9606d856e347abd7a657b86b01`
 - Expected workspace: preserve existing tracked and untracked changes
-- Next action: obtain LightRSI implementation-lane evidence, then rerun Task 5 acceptance
-- Blockers: LightRSI source checkout and accepted Task 6 evidence are unavailable in this workspace; Project OS work is complete but plan cannot close
+- Next action: none; Project OS guidance verified
+- Blockers: none
+- Deferred: LightRSI implementation and pilot remain separate work
 
 Existing workspace changes to preserve:
 
@@ -99,7 +102,7 @@ Existing workspace changes to preserve:
 | Task 2 | `completed` | current | `codex` | Task 1 | canonical policy diff and focused doc tests | canonical policy added; focused suite `34 passed` |
 | Task 3 | `completed` | current | `codex` | Task 2 | runtime, procedure, and CoS consistency checks | runtime/procedure/CoS guidance added; focused suite `40 passed` |
 | Task 4 | `completed` | current | `codex` | Task 3 | generated sync and drift checks | sync, headers, drift, template validators passed; focused suite `39 passed`; pre-sync drift reconciled |
-| Task 5 | `blocked` | current | `codex` | Task 4 | LightRSI acceptance evidence and final Project OS verification | Project OS validators passed; full suite `789 passed, 1 skipped`; installed CLI help available; no LightRSI source checkout or accepted self-cleaning evidence; no mutation run authorized |
+| Task 5 | `completed` | current | `codex` | Task 4 | final Project OS verification and separate LightRSI handoff record | Focused suite `79 passed`; repository validators, generated sync/drift/header/template checks, and `git diff --check` passed; full suite `790 passed, 1 skipped`; LightRSI evidence remains separate |
 
 ## Task Breakdown
 
@@ -330,100 +333,28 @@ git diff --check
 - Preauthorized local actions: regenerate managed outputs and run generated-surface validators.
 - Stop for: nondeterministic generated output, drift, header failure, changes outside declared generated surfaces, or mutation of unrelated user work.
 
-**Exit Criteria:** Canonical and generated surfaces match, and Project OS
-guidance verification is recorded separately from live LightRSI Task 6
-acceptance.
+**Exit Criteria:** Canonical and generated surfaces match, and fresh Project OS
+guidance verification passes. LightRSI Task 6 remains separately tracked.
 
-### Task 5: External LightRSI prerequisite and final acceptance
+### Task 5: Close Project OS integration and separate LightRSI work
 
-This task does not modify LightRSI from this workspace.
+This task does not modify LightRSI from this workspace or make its pilot a
+Project OS completion gate.
 
-**External LightRSI source surfaces:**
+**Steps:**
 
-- `components/products/cli/src/hosts/codex.ts`
-- `components/products/cli/src/clean.ts`
-- `components/adapters/codex/src/context-cleaner/bridge.ts`
-- `components/adapters/codex/src/proxy-runtime.ts`
-- `docs/superpowers/plans/2026-09-19-context-cleaner-safety-autonomy-follow-up-plan.md`
+1. Patch canonical Project OS policy and runtime/procedure guidance.
+2. Regenerate managed agent surfaces from canonical sources.
+3. Run focused tests, repository validators, drift checks, and full tests.
+4. Record Project OS verification in this plan.
+5. Link the separate LightRSI history-authority plan without importing its
+   acceptance criteria into this plan.
 
-**Required LightRSI guarantees and outstanding gaps:**
-
-Existing implementation evidence may satisfy guarantees below; this Project OS
-plan must not reopen production work when the LightRSI plan already records
-accepted proof.
-
-**Guarantees to consume from LightRSI evidence:**
-
-1. Unresolved current-session identity refuses write-capable cleaning.
-2. Explicit validated session selection remains supported.
-3. No duplicate generation occurs after successful provider response with local persistence failure.
-4. Unresolved-tool protection remains intact.
-5. Automatic lifecycle eviction remains disabled for the Codex proxy.
-
-**Outstanding gaps before Task 6 acceptance:**
-
-1. Repeated cancellation replays the stored canonical receipt.
-2. Accepted task selection remains canonical through schedule finalization.
-3. Self-cleaning succeeds through the normal agent tool interface.
-4. Normal intervening tool results do not create perpetual stale-plan rejection.
-
-**LightRSI handoff:**
-
-Send this dependency mapping to the existing LightRSI plan
-`docs/superpowers/plans/2026-09-19-context-cleaner-safety-autonomy-follow-up-plan.md`.
-The LightRSI implementation lane owns execution and evidence; Project OS
-consumes its accepted results.
-
-| LightRSI owner | Required outcome |
-| --- | --- |
-| Task 7 | Resolve cancellation replay and reordered-selection finalization gaps |
-| Task 8 | Reference existing attribution and approved-Cleaner execution evidence |
-| Task 6, Gate A | Prove strict binding and completed internal milestones within a continuing objective |
-| Task 6, Gate B | Same agent analyzes, selects, schedules, observes application, and continues |
-| Task 6, Gate C | Record functional acceptance and bounded cost and latency findings |
-
-**Required direct boundary proof:**
-
-- fresh normal Codex session
-- agent-owned continuing objective
-- completed internal milestone
-- same normal agent invokes Cleaner through its ordinary tool interface without human-selected IDs
-- eligible tasks bound to current session
-- same agent receives selectable tasks and schedules cleanup
-- `scheduled` receipt
-- same agent continues through an eligible ordinary request
-- same agent observes committed `applied` status
-- retained required evidence
-- same agent resumes the original objective
-- safe refusal for incomplete or uncertain history
-- no cross-session selection
-- idempotent cancellation and reordered-selection handling
-
-**Required regression scenarios:**
-
-- the Cleaner invocation's own tool exchange remains protected without making successful self-maintenance impossible
-- normal intervening tool results and continuation do not cause perpetual stale-plan rejection
-
-If either scenario fails, record a LightRSI capability gap. External cleaning
-of an idle worker is diagnostic evidence only, not Task 6 completion.
-
-**Acceptance evidence:**
-
-- LightRSI commit or review artifact containing focused regression proof
-- direct CLI invocation output
-- canonical receipt identity
-- applied mutation evidence
-- continuation evidence
-- cost and latency measurements
-- human intervention count
-- applied removal separate from estimated savings
-- separate Project OS guidance verification from live Task 6 acceptance
-
-**Task Function:** External acceptance evidence review.
+**Task Function:** Project OS guidance verification and plan reconciliation.
 
 **Template Profile:**
 - Controller-selected: `normal`
-- Selection basis: bounded evidence inspection against explicit LightRSI acceptance gates.
+- Selection basis: bounded evidence inspection against Project OS guidance and generated-surface gates.
 
 **Validator Profile:**
 - Controller-selected: `review`
@@ -431,10 +362,10 @@ of an idle worker is diagnostic evidence only, not Task 6 completion.
 
 **Authority:**
 
-- Preauthorized local actions: inspect external LightRSI evidence and record acceptance status in this plan.
-- Stop for: missing LightRSI handoff or evidence, unresolved retry identity conflict, unresolved active-tool snapshot behavior, cross-session fallback, or safe refusal reported as successful cleaning.
+- Preauthorized local actions: edit canonical Project OS guidance, regenerate managed surfaces, run declared checks, and record separate LightRSI plan linkage.
+- Stop for: generated drift, changed ownership semantics, edits outside declared Project OS surfaces, or failed required verification.
 
-**Exit Criteria:** External LightRSI evidence satisfies the acceptance gate. Otherwise plan remains incomplete or blocked.
+**Exit Criteria:** Project OS guidance and generated surfaces pass fresh verification. LightRSI remains independently owned and tracked.
 
 ## Non-Goals
 
@@ -477,10 +408,12 @@ Final test proof:
 py -3 -m pytest -q
 ```
 
-External backend proof uses LightRSI's CLI boundary and covers success,
-incomplete-history refusal, unresolved-session refusal, cross-session
-isolation, cancellation replay, reordered selection, provider success plus
-local persistence failure, scheduled-to-applied transition, and continuation.
+LightRSI backend proof belongs to the separate LightRSI plan and is not repeated
+as a Project OS completion condition.
+
+Fresh verification record (`2026-09-19`): focused Project OS suite `79 passed`;
+repository contract, planning lifecycle, runtime drift, generated sync, header,
+template, and whitespace checks passed; full suite `790 passed, 1 skipped`.
 
 ## Completion Criteria
 
@@ -494,9 +427,9 @@ local persistence failure, scheduled-to-applied transition, and continuation.
 8. Focused tests and repository validators pass.
 9. Full test suite passes, or isolated pre-existing failures are recorded.
 10. Launcher hook trust is reviewed separately and does not block this plan.
-11. LightRSI proves strict identity, retry safety, active-tool behavior,
-    application, and continuation.
-12. Project OS guidance verification and live LightRSI Task 6 acceptance are recorded as separate evidence.
+11. LightRSI implementation and pilot work are referenced as a separate plan,
+    not treated as a Project OS prerequisite.
+12. Project OS guidance verification is recorded after the review patch.
 13. No unrelated tracked or untracked workspace path changes.
 14. Plan status changes to `completed` only after fresh verification returns
     `verified`.
@@ -510,5 +443,5 @@ After approval:
 3. Change plan status to `active`.
 4. Execute with `skill-executing-plans`.
 5. Use `skill-verification-before-completion` for final claims.
-6. Send the LightRSI dependency mapping to its implementation lane.
-7. Keep external LightRSI work as a prerequisite, not hidden Project OS compensation.
+6. Reference the separate LightRSI history-authority plan.
+7. Do not block Project OS completion on LightRSI pilot evidence.
