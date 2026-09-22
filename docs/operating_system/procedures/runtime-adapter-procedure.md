@@ -38,8 +38,11 @@ For a local MCP or daemon-backed runtime:
    state.
 3. Prove transport with one successful tool call. `active:false` alone is not a
    transport result.
-4. For asynchronous work, preserve the run ID, poll to terminal state, and
-   verify artifacts or output paths. Tool-call success is not completion proof.
+4. For provider-managed asynchronous work, preserve the run ID, poll provider
+   status to terminal state, and verify artifacts or output paths. Do not poll
+   process tables for calls auto-backgrounded by Codex; continue work or end
+   the reply and await runtime follow-up output. Tool-call success is not
+   completion proof.
 5. If shutdown cancels active work, preserve the run record and lifecycle logs.
    Fix ownership in the runtime provider; do not patch the consuming project.
 6. Treat closed-parent `EPIPE` and missing-pipe errors as transport incidents.

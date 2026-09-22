@@ -97,6 +97,9 @@ inspection.
 - A successful MCP tool call proves transport only. For asynchronous generation,
   also record the run ID, wait for terminal state, and verify artifact count or
   output paths.
+- When runtime marks a foreground call as backgrounded, do not use `sleep`,
+  `ps`, `pgrep`, or `top` to poll it. Continue other work or end the reply;
+  accept completion or failure through runtime follow-up delivery.
 - A runtime owner must not tear down a daemon while owned work is active. If a
   run ends with a shutdown signal, classify it as lifecycle failure until the
   owner, parent-process, and explicit-cancel paths are distinguished.
