@@ -1,13 +1,12 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [string]$SecretFile,
-    [string]$SecretKey = "FITCV_LLM_API_KEY",
+    [string]$SecretFile = (Join-Path $HOME ".codex\tokenpilot.env"),
+    [string]$SecretKey = "OPENAI_API_KEY",
     [string]$CodexConfigPath = (Join-Path $HOME ".codex\config.toml"),
     [string]$UvPath = (Join-Path $HOME ".local\bin\uv.exe"),
     [string]$TuraExecutable,
     [string]$TuraProviderConfig,
-    [string]$DeepAgentsCodeVersion = "0.1.66",
+    [string]$DeepAgentsCodeVersion = "0.1.74",
     [switch]$SkipInstall,
     [switch]$ResetConfig
 )
@@ -73,10 +72,7 @@ if (-not $SkipInstall) {
     $env:UV_TOOL_DIR = $deepAgentsToolRoot
     $env:UV_TOOL_BIN_DIR = $deepAgentsBinRoot
     & $UvPath tool install --reinstall `
-        "deepagents-code==$DeepAgentsCodeVersion" `
-        --with "langgraph-api==0.13.0" `
-        --with "langgraph-runtime-inmem==0.33.3" `
-        --with "uvicorn==0.51.0"
+        "deepagents-code==$DeepAgentsCodeVersion"
     if ($LASTEXITCODE -ne 0) {
         throw "DeepAgents Code installation failed."
     }
@@ -103,6 +99,7 @@ if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch "deepagents-code\s+$([regex
 }
 
 New-Item -ItemType Directory -Force -Path $runtimeRoot, $binRoot | Out-Null
+Copy-Item -LiteralPath $dcodePath -Destination (Join-Path $binRoot "dcode.exe") -Force
 
 $configPath = Join-Path $runtimeRoot "config.toml"
 if ($ResetConfig -or -not (Test-Path $configPath -PathType Leaf)) {
@@ -116,7 +113,7 @@ codex_config = "$( & $escapeToml $CodexConfigPath )"
 secret_file = "$( & $escapeToml ((Resolve-Path $SecretFile).Path ) )"
 secret_key = "$( & $escapeToml $SecretKey )"
 "@
-    Set-Content -NoNewline -Encoding utf8 $configPath $config
+    [IO.File]::WriteAllText($configPath, $config, [Text.UTF8Encoding]::new($false))
 }
 
 function Escape-TomlString {
@@ -178,7 +175,7 @@ if ($TuraExecutable) {
     $configText = Set-TomlSectionKey $configText "delegation" "default_executor" "tura"
     $configText = Set-TomlSectionKey $configText "paths" "tura_executable" (Escape-TomlString ((Resolve-Path $TuraExecutable).Path))
     $configText = Set-TomlSectionKey $configText "paths" "tura_provider_config" (Escape-TomlString ((Resolve-Path $TuraProviderConfig).Path))
-    Set-Content -NoNewline -Encoding utf8 $configPath $configText
+    [IO.File]::WriteAllText($configPath, $configText, [Text.UTF8Encoding]::new($false))
 }
 Remove-Item -LiteralPath (Join-Path $runtimeRoot "dcode_project.py") -Force -ErrorAction SilentlyContinue
 
@@ -289,8 +286,9 @@ if ($TuraExecutable) {
     Write-Output "Installed project-delegate at $(Join-Path $binRoot 'project-delegate.cmd')"
     Write-Output "Default external executor: tura"
 } else {
-    Write-Output "Tura migration: ./scripts/setup_deepagents_runtime.ps1 -SecretFile <local-env-file> -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>"
+    Write-Output "Tura migration: ./scripts/setup_deepagents_runtime.ps1 -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>"
 }
 Write-Output "Installed dcode-doctor at $(Join-Path $binRoot 'dcode-doctor.cmd')"
+Write-Output "Installed dcode at $(Join-Path $binRoot 'dcode.exe')"
 Write-Output "DeepAgents Code $DeepAgentsCodeVersion verified with Python $pythonVersion"
 Write-Output "dcode-project uses the active Codex provider binding; MCP projection requires explicit --mcp-select."

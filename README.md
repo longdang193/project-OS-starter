@@ -92,7 +92,7 @@ Workers own engineering inside assigned scope. The controller owns orchestration
 Project OS Starter composes replaceable runtimes, providers, and validation tools.
 
 - [Codex CLI](https://github.com/openai/codex) — native coding-agent runtime.
-- [DeepAgents](https://github.com/langchain-ai/deepagents) — supported agent-harness ecosystem.
+- [DeepAgents](https://github.com/langchain-ai/deepagents) — supported agent-harness SDK ecosystem.
 - [Tura](https://github.com/Tura-AI/tura) — optional executor.
 - [LightRSI](https://github.com/zjunlp/LightRSI) — optional Tura runtime layer.
 - [9router](https://github.com/decolua/9router) — model-routing provider.
@@ -153,7 +153,9 @@ Adopt only the layers your project can own, expose, and validate. Keep project-s
 - Shared operating-system docs, reusable scripts, and skills stay under the shared Project OS installation: `~/.agents/project-os` and `~/.agents/skills`.
 - Keep project-specific project-local folders such as `docs/intent/`, `docs/superpowers/`, `repo_config/`, code, tests, and scripts in this repository when adopting this starter.
 - When adopting this starter, create `docs/intent/` when durable project purpose needs more than `README.md`.
-- DeepAgents runtime setup owns its version; version pinned by `scripts/setup_deepagents_runtime.ps1`.
+- DeepAgents Code runtime setup owns its version; version pinned by `scripts/setup_deepagents_runtime.ps1` is currently `deepagents-code==0.1.74`, which brings `deepagents==0.7.18`.
+- DeepAgents uses `OPENAI_API_KEY` from the same `~/.codex/tokenpilot.env` file used by Codex; do not use a separate project secret file.
+- DeepAgents runtime version bumps require compatibility proof for `scripts/patch_deepagents_runtime.py`; do not bump package version alone.
 - Select runtime profiles explicitly, for example `--role <profile>`.
 - DeepAgents MCP is opt-in through explicit Herdr selection. Herdr accepts `--mcp-select` and forwards selected servers to `dcode-project`.
 - MCP `headers` values must be `${VAR}` references. MCP `env` values may be `${VAR}` references or non-sensitive literals.

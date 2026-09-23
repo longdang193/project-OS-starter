@@ -176,7 +176,7 @@ Tura-enabled setup requires one paired executable/provider-config path:
 
 ```powershell
 $projectOsScripts = Join-Path $HOME ".agents\project-os\scripts"
-& (Join-Path $projectOsScripts "setup_deepagents_runtime.ps1") -SecretFile <local-env-file> `
+& (Join-Path $projectOsScripts "setup_deepagents_runtime.ps1") -SecretFile (Join-Path $HOME ".codex\tokenpilot.env") -SecretKey OPENAI_API_KEY `
   -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>
 ```
 
@@ -306,7 +306,7 @@ Install or refresh local DeepAgents runtime:
 
 ```powershell
 $projectOsScripts = Join-Path $HOME ".agents\project-os\scripts"
-& (Join-Path $projectOsScripts "setup_deepagents_runtime.ps1") -SecretFile <local-env-file>
+& (Join-Path $projectOsScripts "setup_deepagents_runtime.ps1") -SecretFile (Join-Path $HOME ".codex\tokenpilot.env") -SecretKey OPENAI_API_KEY
 ```
 
 Installer writes `%USERPROFILE%\.local\share\dcode-project\` runtime state
@@ -324,7 +324,7 @@ Setup fails when the configured `DEEPAGENTS_HOME` path contains `.mcp.json`;
 the default is `%USERPROFILE%\.deepagents`. Remove that direct DeepAgents MCP
 config before setup so Codex config remains sole MCP authority.
 
-DeepAgents may load project `.env` values. `dcode-project` overwrites provider
+Setup reads `OPENAI_API_KEY` from the same `~/.codex/tokenpilot.env` file used by Codex. DeepAgents may load project `.env` values. `dcode-project` overwrites provider
 environment values from its local Codex binding before launch and keeps MCP
 disabled unless explicit `--mcp-select` is passed; do not store credentials or
 runtime authority in project files.

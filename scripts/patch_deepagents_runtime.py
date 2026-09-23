@@ -1,4 +1,4 @@
-"""Apply local compatibility patches to the pinned DeepAgents runtime."""
+"""Apply local compatibility patches to the supported DeepAgents runtime."""
 
 from __future__ import annotations
 
@@ -175,11 +175,20 @@ def _replace_once(target: Path, old: str, new: str, label: str) -> bool:
     return True
 
 
+def _uses_fastmcp_runtime(target: Path) -> bool:
+    content = target.read_text(encoding="utf-8")
+    return "FastMCP" in content and "langchain.mcp" in content
+
+
 def patch_mcp_tools(target: Path) -> bool:
+    if "Path(explicit_config_path).expanduser()" in target.read_text(encoding="utf-8"):
+        return False
     return _replace_once(target, _VULNERABLE, _PATCHED, "DeepAgents MCP runtime")
 
 
 def patch_stdio_lookup(target: Path) -> bool:
+    if _uses_fastmcp_runtime(target):
+        return False
     return _replace_once(target, _STDIO_LOOKUP, _STDIO_LOOKUP_ADD, "DeepAgents stdio runtime")
 
 
@@ -247,19 +256,23 @@ def patch_model_retry_budget(target: Path) -> bool:
     return changed
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mcp_tools", type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     auto_mode = args.mcp_tools.with_name("auto_mode.py")
     model_retry = args.mcp_tools.parents[1] / "deepagents_code" / "model_retry.py"
     utility = args.mcp_tools.parents[1] / "mcp" / "os" / "win32" / "utilities.py"
+    fastmcp_runtime = _uses_fastmcp_runtime(args.mcp_tools)
     changed = patch_mcp_tools(args.mcp_tools)
     changed = patch_stdio_lookup(args.mcp_tools) or changed
     changed = patch_headless_mcp_guard(auto_mode) or changed
     changed = patch_model_retry_budget(model_retry) or changed
-    changed = patch_windows_lookup(utility) or changed
-    changed = patch_windows_process(utility) or changed
+    if utility.exists() and not fastmcp_runtime:
+        changed = patch_windows_lookup(utility) or changed
+        changed = patch_windows_process(utility) or changed
+    elif not fastmcp_runtime:
+        raise RuntimeError(f"Unsupported DeepAgents Windows MCP runtime: {utility}")
     status = "patched" if changed else "already patched"
     print(f"DeepAgents MCP runtime {status}: {args.mcp_tools}")
     return 0

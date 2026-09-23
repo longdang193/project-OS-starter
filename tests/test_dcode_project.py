@@ -2525,7 +2525,7 @@ def test_bounded_task_context_exposes_host_and_tool_roots(tmp_path: Path) -> Non
 def test_setup_launcher_uses_current_repository_source() -> None:
     setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
 
-    assert "Copy-Item" not in setup
+    assert 'Copy-Item -LiteralPath $launcherSource' not in setup
     assert "git rev-parse --show-toplevel" in setup
     assert 'Join-Path $repoRoot "scripts\\dcode_project.py"' in setup
     assert 'Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"' in setup
@@ -2541,16 +2541,20 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'project-delegate selects Tura; do not pass --executor' in setup
     assert '& py -3 $launcher --executor tura @DelegateArgs' in setup
     assert 'Tura migration:' in setup
+    assert '[string]$SecretFile = (Join-Path $HOME ".codex\\tokenpilot.env")' in setup
+    assert '[string]$SecretKey = "OPENAI_API_KEY"' in setup
+    assert '[IO.File]::WriteAllText($configPath, $config' in setup
     assert "DEEPAGENTS_HOME" in setup
     assert "GetUnresolvedProviderPathFromPSPath" in setup
     assert "Direct DeepAgents MCP config detected" in setup
-    assert '$DeepAgentsCodeVersion = "0.1.66"' in setup
+    assert '$DeepAgentsCodeVersion = "0.1.74"' in setup
     assert 'deepagents-code==$DeepAgentsCodeVersion' in setup
-    assert 'langgraph-api==0.13.0' in setup
-    assert 'langgraph-runtime-inmem==0.33.3' in setup
-    assert 'uvicorn==0.51.0' in setup
+    assert 'langgraph-api==' not in setup
+    assert 'langgraph-runtime-inmem==' not in setup
+    assert 'uvicorn==' not in setup
     assert '$env:UV_TOOL_DIR = $deepAgentsToolRoot' in setup
     assert '$env:UV_TOOL_BIN_DIR = $deepAgentsBinRoot' in setup
+    assert 'Copy-Item -LiteralPath $dcodePath -Destination (Join-Path $binRoot "dcode.exe") -Force' in setup
     assert 'dcode-doctor.ps1' in setup
     assert 'DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"' in setup
     assert '$env:PYTHONUTF8 = "1"' in setup
