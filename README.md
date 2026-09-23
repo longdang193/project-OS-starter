@@ -141,8 +141,16 @@ For maintainers with source access, evaluate the project through its contracts a
 ```powershell
 python scripts/validate_repo_contracts.py
 python -m pytest -q
+python scripts/sync_agent_adapters.py --all-platforms --check
 git diff --check
 ```
+
+Run repository validation once; its owned drift checks run within that command.
+Run explicit pytest modules for runtime and validator regressions. Run adapter
+generation only after canonical adapter-source edits; otherwise use one adapter
+drift check. Coordinated DeepAgents requires the setup-owned wrapper at
+`~/.local/bin/dcode-project` on POSIX or `%USERPROFILE%\.local\bin\dcode-project.cmd`
+on Windows and fails closed when it is absent.
 
 Adopt only the layers your project can own, expose, and validate. Keep project-specific setup and product code in the consuming repository.
 
@@ -158,6 +166,7 @@ Adopt only the layers your project can own, expose, and validate. Keep project-s
 - DeepAgents runtime version bumps require compatibility proof for `scripts/patch_deepagents_runtime.py`; do not bump package version alone.
 - Select runtime profiles explicitly, for example `--role <profile>`.
 - DeepAgents MCP is opt-in through explicit Herdr selection. Herdr accepts `--mcp-select` and forwards selected servers to `dcode-project`.
+- Lifecycle receipts own DeepAgents execution and settlement; structured task results own reported outcomes; pane text is diagnostic or legacy fallback only; CoS owns final acceptance.
 - MCP `headers` values must be `${VAR}` references. MCP `env` values may be `${VAR}` references or non-sensitive literals.
 
 ## Contributing

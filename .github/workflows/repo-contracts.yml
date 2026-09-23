@@ -21,6 +21,14 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt
       - run: python scripts/validate_repo_contracts.py
+      - name: Run validator regression tests
+        run: >-
+          python -m pytest -q
+          tests/test_manage_switchyard_runtime.py
+          tests/test_validate_repo_config.py
+          tests/test_validate_planning_lifecycle.py
+          tests/test_validate_repo_contracts.py
+          tests/test_validate_agent_runtime_drift.py
       - name: Check guided story projections
         if: github.event_name == 'pull_request'
         shell: bash

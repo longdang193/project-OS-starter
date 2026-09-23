@@ -420,6 +420,17 @@ def _executable(name: str) -> str:
     return str(Path(path).resolve())
 
 
+def _managed_deepagents_executable() -> str:
+    name = "dcode-project.cmd" if os.name == "nt" else "dcode-project"
+    path = Path.home() / ".local" / "bin" / name
+    if not path.is_file():
+        raise LaunchBlocked(
+            f"Managed DeepAgents runtime unavailable: {path}. "
+            "Run setup_deepagents_runtime.ps1."
+        )
+    return str(path.resolve())
+
+
 def _version(path: str, *, env: dict[str, str] | None = None) -> str:
     output = _run_checked([path, "--version"], env=env)
     return output.splitlines()[0] if output else ""
@@ -1019,8 +1030,9 @@ def _classify_deepagents_outcome(
     failure_kind = fallback_failure_kind
     reconciliation_required = True
     launcher_exit_code = 2
+    receipt_confirmed = receipt.get("state") == "confirmed"
 
-    if receipt.get("state") == "confirmed":
+    if receipt_confirmed:
         worker_state = receipt["worker_state"]
         worker_exit_code = receipt.get("worker_exit_code")
         descendant_state = receipt.get("descendant_state")
@@ -1059,6 +1071,8 @@ def _classify_deepagents_outcome(
                     failure_kind = "task_report_failed"
                 elif task_result["state"] == "reported_completed":
                     failure_kind = None
+                elif receipt_confirmed:
+                    failure_kind = "task_result_unverified"
                 elif observation.get("receipt_authoritative"):
                     failure_kind = "task_result_unverified"
                 elif observation.get("state") == "failed" and report_observed:
@@ -1078,7 +1092,9 @@ def _classify_deepagents_outcome(
                         }
                     if report_observed and task_result.get("source") is None:
                         task_result.update({"source": "herdr_pane", "authoritative": False})
-                if not report_observed and not observation.get("receipt_authoritative"):
+                if receipt_confirmed and task_result["state"] == "unverified":
+                    failure_kind = "task_result_unverified"
+                elif not report_observed and not observation.get("receipt_authoritative"):
                     failure_kind = "completion_evidence_missing"
             else:
                 execution["state"] = "failed"
@@ -1723,6 +1739,32 @@ def _deepagents_completion_snapshot(
     }
 
 
+def _deepagents_receipt_observation(
+    receipt: dict[str, Any],
+    diagnostic_observation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    worker_state = receipt.get("worker_state")
+    worker_exit_code = receipt.get("worker_exit_code")
+    if worker_state == "exited" and worker_exit_code == 0:
+        state = "completed"
+    elif worker_state in {"exited", "failed", "start_failed", "recovery_blocked"}:
+        state = "failed"
+    else:
+        state = "unknown"
+    observation = {
+        "state": state,
+        "marker_present": False,
+        "report_present": False,
+        "foreground_processes": [],
+        "observation_error": None,
+        "receipt_authoritative": True,
+        "lifecycle_receipt": receipt,
+    }
+    if isinstance(diagnostic_observation, dict):
+        observation["diagnostic_observation"] = diagnostic_observation
+    return observation
+
+
 def _deepagents_completion_evidence(
     herdr: str,
     session: str,
@@ -1776,23 +1818,7 @@ def _deepagents_completion_evidence(
     marker_observed = False
     while True:
         if receipt.get("state") == "confirmed":
-            worker_state = receipt.get("worker_state")
-            worker_exit_code = receipt.get("worker_exit_code")
-            if worker_state == "exited" and worker_exit_code == 0:
-                state = "completed"
-            elif worker_state in {"exited", "failed", "start_failed", "recovery_blocked"}:
-                state = "failed"
-            else:
-                state = "unknown"
-            return {
-                "state": state,
-                "marker_present": False,
-                "report_present": False,
-                "foreground_processes": [],
-                "observation_error": None,
-                "receipt_authoritative": True,
-                "lifecycle_receipt": receipt,
-            }
+            return _deepagents_receipt_observation(receipt)
         evidence = _deepagents_completion_snapshot(
             herdr,
             session,
@@ -1810,30 +1836,22 @@ def _deepagents_completion_evidence(
         }:
             receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
             if receipt.get("state") == "confirmed":
-                evidence["lifecycle_receipt"] = receipt
-                return evidence
+                return _deepagents_receipt_observation(receipt, evidence)
         if evidence["state"] in {"completed", "failed"}:
             terminal_observed_at = time.monotonic()
             if receipt_file is None:
                 return evidence
             receipt = wait_for_receipt()
+            if receipt.get("state") == "confirmed":
+                return _deepagents_receipt_observation(receipt, evidence)
             evidence["lifecycle_receipt"] = receipt
             return evidence
         remaining = observation_deadline - time.monotonic()
         if remaining <= 0:
             if receipt_file is not None:
                 receipt = wait_for_receipt()
-                if receipt.get("state") == "confirmed" and time.monotonic() < settlement_deadline:
-                    evidence = _deepagents_completion_snapshot(
-                        herdr,
-                        session,
-                        pane,
-                        env=env,
-                        expected_marker=expected_marker,
-                        deadline=settlement_deadline,
-                        wait_for_marker=False,
-                        marker_observed=marker_observed,
-                    )
+                if receipt.get("state") == "confirmed":
+                    return _deepagents_receipt_observation(receipt, evidence)
                 evidence["lifecycle_receipt"] = receipt
                 return evidence
             evidence["last_observed_state"] = evidence["state"]
@@ -2082,7 +2100,7 @@ def resolve_launch(
     )
     herdr = _executable("herdr")
     codex = _executable("codex") if executor == "codex" else None
-    dcode = _executable("dcode-project") if executor == "deepagents" else None
+    dcode = _managed_deepagents_executable() if executor == "deepagents" else None
     git = _git_identity(cwd, expected_base)
     performance = _new_performance_evidence()
     _record_performance_phase(performance, "preflight", launch_started)
@@ -3091,59 +3109,26 @@ def _main_body(args: argparse.Namespace) -> int:
             attempt_deadline=attempt_deadline,
         )
         record_phase("observation", observation_started, attempt_id=attempt_id)
-        task_state = str(completion["state"])
-        if completion.get("observation_error") is not None and task_state == "completed":
-            task_state = "no-report"
-        foreground_processes = completion.get("foreground_processes", [])
-        worker_live = any(
-            str(name).lower() not in _DEEPAGENTS_SHELL_PROCESS_NAMES
-            for name in foreground_processes
-        )
-        execution_state = "running" if worker_live else (
-            "exited" if task_state in {"completed", "failed", "no-report"} else "unknown"
-        )
-        task_verified = (
-            not worker_live
-            and completion.get("marker_present") is True
-            and completion.get("report_present") is True
-            and completion.get("observation_error") is None
-        )
-        completed = task_state == "completed" and task_verified
         record_phase("delivery", attempt_started, attempt_id=attempt_id)
         assignment_result = emit_assignment({
             "assignment": {
                 "agent_name": evidence["herdr"]["agent_name"],
                 "attempt_id": attempt_id,
                 "completion": completion,
-                "execution": {
-                    "state": execution_state,
-                    "worker_exit_code": None,
-                    "marker_reported": completion.get("marker_present") is True,
-                    "last_observed_state": completion.get("last_observed_state"),
-                },
+                "execution": {"state": "unknown", "worker_exit_code": None},
                 "observation": completion,
-                "task_result": {
-                    "state": "reported_completed" if task_verified else "unknown",
-                    "accepted": None,
-                    **(
-                        {"source": "herdr_pane", "authoritative": False}
-                        if task_verified
-                        else {}
-                    ),
-                },
-                "cleanup": {
-                    "state": "unknown" if worker_live else ("unverified" if completed else "unknown"),
-                },
+                "task_result": {"state": "unknown", "accepted": None},
+                "cleanup": {"state": "unknown"},
                 "delivery_state": "delivered",
                 "delivery_certainty": "confirmed",
                 "delivery_task_sha256": delivery_task_sha256,
-                "exit_code": 0 if completed else 2,
-                "failure_kind": None if completed else task_state,
+                "exit_code": 2,
+                "failure_kind": None,
                 "grant_digest": grant_digest,
                 "phase": "pane_run",
-                "reconciliation_required": not completed,
+                "reconciliation_required": True,
                 "session": resolved_session,
-                "status": task_state,
+                "status": "unknown",
                 "task_accepted": None,
                 "task_sha256": assignment_task_sha256,
             }

@@ -2543,7 +2543,8 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'Tura migration:' in setup
     assert '[string]$SecretFile = (Join-Path $HOME ".codex\\tokenpilot.env")' in setup
     assert '[string]$SecretKey = "OPENAI_API_KEY"' in setup
-    assert '[IO.File]::WriteAllText($configPath, $config' in setup
+    assert 'Write-TextIfChanged -Path $configPath -Content $config' in setup
+    assert 'function Write-TextIfChanged' in setup
     assert "DEEPAGENTS_HOME" in setup
     assert "GetUnresolvedProviderPathFromPSPath" in setup
     assert "Direct DeepAgents MCP config detected" in setup
