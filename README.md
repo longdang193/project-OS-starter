@@ -140,8 +140,8 @@ For maintainers with source access, evaluate the project through its contracts a
 
 ```powershell
 python scripts/validate_repo_contracts.py
-python scripts/validate_repo_config.py
 python -m pytest -q
+git diff --check
 ```
 
 Adopt only the layers your project can own, expose, and validate. Keep project-specific setup and product code in the consuming repository.

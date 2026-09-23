@@ -109,8 +109,11 @@ def main() -> int:
             print("No deploy targets resolved for runtime drift checks.")
             return 1
         print("Deploy target selection: " + ", ".join(deploy_targets) + f" ({selection_reason})")
-        for target in deploy_targets:
-            steps.append([py, str(root / "scripts" / "deploy_agent_runtime.py"), "--target", target, "--check"])
+        if selection_reason == "all-platforms":
+            steps.append([py, str(root / "scripts" / "deploy_agent_runtime.py"), "--target", "all", "--check"])
+        else:
+            for target in deploy_targets:
+                steps.append([py, str(root / "scripts" / "deploy_agent_runtime.py"), "--target", target, "--check"])
     failures = 0
     for step in steps:
         failures += _run(step, root)

@@ -2554,7 +2554,8 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'uvicorn==' not in setup
     assert '$env:UV_TOOL_DIR = $deepAgentsToolRoot' in setup
     assert '$env:UV_TOOL_BIN_DIR = $deepAgentsBinRoot' in setup
-    assert 'Copy-Item -LiteralPath $dcodePath -Destination (Join-Path $binRoot "dcode.exe") -Force' in setup
+    assert '$managedDcodePath = Join-Path $deepAgentsBinRoot "dcode.exe"' in setup
+    assert 'Copy-Item -LiteralPath $dcodePath -Destination (Join-Path $binRoot "dcode.exe") -Force' not in setup
     assert 'dcode-doctor.ps1' in setup
     assert 'DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"' in setup
     assert '$env:PYTHONUTF8 = "1"' in setup

@@ -1054,7 +1054,14 @@ def _classify_deepagents_outcome(
                     observation.get("report_present") is True
                     and observation.get("observation_error") is None
                 )
-                if observation.get("state") == "failed" and report_observed:
+                if task_result["state"] == "reported_failed":
+                    status = "failed"
+                    failure_kind = "task_report_failed"
+                elif task_result["state"] == "reported_completed":
+                    failure_kind = None
+                elif observation.get("receipt_authoritative"):
+                    failure_kind = "task_result_unverified"
+                elif observation.get("state") == "failed" and report_observed:
                     task_result = {
                         "state": "reported_failed",
                         "accepted": False,
@@ -1071,7 +1078,7 @@ def _classify_deepagents_outcome(
                         }
                     if report_observed and task_result.get("source") is None:
                         task_result.update({"source": "herdr_pane", "authoritative": False})
-                if not report_observed:
+                if not report_observed and not observation.get("receipt_authoritative"):
                     failure_kind = "completion_evidence_missing"
             else:
                 execution["state"] = "failed"
@@ -1501,7 +1508,7 @@ def _process_ids_alive(process_ids: set[int]) -> set[int]:
 def _deepagents_task_state(
     foreground_processes: list[Any],
     pane_output: str,
-    expected_marker: str,
+    expected_marker: str | None,
 ) -> str:
     live_process = any(
         str(process.get("name", "")).lower() not in _DEEPAGENTS_SHELL_PROCESS_NAMES
@@ -1518,7 +1525,7 @@ def _deepagents_task_state(
     current_raw_lines = raw_lines[start_index:]
     if _DEEPAGENTS_FAILURE_PATTERN.search("\n".join(current_raw_lines)):
         return "failed"
-    if any(
+    if expected_marker and any(
         current_lines[index:index + 2] == ["COMPLETED", expected_marker]
         for index in range(len(current_lines) - 1)
     ):
@@ -1531,6 +1538,8 @@ def _deepagents_task_state(
 
 
 def _deepagents_marker_present(pane_output: str, expected_marker: str) -> bool:
+    if not expected_marker:
+        return False
     lines = [line.strip() for line in pane_output.splitlines() if line.strip()]
     start_index = max(
         (index for index, line in enumerate(lines) if line == "Running task non-interactively..."),
@@ -1568,7 +1577,7 @@ def _deepagents_completion_snapshot(
     pane: str,
     *,
     env: dict[str, str],
-    expected_marker: str,
+    expected_marker: str | None,
     deadline: float | None = None,
     wait_for_marker: bool = True,
     marker_observed: bool = False,
@@ -1586,12 +1595,16 @@ def _deepagents_completion_snapshot(
     process_error: str | None = None
     read_error: str | None = None
     observation_deadline_exceeded = False
-    marker_wait_state = "skipped" if marker_observed or not wait_for_marker else "not_attempted"
+    marker_wait_state = (
+        "skipped"
+        if marker_observed or not wait_for_marker or not expected_marker
+        else "not_attempted"
+    )
     wait_timeout = observation_timeout()
-    if wait_for_marker and not marker_observed and wait_timeout > 0:
+    if expected_marker and wait_for_marker and not marker_observed and wait_timeout > 0:
         reserved = min(_DEEPAGENTS_OBSERVATION_RESERVE_SECONDS, wait_timeout / 2)
         wait_timeout = max(0.0, wait_timeout - reserved)
-    if wait_for_marker and not marker_observed and wait_timeout > 0:
+    if expected_marker and wait_for_marker and not marker_observed and wait_timeout > 0:
         try:
             wait_result = _run(
                 [
@@ -1716,7 +1729,7 @@ def _deepagents_completion_evidence(
     pane: str,
     *,
     env: dict[str, str],
-    expected_marker: str,
+    expected_marker: str | None,
     receipt_file: Path | None = None,
     attempt_id: str | None = None,
     completion_wait_seconds: float | None = None,
@@ -1763,26 +1776,23 @@ def _deepagents_completion_evidence(
     marker_observed = False
     while True:
         if receipt.get("state") == "confirmed":
-            if time.monotonic() >= settlement_deadline:
-                evidence = evidence or {
-                    "state": "unknown",
-                    "report_present": False,
-                    "observation_error": "settlement deadline exceeded",
-                }
-                evidence["lifecycle_receipt"] = receipt
-                return evidence
-            evidence = _deepagents_completion_snapshot(
-                herdr,
-                session,
-                pane,
-                env=env,
-                expected_marker=expected_marker,
-                deadline=min(settlement_deadline, observation_deadline),
-                wait_for_marker=False,
-                marker_observed=marker_observed,
-            )
-            evidence["lifecycle_receipt"] = receipt
-            return evidence
+            worker_state = receipt.get("worker_state")
+            worker_exit_code = receipt.get("worker_exit_code")
+            if worker_state == "exited" and worker_exit_code == 0:
+                state = "completed"
+            elif worker_state in {"exited", "failed", "start_failed", "recovery_blocked"}:
+                state = "failed"
+            else:
+                state = "unknown"
+            return {
+                "state": state,
+                "marker_present": False,
+                "report_present": False,
+                "foreground_processes": [],
+                "observation_error": None,
+                "receipt_authoritative": True,
+                "lifecycle_receipt": receipt,
+            }
         evidence = _deepagents_completion_snapshot(
             herdr,
             session,
@@ -2106,12 +2116,6 @@ def resolve_launch(
         runtime_grant["wall_clock_seconds"]["enforcement"] = "runtime"
     delivery_task = _project_runtime_grant(task_text, runtime_grant)
     completion_marker = None
-    if executor == "deepagents":
-        completion_marker = f"DEEPAGENTS_COMPLETED_{uuid.uuid4().hex[:16]}"
-        delivery_task += (
-            " Output these two final lines exactly when task is complete: "
-            f"COMPLETED, then {completion_marker}."
-        )
     agent_name = name or (
         _unique_agent_name(f"{selected.name}-main")
         if executor == "codex"
@@ -2692,8 +2696,6 @@ def _main_body(args: argparse.Namespace) -> int:
                 raise LaunchBlocked("Launcher evidence missing codex_home.")
             environment = _codex_environment(Path(str(codex_evidence["codex_home"])))
         else:
-            if not isinstance(completion_marker, str) or not completion_marker:
-                raise LaunchBlocked("Launcher evidence missing completion marker.")
             environment = _herdr_environment()
         for attempt in range(2):
             attempt_started = time.monotonic()

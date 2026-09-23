@@ -103,31 +103,6 @@ def test_main_propagates_subprocess_failure(monkeypatch) -> None:
     assert status == 1
 
 
-def test_main_creates_pytest_basetemp_parent(tmp_path: Path, monkeypatch) -> None:
-    write_text(
-        tmp_path / "agents" / "normal.toml",
-        """name = \"normal\"
-model_provider = \"openai\"
-model = \"combo-normal\"
-description = \"normal\"
-developer_instructions = \"normal\"
-""",
-    )
-    basetemp = tmp_path / ".tmp-tests" / "repo-contract-pytest"
-    monkeypatch.setattr(
-        VALIDATOR,
-        "build_subprocess_steps",
-        lambda *, root, python_executable, fast: [
-            [python_executable, "-m", "pytest", "--basetemp", str(basetemp)]
-        ],
-    )
-    monkeypatch.setattr(VALIDATOR, "run_step", lambda command, cwd: 0)
-
-    assert not basetemp.parent.exists()
-    assert VALIDATOR.main(["--repo-root", str(tmp_path), "--fast"]) == 0
-    assert basetemp.parent.is_dir()
-
-
 def test_profile_registry_validation_rejects_malformed_profile(tmp_path: Path) -> None:
     write_text(tmp_path / "agents" / "ui.toml", 'name = "ui"\n')
 
@@ -166,16 +141,15 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
     assert not any("validate_python_meta_headers.py" in step for step in rendered)
 
 
-def test_build_subprocess_steps_includes_manager_regressions() -> None:
-    steps = VALIDATOR.build_subprocess_steps(
-        root=REPO_ROOT,
-        python_executable="python",
-        fast=False,
-    )
+def test_build_subprocess_steps_never_runs_pytest() -> None:
+    for fast in (True, False):
+        steps = VALIDATOR.build_subprocess_steps(
+            root=REPO_ROOT,
+            python_executable="python",
+            fast=fast,
+        )
 
-    rendered = [" ".join(step) for step in steps]
-
-    assert any("tests/test_manage_switchyard_runtime.py" in step for step in rendered)
+        assert not any("pytest" in part for step in steps for part in step)
 
 
 def test_build_subprocess_steps_checks_all_adapter_platforms() -> None:

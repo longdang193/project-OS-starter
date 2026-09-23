@@ -238,7 +238,7 @@ script for upgrades; do not rely on floating `uv tool install deepagents-code`
 or `dcode --update`.
 
 Launcher prefers the pinned executable under the user-local `dcode-project`
-runtime root, then falls back to user-local or `PATH` `dcode`. Current
+runtime root. Current
 DeepAgents may load project `.env` files. Launcher-owned provider
 environment values override inherited project values. Setup applies a narrow
 local compatibility patch for Windows MCP config resolution and one unannotated
@@ -257,6 +257,10 @@ Generated drift:
 python scripts/sync_agent_adapters.py --all-platforms --check
 ```
 
+Use this focused command when editing canonical adapter sources. The
+all-platform factory drift command below performs its own adapter check; do not
+run both unchanged checks as one verification sequence.
+
 Factory adapter drift:
 
 ```bash
@@ -268,6 +272,9 @@ Consumer contract validation uses the shared Project OS validator:
 ```bash
 python "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast
 ```
+
+Run behavioral pytest separately. Contract validation does not orchestrate
+pytest.
 
 Switchyard auto runtime:
 

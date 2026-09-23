@@ -37,6 +37,89 @@ def fake_profile(tmp_path: Path, name: str, rank: int | None) -> None:
     )
 
 
+def _confirmed_success_receipt() -> dict[str, object]:
+    return {
+        "state": "confirmed",
+        "worker_state": "exited",
+        "worker_exit_code": 0,
+        "descendant_state": "terminated",
+        "cleanup_state": "removed",
+        "role_views_state": "removed",
+        "recovery_required": False,
+    }
+
+
+def test_deepagents_classification_ignores_pane_failure_after_structured_success() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered"},
+        observation={
+            "state": "failed",
+            "report_present": True,
+            "observation_error": None,
+        },
+        receipt=_confirmed_success_receipt(),
+        fallback_failure_kind=None,
+        task_result_evidence={
+            "state": "confirmed",
+            "status": "completed",
+        },
+    )
+
+    assert result["status"] == "completed"
+    assert result["failure_kind"] is None
+    assert result["task_result"]["state"] == "reported_completed"
+    assert result["launcher_exit_code"] == 0
+
+
+def test_deepagents_classification_keeps_structured_failure_authoritative() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered"},
+        observation={
+            "state": "completed",
+            "report_present": True,
+            "observation_error": None,
+        },
+        receipt=_confirmed_success_receipt(),
+        fallback_failure_kind=None,
+        task_result_evidence={
+            "state": "confirmed",
+            "status": "failed",
+        },
+    )
+
+    assert result["status"] == "failed"
+    assert result["failure_kind"] == "task_report_failed"
+    assert result["task_result"]["state"] == "reported_failed"
+    assert result["launcher_exit_code"] == 2
+
+
+def test_deepagents_completion_observation_returns_confirmed_receipt_without_pane_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    receipt = _confirmed_success_receipt()
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda path, attempt: receipt)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: pytest.fail("confirmed receipt must not read pane"),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr",
+        "session",
+        "pane",
+        env={},
+        expected_marker=None,
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt",
+        completion_wait_seconds=0,
+    )
+
+    assert evidence["lifecycle_receipt"] == receipt
+    assert evidence["receipt_authoritative"] is True
+
+
 def test_resolve_launch_rejects_explicit_over_limit_agent_name_before_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -662,8 +745,8 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "'Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
     )
     completion_marker = evidence["registry_launcher"]["completion_marker"]
-    assert isinstance(completion_marker, str)
-    assert completion_marker in command[-1]
+    assert completion_marker is None
+    assert "DEEPAGENTS_COMPLETED_" not in command[-1]
     assert "\n" not in command[-1]
 
     assert evidence["registry_launcher"]["executor"] == "deepagents"
@@ -895,7 +978,7 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
     assert command[-1].startswith(
         "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]"
     )
-    assert evidence["registry_launcher"]["completion_marker"] in command[-1]
+    assert evidence["registry_launcher"]["completion_marker"] is None
 
 
 def test_resolve_launch_uses_contained_effective_worker_budget(
@@ -3164,10 +3247,7 @@ def test_deepagents_completion_uses_receipt_before_first_pane_command(
     monkeypatch.setattr(
         LAUNCHER,
         "_deepagents_completion_snapshot",
-        lambda *args, **kwargs: snapshots.append("pane") or {
-            "state": "no-report",
-            "report_present": False,
-        },
+        lambda *args, **kwargs: snapshots.append("pane") or pytest.fail("receipt must bypass pane"),
     )
 
     evidence = LAUNCHER._deepagents_completion_evidence(
@@ -3180,8 +3260,9 @@ def test_deepagents_completion_uses_receipt_before_first_pane_command(
         attempt_id="attempt-1",
     )
 
-    assert snapshots == ["pane"]
+    assert snapshots == []
     assert evidence["lifecycle_receipt"] == receipt
+    assert evidence["receipt_authoritative"] is True
 
 
 def test_deepagents_completion_reads_receipt_between_pane_polls(
@@ -3696,50 +3777,6 @@ def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
     assert evidence["lifecycle_receipt"] == confirmed
 
 
-def test_deepagents_completion_retries_pane_after_confirmed_receipt(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    confirmed = {
-        "state": "confirmed",
-        "worker_state": "exited",
-        "worker_exit_code": 0,
-        "descendant_state": "terminated",
-        "cleanup_state": "removed",
-        "role_views_state": "removed",
-        "recovery_required": False,
-    }
-    snapshots = iter([
-        {"state": "no-report", "marker_present": False, "report_present": False},
-        {"state": "completed", "marker_present": True, "report_present": True},
-    ])
-    clock = [0.0]
-    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 1.0)
-    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_GRACE_SECONDS", 1.0)
-    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", lambda *args, **kwargs: next(snapshots))
-    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: confirmed)
-    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
-    monkeypatch.setattr(
-        LAUNCHER.time,
-        "sleep",
-        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
-    )
-
-    evidence = LAUNCHER._deepagents_completion_evidence(
-        "herdr.exe",
-        "session",
-        "pane",
-        env={},
-        expected_marker="MARKER",
-        receipt_file=tmp_path / "result.json",
-        attempt_id="attempt-1",
-    )
-
-    assert evidence["state"] == "no-report"
-    assert evidence["marker_present"] is False
-    assert evidence["lifecycle_receipt"] == confirmed
-
-
 def test_deepagents_completion_settles_after_late_receipt_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3757,8 +3794,6 @@ def test_deepagents_completion_settles_after_late_receipt_snapshot(
     receipts = iter([unknown, confirmed])
     snapshots = iter([
         {"state": "no-report", "marker_present": False, "report_present": False},
-        {"state": "no-report", "marker_present": False, "report_present": False},
-        {"state": "completed", "marker_present": True, "report_present": True},
     ])
     clock = [0.0]
     monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 1.0)
@@ -3783,9 +3818,10 @@ def test_deepagents_completion_settles_after_late_receipt_snapshot(
         attempt_id="attempt-1",
     )
 
-    assert evidence["state"] == "no-report"
+    assert evidence["state"] == "completed"
     assert evidence["marker_present"] is False
     assert evidence["lifecycle_receipt"] == confirmed
+    assert evidence["receipt_authoritative"] is True
 
 
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:
@@ -4526,6 +4562,7 @@ def test_deepagents_completion_stops_observing_after_terminal_evidence(
         attempt_id="attempt-1",
     )
 
-    assert len(snapshots) == 1
+    assert len(snapshots) == 0
     assert evidence["lifecycle_receipt"] == confirmed
-    assert evidence["state"] == "no-report"
+    assert evidence["state"] == "completed"
+    assert evidence["receipt_authoritative"] is True
