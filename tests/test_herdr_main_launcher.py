@@ -20,6 +20,7 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 LAUNCHER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(LAUNCHER)
+_MANAGED_DEEPAGENTS_RESOLVER = LAUNCHER._managed_deepagents_executable
 
 
 def fake_profile(tmp_path: Path, name: str, rank: int | None) -> None:
@@ -47,6 +48,10 @@ def _confirmed_success_receipt() -> dict[str, object]:
         "role_views_state": "removed",
         "recovery_required": False,
     }
+
+
+def _confirmed_task_result(status: str = "completed") -> dict[str, object]:
+    return {"state": "confirmed", "status": status}
 
 
 def test_deepagents_classification_ignores_pane_failure_after_structured_success() -> None:
@@ -703,6 +708,7 @@ def test_resolve_launch_builds_deepagents_pane_command(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", lambda: "dcode-project.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
@@ -817,6 +823,7 @@ def test_resolve_launch_enables_direct_mcp_only_for_explicit_selection(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", lambda: "dcode-project.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
@@ -935,6 +942,7 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", lambda: "dcode-project.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
@@ -989,6 +997,7 @@ def test_resolve_launch_uses_contained_effective_worker_budget(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", lambda: "dcode-project.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
@@ -1198,6 +1207,7 @@ def test_resolve_launch_quotes_mcp_selectors_for_powershell(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", lambda: "dcode-project.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
@@ -1255,6 +1265,7 @@ def test_deepagents_profile_binding_uses_lane_worktree(
 
     monkeypatch.setattr(LAUNCHER, "_profile", select_profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", lambda: "dcode-project.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(
@@ -2395,6 +2406,11 @@ def test_deepagents_main_strips_herdr_environment(
     )
     monkeypatch.setattr(
         LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: _confirmed_task_result(),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
         "_herdr_pane",
         lambda *args, **kwargs: {"pane": {"cwd": str(ROOT)}, "process_info": {"foreground_processes": []}},
     )
@@ -2465,6 +2481,11 @@ def test_deepagents_main_uses_grant_wall_clock_for_completion_observation(
             "cleanup_state": "removed",
             "recovery_required": False,
         },
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: _confirmed_task_result(),
     )
 
     assert LAUNCHER.main(
@@ -2578,6 +2599,11 @@ def test_deepagents_main_waits_for_receipt_after_terminal_observation(
             },
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: _confirmed_task_result(),
+    )
 
     assert LAUNCHER.main(
         [
@@ -2650,6 +2676,11 @@ def test_deepagents_main_exposes_confirmed_receipt_capability_proof(
             "lifecycle_receipt": receipt,
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: _confirmed_task_result(),
+    )
 
     assert LAUNCHER.main([
         "--profile", "normal", "--session", "session", "--pane", "pane",
@@ -2710,6 +2741,11 @@ def test_deepagents_main_does_not_promote_projected_capabilities_without_receipt
             },
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: _confirmed_task_result(),
+    )
 
     assert LAUNCHER.main([
         "--profile", "normal", "--session", "session", "--pane", "pane",
@@ -2738,14 +2774,9 @@ def test_deepagents_zero_exit_failed_report_is_not_completion() -> None:
     )
 
     assert result["execution"]["state"] == "completed"
-    assert result["task_result"] == {
-        "state": "reported_failed",
-        "accepted": False,
-        "source": "herdr_pane",
-        "authoritative": False,
-    }
-    assert result["status"] == "failed"
-    assert result["failure_kind"] == "task_report_failed"
+    assert result["task_result"] == {"state": "unverified", "accepted": None}
+    assert result["status"] == "completed"
+    assert result["failure_kind"] == "task_result_unverified"
     assert result["launcher_exit_code"] == 2
     assert result["reconciliation_required"] is True
     assert result["delivery"]["prompt_accepted"] is True
@@ -2994,6 +3025,11 @@ def test_deepagents_main_reports_terminal_failure_verdict(
             },
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: _confirmed_task_result("failed"),
+    )
 
     assert LAUNCHER.main(
         [
@@ -3006,11 +3042,10 @@ def test_deepagents_main_reports_terminal_failure_verdict(
     assert assignment["status"] == "failed"
     assert assignment["task_result"] == {
         "state": "reported_failed",
-        "accepted": False,
-        "source": "herdr_pane",
-        "authoritative": False,
+        "accepted": None,
+        "status": "failed",
     }
-    assert assignment["task_accepted"] is False
+    assert assignment["task_accepted"] is None
     assert assignment["execution"]["worker_exit_code"] == 0
     assert assignment["exit_code"] == assignment["launcher_exit_code"] == 2
     assert assignment["reconciliation_required"] is True
@@ -3305,6 +3340,10 @@ def test_deepagents_completion_reads_receipt_between_pane_polls(
     )
 
     assert evidence["lifecycle_receipt"] == confirmed
+    assert evidence["state"] == "completed"
+    assert evidence["marker_present"] is False
+    assert evidence["report_present"] is False
+    assert evidence["receipt_authoritative"] is True
     assert sleeps == [1.0]
 
 
@@ -3408,8 +3447,75 @@ def test_deepagents_completion_recovers_receipt_after_observation_deadline(
 
     assert evidence["state"] == "completed"
     assert evidence["lifecycle_receipt"] == confirmed
-    assert deadlines[-1] == 1.0
+    assert len(deadlines) == 2
+    assert deadlines[-1] == 0.5
     assert all(deadline is not None for deadline in deadlines)
+
+
+def test_deepagents_completion_deadline_receipt_does_not_read_pane_after_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    clock = [0.0]
+    receipt_calls = 0
+    snapshot_calls = 0
+    confirmed = _confirmed_success_receipt()
+
+    def read_receipt(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal receipt_calls
+        receipt_calls += 1
+        return {"state": "unknown", "detail": "receipt unavailable"} if receipt_calls == 1 else confirmed
+
+    def snapshot(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return {"state": "no-report", "report_present": False, "observation_error": "deadline"}
+
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 0.0)
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_GRACE_SECONDS", 1.0)
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_POLL_SECONDS", 0.25)
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", read_receipt)
+    monkeypatch.setattr(LAUNCHER, "_deepagents_completion_snapshot", snapshot)
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert snapshot_calls == 1
+    assert evidence["receipt_authoritative"] is True
+    assert evidence["report_present"] is False
+    assert evidence["diagnostic_observation"]["state"] == "no-report"
+
+
+def test_deepagents_classification_keeps_missing_managed_task_result_unverified() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered"},
+        observation={
+            "state": "completed",
+            "report_present": True,
+            "observation_error": None,
+        },
+        receipt=_confirmed_success_receipt(),
+        fallback_failure_kind=None,
+    )
+
+    assert result["task_result"]["state"] == "unverified"
+    assert result["status"] == "completed"
+    assert result["failure_kind"] == "task_result_unverified"
+    assert result["launcher_exit_code"] == 2
+    assert result["reconciliation_required"] is True
 
 
 def test_deepagents_completion_waits_for_slow_cleanup_receipt(
@@ -3845,6 +3951,39 @@ def test_missing_executable_fails_closed(monkeypatch: pytest.MonkeyPatch) -> Non
         LAUNCHER._executable("herdr")
 
 
+def test_managed_deepagents_executable_uses_setup_owned_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", _MANAGED_DEEPAGENTS_RESOLVER)
+    managed = tmp_path / ".local" / "bin" / (
+        "dcode-project.cmd" if LAUNCHER.os.name == "nt" else "dcode-project"
+    )
+    managed.parent.mkdir(parents=True)
+    managed.write_text("wrapper", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("PATH", str(tmp_path / "unmanaged"))
+
+    assert LAUNCHER._managed_deepagents_executable() == str(managed.resolve())
+
+
+def test_managed_deepagents_executable_fails_without_setup_owned_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", _MANAGED_DEEPAGENTS_RESOLVER)
+    monkeypatch.setattr(LAUNCHER.Path, "home", lambda: tmp_path)
+    unmanaged = tmp_path / "unmanaged"
+    unmanaged.mkdir()
+    (unmanaged / ("dcode-project.cmd" if LAUNCHER.os.name == "nt" else "dcode-project")).write_text(
+        "unmanaged", encoding="utf-8"
+    )
+    monkeypatch.setenv("PATH", str(unmanaged))
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="setup_deepagents_runtime"):
+        LAUNCHER._managed_deepagents_executable()
+
+
 def test_pane_safety_rejects_existing_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     payload = {"result": {"panes": [{"pane_id": "p1", "cwd": str(tmp_path), "agent": "codex"}]}}
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: payload)
@@ -3972,6 +4111,7 @@ def test_resolve_launch_rechecks_selected_target_before_launch(
     )
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_managed_deepagents_executable", lambda: "dcode-project.exe")
     monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "herdr")
     monkeypatch.setattr(
@@ -4469,6 +4609,11 @@ def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
             "observation_error": None,
         },
     )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: _confirmed_task_result(),
+    )
 
     assert LAUNCHER.main(
         [
@@ -4490,8 +4635,7 @@ def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
     assert assignment["task_result"] == {
         "state": "reported_completed",
         "accepted": None,
-        "source": "herdr_pane",
-        "authoritative": False,
+        "status": "completed",
     }
     assert assignment["task_accepted"] is None
 

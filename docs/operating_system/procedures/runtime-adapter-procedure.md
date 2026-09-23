@@ -5,8 +5,15 @@
 Coordinated DeepAgents enters through the controller-owned launcher or
 dispatcher. Direct `dcode-project` remains for ordinary personal-local probes;
 it is not a second coordination system. The attempt contract owns lifecycle
-semantics, `dcode-project` owns worker facts, and Herdr owns transport and
-diagnostic observation.
+semantics, lifecycle receipts own worker execution and settlement facts,
+structured task results own reported task outcomes, `dcode-project` owns worker
+facts, and Herdr owns transport plus diagnostic observation. CoS owns final
+acceptance.
+
+Coordinated DeepAgents resolves only the setup-owned wrapper at
+`~/.local/bin/dcode-project` on POSIX or `%USERPROFILE%\.local\bin\dcode-project.cmd`
+on Windows. Missing wrapper fails closed; do not fall back to an unrelated
+`PATH` executable.
 
 Capability policy is canonical in
 `docs/operating_system/tooling/runtime-tool-resolution.md`. This procedure is
@@ -96,13 +103,15 @@ does not grant MCP tool access.
 ## Herdr Observation
 
 Controller inspection uses bounded Herdr waits plus existing pull commands, not a
-new supervisor or runtime ledger. For DeepAgents, use `pane wait-output` for
-marker observation, then inspect `pane process-info` and `pane read`; for Codex,
-inspect `agent get` and `agent read`. `agent wait` remains a documented Herdr
-capability, not current launcher integration. Tura remains outside this Herdr
-launcher path and uses `project-delegate`. Record executor, session,
-pane, agent identity, task hash, state, and
-evidence source; keep state `unknown` when evidence is missing or stale.
+new supervisor or runtime ledger. For DeepAgents, read the correlated lifecycle
+receipt first. A confirmed receipt is authoritative and skips `pane wait-output`,
+`pane process-info`, and `pane read`; unresolved receipts use pane probes only
+for diagnostics or legacy fallback. For Codex, inspect `agent get` and
+`agent read`. `agent wait` remains a documented Herdr capability, not current
+launcher integration. Tura remains outside this Herdr launcher path and uses
+`project-delegate`. Record executor, session, pane, agent identity, task hash,
+state, and evidence source; keep state `unknown` when evidence is missing or
+stale.
 Treat `pane read` and `agent read` output as disposable probe data: metadata-only
 by default, explicitly bounded and redacted when raw output is required. Never
 treat silence as completion or trigger automatic kill, retry, or plan advance.

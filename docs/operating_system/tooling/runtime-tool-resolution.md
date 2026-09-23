@@ -9,6 +9,11 @@ Herdr forwards approved selectors, `dcode-project` validates and enforces
 them, and handoff records facts and provenance only. No tool observation can
 settle ownership or authorize replay.
 
+Coordinated DeepAgents resolves only the setup-owned wrapper at
+`~/.local/bin/dcode-project` on POSIX or `%USERPROFILE%\.local\bin\dcode-project.cmd`
+on Windows. Missing wrapper fails closed with setup guidance; arbitrary `PATH`
+executables do not satisfy this runtime requirement.
+
 ## Requirement Contract
 
 Before selecting a tool, record:
@@ -132,10 +137,10 @@ config secrets stay out of task text, logs, and tracked files.
 `codex.mcp.handoff.v1` carries facts and provenance only, not tool access.
 
 Herdr controller diagnostic observation uses bounded waits plus pull probes. Read
-attempt-correlated receipt first. Confirmed terminal receipt skips blocking marker
-wait but still gets one bounded process-info and pane read; unresolved receipt gets
-one bounded marker wait, then fresh final probes. Use `pane wait-output` for
-DeepAgents marker observation; use `agent get`/`agent read` for Codex.
+attempt-correlated receipt first. Confirmed terminal receipt is authoritative and
+skips pane `wait-output`, `process-info`, and `read`; unresolved receipt gets one
+bounded marker wait, then fresh final probes. Use pane probes only for diagnostics
+or legacy fallback. Use `agent get`/`agent read` for Codex.
 `agent wait` is a documented Herdr capability, not current launcher integration.
 Tura uses `project-delegate` outside the Herdr main-lane path. Normalize evidence
 fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds

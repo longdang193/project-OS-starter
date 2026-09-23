@@ -108,6 +108,19 @@ if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch "deepagents-code\s+$([regex
 
 New-Item -ItemType Directory -Force -Path $runtimeRoot, $binRoot | Out-Null
 
+function Write-TextIfChanged {
+    param(
+        [string]$Path,
+        [string]$Content,
+        [Text.Encoding]$Encoding
+    )
+    if ((Test-Path -LiteralPath $Path -PathType Leaf) -and
+        [IO.File]::ReadAllText($Path, $Encoding) -ceq $Content) {
+        return
+    }
+    [IO.File]::WriteAllText($Path, $Content, $Encoding)
+}
+
 $configPath = Join-Path $runtimeRoot "config.toml"
 if ($ResetConfig -or -not (Test-Path $configPath -PathType Leaf)) {
     $escapeToml = {
@@ -120,7 +133,7 @@ codex_config = "$( & $escapeToml $CodexConfigPath )"
 secret_file = "$( & $escapeToml ((Resolve-Path $SecretFile).Path ) )"
 secret_key = "$( & $escapeToml $SecretKey )"
 "@
-    [IO.File]::WriteAllText($configPath, $config, [Text.UTF8Encoding]::new($false))
+    Write-TextIfChanged -Path $configPath -Content $config -Encoding ([Text.UTF8Encoding]::new($false))
 }
 
 function Escape-TomlString {
@@ -173,7 +186,7 @@ if ($MigrateConfig -and -not $ResetConfig) {
     $configText = Set-TomlSectionKey $configText "paths" "codex_config" (Escape-TomlString ((Resolve-Path $CodexConfigPath).Path))
     $configText = Set-TomlSectionKey $configText "paths" "secret_file" (Escape-TomlString ((Resolve-Path $SecretFile).Path))
     $configText = Set-TomlSectionKey $configText "paths" "secret_key" (Escape-TomlString $SecretKey)
-    [IO.File]::WriteAllText($configPath, $configText, [Text.UTF8Encoding]::new($false))
+    Write-TextIfChanged -Path $configPath -Content $configText -Encoding ([Text.UTF8Encoding]::new($false))
 }
 
 if ($TuraExecutable) {
@@ -190,7 +203,7 @@ if ($TuraExecutable) {
     $configText = Set-TomlSectionKey $configText "delegation" "default_executor" "tura"
     $configText = Set-TomlSectionKey $configText "paths" "tura_executable" (Escape-TomlString ((Resolve-Path $TuraExecutable).Path))
     $configText = Set-TomlSectionKey $configText "paths" "tura_provider_config" (Escape-TomlString ((Resolve-Path $TuraProviderConfig).Path))
-    [IO.File]::WriteAllText($configPath, $configText, [Text.UTF8Encoding]::new($false))
+    Write-TextIfChanged -Path $configPath -Content $configText -Encoding ([Text.UTF8Encoding]::new($false))
 }
 Remove-Item -LiteralPath (Join-Path $runtimeRoot "dcode_project.py") -Force -ErrorAction SilentlyContinue
 
@@ -223,13 +236,13 @@ if (-not (Test-Path $launcher -PathType Leaf)) {
 & py -3 $launcher --executor deepagents @DcodeArgs
 exit $LASTEXITCODE
 '@
-Set-Content -NoNewline -Encoding utf8 (Join-Path $binRoot "dcode-project.ps1") $wrapper
+Write-TextIfChanged -Path (Join-Path $binRoot "dcode-project.ps1") -Content $wrapper -Encoding ([Text.UTF8Encoding]::new($false))
 
 $cmd = @'
 @echo off
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0dcode-project.ps1" %*
 '@
-Set-Content -NoNewline -Encoding ascii (Join-Path $binRoot "dcode-project.cmd") $cmd
+Write-TextIfChanged -Path (Join-Path $binRoot "dcode-project.cmd") -Content $cmd -Encoding ([Text.ASCIIEncoding]::new())
 
 if ($TuraExecutable) {
     $delegateWrapper = @'
@@ -261,12 +274,12 @@ if (-not (Test-Path $launcher -PathType Leaf)) {
 & py -3 $launcher --executor tura @DelegateArgs
 exit $LASTEXITCODE
 '@
-    Set-Content -NoNewline -Encoding utf8 (Join-Path $binRoot "project-delegate.ps1") $delegateWrapper
+    Write-TextIfChanged -Path (Join-Path $binRoot "project-delegate.ps1") -Content $delegateWrapper -Encoding ([Text.UTF8Encoding]::new($false))
     $delegateCmd = @'
 @echo off
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0project-delegate.ps1" %*
 '@
-    Set-Content -NoNewline -Encoding ascii (Join-Path $binRoot "project-delegate.cmd") $delegateCmd
+    Write-TextIfChanged -Path (Join-Path $binRoot "project-delegate.cmd") -Content $delegateCmd -Encoding ([Text.ASCIIEncoding]::new())
 }
 
 $doctorWrapper = @'
@@ -288,13 +301,13 @@ if (-not (Test-Path $dcodePath -PathType Leaf)) {
 & $dcodePath doctor @DcodeArgs
 exit $LASTEXITCODE
 '@
-Set-Content -NoNewline -Encoding utf8 (Join-Path $binRoot "dcode-doctor.ps1") $doctorWrapper
+Write-TextIfChanged -Path (Join-Path $binRoot "dcode-doctor.ps1") -Content $doctorWrapper -Encoding ([Text.UTF8Encoding]::new($false))
 
 $doctorCmd = @'
 @echo off
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0dcode-doctor.ps1" %*
 '@
-Set-Content -NoNewline -Encoding ascii (Join-Path $binRoot "dcode-doctor.cmd") $doctorCmd
+Write-TextIfChanged -Path (Join-Path $binRoot "dcode-doctor.cmd") -Content $doctorCmd -Encoding ([Text.ASCIIEncoding]::new())
 
 Write-Output "Installed dcode-project at $(Join-Path $binRoot 'dcode-project.cmd')"
 if ($TuraExecutable) {
@@ -305,9 +318,9 @@ if ($TuraExecutable) {
 }
 Write-Output "Installed dcode-doctor at $(Join-Path $binRoot 'dcode-doctor.cmd')"
 if ($installRequired) {
-    Write-Output "Installed dcode at $(Join-Path $binRoot 'dcode.exe')"
+    Write-Output "Installed managed dcode at $managedDcodePath"
 } else {
-    Write-Output "Reused managed dcode at $(Join-Path $binRoot 'dcode.exe')"
+    Write-Output "Reused managed dcode at $managedDcodePath"
 }
 if ($MigrateConfig) {
     Write-Output "Migrated managed DeepAgents config paths."
