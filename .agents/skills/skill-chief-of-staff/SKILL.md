@@ -153,6 +153,13 @@ a failed check returns `BLOCKED`. Factory maintainers additionally run
 `py -B scripts/validate_agent_runtime_drift.py --all-platforms`; that adapter
 drift check is not a consumer dependency.
 
+Consume launcher-produced delivery, execution, observation, cleanup, and
+performance evidence for the active operation. Do not rediscover the same
+executable, profile, Git, or pane facts when those evidence layers are
+confirmed. Revalidate mutable worktree, branch, lane ownership, and acceptance
+state before each material continuation; CoS retains authorization,
+reconciliation, and engineering acceptance authority.
+
 The native Codex CoS controller is not a Herdr runtime pane. Do not require,
 inspect, set, or clear `HERDR_ENV` in CoS as a dispatch gate. The repository
 launcher owns Herdr pane inspection and delivery evidence; direct pane control

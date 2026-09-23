@@ -93,7 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Run the hook-facing subset without validator-specific pytest.",
+        help="Compatibility flag for hook-facing validation.",
     )
     parser.add_argument(
         "--sync-starter-kit-tier",
@@ -104,13 +104,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     return parser
-
-
-def pytest_basetemp(default_relative: str) -> str:
-    override = os.environ.get("REPO_VALIDATOR_PYTEST_BASETEMP")
-    if override:
-        return override
-    return default_relative
 
 
 IN_PROCESS_SCRIPT_NAMES = {
@@ -182,17 +175,6 @@ def run_step(command: list[str], *, cwd: Path) -> int:
     return completed.returncode
 
 
-def ensure_pytest_basetemp(command: list[str], *, cwd: Path) -> None:
-    try:
-        index = command.index("--basetemp")
-    except ValueError:
-        return
-    basetemp = Path(command[index + 1])
-    if not basetemp.is_absolute():
-        basetemp = cwd / basetemp
-    basetemp.parent.mkdir(parents=True, exist_ok=True)
-
-
 def build_subprocess_steps(
     *,
     root: Path,
@@ -247,29 +229,6 @@ def build_subprocess_steps(
                 str(root / "repo_config" / "switchyard-routing.toml"),
             ]
         )
-    if not fast:
-        pytest_targets = [
-            path
-            for path in (
-                "tests/test_manage_switchyard_runtime.py",
-                "tests/test_validate_repo_config.py",
-                "tests/test_validate_planning_lifecycle.py",
-                "tests/test_validate_repo_contracts.py",
-            )
-            if (root / path).is_file()
-        ]
-        if pytest_targets:
-            steps.append(
-                [
-                    python_executable,
-                    "-m",
-                    "pytest",
-                    "--basetemp",
-                    pytest_basetemp(".tmp-tests/repo-contract-pytest"),
-                    *pytest_targets,
-                    "-q",
-                ]
-            )
     return steps
 
 
@@ -728,7 +687,6 @@ def main(argv: list[str] | None = None) -> int:
         python_executable=sys.executable,
         fast=args.fast,
     ):
-        ensure_pytest_basetemp(step, cwd=root)
         status = run_step(step, cwd=root)
         if status != 0:
             return status

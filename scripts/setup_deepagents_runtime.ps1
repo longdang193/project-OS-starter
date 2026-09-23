@@ -8,7 +8,9 @@ param(
     [string]$TuraProviderConfig,
     [string]$DeepAgentsCodeVersion = "0.1.74",
     [switch]$SkipInstall,
-    [switch]$ResetConfig
+    [switch]$ResetConfig,
+    [switch]$ForceReinstall,
+    [switch]$MigrateConfig
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +19,7 @@ $runtimeRoot = Join-Path $HOME ".local\share\dcode-project"
 $binRoot = Join-Path $HOME ".local\bin"
 $deepAgentsToolRoot = Join-Path $runtimeRoot "deepagents-tool"
 $deepAgentsBinRoot = Join-Path $runtimeRoot "bin"
+$managedDcodePath = Join-Path $deepAgentsBinRoot "dcode.exe"
 $launcherSource = Join-Path $repoRoot "scripts\dcode_project.py"
 $runtimePatch = Join-Path $repoRoot "scripts\patch_deepagents_runtime.py"
 $deepAgentsHome = if ($env:DEEPAGENTS_HOME) {
@@ -53,6 +56,9 @@ if ($TuraExecutable -and -not (Test-Path -LiteralPath $TuraExecutable -PathType 
 if ($TuraProviderConfig -and -not (Test-Path -LiteralPath $TuraProviderConfig -PathType Leaf)) {
     throw "Missing Tura provider config: $TuraProviderConfig"
 }
+if ($ForceReinstall -and $SkipInstall) {
+    throw "-ForceReinstall cannot be combined with -SkipInstall."
+}
 if ($null -eq $pythonCommand) {
     throw "Python launcher `py` is required. Install Python 3.12 or newer."
 }
@@ -61,7 +67,16 @@ if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.12") {
     throw "DeepAgents Code requires Python 3.12 or newer; detected $pythonVersion."
 }
 
-if (-not $SkipInstall) {
+$installRequired = $ForceReinstall -or -not (Test-Path $managedDcodePath -PathType Leaf)
+if (-not $installRequired) {
+    $managedVersionOutput = (& $managedDcodePath --version 2>&1 | Out-String).Trim()
+    $installRequired = (
+        $LASTEXITCODE -ne 0 -or
+        $managedVersionOutput -notmatch "deepagents-code\s+$([regex]::Escape($DeepAgentsCodeVersion))"
+    )
+}
+
+if (-not $SkipInstall -and $installRequired) {
     if (-not (Test-Path $UvPath -PathType Leaf)) {
         $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
         if ($null -eq $uvCommand) {
@@ -77,17 +92,10 @@ if (-not $SkipInstall) {
         throw "DeepAgents Code installation failed."
     }
 }
-
-$dcodePath = Join-Path $deepAgentsBinRoot "dcode.exe"
-if (-not (Test-Path $dcodePath -PathType Leaf)) {
-    $dcodeCommand = Get-Command dcode -ErrorAction SilentlyContinue
-    if ($null -ne $dcodeCommand) {
-        $dcodePath = $dcodeCommand.Source
-    }
-}
-if (-not (Test-Path $dcodePath -PathType Leaf)) {
+if (-not (Test-Path $managedDcodePath -PathType Leaf)) {
     throw "DeepAgents Code executable not found after setup."
 }
+$dcodePath = $managedDcodePath
 $mcpToolsPath = Join-Path $deepAgentsToolRoot "deepagents-code\Lib\site-packages\deepagents_code\mcp_tools.py"
 & $pythonCommand.Source -3 $runtimePatch $mcpToolsPath
 if ($LASTEXITCODE -ne 0) {
@@ -99,7 +107,6 @@ if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch "deepagents-code\s+$([regex
 }
 
 New-Item -ItemType Directory -Force -Path $runtimeRoot, $binRoot | Out-Null
-Copy-Item -LiteralPath $dcodePath -Destination (Join-Path $binRoot "dcode.exe") -Force
 
 $configPath = Join-Path $runtimeRoot "config.toml"
 if ($ResetConfig -or -not (Test-Path $configPath -PathType Leaf)) {
@@ -159,6 +166,14 @@ function Set-TomlSectionKey {
     }
     $lines.Insert($nextSection, $serialized)
     return ($lines -join "`r`n")
+}
+
+if ($MigrateConfig -and -not $ResetConfig) {
+    $configText = Get-Content -LiteralPath $configPath -Raw
+    $configText = Set-TomlSectionKey $configText "paths" "codex_config" (Escape-TomlString ((Resolve-Path $CodexConfigPath).Path))
+    $configText = Set-TomlSectionKey $configText "paths" "secret_file" (Escape-TomlString ((Resolve-Path $SecretFile).Path))
+    $configText = Set-TomlSectionKey $configText "paths" "secret_key" (Escape-TomlString $SecretKey)
+    [IO.File]::WriteAllText($configPath, $configText, [Text.UTF8Encoding]::new($false))
 }
 
 if ($TuraExecutable) {
@@ -289,6 +304,13 @@ if ($TuraExecutable) {
     Write-Output "Tura migration: ./scripts/setup_deepagents_runtime.ps1 -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>"
 }
 Write-Output "Installed dcode-doctor at $(Join-Path $binRoot 'dcode-doctor.cmd')"
-Write-Output "Installed dcode at $(Join-Path $binRoot 'dcode.exe')"
+if ($installRequired) {
+    Write-Output "Installed dcode at $(Join-Path $binRoot 'dcode.exe')"
+} else {
+    Write-Output "Reused managed dcode at $(Join-Path $binRoot 'dcode.exe')"
+}
+if ($MigrateConfig) {
+    Write-Output "Migrated managed DeepAgents config paths."
+}
 Write-Output "DeepAgents Code $DeepAgentsCodeVersion verified with Python $pythonVersion"
 Write-Output "dcode-project uses the active Codex provider binding; MCP projection requires explicit --mcp-select."

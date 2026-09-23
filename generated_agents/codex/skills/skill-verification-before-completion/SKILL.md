@@ -57,6 +57,14 @@ No completion claim without fresh evidence from command output or direct inspect
 
 Old output, confidence, plan checkboxes alone, code review, agent summaries, and partial tests are not completion proof.
 
+## Evidence Reuse
+
+Reuse evidence only within the active operation when command identity, relevant
+changed files, environment and configuration, worktree identity, and ownership
+inputs remain valid. Revalidate mutable lane and Git state before continuation.
+HEAD alone is not an evidence key for a dirty worktree. Do not create a
+persistent readiness registry or test cache for this rule.
+
 ## Verification Process
 
 ### 1. Confirm Verified State Candidate
