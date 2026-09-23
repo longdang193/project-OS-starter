@@ -39,7 +39,7 @@ def test_write_if_changed_preserves_unchanged_files() -> None:
     helper = text[start:end]
     command = f"""
 {helper}
-$path = Join-Path $env:TEMP 'project-os-write-if-changed.txt'
+$path = Join-Path ([IO.Path]::GetTempPath()) 'project-os-write-if-changed.txt'
 [IO.File]::WriteAllText($path, 'same', [Text.UTF8Encoding]::new($false))
 $before = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
 Write-TextIfChanged -Path $path -Content 'same' -Encoding ([Text.UTF8Encoding]::new($false))

@@ -1050,6 +1050,7 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
             "cleanup_state": "removed",
         },
         fallback_failure_kind=None,
+        task_result_evidence={"state": "confirmed", "status": "completed"},
     )
     emitted = launcher._build_assignment_result(
         dispatch_id="dispatch",
