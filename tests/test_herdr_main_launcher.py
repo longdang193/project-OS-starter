@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import hashlib
 import importlib.util
 import json
@@ -649,6 +650,35 @@ def test_powershell_literal_escapes_apostrophes() -> None:
     assert LAUNCHER._powershell_literal("worker's task") == "'worker''s task'"
 
 
+def test_powershell_literal_preserves_multiline_task_text() -> None:
+    task = "Task 3:\nworker's task"
+
+    assert LAUNCHER._powershell_literal(task) == "'Task 3:\nworker''s task'"
+
+
+def test_task_base64_encodes_multiline_without_raw_newlines() -> None:
+    task = "Task 3:\nworker's task"
+
+    argument = LAUNCHER._task_base64(task)
+
+    assert "\n" not in argument
+    assert base64.b64decode(argument).decode("utf-8") == task
+
+
+def test_task_base64_encodes_sensitive_single_line_text() -> None:
+    task = 'plan `value` with "quotes" and $variables'
+
+    argument = LAUNCHER._task_base64(task)
+
+    assert base64.b64decode(argument).decode("utf-8") == task
+
+
+def test_task_transport_option_supports_opaque_and_legacy_forms() -> None:
+    assert LAUNCHER._task_transport_option(["--task-base64", "encoded"]) == "--task-base64"
+    assert LAUNCHER._task_transport_option(["-n", "task"]) == "-n"
+    assert LAUNCHER._task_transport_option(["--json"]) is None
+
+
 def test_run_converts_timeout_to_launch_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
     def timeout_run(*args, **kwargs):
         raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
@@ -745,10 +775,11 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "--timeout",
         "420",
         "--no-mcp",
-        "-n",
+        "--task-base64",
     ]
-    assert command[-1].startswith(
-        "'Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
+    encoded_task = command[-1]
+    assert base64.b64decode(encoded_task).decode("utf-8").startswith(
+        "Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
     )
     completion_marker = evidence["registry_launcher"]["completion_marker"]
     assert completion_marker is None
@@ -769,7 +800,9 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "source": "herdr.pane_process",
         "state": "unknown",
         "task_sha256": LAUNCHER._sha256_text("Return exactly DEEPAGENTS_ADAPTER_OK"),
-            "delivery_task_sha256": LAUNCHER._sha256_text(command[-1][1:-1]),
+                "delivery_task_sha256": LAUNCHER._sha256_text(
+                    base64.b64decode(command[-1]).decode("utf-8")
+                ),
         "grant_digest": evidence["registry_launcher"]["grant_digest"],
     }
     assert LAUNCHER._DEEPAGENTS_RUN_TIMEOUT == 1800.0
@@ -983,8 +1016,9 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         "delegation": {"child_agents": "allow"},
     }
     assert len(evidence["registry_launcher"]["grant_digest"]) == 64
-    assert command[-1].startswith(
-        "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]"
+    encoded_task = command[-1]
+    assert base64.b64decode(encoded_task).decode("utf-8").startswith(
+        "Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]"
     )
     assert evidence["registry_launcher"]["completion_marker"] is None
 
@@ -1318,7 +1352,7 @@ def test_deepagents_task_is_required_and_bounded(
         )
 
 
-@pytest.mark.parametrize("task", [None, " ", "x" * (LAUNCHER._MAX_TASK_LENGTH + 1), "line1\nline2"])
+@pytest.mark.parametrize("task", [None, " ", "x" * (LAUNCHER._MAX_TASK_LENGTH + 1)])
 def test_codex_task_is_required_and_bounded(
     monkeypatch: pytest.MonkeyPatch,
     task: str | None,
@@ -1333,6 +1367,18 @@ def test_codex_task_is_required_and_bounded(
             executor="codex",
             task=task,
         )
+
+
+def test_task_validation_preserves_multiline_contract() -> None:
+    task = "Task 3: run pilot\n\n**Scope:** preserve canonical task text"
+
+    assert LAUNCHER._validate_task(task) == task
+
+
+@pytest.mark.parametrize("task", ["line1\rline2", "line1\r\nline2"])
+def test_task_validation_rejects_carriage_returns(task: str) -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="carriage returns"):
+        LAUNCHER._validate_task(task)
 
 
 def test_codex_home_rejects_duplicate_stop_hook_scopes(tmp_path: Path) -> None:

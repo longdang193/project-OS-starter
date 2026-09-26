@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -756,8 +757,14 @@ def _redacted_arguments(arguments: list[str]) -> list[str]:
             ])
             index += 3
             continue
-        if value in {"-n", "--task"} and index + 1 < len(arguments):
-            redacted.extend([value, f"task=<sha256:{_sha256_text(arguments[index + 1])}>"])
+        if value in {"-n", "--task", "--task-base64"} and index + 1 < len(arguments):
+            task = arguments[index + 1]
+            if value == "--task-base64":
+                try:
+                    task = base64.b64decode(task, validate=True).decode("utf-8")
+                except (ValueError, UnicodeDecodeError):
+                    task = "<invalid-task-base64>"
+            redacted.extend([value, f"task=<sha256:{_sha256_text(task)}>"])
             index += 2
             continue
         redacted.append(value)
@@ -769,13 +776,21 @@ def _powershell_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _task_base64(value: str) -> str:
+    return base64.b64encode(value.encode("utf-8")).decode("ascii")
+
+
+def _task_transport_option(command: list[str]) -> str | None:
+    return next((option for option in ("-n", "--task-base64") if option in command), None)
+
+
 def _validate_task(task: str | None) -> str:
     if task is None or not task.strip():
         raise LaunchBlocked("Launch requires non-empty bounded task text.")
     if len(task) > _MAX_TASK_LENGTH:
         raise LaunchBlocked(f"Task text exceeds {_MAX_TASK_LENGTH} characters.")
-    if "\r" in task or "\n" in task:
-        raise LaunchBlocked("Task text cannot contain newlines.")
+    if "\r" in task:
+        raise LaunchBlocked("Task text cannot contain carriage returns.")
     return task.strip()
 
 
@@ -2208,8 +2223,8 @@ def resolve_launch(
                 [],
             ),
             *([] if direct_mcp else ["--no-mcp"]),
-            "-n",
-            _powershell_literal(delivery_task),
+            "--task-base64",
+            _task_base64(delivery_task),
         ]
         command = [herdr, "--session", session, "pane", "run", pane, *runtime_arguments]
     evidence = {
@@ -2489,19 +2504,20 @@ def _main_body(args: argparse.Namespace) -> int:
                 attempt_context[key] = registry_evidence[key]
         receipt_file: Path | None = None
         task_result_file: Path | None = None
-        if args.executor == "deepagents" and not args.dry_run and "-n" in command:
+        task_option = _task_transport_option(command)
+        if args.executor == "deepagents" and not args.dry_run and task_option is not None:
             receipt_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
             receipt_file = receipt_dir / "result.json"
             task_result_file = receipt_dir / "task-result.json"
             command = command.copy()
-            command[command.index("-n"):command.index("-n")] = [
+            command[command.index(task_option):command.index(task_option)] = [
                 "--result-file",
                 _powershell_literal(str(receipt_file)),
                 "--attempt-id",
                 _powershell_literal(attempt_id),
             ]
             if args.assignment_id is not None:
-                command[command.index("-n"):command.index("-n")] = [
+                command[command.index(task_option):command.index(task_option)] = [
                     "--assignment-id",
                     _powershell_literal(args.assignment_id),
                     "--repository-identity",

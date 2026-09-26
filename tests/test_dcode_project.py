@@ -17,6 +17,7 @@ lifecycle:
 from __future__ import annotations
 
 import importlib.util
+import base64
 import hashlib
 import json
 import os
@@ -289,6 +290,16 @@ def test_controller_options_extracts_correlated_receipt_arguments(tmp_path: Path
     ])
 
     assert parsed[5:7] == (str(result_file), "attempt-1")
+
+
+def test_controller_options_decodes_opaque_task_transport() -> None:
+    task = "--- layer: change\nwrite worker's proof"
+
+    parsed = LAUNCHER._controller_options(
+        ["--task-base64", base64.b64encode(task.encode()).decode()]
+    )
+
+    assert parsed[0] == ["-n", task]
 
 
 def test_runtime_option_gate_allows_coordinated_attempt_bindings() -> None:
@@ -1361,6 +1372,17 @@ def test_launcher_allows_bounded_noninteractive_options() -> None:
             "task",
         ]
     )
+
+
+def test_bounded_task_value_may_start_with_dash(tmp_path: Path) -> None:
+    argv = ["-n", "--- layer: change", "--role", "normal"]
+
+    LAUNCHER._reject_unmanaged_runtime_options(argv)
+
+    deepagents_argv = list(argv)
+    LAUNCHER._append_bounded_task_context(deepagents_argv, tmp_path)
+    assert deepagents_argv[1].startswith("--- layer: change")
+    assert LAUNCHER._task_argument(argv) == "--- layer: change"
 
 
 def test_worker_timeout_defaults_are_executor_specific() -> None:
@@ -2513,6 +2535,21 @@ def test_handoff_stdin_preserves_binary_file_safety_context(tmp_path: Path) -> N
     assert '`sqlite3.connect("file:<repo-relative-path>?mode=ro", uri=True)`' in task
     assert "Run `py` directly; do not prefix it with `cd`, shell operators, or wrappers" in task
     assert "For `py -c`, use one expression; never use `;`" in task
+
+
+def test_handoff_stdin_accepts_dash_prefixed_task() -> None:
+    argv = ["-n", "--- layer: change", "--no-mcp"]
+    payload = {
+        "schema": "codex.mcp.handoff.v1",
+        "sources": [],
+        "facts": [],
+        "constraints": [],
+    }
+
+    task = LAUNCHER._handoff_stdin(argv, payload)
+
+    assert argv == ["--stdin", "--no-mcp"]
+    assert task.startswith("--- layer: change")
 
 
 def test_bounded_task_context_exposes_host_and_tool_roots(tmp_path: Path) -> None:
