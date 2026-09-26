@@ -180,22 +180,22 @@ def test_unique_agent_names_are_bounded_and_unique(monkeypatch: pytest.MonkeyPat
 
 
 def test_codex_arguments_project_complete_contract(tmp_path: Path) -> None:
-    fake_profile(tmp_path, "review", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+    fake_profile(tmp_path, "review-1", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review-1")
 
     arguments = LAUNCHER._codex_arguments(profile, tmp_path)
 
     assert arguments[:2] == ["-C", str(tmp_path)]
     assert 'model_provider="9router"' in arguments
-    assert 'model="combo-review"' in arguments
+    assert 'model="combo-review-1"' in arguments
     assert 'developer_instructions="do not modify files"' in arguments
     assert "--dangerously-bypass-hook-trust" in arguments
     assert "check_for_update_on_startup=false" in arguments
 
 
 def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) -> None:
-    fake_profile(tmp_path, "review", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+    fake_profile(tmp_path, "review-1", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review-1")
 
     arguments = LAUNCHER._codex_arguments(
         profile,
@@ -211,8 +211,8 @@ def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) 
 def test_codex_arguments_disable_runtime_only_mcp_with_valid_transport(
     tmp_path: Path,
 ) -> None:
-    fake_profile(tmp_path, "review", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+    fake_profile(tmp_path, "review-1", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review-1")
 
     arguments = LAUNCHER._codex_arguments(
         profile,
@@ -229,8 +229,8 @@ def test_codex_arguments_disable_runtime_only_mcp_with_valid_transport(
 def test_codex_arguments_preserve_selected_runtime_only_mcp_transport(
     tmp_path: Path,
 ) -> None:
-    fake_profile(tmp_path, "review", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+    fake_profile(tmp_path, "review-1", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review-1")
 
     arguments = LAUNCHER._codex_arguments(
         profile,
@@ -247,8 +247,8 @@ def test_codex_arguments_preserve_selected_runtime_only_mcp_transport(
 
 
 def test_codex_arguments_enable_only_selected_server(tmp_path: Path) -> None:
-    fake_profile(tmp_path, "review", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "review")
+    fake_profile(tmp_path, "review-1", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "review-1")
 
     arguments = LAUNCHER._codex_arguments(
         profile,

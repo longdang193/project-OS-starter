@@ -204,6 +204,13 @@ both concrete values into that same task record before changing its state to
 name or rank. Keep effective runtime grants transient in launcher evidence; they
 do not replace durable task resolution.
 
+For independent review, `review-1`, `review-2`, and `review-3` are explicit
+unranked candidates. The controller may sample one candidate, or two distinct
+candidates when two reviews are authorized, using `select_review_profiles()`.
+Record selected profile names and `selection_method = random` in review
+evidence. Legacy `review` remains a compatibility alias and is not a random
+candidate.
+
 ### Interactive Use
 
 Interactive workflow and interactive mode are separate decisions. A workflow
