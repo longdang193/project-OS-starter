@@ -325,30 +325,36 @@ the closure evidence is accepted.
 
 ### Task 4 Evidence
 
-Fixture command: `python -m pytest -q tests/test_plan_preparation.py::test_manual_and_plan_inputs_record_equivalent_dispatch_evidence -s`.
+Fixture command: `python -m pytest -q tests/test_plan_preparation.py::test_manual_and_plan_inputs_record_equivalent_dispatch_evidence`.
 
 Observed comparison on 2026-09-26:
 
 | Measure | Manual descriptor | Canonical plan input |
 | --- | ---: | ---: |
-| Caller-supplied lane fields | 25 | 29 |
-| Plan-owned fields manually transcribed | 16 | 0 |
-| Preparation operations | 0 | `prepare_task=1`, `_source_parts=1` |
+| Caller plan selectors | 0 | 2 |
+| Caller runtime-binding field groups | 13 | 13 |
+| Caller plan-derived execution fields | 8 | 0 |
+| Raw caller input fields | 24 | 15 |
+| Plan/source preparation operations | 0 | `source_parts=1`, `parse_plan=1`, `prepare_task=1` |
 | Dispatch commands | 1 | 1 |
 | Launcher subprocesses | 1 | 1 |
-| Model calls | 0 | 0 |
-| Missing-context requests | 0 | 0 |
-| Recovery/reconciliation paths | 0 | 0 |
-| Preparation-through-launch-check time | 2.505 ms | 104.227 ms |
+| Fake fixture model calls | 0 | 0 |
+| Fake fixture missing-context events | 0 | 0 |
+| Fake fixture recovery paths | 0 | 0 |
+| Preparation-through-launch-check time | 3.364 ms | 103.628 ms |
 
 Task contract, runtime grant, remaining authority, deadline, capabilities, write
 scope, fixed contracts, mutable resources, accepted prerequisites, required
-proof, and worker-facing instructions were semantically equivalent. The plan
-input removed 16 manual plan-owned transcriptions without adding dispatch,
-model, launcher, context, or recovery work. Timing is descriptive only; plan
-parsing and validation made this fixture slower than direct descriptor input.
-The stale-binding regression invokes no worker and returns nonzero while
-preserving `unresolved=False` and `capacity=retired`.
+proof, and worker-facing instructions were semantically equivalent. Canonical
+plan input removed 8 explicitly identified plan-derived caller fields from this
+fixture. Raw input-field totals are not a savings claim because manual grant
+fields are flattened while plan runtime bindings are nested. Fake zeroes are
+fixture invariants: the comparison introduced no additional modeled launcher,
+model, context, or recovery step. Timing is descriptive, not an apples-to-
+apples latency comparison; plan parsing and freshness validation made this
+fixture slower than direct descriptor input. The stale-binding regression
+invokes no worker and returns nonzero while preserving `unresolved=False` and
+`capacity=retired`.
 
 **Verification:**
 - [x] `python -m pytest -q tests/test_plan_preparation.py tests/test_herdr_parallel_dispatch.py tests/test_project_os_runtime.py tests/test_validate_planning_lifecycle.py` — 132 passed
