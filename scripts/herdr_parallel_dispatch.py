@@ -23,6 +23,10 @@ try:
 except ModuleNotFoundError:
     from scripts.project_os_runtime.lane import PreparedLane, prepare_lane
 try:
+    from project_os_runtime.plan_preparation import prepare_lane_inputs
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.plan_preparation import prepare_lane_inputs
+try:
     from project_os_runtime.attempt import (
         NATIVE_GRANT_VALUE,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
@@ -796,6 +800,17 @@ def load_lane_descriptors_from_items(
     return _admit_lanes(lanes, max_concurrency=max_concurrency)
 
 
+
+def run_parallel_from_plan(
+    source: str | os.PathLike[str],
+    selected_task_ids: Iterable[str],
+    runtime_inputs_by_task: Mapping[str, Mapping[str, Any]],
+    **run_kwargs: Any,
+) -> dict[str, Any]:
+    """Prepare selected plan tasks, then use existing bounded dispatch."""
+
+    lanes = prepare_lane_inputs(source, tuple(selected_task_ids), runtime_inputs_by_task)
+    return run_parallel(lanes, **run_kwargs)
 def run_parallel(
     source: str | os.PathLike[str] | Mapping[str, Any] | Iterable[Mapping[str, Any]],
     *,
