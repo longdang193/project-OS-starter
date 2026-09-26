@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 import textwrap
 import pytest
@@ -114,6 +115,8 @@ def test_prepare_task_keeps_readiness_separate_from_evidence() -> None:
     prepared = prepare_task(graph, "Task 3")
 
     assert prepared.structurally_ready is True
+    assert prepared.execution_eligible is True
+    assert prepared.eligibility_reason is None
     assert prepared.unresolved_prerequisites == ()
     assert prepared.required_proof == "dispatch proof"
     assert "Plan goal:" in prepared.brief
@@ -124,6 +127,15 @@ def test_prepare_task_reports_pending_dependency() -> None:
 
     assert prepared.structurally_ready is False
     assert prepared.unresolved_prerequisites == ("Task 3",)
+
+
+@pytest.mark.parametrize("state", ["blocked", "completed"])
+def test_prepare_plan_lanes_rejects_ineligible_selected_task(tmp_path: Path, state: str) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan().replace("| Task 2 | `active` |", f"| Task 2 | `{state}` |"), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=f"selected task is not execution-eligible: {state}"):
+        prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": _binding(tmp_path)})
 
 
 def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
@@ -198,6 +210,13 @@ def _active_plan() -> str:
 
         # Demo
 
+        ## Goal
+
+        Preserve complete selected task context.
+
+        ## Execution Approach
+        - Required skills: `skill-backend-verification`
+
         ## Coordination State
 
         | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -221,6 +240,12 @@ def _active_plan() -> str:
         **Files And Symbols:**
         - Modify: `scripts/example.py:run`
 
+        **Verification:**
+        - `python -m pytest -q tests/test_example.py`
+
+        **Exit Criteria:**
+        - Task 2 proof is recorded.
+
         **Authority:**
         - Preauthorized local actions: edit source.
         - Stop for: failed proof.
@@ -236,7 +261,7 @@ def _binding(tmp_path: Path) -> dict[str, object]:
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     return {
         "repository_identity": "project-OS-starter",
-        "worktree": str(tmp_path),
+        "worktree": str(Path(__file__).resolve().parents[1]),
         "expected_base": head,
         "session": "session",
         "pane": "pane",
@@ -273,9 +298,165 @@ def test_prepare_plan_lanes_bounds_worker_text_and_binding_digest(tmp_path: Path
 
     assert lane["plan_identity"] == "demo-plan"
     assert lane["dependency_ready"] is True
+    assert "Plan objective:\nPreserve complete selected task context." in lane["task"]
+    assert "python -m pytest -q tests/test_example.py" in lane["task"]
+    assert "Task 2 proof is recorded." in lane["task"]
     assert "This section must not enter worker task text" not in lane["task"]
     assert lane["execution_binding_digest"] == prepare_lane(lane)["execution_binding_digest"]
 
+
+def test_launcher_task_argument_contains_complete_selected_contract(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan(), encoding="utf-8")
+    lane = prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": _binding(tmp_path)})[0]
+
+    command = dispatcher._launcher_command(lane, python_executable="python", launcher_path="launcher.py")
+    task_text = command[command.index("--task") + 1]
+
+    assert "Plan objective:\nPreserve complete selected task context." in task_text
+    assert "**Verification:**" in task_text
+    assert "**Exit Criteria:**" in task_text
+    assert "Applicable explicit shared constraints:\n`skill-backend-verification`" in task_text
+    assert task_text.count("**Purpose:**") == 1
+    assert task_text.count("**Authority:**") == 1
+    assert task_text.count("**Verification:**") == 1
+    assert task_text.count("**Exit Criteria:**") == 1
+    assert "Task 3:" not in task_text
+    assert "This section must not enter worker task text" not in task_text
+
+
+def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Path, monkeypatch) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan(), encoding="utf-8")
+    runtime = _binding(tmp_path)
+    runtime["attempt_deadline"] = time.monotonic() + 60
+    plan_lane = prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": runtime})[0]
+    manual_lane = dict(plan_lane)
+    for field in ("plan_source", "plan_revision", "plan_preparation", "execution_binding_digest"):
+        manual_lane.pop(field, None)
+
+    counters = {"source_parts": 0, "prepare_task": 0}
+    from scripts.project_os_runtime import plan_preparation
+
+    original_source_parts = plan_preparation._source_parts
+    original_prepare_task = plan_preparation.prepare_task
+
+    def counted_source_parts(source):
+        counters["source_parts"] += 1
+        return original_source_parts(source)
+
+    def counted_prepare_task(graph, task_id):
+        counters["prepare_task"] += 1
+        return original_prepare_task(graph, task_id)
+
+    monkeypatch.setattr(plan_preparation, "_source_parts", counted_source_parts)
+    monkeypatch.setattr(plan_preparation, "prepare_task", counted_prepare_task)
+
+    def run_case(source, expected_lane, plan_mode: bool) -> dict[str, object]:
+        commands: list[list[str]] = []
+        expected = dispatcher.prepare_lane(expected_lane).to_dict()
+
+        def fake_popen(command, **kwargs):
+            commands.append(command)
+            assignment_id = expected["assignment_id"]
+            task_hash = expected["task_sha256"]
+            grant = expected["runtime_grant"]
+            digest = expected["grant_digest"]
+            capabilities = expected["local_capabilities"]
+            assignment = {
+                "attempt_id": "evidence-attempt",
+                "assignment_id": assignment_id,
+                "task_sha256": task_hash,
+                "grant_digest": digest,
+                "capability_state": "confirmed",
+                "capabilities": {
+                    "requested": capabilities["requested"],
+                    "passed_to_worker": capabilities["effective"],
+                    "validated_available": capabilities["effective"],
+                    "digest": capabilities["digest"],
+                    "validation_error": None,
+                },
+                "lifecycle_receipt": {
+                    "state": "confirmed",
+                    "worker_state": "exited",
+                    "descendant_state": "terminated",
+                    "cleanup_state": "removed",
+                    "recovery_required": False,
+                },
+                "task_result": {"state": "reported_completed", "accepted": None},
+            }
+            output = {
+                "registry_launcher": {
+                    "attempt_id": "evidence-attempt",
+                    "assignment_id": assignment_id,
+                    "assignment_task_sha256": task_hash,
+                    "runtime_grant": grant,
+                    "grant_digest": digest,
+                    "local_capabilities": capabilities,
+                }
+            }
+
+            class CompletedProcess:
+                pid = 401
+                returncode = 0
+
+                def communicate(self, *, timeout):
+                    return json.dumps(output) + "\n" + json.dumps({"assignment": assignment}), ""
+
+            return CompletedProcess()
+
+        started = time.perf_counter()
+        if plan_mode:
+            result = dispatcher.run_parallel_from_plan(
+                plan_path,
+                ["Task 2"],
+                {"Task 2": runtime},
+                max_concurrency=1,
+                popen_factory=fake_popen,
+            )
+        else:
+            result = dispatcher.run_parallel(
+                [source],
+                max_concurrency=1,
+                popen_factory=fake_popen,
+            )
+        elapsed = time.perf_counter() - started
+        assert result["results"][0]["unresolved"] is False
+        return {
+            "caller_supplied_fields": len(expected_lane),
+            "launcher_commands": len(commands),
+            "launcher_subprocesses": len(commands),
+            "model_calls": 0,
+            "missing_context_requests": 0,
+            "recovery_paths": 0,
+            "elapsed_seconds": elapsed,
+            "result": result,
+        }
+
+    manual_metrics = run_case(manual_lane, manual_lane, False)
+    plan_metrics = run_case(plan_lane, plan_lane, True)
+    plan_owned_fields = set(plan_lane) - set(runtime)
+
+    semantic_fields = (
+        "task",
+        "runtime_grant",
+        "remaining_authorized_task_allowance",
+        "attempt_deadline",
+        "local_capabilities",
+        "allowed_write_set",
+        "fixed_contracts",
+        "mutable_resources",
+        "accepted_prerequisites",
+    )
+    assert all(manual_lane[field] == plan_lane[field] for field in semantic_fields)
+    assert len(plan_owned_fields) > 0
+    assert manual_metrics["launcher_commands"] == plan_metrics["launcher_commands"] == 1
+    assert manual_metrics["launcher_subprocesses"] == plan_metrics["launcher_subprocesses"] == 1
+    assert manual_metrics["model_calls"] == plan_metrics["model_calls"] == 0
+    assert manual_metrics["missing_context_requests"] == plan_metrics["missing_context_requests"] == 0
+    assert manual_metrics["recovery_paths"] == plan_metrics["recovery_paths"] == 0
+    assert manual_metrics["elapsed_seconds"] >= 0
+    assert plan_metrics["elapsed_seconds"] >= 0
 
 def test_prepare_plan_lanes_rejects_stale_binding(tmp_path: Path) -> None:
     plan_path = tmp_path / "plan.md"
