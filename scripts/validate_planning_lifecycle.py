@@ -390,26 +390,27 @@ def validate_git_coordination(
     records = {row["task"]: row for row in rows}
     strict_checklists = _clean_coordination_cell(_coordination_value(text, "Coordination schema") or "") == CHECKLIST_COORDINATION_SCHEMA
     strict_dependencies = strict_checklists and payload.get("status") in CURRENT_PLAN_STATUSES
-    parsed_dependencies: dict[str, list[str]] = {}
+    parsed_rows: list[dict[str, Any]] = []
     for row in rows:
         try:
-            parsed_dependencies[row["task"]] = _coordination_dependencies(row["dependencies"], strict=strict_dependencies)
+            dependencies = _coordination_dependencies(row["dependencies"], strict=strict_dependencies)
         except DependencyContractError as exc:
             findings.append(Finding("coordination_error", rel, f"{row['task']} has invalid dependencies: {exc}"))
-            parsed_dependencies[row["task"]] = []
+            dependencies = []
+        parsed_rows.append({"task": row["task"], "dependencies": dependencies})
     if strict_dependencies:
         try:
-            validate_dependency_graph(
-                {row["task"]: parsed_dependencies.get(row["task"], []) for row in rows}
-            )
+            validate_dependency_graph(parsed_rows)
         except DependencyContractError as exc:
             findings.append(Finding("coordination_error", rel, str(exc)))
     task_sections = dict(_task_sections(text))
-    for row in active_rows:
+    for row, parsed in zip(rows, parsed_rows):
+        if row["state"] != "active":
+            continue
         dependencies = row["dependencies"]
         if dependencies.lower() in {"", "none", "n/a"}:
             continue
-        for dependency in parsed_dependencies.get(row["task"], []):
+        for dependency in parsed["dependencies"]:
             dependency = dependency.strip()
             dependency_row = records.get(dependency)
             if dependency_row is None or dependency_row["state"] != "completed":

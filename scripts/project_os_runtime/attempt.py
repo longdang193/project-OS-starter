@@ -213,6 +213,8 @@ def execution_binding_digest(binding: Mapping[str, Any]) -> str:
             "allowed_write_set",
             "runtime_grant",
             "accepted_prerequisites",
+            "plan_revision",
+            "plan_source",
         )
         if key in binding
     }

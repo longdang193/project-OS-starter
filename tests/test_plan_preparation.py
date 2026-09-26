@@ -141,6 +141,12 @@ def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
         "grant_child_agents": "deny",
         "mcp_select": [],
         "remaining_authorized_task_allowance": 10,
+        "attempt_deadline": 100.0,
+        "local_capabilities": {"requested": ["py"]},
+        "accepted_prerequisites": {
+            "Task 1": {"accepted_revision": "revision-1"},
+            "Task 2": {"accepted_revision": "revision-2"},
+        },
     }
 
     lanes = prepare_lane_inputs(PLAN, ["Task 3"], {"Task 3": runtime})
@@ -150,6 +156,12 @@ def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
     assert lanes[0]["dependencies"] == ["Task 1", "Task 2"]
     assert lanes[0]["dependency_ready"] is True
     assert lanes[0]["plan_preparation"]["required_proof"] == "dispatch proof"
+    assert lanes[0]["allowed_write_set"] == ["src/task3.py"]
+    assert lanes[0]["fixed_contracts"] == ["contract-v1"]
+    assert lanes[0]["mutable_resources"] == ["resource-3"]
+    assert lanes[0]["local_capabilities"]["requested"] == ["py"]
+    assert lanes[0]["remaining_authorized_task_allowance"] == 10
+    assert lanes[0]["attempt_deadline"] == 100.0
 
 
 def test_prepare_lane_inputs_rejects_conflicting_runtime_task() -> None:
@@ -228,9 +240,20 @@ def _binding(tmp_path: Path) -> dict[str, object]:
         "expected_base": head,
         "session": "session",
         "pane": "pane",
-        "runtime_grant": {},
+        "runtime_grant": {
+            "turns": "native",
+            "wall_clock_seconds": "native",
+            "delegation": {"child_agents": "deny"},
+            "mcp_select": [],
+        },
+        "allowed_write_set": ["scripts"],
+        "fixed_contracts": ["contract-v1"],
+        "mutable_resources": ["resource-2"],
+        "local_capabilities": {"requested": ["py"]},
+        "remaining_authorized_task_allowance": 10,
+        "attempt_deadline": 100.0,
         "accepted_prerequisites": {
-            "Task 1": {"accepted_revision": head, "artifact_ref": head}
+            "Task 1": {"accepted_revision": head}
         },
     }
 
@@ -265,6 +288,16 @@ def test_prepare_plan_lanes_rejects_stale_binding(tmp_path: Path) -> None:
         dispatcher.verify_launch_bindings(prepared)
 
 
+def test_prepare_plan_lanes_rejects_plan_revision_changed_after_admission(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan(), encoding="utf-8")
+    lane = prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": _binding(tmp_path)})[0]
+    plan_path.write_text(_active_plan() + "\nchanged\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="plan revision changed"):
+        dispatcher.verify_launch_bindings(prepare_lane(lane))
+
+
 def test_prepare_plan_lanes_rejects_plan_owned_runtime_fields(tmp_path: Path) -> None:
     plan_path = tmp_path / "plan.md"
     plan_path.write_text(_active_plan(), encoding="utf-8")
@@ -272,4 +305,14 @@ def test_prepare_plan_lanes_rejects_plan_owned_runtime_fields(tmp_path: Path) ->
     binding["artifact_available"] = True  # type: ignore[index]
 
     with pytest.raises(ValueError, match="plan-owned fields"):
+        prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": binding})
+
+
+def test_prepare_plan_lanes_rejects_missing_runtime_authority(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan(), encoding="utf-8")
+    binding = _binding(tmp_path)
+    binding.pop("mutable_resources")
+
+    with pytest.raises(ValueError, match="runtime binding missing field: mutable_resources"):
         prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": binding})

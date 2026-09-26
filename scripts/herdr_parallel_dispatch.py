@@ -23,10 +23,6 @@ try:
 except ModuleNotFoundError:
     from scripts.project_os_runtime.lane import PreparedLane, prepare_lane
 try:
-    from project_os_runtime.plan_preparation import prepare_lane_inputs
-except ModuleNotFoundError:
-    from scripts.project_os_runtime.plan_preparation import prepare_lane_inputs
-try:
     from project_os_runtime.attempt import (
         NATIVE_GRANT_VALUE,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
@@ -118,6 +114,17 @@ def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
     worktree = Path(str(lane["worktree"]))
     if not worktree.is_dir():
         raise ValueError("worktree does not exist")
+    plan_source = lane.get("plan_source")
+    plan_revision = lane.get("plan_revision")
+    if plan_source is not None:
+        if not isinstance(plan_revision, str) or not plan_revision.strip():
+            raise ValueError("plan revision is missing for plan source")
+        try:
+            current_revision = _sha256_text(Path(str(plan_source)).read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ValueError("plan source is unavailable") from exc
+        if current_revision != plan_revision:
+            raise ValueError("plan revision changed after admission")
     expected_base = str(lane["expected_base"])
     base_check = subprocess.run(
         ["git", "-C", str(worktree), "merge-base", "--is-ancestor", expected_base, "HEAD"],
@@ -137,29 +144,30 @@ def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
         if not isinstance(revision, str) or not revision.strip():
             raise ValueError(f"missing accepted revision: {dependency}")
         revision_check = subprocess.run(
-            ["git", "-C", str(worktree), "cat-file", "-e", f"{revision}^{{commit}}"],
+            ["git", "-C", str(worktree), "merge-base", "--is-ancestor", revision, "HEAD"],
             capture_output=True,
             text=True,
             check=False,
         )
         if revision_check.returncode != 0:
-            raise ValueError(f"accepted revision is unavailable: {dependency}")
-        if not isinstance(artifact_ref, str) or not artifact_ref.strip():
-            raise ValueError(f"missing artifact reference: {dependency}")
-        artifact_path = Path(artifact_ref)
-        if not artifact_path.is_absolute():
-            artifact_path = worktree / artifact_path
-        artifact_exists = artifact_path.exists()
-        if not artifact_exists:
-            artifact_check = subprocess.run(
-                ["git", "-C", str(worktree), "rev-parse", "--verify", artifact_ref],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            artifact_exists = artifact_check.returncode == 0
-        if not artifact_exists:
-            raise ValueError(f"artifact reference is unavailable: {dependency}")
+            raise ValueError(f"accepted revision is not contained in worktree: {dependency}")
+        if artifact_ref is not None:
+            if not isinstance(artifact_ref, str) or not artifact_ref.strip():
+                raise ValueError(f"invalid artifact reference: {dependency}")
+            artifact_path = Path(artifact_ref)
+            if not artifact_path.is_absolute():
+                artifact_path = worktree / artifact_path
+            artifact_exists = artifact_path.exists()
+            if not artifact_exists and artifact_ref != revision:
+                artifact_check = subprocess.run(
+                    ["git", "-C", str(worktree), "rev-parse", "--verify", artifact_ref],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                artifact_exists = artifact_check.returncode == 0
+            if not artifact_exists and artifact_ref != revision:
+                raise ValueError(f"artifact reference is unavailable: {dependency}")
     return lane
 
 
@@ -225,7 +233,6 @@ def _prepare_admission(
             if lane.get("structurally_ready") is not True:
                 record(classify_admission(lane_id, dependency_ready=False))
                 continue
-            lane = verify_launch_bindings(lane)
             if lane.get("dependency_ready") is not True:
                 record(classify_admission(lane_id, dependency_ready=False))
                 continue
@@ -666,6 +673,19 @@ def run_lane(
                 "failure_kind": "grant_invalid",
             }
     try:
+        lane = verify_launch_bindings(lane)
+    except (TypeError, ValueError, RuntimeError) as exc:
+        return {
+            "lane_id": lane_id,
+            "command": [],
+            "exit_code": None,
+            "records": [_tagged(lane_id, "unresolved", {"reason": str(exc)})],
+            "stderr": str(exc),
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "launch_binding_stale",
+        }
+    try:
         command = _launcher_command(
             lane,
             python_executable=python_executable,
@@ -874,7 +894,7 @@ def run_parallel_from_plan(
 ) -> dict[str, Any]:
     """Prepare selected plan tasks, then use existing bounded dispatch."""
 
-    lanes = prepare_lane_inputs(source, tuple(selected_task_ids), runtime_inputs_by_task)
+    lanes = prepare_plan_lanes(source, tuple(selected_task_ids), runtime_inputs_by_task)
     return run_parallel(lanes, **run_kwargs)
 def run_parallel(
     source: str | os.PathLike[str] | Mapping[str, Any] | Iterable[Mapping[str, Any]],
