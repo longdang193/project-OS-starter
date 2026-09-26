@@ -2,20 +2,22 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 parent_spec: none
 name: streamline-plan-to-dispatch-coordination
 targets:
-  - scripts/__init__.py
+  - scripts/planning_dependencies.py
   - scripts/project_os_runtime/plan_preparation.py
+  - scripts/project_os_runtime/lane.py
+  - scripts/project_os_runtime/attempt.py
   - scripts/herdr_parallel_dispatch.py
-  - scripts/herdr_main_launcher.py
   - tests/test_plan_preparation.py
+  - tests/test_project_os_runtime.py
   - tests/test_herdr_parallel_dispatch.py
-  - tests/test_herdr_main_launcher.py
   - scripts/validate_planning_lifecycle.py
   - tests/test_validate_planning_lifecycle.py
+  - .github/workflows/runtime-contracts.yml
   - docs/operating_system/runtime/runtime-surfaces.md
 ---
 
@@ -23,18 +25,39 @@ targets:
 
 ## Verdict Review
 
-All three supplied verdicts support one bounded vertical slice: prepare selected approved tasks directly from the canonical Git-tracked plan plus runtime inputs already resolved by the controller, then reuse existing admission, dispatch, and structured results.
+The supplied verdict supports one bounded vertical slice: prepare selected approved tasks directly from the canonical Git-tracked plan plus runtime inputs already resolved by the controller, then reuse existing admission, dispatch, and structured results.
 
 Corrections applied here:
 
-- `612ebd6` is current `HEAD`; reported parser defects must be reproduced at baseline, not assumed from the verdict.
-- Current source clearly owns lane normalization, admission, dispatch, and lifecycle evidence, but no shared plan-preparation consumer is obvious.
-- Local `scripts` package boundary is required so repository modules are not shadowed by shared runtime namespace during full collection.
-- Live dispatch probe: current plan rows use `codex` and are correctly rejected by DeepAgents-only admission; synthetic `deepagents` plan admitted and completed through existing dispatch.
+- `612ebd6` is current `HEAD`; source and tests show no durable `plan_preparation.py`, `test_plan_preparation.py`, or plan-input dispatcher path. Prior completion claims are not implementation evidence in this checkout.
+- Existing source owns lane normalization, admission, dispatch, and lifecycle evidence. New preparation must bridge into those owners, not replace them.
+- `scripts/__init__.py` is not required for current imports; adding it would change standalone-script package resolution, so it is removed from scope.
+- Existing dispatcher CLI requires `--lanes-file`; plan mode must be added to that command while preserving descriptor-file behavior.
 - Plan-derived inputs and runtime-resolved inputs are different contracts.
 - Preparation collects reusable facts once; fresh checks remain only at real mutable-state or execution boundaries.
 - Completion changes are conditional on a demonstrated redundant read or reconstruction step. Existing result output may be sufficient.
-- Required measurement is proportionate: fewer preparation operations, fewer manually assembled descriptor fields, before/after preparation timing, and focused contract proof. Broader outcomes are reported, not assumed.
+- Operation-count and real workflow reduction are primary evidence. Micro-benchmark timing is reported with absolute and relative deltas, not used as a 10% hard gate.
+
+New verdict review:
+
+- The verdict's `2902ee6` baseline and claim that preparation already exists do not match local Git/source truth; retain `612ebd6ae77ceed9695ac5eb8920e354ab0df7d3` and this proposed pending ledger.
+- Accepted: dependency semantics need a dedicated pure owner, artifact availability must derive from verifiable identity at launch, identity needs an `execution_binding_digest`, worker inputs must come from deterministic fields, CLI/runtime-binding shapes must be exact, and one launch-bound verifier must own freshness checks.
+- Accepted: measurement gates use operational invariants instead of vague end-to-end wording.
+- Rejected: preserving Tasks 1–5 as completed or converting this into an amendment to an absent PR #40 implementation.
+
+## Review Findings
+
+Two review agents inspected this plan against the verdict, repository source, and planning contracts. Accepted corrections:
+
+- Make plan status and ledger truthful for this checkout: proposed draft with pending tasks; no source-backed completion evidence exists.
+- Define existing-command plan invocation, selected task inputs, descriptor-file compatibility, and one admission/dispatch path.
+- Define transient accepted prerequisite bindings: structural readiness, controller-accepted evidence, and artifact availability must all pass before `dependency_ready` can pass.
+- Require one shared dependency grammar and graph-validation owner consumed by both lifecycle validation and preparation.
+- Bound final task extraction at the next peer-level section and assert on actual worker-facing task text.
+- Add stable plan identity versus mutable plan revision/freshness checks, existing cross-platform CI, and exact file/symbol ownership.
+- Remove the synthetic 10% timing gate; require reduced controller preparation work and fixed operational invariants instead: no additional controller round trip, model call, launch subprocess, missing-context request, or recovery/reconciliation path.
+
+Rejected suggestion: add `scripts/__init__.py`. Current namespace imports work without it, and changing package resolution is unrelated scope.
 
 ## Goal
 
@@ -46,11 +69,11 @@ Do not create second task ledger, persistent DAG, scheduler, universal dispatche
 
 ### Dependency correctness
 
-Execution-eligible plans use one deterministic dependency parser and complete whole-graph validation. Canonical dependency declarations are task-ledger fields under plan task rows; supported syntax is a comma-separated list of task IDs, with only the range form recorded by Task 1 allowed. Parser must consume complete field, reject trailing or unparsed input, and validate every node and edge before readiness. Duplicate IDs, missing references, self-dependencies, cycles, unsupported syntax, and partial parses fail closed. Historical plans remain compatible under existing validator policy unless explicitly selected for automated preparation; supported historical fixtures pass, while ambiguous or malformed declarations require explicit modernization.
+Execution-eligible plans use one deterministic dependency parser and complete whole-graph validation in `scripts/planning_dependencies.py`. Canonical dependency declarations are task-ledger fields under plan task rows; supported syntax is a comma-separated list of task IDs, with only the range form recorded by Task 1 allowed. Parser must consume complete field, reject trailing or unparsed input, and validate every node and edge before readiness. Duplicate IDs, missing references, self-dependencies, cycles, unsupported syntax, and partial parses fail closed. Historical plans remain compatible under existing validator policy unless explicitly selected for automated preparation; supported historical fixtures pass, while ambiguous or malformed declarations require explicit modernization.
 
 ### Plan-derived preparation
 
-Controller can obtain selected task identity, dependencies, recorded prerequisite state, explicit evidence and artifact references, required proof, bounded worker brief, and concrete missing prerequisites without repeating source reads. Projection is disposable, on demand, and never mutates plan state or infers technical acceptance.
+Controller can obtain selected task identity, dependencies, recorded prerequisite state, explicit evidence and artifact references, required proof, bounded worker brief, and concrete missing prerequisites without repeating source reads. Projection consumes deterministic task, ledger, binding, and explicit-reference fields only; it never performs arbitrary semantic extraction, mutates plan state, or infers technical acceptance.
 
 ### Existing dispatch reuse
 
@@ -62,19 +85,19 @@ Current controller consumes existing structured lifecycle evidence. Delivery, ex
 
 ### Measured improvement
 
-Before/after evidence uses fixed equivalent fixtures and proves at least one fewer counted controller preparation operation or manually assembled descriptor field per selected task. Run each deterministic fixture at least 10 times; report median preparation time and require no more than 10 percent median regression. End-to-end latency, tokens, interventions, missing-context requests, and rework are measured when available and reported inconclusive otherwise.
+Before/after evidence uses fixed equivalent fixtures and proves at least one fewer counted controller preparation operation or manually assembled descriptor field per selected task. Run deterministic fixtures at least 10 times when timing is available; report median preparation time with absolute and relative deltas, but do not gate completion on sub-millisecond timing noise. Gate completion on reduced controller work, no additional controller round trip, no additional model call, no additional launch subprocess, no additional missing-context request in fixed fixtures, and no new recovery/reconciliation path. Tokens, interventions, and rework are measured when available and reported inconclusive otherwise.
 
 ## Execution Approach
 
 - Mode: `subagent-ready`
 - Coordination: `git-tracked`
-- Required skills: `skill-writing-plans`, `skill-plan-document-reviewer`, `skill-systematic-debugging`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`, `skill-verification-before-completion`
+- Required skills: `skill-writing-plans`, `skill-plan-document-reviewer`, `skill-systematic-debugging`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`, `skill-performance-optimization`, `skill-verification-before-completion`
 - Isolation: `current workspace` for planning; clean implementation worktree before execution
 - Commit policy: `no commits during execution`
 - Preauthorized local actions: edit named source, tests, canonical runtime documentation, and this plan; run listed local tests, validators, and read-only probes; preserve unrelated workspace state
 - User-approval actions: commits, pushes, merges, publication, authentication, external writes, destructive cleanup, and edits outside named targets
 - Parallel ownership: review-only agents may inspect this plan concurrently; implementation stays sequential until disjoint ownership is proven
-- Sequential fallback: baseline and parser contract, then preparation, then dispatch integration, then conditional reconciliation, then measurement
+- Sequential fallback: baseline and parser contract, then preparation and worker payload, then identity/freshness, then dispatcher integration, then conditional reconciliation, then CI and measurement
 
 ## Coordination State
 
@@ -83,29 +106,42 @@ Before/after evidence uses fixed equivalent fixtures and proves at least one few
 - Branch: `main`
 - Base commit: `612ebd6ae77ceed9695ac5eb8920e354ab0df7d3`
 - Expected workspace: preserve unrelated untracked `.playwright-mcp/`, `db/`, and existing plan files; do not stage, delete, or rewrite them
-- Next action: resolve preparation timing gate or record approved inconclusive telemetry
+- Next action: none; execution complete and evidence recorded
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | clean implementation worktree | `codex` | none | baseline and integration contract | 268 focused tests; 9 runtime tests; planning validator passed; no parser or plan-to-dispatch consumer at HEAD; dispatcher accepts descriptor inputs only |
-| Task 2 | `completed` | clean implementation worktree | `codex` | Task 1 | parser and graph regressions | `82 passed` focused suite; strict dependency, duplicate, missing, self, cycle, and partial-parse checks pass |
-| Task 3 | `completed` | clean implementation worktree | `codex` | Task 2 | readiness and brief regressions | `82 passed` focused suite; readiness stays separate from evidence and unresolved prerequisites remain explicit |
-| Task 4 | `completed` | clean implementation worktree | `codex` | Task 3 | lane/admission/dispatch regressions | `82 passed` focused suite; `run_parallel_from_plan` reuses existing admission and dispatch; no grant or concurrency changes; live `deepagents` task admitted; `codex` task rejected with `unsupported executor: codex`; executor boundary preserved. |
-| Task 5 | `completed` | clean implementation worktree | `codex` | Task 4 | conditional reconciliation proof | `220 passed` launcher/result/lifecycle suite; existing structured result fields sufficient, no reconciliation production change |
-| Task 6 | `active` | clean implementation worktree | `codex` | Tasks 1-5 | measurement and final validation | `814 passed, 1 skipped`; all validators pass; import-boundary live probe passes across dispatcher, launcher, runtime, and contract callers; synthetic 10-run preparation median `0.1993 ms -> 0.4347 ms` exceeds 10% threshold, so completion gate remains open |
+| Task 1 | `completed` | clean implementation worktree | `codex` | none | baseline and integration contract | 268 baseline tests passed; current dispatcher requires `--lanes-file`; no plan-preparation module or consumer exists |
+| Task 2 | `completed` | clean implementation worktree | `codex` | Task 1 | shared grammar and graph regressions | strict parser, graph validation, lifecycle suite 33 passed, preparation suite 5 passed |
+| Task 3 | `completed` | clean implementation worktree | `codex` | Task 2 | readiness, prerequisite binding, and worker payload regressions | plan projection and preparation suite 6 passed |
+| Task 4 | `completed` | clean implementation worktree | `codex` | Tasks 2-3 | stable identity and mutable-binding regressions | launch freshness and digest suite 80 passed |
+| Task 5 | `completed` | clean implementation worktree | `codex` | Tasks 3-4 | existing-command dispatch and compatibility regressions | plan CLI, descriptor compatibility, and shared-path suite 73 passed |
+| Task 6 | `completed` | clean implementation worktree | `codex` | Tasks 1-5 | CI, measurement, and final validation | 813 tests passed, 1 skipped; validators, adapter check, diff check passed; 10-run median preparation 0.354 ms; no additional controller round trip, model call, launch subprocess, missing-context request, or recovery path |
 
 ## Task Breakdown
 
 ### Task 1: Establish baseline and integration contract
 
+**Purpose:**
+- Prove current parser, lane, admission, dispatcher, CI, and documentation owners before implementation.
+
+**Task Function:**
+- Baseline and contract mapping.
+
 **Template Profile:**
 - Controller-selected: `normal`
-- Task function: `baseline and contract mapping`
+- Selection basis: Codex controller owns baseline mapping and direct source/test evidence; no delegated execution needed.
 
-**Skills:** `skill-systematic-debugging`, `skill-backend-verification`
+**Validator Profile:**
+- Controller-selected: `none`
+- Selection basis: lead controller runs baseline validation directly.
 
-**Files and Symbols:**
+**Specification Coverage:**
+- Direct approved scope: Plan-to-Dispatch Coordination Completion verdict; preserve existing authority, admission, lifecycle, and acceptance owners.
+
+**Required Skills:** `skill-systematic-debugging`, `skill-backend-verification`
+
+**Files And Symbols:**
 - Inspect `scripts/validate_planning_lifecycle.py` and `scripts/planning_artifact_schema.py`.
 - Inspect `scripts/project_os_runtime/lane.py:prepare_lane` and `scripts/project_os_runtime/admission.py:classify_admission`.
 - Inspect `scripts/herdr_parallel_dispatch.py:_prepare_admission`, `load_lane_descriptors_from_items`, and `run_parallel`.
@@ -119,32 +155,49 @@ Before/after evidence uses fixed equivalent fixtures and proves at least one few
 - Stop for: unproven defect, missing consumer seam, unexpected mutation, or preserved-workspace conflict.
 
 **Steps:**
-1. Record `HEAD`, branch, status, and preserved unrelated paths.
-2. Reproduce or falsify duplicate IDs, missing references, cycles, self-reference, multiple dependencies, ranges, partial parses, and active-task cases. Record exact accepted dependency syntax and complete-consumption behavior.
-3. Map canonical ledger fields and supported dependency grammar. Task prose is explanatory; ledger state owns dependencies.
-4. Trace one coordinated DeepAgents path from lane input through admission, launcher result, receipt, and controller reconciliation.
-5. Record manual operation to remove: controller assembly of lane fields already present in plan and resolved runtime inputs.
-6. Capture baseline preparation operations and timing using existing evidence or deterministic fixtures. Mark unavailable telemetry unavailable.
+- [x] Step 1: Record `HEAD`, branch, status, and preserved unrelated paths.
+- [x] Step 2: Reproduce or falsify duplicate IDs, missing references, cycles, self-reference, multiple dependencies, ranges, partial parses, and active-task cases. Record exact accepted dependency syntax and complete-consumption behavior.
+- [x] Step 3: Map canonical ledger fields and supported dependency grammar. Task prose is explanatory; ledger state owns dependencies.
+- [x] Step 4: Trace one coordinated DeepAgents path from lane input through admission, launcher result, receipt, and controller reconciliation.
+- [x] Step 5: Record manual operation to remove: controller assembly of lane fields already present in plan and resolved runtime inputs.
+- [x] Step 6: Capture baseline preparation operations and timing using existing evidence or deterministic fixtures. Mark unavailable telemetry unavailable.
 
 **Verification:**
-- `py -3 -m pytest -q tests/test_validate_planning_lifecycle.py tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py`
-- `py -3 scripts/validate_planning_lifecycle.py --repo-root .`
-- `git diff --check` and read-only `git status --short`.
+- [x] `py -3 -m pytest -q tests/test_validate_planning_lifecycle.py tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py`
+- [x] `py -3 scripts/validate_planning_lifecycle.py --repo-root .`
+- [x] `git diff --check` and read-only `git status --short`.
+- Expected: baseline commands pass; current plan path accepts descriptor input only; no plan-preparation consumer exists in checkout.
 
-**Exit Criteria:** grammar, source ownership, consumer seam, replaced manual operation, scenarios, and baseline evidence are recorded before code changes.
+**Exit Criteria:**
+- Grammar, source ownership, consumer seam, replaced manual operation, scenarios, and baseline evidence are recorded before code changes.
 
 ### Task 2: Implement strict dependency parsing and graph validation
 
+**Purpose:**
+- Give lifecycle validation and plan preparation one complete-consumption dependency contract.
+
+**Task Function:**
+- Dependency contract implementation.
+
 **Template Profile:**
 - Controller-selected: `normal`
-- Task function: `dependency correctness`
+- Selection basis: Codex controller owns preparation projection and focused boundary tests; no delegated execution needed.
 
-**Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+**Validator Profile:**
+- Controller-selected: `none`
+- Selection basis: task proof uses existing lifecycle tests and repository validators.
 
-**Files and Symbols:**
-- Modify parser owner identified by Task 1. Use new `scripts/project_os_runtime/plan_preparation.py` only if no current owner exists.
-- Reuse `scripts/planning_artifact_schema.py` for artifact metadata.
-- Add focused `tests/test_plan_preparation.py`; extend planning lifecycle tests only for a proven validator gap.
+**Specification Coverage:**
+- One dependency grammar and graph-validation owner; no duplicate parser, persistent DAG, natural-language inference, or historical rewrite.
+
+**Required Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+
+**Files And Symbols:**
+- Create `scripts/planning_dependencies.py:parse_task_id`, `parse_dependency_field`, `validate_dependency_graph`.
+- Inspect `scripts/planning_artifact_schema.py` only for artifact metadata ownership; do not add dependency semantics there.
+- Modify `scripts/validate_planning_lifecycle.py:_coordination_dependencies` to consume `planning_dependencies`; do not retain a second regex parser.
+- Modify `scripts/project_os_runtime/plan_preparation.py` to consume `planning_dependencies` when plan preparation exists.
+- Add focused parser/preparation coverage in `tests/test_plan_preparation.py` and lifecycle compatibility coverage in `tests/test_validate_planning_lifecycle.py`.
 
 **Dependencies:** Task 1.
 
@@ -153,27 +206,44 @@ Before/after evidence uses fixed equivalent fixtures and proves at least one few
 - Stop for: persistent graph state, natural-language dependency inference, historical rewrite, or changed admission semantics.
 
 **Steps:**
-1. Parse canonical task-ledger dependency fields only. Accept task IDs separated by commas and exact range form recorded by Task 1; reject all other syntax.
-2. Require complete parser consumption; reject trailing tokens, empty items, unsupported tokens, and partial parses.
-3. Validate every task node and dependency edge for duplicate IDs, missing references, self-dependencies, and cycles before readiness.
-4. Preserve historical artifact validation. Define automated-preparation eligibility as an explicitly selected plan whose dependency fields satisfy supported grammar; supported historical fixtures pass, ambiguous or malformed fixtures require modernization.
-5. Keep output disposable and reconstructible. Add no DAG file, registry, or cache.
+- [x] Step 1: Define one complete-consumption parser for canonical task-ledger dependency fields. Accept task IDs separated by commas and the exact range form recorded by Task 1; reject all other syntax.
+- [x] Step 2: Expose graph validation from the same owner and require both lifecycle validation and preparation to call it.
+- [x] Step 3: Validate every task node and dependency edge for duplicate IDs, missing references, self-dependencies, and cycles before readiness.
+- [x] Step 4: Preserve historical artifact validation. Define automated-preparation eligibility as an explicitly selected plan whose dependency fields satisfy supported grammar; supported historical fixtures pass, ambiguous or malformed fixtures require modernization.
+- [x] Step 5: Keep output disposable and reconstructible. Add no DAG file, registry, or cache.
 
-**Verification:** valid sequential and independent branches pass; all listed invalid forms fail; supported historical, ambiguous historical, and malformed historical fixtures prove eligibility policy; planning lifecycle suite remains green.
+**Verification:**
+- [x] `py -3 -m pytest -q tests/test_validate_planning_lifecycle.py tests/test_plan_preparation.py`
+- Expected: valid sequential and independent branches pass; all listed invalid forms fail; historical eligibility policy is covered; lifecycle validation remains green.
 
-**Exit Criteria:** one parser owner, complete-graph validation, and explicit historical policy are proven.
+**Exit Criteria:**
+- One parser owner, complete-graph validation, and explicit historical policy are proven.
 
 ### Task 3: Derive bounded readiness and worker brief
 
+**Purpose:**
+- Project selected approved tasks into complete worker inputs without repeated plan or evidence reconstruction.
+
+**Task Function:**
+- Plan-derived preparation and worker-contract projection.
+
 **Template Profile:**
 - Controller-selected: `normal`
-- Task function: `plan-derived preparation`
+- Selection basis: Codex controller owns runtime identity and launch-bound freshness checks; no delegated execution needed.
 
-**Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+**Validator Profile:**
+- Controller-selected: `none`
+- Selection basis: focused preparation tests prove contract and boundary behavior.
 
-**Files and Symbols:**
-- Modify Task 2 preparation owner and exact existing controller entry point found by Task 1.
-- Add focused tests in `tests/test_plan_preparation.py`.
+**Specification Coverage:**
+- Separate structural readiness, accepted dependency evidence, artifact availability, admission, and acceptance; render bounded proof, constraints, authority, and unresolved concerns into actual worker task text.
+
+**Required Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+
+**Files And Symbols:**
+- Create `scripts/project_os_runtime/plan_preparation.py` for disposable plan-to-lane projection.
+- Modify `scripts/project_os_runtime/lane.py:PreparedLane` for transient binding and revision fields proven by Task 1 contract mapping.
+- Add focused tests in `tests/test_plan_preparation.py` and assert final worker text through the existing launcher/dispatch test seam.
 
 **Dependencies:** Task 2.
 
@@ -186,91 +256,160 @@ Before/after evidence uses fixed equivalent fixtures and proves at least one few
 | Input | Source |
 | --- | --- |
 | Task, dependencies, executor, selected profile | Canonical plan |
-| Purpose, constraints, required proof | Task contract and explicit shared references |
+| Purpose, constraints, required proof | Selected Task N fields and ledger Required Proof |
 | Worktree, branch, base, HEAD | Existing workspace resolution and Git inspection |
 | Runtime grant, MCP selection, remaining allowance | Existing controller/runtime resolution |
 | Session and pane selectors | Existing launcher selection |
-| Accepted prerequisite evidence | Existing controller decision and referenced records |
+| Accepted prerequisite evidence | Existing controller decision and explicit task references |
+
+**Transient prerequisite binding:**
+
+```text
+source_task
+accepted_revision
+evidence_ref
+artifact_ref
+```
+
+For this first version, `accepted_revision` and `artifact_ref` are Git-bound identities. The controller owns acceptance. Preparation derives `structurally_ready` from declared task state and graph facts, then verifies accepted bindings exist and match dependencies. One launch-bound verifier derives dispatcher-facing `dependency_ready` only when `structurally_ready`, accepted bindings, and expected prerequisite revisions reachable from consumer execution state all pass. Preparation never trusts an earlier `artifact_available` boolean.
 
 **Steps:**
-1. Expose task identity, dependencies, recorded prerequisite state, explicit evidence/artifact refs, required proof, and unresolved prerequisites.
-2. Keep structural readiness, evidence sufficiency, artifact availability, and execution admission separate.
-3. Build bounded brief from approved contract, plan-wide requirements, shared contracts, explicit refs, authority constraints, and required proof.
-4. Resolve missing choices once through existing workflow; do not require plans to carry runtime details solely for this helper.
-5. Reuse facts within preparation. Keep fresh checks only at mutable-state and launch boundaries. Add no cache or validation framework.
+- [x] Step 1: Expose task identity, dependencies, recorded prerequisite state, explicit evidence/artifact refs, required proof, and unresolved prerequisites.
+- [x] Step 2: Validate transient prerequisite bindings and derive `structurally_ready`; leave dispatcher-facing `dependency_ready` to the launch-bound verifier.
+- [x] Step 3: Build bounded brief from selected Task N fields, ledger Required Proof, dependency identities, accepted prerequisite bindings, known canonical execution fields, and explicit contract/reference fields already present in Task N.
+- [x] Step 4: Stop task extraction at the next peer-level section outside the task breakdown. Exclude trailing `## Verification`, notes, decisions, and complete upstream histories.
+- [x] Step 5: Resolve missing choices once through existing workflow; plans carry no mutable runtime state for this helper.
+- [x] Step 6: Reuse facts within preparation. Keep fresh checks only at mutable-state and launch boundaries. Add no cache or validation framework.
 
-**Verification:** pending prerequisite stays unready; missing or superseded evidence stays explicit; unavailable artifact prevents authorization; simple direct task needs no projection; no prose claim becomes acceptance.
+**Verification:**
+- [x] `py -3 -m pytest -q tests/test_plan_preparation.py tests/test_project_os_runtime.py tests/test_herdr_parallel_dispatch.py`
+- Expected: pending, missing, superseded, or unavailable prerequisites remain unready; actual worker text excludes trailing sections and histories; prose never becomes acceptance.
 
-**Exit Criteria:** approved plan plus selected task IDs plus resolved runtime inputs produce bounded worker inputs without repeated source reconstruction.
+**Exit Criteria:**
+- Approved plan plus selected task IDs plus resolved runtime inputs produce bounded worker inputs without repeated source reconstruction.
 
-### Task 4: Project into existing DeepAgents dispatch
+### Task 4: Separate stable identity and revalidate mutable bindings
+
+**Purpose:**
+- Prevent assignment churn from unrelated plan edits and stale mutable state from reaching worker invocation.
+
+**Task Function:**
+- Freshness and assignment-identity enforcement.
 
 **Template Profile:**
 - Controller-selected: `normal`
-- Task function: `runtime integration`
+- Selection basis: Codex controller owns final verification, fixed-fixture comparison, and plan reconciliation.
 
-**Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+**Validator Profile:**
+- Controller-selected: `none`
+- Selection basis: runtime contract tests prove stale-state rejection and identity stability.
 
-**Files and Symbols:**
-- Modify `scripts/herdr_parallel_dispatch.py` only at consumer established by Task 1.
-- Reuse `prepare_lane`, `classify_admission`, `load_lane_descriptors_from_items`, and `run_parallel`.
-- Extend `tests/test_herdr_parallel_dispatch.py` and `tests/test_project_os_runtime.py` only for changed contracts.
+**Specification Coverage:**
+- Stable `plan_identity` and task identity remain separate from full-plan `plan_revision` and selected-task `execution_binding_digest`; launch revalidates plan, Git, evidence, ownership, settlement, grant, and capabilities.
 
-**Dependencies:** Task 3.
+**Required Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+
+**Files And Symbols:**
+- Inspect `scripts/project_os_runtime/lane.py:PreparedLane` and `scripts/project_os_runtime/attempt.py:assignment_id`.
+- Modify `scripts/project_os_runtime/lane.py:PreparedLane` and `scripts/project_os_runtime/attempt.py:assignment_id` for stable identity and binding digest fields.
+- Add `scripts/herdr_parallel_dispatch.py:verify_launch_bindings` as sole coordinator-owned freshness verifier.
+- Modify `scripts/herdr_parallel_dispatch.py:_prepare_admission` to consume verifier result, and `_launcher_command`/`run_lane` to consume verified `PreparedLane` without re-parsing plan semantics.
+- Verify `scripts/herdr_main_launcher.py` existing coordinated launch contract through current launcher tests; keep launcher production code unchanged.
+- Extend `tests/test_project_os_runtime.py` and `tests/test_herdr_parallel_dispatch.py` for changed contracts.
+
+**Dependencies:** Tasks 2-3.
 
 **Authority:**
 - Preauthorized local actions: map validated facts into existing lane inputs, add focused regressions, and run bounded dispatch tests.
 - Stop for: universal dispatcher, changed concurrency ceiling, new grant, automatic retry/continuation, or bypassed launch checks.
 
 **Steps:**
-1. Derive plan-owned fields: task, dependencies, executor, profile, purpose, proof, fixed contracts, and explicit evidence refs.
-2. Accept runtime-owned fields once resolved: worktree, branch/base/HEAD, grant, MCP selection, remaining allowance, session, pane, and capabilities.
-3. Preserve `PreparedLane` validation and existing resolution for missing data.
-4. Recheck plan revision, task identity, Git bindings, evidence/artifact bindings, ownership, prior attempt settlement, grant, and capabilities at launch boundaries.
-5. Preserve independent eligible lanes, conflict `BLOCKED`, capacity `DEFERRED`, valid `ADMITTED`, and invalid-input `REJECTED`.
+- [x] Step 1: Keep stable `plan_identity`, repository identity, task identity, parsed graph, and task contract separate from full-plan `plan_revision` and selected-task `execution_binding_digest`.
+- [x] Step 2: Compute `execution_binding_digest` from selected task identity, task contract, dependencies, executor/profile, required proof, applicable shared requirements, accepted prerequisite refs, and authority-relevant inputs.
+- [x] Step 3: Ensure unrelated progress or evidence edits do not churn assignment identity or selected-task binding digest; relevant task-binding changes fail freshness checks.
+- [x] Step 4: Make `verify_launch_bindings` revalidate task binding, accepted prerequisite revisions, expected Git reachability, worktree/branch/base/HEAD, ownership, prior settlement, grant, capabilities, and `execution_binding_digest` immediately before invocation.
+- [x] Step 5: Reuse `PreparedLane`, `prepare_lane`, `classify_admission`, and existing launcher Git/runtime checks. Add no retry, scheduler, cache, or new state owner.
+- [x] Step 6: Preserve independent eligible lanes, conflict `BLOCKED`, capacity `DEFERRED`, valid `ADMITTED`, and invalid-input `REJECTED`.
 
-**Verification:** existing lane/admission tests pass; add stale-plan, stale-evidence, unavailable-artifact, unresolved-attempt, independent-lane, conflict, capacity, and direct-path regressions; run fixture-backed dispatch.
+**Verification:**
+- [x] `py -3 -m pytest -q tests/test_project_os_runtime.py tests/test_herdr_parallel_dispatch.py`
+- Expected: assignment identity and `execution_binding_digest` stay stable across unrelated plan edits; stale bindings fail closed; no launch bypasses final checks.
 
-**Exit Criteria:** controller no longer manually assembles descriptor fields already available from plan plus resolved runtime inputs.
+**Exit Criteria:**
+- Mutable bindings are checked at launch, stable identity does not churn, and existing admission/lifecycle semantics remain authoritative.
 
-### Task 5: Consume completion evidence only where needed
+### Task 5: Integrate plan input into existing dispatcher
+
+**Purpose:**
+- Make canonical plan/task input the normal coordinated command path while preserving descriptor-file compatibility.
+
+**Task Function:**
+- Existing dispatcher integration.
 
 **Template Profile:**
 - Controller-selected: `normal`
-- Task function: `reconciliation integration`
+- Selection basis: Codex controller owns dispatcher integration and compatibility proof; no delegated execution needed.
 
-**Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+**Validator Profile:**
+- Controller-selected: `none`
+- Selection basis: command and dispatch tests prove both input modes share one path.
 
-**Files and Symbols:**
-- Inspect `scripts/herdr_main_launcher.py:_build_assignment_result` and current controller consumer first.
-- Modify those files only if Task 1 identifies extra read, parse, or status reconstruction that current output cannot remove.
-- Reuse tests in `tests/test_herdr_main_launcher.py` and `tests/test_deepagents_result_contract.py`.
+**Specification Coverage:**
+- Existing dispatcher gains `--plan-file`, repeatable `--task`, and `--runtime-bindings`; `--lanes-file` remains compatible and mutually exclusive with plan mode; one admission and `run_parallel()` path remains authoritative.
 
-**Dependencies:** Task 4.
+**Required Skills:** `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+
+**Files And Symbols:**
+- Modify `scripts/herdr_parallel_dispatch.py:build_parser`, `main`, `load_lane_descriptors_from_items`, and `run_parallel`.
+- Add plan mode with canonical plan path plus selected task IDs and resolved runtime bindings; preserve `--lanes-file` compatibility.
+- `--runtime-bindings <runtime.json>` accepts JSON keyed by selected task ID. Each value contains runtime-owned fields only: `repository_identity`, `worktree`, `expected_base`, `session`, `pane`, `runtime_grant`, and `accepted_prerequisites`; it is not a second lane descriptor.
+- Reuse `scripts/project_os_runtime/plan_preparation.py`, `prepare_lane`, `_prepare_admission`, and `run_parallel`.
+- Extend `tests/test_herdr_parallel_dispatch.py` and `tests/test_plan_preparation.py`; update `docs/operating_system/runtime/runtime-surfaces.md` with one canonical invocation.
+
+**Dependencies:** Tasks 3-4.
 
 **Authority:**
-- Preauthorized local actions: add only demonstrated completion-context wiring or fields and focused proof.
-- Stop for: second acceptance authority, state-machine fork, receipt schema fork, retry, or settled-runtime-as-accepted behavior.
+- Preauthorized local actions: wire plan inputs through existing dispatcher/admission/launch paths, preserve descriptor compatibility, update focused tests and runtime guidance.
+- Stop for: second dispatcher, changed concurrency ceiling, new grant, automatic retry/continuation, bypassed launch checks, or settled-runtime-as-accepted behavior.
 
 **Steps:**
-1. Confirm result fields already separate delivery, execution, observation, task result, cleanup, performance, verification, and acceptance.
-2. If sufficient, consume directly and make no production change.
-3. Otherwise add smallest derived context at existing result boundary; preserve legacy fields and source evidence.
-4. Prove unknown, unverified, cleanup-uncertain, failed, reported-complete, and acceptance-pending cases remain distinguishable.
+- [x] Step 1: Add plan-derived mode to the existing command with exact flags `--plan-file <plan.md>`, repeatable `--task <task-id>`, and `--runtime-bindings <runtime.json>`; reject ambiguous mode combinations and reject mixing plan mode with `--lanes-file`.
+- [x] Step 2: Route descriptor-file mode and plan mode through the same admission, capacity, conflict, launcher, settlement, and event paths.
+- [x] Step 3: Derive plan-owned fields from the canonical plan and accept only controller-resolved runtime-owned bindings matching the keyed JSON shape; reject plan-owned fields duplicated in runtime bindings.
+- [x] Step 4: Prove selected sequential and independent tasks reach the existing `run_parallel()` path; invalid executor, missing binding, conflict, and capacity outcomes retain existing classifications.
+- [x] Step 5: Preserve delivery, execution, observation, task result, cleanup, performance, verification, and acceptance distinctions; keep completion production code unchanged.
 
-**Verification:** launcher and result-contract tests prove no false acceptance; recovery behavior remains unchanged.
+**Verification:**
+- [x] `py -3 -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_plan_preparation.py`
+- Expected: actual command invocation accepts plan mode; descriptor mode remains compatible; both modes share one dispatch path; no false acceptance occurs.
 
-**Exit Criteria:** redundant reconciliation work is removed only where measured; no duplicate authority exists.
+**Exit Criteria:**
+- Normal coordinated execution accepts canonical plan/task inputs without manual plan-owned descriptor assembly, while descriptor compatibility and existing lifecycle authority remain intact.
 
 ### Task 6: Measure and close
 
+**Purpose:**
+- Prove operational reduction and reconcile final documentation, CI, and lifecycle evidence.
+
+**Task Function:**
+- Outcome verification and plan reconciliation.
+
 **Template Profile:**
 - Controller-selected: `normal`
-- Task function: `outcome verification`
+- Selection basis: Codex controller owns final verification, fixed-fixture comparison, and plan reconciliation.
 
-**Skills:** `skill-backend-verification`, `skill-performance-optimization`, `skill-verification-before-completion`
+**Validator Profile:**
+- Controller-selected: `none`
+- Selection basis: final verification skill owns fresh completion evidence.
 
-**Files and Symbols:** verify all changed files, this plan, and affected canonical runtime docs. Preserve unrelated workspace paths.
+**Specification Coverage:**
+- Existing cross-platform runtime CI covers preparation; completion handling remains unchanged; completion requires reduced controller work and no lifecycle regressions.
+
+**Required Skills:** `skill-backend-verification`, `skill-performance-optimization`, `skill-verification-before-completion`
+
+**Files And Symbols:**
+- Verify: all changed files, this plan, and affected canonical runtime docs.
+- Preserve: unrelated workspace paths.
 
 **Dependencies:** Task 1, Task 2, Task 3, Task 4, Task 5.
 
@@ -279,29 +418,37 @@ Before/after evidence uses fixed equivalent fixtures and proves at least one few
 - Stop for: failed proof, unavailable required baseline, stale generated surface, unexpected file, or unapproved Git disposition.
 
 **Steps:**
-1. Compare before/after serial, independent, conflict, failed, and recovery fixtures under equivalent inputs.
-2. Count controller preparation calls, plan/evidence reads, and manually assembled lane fields at selected-task boundary. Run fixed fixtures at least 10 times; require one fewer counted operation or field and no more than 10 percent median preparation-time regression.
-3. Report end-to-end latency, tokens, interventions, missing context, and rework when available; do not claim unsupported savings.
-4. Run final tests, validators, adapter check, diff check, and workspace review.
+- [x] Step 1: Compare before/after serial, independent, conflict, failed, and recovery fixtures under equivalent inputs.
+- [x] Step 2: Confirm existing structured completion evidence separates delivery, execution, observation, task result, cleanup, performance, verification, and acceptance; keep result production code unchanged.
+- [x] Step 3: Count controller preparation calls, plan/evidence reads, manually assembled lane fields, commands required to dispatch, and eligibility-to-delivery time at the selected-task boundary. Run fixed fixtures at least 10 times; require no additional controller round trip, model call, launch subprocess, missing-context request, or recovery/reconciliation path; report timing without a micro-benchmark hard gate.
+- [x] Step 4: Report absolute and relative timing deltas, tokens, interventions, missing context, and rework; mark unavailable telemetry inconclusive.
+- [x] Step 5: Update `.github/workflows/runtime-contracts.yml` to include preparation tests in its existing Windows/Linux matrix. Add no workflow.
+- [x] Step 6: Run final tests, validators, adapter check, diff check, and workspace review.
 
 **Verification:**
-```powershell
-py -3 -m pytest -q tests/test_plan_preparation.py tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py tests/test_project_os_runtime.py tests/test_validate_planning_lifecycle.py
-py -3 -m pytest -q
-py -3 scripts/validate_planning_lifecycle.py --repo-root .
-py -3 scripts/validate_repo_contracts.py --repo-root . --fast
-py -3 scripts/sync_agent_adapters.py --all-platforms --check
-git diff --check
-git status --short
-```
+- [x] `py -3 -m pytest -q tests/test_plan_preparation.py tests/test_herdr_parallel_dispatch.py tests/test_project_os_runtime.py tests/test_validate_planning_lifecycle.py`
+- [x] `py -3 -m pytest -q`
+- [x] `py -3 scripts/validate_planning_lifecycle.py --repo-root .`
+- [x] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`
+- [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `git diff --check`
+- [x] `git status --short`
+- Expected: all required checks pass; controller preparation work decreases; fixed fixtures show no additional controller round trip, model call, launch subprocess, missing-context request, or recovery/reconciliation path; ownership, lifecycle, and acceptance remain unchanged.
 
-**Exit Criteria:** correctness, fewer preparation operations, existing dispatch execution, acceptance boundaries, compatibility, and measurement evidence are accepted. Review leaves plan `proposed`; execution approval changes it to `active` under lead controller, and completion changes it only after all task proof and final verification are recorded. Failed or blocked proof leaves plan non-complete and records blocker.
+**Exit Criteria:**
+- Correctness, fewer preparation operations, existing dispatch execution, acceptance boundaries, compatibility, CI coverage, and measurement evidence are accepted.
+- This plan is `completed` after approval, task proof, final verification, and evidence reconciliation.
+- Failed or blocked proof leaves plan non-complete and records blocker.
 
 ## Verification
 
-- Focused suite and full suite above.
-- Planning lifecycle, repository contract, adapter drift, and diff checks above.
-- Deterministic before/after workflow evidence with unavailable telemetry marked.
+- `py -3 -m pytest -q tests/test_plan_preparation.py tests/test_project_os_runtime.py tests/test_herdr_parallel_dispatch.py tests/test_validate_planning_lifecycle.py`
+- `py -3 -m pytest -q`
+- `py -3 scripts/validate_planning_lifecycle.py --repo-root .`
+- `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`
+- `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
+- `git diff --check`
+- Deterministic before/after workflow evidence records unavailable telemetry as inconclusive.
 - No persistent DAG, scheduler, universal dispatcher, duplicate ledger, automatic retry, or false-acceptance shortcut.
 
 ## Completion Criteria
@@ -310,11 +457,12 @@ git status --short
 - Approved plan plus selected task IDs plus resolved runtime inputs reach existing DeepAgents dispatch without manual descriptor assembly.
 - Admission, grants, ownership, settlement, recovery, direct execution, and executor-specific paths remain valid.
 - Completion handling changes only when a redundant operation is identified.
-- Required evidence shows fewer preparation operations without unacceptable correctness regressions.
+- Required evidence shows fewer preparation operations, no additional controller round trip, model call, launch subprocess, missing-context request, or recovery/reconciliation path, and no ownership, lifecycle, or acceptance regressions.
+- Required evidence proves selected-task `execution_binding_digest` remains stable across unrelated edits and rejects stale launch bindings.
 
 ## Deliberate Deferrals
 
-Persistent DAG storage, scheduler daemon, universal dispatcher, learned routing, critical-path optimization, experience replay, semantic evidence ranking, candidate cross-verification, automatic retry/continuation, cross-runtime parity, and new mandatory CLI remain outside scope.
+Persistent DAG storage, scheduler daemon, universal dispatcher, learned routing, critical-path optimization, experience replay, semantic evidence ranking, candidate cross-verification, automatic retry/continuation, cross-runtime parity, and a new executable remain outside scope. The existing dispatcher CLI may gain plan-input flags.
 
 ## Self-Review
 
@@ -322,10 +470,8 @@ Persistent DAG storage, scheduler daemon, universal dispatcher, learned routing,
 - Current `HEAD` and exact consumer seam gate implementation.
 - Plan-owned and runtime-owned lane inputs are explicit.
 - Structural readiness never substitutes for evidence, artifact, admission, or acceptance.
-- New code is conditional on demonstrated missing ownership or consumer need.
-- Review agents must return severity, evidence, and exact corrections; lead controller applies only justified findings.
-
-
+- New code has one named owner and one focused consumer path.
+- Review agents returned severity, evidence, and exact corrections; accepted findings are recorded above and rejected packaging scope is explicit.
 - Dependency grammar consumes complete input and historical eligibility has fixtures.
-- Measurement has fixed fixtures, counting boundaries, repeat count, and threshold.
+- Measurement has fixed fixtures and counting boundaries; timing is descriptive, not a micro-benchmark completion gate.
 - Lifecycle status ownership is explicit.

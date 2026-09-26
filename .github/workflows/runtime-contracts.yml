@@ -22,4 +22,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt
-      - run: python -m pytest tests/test_project_os_runtime.py tests/test_deepagents_result_contract.py tests/test_deepagents_runtime_patch.py tests/test_dcode_project.py tests/test_deploy_agent_runtime.py tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_herdr_parallel_dispatch.py tests/test_setup_deepagents_runtime_contract.py -q
+      - run: python -m pytest tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_deepagents_result_contract.py tests/test_deepagents_runtime_patch.py tests/test_dcode_project.py tests/test_deploy_agent_runtime.py tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_herdr_parallel_dispatch.py tests/test_setup_deepagents_runtime_contract.py -q

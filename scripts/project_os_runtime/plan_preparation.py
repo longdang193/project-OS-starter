@@ -8,7 +8,25 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import time
 from typing import Any
+
+from .attempt import WHOLE_ATTEMPT_WALL_CLOCK_SECONDS, execution_binding_digest, normalize_runtime_grant
+from .capabilities import DEFAULT_LOCAL_CAPABILITIES
+try:
+    from ..planning_dependencies import (
+        DependencyContractError,
+        parse_dependency_field,
+        parse_task_id,
+        validate_dependency_graph,
+    )
+except ImportError:
+    from planning_dependencies import (
+        DependencyContractError,
+        parse_dependency_field,
+        parse_task_id,
+        validate_dependency_graph,
+    )
 
 
 _TASK_ROW_HEADER = ("task", "state", "workspace", "executor", "depends on", "required proof", "evidence")
@@ -18,6 +36,17 @@ _SINGLE_DEPENDENCY = re.compile(r"^Task\s+(\d+)$", re.IGNORECASE)
 _NAMED_DEPENDENCIES = re.compile(r"^Task\s+\d+(?:\s*,\s*Task\s+\d+)+$", re.IGNORECASE)
 _NUMBERED_DEPENDENCIES = re.compile(r"^Tasks?\s+\d+(?:\s*,\s*\d+)+$", re.IGNORECASE)
 _RANGE_DEPENDENCY = re.compile(r"^Tasks?\s+(\d+)\s*-\s*(?:Task\s+)?(\d+)$", re.IGNORECASE)
+_BINDING_FIELDS = frozenset(
+    {
+        "repository_identity",
+        "worktree",
+        "expected_base",
+        "session",
+        "pane",
+        "runtime_grant",
+        "accepted_prerequisites",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,23 +116,10 @@ def _canonical_task_id(value: str) -> str:
 
 
 def _parse_dependencies(value: str) -> tuple[str, ...]:
-    normalized = _cell(value)
-    if not normalized or normalized.casefold() == "none":
-        return ()
-    match = _SINGLE_DEPENDENCY.fullmatch(normalized)
-    if match:
-        return (f"Task {int(match.group(1))}",)
-    if _NAMED_DEPENDENCIES.fullmatch(normalized):
-        return tuple(f"Task {int(number)}" for number in re.findall(r"\d+", normalized))
-    if _NUMBERED_DEPENDENCIES.fullmatch(normalized):
-        return tuple(f"Task {int(number)}" for number in re.findall(r"\d+", normalized))
-    match = _RANGE_DEPENDENCY.fullmatch(normalized)
-    if match:
-        start, end = (int(item) for item in match.groups())
-        if start > end:
-            raise ValueError(f"dependency range is reversed: {value}")
-        return tuple(f"Task {number}" for number in range(start, end + 1))
-    raise ValueError(f"unsupported or partially parsed dependencies: {value}")
+    try:
+        return tuple(parse_dependency_field(_cell(value)))
+    except DependencyContractError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _section(text: str, heading: str) -> str:
@@ -172,6 +188,11 @@ def parse_plan(text: str) -> PlanGraph:
         )
     if not tasks:
         raise ValueError("plan task ledger has no rows")
+
+    try:
+        validate_dependency_graph({task_id: task.dependencies for task_id, task in tasks.items()})
+    except DependencyContractError as exc:
+        raise ValueError(str(exc)) from exc
 
     for task in tasks.values():
         for dependency in task.dependencies:
@@ -291,4 +312,145 @@ def prepare_lane_inputs(
     return lanes
 
 
-__all__ = ["PlanGraph", "PlanTask", "PreparedTask", "load_plan", "parse_plan", "prepare_lane_inputs", "prepare_task"]
+def _frontmatter_value(text: str, name: str) -> str | None:
+    match = re.match(r"(?ms)^---\s*\n(.*?)\n---\s*\n", text)
+    if match is None:
+        return None
+    value = re.search(rf"(?im)^{re.escape(name)}:\s*(.+?)\s*$", match.group(1))
+    return value.group(1).strip().strip("'\"") if value else None
+
+
+def _bounded_task_text(text: str, task_id: str, title: str) -> str:
+    match = re.search(
+        rf"(?ims)^###\s+{re.escape(task_id)}:\s*[^\n]*\n(.*?)(?=^###\s+Task\s+\d+:|^##\s|\Z)",
+        text,
+    )
+    if match is None:
+        raise ValueError(f"missing task section: {task_id}")
+    return f"{task_id}: {title.strip()}\n\n{match.group(1).strip()}"
+
+
+def _write_set(body: str) -> list[str]:
+    values: list[str] = []
+    section = re.search(r"(?ims)^\*\*Files And Symbols:\*\*\s*\n(.*?)(?=^\*\*[^*\n]+:\*\*\s*$|\Z)", body)
+    for line in (section.group(1) if section else "").splitlines():
+        if not re.match(r"\s*-\s*(?:Create|Modify|Add|Update|Delete)", line, re.IGNORECASE):
+            continue
+        values.extend(item.split(":", 1)[0] for item in re.findall(r"`([^`]+)`", line))
+    return list(dict.fromkeys(values)) or ["docs/superpowers/plans"]
+
+
+def _runtime_grant(value: object) -> dict[str, Any]:
+    if value is None:
+        return {"turns": "native", "wall_clock_seconds": "native", "child_agents": "deny", "mcp_select": []}
+    if not isinstance(value, Mapping):
+        raise ValueError("runtime_grant must be a mapping")
+    return normalize_runtime_grant(dict(value), executor="deepagents")
+
+
+def _accepted_prerequisites(task: PlanTask, value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("accepted_prerequisites must be a mapping")
+    accepted = {str(key): item for key, item in value.items()}
+    for dependency in task.dependencies:
+        binding = accepted.get(dependency)
+        if not isinstance(binding, Mapping):
+            raise ValueError(f"missing accepted prerequisite binding: {dependency}")
+        if not isinstance(binding.get("accepted_revision"), str) or not binding["accepted_revision"].strip():
+            raise ValueError(f"missing accepted revision: {dependency}")
+        if not isinstance(binding.get("artifact_ref"), str) or not binding["artifact_ref"].strip():
+            raise ValueError(f"missing artifact reference: {dependency}")
+        if "artifact_available" in binding:
+            raise ValueError("artifact_available is not an accepted prerequisite input")
+    return accepted
+
+
+def prepare_plan_lanes(
+    plan_file: str | Path,
+    task_ids: Sequence[str],
+    runtime_bindings: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    plan_path = Path(plan_file)
+    text = plan_path.read_text(encoding="utf-8")
+    if (_frontmatter_value(text, "status") or "").casefold() != "active":
+        raise ValueError("plan must be active before dispatch")
+    if not isinstance(runtime_bindings, Mapping):
+        raise ValueError("runtime bindings must be keyed by task ID")
+    graph = parse_plan(text)
+    selected = [_canonical_task_id(task_id) for task_id in task_ids]
+    if not selected:
+        raise ValueError("at least one task is required")
+    if len(set(selected)) != len(selected):
+        raise ValueError("duplicate selected task")
+    unknown = sorted(set(selected) - set(graph.tasks))
+    if unknown:
+        raise ValueError(f"unknown selected task: {unknown[0]}")
+    plan_identity = _frontmatter_value(text, "name") or plan_path.stem
+    plan_revision = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    lanes: list[dict[str, Any]] = []
+    for task_id in selected:
+        task = graph.tasks[task_id]
+        binding = runtime_bindings.get(task_id)
+        if not isinstance(binding, Mapping):
+            raise ValueError(f"missing runtime binding: {task_id}")
+        extra = set(binding) - _BINDING_FIELDS
+        missing = _BINDING_FIELDS - set(binding)
+        if extra:
+            raise ValueError(f"runtime binding contains plan-owned fields: {sorted(extra)[0]}")
+        if missing:
+            raise ValueError(f"runtime binding missing field: {sorted(missing)[0]}")
+        if task.executor.casefold() != "deepagents":
+            raise ValueError(f"unsupported task executor: {task.executor}")
+        if not task.profile or task.profile.casefold() in {"unresolved", "none", "none (lead controller)"}:
+            raise ValueError(f"task profile unresolved: {task_id}")
+        accepted = _accepted_prerequisites(task, binding["accepted_prerequisites"])
+        structurally_ready = task.state in {"pending", "active"} and all(
+            graph.tasks[dependency].state == "completed" for dependency in task.dependencies
+        )
+        grant = _runtime_grant(binding["runtime_grant"])
+        task_text = _bounded_task_text(text, task_id, task.title)
+        descriptor = {
+            "lane_id": task_id.lower().replace(" ", "-"),
+            "repository_identity": binding["repository_identity"],
+            "plan_identity": plan_identity,
+            "plan_revision": plan_revision,
+            "task": task_text,
+            "executor": task.executor.casefold(),
+            "profile": task.profile,
+            "worktree": binding["worktree"],
+            "expected_base": binding["expected_base"],
+            "session": binding["session"],
+            "pane": binding["pane"],
+            "allowed_write_set": _write_set(task_text),
+            "dependencies": list(task.dependencies),
+            "dependency_ready": structurally_ready,
+            "structurally_ready": structurally_ready,
+            "accepted_prerequisites": accepted,
+            "fixed_contracts": ["plan-to-dispatch-v1"],
+            "mutable_resources": [task_id],
+            "grant_turns": grant["turns"],
+            "grant_wall_clock_seconds": grant["wall_clock_seconds"],
+            "grant_child_agents": grant["delegation"]["child_agents"],
+            "mcp_select": grant["mcp_select"],
+            "runtime_grant": grant,
+            "local_capabilities": list(DEFAULT_LOCAL_CAPABILITIES),
+            "remaining_authorized_task_allowance": WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+            "attempt_deadline": time.monotonic() + WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+            "target": task_id,
+            "name": task.title,
+        }
+        descriptor["execution_binding_digest"] = execution_binding_digest(descriptor)
+        lanes.append(descriptor)
+    return lanes
+
+
+__all__ = [
+    "PlanGraph",
+    "PlanTask",
+    "PreparedTask",
+    "load_plan",
+    "parse_plan",
+    "prepare_lane_inputs",
+    "prepare_plan_lanes",
+    "prepare_task",
+]

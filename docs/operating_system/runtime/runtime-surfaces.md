@@ -19,6 +19,22 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
 | `scripts/ocr_delegate_adapter.py` | Canonical optional range-only OCR preparation adapter; native review remains authoritative |
 
+## Plan Dispatch
+
+Use existing dispatcher admission and execution paths with canonical plan input:
+
+```powershell
+py scripts/herdr_parallel_dispatch.py `
+  --plan-file <plan.md> `
+  --task "Task 3" `
+  --runtime-bindings <runtime.json>
+```
+
+`runtime.json` is keyed by task ID and contains only runtime-owned fields:
+`repository_identity`, `worktree`, `expected_base`, `session`, `pane`,
+`runtime_grant`, and `accepted_prerequisites`. Plan mode is mutually exclusive
+with `--lanes-file`; both modes share admission and `run_parallel()`.
+
 ## Deployed Runtime Projections
 
 | Projection | Role |

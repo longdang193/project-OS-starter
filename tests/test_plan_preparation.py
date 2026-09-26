@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
+import textwrap
 import pytest
 
+from scripts import herdr_parallel_dispatch as dispatcher
 from scripts.project_os_runtime.plan_preparation import (
+    load_plan,
     parse_plan,
     prepare_lane_inputs,
+    prepare_plan_lanes,
     prepare_task,
 )
+from scripts.project_os_runtime.lane import prepare_lane
+from scripts.planning_dependencies import parse_dependency_field, validate_dependency_graph
 
 
 PLAN = """# Plan
@@ -163,3 +170,106 @@ def test_prepare_lane_inputs_rejects_stale_plan_identity() -> None:
             ["Task 2"],
             {"Task 2": {"plan_identity": "stale-plan"}},
         )
+
+
+def _active_plan() -> str:
+    return textwrap.dedent(
+        """
+        ---
+        artifact_type: plan
+        template_id: implementation-plan
+        contract_version: "1"
+        status: active
+        layer: change
+        name: demo-plan
+        ---
+
+        # Demo
+
+        ## Coordination State
+
+        | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | Task 1 | `completed` | current | `deepagents` | none | proof | recorded |
+        | Task 2 | `active` | current | `deepagents` | Task 1 | proof | pending |
+
+        ## Task Breakdown
+
+        ### Task 1: First
+        **Template Profile:**
+        - Controller-selected: `normal`
+
+        ### Task 2: Second
+        **Purpose:**
+        - Second task.
+
+        **Template Profile:**
+        - Controller-selected: `normal`
+
+        **Files And Symbols:**
+        - Modify: `scripts/example.py:run`
+
+        **Authority:**
+        - Preauthorized local actions: edit source.
+        - Stop for: failed proof.
+
+        ## Verification
+
+        This section must not enter worker task text.
+        """
+    ).strip() + "\n"
+
+
+def _binding(tmp_path: Path) -> dict[str, object]:
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    return {
+        "repository_identity": "project-OS-starter",
+        "worktree": str(tmp_path),
+        "expected_base": head,
+        "session": "session",
+        "pane": "pane",
+        "runtime_grant": {},
+        "accepted_prerequisites": {
+            "Task 1": {"accepted_revision": head, "artifact_ref": head}
+        },
+    }
+
+
+def test_shared_dependency_parser_rejects_partial_input() -> None:
+    assert parse_dependency_field("Tasks 1–2, Task 4") == ["Task 1", "Task 2", "Task 4"]
+    with pytest.raises(ValueError):
+        parse_dependency_field("Task 1 trailing")
+    with pytest.raises(ValueError):
+        validate_dependency_graph({"Task 1": ["Task 2"], "Task 2": ["Task 1"]})
+
+
+def test_prepare_plan_lanes_bounds_worker_text_and_binding_digest(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan(), encoding="utf-8")
+    lane = prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": _binding(tmp_path)})[0]
+
+    assert lane["plan_identity"] == "demo-plan"
+    assert lane["dependency_ready"] is True
+    assert "This section must not enter worker task text" not in lane["task"]
+    assert lane["execution_binding_digest"] == prepare_lane(lane)["execution_binding_digest"]
+
+
+def test_prepare_plan_lanes_rejects_stale_binding(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan(), encoding="utf-8")
+    lane = prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": _binding(tmp_path)})[0]
+    lane["execution_binding_digest"] = "0" * 64
+    prepared = prepare_lane(lane)
+
+    with pytest.raises(ValueError, match="execution_binding_digest"):
+        dispatcher.verify_launch_bindings(prepared)
+
+
+def test_prepare_plan_lanes_rejects_plan_owned_runtime_fields(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(_active_plan(), encoding="utf-8")
+    binding = _binding(tmp_path)
+    binding["artifact_available"] = True  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="plan-owned fields"):
+        prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": binding})
