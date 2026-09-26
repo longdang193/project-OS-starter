@@ -19,6 +19,34 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
 | `scripts/ocr_delegate_adapter.py` | Canonical optional range-only OCR preparation adapter; native review remains authoritative |
 
+## Plan Dispatch
+
+Use existing dispatcher admission and execution paths with canonical plan input:
+
+```powershell
+py scripts/herdr_parallel_dispatch.py `
+  --plan-file <plan.md> `
+  --task "Task 3" `
+  --runtime-bindings <runtime.json>
+```
+
+`runtime.json` is keyed by task ID and contains only runtime-owned fields:
+`repository_identity`, `worktree`, `expected_base`, `session`, `pane`,
+`runtime_grant`, `allowed_write_set`, `fixed_contracts`, `mutable_resources`,
+`local_capabilities`, `remaining_authorized_task_allowance`, `attempt_deadline`,
+and `accepted_prerequisites`. Optional launcher-owned fields may pass through
+without plan-derived defaults. `prepare_plan_lanes()` is the single
+execution-eligible preparation owner; `prepare_lane_inputs()` is a compatibility
+adapter to that owner. Plan mode is mutually exclusive with `--lanes-file`;
+both modes share admission, launch-bound freshness verification, and
+`run_parallel()`.
+
+Canonical plan input projects plan goal, the complete selected task section,
+accepted prerequisite identities, non-duplicative required proof, and the
+allowlisted shared constraints `Required skills`, `Preauthorized local actions`,
+`User-approval actions`, and `Parallel ownership`. Runtime authority and
+resources remain caller-owned through `runtime.json`.
+
 ## Deployed Runtime Projections
 
 | Projection | Role |
@@ -52,7 +80,9 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 - Plan plus Git owns workflow truth, authority, dependencies, checkpoints, and acceptance history.
 - CoS owns assignment, continuation, escalation, and acceptance decisions.
 - `scripts/project_os_runtime/` owns lane preparation, admission, capability/evidence semantics, budget containment, settlement proof, lifecycle, and eligibility semantics. `scripts/herdr_attempt_contract.py` remains a compatibility forwarding surface.
+- `prepare_plan_lanes()` admits selected tasks only when their recorded state is `pending` or `active`; `blocked` and `completed` fail before lane construction. Predecessor completion remains a separate structural-readiness fact.
 - `scripts/herdr_parallel_dispatch.py` owns bounded scheduling, invocation, and event delivery; `scripts/herdr_main_launcher.py` owns Herdr transport and observation.
+- Herdr CLI status is nonzero when any result has unresolved ownership or a non-null `failure_kind`; lifecycle facts such as `unresolved: false` and `capacity: retired` remain unchanged for safely settled failures.
 - `scripts/dcode_project.py` owns worker execution, deadlines, PATH availability, descendants, cleanup, receipts, and same-worktree attempt claims; the shared runtime core owns lifecycle classification and eligibility.
 - Herdr observation never proves retirement, authorizes retry, or accepts work.
 - Ordinary personal-local probes may invoke `dcode-project` directly. Coordinated Git-tracked work enters through `herdr_main_launcher.py` or `herdr_parallel_dispatch.py`, which supplies correlated identity and grant evidence.

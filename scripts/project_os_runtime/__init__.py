@@ -30,6 +30,16 @@ from .capabilities import (
     normalize_local_capabilities,
 )
 from .lane import PreparedLane, prepare_lane
+from .plan_preparation import (
+    PlanGraph,
+    PlanTask,
+    PreparedTask,
+    load_plan,
+    parse_plan,
+    prepare_lane_inputs,
+    prepare_plan_lanes,
+    prepare_task,
+)
 from .admission import (
     ADMISSION_STATES,
     AdmissionBatch,
@@ -80,6 +90,9 @@ __all__ = [
     "AdmissionBatch",
     "AdmissionResult",
     "PreparedLane",
+    "PlanGraph",
+    "PlanTask",
+    "PreparedTask",
     "WORKER_STATES",
     "assignment_id",
     "attempt_decision",
@@ -98,6 +111,11 @@ __all__ = [
     "normalize_runtime_grant",
     "parse_result_receipt",
     "parse_task_result",
+    "parse_plan",
+    "load_plan",
+    "prepare_lane_inputs",
+    "prepare_plan_lanes",
+    "prepare_task",
     "prepare_lane",
     "publish_task_result",
     "remaining_attempt_seconds",

@@ -28,6 +28,7 @@ try:
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
+        execution_binding_digest as _execution_binding_digest,
         normalize_runtime_grant,
         resolve_attempt_budget,
         settlement_decision,
@@ -39,6 +40,7 @@ except ModuleNotFoundError:
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
         assignment_id as _assignment_id,
         grant_digest as _contract_grant_digest,
+        execution_binding_digest as _execution_binding_digest,
         normalize_runtime_grant,
         resolve_attempt_budget,
         settlement_decision,
@@ -64,6 +66,10 @@ except ModuleNotFoundError:
         resource_sets_conflict,
         validate_admission_results,
     )
+try:
+    from project_os_runtime.plan_preparation import prepare_plan_lanes
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.plan_preparation import prepare_plan_lanes
 
 
 MAX_CONCURRENCY = 2
@@ -96,6 +102,73 @@ def _grant_digest(executor: str, runtime_grant: Mapping[str, Any]) -> str:
 
 def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
     return {"lane_id": str(lane.get("lane_id", "<missing>")), "reason": reason}
+
+
+def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
+    """Revalidate plan-bound facts immediately before launch."""
+    if lane.get("execution_binding_digest") is None:
+        return lane
+    expected_digest = _execution_binding_digest(lane)
+    if lane["execution_binding_digest"] != expected_digest:
+        raise ValueError("execution_binding_digest does not match selected task binding")
+    worktree = Path(str(lane["worktree"]))
+    if not worktree.is_dir():
+        raise ValueError("worktree does not exist")
+    plan_source = lane.get("plan_source")
+    plan_revision = lane.get("plan_revision")
+    if plan_source is not None:
+        if not isinstance(plan_revision, str) or not plan_revision.strip():
+            raise ValueError("plan revision is missing for plan source")
+        try:
+            current_revision = _sha256_text(Path(str(plan_source)).read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ValueError("plan source is unavailable") from exc
+        if current_revision != plan_revision:
+            raise ValueError("plan revision changed after admission")
+    expected_base = str(lane["expected_base"])
+    base_check = subprocess.run(
+        ["git", "-C", str(worktree), "merge-base", "--is-ancestor", expected_base, "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if base_check.returncode != 0:
+        raise ValueError("expected_base is not reachable from worktree HEAD")
+    accepted = lane.get("accepted_prerequisites", {})
+    for dependency in lane.get("dependencies", ()):
+        binding = accepted.get(dependency) if isinstance(accepted, Mapping) else None
+        if not isinstance(binding, Mapping):
+            raise ValueError(f"missing accepted prerequisite binding: {dependency}")
+        revision = binding.get("accepted_revision")
+        artifact_ref = binding.get("artifact_ref")
+        if not isinstance(revision, str) or not revision.strip():
+            raise ValueError(f"missing accepted revision: {dependency}")
+        revision_check = subprocess.run(
+            ["git", "-C", str(worktree), "merge-base", "--is-ancestor", revision, "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if revision_check.returncode != 0:
+            raise ValueError(f"accepted revision is not contained in worktree: {dependency}")
+        if artifact_ref is not None:
+            if not isinstance(artifact_ref, str) or not artifact_ref.strip():
+                raise ValueError(f"invalid artifact reference: {dependency}")
+            artifact_path = Path(artifact_ref)
+            if not artifact_path.is_absolute():
+                artifact_path = worktree / artifact_path
+            artifact_exists = artifact_path.exists()
+            if not artifact_exists and artifact_ref != revision:
+                artifact_check = subprocess.run(
+                    ["git", "-C", str(worktree), "rev-parse", "--verify", artifact_ref],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                artifact_exists = artifact_check.returncode == 0
+            if not artifact_exists and artifact_ref != revision:
+                raise ValueError(f"artifact reference is unavailable: {dependency}")
+    return lane
 
 
 def _admit_lanes(
@@ -153,13 +226,16 @@ def _prepare_admission(
         if lane.get("executor") != "deepagents":
             record(classify_admission(lane_id, executor=lane.get("executor")))
             continue
-        if lane.get("dependency_ready") is not True:
-            record(classify_admission(lane_id, dependency_ready=False))
-            continue
         preparation_error: str | None = None
         try:
             if not isinstance(lane, PreparedLane):
                 lane = prepare_lane(lane)
+            if lane.get("structurally_ready") is not True:
+                record(classify_admission(lane_id, dependency_ready=False))
+                continue
+            if lane.get("dependency_ready") is not True:
+                record(classify_admission(lane_id, dependency_ready=False))
+                continue
             resolve_attempt_budget(
                 lane["grant_wall_clock_seconds"],
                 lane["remaining_authorized_task_allowance"],
@@ -597,6 +673,19 @@ def run_lane(
                 "failure_kind": "grant_invalid",
             }
     try:
+        lane = verify_launch_bindings(lane)
+    except (TypeError, ValueError, RuntimeError) as exc:
+        return {
+            "lane_id": lane_id,
+            "command": [],
+            "exit_code": None,
+            "records": [_tagged(lane_id, "unresolved", {"reason": str(exc)})],
+            "stderr": str(exc),
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "launch_binding_stale",
+        }
+    try:
         command = _launcher_command(
             lane,
             python_executable=python_executable,
@@ -796,6 +885,17 @@ def load_lane_descriptors_from_items(
     return _admit_lanes(lanes, max_concurrency=max_concurrency)
 
 
+
+def run_parallel_from_plan(
+    source: str | os.PathLike[str],
+    selected_task_ids: Iterable[str],
+    runtime_inputs_by_task: Mapping[str, Mapping[str, Any]],
+    **run_kwargs: Any,
+) -> dict[str, Any]:
+    """Prepare selected plan tasks, then use existing bounded dispatch."""
+
+    lanes = prepare_plan_lanes(source, tuple(selected_task_ids), runtime_inputs_by_task)
+    return run_parallel(lanes, **run_kwargs)
 def run_parallel(
     source: str | os.PathLike[str] | Mapping[str, Any] | Iterable[Mapping[str, Any]],
     *,
@@ -897,20 +997,39 @@ def run_parallel(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--lanes-file", required=True, type=Path)
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("--lanes-file", type=Path)
+    input_group.add_argument("--plan-file", type=Path)
+    parser.add_argument("--task", action="append")
+    parser.add_argument("--runtime-bindings", type=Path)
     parser.add_argument("--max-concurrency", type=int, default=MAX_CONCURRENCY)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.plan_file is not None:
+        if not args.task:
+            parser.error("plan mode requires at least one --task")
+        if args.runtime_bindings is None:
+            parser.error("plan mode requires --runtime-bindings")
+        runtime_bindings = json.loads(args.runtime_bindings.read_text(encoding="utf-8"))
+        source: Any = prepare_plan_lanes(args.plan_file, args.task, runtime_bindings)
+    else:
+        if args.task or args.runtime_bindings is not None:
+            parser.error("--task and --runtime-bindings require --plan-file")
+        source = args.lanes_file
     result = run_parallel(
-        args.lanes_file,
+        source,
         max_concurrency=args.max_concurrency,
         event_callback=lambda event: print(json.dumps(event, sort_keys=True), flush=True),
     )
     admission_failure = bool(result["rejected"] or result.get("blocked"))
-    runtime_failure = any(item.get("unresolved") for item in result["results"])
+    runtime_failure = any(
+        item.get("unresolved") is True or item.get("failure_kind") is not None
+        for item in result["results"]
+    )
     return 2 if admission_failure or runtime_failure else 0
 
 

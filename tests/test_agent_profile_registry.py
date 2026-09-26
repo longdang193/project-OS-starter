@@ -49,18 +49,47 @@ def test_load_profiles_accepts_ranked_and_unranked_profiles(tmp_path: Path) -> N
     assert profiles["ui"].model == "combo-ui"
 
 
-def test_repository_review_profile_preserves_specialized_contract() -> None:
+@pytest.mark.parametrize(
+    ("name", "model"),
+    (
+        ("review", "combo-review-1"),
+        ("review-1", "combo-review-1"),
+        ("review-2", "combo-review-2"),
+        ("review-3", "combo-review-3"),
+    ),
+)
+def test_repository_review_profiles_preserve_specialized_contract(name: str, model: str) -> None:
     profiles = REGISTRY.load_agent_profiles(ROOT / "agents")
-    review = profiles["review"]
+    review = profiles[name]
 
     assert review.rank is None
     assert review.model_provider == "9router"
-    assert review.model == "combo-review"
+    assert review.model == model
 
     instructions = review.developer_instructions.lower()
     assert "do not implement" in instructions
     assert "task-specific" in instructions
     assert "pass, fail, or blocked" in instructions
+
+
+def test_select_review_profiles_samples_distinct_candidates() -> None:
+    profiles = REGISTRY.load_agent_profiles(ROOT / "agents")
+
+    selected = REGISTRY.select_review_profiles(
+        profiles,
+        2,
+        sample=lambda candidates, count: tuple(candidates[:count]),
+    )
+
+    assert selected == ("review-1", "review-2")
+
+
+@pytest.mark.parametrize("count", (0, 3))
+def test_select_review_profiles_bounds_review_count(count: int) -> None:
+    profiles = REGISTRY.load_agent_profiles(ROOT / "agents")
+
+    with pytest.raises(ValueError, match="review count must be 1 or 2"):
+        REGISTRY.select_review_profiles(profiles, count)
 
 
 @pytest.mark.parametrize(
