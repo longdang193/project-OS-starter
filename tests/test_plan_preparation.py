@@ -119,8 +119,8 @@ def test_prepare_task_keeps_readiness_separate_from_evidence() -> None:
     assert prepared.eligibility_reason is None
     assert prepared.unresolved_prerequisites == ()
     assert prepared.required_proof == "dispatch proof"
-    assert "Plan goal:" in prepared.brief
-    assert "Recorded prerequisites: Task 1, Task 2" in prepared.brief
+    assert prepared.dependencies == ("Task 1", "Task 2")
+    assert not hasattr(prepared, "brief")
 
 def test_prepare_task_reports_pending_dependency() -> None:
     prepared = prepare_task(parse_plan(PLAN), "Task 4")
@@ -217,10 +217,14 @@ def _active_plan() -> str:
         ## Execution Approach
         - Mode: `inline sequential`
         - Coordination: `git-tracked`
-        - Required skills: `skill-backend-verification`
-        - Preauthorized local actions: edit listed source files.
-        - User-approval actions: commit, push, merge.
-        - Parallel ownership: `none`; sequential task ownership.
+        - Required skills: `skill-backend-verification`,
+          `skill-code-standards`
+        - Preauthorized local actions: edit listed
+          source files.
+        - User-approval actions: commit, push,
+          merge.
+        - Parallel ownership: `none`;
+          sequential task ownership.
         - Isolation: clean managed worktree.
         - Commit policy: commit only after verification.
 
@@ -324,7 +328,7 @@ def test_launcher_task_argument_contains_complete_selected_contract(tmp_path: Pa
     assert "**Verification:**" in task_text
     assert "**Exit Criteria:**" in task_text
     assert "Applicable explicit shared constraints:" in task_text
-    assert "- Required skills: `skill-backend-verification`" in task_text
+    assert "- Required skills: `skill-backend-verification`, `skill-code-standards`" in task_text
     assert "- Preauthorized local actions: edit listed source files." in task_text
     assert "- User-approval actions: commit, push, merge." in task_text
     assert "- Parallel ownership: `none`; sequential task ownership." in task_text
@@ -377,7 +381,7 @@ def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Pa
         Required proof:
         required dispatch proof
         Applicable explicit shared constraints:
-        - Required skills: `skill-backend-verification`
+        - Required skills: `skill-backend-verification`, `skill-code-standards`
         - Preauthorized local actions: edit listed source files.
         - User-approval actions: commit, push, merge.
         - Parallel ownership: `none`; sequential task ownership.

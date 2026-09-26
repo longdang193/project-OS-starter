@@ -93,7 +93,6 @@ class PreparedTask:
     prerequisites: tuple[Mapping[str, str | None], ...]
     structurally_ready: bool
     unresolved_prerequisites: tuple[str, ...]
-    brief: str
     required_proof: str
     evidence: str
 
@@ -106,7 +105,6 @@ class PreparedTask:
             "prerequisites": [dict(item) for item in self.prerequisites],
             "structurally_ready": self.structurally_ready,
             "unresolved_prerequisites": list(self.unresolved_prerequisites),
-            "brief": self.brief,
             "required_proof": self.required_proof,
             "evidence": self.evidence,
         }
@@ -164,20 +162,37 @@ def _task_contracts(text: str) -> dict[str, tuple[str, str, str]]:
 
 
 def _shared_constraints(text: str) -> tuple[tuple[str, str], ...]:
-    constraints = []
-    for label in _SHARED_CONSTRAINT_LABELS:
-        prefix = f"- {label}:"
-        value = next(
-            (
-                line.split(":", 1)[1].strip()
-                for line in text.splitlines()
-                if line.strip().casefold().startswith(prefix.casefold())
-            ),
-            "",
-        )
+    values: dict[str, str] = {}
+    labels = {label.casefold(): label for label in _SHARED_CONSTRAINT_LABELS}
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        match = re.match(r"^\s*-\s+([^:]+):\s*(.*)$", lines[index])
+        if match is None:
+            index += 1
+            continue
+        label = labels.get(match.group(1).strip().casefold())
+        if label is None or label.casefold() in values:
+            index += 1
+            continue
+        parts = [match.group(2).strip()]
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if not line.strip() or not line[:1].isspace():
+                break
+            if re.match(r"^\s*-\s+", line):
+                break
+            parts.append(line.strip())
+            index += 1
+        value = " ".join(part for part in parts if part)
         if value:
-            constraints.append((label, value))
-    return tuple(constraints)
+            values[label.casefold()] = value
+    return tuple(
+        (label, values[label.casefold()])
+        for label in _SHARED_CONSTRAINT_LABELS
+        if label.casefold() in values
+    )
 
 
 def parse_plan(text: str) -> PlanGraph:
@@ -275,22 +290,6 @@ def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
         if execution_eligible
         else f"selected task is not execution-eligible: {task.state}"
     )
-    brief_parts = [f"{canonical_id}: {task.title}"]
-    if graph.goal:
-        brief_parts.extend(("", "Plan goal:", graph.goal))
-    if task.contract:
-        brief_parts.extend(("", "Task contract:", task.contract))
-    brief_parts.extend(("", f"Recorded prerequisites: {', '.join(task.dependencies) or 'none'}"))
-    if unresolved:
-        brief_parts.append(f"Unresolved prerequisites: {', '.join(unresolved)}")
-    if graph.shared_constraints:
-        brief_parts.extend(
-            (
-                "",
-                "Plan-wide shared constraints:",
-                "\n".join(f"- {label}: {value}" for label, value in graph.shared_constraints),
-            )
-        )
     return PreparedTask(
         task_id=canonical_id,
         execution_eligible=execution_eligible,
@@ -299,7 +298,6 @@ def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
         prerequisites=prerequisites,
         structurally_ready=not unresolved,
         unresolved_prerequisites=unresolved,
-        brief="\n".join(brief_parts).strip(),
         required_proof=task.required_proof,
         evidence=task.evidence,
     )
