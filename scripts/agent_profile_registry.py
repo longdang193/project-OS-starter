@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+import random
 import tomllib
 
 
@@ -96,3 +98,26 @@ def load_agent_profiles(
     if not profiles:
         raise ValueError(f"No agent profiles found under: {agents_root}")
     return profiles
+
+
+def select_review_profiles(
+    profiles: Mapping[str, AgentProfile],
+    count: int = 1,
+    *,
+    sample: Callable[[Sequence[str], int], Sequence[str]] | None = None,
+) -> tuple[str, ...]:
+    if count not in {1, 2}:
+        raise ValueError("review count must be 1 or 2")
+    candidates = tuple(
+        sorted(
+            name
+            for name, profile in profiles.items()
+            if name.startswith("review-") and profile.rank is None
+        )
+    )
+    if len(candidates) < count:
+        raise ValueError(f"at least {count} unranked review profiles are required")
+    selected = tuple((sample or random.SystemRandom().sample)(candidates, count))
+    if len(selected) != count or len(set(selected)) != count or not set(selected) <= set(candidates):
+        raise ValueError("review selector returned invalid profiles")
+    return selected
