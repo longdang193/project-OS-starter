@@ -8,11 +8,9 @@ import hashlib
 import os
 from pathlib import Path
 import re
-import time
 from typing import Any
 
-from .attempt import WHOLE_ATTEMPT_WALL_CLOCK_SECONDS, execution_binding_digest, normalize_runtime_grant
-from .capabilities import DEFAULT_LOCAL_CAPABILITIES
+from .attempt import execution_binding_digest, normalize_runtime_grant
 try:
     from ..planning_dependencies import (
         DependencyContractError,
@@ -36,7 +34,7 @@ _SINGLE_DEPENDENCY = re.compile(r"^Task\s+(\d+)$", re.IGNORECASE)
 _NAMED_DEPENDENCIES = re.compile(r"^Task\s+\d+(?:\s*,\s*Task\s+\d+)+$", re.IGNORECASE)
 _NUMBERED_DEPENDENCIES = re.compile(r"^Tasks?\s+\d+(?:\s*,\s*\d+)+$", re.IGNORECASE)
 _RANGE_DEPENDENCY = re.compile(r"^Tasks?\s+(\d+)\s*-\s*(?:Task\s+)?(\d+)$", re.IGNORECASE)
-_BINDING_FIELDS = frozenset(
+_REQUIRED_BINDING_FIELDS = frozenset(
     {
         "repository_identity",
         "worktree",
@@ -44,9 +42,17 @@ _BINDING_FIELDS = frozenset(
         "session",
         "pane",
         "runtime_grant",
+        "allowed_write_set",
+        "fixed_contracts",
+        "mutable_resources",
+        "local_capabilities",
+        "remaining_authorized_task_allowance",
+        "attempt_deadline",
         "accepted_prerequisites",
     }
 )
+_OPTIONAL_BINDING_FIELDS = frozenset({"prior_attempt_known", "codex_home", "target", "name"})
+_BINDING_FIELDS = _REQUIRED_BINDING_FIELDS | _OPTIONAL_BINDING_FIELDS
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +166,7 @@ def parse_plan(text: str) -> PlanGraph:
         raise ValueError("plan task ledger separator missing")
 
     contracts = _task_contracts(text)
-    tasks: dict[str, PlanTask] = {}
+    task_rows: list[tuple[str, PlanTask]] = []
     for line in lines[header_index + 2:]:
         if not line.strip():
             break
@@ -170,53 +176,36 @@ def parse_plan(text: str) -> PlanGraph:
         if len(cells) != len(_TASK_ROW_HEADER):
             raise ValueError("plan task ledger row has wrong column count")
         task_id = _canonical_task_id(cells[0])
-        if task_id in tasks:
-            raise ValueError(f"duplicate task ID: {task_id}")
         dependencies = _parse_dependencies(cells[4])
         title, profile, contract = contracts.get(task_id, (task_id, "unresolved", ""))
-        tasks[task_id] = PlanTask(
-            task_id=task_id,
-            title=title,
-            state=_cell(cells[1]).casefold(),
-            workspace=_cell(cells[2]),
-            executor=_cell(cells[3]),
-            profile=profile,
-            dependencies=dependencies,
-            required_proof=_cell(cells[5]),
-            evidence=_cell(cells[6]),
-            contract=contract,
-        )
-    if not tasks:
+        task_rows.append((
+            task_id,
+            PlanTask(
+                task_id=task_id,
+                title=title,
+                state=_cell(cells[1]).casefold(),
+                workspace=_cell(cells[2]),
+                executor=_cell(cells[3]),
+                profile=profile,
+                dependencies=dependencies,
+                required_proof=_cell(cells[5]),
+                evidence=_cell(cells[6]),
+                contract=contract,
+            ),
+        ))
+    if not task_rows:
         raise ValueError("plan task ledger has no rows")
 
     try:
-        validate_dependency_graph({task_id: task.dependencies for task_id, task in tasks.items()})
+        validate_dependency_graph(
+            [
+                {"task": task_id, "dependencies": task.dependencies}
+                for task_id, task in task_rows
+            ]
+        )
     except DependencyContractError as exc:
         raise ValueError(str(exc)) from exc
-
-    for task in tasks.values():
-        for dependency in task.dependencies:
-            if dependency not in tasks:
-                raise ValueError(f"missing dependency reference: {task.task_id} -> {dependency}")
-            if dependency == task.task_id:
-                raise ValueError(f"self-dependency: {task.task_id}")
-
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def visit(task_id: str) -> None:
-        if task_id in visiting:
-            raise ValueError(f"dependency cycle includes {task_id}")
-        if task_id in visited:
-            return
-        visiting.add(task_id)
-        for dependency in tasks[task_id].dependencies:
-            visit(dependency)
-        visiting.remove(task_id)
-        visited.add(task_id)
-
-    for task_id in tasks:
-        visit(task_id)
+    tasks = {task_id: task for task_id, task in task_rows}
 
     return PlanGraph(
         plan_identity=hashlib.sha256(text.encode("utf-8")).hexdigest(),
@@ -283,33 +272,23 @@ def prepare_lane_inputs(
     runtime_inputs_by_task: Mapping[str, Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     graph = source if isinstance(source, PlanGraph) else load_plan(source)
-    lanes: list[dict[str, Any]] = []
+    bindings: dict[str, dict[str, Any]] = {}
     for selected_task_id in selected_task_ids:
         prepared = prepare_task(graph, selected_task_id)
-        task = graph.tasks[prepared.task_id]
         runtime = runtime_inputs_by_task.get(prepared.task_id)
         if not isinstance(runtime, Mapping):
             raise ValueError(f"resolved runtime inputs missing for {prepared.task_id}")
-        lane = dict(runtime)
-        supplied_plan_identity = lane.get("plan_identity")
-        if supplied_plan_identity is not None and supplied_plan_identity != graph.plan_identity:
-            raise ValueError(f"runtime input conflicts with plan identity for {prepared.task_id}")
-        derived = {
-            "lane_id": lane.get("lane_id", prepared.task_id),
-            "plan_identity": graph.plan_identity,
-            "task": prepared.brief,
-            "executor": task.executor,
-            "profile": task.profile,
-            "dependencies": list(prepared.dependencies),
-            "dependency_ready": prepared.structurally_ready,
-        }
-        for field in ("task", "executor", "profile", "dependencies", "dependency_ready"):
-            if field in lane and lane[field] != derived[field]:
+        for field in ("lane_id", "plan_identity", "task", "executor", "profile", "dependencies", "dependency_ready", "structurally_ready"):
+            if field in runtime:
+                if field == "plan_identity":
+                    raise ValueError(f"runtime input conflicts with plan identity for {prepared.task_id}")
                 raise ValueError(f"runtime input conflicts with plan-derived {field} for {prepared.task_id}")
-        lane.update(derived)
-        lane["plan_preparation"] = prepared.to_dict()
-        lanes.append(lane)
-    return lanes
+        bindings[prepared.task_id] = _canonical_runtime_binding(runtime)
+    text, graph, plan_identity, plan_source = _source_parts(source)
+    status = _frontmatter_value(text, "status") if text is not None else None
+    if status is not None and status.casefold() != "active":
+        raise ValueError("plan must be active before dispatch")
+    return _prepare_plan_lanes(text, graph, plan_identity, plan_source, tuple(selected_task_ids), bindings)
 
 
 def _frontmatter_value(text: str, name: str) -> str | None:
@@ -327,24 +306,56 @@ def _bounded_task_text(text: str, task_id: str, title: str) -> str:
     )
     if match is None:
         raise ValueError(f"missing task section: {task_id}")
-    return f"{task_id}: {title.strip()}\n\n{match.group(1).strip()}"
+    body = re.split(r"(?im)^\*\*(?:Verification|Exit Criteria):\*\*\s*$", match.group(1), maxsplit=1)[0]
+    return f"{task_id}: {title.strip()}\n\n{body.strip()}"
 
 
-def _write_set(body: str) -> list[str]:
-    values: list[str] = []
-    section = re.search(r"(?ims)^\*\*Files And Symbols:\*\*\s*\n(.*?)(?=^\*\*[^*\n]+:\*\*\s*$|\Z)", body)
-    for line in (section.group(1) if section else "").splitlines():
-        if not re.match(r"\s*-\s*(?:Create|Modify|Add|Update|Delete)", line, re.IGNORECASE):
-            continue
-        values.extend(item.split(":", 1)[0] for item in re.findall(r"`([^`]+)`", line))
-    return list(dict.fromkeys(values)) or ["docs/superpowers/plans"]
+def _contract_section(body: str, heading: str) -> str:
+    match = re.search(
+        rf"(?ims)^\*\*{re.escape(heading)}:\*\*\s*$\n(.*?)(?=^\*\*[^*\n]+:\*\*\s*$|^##\s|\Z)",
+        body,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def _worker_brief(
+    text: str | None,
+    task: PlanTask,
+    prepared: PreparedTask,
+    accepted: Mapping[str, Any],
+) -> str:
+    selected = (
+        _bounded_task_text(text, prepared.task_id, task.title)
+        if text is not None
+        else f"{prepared.task_id}: {task.title}\n\n{task.contract.strip()}".strip()
+    )
+    objective = _contract_section(task.contract, "Purpose")
+    constraints = _contract_section(task.contract, "Authority")
+    prerequisites = []
+    for dependency in task.dependencies:
+        binding = accepted[dependency]
+        prerequisites.append(
+            f"- {dependency}: accepted_revision={binding['accepted_revision']}"
+            + (f"; artifact_ref={binding['artifact_ref']}" if binding.get("artifact_ref") else "")
+        )
+    parts = [selected]
+    if objective:
+        parts.extend(("", "Objective:", objective))
+    parts.extend(("", "Accepted prerequisites:", "\n".join(prerequisites) or "- none"))
+    parts.extend(("", "Required proof:", task.required_proof))
+    if constraints:
+        parts.extend(("", "Execution constraints:", constraints))
+    return "\n".join(parts).strip()
 
 
 def _runtime_grant(value: object) -> dict[str, Any]:
-    if value is None:
-        return {"turns": "native", "wall_clock_seconds": "native", "child_agents": "deny", "mcp_select": []}
     if not isinstance(value, Mapping):
         raise ValueError("runtime_grant must be a mapping")
+    if not {"turns", "wall_clock_seconds", "delegation", "mcp_select"}.issubset(value):
+        raise ValueError("runtime_grant must contain resolved turns, wall clock, delegation, and MCP fields")
+    delegation = value.get("delegation")
+    if not isinstance(delegation, Mapping) or "child_agents" not in delegation:
+        raise ValueError("runtime_grant must contain resolved child-agent authority")
     return normalize_runtime_grant(dict(value), executor="deepagents")
 
 
@@ -358,25 +369,49 @@ def _accepted_prerequisites(task: PlanTask, value: object) -> dict[str, Any]:
             raise ValueError(f"missing accepted prerequisite binding: {dependency}")
         if not isinstance(binding.get("accepted_revision"), str) or not binding["accepted_revision"].strip():
             raise ValueError(f"missing accepted revision: {dependency}")
-        if not isinstance(binding.get("artifact_ref"), str) or not binding["artifact_ref"].strip():
-            raise ValueError(f"missing artifact reference: {dependency}")
+        artifact_ref = binding.get("artifact_ref")
+        if artifact_ref is not None and (not isinstance(artifact_ref, str) or not artifact_ref.strip()):
+            raise ValueError(f"invalid artifact reference: {dependency}")
         if "artifact_available" in binding:
             raise ValueError("artifact_available is not an accepted prerequisite input")
     return accepted
 
 
-def prepare_plan_lanes(
-    plan_file: str | Path,
+def _source_parts(source: str | os.PathLike[str] | PlanGraph) -> tuple[str | None, PlanGraph, str, str | None]:
+    if isinstance(source, PlanGraph):
+        return None, source, source.plan_identity, None
+    if isinstance(source, str) and ("\n" in source or "\r" in source):
+        return source, parse_plan(source), hashlib.sha256(source.encode("utf-8")).hexdigest(), None
+    path = Path(source)
+    text = path.read_text(encoding="utf-8")
+    return text, parse_plan(text), _frontmatter_value(text, "name") or path.stem, str(path.resolve())
+
+
+def _canonical_runtime_binding(runtime: Mapping[str, Any]) -> dict[str, Any]:
+    binding = dict(runtime)
+    if "runtime_grant" not in binding:
+        grant_fields = {"grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"}
+        if grant_fields.issubset(binding):
+            binding["runtime_grant"] = {
+                "turns": binding.pop("grant_turns"),
+                "wall_clock_seconds": binding.pop("grant_wall_clock_seconds"),
+                "delegation": {"child_agents": binding.pop("grant_child_agents")},
+                "mcp_select": binding.pop("mcp_select"),
+            }
+    else:
+        for field in ("grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"):
+            binding.pop(field, None)
+    return binding
+
+
+def _prepare_plan_lanes(
+    text: str | None,
+    graph: PlanGraph,
+    plan_identity: str,
+    plan_source: str | None,
     task_ids: Sequence[str],
     runtime_bindings: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    plan_path = Path(plan_file)
-    text = plan_path.read_text(encoding="utf-8")
-    if (_frontmatter_value(text, "status") or "").casefold() != "active":
-        raise ValueError("plan must be active before dispatch")
-    if not isinstance(runtime_bindings, Mapping):
-        raise ValueError("runtime bindings must be keyed by task ID")
-    graph = parse_plan(text)
     selected = [_canonical_task_id(task_id) for task_id in task_ids]
     if not selected:
         raise ValueError("at least one task is required")
@@ -385,8 +420,7 @@ def prepare_plan_lanes(
     unknown = sorted(set(selected) - set(graph.tasks))
     if unknown:
         raise ValueError(f"unknown selected task: {unknown[0]}")
-    plan_identity = _frontmatter_value(text, "name") or plan_path.stem
-    plan_revision = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    plan_revision = hashlib.sha256(text.encode("utf-8")).hexdigest() if text is not None else graph.plan_identity
     lanes: list[dict[str, Any]] = []
     for task_id in selected:
         task = graph.tasks[task_id]
@@ -394,7 +428,7 @@ def prepare_plan_lanes(
         if not isinstance(binding, Mapping):
             raise ValueError(f"missing runtime binding: {task_id}")
         extra = set(binding) - _BINDING_FIELDS
-        missing = _BINDING_FIELDS - set(binding)
+        missing = _REQUIRED_BINDING_FIELDS - set(binding)
         if extra:
             raise ValueError(f"runtime binding contains plan-owned fields: {sorted(extra)[0]}")
         if missing:
@@ -404,44 +438,59 @@ def prepare_plan_lanes(
         if not task.profile or task.profile.casefold() in {"unresolved", "none", "none (lead controller)"}:
             raise ValueError(f"task profile unresolved: {task_id}")
         accepted = _accepted_prerequisites(task, binding["accepted_prerequisites"])
-        structurally_ready = task.state in {"pending", "active"} and all(
-            graph.tasks[dependency].state == "completed" for dependency in task.dependencies
-        )
         grant = _runtime_grant(binding["runtime_grant"])
-        task_text = _bounded_task_text(text, task_id, task.title)
+        prepared = prepare_task(graph, task_id)
+        structurally_ready = prepared.structurally_ready
         descriptor = {
             "lane_id": task_id.lower().replace(" ", "-"),
             "repository_identity": binding["repository_identity"],
             "plan_identity": plan_identity,
             "plan_revision": plan_revision,
-            "task": task_text,
+            "plan_source": plan_source,
+            "task": _worker_brief(text, task, prepared, accepted),
             "executor": task.executor.casefold(),
             "profile": task.profile,
             "worktree": binding["worktree"],
             "expected_base": binding["expected_base"],
             "session": binding["session"],
             "pane": binding["pane"],
-            "allowed_write_set": _write_set(task_text),
+            "allowed_write_set": binding["allowed_write_set"],
             "dependencies": list(task.dependencies),
             "dependency_ready": structurally_ready,
             "structurally_ready": structurally_ready,
             "accepted_prerequisites": accepted,
-            "fixed_contracts": ["plan-to-dispatch-v1"],
-            "mutable_resources": [task_id],
-            "grant_turns": grant["turns"],
-            "grant_wall_clock_seconds": grant["wall_clock_seconds"],
-            "grant_child_agents": grant["delegation"]["child_agents"],
-            "mcp_select": grant["mcp_select"],
+            "fixed_contracts": binding["fixed_contracts"],
+            "mutable_resources": binding["mutable_resources"],
+            "local_capabilities": binding["local_capabilities"],
+            "remaining_authorized_task_allowance": binding["remaining_authorized_task_allowance"],
+            "attempt_deadline": binding["attempt_deadline"],
             "runtime_grant": grant,
-            "local_capabilities": list(DEFAULT_LOCAL_CAPABILITIES),
-            "remaining_authorized_task_allowance": WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
-            "attempt_deadline": time.monotonic() + WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
-            "target": task_id,
-            "name": task.title,
         }
+        for field in _OPTIONAL_BINDING_FIELDS:
+            if field in binding:
+                descriptor[field] = binding[field]
+        descriptor["grant_turns"] = grant["turns"]["requested"]
+        descriptor["grant_wall_clock_seconds"] = grant["wall_clock_seconds"]["requested"]
+        descriptor["grant_child_agents"] = grant["delegation"]["child_agents"]
+        descriptor["mcp_select"] = grant["mcp_select"]
         descriptor["execution_binding_digest"] = execution_binding_digest(descriptor)
+        descriptor["plan_preparation"] = prepared.to_dict()
         lanes.append(descriptor)
     return lanes
+
+
+def prepare_plan_lanes(
+    plan_file: str | Path | PlanGraph,
+    task_ids: Sequence[str],
+    runtime_bindings: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    text, graph, plan_identity, plan_source = _source_parts(plan_file)
+    status = _frontmatter_value(text, "status") if text is not None else None
+    if status is not None and status.casefold() != "active":
+        raise ValueError("plan must be active before dispatch")
+    if not isinstance(runtime_bindings, Mapping):
+        raise ValueError("runtime bindings must be keyed by task ID")
+    return _prepare_plan_lanes(text, graph, plan_identity, plan_source, task_ids, runtime_bindings)
 
 
 __all__ = [

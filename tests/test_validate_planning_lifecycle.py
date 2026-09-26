@@ -487,6 +487,30 @@ def test_active_task_accepts_plural_dependency_ranges() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_git_tracked_plan_reports_duplicate_task_rows() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "demo-plan.md",
+            git_tracked_plan(
+                ledger="\n".join(
+                    (
+                        "| Task 1 | `completed` | current | codex | none | `test-one` | recorded |",
+                        "| Task 1 | `completed` | current | codex | none | `test-one` | recorded |",
+                    )
+                ),
+                coordination_schema=2,
+            ).replace("- Active task(s): `Task 1`\n", ""),
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 1
+        assert "duplicate task ID: Task 1" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_completed_task_requires_recorded_evidence() -> None:
     root = make_test_root()
     try:

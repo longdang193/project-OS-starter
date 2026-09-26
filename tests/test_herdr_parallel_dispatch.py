@@ -1281,6 +1281,63 @@ def test_run_lane_timeout_without_reaping_keeps_capacity_occupied(tmp_path: Path
     assert result["capacity"] == "occupied"
     assert result["timeout_evidence"]["capacity"] == "occupied"
 
+
+def test_verify_launch_bindings_requires_accepted_revision_containment(tmp_path: Path, monkeypatch) -> None:
+    raw = lane("a", tmp_path)
+    raw.update({
+        "worktree": str(tmp_path),
+        "dependencies": ["Task 1"],
+        "accepted_prerequisites": {"Task 1": {"accepted_revision": "unrelated"}},
+    })
+    prepared = dispatcher.prepare_lane(raw)
+    raw["execution_binding_digest"] = dispatcher._execution_binding_digest(prepared)
+    prepared = dispatcher.prepare_lane(raw)
+    calls = 0
+
+    def fake_run(args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(args, 0 if calls == 1 else 1, "", "")
+
+    monkeypatch.setattr(dispatcher.subprocess, "run", fake_run)
+
+    with pytest.raises(ValueError, match="not contained"):
+        dispatcher.verify_launch_bindings(prepared)
+
+
+def test_verify_launch_bindings_accepts_contained_revision_without_artifact_ref() -> None:
+    root = Path(__file__).resolve().parent.parent
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    raw = lane("a", root)
+    raw.update({
+        "worktree": str(root),
+        "expected_base": head,
+        "dependencies": ["Task 1"],
+        "accepted_prerequisites": {"Task 1": {"accepted_revision": head}},
+    })
+    prepared = dispatcher.prepare_lane(raw)
+    raw["execution_binding_digest"] = dispatcher._execution_binding_digest(prepared)
+
+    assert dispatcher.verify_launch_bindings(dispatcher.prepare_lane(raw))
+
+
+def test_run_lane_rejects_stale_binding_before_launcher(tmp_path: Path, monkeypatch) -> None:
+    raw = lane("a", tmp_path)
+    raw["execution_binding_digest"] = dispatcher._execution_binding_digest(raw)
+    called = False
+
+    def fake_launcher(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("launcher must not start")
+
+    monkeypatch.setattr(dispatcher, "_launcher_command", fake_launcher)
+    result = dispatcher.run_lane(raw, popen_factory=fake_launcher, timeout_seconds=0.01)
+
+    assert result["failure_kind"] == "launch_binding_stale"
+    assert result["capacity"] == "retired"
+    assert called is False
+
 PLAN_FOR_DISPATCH = """# Plan
 
 ## Goal
@@ -1310,7 +1367,19 @@ Prepare selected task.
 
 def test_run_parallel_from_plan_reuses_existing_admission(tmp_path: Path, monkeypatch) -> None:
     runtime = lane("dispatch", tmp_path)
-    for field in ("task", "executor", "profile", "dependencies", "dependency_ready", "plan_identity"):
+    runtime["runtime_grant"] = {
+        "turns": "native",
+        "wall_clock_seconds": "native",
+        "delegation": {"child_agents": "deny"},
+        "mcp_select": [],
+    }
+    runtime["local_capabilities"] = {"requested": []}
+    runtime["accepted_prerequisites"] = {
+        "Task 1": {"accepted_revision": "c086339c08bb396d32be44a2b848b1ab473fa52c"}
+    }
+    for field in ("grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"):
+        runtime.pop(field, None)
+    for field in ("lane_id", "task", "executor", "profile", "dependencies", "dependency_ready", "plan_identity"):
         runtime.pop(field, None)
     observed: list[object] = []
 
@@ -1325,6 +1394,27 @@ def test_run_parallel_from_plan_reuses_existing_admission(tmp_path: Path, monkey
         {"Task 2": runtime},
     )
 
-    assert [item["lane_id"] for item in result["admitted"]] == ["dispatch"]
+    assert [item["lane_id"] for item in result["admitted"]] == ["task-2"]
     assert observed[0]["dependency_ready"] is True
     assert "Task 2: Dispatch" in observed[0]["task"]
+
+
+def test_run_parallel_from_plan_uses_canonical_preparation(monkeypatch) -> None:
+    prepared = [{"lane_id": "canonical"}]
+    observed: dict[str, object] = {}
+
+    def fake_prepare(source, task_ids, bindings):
+        observed["prepare"] = (source, task_ids, bindings)
+        return prepared
+
+    def fake_run(source, **kwargs):
+        observed["run"] = source
+        return {"admitted": source}
+
+    monkeypatch.setattr(dispatcher, "prepare_plan_lanes", fake_prepare)
+    monkeypatch.setattr(dispatcher, "run_parallel", fake_run)
+
+    result = dispatcher.run_parallel_from_plan("plan.md", ["Task 1"], {"Task 1": {}})
+
+    assert result == {"admitted": prepared}
+    assert observed["prepare"] == ("plan.md", ("Task 1",), {"Task 1": {}})

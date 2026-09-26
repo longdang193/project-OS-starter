@@ -110,6 +110,7 @@ class PreparedLane(Mapping[str, Any]):
     prior_attempt_known: bool
     attempt_deadline: int | float | None
     plan_revision: str | None
+    plan_source: str | None
     execution_binding_digest: str | None
     structurally_ready: bool
     accepted_prerequisites: Mapping[str, Any]
@@ -124,7 +125,7 @@ class PreparedLane(Mapping[str, Any]):
         "remaining_authorized_task_allowance", "grant_turns",
         "grant_wall_clock_seconds", "grant_child_agents",
         "plan_revision", "execution_binding_digest", "structurally_ready",
-        "accepted_prerequisites",
+        "accepted_prerequisites", "plan_source",
     )
 
     def __getitem__(self, key: str) -> Any:
@@ -203,6 +204,9 @@ def prepare_lane(raw_descriptor: Mapping[str, Any]) -> PreparedLane:
     plan_revision = raw_descriptor.get("plan_revision")
     if plan_revision is not None and (not isinstance(plan_revision, str) or not plan_revision.strip()):
         raise ValueError("plan_revision must be a non-empty string when provided")
+    plan_source = raw_descriptor.get("plan_source")
+    if plan_source is not None and (not isinstance(plan_source, str) or not plan_source.strip()):
+        raise ValueError("plan_source must be a non-empty string when provided")
     binding_digest = raw_descriptor.get("execution_binding_digest")
     if binding_digest is not None and (not isinstance(binding_digest, str) or not binding_digest.strip()):
         raise ValueError("execution_binding_digest must be a non-empty string when provided")
@@ -287,6 +291,7 @@ def prepare_lane(raw_descriptor: Mapping[str, Any]) -> PreparedLane:
         prior_attempt_known=prior_attempt_known,
         attempt_deadline=attempt_deadline,
         plan_revision=plan_revision,
+        plan_source=plan_source,
         execution_binding_digest=binding_digest,
         structurally_ready=structurally_ready,
         accepted_prerequisites=_freeze(accepted_prerequisites),
