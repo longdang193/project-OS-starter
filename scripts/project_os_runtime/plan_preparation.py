@@ -34,6 +34,7 @@ _SINGLE_DEPENDENCY = re.compile(r"^Task\s+(\d+)$", re.IGNORECASE)
 _NAMED_DEPENDENCIES = re.compile(r"^Task\s+\d+(?:\s*,\s*Task\s+\d+)+$", re.IGNORECASE)
 _NUMBERED_DEPENDENCIES = re.compile(r"^Tasks?\s+\d+(?:\s*,\s*\d+)+$", re.IGNORECASE)
 _RANGE_DEPENDENCY = re.compile(r"^Tasks?\s+(\d+)\s*-\s*(?:Task\s+)?(\d+)$", re.IGNORECASE)
+EXECUTION_ELIGIBLE_STATES = frozenset({"pending", "active"})
 _REQUIRED_BINDING_FIELDS = frozenset(
     {
         "repository_identity",
@@ -80,6 +81,8 @@ class PlanGraph:
 @dataclass(frozen=True, slots=True)
 class PreparedTask:
     task_id: str
+    execution_eligible: bool
+    eligibility_reason: str | None
     dependencies: tuple[str, ...]
     prerequisites: tuple[Mapping[str, str | None], ...]
     structurally_ready: bool
@@ -91,6 +94,8 @@ class PreparedTask:
     def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
+            "execution_eligible": self.execution_eligible,
+            "eligibility_reason": self.eligibility_reason,
             "dependencies": list(self.dependencies),
             "prerequisites": [dict(item) for item in self.prerequisites],
             "structurally_ready": self.structurally_ready,
@@ -244,6 +249,12 @@ def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
         for item in prerequisites
         if item["recorded_state"] != "completed"
     )
+    execution_eligible = task.state in EXECUTION_ELIGIBLE_STATES
+    eligibility_reason = (
+        None
+        if execution_eligible
+        else f"selected task is not execution-eligible: {task.state}"
+    )
     brief_parts = [f"{canonical_id}: {task.title}"]
     if graph.goal:
         brief_parts.extend(("", "Plan goal:", graph.goal))
@@ -256,6 +267,8 @@ def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
         brief_parts.extend(("", f"Plan-wide requirements: {graph.required_skills}"))
     return PreparedTask(
         task_id=canonical_id,
+        execution_eligible=execution_eligible,
+        eligibility_reason=eligibility_reason,
         dependencies=task.dependencies,
         prerequisites=prerequisites,
         structurally_ready=not unresolved,
@@ -306,8 +319,7 @@ def _bounded_task_text(text: str, task_id: str, title: str) -> str:
     )
     if match is None:
         raise ValueError(f"missing task section: {task_id}")
-    body = re.split(r"(?im)^\*\*(?:Verification|Exit Criteria):\*\*\s*$", match.group(1), maxsplit=1)[0]
-    return f"{task_id}: {title.strip()}\n\n{body.strip()}"
+    return f"{task_id}: {title.strip()}\n\n{match.group(1).strip()}"
 
 
 def _contract_section(body: str, heading: str) -> str:
@@ -323,14 +335,14 @@ def _worker_brief(
     task: PlanTask,
     prepared: PreparedTask,
     accepted: Mapping[str, Any],
+    plan_goal: str,
+    plan_requirements: str,
 ) -> str:
     selected = (
         _bounded_task_text(text, prepared.task_id, task.title)
         if text is not None
         else f"{prepared.task_id}: {task.title}\n\n{task.contract.strip()}".strip()
     )
-    objective = _contract_section(task.contract, "Purpose")
-    constraints = _contract_section(task.contract, "Authority")
     prerequisites = []
     for dependency in task.dependencies:
         binding = accepted[dependency]
@@ -338,13 +350,15 @@ def _worker_brief(
             f"- {dependency}: accepted_revision={binding['accepted_revision']}"
             + (f"; artifact_ref={binding['artifact_ref']}" if binding.get("artifact_ref") else "")
         )
-    parts = [selected]
-    if objective:
-        parts.extend(("", "Objective:", objective))
-    parts.extend(("", "Accepted prerequisites:", "\n".join(prerequisites) or "- none"))
-    parts.extend(("", "Required proof:", task.required_proof))
-    if constraints:
-        parts.extend(("", "Execution constraints:", constraints))
+    parts = []
+    if plan_goal and plan_goal.strip() not in selected:
+        parts.extend(("Plan objective:", plan_goal.strip()))
+    parts.extend(("Selected task contract:", selected))
+    parts.extend(("Accepted prerequisites:", "\n".join(prerequisites) or "- none"))
+    if task.required_proof.strip() and task.required_proof.strip() not in selected:
+        parts.extend(("Required proof:", task.required_proof.strip()))
+    if plan_requirements and plan_requirements.strip() not in selected:
+        parts.extend(("Applicable explicit shared constraints:", plan_requirements.strip()))
     return "\n".join(parts).strip()
 
 
@@ -441,13 +455,16 @@ def _prepare_plan_lanes(
         grant = _runtime_grant(binding["runtime_grant"])
         prepared = prepare_task(graph, task_id)
         structurally_ready = prepared.structurally_ready
+        if not prepared.execution_eligible:
+            raise ValueError(prepared.eligibility_reason or "selected task is not execution-eligible")
+        dependency_ready = prepared.execution_eligible and structurally_ready
         descriptor = {
             "lane_id": task_id.lower().replace(" ", "-"),
             "repository_identity": binding["repository_identity"],
             "plan_identity": plan_identity,
             "plan_revision": plan_revision,
             "plan_source": plan_source,
-            "task": _worker_brief(text, task, prepared, accepted),
+            "task": _worker_brief(text, task, prepared, accepted, graph.goal, graph.required_skills),
             "executor": task.executor.casefold(),
             "profile": task.profile,
             "worktree": binding["worktree"],
@@ -456,7 +473,7 @@ def _prepare_plan_lanes(
             "pane": binding["pane"],
             "allowed_write_set": binding["allowed_write_set"],
             "dependencies": list(task.dependencies),
-            "dependency_ready": structurally_ready,
+            "dependency_ready": dependency_ready,
             "structurally_ready": structurally_ready,
             "accepted_prerequisites": accepted,
             "fixed_contracts": binding["fixed_contracts"],

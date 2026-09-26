@@ -1026,7 +1026,10 @@ def main(argv: list[str] | None = None) -> int:
         event_callback=lambda event: print(json.dumps(event, sort_keys=True), flush=True),
     )
     admission_failure = bool(result["rejected"] or result.get("blocked"))
-    runtime_failure = any(item.get("unresolved") for item in result["results"])
+    runtime_failure = any(
+        item.get("unresolved") is True or item.get("failure_kind") is not None
+        for item in result["results"]
+    )
     return 2 if admission_failure or runtime_failure else 0
 
 

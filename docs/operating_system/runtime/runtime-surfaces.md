@@ -74,7 +74,9 @@ both modes share admission, launch-bound freshness verification, and
 - Plan plus Git owns workflow truth, authority, dependencies, checkpoints, and acceptance history.
 - CoS owns assignment, continuation, escalation, and acceptance decisions.
 - `scripts/project_os_runtime/` owns lane preparation, admission, capability/evidence semantics, budget containment, settlement proof, lifecycle, and eligibility semantics. `scripts/herdr_attempt_contract.py` remains a compatibility forwarding surface.
+- `prepare_plan_lanes()` admits selected tasks only when their recorded state is `pending` or `active`; `blocked` and `completed` fail before lane construction. Predecessor completion remains a separate structural-readiness fact.
 - `scripts/herdr_parallel_dispatch.py` owns bounded scheduling, invocation, and event delivery; `scripts/herdr_main_launcher.py` owns Herdr transport and observation.
+- Herdr CLI status is nonzero when any result has unresolved ownership or a non-null `failure_kind`; lifecycle facts such as `unresolved: false` and `capacity: retired` remain unchanged for safely settled failures.
 - `scripts/dcode_project.py` owns worker execution, deadlines, PATH availability, descendants, cleanup, receipts, and same-worktree attempt claims; the shared runtime core owns lifecycle classification and eligibility.
 - Herdr observation never proves retirement, authorizes retry, or accepts work.
 - Ordinary personal-local probes may invoke `dcode-project` directly. Coordinated Git-tracked work enters through `herdr_main_launcher.py` or `herdr_parallel_dispatch.py`, which supplies correlated identity and grant evidence.

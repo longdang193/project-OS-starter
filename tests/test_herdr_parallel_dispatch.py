@@ -238,6 +238,23 @@ def test_main_exit_code_separates_deferred_from_failures(
     assert dispatcher.main(["--lanes-file", str(tmp_path / "lanes.json")]) == expected
 
 
+def test_main_returns_nonzero_for_settled_dispatch_failure(monkeypatch, tmp_path: Path) -> None:
+    result = {
+        "rejected": [],
+        "blocked": [],
+        "results": [{
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "launch_binding_stale",
+        }],
+    }
+    monkeypatch.setattr(dispatcher, "run_parallel", lambda *args, **kwargs: result)
+
+    assert dispatcher.main(["--lanes-file", str(tmp_path / "lanes.json")]) == 2
+    assert result["results"][0]["unresolved"] is False
+    assert result["results"][0]["capacity"] == "retired"
+
+
 def test_run_parallel_observes_fast_lane_before_slow_sibling_finishes(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1351,7 +1368,7 @@ Prepare selected task.
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current | `deepagents` | none | source proof | evidence |
-| Task 2 | `completed` | current | `deepagents` | Task 1 | dispatch proof | evidence |
+| Task 2 | `active` | current | `deepagents` | Task 1 | dispatch proof | pending |
 
 ## Task Breakdown
 
