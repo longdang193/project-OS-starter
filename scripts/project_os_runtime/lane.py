@@ -9,7 +9,7 @@ import math
 from types import MappingProxyType
 from typing import Any
 
-from .attempt import assignment_id, grant_digest, normalize_runtime_grant
+from .attempt import assignment_id, execution_binding_digest, grant_digest, normalize_runtime_grant
 from .capabilities import capability_digest, normalize_local_capabilities, DEFAULT_LOCAL_CAPABILITIES
 
 _REQUIRED_FIELDS = (
@@ -109,6 +109,10 @@ class PreparedLane(Mapping[str, Any]):
     codex_home: str | None
     prior_attempt_known: bool
     attempt_deadline: int | float | None
+    plan_revision: str | None
+    execution_binding_digest: str | None
+    structurally_ready: bool
+    accepted_prerequisites: Mapping[str, Any]
 
     _MAPPING_FIELDS = (
         "lane_id", "repository_identity", "plan_identity", "task", "executor",
@@ -119,6 +123,8 @@ class PreparedLane(Mapping[str, Any]):
         "codex_home", "prior_attempt_known", "attempt_deadline",
         "remaining_authorized_task_allowance", "grant_turns",
         "grant_wall_clock_seconds", "grant_child_agents",
+        "plan_revision", "execution_binding_digest", "structurally_ready",
+        "accepted_prerequisites",
     )
 
     def __getitem__(self, key: str) -> Any:
@@ -194,6 +200,18 @@ def prepare_lane(raw_descriptor: Mapping[str, Any]) -> PreparedLane:
     target = raw_descriptor.get("target")
     if target is not None and (not isinstance(target, str) or not target.strip()):
         raise ValueError("target must be a non-empty string when provided")
+    plan_revision = raw_descriptor.get("plan_revision")
+    if plan_revision is not None and (not isinstance(plan_revision, str) or not plan_revision.strip()):
+        raise ValueError("plan_revision must be a non-empty string when provided")
+    binding_digest = raw_descriptor.get("execution_binding_digest")
+    if binding_digest is not None and (not isinstance(binding_digest, str) or not binding_digest.strip()):
+        raise ValueError("execution_binding_digest must be a non-empty string when provided")
+    structurally_ready = raw_descriptor.get("structurally_ready", raw_descriptor["dependency_ready"])
+    if not isinstance(structurally_ready, bool):
+        raise ValueError("structurally_ready must be boolean")
+    accepted_prerequisites = raw_descriptor.get("accepted_prerequisites", {})
+    if not isinstance(accepted_prerequisites, Mapping):
+        raise ValueError("accepted_prerequisites must be a mapping")
 
     computed_assignment_id = assignment_id(repository, plan, lane_id)
     supplied_assignment_id = raw_descriptor.get("assignment_id")
@@ -268,6 +286,10 @@ def prepare_lane(raw_descriptor: Mapping[str, Any]) -> PreparedLane:
         codex_home=raw_descriptor.get("codex_home") if isinstance(raw_descriptor.get("codex_home"), str) else None,
         prior_attempt_known=prior_attempt_known,
         attempt_deadline=attempt_deadline,
+        plan_revision=plan_revision,
+        execution_binding_digest=binding_digest,
+        structurally_ready=structurally_ready,
+        accepted_prerequisites=_freeze(accepted_prerequisites),
     )
 
 

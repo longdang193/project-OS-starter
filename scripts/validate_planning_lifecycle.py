@@ -48,6 +48,7 @@ from planning_artifact_schema import (
     get_required_values,
 )
 from agent_profile_registry import load_agent_profiles
+from planning_dependencies import DependencyContractError, parse_dependency_field, validate_dependency_graph
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,9 @@ def _coordination_rows(text: str) -> list[dict[str, str]]:
     return rows
 
 
-def _coordination_dependencies(value: str) -> list[str]:
+def _coordination_dependencies(value: str, *, strict: bool = True) -> list[str]:
+    if strict:
+        return parse_dependency_field(value)
     matches = re.findall(
         r"\bTasks?\s+(\d+)(?:\s*[-–]\s*(\d+))?\b",
         value,
@@ -111,17 +114,13 @@ def _coordination_dependencies(value: str) -> list[str]:
     )
     if not matches:
         return [value]
-
     dependencies: list[str] = []
     for first_number, last_number in matches:
         start_number = int(first_number)
         end_number = int(last_number or first_number)
         if end_number < start_number:
             return [value]
-        dependencies.extend(
-            f"Task {task_number}"
-            for task_number in range(start_number, end_number + 1)
-        )
+        dependencies.extend(f"Task {number}" for number in range(start_number, end_number + 1))
     return dependencies
 
 
@@ -389,13 +388,28 @@ def validate_git_coordination(
         findings.append(Finding("coordination_error", rel, f"{mode} permits at most one active task"))
 
     records = {row["task"]: row for row in rows}
-    task_sections = dict(_task_sections(text))
     strict_checklists = _clean_coordination_cell(_coordination_value(text, "Coordination schema") or "") == CHECKLIST_COORDINATION_SCHEMA
+    strict_dependencies = strict_checklists and payload.get("status") in CURRENT_PLAN_STATUSES
+    parsed_dependencies: dict[str, list[str]] = {}
+    for row in rows:
+        try:
+            parsed_dependencies[row["task"]] = _coordination_dependencies(row["dependencies"], strict=strict_dependencies)
+        except DependencyContractError as exc:
+            findings.append(Finding("coordination_error", rel, f"{row['task']} has invalid dependencies: {exc}"))
+            parsed_dependencies[row["task"]] = []
+    if strict_dependencies:
+        try:
+            validate_dependency_graph(
+                {row["task"]: parsed_dependencies.get(row["task"], []) for row in rows}
+            )
+        except DependencyContractError as exc:
+            findings.append(Finding("coordination_error", rel, str(exc)))
+    task_sections = dict(_task_sections(text))
     for row in active_rows:
         dependencies = row["dependencies"]
         if dependencies.lower() in {"", "none", "n/a"}:
             continue
-        for dependency in _coordination_dependencies(dependencies):
+        for dependency in parsed_dependencies.get(row["task"], []):
             dependency = dependency.strip()
             dependency_row = records.get(dependency)
             if dependency_row is None or dependency_row["state"] != "completed":

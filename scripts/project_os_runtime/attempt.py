@@ -191,6 +191,36 @@ def assignment_id(repository_identity: str, plan_identity: str, task_lane_id: st
     ).hexdigest()
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def execution_binding_digest(binding: Mapping[str, Any]) -> str:
+    payload = {
+        str(key): _jsonable(binding[key])
+        for key in (
+            "repository_identity",
+            "plan_identity",
+            "task",
+            "dependencies",
+            "executor",
+            "profile",
+            "fixed_contracts",
+            "allowed_write_set",
+            "runtime_grant",
+            "accepted_prerequisites",
+        )
+        if key in binding
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def normalize_attempt(attempt: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(attempt, Mapping):
         raise AttemptContractError("attempt must be a mapping")
