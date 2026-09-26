@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
@@ -146,6 +148,7 @@ _ALLOWED_RUNTIME_VALUE_OPTIONS = {
     "--grant-digest",
     "--prior-attempt-known",
     "--local-capability",
+    "--task-base64",
 }
 _FIXED_LOCAL_CAPABILITY_OPTIONS = (
     "--allow-fs-tools",
@@ -168,6 +171,13 @@ def _config_path() -> Path:
     return Path.home() / ".local" / "share" / "dcode-project" / "config.toml"
 
 
+def _option_value_missing(argv: list[str], index: int, option: str) -> bool:
+    return index + 1 >= len(argv) or (
+        option not in {"-n", "--non-interactive"}
+        and argv[index + 1].startswith("-")
+    )
+
+
 def _reject_unmanaged_runtime_options(argv: list[str]) -> None:
     index = 0
     while index < len(argv):
@@ -183,7 +193,7 @@ def _reject_unmanaged_runtime_options(argv: list[str]) -> None:
             continue
         if option in _ALLOWED_RUNTIME_VALUE_OPTIONS:
             if "=" not in argument:
-                if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+                if _option_value_missing(argv, index, option):
                     raise RuntimeError(f"dcode-project requires a value for `{option}`.")
                 index += 2
                 continue
@@ -1247,6 +1257,7 @@ def _controller_options(
     task_sha256: str | None = None
     grant_digest_value: str | None = None
     prior_attempt_known = False
+    task_base64_seen = False
     index = 0
     while index < len(argv):
         argument = argv[index]
@@ -1263,6 +1274,7 @@ def _controller_options(
             "--task-sha256",
             "--grant-digest",
             "--prior-attempt-known",
+            "--task-base64",
         }:
             if separator:
                 value = inline_value
@@ -1311,6 +1323,17 @@ def _controller_options(
                 if value.casefold() not in {"true", "false"}:
                     raise RuntimeError("dcode-project requires `--prior-attempt-known` to be true or false.")
                 prior_attempt_known = value.casefold() == "true"
+            elif option == "--task-base64":
+                if task_base64_seen:
+                    raise RuntimeError("dcode-project accepts only one `--task-base64`.")
+                try:
+                    decoded = base64.b64decode(value, validate=True).decode("utf-8")
+                except (binascii.Error, UnicodeDecodeError) as exc:
+                    raise RuntimeError("dcode-project requires valid UTF-8 `--task-base64`.") from exc
+                if not decoded:
+                    raise RuntimeError("dcode-project requires non-empty `--task-base64`.")
+                child.extend(["-n", decoded])
+                task_base64_seen = True
             elif executor is not None:
                 raise RuntimeError("dcode-project accepts only one `--executor`.")
             else:
@@ -1580,7 +1603,7 @@ def _handoff_stdin(argv: list[str], payload: dict[str, object]) -> str:
     )
     for index, argument in enumerate(argv):
         if argument in {"-n", "--non-interactive"}:
-            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+            if _option_value_missing(argv, index, argument):
                 raise RuntimeError("Handoff task text is missing.")
             task = argv[index + 1] + instruction
             argv[index : index + 2] = ["--stdin"]
@@ -1623,7 +1646,7 @@ def _append_bounded_task_context(argv: list[str], repo_root: Path) -> None:
     context = _bounded_task_context(repo_root)
     for index, argument in enumerate(argv):
         if argument in {"-n", "--non-interactive"}:
-            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+            if _option_value_missing(argv, index, argument):
                 raise RuntimeError("DeepAgents task text is missing.")
             argv[index + 1] += context
             return
@@ -1636,7 +1659,7 @@ def _append_bounded_task_context(argv: list[str], repo_root: Path) -> None:
 def _task_argument(argv: list[str]) -> str:
     for index, argument in enumerate(argv):
         if argument in {"-n", "--non-interactive"}:
-            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+            if _option_value_missing(argv, index, argument):
                 raise RuntimeError("Tura task text is missing.")
             return argv[index + 1]
         for option in ("-n=", "--non-interactive="):
