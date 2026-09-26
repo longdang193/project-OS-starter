@@ -215,14 +215,21 @@ def _active_plan() -> str:
         Preserve complete selected task context.
 
         ## Execution Approach
+        - Mode: `inline sequential`
+        - Coordination: `git-tracked`
         - Required skills: `skill-backend-verification`
+        - Preauthorized local actions: edit listed source files.
+        - User-approval actions: commit, push, merge.
+        - Parallel ownership: `none`; sequential task ownership.
+        - Isolation: clean managed worktree.
+        - Commit policy: commit only after verification.
 
         ## Coordination State
 
         | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
         | --- | --- | --- | --- | --- | --- | --- |
         | Task 1 | `completed` | current | `deepagents` | none | proof | recorded |
-        | Task 2 | `active` | current | `deepagents` | Task 1 | proof | pending |
+        | Task 2 | `active` | current | `deepagents` | Task 1 | required dispatch proof | pending |
 
         ## Task Breakdown
 
@@ -316,7 +323,15 @@ def test_launcher_task_argument_contains_complete_selected_contract(tmp_path: Pa
     assert "Plan objective:\nPreserve complete selected task context." in task_text
     assert "**Verification:**" in task_text
     assert "**Exit Criteria:**" in task_text
-    assert "Applicable explicit shared constraints:\n`skill-backend-verification`" in task_text
+    assert "Applicable explicit shared constraints:" in task_text
+    assert "- Required skills: `skill-backend-verification`" in task_text
+    assert "- Preauthorized local actions: edit listed source files." in task_text
+    assert "- User-approval actions: commit, push, merge." in task_text
+    assert "- Parallel ownership: `none`; sequential task ownership." in task_text
+    assert "- Mode:" not in task_text
+    assert "- Coordination:" not in task_text
+    assert "- Isolation:" not in task_text
+    assert "- Commit policy:" not in task_text
     assert task_text.count("**Purpose:**") == 1
     assert task_text.count("**Authority:**") == 1
     assert task_text.count("**Verification:**") == 1
@@ -331,25 +346,91 @@ def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Pa
     runtime = _binding(tmp_path)
     runtime["attempt_deadline"] = time.monotonic() + 60
     plan_lane = prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": runtime})[0]
-    manual_lane = dict(plan_lane)
-    for field in ("plan_source", "plan_revision", "plan_preparation", "execution_binding_digest"):
-        manual_lane.pop(field, None)
+    head = str(runtime["expected_base"])
+    manual_task = textwrap.dedent(
+        f"""
+        Plan objective:
+        Preserve complete selected task context.
+        Selected task contract:
+        Task 2: Second
 
-    counters = {"source_parts": 0, "prepare_task": 0}
-    from scripts.project_os_runtime import plan_preparation
+        **Purpose:**
+        - Second task.
+
+        **Template Profile:**
+        - Controller-selected: `normal`
+
+        **Files And Symbols:**
+        - Modify: `scripts/example.py:run`
+
+        **Verification:**
+        - `python -m pytest -q tests/test_example.py`
+
+        **Exit Criteria:**
+        - Task 2 proof is recorded.
+
+        **Authority:**
+        - Preauthorized local actions: edit source.
+        - Stop for: failed proof.
+        Accepted prerequisites:
+        - Task 1: accepted_revision={head}
+        Required proof:
+        required dispatch proof
+        Applicable explicit shared constraints:
+        - Required skills: `skill-backend-verification`
+        - Preauthorized local actions: edit listed source files.
+        - User-approval actions: commit, push, merge.
+        - Parallel ownership: `none`; sequential task ownership.
+        """
+    ).strip()
+    manual_lane = {
+        "lane_id": "task-2",
+        "repository_identity": "project-OS-starter",
+        "plan_identity": "demo-plan",
+        "task": manual_task,
+        "executor": "deepagents",
+        "profile": "normal",
+        "worktree": runtime["worktree"],
+        "expected_base": head,
+        "session": runtime["session"],
+        "pane": runtime["pane"],
+        "allowed_write_set": runtime["allowed_write_set"],
+        "dependencies": ["Task 1"],
+        "dependency_ready": True,
+        "structurally_ready": True,
+        "fixed_contracts": runtime["fixed_contracts"],
+        "mutable_resources": runtime["mutable_resources"],
+        "grant_turns": "native",
+        "grant_wall_clock_seconds": "native",
+        "grant_child_agents": "deny",
+        "mcp_select": [],
+        "local_capabilities": runtime["local_capabilities"],
+        "remaining_authorized_task_allowance": runtime["remaining_authorized_task_allowance"],
+        "attempt_deadline": runtime["attempt_deadline"],
+        "accepted_prerequisites": runtime["accepted_prerequisites"],
+    }
+
+    counters = {"source_parts": 0, "parse_plan": 0, "prepare_task": 0}
+    plan_preparation = sys.modules[dispatcher.prepare_plan_lanes.__module__]
 
     original_source_parts = plan_preparation._source_parts
+    original_parse_plan = plan_preparation.parse_plan
     original_prepare_task = plan_preparation.prepare_task
 
     def counted_source_parts(source):
         counters["source_parts"] += 1
         return original_source_parts(source)
 
+    def counted_parse_plan(source):
+        counters["parse_plan"] += 1
+        return original_parse_plan(source)
+
     def counted_prepare_task(graph, task_id):
         counters["prepare_task"] += 1
         return original_prepare_task(graph, task_id)
 
     monkeypatch.setattr(plan_preparation, "_source_parts", counted_source_parts)
+    monkeypatch.setattr(plan_preparation, "parse_plan", counted_parse_plan)
     monkeypatch.setattr(plan_preparation, "prepare_task", counted_prepare_task)
 
     def run_case(source, expected_lane, plan_mode: bool) -> dict[str, object]:
@@ -423,19 +504,31 @@ def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Pa
         elapsed = time.perf_counter() - started
         assert result["results"][0]["unresolved"] is False
         return {
-            "caller_supplied_fields": len(expected_lane),
+            "caller_plan_selectors": 2 if plan_mode else 0,
+            "caller_runtime_fields": len(runtime),
+            "caller_plan_derived_fields": 0 if plan_mode else len(
+                (
+                    "lane_id",
+                    "plan_identity",
+                    "task",
+                    "executor",
+                    "profile",
+                    "dependencies",
+                    "dependency_ready",
+                    "structurally_ready",
+                )
+            ),
+            "total_caller_authored_fields": 2 + len(runtime) if plan_mode else len(manual_lane),
             "launcher_commands": len(commands),
             "launcher_subprocesses": len(commands),
-            "model_calls": 0,
-            "missing_context_requests": 0,
-            "recovery_paths": 0,
-            "elapsed_seconds": elapsed,
-            "result": result,
+            "fake_model_calls": 0,
+            "fake_missing_context_events": 0,
+            "fake_recovery_paths": 0,
+            "preparation_to_launch_check_seconds": elapsed,
         }
 
     manual_metrics = run_case(manual_lane, manual_lane, False)
     plan_metrics = run_case(plan_lane, plan_lane, True)
-    plan_owned_fields = set(plan_lane) - set(runtime)
 
     semantic_fields = (
         "task",
@@ -446,17 +539,24 @@ def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Pa
         "allowed_write_set",
         "fixed_contracts",
         "mutable_resources",
+        "dependencies",
+        "dependency_ready",
+        "structurally_ready",
         "accepted_prerequisites",
     )
-    assert all(manual_lane[field] == plan_lane[field] for field in semantic_fields)
-    assert len(plan_owned_fields) > 0
+    manual_prepared = dispatcher.prepare_lane(manual_lane).to_dict()
+    plan_prepared = dispatcher.prepare_lane(plan_lane).to_dict()
+    assert all(manual_prepared[field] == plan_prepared[field] for field in semantic_fields)
+    assert manual_metrics["caller_plan_derived_fields"] == 8
+    assert plan_metrics["caller_plan_derived_fields"] == 0
+    assert counters == {"source_parts": 1, "parse_plan": 1, "prepare_task": 1}
     assert manual_metrics["launcher_commands"] == plan_metrics["launcher_commands"] == 1
     assert manual_metrics["launcher_subprocesses"] == plan_metrics["launcher_subprocesses"] == 1
-    assert manual_metrics["model_calls"] == plan_metrics["model_calls"] == 0
-    assert manual_metrics["missing_context_requests"] == plan_metrics["missing_context_requests"] == 0
-    assert manual_metrics["recovery_paths"] == plan_metrics["recovery_paths"] == 0
-    assert manual_metrics["elapsed_seconds"] >= 0
-    assert plan_metrics["elapsed_seconds"] >= 0
+    assert manual_metrics["fake_model_calls"] == plan_metrics["fake_model_calls"] == 0
+    assert manual_metrics["fake_missing_context_events"] == plan_metrics["fake_missing_context_events"] == 0
+    assert manual_metrics["fake_recovery_paths"] == plan_metrics["fake_recovery_paths"] == 0
+    assert manual_metrics["preparation_to_launch_check_seconds"] >= 0
+    assert plan_metrics["preparation_to_launch_check_seconds"] >= 0
 
 def test_prepare_plan_lanes_rejects_stale_binding(tmp_path: Path) -> None:
     plan_path = tmp_path / "plan.md"

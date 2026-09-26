@@ -35,6 +35,12 @@ _NAMED_DEPENDENCIES = re.compile(r"^Task\s+\d+(?:\s*,\s*Task\s+\d+)+$", re.IGNOR
 _NUMBERED_DEPENDENCIES = re.compile(r"^Tasks?\s+\d+(?:\s*,\s*\d+)+$", re.IGNORECASE)
 _RANGE_DEPENDENCY = re.compile(r"^Tasks?\s+(\d+)\s*-\s*(?:Task\s+)?(\d+)$", re.IGNORECASE)
 EXECUTION_ELIGIBLE_STATES = frozenset({"pending", "active"})
+_SHARED_CONSTRAINT_LABELS = (
+    "Required skills",
+    "Preauthorized local actions",
+    "User-approval actions",
+    "Parallel ownership",
+)
 _REQUIRED_BINDING_FIELDS = frozenset(
     {
         "repository_identity",
@@ -74,7 +80,7 @@ class PlanTask:
 class PlanGraph:
     plan_identity: str
     goal: str
-    required_skills: str
+    shared_constraints: tuple[tuple[str, str], ...]
     tasks: Mapping[str, PlanTask]
 
 
@@ -157,6 +163,23 @@ def _task_contracts(text: str) -> dict[str, tuple[str, str, str]]:
     return contracts
 
 
+def _shared_constraints(text: str) -> tuple[tuple[str, str], ...]:
+    constraints = []
+    for label in _SHARED_CONSTRAINT_LABELS:
+        prefix = f"- {label}:"
+        value = next(
+            (
+                line.split(":", 1)[1].strip()
+                for line in text.splitlines()
+                if line.strip().casefold().startswith(prefix.casefold())
+            ),
+            "",
+        )
+        if value:
+            constraints.append((label, value))
+    return tuple(constraints)
+
+
 def parse_plan(text: str) -> PlanGraph:
     lines = text.splitlines()
     header_index: int | None = None
@@ -215,10 +238,7 @@ def parse_plan(text: str) -> PlanGraph:
     return PlanGraph(
         plan_identity=hashlib.sha256(text.encode("utf-8")).hexdigest(),
         goal=_section(text, "Goal"),
-        required_skills=next(
-            (line.split(":", 1)[1].strip() for line in _section(text, "Execution Approach").splitlines() if line.strip().casefold().startswith("- required skills:")),
-            "",
-        ),
+        shared_constraints=_shared_constraints(_section(text, "Execution Approach")),
         tasks=tasks,
     )
 
@@ -263,8 +283,14 @@ def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
     brief_parts.extend(("", f"Recorded prerequisites: {', '.join(task.dependencies) or 'none'}"))
     if unresolved:
         brief_parts.append(f"Unresolved prerequisites: {', '.join(unresolved)}")
-    if graph.required_skills:
-        brief_parts.extend(("", f"Plan-wide requirements: {graph.required_skills}"))
+    if graph.shared_constraints:
+        brief_parts.extend(
+            (
+                "",
+                "Plan-wide shared constraints:",
+                "\n".join(f"- {label}: {value}" for label, value in graph.shared_constraints),
+            )
+        )
     return PreparedTask(
         task_id=canonical_id,
         execution_eligible=execution_eligible,
@@ -336,7 +362,7 @@ def _worker_brief(
     prepared: PreparedTask,
     accepted: Mapping[str, Any],
     plan_goal: str,
-    plan_requirements: str,
+    shared_constraints: Sequence[tuple[str, str]],
 ) -> str:
     selected = (
         _bounded_task_text(text, prepared.task_id, task.title)
@@ -357,8 +383,11 @@ def _worker_brief(
     parts.extend(("Accepted prerequisites:", "\n".join(prerequisites) or "- none"))
     if task.required_proof.strip() and task.required_proof.strip() not in selected:
         parts.extend(("Required proof:", task.required_proof.strip()))
-    if plan_requirements and plan_requirements.strip() not in selected:
-        parts.extend(("Applicable explicit shared constraints:", plan_requirements.strip()))
+    rendered_constraints = "\n".join(
+        f"- {label}: {value}" for label, value in shared_constraints
+    )
+    if rendered_constraints and rendered_constraints not in selected:
+        parts.extend(("Applicable explicit shared constraints:", rendered_constraints))
     return "\n".join(parts).strip()
 
 
@@ -464,7 +493,7 @@ def _prepare_plan_lanes(
             "plan_identity": plan_identity,
             "plan_revision": plan_revision,
             "plan_source": plan_source,
-            "task": _worker_brief(text, task, prepared, accepted, graph.goal, graph.required_skills),
+            "task": _worker_brief(text, task, prepared, accepted, graph.goal, graph.shared_constraints),
             "executor": task.executor.casefold(),
             "profile": task.profile,
             "worktree": binding["worktree"],
