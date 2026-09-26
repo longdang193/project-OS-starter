@@ -41,6 +41,12 @@ adapter to that owner. Plan mode is mutually exclusive with `--lanes-file`;
 both modes share admission, launch-bound freshness verification, and
 `run_parallel()`.
 
+Canonical plan input projects plan goal, the complete selected task section,
+accepted prerequisite identities, non-duplicative required proof, and the
+allowlisted shared constraints `Required skills`, `Preauthorized local actions`,
+`User-approval actions`, and `Parallel ownership`. Runtime authority and
+resources remain caller-owned through `runtime.json`.
+
 ## Deployed Runtime Projections
 
 | Projection | Role |
