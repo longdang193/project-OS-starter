@@ -1280,3 +1280,51 @@ def test_run_lane_timeout_without_reaping_keeps_capacity_occupied(tmp_path: Path
     assert result["reaped"] is False
     assert result["capacity"] == "occupied"
     assert result["timeout_evidence"]["capacity"] == "occupied"
+
+PLAN_FOR_DISPATCH = """# Plan
+
+## Goal
+Prepare selected task.
+
+## Execution Approach
+- Required skills: `skill-backend-verification`
+
+## Coordination State
+
+| Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| Task 1 | `completed` | current | `deepagents` | none | source proof | evidence |
+| Task 2 | `completed` | current | `deepagents` | Task 1 | dispatch proof | evidence |
+
+## Task Breakdown
+
+### Task 1: Source
+**Template Profile:**
+- Controller-selected: `normal`
+
+### Task 2: Dispatch
+**Template Profile:**
+- Controller-selected: `normal`
+"""
+
+
+def test_run_parallel_from_plan_reuses_existing_admission(tmp_path: Path, monkeypatch) -> None:
+    runtime = lane("dispatch", tmp_path)
+    for field in ("task", "executor", "profile", "dependencies", "dependency_ready", "plan_identity"):
+        runtime.pop(field, None)
+    observed: list[object] = []
+
+    def fake_run_lane(item, **kwargs):
+        observed.append(item)
+        return {"lane_id": item["lane_id"], "capacity": "released", "unresolved": False}
+
+    monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
+    result = dispatcher.run_parallel_from_plan(
+        PLAN_FOR_DISPATCH,
+        ["Task 2"],
+        {"Task 2": runtime},
+    )
+
+    assert [item["lane_id"] for item in result["admitted"]] == ["dispatch"]
+    assert observed[0]["dependency_ready"] is True
+    assert "Task 2: Dispatch" in observed[0]["task"]
