@@ -4139,9 +4139,74 @@ def test_resolve_launch_rechecks_selected_target_before_launch(
         )
 
 
+def test_git_identity_batches_stable_facts_and_preserves_detached_head(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    commands: list[list[str]] = []
+    values = iter([f"{tmp_path}\n{tmp_path / '.git'}\nhead", "", "base"])
+
+    def fake_run_checked(command: list[str], **kwargs) -> str:
+        commands.append(command)
+        return next(values)
+
+    monkeypatch.setattr(LAUNCHER, "_run_checked", fake_run_checked)
+
+    identity = LAUNCHER._git_identity(tmp_path, "base")
+
+    assert identity == {
+        "worktree": str(tmp_path),
+        "repo_root": str(tmp_path),
+        "git_common_dir": str(tmp_path / ".git"),
+        "branch": "",
+        "head": "head",
+        "expected_base": "base",
+    }
+    assert commands == [
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "rev-parse",
+            "--show-toplevel",
+            "--git-common-dir",
+            "HEAD",
+        ],
+        ["git", "-C", str(tmp_path), "branch", "--show-current"],
+        ["git", "-C", str(tmp_path), "rev-parse", "--verify", "base^{commit}"],
+    ]
+
+
+def test_git_identity_rejects_malformed_batched_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_run_checked", lambda *args, **kwargs: "root\ncommon")
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="unexpected output"):
+        LAUNCHER._git_identity(tmp_path, "base")
+
+
+def test_git_identity_preserves_expected_base_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    values = iter([f"{tmp_path}\n{tmp_path / '.git'}\nhead", "main"])
+
+    def fake_run_checked(command: list[str], **kwargs) -> str:
+        if command[-2:] == ["--verify", "base^{commit}"]:
+            raise LAUNCHER.LaunchBlocked("Command failed (128): invalid expected base")
+        return next(values)
+
+    monkeypatch.setattr(LAUNCHER, "_run_checked", fake_run_checked)
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="invalid expected base"):
+        LAUNCHER._git_identity(tmp_path, "base")
+
+
 def test_git_identity_rejects_non_root_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    values = iter([str(tmp_path), str(tmp_path / ".git"), "main", "head", "base"])
-    monkeypatch.setattr(LAUNCHER, "_git_value", lambda cwd, *args: next(values))
+    values = iter([f"{tmp_path}\n{tmp_path / '.git'}\nhead"])
+    monkeypatch.setattr(LAUNCHER, "_run_checked", lambda *args, **kwargs: next(values))
 
     with pytest.raises(LAUNCHER.LaunchBlocked, match="exact Git worktree root"):
         LAUNCHER._git_identity(tmp_path / "subdir", "base")

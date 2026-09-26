@@ -1338,6 +1338,43 @@ def test_verify_launch_bindings_accepts_contained_revision_without_artifact_ref(
     assert dispatcher.verify_launch_bindings(dispatcher.prepare_lane(raw))
 
 
+@pytest.mark.parametrize("dependency_count", [0, 1, 2])
+def test_verify_launch_bindings_preserves_ancestry_command_sequence(
+    dependency_count: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parent.parent
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    dependencies = [f"Task {index}" for index in range(1, dependency_count + 1)]
+    raw = lane("a", root)
+    raw.update(
+        {
+            "worktree": str(root),
+            "expected_base": head,
+            "dependencies": dependencies,
+            "accepted_prerequisites": {
+                dependency: {"accepted_revision": head} for dependency in dependencies
+            },
+        }
+    )
+    prepared = dispatcher.prepare_lane(raw)
+    raw["execution_binding_digest"] = dispatcher._execution_binding_digest(prepared)
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(dispatcher.subprocess, "run", fake_run)
+
+    assert dispatcher.verify_launch_bindings(dispatcher.prepare_lane(raw))
+    expected_command = ["git", "-C", str(root), "merge-base", "--is-ancestor"]
+    assert calls == [
+        [*expected_command, head, "HEAD"],
+        *[[*expected_command, head, "HEAD"] for _ in dependencies],
+    ]
+
+
 def test_run_lane_rejects_stale_binding_before_launcher(tmp_path: Path, monkeypatch) -> None:
     raw = lane("a", tmp_path)
     raw["execution_binding_digest"] = dispatcher._execution_binding_digest(raw)

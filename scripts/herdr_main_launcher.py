@@ -386,23 +386,34 @@ def _codex_mcp_selection(
     }
 
 
-def _git_value(cwd: Path, *arguments: str) -> str:
-    return _run_checked(["git", "-C", str(cwd), *arguments])
-
-
 def _git_identity(cwd: Path, expected_base: str) -> dict[str, str]:
     worktree = cwd.resolve()
-    repo_root = Path(_git_value(worktree, "rev-parse", "--show-toplevel")).resolve()
+    identity_output = _run_checked(
+        [
+            "git",
+            "-C",
+            str(worktree),
+            "rev-parse",
+            "--show-toplevel",
+            "--git-common-dir",
+            "HEAD",
+        ]
+    ).splitlines()
+    if len(identity_output) != 3 or any(not value.strip() for value in identity_output):
+        raise LaunchBlocked("Git identity probe returned unexpected output")
+    repo_root = Path(identity_output[0]).resolve()
     if worktree != repo_root:
         raise LaunchBlocked(f"--cwd must equal exact Git worktree root: {worktree}")
-    common_dir = Path(_git_value(worktree, "rev-parse", "--git-common-dir"))
+    common_dir = Path(identity_output[1])
     if not common_dir.is_absolute():
         common_dir = (worktree / common_dir).resolve()
     else:
         common_dir = common_dir.resolve()
-    branch = _git_value(worktree, "branch", "--show-current")
-    head = _git_value(worktree, "rev-parse", "HEAD")
-    expected = _git_value(worktree, "rev-parse", "--verify", f"{expected_base}^{{commit}}")
+    branch = _run_checked(["git", "-C", str(worktree), "branch", "--show-current"])
+    head = identity_output[2]
+    expected = _run_checked(
+        ["git", "-C", str(worktree), "rev-parse", "--verify", f"{expected_base}^{{commit}}"]
+    )
     return {
         "worktree": str(worktree),
         "repo_root": str(repo_root),
