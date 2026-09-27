@@ -2201,6 +2201,45 @@ def test_target_selector_requires_both_auto_values() -> None:
         LAUNCHER._resolve_target_selector(ROOT, "auto", "w1:p5", "herdr.exe")
 
 
+def test_target_selector_discovers_auto_pane_in_named_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: commands.append(command)
+        or {
+            "result": {
+                "panes": [
+                    {
+                        "workspace_id": "w-project",
+                        "pane_id": "w-project:p1",
+                        "cwd": str(ROOT),
+                    }
+                ]
+            }
+        },
+    )
+    inspected_sessions: list[str] = []
+
+    def inspect_candidate(*args, **kwargs):
+        inspected_sessions.append(args[1])
+        return {"pane": {}}
+
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", inspect_candidate)
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "project-os", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("project-os", "w-project:p1")
+    assert inspected_sessions == ["project-os"]
+    assert commands == [["herdr.exe", "--session", "project-os", "pane", "list"]]
+    assert resolution["status"] == "selected"
+    assert resolution["mode"] == "auto"
+
+
 def test_pane_ownership_lock_blocks_same_pane_and_releases_after_failure(
     tmp_path: Path,
 ) -> None:

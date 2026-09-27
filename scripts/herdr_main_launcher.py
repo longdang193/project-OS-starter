@@ -596,9 +596,9 @@ def _resolve_target_selector(
     executor: str = "codex",
     env: dict[str, str] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
-    if (session == "auto") != (pane == "auto"):
+    if session == "auto" and pane != "auto":
         raise LaunchBlocked("`--session auto` and `--pane auto` must be used together.")
-    if session != "auto":
+    if session != "auto" and pane != "auto":
         return session, pane, {
             "status": "selected",
             "mode": "exact",
@@ -619,20 +619,32 @@ def _resolve_target_selector(
         return remaining
 
     try:
-        snapshot = _result(
-            _json_command(
-                [herdr, "api", "snapshot"],
-                env=env,
-                timeout=remaining_timeout(),
-            ),
-            "snapshot",
-        )
+        if session == "auto":
+            snapshot = _result(
+                _json_command(
+                    [herdr, "api", "snapshot"],
+                    env=env,
+                    timeout=remaining_timeout(),
+                ),
+                "snapshot",
+            )
+            panes = snapshot.get("panes") if isinstance(snapshot, dict) else None
+            control_session = _HERDR_DEFAULT_SESSION
+        else:
+            panes = _result(
+                _json_command(
+                    [herdr, "--session", session, "pane", "list"],
+                    env=env,
+                    timeout=remaining_timeout(),
+                ),
+                "panes",
+            )
+            control_session = session
     except CommandTransportTimeout as exc:
         raise TargetResolutionBlocked(
             "target discovery transport timed out",
             {"status": "incomplete", "mode": "auto", "failure_kind": "transport_timeout"},
         ) from exc
-    panes = snapshot.get("panes") if isinstance(snapshot, dict) else None
     if not isinstance(panes, list):
         raise LaunchBlocked("Herdr snapshot is missing panes.")
     if any(not isinstance(item, dict) for item in panes):
@@ -642,7 +654,6 @@ def _resolve_target_selector(
 
     candidates: list[tuple[str, str]] = []
     rejections: list[dict[str, str]] = []
-    control_session = _HERDR_DEFAULT_SESSION
     for item in panes:
         workspace_id = item.get("workspace_id")
         pane_id = item.get("pane_id")
