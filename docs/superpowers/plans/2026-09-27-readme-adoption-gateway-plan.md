@@ -60,13 +60,13 @@ state, or duplicate runtime policy.
 - Branch: `main`
 - Base commit: `d7f395e556ffe4c8b9076308f2f91357b0e1f759`
 - Expected workspace: `main` clean in tracked files; preserve `.playwright-mcp/`, `db/`, `temp_evidence.json`, and any other unrelated untracked content
-- Next action: complete Task 1 source audit and setup/usage edits
+- Next action: complete Task 2 README map edits and contract preservation
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `active` | current | `codex` | none | setup/usage docs contain runnable paths and source map | started after approval |
-| Task 2 | `pending` | current | `codex` | Task 1 | README map preserves tested contract strings | pending |
+| Task 1 | `completed` | current | `codex` | none | setup/usage docs contain runnable paths and source map | links, diff, and plan validation passed; checkpoint follows |
+| Task 2 | `active` | current | `codex` | Task 1 | README map preserves tested contract strings | started after Task 1 checkpoint |
 | Task 3 | `pending` | current | `codex` | Task 2 | final docs, contract, test, and diff proof | pending |
 
 ## Task Breakdown
@@ -114,13 +114,13 @@ state, or duplicate runtime policy.
 - Stop for: tracked workspace changes, changed base commit, missing canonical command owner, or scope requiring runtime/code edits
 
 **Steps:**
-- [ ] Step 1: Confirm base commit and tracked workspace state; record preserved untracked paths; create the initial lead checkpoint containing this plan without staging unrelated files.
-- [ ] Step 2: Map each README claim to a canonical script, workflow, or operating-system document.
-- [ ] Step 3: Confirm setup prerequisites, core versus benchmark dependencies, tested CI platforms, adoption commands, and dispatcher exit semantics from source.
-- [ ] Step 4: Replace `docs/setup.md` and `docs/usage.md` placeholders with prerequisites, core/full validation paths, optional runtime setup, one reference usage flow, evidence handling, and links to canonical docs.
+- [x] Step 1: Confirm base commit and tracked workspace state; record preserved untracked paths; create the initial lead checkpoint containing this plan without staging unrelated files.
+- [x] Step 2: Map each README claim to a canonical script, workflow, or operating-system document.
+- [x] Step 3: Confirm setup prerequisites, core versus benchmark dependencies, tested CI platforms, adoption commands, and dispatcher exit semantics from source.
+- [x] Step 4: Replace `docs/setup.md` and `docs/usage.md` placeholders with prerequisites, core/full validation paths, optional runtime setup, one reference usage flow, evidence handling, and links to canonical docs.
 
 **Verification:**
-- [ ] `git status --short --branch` and targeted `rg`/`--help` inspection.
+- [x] `git status --short --branch` and targeted `rg`/`--help` inspection.
 - Expected: every planned command has an existing owner, setup/usage docs are actionable, and no unrelated tracked change is present.
 
 **Exit Criteria:**
