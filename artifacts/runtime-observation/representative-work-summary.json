@@ -1,0 +1,137 @@
+{
+  "schema": "runtime-observation-summary/v1",
+  "generated_at_utc": "2026-09-27T10:52:00Z",
+  "git_revision": "318ac66cf8637b4e63049b0673cc5971f207379b",
+  "sample_count": 10,
+  "task_categories": {
+    "representative-read-only": 10
+  },
+  "worker_budget_seconds": {
+    "20": 8,
+    "120": 2
+  },
+  "phase_stats_ms": {
+    "preflight": {
+      "count": 10,
+      "median": 175.17649999999998,
+      "p95": 202.575,
+      "min": 155.016,
+      "max": 202.575
+    },
+    "target_discovery": {
+      "count": 10,
+      "median": 71.807,
+      "p95": 80.93,
+      "min": 0.005,
+      "max": 80.93
+    },
+    "launch_preparation": {
+      "count": 10,
+      "median": 78.314,
+      "p95": 96.994,
+      "min": 72.202,
+      "max": 96.994
+    },
+    "delivery": {
+      "count": 0,
+      "median": null,
+      "p95": null,
+      "min": null,
+      "max": null
+    },
+    "observation": {
+      "count": 10,
+      "median": 20863.482,
+      "p95": 120811.556,
+      "min": 20811.627,
+      "max": 120811.556
+    },
+    "retirement": {
+      "count": 0,
+      "median": null,
+      "p95": null,
+      "min": null,
+      "max": null
+    }
+  },
+  "total_duration_ms": {
+    "count": 10,
+    "median": 21281.686,
+    "p95": 121186.181,
+    "min": 21203.023,
+    "max": 121186.181
+  },
+  "observation_duration_ms": {
+    "count": 10,
+    "median": 20863.482,
+    "p95": 120811.556,
+    "min": 20811.627,
+    "max": 120811.556
+  },
+  "pane_run_duration_ms": {
+    "count": 10,
+    "median": 80.043,
+    "p95": 92.59,
+    "min": 71.284,
+    "max": 92.59
+  },
+  "time_to_receipt_ms": {
+    "count": 2,
+    "median": 85451.679,
+    "p95": 120811.521,
+    "min": 50091.837,
+    "max": 120811.521
+  },
+  "subprocess_total": {
+    "count": 10,
+    "median": 31.0,
+    "p95": 129.0,
+    "min": 31.0,
+    "max": 129.0
+  },
+  "outcomes": {
+    "launcher_exit_code": {
+      "2": 10
+    },
+    "status": {
+      "completed": 10
+    },
+    "failure_kind": {
+      "task_result_unverified": 10
+    },
+    "cleanup_state": {
+      "removed": 10
+    },
+    "reconciliation_required": {
+      "True": 10
+    },
+    "task_result_state": {
+      "unverified": 10
+    },
+    "worker_exit_code": {
+      "0": 10
+    }
+  },
+  "interpretation": {
+    "worker_execution_dominates": true,
+    "observation_is_not_monitoring_latency": true,
+    "reason": "time_to_receipt_ms and observation duration include provider/worker execution; pane_run_duration_ms remains below 100ms in all captured attempts.",
+    "standalone_task_result_limitation": "Standalone launcher runs omit assignment_id, repository_identity, task_sha256, and grant_digest bindings. dcode-project therefore does not publish task-result.json, so task_result remains unverified and reconciliation_required remains true despite confirmed receipt and removed cleanup.",
+    "controller_intervention_metric": "not recorded; no explicit trace field exists.",
+    "sample_quality": "exploratory live evidence, not a before/after optimization benchmark; worker budgets are 20s for eight attempts and 120s for two attempts."
+  },
+  "decision": {
+    "outcome": "freeze_project_os_runtime",
+    "owner": "Project OS runtime",
+    "sample_count": 10,
+    "dominant_signal": "provider/worker execution wait represented in observation and time_to_receipt_ms",
+    "expected_improvement": "none admitted; launcher optimization would not address measured dominant cost",
+    "correctness_gates": [
+      "receipt_authoritative=true",
+      "worker_exit_code=0",
+      "cleanup.state=removed",
+      "descendant termination evidenced"
+    ],
+    "follow_on_plan": null
+  }
+}
