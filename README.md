@@ -13,6 +13,36 @@ Define how coding agents are assigned, bounded, equipped, observed, and accepted
 
 [GitHub](https://github.com/longdang193/project-OS-starter) · [Issues](https://github.com/longdang193/project-OS-starter/issues) · [Setup](docs/setup.md) · [Usage](docs/usage.md) · [Adoption guide](docs/operating_system/adoption/project-adoption-migration-guide.md)
 
+## Requirements
+
+- Git
+- Python 3.12 or newer
+- `requirements.txt` for core repository validation
+- `requirements-benchmark.txt` for benchmark-only evaluation
+- Optional Codex, DeepAgents, Tura, or Herdr runtime setup for execution paths
+
+CI currently validates repository contracts on Ubuntu and runtime contracts on
+Ubuntu and Windows. macOS support is not currently asserted.
+
+## Get Started
+
+### Understand the project
+
+Read the [architecture](docs/architecture.md), [pipeline](docs/pipeline.md),
+and [interactive Guided Story](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html).
+
+### Evaluate this source repository
+
+Follow [Setup](docs/setup.md) for dependencies, then run the [Usage](docs/usage.md)
+validation loop.
+
+### Adopt Project OS
+
+Follow the [Adoption guide](docs/operating_system/adoption/project-adoption-migration-guide.md)
+to deploy the shared runtime, generate the starter kit, and validate the
+consumer repository. Keep project-specific docs, configuration, code, and tests
+in the consuming repository.
+
 ## Why Project OS Starter?
 
 Individual coding agents can write useful code. Multi-agent development adds harder problems:
@@ -47,7 +77,8 @@ Runtime state uses separate namespaces: admission is
 `ADMITTED | DEFERRED | BLOCKED | REJECTED`; runtime facts are
 `settled | unresolved | recovery-required`; CoS acceptance is
 `PASS | FAIL | BLOCKED`. Dispatcher exit `0` means no rejected/blocked admission
-and no unresolved executed result; all-deferred scheduling is normal output.
+and no executed result has `unresolved: true` or a non-null `failure_kind`; all-
+deferred scheduling is normal output.
 
 [![Project OS Starter Guided Story](docs/architecture/project-OS-starter-guided-story.svg)](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html)
 
@@ -136,19 +167,33 @@ Public distribution is curated separately from deeper implementation and runtime
 
 ## Evaluation Path
 
-For maintainers with source access, evaluate the project through its contracts and tests:
+For maintainers with source access, evaluate the project through its contracts
+and tests. Install core dependencies first:
 
 ```powershell
+python -m pip install -r requirements.txt
 python scripts/validate_repo_contracts.py
-python -m pytest -q
-python scripts/sync_agent_adapters.py --all-platforms --check
 git diff --check
 ```
 
+For full test and benchmark evaluation, install the optional benchmark
+dependencies:
+
+```powershell
+python -m pip install -r requirements.txt -r requirements-benchmark.txt
+python -m pytest -q
+```
+
+Run adapter drift checks without regenerating outputs:
+
+```powershell
+python scripts/sync_agent_adapters.py --all-platforms --check
+```
+
 Run repository validation once; its owned drift checks run within that command.
-Run explicit pytest modules for runtime and validator regressions. Run adapter
-generation only after canonical adapter-source edits; otherwise use one adapter
-drift check. Coordinated DeepAgents requires the setup-owned wrapper at
+Run explicit pytest modules for focused runtime and validator regressions. Run
+adapter generation only after canonical adapter-source edits. Coordinated
+DeepAgents requires the setup-owned wrapper at
 `~/.local/bin/dcode-project` on POSIX or `%USERPROFILE%\.local\bin\dcode-project.cmd`
 on Windows and fails closed when it is absent.
 
@@ -161,7 +206,7 @@ Adopt only the layers your project can own, expose, and validate. Keep project-s
 - Shared operating-system docs, reusable scripts, and skills stay under the shared Project OS installation: `~/.agents/project-os` and `~/.agents/skills`.
 - Keep project-specific project-local folders such as `docs/intent/`, `docs/superpowers/`, `repo_config/`, code, tests, and scripts in this repository when adopting this starter.
 - When adopting this starter, create `docs/intent/` when durable project purpose needs more than `README.md`.
-- DeepAgents Code runtime setup owns its version; version pinned by `scripts/setup_deepagents_runtime.ps1` is currently `deepagents-code==0.1.74`, which brings `deepagents==0.7.18`.
+- DeepAgents Code runtime setup owns its version; version pinned by `scripts/setup_deepagents_runtime.ps1` is the source of truth. Use that setup path and its contract tests instead of copying numeric version values into project docs.
 - DeepAgents uses `OPENAI_API_KEY` from the same `~/.codex/tokenpilot.env` file used by Codex; do not use a separate project secret file.
 - DeepAgents runtime version bumps require compatibility proof for `scripts/patch_deepagents_runtime.py`; do not bump package version alone.
 - Select runtime profiles explicitly, for example `--role <profile>`.

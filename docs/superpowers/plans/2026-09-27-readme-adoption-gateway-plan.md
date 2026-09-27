@@ -60,14 +60,14 @@ state, or duplicate runtime policy.
 - Branch: `main`
 - Base commit: `d7f395e556ffe4c8b9076308f2f91357b0e1f759`
 - Expected workspace: `main` clean in tracked files; preserve `.playwright-mcp/`, `db/`, `temp_evidence.json`, and any other unrelated untracked content
-- Next action: complete Task 2 README map edits and contract preservation
+- Next action: run Task 3 final documentation verification
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current | `codex` | none | setup/usage docs contain runnable paths and source map | links, diff, and plan validation passed; checkpoint follows |
-| Task 2 | `active` | current | `codex` | Task 1 | README map preserves tested contract strings | started after Task 1 checkpoint |
-| Task 3 | `pending` | current | `codex` | Task 2 | final docs, contract, test, and diff proof | pending |
+| Task 2 | `completed` | current | `codex` | Task 1 | README map preserves tested contract strings | 33 focused contract tests passed; checkpoint follows |
+| Task 3 | `active` | current | `codex` | Task 2 | final docs, contract, test, and diff proof | started after Task 2 checkpoint |
 
 ## Task Breakdown
 
@@ -164,15 +164,15 @@ state, or duplicate runtime policy.
 - Stop for: new product claims, changed runtime semantics, license policy decisions, or generated-surface edits
 
 **Steps:**
-- [ ] Step 1: Add a compact Requirements and Get Started section near the top.
-- [ ] Step 2: Add three paths: understand, evaluate, and adopt.
-- [ ] Step 3: Separate core validation from full benchmark validation and include dependency installation.
-- [ ] Step 4: Correct runtime status wording and retain the required phrase `version pinned by \`scripts/setup_deepagents_runtime.ps1\`` without copying numeric version values.
-- [ ] Step 5: Keep architecture, scope, non-goals, and license status concise and link deeper detail to canonical docs.
-- [ ] Step 6: Preserve existing README contract phrases: `native-personal-local`, `Codex, DeepAgents, or Tura`, `planning-dispatch.md`, `--role <profile>`, `DeepAgents MCP is opt-in through explicit Herdr selection`, `project-local folders`, `Shared operating-system docs, reusable scripts, and skills stay under`, and the `docs/intent/` adoption guidance.
+- [x] Step 1: Add a compact Requirements and Get Started section near the top.
+- [x] Step 2: Add three paths: understand, evaluate, and adopt.
+- [x] Step 3: Separate core validation from full benchmark validation and include dependency installation.
+- [x] Step 4: Correct runtime status wording and retain the required phrase `version pinned by \`scripts/setup_deepagents_runtime.ps1\`` without copying numeric version values.
+- [x] Step 5: Keep architecture, scope, non-goals, and license status concise and link deeper detail to canonical docs.
+- [x] Step 6: Preserve existing README contract phrases: `native-personal-local`, `Codex, DeepAgents, or Tura`, `planning-dispatch.md`, `--role <profile>`, `DeepAgents MCP is opt-in through explicit Herdr selection`, `project-local folders`, `Shared operating-system docs, reusable scripts, and skills stay under`, and the `docs/intent/` adoption guidance.
 
 **Verification:**
-- [ ] Compare every new README command/link with Task 1 source map and run README contract tests.
+- [x] Compare every new README command/link with Task 1 source map and run README contract tests.
 - Expected: README acts as a project map, not a second runtime manual.
 
 **Exit Criteria:**
