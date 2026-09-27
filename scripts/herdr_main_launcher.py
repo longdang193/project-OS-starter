@@ -105,6 +105,7 @@ _DEEPAGENTS_RECEIPT_GRACE_SECONDS = 30.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
 _DEEPAGENTS_RECEIPT_POLL_SECONDS = 0.1
 _DEEPAGENTS_DIAGNOSTIC_POLL_SECONDS = 2.0
+_DEEPAGENTS_DIAGNOSTIC_COMMAND_TIMEOUT = 0.5
 _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
@@ -1624,11 +1625,19 @@ def _deepagents_completion_snapshot(
     deadline: float | None = None,
     wait_for_marker: bool = True,
     marker_observed: bool = False,
+    diagnostic_timeout: float | None = None,
+    receipt_check: Any = None,
 ) -> dict[str, Any]:
     def observation_timeout() -> float:
         if deadline is None:
             return _HERDR_COMMAND_TIMEOUT
         return min(_HERDR_COMMAND_TIMEOUT, deadline - time.monotonic())
+
+    def diagnostic_command_timeout() -> float:
+        timeout = observation_timeout()
+        if diagnostic_timeout is not None:
+            timeout = min(timeout, diagnostic_timeout)
+        return timeout
 
     def observation_deadline_expired() -> bool:
         return deadline is not None and deadline - time.monotonic() <= 0
@@ -1674,9 +1683,7 @@ def _deepagents_completion_snapshot(
             marker_wait_state = "transport_failed"
             observation_deadline_exceeded = observation_deadline_expired()
     try:
-        timeout = observation_timeout()
-        if deadline is not None:
-            timeout = max(0.0, timeout - (2 * _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS))
+        timeout = diagnostic_command_timeout()
         if timeout <= 0:
             observation_deadline_exceeded = True
             raise CommandTransportTimeout("observation deadline exceeded before process-info")
@@ -1695,12 +1702,19 @@ def _deepagents_completion_snapshot(
     if observation_deadline_expired():
         observation_deadline_exceeded = True
         process_error = "observation deadline exceeded"
+    receipt_confirmed = False
     try:
-        timeout = observation_timeout()
-        if timeout <= 0:
+        if callable(receipt_check):
+            checked_receipt = receipt_check()
+            receipt_confirmed = isinstance(checked_receipt, dict) and checked_receipt.get("state") == "confirmed"
+        timeout = diagnostic_command_timeout()
+        if receipt_confirmed:
+            read_result = None
+        elif timeout <= 0:
             observation_deadline_exceeded = True
             raise CommandTransportTimeout("observation deadline exceeded before pane read")
-        read_result = _run(
+        else:
+            read_result = _run(
             [
                 herdr,
                 "--session",
@@ -1715,9 +1729,9 @@ def _deepagents_completion_snapshot(
                 "--format",
                 "text",
             ],
-            env=env,
-            timeout=timeout,
-        )
+                env=env,
+                timeout=timeout,
+            )
     except CommandTransportTimeout:
         observation_deadline_exceeded = observation_deadline_expired()
         read_error = (
@@ -1763,6 +1777,7 @@ def _deepagents_completion_snapshot(
         ],
         "observation_error": observation_error,
         "marker_wait_state": marker_wait_state,
+        "pane_read_skipped": receipt_confirmed,
     }
 
 
@@ -1831,30 +1846,41 @@ def _deepagents_completion_evidence(
     if attempt_deadline is not None:
         settlement_deadline = min(settlement_deadline, attempt_deadline)
     evidence: dict[str, Any] | None = None
+    monitoring_started_monotonic = time.monotonic()
     monitoring: dict[str, Any] = {
         "receipt_poll_seconds": _DEEPAGENTS_RECEIPT_POLL_SECONDS,
         "diagnostic_poll_seconds": diagnostic_interval,
         "receipt_checks": 0,
         "diagnostic_probe_count": 0,
-        "started_at": time.time(),
+        "monitoring_started_at": time.time(),
         "receipt_observed_at": None,
         "completion_returned_at": None,
-        "detection_delay_ms": None,
+        "time_to_receipt_ms": None,
+        "receipt_to_completion_return_ms": None,
     }
+    receipt_observed_monotonic: float | None = None
 
     def read_receipt() -> dict[str, Any]:
+        nonlocal receipt_observed_monotonic
         receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
         monitoring["receipt_checks"] += 1
         if receipt.get("state") == "confirmed" and monitoring["receipt_observed_at"] is None:
+            receipt_observed_monotonic = time.monotonic()
             monitoring["receipt_observed_at"] = time.time()
-            monitoring["detection_delay_ms"] = round(
-                max(0.0, monitoring["receipt_observed_at"] - monitoring["started_at"]) * 1000,
+            monitoring["time_to_receipt_ms"] = round(
+                max(0.0, receipt_observed_monotonic - monitoring_started_monotonic) * 1000,
                 3,
             )
         return receipt
 
     def finish(result: dict[str, Any]) -> dict[str, Any]:
+        completion_returned_monotonic = time.monotonic()
         monitoring["completion_returned_at"] = time.time()
+        if receipt_observed_monotonic is not None:
+            monitoring["receipt_to_completion_return_ms"] = round(
+                max(0.0, completion_returned_monotonic - receipt_observed_monotonic) * 1000,
+                3,
+            )
         result["monitoring"] = dict(monitoring)
         return result
 
@@ -1878,6 +1904,11 @@ def _deepagents_completion_evidence(
             receipt = read_receipt()
         return receipt
 
+    def refresh_receipt() -> dict[str, Any]:
+        nonlocal receipt
+        receipt = read_receipt()
+        return receipt
+
     marker_observed = False
     next_diagnostic_at = started
     while True:
@@ -1894,8 +1925,12 @@ def _deepagents_completion_evidence(
                 deadline=observation_deadline,
                 marker_observed=marker_observed,
                 wait_for_marker=False,
+                diagnostic_timeout=_DEEPAGENTS_DIAGNOSTIC_COMMAND_TIMEOUT,
+                receipt_check=refresh_receipt if receipt_file is not None else None,
             )
             monitoring["diagnostic_probe_count"] += 1
+            if receipt.get("state") == "confirmed":
+                return finish(_deepagents_receipt_observation(receipt, evidence))
             marker_observed = marker_observed or evidence.get("marker_present") is True
             next_diagnostic_at = time.monotonic() + diagnostic_interval
             if evidence["state"] in {"completed", "failed"}:

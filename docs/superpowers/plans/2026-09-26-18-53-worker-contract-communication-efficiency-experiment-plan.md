@@ -3,7 +3,7 @@ layer: change
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: superseded
 name: worker-contract-communication-efficiency-experiment
 targets:
   - scripts/benchmark_worker_contract.py
@@ -13,6 +13,12 @@ targets:
 ---
 
 # Worker Contract Communication Efficiency Experiment
+
+Historical plan superseded by
+`docs/superpowers/plans/2026-09-27-completion-monitoring-convergence-plan.md`.
+Completion-monitoring evidence lives in
+`artifacts/completion-monitoring/task3-fake-herdr-evidence.json` and
+`artifacts/completion-monitoring/next-convergence-evidence.json`.
 
 ## Verdict Review
 
