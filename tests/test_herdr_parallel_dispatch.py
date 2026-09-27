@@ -928,6 +928,7 @@ def test_launcher_command_forwards_admitted_runtime_grant_and_mcp_select(tmp_pat
         "grant_child_agents": "allow",
         "mcp_select": ["context7.query_docs"],
         "prior_attempt_known": True,
+        "task": "Task 3:\n\n**Scope:** preserve canonical task text",
     })
 
     command = dispatcher._launcher_command(item, python_executable="python", launcher_path="launcher.py")
@@ -939,7 +940,8 @@ def test_launcher_command_forwards_admitted_runtime_grant_and_mcp_select(tmp_pat
     assert command[command.index("--prior-attempt-known") + 1] == "true"
     assert command[command.index("--repository-identity") + 1] == "project-OS-starter"
     assert command[command.index("--plan-identity") + 1] == "test-plan"
-    assert command[command.index("--task-sha256") + 1] == dispatcher._sha256_text("task a")
+    assert command[command.index("--task") + 1] == item["task"]
+    assert command[command.index("--task-sha256") + 1] == dispatcher._sha256_text(item["task"])
     assert command[command.index("--assignment-id") + 1] == dispatcher._assignment_id(
         "project-OS-starter", "test-plan", "a"
     )

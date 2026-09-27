@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -103,6 +104,7 @@ _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 120.0
 _DEEPAGENTS_RECEIPT_GRACE_SECONDS = 30.0
 _DEEPAGENTS_COMPLETION_POLL_SECONDS = 1.0
 _DEEPAGENTS_RECEIPT_POLL_SECONDS = 0.1
+_DEEPAGENTS_DIAGNOSTIC_POLL_SECONDS = 2.0
 _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
@@ -756,8 +758,14 @@ def _redacted_arguments(arguments: list[str]) -> list[str]:
             ])
             index += 3
             continue
-        if value in {"-n", "--task"} and index + 1 < len(arguments):
-            redacted.extend([value, f"task=<sha256:{_sha256_text(arguments[index + 1])}>"])
+        if value in {"-n", "--task", "--task-base64"} and index + 1 < len(arguments):
+            task = arguments[index + 1]
+            if value == "--task-base64":
+                try:
+                    task = base64.b64decode(task, validate=True).decode("utf-8")
+                except (ValueError, UnicodeDecodeError):
+                    task = "<invalid-task-base64>"
+            redacted.extend([value, f"task=<sha256:{_sha256_text(task)}>"])
             index += 2
             continue
         redacted.append(value)
@@ -769,13 +777,21 @@ def _powershell_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _task_base64(value: str) -> str:
+    return base64.b64encode(value.encode("utf-8")).decode("ascii")
+
+
+def _task_transport_option(command: list[str]) -> str | None:
+    return next((option for option in ("-n", "--task-base64") if option in command), None)
+
+
 def _validate_task(task: str | None) -> str:
     if task is None or not task.strip():
         raise LaunchBlocked("Launch requires non-empty bounded task text.")
     if len(task) > _MAX_TASK_LENGTH:
         raise LaunchBlocked(f"Task text exceeds {_MAX_TASK_LENGTH} characters.")
-    if "\r" in task or "\n" in task:
-        raise LaunchBlocked("Task text cannot contain newlines.")
+    if "\r" in task:
+        raise LaunchBlocked("Task text cannot contain carriage returns.")
     return task.strip()
 
 
@@ -1787,6 +1803,7 @@ def _deepagents_completion_evidence(
     attempt_id: str | None = None,
     completion_wait_seconds: float | None = None,
     attempt_deadline: float | None = None,
+    diagnostic_poll_seconds: float | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
     observation_wait_seconds = (
@@ -1796,6 +1813,14 @@ def _deepagents_completion_evidence(
     )
     if observation_wait_seconds < 0:
         raise LaunchBlocked("DeepAgents completion observation budget cannot be negative.")
+    diagnostic_interval = (
+        _DEEPAGENTS_DIAGNOSTIC_POLL_SECONDS
+        if diagnostic_poll_seconds is None
+        else diagnostic_poll_seconds
+    )
+    if diagnostic_interval < 0:
+        raise LaunchBlocked("DeepAgents diagnostic polling interval cannot be negative.")
+    diagnostic_interval = min(diagnostic_interval, observation_wait_seconds)
     observation_deadline = started + observation_wait_seconds
     if attempt_deadline is not None:
         observation_deadline = min(
@@ -1806,7 +1831,34 @@ def _deepagents_completion_evidence(
     if attempt_deadline is not None:
         settlement_deadline = min(settlement_deadline, attempt_deadline)
     evidence: dict[str, Any] | None = None
-    receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+    monitoring: dict[str, Any] = {
+        "receipt_poll_seconds": _DEEPAGENTS_RECEIPT_POLL_SECONDS,
+        "diagnostic_poll_seconds": diagnostic_interval,
+        "receipt_checks": 0,
+        "diagnostic_probe_count": 0,
+        "started_at": time.time(),
+        "receipt_observed_at": None,
+        "completion_returned_at": None,
+        "detection_delay_ms": None,
+    }
+
+    def read_receipt() -> dict[str, Any]:
+        receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+        monitoring["receipt_checks"] += 1
+        if receipt.get("state") == "confirmed" and monitoring["receipt_observed_at"] is None:
+            monitoring["receipt_observed_at"] = time.time()
+            monitoring["detection_delay_ms"] = round(
+                max(0.0, monitoring["receipt_observed_at"] - monitoring["started_at"]) * 1000,
+                3,
+            )
+        return receipt
+
+    def finish(result: dict[str, Any]) -> dict[str, Any]:
+        monitoring["completion_returned_at"] = time.time()
+        result["monitoring"] = dict(monitoring)
+        return result
+
+    receipt = read_receipt()
     terminal_observed_at: float | None = None
 
     def wait_for_receipt() -> dict[str, Any]:
@@ -1823,56 +1875,55 @@ def _deepagents_completion_evidence(
             time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, remaining))
             if time.monotonic() >= terminal_deadline:
                 return receipt
-            receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+            receipt = read_receipt()
         return receipt
 
     marker_observed = False
+    next_diagnostic_at = started
     while True:
         if receipt.get("state") == "confirmed":
-            return _deepagents_receipt_observation(receipt)
-        evidence = _deepagents_completion_snapshot(
-            herdr,
-            session,
-            pane,
-            env=env,
-            expected_marker=expected_marker,
-            deadline=observation_deadline,
-            marker_observed=marker_observed,
-        )
-        marker_observed = marker_observed or evidence.get("marker_present") is True
-        if receipt_file is not None and evidence.get("marker_wait_state") in {
-            "observed",
-            "expired",
-            "transport_failed",
-        }:
-            receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
-            if receipt.get("state") == "confirmed":
-                return _deepagents_receipt_observation(receipt, evidence)
-        if evidence["state"] in {"completed", "failed"}:
-            terminal_observed_at = time.monotonic()
-            if receipt_file is None:
-                return evidence
-            receipt = wait_for_receipt()
-            if receipt.get("state") == "confirmed":
-                return _deepagents_receipt_observation(receipt, evidence)
-            evidence["lifecycle_receipt"] = receipt
-            return evidence
+            return finish(_deepagents_receipt_observation(receipt))
+        now = time.monotonic()
+        if evidence is None or now >= next_diagnostic_at:
+            evidence = _deepagents_completion_snapshot(
+                herdr,
+                session,
+                pane,
+                env=env,
+                expected_marker=expected_marker,
+                deadline=observation_deadline,
+                marker_observed=marker_observed,
+                wait_for_marker=False,
+            )
+            monitoring["diagnostic_probe_count"] += 1
+            marker_observed = marker_observed or evidence.get("marker_present") is True
+            next_diagnostic_at = time.monotonic() + diagnostic_interval
+            if evidence["state"] in {"completed", "failed"}:
+                terminal_observed_at = time.monotonic()
+                if receipt_file is None:
+                    return finish(evidence)
+                receipt = wait_for_receipt()
+                if receipt.get("state") == "confirmed":
+                    return finish(_deepagents_receipt_observation(receipt, evidence))
+                evidence["lifecycle_receipt"] = receipt
+                return finish(evidence)
         remaining = observation_deadline - time.monotonic()
         if remaining <= 0:
             if receipt_file is not None:
                 receipt = wait_for_receipt()
                 if receipt.get("state") == "confirmed":
-                    return _deepagents_receipt_observation(receipt, evidence)
+                    return finish(_deepagents_receipt_observation(receipt, evidence))
                 evidence["lifecycle_receipt"] = receipt
-                return evidence
+                return finish(evidence)
             evidence["last_observed_state"] = evidence["state"]
             evidence["state"] = "timed_out"
             evidence["observation_deadline_exceeded"] = True
             if receipt_file is not None:
                 evidence["lifecycle_receipt"] = receipt
-            return evidence
-        time.sleep(min(_DEEPAGENTS_COMPLETION_POLL_SECONDS, remaining))
-        receipt = _read_deepagents_receipt(receipt_file, attempt_id or "")
+            return finish(evidence)
+        until_diagnostic = max(0.0, next_diagnostic_at - time.monotonic())
+        time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, until_diagnostic, remaining))
+        receipt = read_receipt()
 
 
 def _terminate_codex_lane(
@@ -2208,8 +2259,8 @@ def resolve_launch(
                 [],
             ),
             *([] if direct_mcp else ["--no-mcp"]),
-            "-n",
-            _powershell_literal(delivery_task),
+            "--task-base64",
+            _task_base64(delivery_task),
         ]
         command = [herdr, "--session", session, "pane", "run", pane, *runtime_arguments]
     evidence = {
@@ -2489,19 +2540,20 @@ def _main_body(args: argparse.Namespace) -> int:
                 attempt_context[key] = registry_evidence[key]
         receipt_file: Path | None = None
         task_result_file: Path | None = None
-        if args.executor == "deepagents" and not args.dry_run and "-n" in command:
+        task_option = _task_transport_option(command)
+        if args.executor == "deepagents" and not args.dry_run and task_option is not None:
             receipt_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
             receipt_file = receipt_dir / "result.json"
             task_result_file = receipt_dir / "task-result.json"
             command = command.copy()
-            command[command.index("-n"):command.index("-n")] = [
+            command[command.index(task_option):command.index(task_option)] = [
                 "--result-file",
                 _powershell_literal(str(receipt_file)),
                 "--attempt-id",
                 _powershell_literal(attempt_id),
             ]
             if args.assignment_id is not None:
-                command[command.index("-n"):command.index("-n")] = [
+                command[command.index(task_option):command.index(task_option)] = [
                     "--assignment-id",
                     _powershell_literal(args.assignment_id),
                     "--repository-identity",

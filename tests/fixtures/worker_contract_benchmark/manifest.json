@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "source_revision": "88cece2",
+  "baseline": {
+    "name": "task-scoped reconstructed baseline",
+    "kind": "task_scoped_reconstructed",
+    "source": "benchmark-plan.md"
+  },
+  "tokenizer": "cl100k_base",
+  "tasks": [
+    {"task_id": "Task 3", "mode_dimensions": ["zero_prerequisites", "small", "simple_proof", "localized"], "required_changes": {"tests/fixtures/worker_contract_benchmark/local.txt": "worker-task-3-complete"}, "runtime_binding": {"accepted_prerequisites": {}}},
+    {"task_id": "Task 4", "mode_dimensions": ["one_prerequisite", "small", "simple_proof", "localized"], "required_changes": {"tests/fixtures/worker_contract_benchmark/dependent.txt": "worker-task-4-complete"}, "runtime_binding": {"accepted_prerequisites": {"Task 1": {"accepted_revision": "88cece2"}}}},
+    {"task_id": "Task 5", "mode_dimensions": ["two_prerequisites", "medium", "simple_proof", "localized"], "required_changes": {"tests/fixtures/worker_contract_benchmark/two-prereq.txt": "worker-task-5-complete"}, "runtime_binding": {"accepted_prerequisites": {"Task 1": {"accepted_revision": "88cece2"}, "Task 2": {"accepted_revision": "88cece2"}}}},
+    {"task_id": "Task 6", "mode_dimensions": ["zero_prerequisites", "medium", "multiple_proof", "localized"], "required_changes": {"tests/fixtures/worker_contract_benchmark/multi-command.txt": "worker-task-6-complete"}, "runtime_binding": {"accepted_prerequisites": {}}},
+    {"task_id": "Task 7", "mode_dimensions": ["one_prerequisite", "small", "shared_constraints", "localized"], "required_changes": {"tests/fixtures/worker_contract_benchmark/constrained.txt": "worker-task-7-complete"}, "runtime_binding": {"accepted_prerequisites": {"Task 1": {"accepted_revision": "88cece2"}}}},
+    {"task_id": "Task 8", "mode_dimensions": ["two_prerequisites", "medium", "simple_proof", "multi_file"], "required_changes": {"tests/fixtures/worker_contract_benchmark/multi-a.txt": "worker-task-8-a-complete", "tests/fixtures/worker_contract_benchmark/multi-b.txt": "worker-task-8-b-complete"}, "runtime_binding": {"accepted_prerequisites": {"Task 1": {"accepted_revision": "88cece2"}, "Task 2": {"accepted_revision": "88cece2"}}}}
+  ]
+}

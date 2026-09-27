@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import hashlib
 import importlib.util
 import json
@@ -649,6 +650,35 @@ def test_powershell_literal_escapes_apostrophes() -> None:
     assert LAUNCHER._powershell_literal("worker's task") == "'worker''s task'"
 
 
+def test_powershell_literal_preserves_multiline_task_text() -> None:
+    task = "Task 3:\nworker's task"
+
+    assert LAUNCHER._powershell_literal(task) == "'Task 3:\nworker''s task'"
+
+
+def test_task_base64_encodes_multiline_without_raw_newlines() -> None:
+    task = "Task 3:\nworker's task"
+
+    argument = LAUNCHER._task_base64(task)
+
+    assert "\n" not in argument
+    assert base64.b64decode(argument).decode("utf-8") == task
+
+
+def test_task_base64_encodes_sensitive_single_line_text() -> None:
+    task = 'plan `value` with "quotes" and $variables'
+
+    argument = LAUNCHER._task_base64(task)
+
+    assert base64.b64decode(argument).decode("utf-8") == task
+
+
+def test_task_transport_option_supports_opaque_and_legacy_forms() -> None:
+    assert LAUNCHER._task_transport_option(["--task-base64", "encoded"]) == "--task-base64"
+    assert LAUNCHER._task_transport_option(["-n", "task"]) == "-n"
+    assert LAUNCHER._task_transport_option(["--json"]) is None
+
+
 def test_run_converts_timeout_to_launch_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
     def timeout_run(*args, **kwargs):
         raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
@@ -745,10 +775,11 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "--timeout",
         "420",
         "--no-mcp",
-        "-n",
+        "--task-base64",
     ]
-    assert command[-1].startswith(
-        "'Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
+    encoded_task = command[-1]
+    assert base64.b64decode(encoded_task).decode("utf-8").startswith(
+        "Return exactly DEEPAGENTS_ADAPTER_OK [Runtime Grant: delegation.child_agents = deny]"
     )
     completion_marker = evidence["registry_launcher"]["completion_marker"]
     assert completion_marker is None
@@ -769,7 +800,9 @@ def test_resolve_launch_builds_deepagents_pane_command(
         "source": "herdr.pane_process",
         "state": "unknown",
         "task_sha256": LAUNCHER._sha256_text("Return exactly DEEPAGENTS_ADAPTER_OK"),
-            "delivery_task_sha256": LAUNCHER._sha256_text(command[-1][1:-1]),
+                "delivery_task_sha256": LAUNCHER._sha256_text(
+                    base64.b64decode(command[-1]).decode("utf-8")
+                ),
         "grant_digest": evidence["registry_launcher"]["grant_digest"],
     }
     assert LAUNCHER._DEEPAGENTS_RUN_TIMEOUT == 1800.0
@@ -983,8 +1016,9 @@ def test_resolve_launch_projects_deepagents_runtime_grant(
         "delegation": {"child_agents": "allow"},
     }
     assert len(evidence["registry_launcher"]["grant_digest"]) == 64
-    assert command[-1].startswith(
-        "'Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]"
+    encoded_task = command[-1]
+    assert base64.b64decode(encoded_task).decode("utf-8").startswith(
+        "Return exactly GRANT_OK [Runtime Grant: delegation.child_agents = allow]"
     )
     assert evidence["registry_launcher"]["completion_marker"] is None
 
@@ -1318,7 +1352,7 @@ def test_deepagents_task_is_required_and_bounded(
         )
 
 
-@pytest.mark.parametrize("task", [None, " ", "x" * (LAUNCHER._MAX_TASK_LENGTH + 1), "line1\nline2"])
+@pytest.mark.parametrize("task", [None, " ", "x" * (LAUNCHER._MAX_TASK_LENGTH + 1)])
 def test_codex_task_is_required_and_bounded(
     monkeypatch: pytest.MonkeyPatch,
     task: str | None,
@@ -1333,6 +1367,18 @@ def test_codex_task_is_required_and_bounded(
             executor="codex",
             task=task,
         )
+
+
+def test_task_validation_preserves_multiline_contract() -> None:
+    task = "Task 3: run pilot\n\n**Scope:** preserve canonical task text"
+
+    assert LAUNCHER._validate_task(task) == task
+
+
+@pytest.mark.parametrize("task", ["line1\rline2", "line1\r\nline2"])
+def test_task_validation_rejects_carriage_returns(task: str) -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="carriage returns"):
+        LAUNCHER._validate_task(task)
 
 
 def test_codex_home_rejects_duplicate_stop_hook_scopes(tmp_path: Path) -> None:
@@ -3238,7 +3284,7 @@ def test_deepagents_completion_allows_report_after_ninety_seconds(
     ])
     monkeypatch.setattr(
         LAUNCHER,
-        "_DEEPAGENTS_COMPLETION_POLL_SECONDS",
+        "_DEEPAGENTS_DIAGNOSTIC_POLL_SECONDS",
         100.0,
     )
     monkeypatch.setattr(
@@ -3262,7 +3308,8 @@ def test_deepagents_completion_allows_report_after_ninety_seconds(
     )
 
     assert evidence["state"] == "completed"
-    assert sleeps == [100.0]
+    assert len(sleeps) >= 1000
+    assert max(sleeps) <= 0.1
 
 
 def test_deepagents_completion_uses_receipt_before_first_pane_command(
@@ -3344,7 +3391,7 @@ def test_deepagents_completion_reads_receipt_between_pane_polls(
     assert evidence["marker_present"] is False
     assert evidence["report_present"] is False
     assert evidence["receipt_authoritative"] is True
-    assert sleeps == [1.0]
+    assert sleeps == [0.1]
 
 
 def test_deepagents_completion_returns_uncertain_receipt_at_deadline(
@@ -3447,7 +3494,9 @@ def test_deepagents_completion_recovers_receipt_after_observation_deadline(
 
     assert evidence["state"] == "completed"
     assert evidence["lifecycle_receipt"] == confirmed
-    assert len(deadlines) == 2
+    assert evidence["monitoring"]["receipt_checks"] == 3
+    assert evidence["monitoring"]["diagnostic_probe_count"] == 1
+    assert len(deadlines) == 1
     assert deadlines[-1] == 0.5
     assert all(deadline is not None for deadline in deadlines)
 
@@ -3834,11 +3883,54 @@ def test_deepagents_completion_memoizes_current_attempt_marker(
     monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: None)
 
     evidence = LAUNCHER._deepagents_completion_evidence(
-        "herdr.exe", "session", "pane", env={}, expected_marker="MARKER"
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        diagnostic_poll_seconds=0,
     )
 
     assert marker_observed[:2] == [False, True]
     assert evidence["state"] == "completed"
+
+
+def test_deepagents_completion_caps_diagnostic_interval_to_observation_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: {"state": "unknown"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: {"state": "running", "report_present": False},
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        completion_wait_seconds=0.2,
+        diagnostic_poll_seconds=5.0,
+    )
+
+    assert evidence["state"] == "timed_out"
+    assert evidence["monitoring"]["diagnostic_poll_seconds"] == 0.2
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="cannot be negative"):
+        LAUNCHER._deepagents_completion_evidence(
+            "herdr.exe",
+            "session",
+            "pane",
+            env={},
+            expected_marker="MARKER",
+            completion_wait_seconds=0.2,
+            diagnostic_poll_seconds=-1.0,
+        )
 
 
 def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
@@ -3881,6 +3973,45 @@ def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
 
     assert evidence["state"] == "completed"
     assert evidence["lifecycle_receipt"] == confirmed
+
+
+def test_deepagents_completion_records_receipt_detection_delay(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    clock = [0.0]
+    receipts = iter([
+        {"state": "unknown"},
+        {"state": "unknown"},
+        {
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+        },
+    ])
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: {"state": "completed", "report_present": True},
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "time", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        completion_wait_seconds=1.0,
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["monitoring"]["receipt_observed_at"] == 0.2
+    assert evidence["monitoring"]["detection_delay_ms"] == 200.0
 
 
 def test_deepagents_completion_settles_after_late_receipt_snapshot(
@@ -3928,6 +4059,8 @@ def test_deepagents_completion_settles_after_late_receipt_snapshot(
     assert evidence["marker_present"] is False
     assert evidence["lifecycle_receipt"] == confirmed
     assert evidence["receipt_authoritative"] is True
+    assert evidence["monitoring"]["receipt_checks"] == 2
+    assert evidence["monitoring"]["diagnostic_probe_count"] == 1
 
 
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:
