@@ -125,7 +125,6 @@ def test_deepagents_completion_observation_returns_confirmed_receipt_without_pan
     assert evidence["lifecycle_receipt"] == receipt
     assert evidence["receipt_authoritative"] is True
 
-
 def test_resolve_launch_rejects_explicit_over_limit_agent_name_before_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4011,7 +4010,143 @@ def test_deepagents_completion_records_receipt_detection_delay(
     )
 
     assert evidence["monitoring"]["receipt_observed_at"] == 0.2
-    assert evidence["monitoring"]["detection_delay_ms"] == 200.0
+    assert evidence["monitoring"]["time_to_receipt_ms"] == 200.0
+    assert evidence["monitoring"]["receipt_to_completion_return_ms"] == 0.0
+
+
+def test_deepagents_completion_receipt_wins_after_stalled_process_info(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    clock = [0.0]
+    calls: list[tuple[list[str], float | None]] = []
+    receipts = iter([{"state": "unknown"}, _confirmed_success_receipt()])
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs.get("timeout")))
+        if "process-info" in command:
+            clock[0] += float(kwargs["timeout"])
+            raise LAUNCHER.CommandTransportTimeout("stalled process-info")
+        pytest.fail("pane read must be skipped after receipt confirmation")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "time", lambda: clock[0])
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        completion_wait_seconds=1.0,
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["receipt_authoritative"] is True
+    assert evidence["monitoring"]["time_to_receipt_ms"] == 500.0
+    assert evidence["monitoring"]["receipt_to_completion_return_ms"] == 0.0
+    assert len(calls) == 1
+    assert calls[0][1] == LAUNCHER._DEEPAGENTS_DIAGNOSTIC_COMMAND_TIMEOUT
+
+
+def test_deepagents_completion_rechecks_receipt_before_pane_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    process_info = json.dumps({"result": {"process_info": {"foreground_processes": []}}})
+    calls: list[list[str]] = []
+    receipts = iter([{"state": "unknown"}, _confirmed_success_receipt()])
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, process_info, "")
+        pytest.fail("pane read must not run after receipt recheck")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(LAUNCHER.time, "time", lambda: 0.0)
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        completion_wait_seconds=1.0,
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["receipt_authoritative"] is True
+    assert calls == [["herdr.exe", "--session", "session", "pane", "process-info", "--pane", "pane"]]
+    assert evidence["diagnostic_observation"]["pane_read_skipped"] is True
+
+
+def test_deepagents_snapshot_caps_each_diagnostic_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_info = json.dumps({"result": {"process_info": {"foreground_processes": []}}})
+    calls: list[tuple[list[str], float | None]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs.get("timeout")))
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, process_info, "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": ""}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=LAUNCHER.time.monotonic() + 10.0,
+        wait_for_marker=False,
+        diagnostic_timeout=0.5,
+    )
+
+    assert [timeout for _, timeout in calls] == [0.5, 0.5]
+
+
+def test_deepagents_snapshot_skips_pane_read_after_deadline_between_phases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_info = json.dumps({"result": {"process_info": {"foreground_processes": []}}})
+    clock = [0.0]
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, process_info, "")
+
+    def receipt_check() -> dict[str, object]:
+        clock[0] = 1.0
+        return {"state": "unknown"}
+
+    monkeypatch.setattr(LAUNCHER, "_run", run)
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+
+    evidence = LAUNCHER._deepagents_completion_snapshot(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        deadline=1.0,
+        wait_for_marker=False,
+        diagnostic_timeout=0.5,
+        receipt_check=receipt_check,
+    )
+
+    assert len(calls) == 1
+    assert "process-info" in calls[0]
+    assert evidence["observation_deadline_exceeded"] is True
 
 
 def test_deepagents_completion_settles_after_late_receipt_snapshot(
