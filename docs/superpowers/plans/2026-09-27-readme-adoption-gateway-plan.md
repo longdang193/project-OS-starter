@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: completed
 layer: change
 ---
 
@@ -60,14 +60,14 @@ state, or duplicate runtime policy.
 - Branch: `main`
 - Base commit: `d7f395e556ffe4c8b9076308f2f91357b0e1f759`
 - Expected workspace: `main` clean in tracked files; preserve `.playwright-mcp/`, `db/`, `temp_evidence.json`, and any other unrelated untracked content
-- Next action: run Task 3 final documentation verification
+- Next action: verified; await explicit branch disposition
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current | `codex` | none | setup/usage docs contain runnable paths and source map | links, diff, and plan validation passed; checkpoint follows |
 | Task 2 | `completed` | current | `codex` | Task 1 | README map preserves tested contract strings | 33 focused contract tests passed; checkpoint follows |
-| Task 3 | `active` | current | `codex` | Task 2 | final docs, contract, test, and diff proof | started after Task 2 checkpoint |
+| Task 3 | `completed` | current | `codex` | Task 2 | final docs, contract, test, and diff proof | validator passed; 78 focused tests passed; 11 links verified; checkpoint follows |
 
 ## Task Breakdown
 
@@ -213,17 +213,18 @@ state, or duplicate runtime policy.
 - Stop for: failed required check, stale source claim, unexpected tracked file, or scope deviation requiring approval
 
 **Steps:**
-- [ ] Step 1: Run focused documentation/link/source checks and `git diff --check`.
-- [ ] Step 2: Run `python scripts/validate_repo_contracts.py`.
-- [ ] Step 3: Run README/setup/usage contract tests, excluding the known pre-existing `test_cos_ssot_invariants_stay_symmetric` failure on `main`.
-- [ ] Step 4: Confirm no adapter, generated runtime, adoption-guide, or unrelated files changed; confirm preserved untracked files remain untouched.
-- [ ] Step 5: Record baseline failure, fresh evidence, deviations, and remaining follow-up in this plan before handoff.
+- [x] Step 1: Run focused documentation/link/source checks and `git diff --check`.
+- [x] Step 2: Run `python scripts/validate_repo_contracts.py`.
+- [x] Step 3: Run README/setup/usage contract tests, excluding the known pre-existing `test_cos_ssot_invariants_stay_symmetric` failure on `main`.
+- [x] Step 4: Confirm no adapter, generated runtime, adoption-guide, or unrelated files changed; confirm preserved untracked files remain untouched.
+- [x] Step 5: Record baseline failure, fresh evidence, deviations, and remaining follow-up in this plan before handoff.
 
 **Verification:**
-- [ ] `python scripts/validate_repo_contracts.py`
-- [ ] `python -m pytest -q tests/test_validate_repo_contracts.py tests/test_starter_kit_generation.py tests/test_starter_lifecycle_contract.py tests/test_native_personal_local_workflow.py -k "not test_cos_ssot_invariants_stay_symmetric"`
-- [ ] `git diff --check`
+- [x] `python scripts/validate_repo_contracts.py`
+- [x] `python -m pytest -q tests/test_validate_repo_contracts.py tests/test_starter_kit_generation.py tests/test_starter_lifecycle_contract.py tests/test_native_personal_local_workflow.py -k "not test_cos_ssot_invariants_stay_symmetric"`
+- [x] `git diff --check`
 - Expected: required checks pass; documentation-only diff contains only approved Markdown and this plan; the known unrelated symmetry failure remains documented rather than hidden.
+- Evidence: validator passed; focused suite passed with `78 passed, 1 deselected`; 11 linked paths resolved; tracked diff contains only approved Markdown files.
 
 **Exit Criteria:**
 - Final docs are source-backed, actionable, public-boundary safe, and verified with fresh repository evidence.
