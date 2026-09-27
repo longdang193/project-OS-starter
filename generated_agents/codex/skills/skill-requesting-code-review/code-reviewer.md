@@ -50,7 +50,8 @@ Subagent (controller-selected profile: <discovered-profile>):
     For committed implementation changes, bind review evidence to the supplied
     `[BASE_SHA]` and `[HEAD_SHA]` commit identities and the caller-owned Git
     inventory. If `HEAD` does not identify implementation changes, bind evidence to
-    the frozen `scripts/review-package` artifact and record its SHA-256 plus the
+    the frozen `.agents/skills/skill-subagent-driven-development/scripts/review-package`
+    artifact and record its SHA-256 plus the
     Git-inventory digest. Re-run review when either digest changes; `HEAD` alone is
     not sufficient for working-tree, staged, unstaged, or untracked changes.
 

@@ -328,12 +328,12 @@ Factory CI-safe adapter check (skip home-directory check):
 python scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check
 ```
 
-## Metadata Schema Validation
+## Agent Metadata Validation
 
 ```bash
 python scripts/validate_agent_metadata_schema.py
 ```
 
-Schema source:
-
-- `docs/operating_system/runtime/agent-runtime-metadata-schema.md`
+This validates `.agents/skills/*/SKILL.md` frontmatter and references.
+The `agents/*.toml` profile schema is validated by the repository contract
+validator through `scripts/agent_profile_registry.py`.

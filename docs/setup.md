@@ -8,7 +8,7 @@ configuration and an optional executor setup.
 
 - Git
 - Python 3.12 or newer
-- PowerShell for the optional DeepAgents Code setup script
+- PowerShell 7 (`pwsh`) for the optional DeepAgents Code setup script
 
 Keep API keys, Codex configuration, runtime state, and generated user-global
 files outside this repository. Do not create project secret files for runtime
