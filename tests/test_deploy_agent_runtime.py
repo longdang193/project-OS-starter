@@ -555,6 +555,16 @@ def _shared_asset_repo(tmp_path: Path) -> Path:
     return root
 
 
+def test_canonical_shared_runtime_maps_planning_dependencies(tmp_path: Path, monkeypatch) -> None:
+    target_root = tmp_path / "global" / "project-os"
+    monkeypatch.setattr(DEPLOY, "SHARED_ASSETS_TARGET", target_root)
+
+    entries = DEPLOY._shared_asset_entries(REPO_ROOT, "scripts")
+
+    expected = REPO_ROOT / "scripts" / "planning_dependencies.py"
+    assert (expected, target_root / "scripts" / "planning_dependencies.py") in entries
+
+
 def _apply_shared_pairs(pairs: list[tuple[Path | None, Path, str | None]]) -> None:
     for source, destination, rendered in pairs:
         destination.parent.mkdir(parents=True, exist_ok=True)
