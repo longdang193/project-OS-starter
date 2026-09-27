@@ -3284,7 +3284,7 @@ def test_deepagents_completion_allows_report_after_ninety_seconds(
     ])
     monkeypatch.setattr(
         LAUNCHER,
-        "_DEEPAGENTS_COMPLETION_POLL_SECONDS",
+        "_DEEPAGENTS_DIAGNOSTIC_POLL_SECONDS",
         100.0,
     )
     monkeypatch.setattr(
@@ -3308,7 +3308,8 @@ def test_deepagents_completion_allows_report_after_ninety_seconds(
     )
 
     assert evidence["state"] == "completed"
-    assert sleeps == [100.0]
+    assert len(sleeps) >= 1000
+    assert max(sleeps) <= 0.1
 
 
 def test_deepagents_completion_uses_receipt_before_first_pane_command(
@@ -3390,7 +3391,7 @@ def test_deepagents_completion_reads_receipt_between_pane_polls(
     assert evidence["marker_present"] is False
     assert evidence["report_present"] is False
     assert evidence["receipt_authoritative"] is True
-    assert sleeps == [1.0]
+    assert sleeps == [0.1]
 
 
 def test_deepagents_completion_returns_uncertain_receipt_at_deadline(
@@ -3493,7 +3494,9 @@ def test_deepagents_completion_recovers_receipt_after_observation_deadline(
 
     assert evidence["state"] == "completed"
     assert evidence["lifecycle_receipt"] == confirmed
-    assert len(deadlines) == 2
+    assert evidence["monitoring"]["receipt_checks"] == 3
+    assert evidence["monitoring"]["diagnostic_probe_count"] == 1
+    assert len(deadlines) == 1
     assert deadlines[-1] == 0.5
     assert all(deadline is not None for deadline in deadlines)
 
@@ -3880,11 +3883,54 @@ def test_deepagents_completion_memoizes_current_attempt_marker(
     monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: None)
 
     evidence = LAUNCHER._deepagents_completion_evidence(
-        "herdr.exe", "session", "pane", env={}, expected_marker="MARKER"
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        diagnostic_poll_seconds=0,
     )
 
     assert marker_observed[:2] == [False, True]
     assert evidence["state"] == "completed"
+
+
+def test_deepagents_completion_caps_diagnostic_interval_to_observation_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: {"state": "unknown"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: {"state": "running", "report_present": False},
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        completion_wait_seconds=0.2,
+        diagnostic_poll_seconds=5.0,
+    )
+
+    assert evidence["state"] == "timed_out"
+    assert evidence["monitoring"]["diagnostic_poll_seconds"] == 0.2
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="cannot be negative"):
+        LAUNCHER._deepagents_completion_evidence(
+            "herdr.exe",
+            "session",
+            "pane",
+            env={},
+            expected_marker="MARKER",
+            completion_wait_seconds=0.2,
+            diagnostic_poll_seconds=-1.0,
+        )
 
 
 def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
@@ -3927,6 +3973,45 @@ def test_deepagents_completion_settles_after_pane_run_with_delayed_receipt(
 
     assert evidence["state"] == "completed"
     assert evidence["lifecycle_receipt"] == confirmed
+
+
+def test_deepagents_completion_records_receipt_detection_delay(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    clock = [0.0]
+    receipts = iter([
+        {"state": "unknown"},
+        {"state": "unknown"},
+        {
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 0,
+        },
+    ])
+    monkeypatch.setattr(LAUNCHER, "_read_deepagents_receipt", lambda *args, **kwargs: next(receipts))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: {"state": "completed", "report_present": True},
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "time", lambda: clock[0])
+    monkeypatch.setattr(LAUNCHER.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        completion_wait_seconds=1.0,
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["monitoring"]["receipt_observed_at"] == 0.2
+    assert evidence["monitoring"]["detection_delay_ms"] == 200.0
 
 
 def test_deepagents_completion_settles_after_late_receipt_snapshot(
@@ -3974,6 +4059,8 @@ def test_deepagents_completion_settles_after_late_receipt_snapshot(
     assert evidence["marker_present"] is False
     assert evidence["lifecycle_receipt"] == confirmed
     assert evidence["receipt_authoritative"] is True
+    assert evidence["monitoring"]["receipt_checks"] == 2
+    assert evidence["monitoring"]["diagnostic_probe_count"] == 1
 
 
 def test_profiles_share_launch_shape(tmp_path: Path) -> None:

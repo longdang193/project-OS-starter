@@ -10,6 +10,27 @@ import re
 from statistics import median
 from typing import Any, Mapping
 
+
+_PAIR_INVARIANTS = (
+    "task_id",
+    "run",
+    "tokenizer",
+    "tokenizer_version",
+    "starting_revision",
+    "baseline_name",
+    "model_profile",
+    "manifest_digest",
+    "fixture_digest",
+)
+_REQUIRED_ROW_FIELDS = frozenset(
+    {
+        *_PAIR_INVARIANTS,
+        "mode",
+        "delivered_handoff_tokens",
+    }
+)
+_MODES = frozenset({"baseline", "bounded"})
+
 try:
     from scripts.herdr_main_launcher import _project_runtime_grant
     from scripts.project_os_runtime.attempt import WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
@@ -40,6 +61,31 @@ def _metrics(text: str, encoding: Any) -> dict[str, Any]:
         "characters": len(text),
         "estimated_tokens": len(encoding.encode(text, disallowed_special=())),
     }
+
+
+def _canonical_digest(value: Any) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _fixture_digest(fixture_root: Path) -> str:
+    files: list[dict[str, str]] = []
+    for path in sorted(fixture_root.rglob("*")):
+        if not path.is_file() or path.name == "manifest.json":
+            continue
+        relative = path.relative_to(fixture_root).as_posix()
+        files.append(
+            {
+                "path": relative,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+        )
+    return _canonical_digest(files)
 
 
 def _normalized_plan(text: str) -> str:
@@ -94,8 +140,11 @@ def _row(
     brief: str,
     handoff: str,
     encoding: Any,
+    tokenizer: str,
     tokenizer_version: str,
     manifest: Mapping[str, Any],
+    manifest_digest: str,
+    fixture_digest: str,
 ) -> dict[str, Any]:
     brief_metrics = _metrics(brief, encoding)
     handoff_metrics = _metrics(handoff, encoding)
@@ -106,8 +155,10 @@ def _row(
         "model_profile": "normal",
         "starting_revision": manifest["source_revision"],
         "baseline_name": manifest["baseline"]["name"],
-        "tokenizer": manifest["tokenizer"],
+        "tokenizer": tokenizer,
         "tokenizer_version": tokenizer_version,
+        "manifest_digest": manifest_digest,
+        "fixture_digest": fixture_digest,
         "task_brief_tokens": brief_metrics["estimated_tokens"],
         "task_brief_characters": brief_metrics["characters"],
         "task_brief_utf8_bytes": brief_metrics["utf8_bytes"],
@@ -123,7 +174,7 @@ def _row(
         "first_attempt_verified": "unknown",
         "eventual_verified": "unknown",
         "missing_context": "unknown",
-        "missing_context_detail": "offline measurement; worker execution not attempted",
+        "missing_context_detail": "unknown: offline measurement; worker execution not attempted",
         "attempt_count": 0,
         "missing_context_retry_count": 0,
         "verification_references": [],
@@ -138,6 +189,8 @@ def measure_offline(manifest_path: str | Path, tokenizer_name: str | None = None
     tokenizer = tokenizer_name or manifest.get("tokenizer", "cl100k_base")
     encoding, tokenizer_version = _load_tokenizer(tokenizer)
     fixture_root = manifest_path.parent
+    manifest_digest = _canonical_digest(manifest)
+    fixture_digest = _fixture_digest(fixture_root)
     plan_path = fixture_root / str(manifest["baseline"]["source"])
     plan_text = plan_path.read_text(encoding="utf-8")
     rows: list[dict[str, Any]] = []
@@ -157,8 +210,11 @@ def measure_offline(manifest_path: str | Path, tokenizer_name: str | None = None
                     brief=baseline_brief,
                     handoff=baseline_handoff,
                     encoding=encoding,
+                    tokenizer=tokenizer,
                     tokenizer_version=tokenizer_version,
                     manifest=manifest,
+                    manifest_digest=manifest_digest,
+                    fixture_digest=fixture_digest,
                 ),
                 _row(
                     task_id=task_id,
@@ -166,8 +222,11 @@ def measure_offline(manifest_path: str | Path, tokenizer_name: str | None = None
                     brief=bounded_brief,
                     handoff=bounded_handoff,
                     encoding=encoding,
+                    tokenizer=tokenizer,
                     tokenizer_version=tokenizer_version,
                     manifest=manifest,
+                    manifest_digest=manifest_digest,
+                    fixture_digest=fixture_digest,
                 ),
             )
         )
@@ -182,42 +241,97 @@ def _write_jsonl(rows: list[dict[str, Any]], output: Path) -> None:
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows: list[dict[str, Any]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid JSON on line {line_number}") from exc
+        if not isinstance(row, dict):
+            raise ValueError(f"benchmark row on line {line_number} must be an object")
+        rows.append(row)
+    return rows
 
 
-def _reduction(rows: list[dict[str, Any]]) -> float:
-    baseline = next(row for row in rows if row["mode"] == "baseline")
-    bounded = next(row for row in rows if row["mode"] == "bounded")
+def _validate_row(row: Mapping[str, Any], index: int) -> None:
+    missing = sorted(_REQUIRED_ROW_FIELDS - row.keys())
+    if missing:
+        raise ValueError(f"row {index} missing required fields: {', '.join(missing)}")
+    if not isinstance(row["task_id"], str) or not row["task_id"].strip():
+        raise ValueError(f"row {index} task_id must be a non-empty string")
+    if row["mode"] not in _MODES:
+        raise ValueError(f"row {index} has unknown mode: {row['mode']!r}")
+    if isinstance(row["run"], bool) or not isinstance(row["run"], int) or row["run"] < 0:
+        raise ValueError(f"row {index} run must be a non-negative integer")
+    for field in _PAIR_INVARIANTS[2:]:
+        if not isinstance(row[field], str) or not row[field].strip():
+            raise ValueError(f"row {index} {field} must be a non-empty string")
+    if len(row["manifest_digest"]) != 64 or len(row["fixture_digest"]) != 64:
+        raise ValueError(f"row {index} digests must be SHA-256 hex strings")
+    token_count = row["delivered_handoff_tokens"]
+    if isinstance(token_count, bool) or not isinstance(token_count, int) or token_count < 0:
+        raise ValueError(f"row {index} delivered_handoff_tokens must be a non-negative integer")
+
+
+def _validated_pairs(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, dict[str, Any]]]:
+    if not rows:
+        raise ValueError("benchmark dataset is empty")
+    by_key: dict[tuple[str, int], dict[str, dict[str, Any]]] = {}
+    for index, row in enumerate(rows, 1):
+        _validate_row(row, index)
+        key = (row["task_id"], row["run"])
+        pair = by_key.setdefault(key, {})
+        mode = row["mode"]
+        if mode in pair:
+            raise ValueError(f"duplicate {mode} row for pair {key!r}")
+        pair[mode] = row
+    for key, pair in by_key.items():
+        if set(pair) != _MODES:
+            raise ValueError(f"pair {key!r} must contain exactly one baseline and one bounded row")
+        baseline = pair["baseline"]
+        bounded = pair["bounded"]
+        for field in _PAIR_INVARIANTS:
+            if baseline[field] != bounded[field]:
+                raise ValueError(f"pair {key!r} disagrees on {field}")
+    return by_key
+
+
+def _reduction(pair: Mapping[str, Mapping[str, Any]]) -> float:
+    baseline = pair["baseline"]
+    bounded = pair["bounded"]
     if baseline["delivered_handoff_tokens"] <= 0:
         raise ValueError("baseline delivered handoff token count must be positive")
     return 1 - bounded["delivered_handoff_tokens"] / baseline["delivered_handoff_tokens"]
 
 
 def _write_report(rows: list[dict[str, Any]], output: Path) -> None:
-    by_task: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        by_task.setdefault(str(row["task_id"]), []).append(row)
-    reductions = [_reduction(task_rows) for task_rows in by_task.values()]
-    baseline_total = sum(row["delivered_handoff_tokens"] for row in rows if row["mode"] == "baseline")
-    bounded_total = sum(row["delivered_handoff_tokens"] for row in rows if row["mode"] == "bounded")
-    aggregate = 1 - bounded_total / baseline_total if baseline_total else 0.0
+    pairs = _validated_pairs(rows)
+    reductions = [_reduction(pair) for pair in pairs.values()]
+    baseline_total = sum(pair["baseline"]["delivered_handoff_tokens"] for pair in pairs.values())
+    bounded_total = sum(pair["bounded"]["delivered_handoff_tokens"] for pair in pairs.values())
+    if baseline_total <= 0:
+        raise ValueError("baseline delivered handoff token count must be positive")
+    aggregate = 1 - bounded_total / baseline_total
     lines = [
         "# Worker Contract Communication Benchmark",
         "",
-        f"- Tasks: {len(by_task)}",
+        f"- Tasks: {len({task_id for task_id, _ in pairs})}",
+        f"- Paired runs: {len(pairs)}",
         f"- Median delivered-handoff reduction: {median(reductions):.2%}",
         f"- Aggregate delivered-handoff reduction: {aggregate:.2%}",
         "",
-        "| Task | Baseline handoff tokens | Bounded handoff tokens | Reduction |",
-        "| --- | ---: | ---: | ---: |",
+        "| Task | Run | Baseline handoff tokens | Bounded handoff tokens | Reduction |",
+        "| --- | ---: | ---: | ---: | ---: |",
     ]
-    for task_id in sorted(by_task):
-        task_rows = by_task[task_id]
-        baseline = next(row for row in task_rows if row["mode"] == "baseline")
-        bounded = next(row for row in task_rows if row["mode"] == "bounded")
+    for task_id, run in sorted(pairs):
+        pair = pairs[(task_id, run)]
+        baseline = pair["baseline"]
+        bounded = pair["bounded"]
         lines.append(
-            f"| {task_id} | {baseline['delivered_handoff_tokens']} | "
-            f"{bounded['delivered_handoff_tokens']} | {_reduction(task_rows):.2%} |"
+            f"| {task_id} | {run} | {baseline['delivered_handoff_tokens']} | "
+            f"{bounded['delivered_handoff_tokens']} | {_reduction(pair):.2%} |"
         )
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

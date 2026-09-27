@@ -27,6 +27,14 @@ def test_offline_rows_have_two_modes_and_pinned_counts() -> None:
         assert row["estimated_tokens"] > 0
         assert row["utf8_bytes"] > 0
         assert row["characters"] > 0
+        assert len(row["manifest_digest"]) == 64
+        assert len(row["fixture_digest"]) == 64
+
+
+def test_tokenizer_override_records_resolved_name() -> None:
+    rows = benchmark.measure_offline(FIXTURE / "manifest.json", "o200k_base")
+
+    assert {row["tokenizer"] for row in rows} == {"o200k_base"}
 
 
 def test_reconstructed_baseline_stays_within_launcher_limit() -> None:
@@ -66,6 +74,28 @@ def test_manifest_rejects_unknown_task(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unknown selected task"):
         benchmark.measure_offline(path)
+
+
+def test_report_rejects_incomplete_pair(tmp_path: Path) -> None:
+    rows = benchmark.measure_offline(FIXTURE / "manifest.json")
+
+    with pytest.raises(ValueError, match="exactly one baseline and one bounded"):
+        benchmark._write_report(rows[:1], tmp_path / "report.md")
+
+
+def test_report_rejects_duplicate_pair(tmp_path: Path) -> None:
+    rows = benchmark.measure_offline(FIXTURE / "manifest.json")
+
+    with pytest.raises(ValueError, match="duplicate baseline"):
+        benchmark._write_report([rows[0], dict(rows[0]), rows[1]], tmp_path / "report.md")
+
+
+def test_report_rejects_pair_invariant_mismatch(tmp_path: Path) -> None:
+    rows = benchmark.measure_offline(FIXTURE / "manifest.json")
+    rows[1] = dict(rows[1], tokenizer="o200k_base")
+
+    with pytest.raises(ValueError, match="disagrees on tokenizer"):
+        benchmark._write_report(rows, tmp_path / "report.md")
 
 
 def test_binding_leaves_worker_budget_for_native_execution() -> None:
