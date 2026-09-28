@@ -1,12 +1,14 @@
 # Pipeline
 
-Project OS Starter moves each task through five visible stages:
+For plan-bound or coordinated work, Project OS Starter uses five visible stages.
+Direct local work may use a shorter path when planning dispatch identifies it as
+local, reversible, and design-clear.
 
 1. **Frame** — receive task request and establish lead-controller authority.
-2. **Govern** — record Git-tracked plan, ownership, dependencies, proof, and
-   bounded admission.
-3. **Execute** — dispatch implementation lanes through selected runtimes inside
-   admitted task and workspace boundaries.
+2. **Govern** — when coordination is selected, record the Git-tracked plan,
+   ownership, dependencies, proof, and bounded admission.
+3. **Execute** — run direct work, one bounded executor, or implementation lanes
+   through selected runtimes inside admitted task and workspace boundaries.
 4. **Prove** — settle runtime output into accepted evidence, then review and
    decide `PASS`, `FAIL`, or `BLOCKED`.
 5. **Recover** — preserve blocked uncertainty, reconcile plan and Git state, and

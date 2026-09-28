@@ -91,7 +91,7 @@ def test_starter_onboarding_matches_optional_intent_and_atomic_kit() -> None:
     assert '"docs/intent"' not in manifest
 
 
-def test_runtime_docs_use_profile_concept_and_keep_cli_selector_literal() -> None:
+def test_runtime_docs_keep_policy_in_owners_and_readme_profile_selector() -> None:
     paths = [
         "README.md",
         "docs/operating_system/procedures/personal-local-worktree-procedure.md",
@@ -113,10 +113,10 @@ def test_runtime_docs_use_profile_concept_and_keep_cli_selector_literal() -> Non
     procedure = normalized_source("docs/operating_system/procedures/runtime-adapter-procedure.md")
     surfaces = normalized_source("docs/operating_system/runtime/runtime-surfaces.md")
     root_template = normalized_source("docs/operating_system/templates/agents/root-AGENTS.template.md")
-    assert "DeepAgents MCP is opt-in through explicit Herdr selection" in readme
-    assert "Herdr accepts `--mcp-select" in readme
-    assert "MCP `headers` values must be `${VAR}` references" in readme
-    assert "MCP `env` values may be `${VAR}` references or non-sensitive literals" in readme
+    assert "Optional Herdr setup for coordinated transport and diagnostics" in readme
+    assert "DeepAgents MCP is opt-in through explicit Herdr selection" not in readme
+    assert "MCP `headers` values must be `${VAR}` references" not in readme
+    assert "MCP `env` values may be `${VAR}` references or non-sensitive literals" not in readme
     assert "MCP `headers` values must be `${VAR}` references" in integration
     assert "MCP `env` values may be `${VAR}` references or non-sensitive literals" in integration
     assert "DeepAgents may use MCP only through explicit Herdr selection" in procedure

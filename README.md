@@ -19,7 +19,9 @@ Define how coding agents are assigned, bounded, equipped, observed, and accepted
 - Python 3.12 or newer
 - `requirements.txt` for core repository validation
 - `requirements-benchmark.txt` for benchmark-only evaluation
-- Optional Codex, DeepAgents, Tura, or Herdr runtime setup for execution paths
+- Optional Codex, DeepAgents, or Tura runtime setup for execution paths
+- Optional Herdr setup for coordinated transport and diagnostics
+- PowerShell 7 (`pwsh`) for optional DeepAgents Code setup
 
 CI currently validates repository contracts on Ubuntu and runtime contracts on
 Ubuntu and Windows. macOS support is not currently asserted.
@@ -39,8 +41,9 @@ validation loop.
 ### Adopt Project OS
 
 Start with [Setup](docs/setup.md) and [Usage](docs/usage.md), then adopt only
-the layers your project can own, expose, and validate. Keep project-specific
-docs, configuration, code, and tests in the consuming repository.
+the layers your project can own, expose, and validate. Shared runtime and
+starter-kit migration stays separate from project-specific docs, configuration,
+code, and tests in the consuming repository.
 
 ## Why Project OS Starter?
 
@@ -57,36 +60,44 @@ Project OS Starter supplies repository structure and contracts for answering tho
 ## How It Works
 
 ```text
-Task Request → Lead Controller → Git-Tracked Plan → Bounded Admission
-                                                        │
-                                              Implementation Lanes
-                                                        │
-                                               Selected Runtime
-                                                        │
-                                              Runtime Evidence
-                                                        │
-                                             Acceptance Decision
+Task Request → Planning / Execution Selection
+                         │
+          ┌──────────────┼─────────────────┐
+          │              │                 │
+   Direct execution  Single bounded   Git-tracked
+                     executor         coordinated work
+          └──────────────┼─────────────────┘
+                         │
+                 Runtime + Git evidence
+                         │
+                 Acceptance Decision
 ```
 
-The system separates task delivery, bounded execution, evidence, recovery, and final acceptance. Runtime completion alone does not establish task acceptance.
+Project OS selects the smallest execution structure that safely fits the task.
+The system separates task delivery, bounded execution, evidence, recovery, and
+final acceptance. Runtime completion alone does not establish task acceptance.
 
-In short: requests become bounded implementation lanes, lanes produce runtime
-evidence, and the controller accepts or blocks the result.
+In short: direct work stays direct, contained work uses one bounded executor,
+and coordinated work uses Git-tracked ownership and lanes. All paths produce
+evidence before acceptance.
 
-If admission or evidence fails, work enters `BLOCKED`. Reconciliation settles plan and Git state before any fresh attempt; retry is never automatic.
+Admission distinguishes `ADMITTED`, `DEFERRED`, `BLOCKED`, and `REJECTED`.
+Deferred work is not yet runnable; blocked work requires reconciliation;
+rejected work is invalid for requested admission. Reconciliation settles plan
+and Git state before any fresh attempt; retry is never automatic.
 
 Runtime state uses separate namespaces: admission is
 `ADMITTED | DEFERRED | BLOCKED | REJECTED`; runtime facts are
-`settled | unresolved | recovery-required`; CoS acceptance is
+`settled | unresolved | recovery-required`; Chief of Staff (CoS) acceptance is
 `PASS | FAIL | BLOCKED`. Dispatcher exit `0` means no rejected/blocked admission
 and no executed result has `unresolved: true` or a non-null `failure_kind`; all-
 deferred scheduling is normal output.
 
 [![Project OS Starter Guided Story](docs/architecture/project-OS-starter-guided-story.svg)](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html)
 
-Open the [interactive Guided Story](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html), or read [`docs/architecture.md`](docs/architecture.md) and [`docs/pipeline.md`](docs/pipeline.md). Edit canonical sources; regenerate generated projections; never hand-edit generated outputs.
+Open the [interactive Guided Story](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html), or read [`docs/architecture.md`](docs/architecture.md), [`docs/pipeline.md`](docs/pipeline.md), and [`docs/usage.md`](docs/usage.md). The Guided Story illustrates coordinated work; edit canonical sources and regenerate generated projections instead of hand-editing outputs.
 
-## Example Workflow
+## Coordinated Workflow Example
 
 ```text
 Request: implement an API change, update its frontend usage, and review it.
@@ -117,7 +128,7 @@ Workers own engineering inside assigned scope. The controller owns orchestration
 - **Canonical sources** — one owning layer for rules, procedures, templates, and configuration.
 - **Generated projections** — downstream instruction and starter-kit outputs derived from canonical sources; edit canonical sources, then regenerate outputs.
 - **Validation tooling** — repository, metadata, configuration, lifecycle, and package-boundary checks.
-- **Runtime adapters** — conventions for Native Codex, DeepAgents, Tura, and related local execution paths.
+- **Runtime adapters** — conventions for Codex, DeepAgents, Tura, and related local execution paths.
 - **Regression coverage** — tests for delivery, isolation, capability selection, lifecycle, and evidence contracts.
 
 ## Open-Source Ecosystem
@@ -127,12 +138,8 @@ Project OS Starter composes replaceable runtimes, providers, and validation tool
 - [Codex CLI](https://github.com/openai/codex) — native coding-agent runtime.
 - [DeepAgents](https://github.com/langchain-ai/deepagents) — supported agent-harness SDK ecosystem.
 - [Tura](https://github.com/Tura-AI/tura) — optional executor.
-- [LightRSI](https://github.com/zjunlp/LightRSI) — optional Tura runtime layer.
-- [9router](https://github.com/decolua/9router) — model-routing provider.
-- [LangGraph](https://github.com/langchain-ai/langgraph) — DeepAgents runtime support.
-- [OpenCodeReview](https://github.com/alibaba/open-code-review) — optional advisory code-review overlay.
-
-The setup script installs `deepagents-code` as a separate optional coding-agent runtime. Its public repository and license are distinct from the DeepAgents ecosystem project above.
+- Optional runtime integrations and overlays remain replaceable; this README
+  does not define support guarantees for them.
 
 ## Design Principles
 
@@ -204,16 +211,10 @@ Adopt only the layers your project can own, expose, and validate. Keep project-s
 
 - Native personal work follows `native-personal-local`; use `planning-dispatch.md` to choose an execution path.
 - Native execution uses Codex, DeepAgents, or Tura, selected per bounded task.
-- Shared operating-system docs, reusable scripts, and skills stay under a shared Project OS installation.
-- Keep project-specific project-local folders such as `docs/intent/`, `repo_config/`, code, tests, and scripts in this repository when adopting this starter.
+- Shared operating-system docs, reusable scripts, and skills stay under a shared Project OS installation. Keep project-specific project-local folders such as `docs/intent/`, `repo_config/`, code, tests, and scripts in the consuming repository.
 - When adopting this starter, create `docs/intent/` when durable project purpose needs more than `README.md`.
 - DeepAgents Code runtime setup owns its version; version pinned by `scripts/setup_deepagents_runtime.ps1` is the source of truth. Use that setup path and its contract tests instead of copying numeric version values into project docs.
-- Keep `OPENAI_API_KEY` in the runtime's configured secret store; do not commit project secret files.
-- DeepAgents runtime version bumps require compatibility proof for `scripts/patch_deepagents_runtime.py`; do not bump package version alone.
 - Select runtime profiles explicitly, for example `--role <profile>`.
-- DeepAgents MCP is opt-in through explicit Herdr selection. Herdr accepts `--mcp-select` and forwards selected servers to `dcode-project`.
-- Lifecycle receipts own DeepAgents execution and settlement; structured task results own reported outcomes; pane text is diagnostic or legacy fallback only; CoS owns final acceptance.
-- MCP `headers` values must be `${VAR}` references. MCP `env` values may be `${VAR}` references or non-sensitive literals.
 
 ## Contributing
 
