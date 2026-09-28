@@ -137,6 +137,27 @@ def test_runtime_adapter_procedure_preserves_lifecycle_evidence() -> None:
     assert "Keep logging best-effort" in procedure
 
 
+def test_readme_uses_right_sized_execution_and_pipeline_owns_protocol_states() -> None:
+    readme = read_source("README.md")
+    pipeline = read_source("docs/pipeline.md")
+
+    assert "right-sized execution of coding-agent work" in readme
+    assert "Right-sized execution. Clear ownership. Evidence before acceptance." in readme
+    assert "Applying the same coordination machinery to every task adds" in readme
+    assert "**Match structure to task scope**" in readme
+    assert "**Bound autonomy where work is delegated**" in readme
+    assert "**Fail closed on uncertainty**" in readme
+    assert "Admission state is `ADMITTED | DEFERRED | BLOCKED | REJECTED`." in pipeline
+
+    for protocol_text in (
+        "Admission distinguishes `ADMITTED`, `DEFERRED`, `BLOCKED`, and `REJECTED`.",
+        "`ADMITTED | DEFERRED | BLOCKED | REJECTED`; runtime facts are",
+        "Dispatcher exit `0` means",
+        "all-deferred scheduling is normal output.",
+    ):
+        assert protocol_text not in readme
+
+
 def test_starter_manifest_omits_private_provider_setup() -> None:
     manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
 

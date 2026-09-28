@@ -1,15 +1,13 @@
 # Project OS Starter
 
-> A starter kit for governed multi-agent development with AI coding agents.
+> A starter kit for governed, right-sized execution of coding-agent work.
 
-Define how coding agents are assigned, bounded, equipped, observed, and accepted across multiple runtimes. Use it when one task needs explicit ownership, bounded execution, and evidence-backed acceptance.
+Project OS Starter matches execution structure to task scope: direct work stays
+direct, contained work uses one bounded executor, and coordinated work uses
+Git-tracked ownership and dependencies. Authority, workspace boundaries,
+runtime evidence, recovery, and acceptance remain explicit across runtimes.
 
-**One controller. Bounded lanes. Evidence before acceptance.**
-
-- Shared capability profiles
-- Controlled tool access
-- Explicit Git and workspace boundaries
-- Observable lifecycle and acceptance evidence
+**Right-sized execution. Clear ownership. Evidence before acceptance.**
 
 [GitHub](https://github.com/longdang193/project-OS-starter) · [Issues](https://github.com/longdang193/project-OS-starter/issues) · [Setup](docs/setup.md) · [Usage](docs/usage.md)
 
@@ -47,15 +45,14 @@ code, and tests in the consuming repository.
 
 ## Why Project OS Starter?
 
-Individual coding agents can write useful code. Multi-agent development adds harder problems:
+Coding-agent work can range from one direct edit to delegated or parallel
+execution. Applying the same coordination machinery to every task adds
+overhead; applying too little structure to complex work loses ownership and
+evidence.
 
-- Who owns each task?
-- Which tools and runtimes may each worker use?
-- How do concurrent changes avoid colliding?
-- What counts as running, finished, or accepted?
-- Which evidence survives retries, replacement attempts, and review?
-
-Project OS Starter supplies repository structure and contracts for answering those questions consistently.
+Project OS Starter keeps simple work simple and adds coordination only when the
+task requires it, while preserving explicit authority, workspace boundaries,
+evidence, recovery, and acceptance.
 
 ## How It Works
 
@@ -73,25 +70,19 @@ Task Request → Planning / Execution Selection
                  Acceptance Decision
 ```
 
-Project OS selects the smallest execution structure that safely fits the task.
-The system separates task delivery, bounded execution, evidence, recovery, and
-final acceptance. Runtime completion alone does not establish task acceptance.
+Project OS uses the smallest execution structure that safely fits the task:
 
-In short: direct work stays direct, contained work uses one bounded executor,
-and coordinated work uses Git-tracked ownership and lanes. All paths produce
-evidence before acceptance.
+- **Direct execution** for local, reversible, design-clear work.
+- **One bounded executor** for contained work with explicit scope.
+- **Git-tracked coordination** for work that needs durable ownership,
+  dependencies, resume, or parallel writers.
 
-Admission distinguishes `ADMITTED`, `DEFERRED`, `BLOCKED`, and `REJECTED`.
-Deferred work is not yet runnable; blocked work requires reconciliation;
-rejected work is invalid for requested admission. Reconciliation settles plan
-and Git state before any fresh attempt; retry is never automatic.
+All paths preserve the evidence needed for acceptance. Runtime completion alone
+does not establish success.
 
-Runtime state uses separate namespaces: admission is
-`ADMITTED | DEFERRED | BLOCKED | REJECTED`; runtime facts are
-`settled | unresolved | recovery-required`; Chief of Staff (CoS) acceptance is
-`PASS | FAIL | BLOCKED`. Dispatcher exit `0` means no rejected/blocked admission
-and no executed result has `unresolved: true` or a non-null `failure_kind`; all-
-deferred scheduling is normal output.
+Project OS reduces unnecessary coordination by selecting the smallest execution
+structure appropriate to the task, sending bounded work to the responsible
+executor, and keeping recovery and acceptance separate from runtime completion.
 
 [![Project OS Starter Guided Story](docs/architecture/project-OS-starter-guided-story.svg)](https://longdang193.github.io/project-OS-starter/architecture/project-OS-starter-guided-story.html)
 
@@ -143,11 +134,11 @@ Project OS Starter composes replaceable runtimes, providers, and validation tool
 
 ## Design Principles
 
-- **Evidence before acceptance** — completion is a claim until required proof exists.
-- **Explicit authority** — controllers, workers, reviewers, and cleanup actions have separate responsibilities.
-- **Repository as source of truth** — Git state, tests, contracts, and recorded evidence outrank chat output.
-- **Canonical over copied** — generated surfaces are rebuilt from their owners.
-- **Unknown stays unknown** — missing or ambiguous runtime evidence does not become success.
+- **Match structure to task scope** — direct work stays direct; coordination is reserved for work that needs it.
+- **Bound autonomy where work is delegated** — ownership, authority, capabilities, and workspace scope stay explicit at execution boundaries.
+- **Carry evidence through the lifecycle** — runtime completion is not acceptance; required proof survives recovery, review, and cleanup.
+- **Keep project truth durable** — Git state, tests, contracts, structured results, and recorded evidence outrank chat context or worker claims.
+- **Fail closed on uncertainty** — missing or ambiguous evidence remains unresolved instead of becoming success.
 
 ## Where It Fits
 

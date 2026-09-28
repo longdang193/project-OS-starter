@@ -10,16 +10,19 @@ layer: change
 
 ## Goal
 
-Update the README from a universal coordinated-lane description to an
-accurate project orientation layer. Align its execution model, admission
-states, runtime terminology, adoption routing, and source-of-truth links with
-current planning and runtime contracts. Update linked high-level documentation
-and README contract tests where the current wording is duplicated or
-contradictory.
+Complete a follow-up README positioning pass after the execution-model
+convergence recorded in commit `845be62`. Keep the README as a concise public
+orientation layer: explain right-sized execution, explicit ownership, durable
+evidence, recovery, and acceptance without making multi-agent coordination the
+default or copying protocol-level runtime policy into the front door.
+
+Tasks 1-4 record the completed convergence baseline. New follow-up tasks 5-6
+replace broad governance framing with product-level differentiators and verify
+the directly coupled documentation contracts.
 
 This plan is documentation and test maintenance only. It must not change
-runtime behavior, dispatcher semantics, publication policy, generated agent
-surfaces, dependency versions, or license state.
+runtime behavior, dispatcher semantics, benchmark artifacts, publication
+policy, generated agent surfaces, dependency versions, or license state.
 
 ## Implementation Outcomes
 
@@ -32,10 +35,11 @@ not mandatory stages for every task.
 
 ### Accurate state and runtime language
 
-README preserves the separate admission, runtime-fact, and acceptance
-namespaces. It does not collapse `DEFERRED` or `REJECTED` into `BLOCKED`, and it
-describes Herdr as coordination transport/diagnostic observation rather than a
-peer executor.
+README summarizes lifecycle and acceptance without exposing protocol-level
+state namespaces. `docs/pipeline.md` remains the owner for separate admission,
+runtime-fact, and acceptance states; it does not collapse `DEFERRED` or
+`REJECTED` into `BLOCKED`. README describes Herdr as coordination
+transport/diagnostic observation rather than a peer executor.
 
 ### Maintainable onboarding surface
 
@@ -50,6 +54,14 @@ README-specific tests verify durable concepts and canonical links instead of
 requiring duplicated runtime-policy sentences. Focused validators, tests, link
 checks, and diff checks prove documentation convergence without touching
 unrelated workspace state.
+
+### Product-level positioning
+
+README presents Project OS as a right-sizing layer for coding-agent work:
+simple work stays simple, delegated work remains bounded, and coordinated work
+gets durable ownership and evidence. It explains the qualitative optimization
+mechanism without publishing unresolved benchmark percentages or exploratory
+runtime observations.
 
 ## Execution Approach
 
@@ -68,7 +80,7 @@ unrelated workspace state.
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
 - Branch: `main`
-- Base commit: `336dfa283f38ea65b6a3f0c333b528571ac6d499`
+- Base commit: `845be62c2ab2cc56b0abddce48816ce1d7d66a7c`
 - Expected workspace: tracked files unchanged before execution; preserve existing untracked `.playwright-mcp/`, `db/`, and `temp_evidence.json`
 - Next action: verified; await explicit branch disposition
 - Blockers: `none`
@@ -79,6 +91,8 @@ unrelated workspace state.
 | Task 2 | `completed` | current | `codex` | Task 1 | high-level docs match planning truth | architecture, pipeline, and usage now distinguish direct, single-executor, and coordinated work |
 | Task 3 | `completed` | current | `codex` | Task 2 | README and tests match canonical wording | README rewritten; focused README and onboarding tests pass |
 | Task 4 | `completed` | current | `codex` | Task 3 | fresh validator, focused tests, links, and diff proof | full validator passed; 45 focused README/contract tests passed; 2 native workflow tests passed; links and diff checks passed |
+| Task 5 | `completed` | current | `codex` | Task 4 | README positioning and principle rewrite | README and boundary test updated; focused check passed: 5 passed, 30 deselected |
+| Task 6 | `completed` | current | `codex` | Task 5 | fresh documentation-contract verification | 46 contract tests passed; 2 native workflow tests passed; validator, links, boundary, diff, and final scope checks passed |
 
 ## Task Breakdown
 
@@ -320,7 +334,127 @@ unrelated workspace state.
 **Exit Criteria:**
 - Documentation is source-backed, publication-safe under the resolved repository role, semantically aligned, and verified with fresh output.
 
+## Follow-up Decisions
+
+- Do not publish worker-contract percentages in README. Tracked reports use
+  materially different baselines (`80.16%` versus `11.17%` median), so benchmark
+  lineage is not yet one canonical public claim.
+- Do not publish exploratory live-observation counts as performance results.
+  `artifacts/runtime-observation/representative-work-summary.json` is useful
+  engineering evidence, not a before/after optimization benchmark.
+- Do not create `benchmarks.md` or change publication configuration in this
+  follow-up. Benchmark SSOT reconciliation is separate work.
+- Explain optimization qualitatively: right-sized execution, bounded delegated
+  work, and separate recovery/acceptance reduce unnecessary coordination without
+  claiming universal speed, token, cost, or quality gains.
+
+### Task 5: Reposition README around right-sized execution
+
+**Purpose:**
+- Make the product value proposition immediately clear to first-time readers.
+- Replace multi-agent-first framing with the smallest-safe-structure model.
+- Keep README public-safe and concise while preserving required setup and adoption contracts.
+
+**Task Function:**
+- Edit README copy and directly coupled README assertions only; do not change runtime behavior or benchmark artifacts.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: bounded public documentation rewrite with source-backed wording.
+
+**Validator Profile (optional):**
+- Controller-selected: `none`
+- Selection basis: focused contract tests and link inspection provide deterministic proof.
+
+**Specification Coverage:**
+- Opening describes Project OS as governed, right-sized execution for coding-agent work.
+- `Why Project OS Starter?` explains the cost of applying the same coordination to every task and the risk of applying too little structure to complex work.
+- Existing three-path diagram remains unchanged.
+- README explains direct execution, one bounded executor, and Git-tracked coordination without implying every task needs coordination.
+- Design Principles become product differentiators: task-sized structure, bounded delegated autonomy, lifecycle evidence, durable project truth, and fail-closed uncertainty.
+- README explains the optimization mechanism qualitatively and publishes no benchmark percentages, benchmark links, or exploratory runtime counts.
+- Requirements, runtime names, setup links, adoption wording, and consuming-repository language remain source-backed and contract-compatible.
+
+**Required Skills:**
+- `skill-private-public-repo-governance`
+
+**Files And Symbols:**
+- Modify: `README.md` sections `intro`, `Why Project OS Starter?`, `How It Works`, and `Design Principles`
+- Modify: `tests/test_starter_kit_generation.py` README contract assertions when intentionally moved wording is covered
+- Modify: `tests/test_native_personal_local_workflow.py` only for README-specific assertions affected by the copy change
+- Inspect only: `docs/architecture.md`, `docs/pipeline.md`, `docs/usage.md`, `repo_config/publication-config.json`, and `artifacts/runtime-observation/representative-work-summary.json`
+
+**Dependencies:**
+- Task 4 complete; follow-up decisions above accepted as scope constraints.
+
+**Authority:**
+- Preauthorized local actions: edit README and named README-specific test assertions, inspect related documentation/evidence, and run focused documentation checks
+- Stop for: benchmark claim ambiguity, publication-boundary change, runtime semantic change, generated-surface edit, or any need to alter architecture/pipeline/usage ownership without a separate approved scope
+
+**Steps:**
+- [x] Step 1: Replace the opening description and tagline with right-sized execution, clear ownership, and evidence-before-acceptance wording.
+- [x] Step 2: Reframe `Why Project OS Starter?` around scaling from direct work to delegated and coordinated work.
+- [x] Step 3: Keep the execution diagram and replace protocol-level prose with the three execution-path summaries; move exact state/exit semantics ownership to `docs/pipeline.md`.
+- [x] Step 4: Replace `Design Principles` with the five approved product-level principles and qualify delegated autonomy so small direct work is not overstated.
+- [x] Step 5: Add one qualitative optimization sentence; do not add metrics, benchmark links, `benchmarks.md`, or publication-config changes.
+- [x] Step 6: Update only README assertions that intentionally cover changed or removed wording; preserve runtime/setup/adoption assertions.
+
+**Verification:**
+- [x] README contract tests pass after copy changes: `5 passed, 30 deselected` in focused coverage.
+- Expected: README communicates right-sized execution without protocol duplication or unsupported performance claims.
+
+**Exit Criteria:**
+- README reads as a product orientation layer, not a protocol specification or benchmark report.
+
+### Task 6: Verify related documentation ownership and final contracts
+
+**Purpose:**
+- Prove the README simplification leaves no contradictory high-level documentation and keeps detailed runtime policy in its owner.
+
+**Task Function:**
+- Run source comparison and repository-native verification; do not broaden documentation scope unless a concrete contradiction is found.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: deterministic documentation verification.
+
+**Files And Symbols:**
+- Verify: `docs/architecture.md` execution model and boundaries
+- Verify: `docs/pipeline.md` admission, runtime-fact, and acceptance namespaces
+- Verify: `docs/usage.md` direct, bounded-executor, and coordinated task flow
+- Verify: `README.md` links, public-boundary wording, and design principles
+- Verify: `tests/test_starter_kit_generation.py`, `tests/test_native_personal_local_workflow.py`, and `scripts/validate_repo_contracts.py`
+- Preserve: `.playwright-mcp/`, `db/`, and `temp_evidence.json`
+
+**Dependencies:**
+- Task 5 complete.
+
+**Authority:**
+- Preauthorized local actions: run declared validators, focused tests, link/path checks, `git diff --check`, and update this plan evidence
+- Stop for: failed required check, contradictory source document, unexpected tracked file, public-boundary violation, or requested benchmark/publication expansion
+
+**Steps:**
+- [x] Step 1: Confirm README no longer duplicates exact protocol namespaces while `docs/pipeline.md` retains them.
+- [x] Step 2: Confirm architecture, pipeline, and usage docs still describe the same conditional execution model.
+- [x] Step 3: Run README/contract tests, repository validator, relative-link checks, README forbidden-path checks, and `git diff --check`.
+- [x] Step 4: Inspect the final tracked diff and record evidence, deviations, blockers, and preserved untracked paths.
+
+**Verification:**
+- [x] `python scripts/validate_repo_contracts.py`
+- [x] `python -m pytest -q tests/test_starter_kit_generation.py tests/test_validate_repo_contracts.py` — `46 passed`
+- [x] `python -m pytest -q tests/test_native_personal_local_workflow.py -k "test_three_runtime_personal_local_workflow_is_documented or test_deepagents_default_version_has_single_runtime_owner"` — `2 passed, 14 deselected`
+- [x] `git diff --check`
+- [x] Relative-link/path check for changed Markdown files and README forbidden-path check
+- [x] Final tracked diff inspection with unrelated untracked files preserved
+
+**Exit Criteria:**
+- README, related docs, tests, and publication boundaries agree; no runtime or benchmark behavior changes enter the patch.
+
 ## Verification
+
+The checks below are historical evidence for completed Tasks 1-4. Follow-up
+proof for Tasks 5-6 must be recorded in Task 6 before this amended plan returns
+to `completed`.
 
 - [x] `python scripts/validate_repo_contracts.py`
 - [x] `python -m pytest -q tests/test_starter_kit_generation.py tests/test_validate_repo_contracts.py`
@@ -338,14 +472,19 @@ The plan is ready for completion verification when:
    concrete blocker and no boundary-dependent edit is made
 2. README, architecture, pipeline, and usage docs use the same conditional
    execution model
-3. admission wording preserves all four admission states and separate runtime
-   and acceptance namespaces
-4. Herdr, PowerShell, adoption, and consuming-repository wording is accurate
-5. low-level runtime policy has one owning documentation source
-6. README-specific tests verify durable concepts and canonical links
-7. validators, focused tests, link checks, and diff checks pass
-8. no unrelated files, generated surfaces, publication config, or runtime code
-   changed
+3. README explains right-sized execution without implying every task needs
+   coordination or the same formal contract
+4. Design Principles communicate task-sized structure, bounded delegated
+   autonomy, lifecycle evidence, durable truth, and fail-closed uncertainty
+5. detailed admission, runtime-fact, and acceptance namespaces remain owned by
+   `docs/pipeline.md` rather than duplicated in README
+6. Herdr, PowerShell, adoption, and consuming-repository wording is accurate
+7. no unresolved benchmark percentage, benchmark link, exploratory runtime
+   count, or `benchmarks.md` enters README
+8. README-specific tests verify durable concepts and canonical links
+9. validators, focused tests, link checks, and diff checks pass
+10. no unrelated files, generated surfaces, publication config, benchmark
+   artifacts, or runtime code changed
 
 The plan may be marked `completed` only after fresh verification confirms every
 criterion and records evidence here.
