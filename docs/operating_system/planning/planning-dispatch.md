@@ -9,6 +9,20 @@ attempt contract owns admission and settlement semantics. MAIN AGENTS own only
 bounded execution and lane-local evidence; `NEEDS_CONTEXT` requires explicit
 continuation after prior ownership settles.
 
+## Optional Project Secretary Surface
+
+Project Secretary is an optional attention-and-continuity surface. When active,
+it invokes this existing execution-selection policy; when absent, direct,
+bounded, plan-bound, and CoS entry points operate unchanged. Secretary does
+not add an executor, replace CoS, create a second coordination authority, or
+accept implementation.
+
+Secretary may retain only unresolved, non-reconstructible attention. Its
+optional Docket is not plan truth, Git truth, a task ledger, or a runtime
+registry. Plans/specs, source/tests, Git/GitHub, and accepted workflow
+decisions remain canonical. Runtime sessions, notifications, and operational
+receipts are bounded evidence used to prove or reconcile actions.
+
 ## Artifact Selection
 
 | Condition | Action |

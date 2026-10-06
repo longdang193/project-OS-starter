@@ -2318,6 +2318,18 @@ def test_direct_mcp_parent_initialization_tolerates_concurrent_creator(
     assert (parent / LAUNCHER._DIRECT_MCP_OWNER_MARKER).read_text(encoding="utf-8") == LAUNCHER._DIRECT_MCP_OWNER_VALUE
 
 
+def test_direct_mcp_parent_initialization_claims_empty_legacy_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "dcode-project-mcp"
+    parent.mkdir()
+    monkeypatch.setattr(LAUNCHER, "_direct_mcp_runtime_parent", lambda: parent)
+
+    assert LAUNCHER._ensure_direct_mcp_runtime_parent() == parent
+    assert (parent / LAUNCHER._DIRECT_MCP_OWNER_MARKER).read_text(encoding="utf-8") == LAUNCHER._DIRECT_MCP_OWNER_VALUE
+
+
 def test_direct_mcp_cleans_config_after_worker_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

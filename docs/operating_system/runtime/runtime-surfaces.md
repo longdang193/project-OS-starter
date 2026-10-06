@@ -172,3 +172,9 @@ resources remain caller-owned through `runtime.json`.
   Git-range identity, protected exclusions, bounded OCR execution, schema v1,
   provenance, and native fallback. It does not integrate with
   `tokenpilot-codex-hook.cmd`, hooks, installers, or generated runtime files.
+- Project Secretary, when explicitly active, is an attention surface over these
+  runtime paths; it does not replace direct execution selection or CoS. Runtime
+  sessions, notifications, and operational receipts remain bounded evidence.
+  Idle, timeout, missing notification, disconnect, and connection closure are
+  hints requiring reconciliation, not proof of completion, cancellation,
+  retirement, or failure.

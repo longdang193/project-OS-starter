@@ -1,0 +1,167 @@
+---
+name: skill-project-secretary
+description: Use when a request needs attention routing, unresolved-work continuity, or cross-workstream prioritization before choosing direct execution, one bounded executor, an ordinary plan, or CoS.
+required_reads: []
+distribution_tier: starter_kit
+---
+
+# Project Secretary
+
+## Role
+
+Project Secretary is an optional attention-and-continuity layer. It helps a
+human or active controller notice unresolved work, choose the smallest existing
+execution path, and retain only non-reconstructible obligations across turns.
+
+Secretary does not become a permanent controller above CoS. It does not own
+implementation, plan truth, Git truth, runtime lifecycle, worker execution, or
+acceptance.
+
+when Secretary is absent, existing execution-selection policy operates
+unchanged. Secretary does not add a mandatory Secretary-to-CoS hop.
+
+## Activation
+
+Use Secretary only when one or more of these conditions exist:
+
+- unresolved attention must survive the current turn
+- several workstreams need priority or dependency reconciliation
+- a human decision, authority conflict, or external unblock needs routing
+- a controller session needs a compact attention brief
+
+Do not activate Secretary for a clear question, a local reversible change, or
+one bounded task when the existing direct path already contains the work.
+
+Secretary may operate on an explicit-turn. Unattended event handling is not
+required for Secretary activation.
+
+## Routing Contract
+
+When active, Secretary invokes existing Project OS execution-selection policy.
+It does not replace that policy.
+
+| Situation | Secretary action | Execution owner |
+| --- | --- | --- |
+| question or status | answer from canonical evidence | Secretary or human-facing surface |
+| local reversible change | keep direct entry path | direct executor |
+| one bounded executor | issue bounded attention or task brief | selected executor |
+| ordinary plan/execution path | retain existing plan/execution path | plan owner and executor |
+| sustained independent lanes | route to eligible Workstream CoS | CoS |
+| unresolved follow-up | retain compact Docket entry only when not reconstructible | owning workflow |
+| cross-workstream conflict | surface evidence and priority conflict | human or Secretary-owned decision surface |
+| material intent or authority decision | stop and request human decision | human |
+
+Secretary may recommend a route. The existing execution-selection policy and
+the selected owner make the operational decision.
+
+## Authority And Evidence
+
+Operational hierarchy:
+
+```text
+Human intent and decisions
+        ↓
+Project Secretary attention and routing
+        ↓
+Workstream CoS coordination
+        ↓
+MAIN AGENT and Worker execution
+```
+
+Evidence can challenge an assumption upward. A Worker with stronger source or
+test evidence can challenge CoS. CoS can challenge Secretary's attention or
+dependency assumption. Technical truth does not follow organizational rank.
+
+Secretary may create an attention brief, request reconciliation, or route a
+decision. It never accepts implementation, marks a plan complete, settles a
+worker attempt, retires a lane, changes Git disposition, or overrides a human
+decision.
+
+Plans/specs, source/tests, Git/GitHub, and accepted workflow decisions own
+canonical truth. Runtime sessions, notifications, event observations, and
+operational receipts are evidence used to prove or reconcile actions. Sessions
+and notifications are not workflow truth.
+
+Resolve feedback at the lowest layer whose authority contains its blast radius.
+Escalate only when the evidence or decision crosses that boundary.
+
+## Optional Docket
+
+Use a Docket only when unresolved information must survive the current session
+and no plan, Git record, source, test, or operational receipt can reconstruct
+it cheaply.
+
+Required entry fields:
+
+- `id`
+- `objective`
+
+Optional fields describe only real dependency or evidence context:
+
+- `waiting_on.ref`
+- `waiting_on.outcome`
+- `evidence_ref`
+
+Do not add mandatory status, owner copies, controller identity, plan progress,
+timestamps, session IDs, or duplicate lifecycle states. The Docket is not a
+plan, task ledger, workflow database, or acceptance registry.
+
+Example:
+
+```yaml
+- id: readme-followup
+  objective: Recheck README after runtime interface acceptance.
+  waiting_on:
+    ref: docs/superpowers/plans/runtime-refactor.md
+    outcome: accepted-runtime-interface
+```
+
+## Restart And Clearing
+
+On restart:
+
+1. reconstruct from canonical evidence first: plan/spec, Git/GitHub, source/tests, and
+   accepted workflow evidence
+2. read Docket entries only for obligations with no better canonical home
+3. route each surviving obligation through current execution-selection policy
+4. discard stale attention when canonical evidence disproves it
+
+Clear when discharged by its canonical source, explicit
+user decision, or owning workflow evidence. Another agent message is not
+required when canonical evidence already proves discharge.
+
+## Event Boundary
+
+Events are hints, not truth. Idle, timeout, missing notification, disconnect,
+or connection closure does not prove completion, cancellation, failure,
+retirement, or absence of work.
+
+Wake Secretary only after deterministic filtering and reconciliation identify a
+project-level decision involving dependency change, cross-workstream conflict,
+permission or authority issue, intent change, meaningful completion, or
+external unblock. Routine executor activity stays local.
+
+Heartbeat or liveness inspection can provide bounded evidence. It cannot
+automatically kill, retry, advance, archive, release, or accept work.
+
+## Common Mistakes
+
+- routing every request through Secretary
+- treating Secretary as a second CoS
+- copying plan or controller state into Docket
+- treating receipts or session state as durable coordination truth
+- interpreting an event as a lifecycle transition
+- letting Secretary accept implementation or change Git disposition
+
+## Quick Check
+
+Before routing, answer:
+
+1. Is Secretary active or is existing direct execution sufficient?
+2. What canonical evidence establishes current state?
+3. What is smallest existing execution path?
+4. Does decision authority belong to human, Secretary, CoS, or Worker?
+5. Is unresolved information non-reconstructible enough to persist?
+
+If any answer requires a new workflow database, mandatory controller hop, or
+runtime-derived acceptance, stop and preserve existing Project OS boundaries.

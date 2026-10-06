@@ -20,10 +20,15 @@ Project OS selects the smallest execution structure that safely fits the task:
 - Git-tracked coordination for durable ownership, dependencies, resume, or
   parallel writers
 
+Project Secretary is optional. When active, it routes attention into this
+existing selection policy; when absent, all three paths remain directly
+callable. Secretary does not become another CoS or acceptance authority.
+
 The Guided Story illustrates the coordinated multi-agent path:
 
 ```text
 Task Request
+  → Optional Project Secretary
   → Lead Controller
   → Git-Tracked Plan
   → Bounded Admission
@@ -42,8 +47,9 @@ The path uses three boundaries:
 - **Bounded execution** — direct work, one bounded executor, or implementation
   lanes operate inside their assigned paths and workspace boundaries; selected
   runtimes execute only admitted work.
-- **Evidence, recovery, and acceptance** — runtime output becomes accepted
-  evidence before the controller decides `PASS`, `FAIL`, or `BLOCKED`.
+- **Evidence, recovery, and acceptance** — runtime output and bounded receipts
+  become evidence before the controller decides `PASS`, `FAIL`, or `BLOCKED`.
+  Receipts do not become durable coordination truth.
 
 Recovery remains explicit. Unsafe admission or incomplete evidence enters
 `BLOCKED`. `RECONCILE` settles plan and Git state; it does not silently return
