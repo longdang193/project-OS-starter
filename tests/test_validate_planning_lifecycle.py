@@ -151,6 +151,23 @@ def test_plan_parent_spec_must_resolve() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_selected_malformed_completed_plan_blocks() -> None:
+    root = make_test_root()
+    try:
+        plan = root / "docs" / "superpowers" / "plans" / "broken.md"
+        write_text(
+            plan,
+            "---\nartifact_type: plan\nstatus: completed\ninvalid: [\n---\n# Plan\n",
+        )
+
+        result = run_validator(root, "--plan", "docs/superpowers/plans/broken.md")
+
+        assert result.returncode == 1
+        assert "invalid YAML frontmatter" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_existing_spec_and_linked_plan_pass() -> None:
     root = make_test_root()
     try:

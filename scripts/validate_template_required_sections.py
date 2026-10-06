@@ -24,7 +24,7 @@ lifecycle:
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+import sys
 from pathlib import Path
 
 try:
@@ -35,6 +35,13 @@ import re
 from typing import Any
 
 import yaml
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from validation_findings import ValidationFinding, ValidationFinding as Finding
+from validation_findings import has_blocking_findings, reclassify
 
 HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 PLACEHOLDER_ONLY_RE = re.compile(r"^\s*(<[^>\n]+>|\[[^\]\n]+\]|\([^)\n]+\))\s*$")
@@ -72,11 +79,7 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
 
 
 
-@dataclass(frozen=True)
-class Finding:
-    category: str
-    path: str
-    message: str
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -101,6 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-template-selection",
         action="store_true",
         help="Fail when a target document is missing `template_id` frontmatter.",
+    )
+    parser.add_argument(
+        "--document",
+        default=None,
+        help="Validate one bound document instead of discovering all template targets.",
     )
     return parser
 
@@ -158,11 +166,21 @@ def discover_template_rules(root: Path) -> tuple[list[TemplateRule], list[Findin
         return rules, findings
 
     for path in sorted(templates_root.glob("*-template.md")):
-        payload, _ = _extract_frontmatter_and_body(path)
         try:
             rel = relative_path(path, root)
         except ValueError:
             rel = f"shared Project OS/{path.name}"
+        try:
+            payload, _ = _extract_frontmatter_and_body(path)
+        except yaml.YAMLError as exc:
+            findings.append(
+                Finding(
+                    "template_metadata_error",
+                    rel,
+                    f"invalid YAML frontmatter: {exc.__class__.__name__}",
+                )
+            )
+            continue
         template_id = payload.get("template_id")
         target_globs = payload.get("target_globs")
         required_sections = payload.get("required_sections")
@@ -314,11 +332,25 @@ def validate_documents(
     rules: list[TemplateRule],
     *,
     require_template_selection: bool,
+    documents: list[Path] | None = None,
+    selected: bool = False,
 ) -> list[Finding]:
     findings: list[Finding] = []
-    for path in discover_target_documents(root, rules):
-        frontmatter, body = _extract_frontmatter_and_body(path)
+    statuses: dict[str, str | None] = {}
+    for path in documents if documents is not None else discover_target_documents(root, rules):
         rel = relative_path(path, root)
+        try:
+            frontmatter, body = _extract_frontmatter_and_body(path)
+            statuses[rel] = str(frontmatter.get("status") or "").lower() or None
+        except yaml.YAMLError as exc:
+            findings.append(
+                Finding(
+                    "template_metadata_error",
+                    rel,
+                    f"invalid YAML frontmatter: {exc.__class__.__name__}",
+                )
+            )
+            continue
 
         selected_template_id = frontmatter.get("template_id")
         if not isinstance(selected_template_id, str) or not selected_template_id.strip():
@@ -395,7 +427,20 @@ def validate_documents(
                     )
                 )
 
-    return findings
+    return [
+        ValidationFinding(
+            finding.category,
+            finding.path,
+            finding.message,
+            reclassify(
+                [finding],
+                status=statuses.get(finding.path),
+                selected=selected,
+                consumed_by_current_work=selected,
+            )[0].severity,
+        )
+        for finding in findings
+    ]
 
 
 def report(findings: list[Finding]) -> int:
@@ -404,8 +449,11 @@ def report(findings: list[Finding]) -> int:
         return 0
     print("Template required-sections validation failed:")
     for finding in findings:
-        print(f"- {finding.category}: {finding.path} - {finding.message}")
-    return 1
+        print(f"- [{finding.severity}] {finding.code}: {finding.path} - {finding.message}")
+    if has_blocking_findings(findings):
+        return 1
+    print("Template required-sections validation passed with warnings.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -416,12 +464,33 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Template validation blocked: {exc}")
         return 2
     rules, metadata_findings = discover_template_rules(root)
+    documents = None
+    selected = False
+    if args.document:
+        candidate = Path(args.document)
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        try:
+            relative = candidate.resolve().relative_to(root.resolve())
+        except ValueError:
+            return report(
+                [Finding("template_selection_error", str(args.document), "bound document must be inside repository root")]
+            )
+        candidate = root / relative
+        if not candidate.is_file():
+            return report(
+                [Finding("template_selection_error", relative.as_posix(), "bound document does not exist")]
+            )
+        documents = [candidate]
+        selected = True
     findings = [
         *metadata_findings,
         *validate_documents(
             root,
             rules,
             require_template_selection=args.require_template_selection,
+            documents=documents,
+            selected=selected,
         ),
     ]
     return report(findings)

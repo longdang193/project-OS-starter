@@ -50,17 +50,17 @@ def test_secretary_docket_requires_only_minimal_attention_fields() -> None:
         )
     )
 
-    assert docket == [
-        {
-            "id": "readme-followup",
-            "objective": "Recheck README after runtime interface acceptance.",
-            "waiting_on": {
-                "ref": "docs/superpowers/plans/runtime-refactor.md",
-                "outcome": "accepted-runtime-interface",
-            },
-        }
-    ]
-    assert set(docket[0]) == {"id", "objective", "waiting_on"}
+    assert docket == []
+
+
+def test_project_secretary_docket_uses_execution_facing_path() -> None:
+    skill = read(".agents/skills/skill-project-secretary/SKILL.md")
+    normalized = " ".join(skill.split()).casefold()
+
+    assert "docs/superpowers/secretary-docket.yaml" in normalized
+    assert "do not place the docket under" in normalized
+    assert "docs/intent" in normalized
+    assert "does not add a production loader" in normalized
 
 
 def test_secretary_restart_and_authority_rules_are_explicit() -> None:

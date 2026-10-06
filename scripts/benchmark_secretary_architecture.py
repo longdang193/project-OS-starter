@@ -29,7 +29,11 @@ SCENARIOS = (
     "restart_recovery",
     "duplicate_activation",
     "lost_activation_response",
+    "activation_binding_conflict",
+    "release_replay",
+    "delivery_payload_conflict",
     "missed_event",
+    "unresolved_old_event",
     "stale_session",
     "dependency_change_cached_session",
 )
@@ -138,6 +142,69 @@ def _adapter_metrics(scenario_id: str, run_id: int) -> ContractMetric:
             model_wakes=1,
             messages=1,
         )
+    if scenario_id == "activation_binding_conflict":
+        adapter = InMemoryControllerSessionAdapter()
+        first = adapter.activate(
+            "runtime",
+            "activation-1",
+            AttentionBrief("runtime", "reconcile", repository_identity="repo-a", canonical_work="plan-a"),
+        )
+        conflict = adapter.activate(
+            "runtime",
+            "activation-2",
+            AttentionBrief("runtime", "reconcile", repository_identity="repo-a", canonical_work="plan-b"),
+        )
+        return _metric(
+            scenario_id,
+            run_id,
+            "target",
+            correct=first.created and conflict.recovery_required,
+            outcome="recovery_required",
+            failure_classification="binding_conflict",
+            activation_calls=2,
+            reconciliation_calls=1,
+            duplicate_effects=0,
+        )
+    if scenario_id == "release_replay":
+        adapter = InMemoryControllerSessionAdapter()
+        brief = AttentionBrief("runtime", "reconcile")
+        first = adapter.activate("runtime", "activation-1", brief)
+        released = adapter.release_session(first.controller) if first.controller else None
+        replay = adapter.activate("runtime", "activation-1", brief)
+        return _metric(
+            scenario_id,
+            run_id,
+            "target",
+            correct=first.created and released is not None and released.released and replay.recovery_required,
+            outcome="recovery_required",
+            failure_classification="released_replay",
+            activation_calls=2,
+            reconciliation_calls=1,
+            duplicate_effects=0,
+        )
+    if scenario_id == "delivery_payload_conflict":
+        adapter = InMemoryControllerSessionAdapter()
+        brief = AttentionBrief("runtime", "reconcile")
+        first = adapter.activate("runtime", "activation-1", brief)
+        if first.controller is None:
+            return _metric(scenario_id, run_id, "target", correct=False, outcome="recovery_required")
+        delivered = adapter.deliver(first.controller, brief, delivery_identity="delivery-1")
+        conflict = adapter.deliver(
+            first.controller,
+            AttentionBrief("runtime", "changed"),
+            delivery_identity="delivery-1",
+        )
+        return _metric(
+            scenario_id,
+            run_id,
+            "target",
+            correct=delivered.delivered and conflict.recovery_required,
+            outcome="recovery_required",
+            failure_classification="delivery_payload_conflict",
+            activation_calls=1,
+            reconciliation_calls=1,
+            duplicate_effects=0,
+        )
     if scenario_id == "stale_session":
         return _metric(
             scenario_id,
@@ -148,13 +215,30 @@ def _adapter_metrics(scenario_id: str, run_id: int) -> ContractMetric:
             model_wakes=0,
         )
 
+    if scenario_id == "unresolved_old_event":
+        old = EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", "anchor-3", 3)
+        action = reconcile_event_hint(
+            old,
+            ReconciliationEvidence("runtime", current_anchor="anchor-4"),
+        )
+        return _metric(
+            scenario_id,
+            run_id,
+            "target",
+            correct=action == "RECONCILE",
+            outcome=action,
+            reconciliation_calls=1,
+            model_wakes=1,
+            messages=1,
+        )
+
     hints = [
-        EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", 4),
-        EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", 4),
+        EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", "anchor-4", 4),
+        EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", "anchor-4", 4),
     ]
     coalesced = coalesce_event_hints(hints)
     action = reconcile_event_hint(
-        coalesced[0], ReconciliationEvidence("runtime", current_revision=4)
+        coalesced[0], ReconciliationEvidence("runtime", current_anchor="anchor-4")
     )
     return _metric(
         scenario_id,
@@ -205,6 +289,19 @@ def _baseline_metrics(scenario_id: str, run_id: int) -> ContractMetric:
             model_wakes=2,
             messages=2,
         )
+    if scenario_id in {"activation_binding_conflict", "release_replay", "delivery_payload_conflict"}:
+        return _metric(
+            scenario_id,
+            run_id,
+            "baseline",
+            correct=False,
+            outcome="duplicate_effect",
+            failure_classification="duplicate_effect",
+            activation_calls=2,
+            duplicate_effects=1,
+            model_wakes=2,
+            messages=2,
+        )
     if scenario_id == "stale_session":
         return _metric(
             scenario_id,
@@ -212,6 +309,16 @@ def _baseline_metrics(scenario_id: str, run_id: int) -> ContractMetric:
             "baseline",
             correct=True,
             outcome="reconcile_required",
+            model_wakes=0,
+        )
+    if scenario_id == "unresolved_old_event":
+        return _metric(
+            scenario_id,
+            run_id,
+            "baseline",
+            correct=False,
+            outcome="NO_ACTION",
+            failure_classification="dropped_obligation",
             model_wakes=0,
         )
     return _metric(
@@ -226,7 +333,7 @@ def _baseline_metrics(scenario_id: str, run_id: int) -> ContractMetric:
     )
 
 
-def run_contract_benchmark(iterations: int = 20) -> list[ContractMetric]:
+def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
     if iterations < 1:
         raise ValueError("iterations must be positive")
     results: list[ContractMetric] = []

@@ -1139,7 +1139,10 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
             return parent
     if not marker.exists():
         try:
-            if any(parent.iterdir()):
+            unexpected_entries = tuple(
+                entry for entry in parent.iterdir() if entry.name != _DIRECT_MCP_OWNER_MARKER
+            )
+            if unexpected_entries:
                 raise RuntimeError("Direct MCP runtime parent ownership is invalid.")
             with marker.open("x", encoding="utf-8") as handle:
                 handle.write(_DIRECT_MCP_OWNER_VALUE)

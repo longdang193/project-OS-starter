@@ -16,27 +16,47 @@ from scripts.project_os_runtime.secretary_events import (
 
 def hint(
     event_type: str = DEPENDENCY_CHANGED,
-    revision: int = 4,
+    anchor: str = "anchor-4",
     identity: str = "event-1",
+    source: str = "fake",
+    sequence: int | None = None,
+    evidence_refs: tuple[str, ...] = (),
 ) -> EventHint:
-    return EventHint("fake", event_type, "runtime", identity, revision)
+    return EventHint(source, event_type, "runtime", identity, anchor, sequence, evidence_refs)
 
 
-def evidence(revision: int = 4, stale: bool = False) -> ReconciliationEvidence:
-    return ReconciliationEvidence("runtime", revision, controller_stale=stale)
+def evidence(anchor: str = "anchor-4", stale: bool = False, resolved: frozenset[str] = frozenset()) -> ReconciliationEvidence:
+    return ReconciliationEvidence("runtime", anchor, controller_stale=stale, resolved_event_ids=resolved)
 
 
 def test_coalescer_keeps_newest_hint_for_same_identity() -> None:
-    result = coalesce_event_hints([hint(revision=4), hint(revision=6)])
+    result = coalesce_event_hints([hint(anchor="anchor-4", sequence=4), hint(anchor="anchor-6", sequence=6)])
 
     assert len(result) == 1
-    assert result[0].canonical_revision == 6
+    assert result[0].observed_anchor == "anchor-6"
+
+
+def test_coalescer_unions_evidence_references() -> None:
+    result = coalesce_event_hints(
+        [
+            hint(sequence=4, evidence_refs=("old",)),
+            hint(sequence=6, evidence_refs=("new",)),
+        ]
+    )
+
+    assert result[0].evidence_refs == ("new", "old")
 
 
 def test_coalescer_preserves_distinct_project_decisions() -> None:
     result = coalesce_event_hints(
         [hint(identity="event-1"), hint(identity="event-2")]
     )
+
+    assert len(result) == 2
+
+
+def test_coalescer_scopes_identity_by_source() -> None:
+    result = coalesce_event_hints([hint(source="one"), hint(source="two")])
 
     assert len(result) == 2
 
@@ -49,9 +69,17 @@ def test_current_project_event_requests_secretary_attention() -> None:
     assert reconcile_event_hint(hint(), evidence()) == SECRETARY_ATTENTION
 
 
-def test_stale_or_newer_revision_reconciles_without_acceptance() -> None:
-    assert reconcile_event_hint(hint(revision=3), evidence(revision=4)) == NO_ACTION
-    assert reconcile_event_hint(hint(revision=5), evidence(revision=4)) == RECONCILE
+def test_older_or_newer_unresolved_anchor_reconciles() -> None:
+    assert reconcile_event_hint(hint(anchor="anchor-3"), evidence(anchor="anchor-4")) == RECONCILE
+    assert reconcile_event_hint(hint(anchor="anchor-5"), evidence(anchor="anchor-4")) == RECONCILE
+
+
+def test_explicit_resolution_suppresses_old_event() -> None:
+    current = hint(anchor="anchor-3")
+    assert reconcile_event_hint(
+        current,
+        evidence(anchor="anchor-4", resolved=frozenset({current.source + ":" + current.observed_identity})),
+    ) == NO_ACTION
 
 
 def test_stale_controller_requires_reconciliation() -> None:
@@ -60,7 +88,7 @@ def test_stale_controller_requires_reconciliation() -> None:
 
 def test_unknown_workstream_blocks_event_routing() -> None:
     result = reconcile_event_hint(
-        hint(), ReconciliationEvidence("other", current_revision=4)
+        hint(), ReconciliationEvidence("other", current_anchor="anchor-4")
     )
 
     assert result == BLOCKED

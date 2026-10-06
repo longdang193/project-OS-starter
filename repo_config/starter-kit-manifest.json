@@ -70,6 +70,7 @@
       "scripts/validate_env_gitignore_contract.py",
       "scripts/validate_learning_materials_format.py",
       "scripts/validate_planning_lifecycle.py",
+      "scripts/validation_findings.py",
       "scripts/validate_prompt_metadata_schema.py",
       "scripts/validate_repo_config.py",
       "scripts/validate_repo_contracts.py",

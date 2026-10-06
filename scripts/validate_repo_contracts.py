@@ -96,6 +96,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compatibility flag for hook-facing validation.",
     )
     parser.add_argument(
+        "--scope",
+        choices=("preflight", "audit"),
+        default=None,
+        help="Validation scope. Defaults to audit; --fast aliases preflight.",
+    )
+    parser.add_argument(
+        "--plan",
+        default=None,
+        help="Bound plan path for preflight validation.",
+    )
+    parser.add_argument(
         "--sync-starter-kit-tier",
         action="store_true",
         help=(
@@ -180,6 +191,8 @@ def build_subprocess_steps(
     root: Path,
     python_executable: str,
     fast: bool,
+    scope: str | None = None,
+    plan: Path | None = None,
 ) -> list[list[str]]:
     project_scripts_root = root / "scripts"
     shared_scripts_root = Path(__file__).resolve().parent
@@ -197,19 +210,35 @@ def build_subprocess_steps(
     env_gitignore_contract_script = str(script_path("validate_env_gitignore_contract.py"))
     switchyard_script = root / "scripts" / "manage_switchyard_runtime.py"
 
-    steps: list[list[str]] = [
-        [python_executable, planning_lifecycle_script, "--repo-root", str(root)],
-        [python_executable, template_sections_script, "--repo-root", str(root), "--require-template-selection"],
-        [python_executable, learning_format_script, "--repo-root", str(root)],
-        [python_executable, prompt_metadata_schema_script, "--repo-root", str(root)],
-        [python_executable, agent_metadata_schema_script, "--repo-root", str(root)],
-        [python_executable, env_gitignore_contract_script, "--repo-root", str(root)],
+    mode = "preflight" if fast else (scope or "audit")
+    bound_plan = str(plan) if plan is not None else None
+    steps: list[list[str]] = []
+    planning_step = [python_executable, planning_lifecycle_script, "--repo-root", str(root)]
+    template_step = [
+        python_executable,
+        template_sections_script,
+        "--repo-root",
+        str(root),
+        "--require-template-selection",
     ]
+    if mode == "preflight" and bound_plan:
+        planning_step.extend(["--plan", bound_plan])
+        template_step.extend(["--document", bound_plan])
+    steps.extend([planning_step, template_step])
+    if mode == "audit":
+        steps.extend(
+            [
+                [python_executable, learning_format_script, "--repo-root", str(root)],
+                [python_executable, prompt_metadata_schema_script, "--repo-root", str(root)],
+                [python_executable, agent_metadata_schema_script, "--repo-root", str(root)],
+            ]
+        )
+    steps.append([python_executable, env_gitignore_contract_script, "--repo-root", str(root)])
     generated_header_script = root / "scripts" / "validate_generated_header_format.py"
-    if generated_header_script.is_file():
+    if mode == "audit" and generated_header_script.is_file():
         steps.append([python_executable, str(generated_header_script)])
     agent_runtime_drift_script = root / "scripts" / "validate_agent_runtime_drift.py"
-    if agent_runtime_drift_script.is_file():
+    if mode == "audit" and agent_runtime_drift_script.is_file():
         steps.append(
             [
                 python_executable,
@@ -642,6 +671,13 @@ def report_issues(issues: list[ValidationIssue]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.fast and args.scope == "audit":
+        print("Repository contract validation blocked: --fast conflicts with --scope audit")
+        return 2
+    mode = "preflight" if args.fast else (args.scope or "audit")
+    if mode == "preflight" and args.scope == "preflight" and not args.plan:
+        print("Repository contract validation blocked: preflight requires --plan")
+        return 2
     try:
         root = resolve_repo_root(args.repo_root)
     except RuntimeError as exc:
@@ -652,9 +688,10 @@ def main(argv: list[str] | None = None) -> int:
     if profile_issues:
         return report_issues(profile_issues)
 
-    ssot_issues = validate_ssot_contracts(root)
-    if ssot_issues:
-        return report_issues(ssot_issues)
+    if mode == "audit":
+        ssot_issues = validate_ssot_contracts(root)
+        if ssot_issues:
+            return report_issues(ssot_issues)
 
     spec_issues = validate_parallel_dispatch_spec(root)
     if spec_issues:
@@ -673,7 +710,7 @@ def main(argv: list[str] | None = None) -> int:
         if patched:
             print(f"Starter-kit distribution tier sync patched {patched} file(s).")
 
-    classification_issues = validate_starter_kit_classification(root)
+    classification_issues = validate_starter_kit_classification(root) if mode == "audit" else []
 
     if classification_issues:
         if STARTER_KIT_CLASSIFICATION_ENFORCEMENT == "fail":
@@ -686,15 +723,15 @@ def main(argv: list[str] | None = None) -> int:
         root=root,
         python_executable=sys.executable,
         fast=args.fast,
+        scope=mode,
+        plan=Path(args.plan) if args.plan else None,
     ):
         status = run_step(step, cwd=root)
         if status != 0:
             return status
 
     print(
-        "Repo contract validation passed (hook subset)."
-        if args.fast
-        else "Repo contract validation passed."
+        f"Repo contract validation passed ({mode})."
     )
     return 0
 
