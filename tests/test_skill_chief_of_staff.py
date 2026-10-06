@@ -387,3 +387,15 @@ def test_chief_of_staff_keeps_deepagents_implementation_outside_review_integrati
 def test_planning_dispatch_uses_executor_neutral_top_level_lane_terms() -> None:
     dispatch = read("docs/operating_system/planning/planning-dispatch.md")
     assert "For every Herdr top-level CoS lane launch" in dispatch
+
+
+def test_project_secretary_is_optional_and_does_not_replace_cos() -> None:
+    dispatch = read("docs/operating_system/planning/planning-dispatch.md")
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    normalized = " ".join((dispatch + skill).split()).casefold()
+
+    assert "optional project secretary surface" in normalized
+    assert "when active, it invokes this existing execution-selection policy" in normalized
+    assert "when absent, direct, bounded, plan-bound, and cos entry points operate unchanged" in normalized
+    assert "does not add an executor, replace cos" in normalized
+    assert "cos owns assignment, continuation, escalation, and acceptance" in normalized

@@ -302,3 +302,17 @@ def test_active_subagent_templates_use_supported_profiles() -> None:
 
 def test_obsolete_spec_reviewer_prompt_has_no_consumer() -> None:
     assert not (REPO_ROOT / ".agents/skills/skill-brainstorming/spec-document-reviewer-prompt.md").exists()
+
+
+def test_project_secretary_keeps_canonical_truth_and_receipt_boundaries() -> None:
+    dispatch = normalized("docs/operating_system/planning/planning-dispatch.md")
+    coordination = normalized("docs/operating_system/rules/git-tracked-coordination-rule.md").casefold()
+    runtime = normalized("docs/operating_system/runtime/runtime-surfaces.md").casefold()
+    architecture = normalized("docs/architecture.md").casefold()
+    usage = normalized("docs/usage.md").casefold()
+
+    assert "optional attention-and-continuity surface" in dispatch.casefold()
+    assert "receipts are bounded operational evidence" in coordination
+    assert "does not replace direct execution selection or cos" in runtime
+    assert "receipts do not become durable coordination truth" in architecture
+    assert "existing selection remains directly callable when secretary is absent" in usage

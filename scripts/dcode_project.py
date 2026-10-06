@@ -1122,11 +1122,12 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
     parent = _direct_mcp_runtime_parent()
     if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
         raise RuntimeError("Direct MCP runtime parent is not a safe directory.")
+    marker = parent / _DIRECT_MCP_OWNER_MARKER
     raced = False
     if not parent.exists():
         try:
             parent.mkdir()
-            (parent / _DIRECT_MCP_OWNER_MARKER).write_text(
+            marker.write_text(
                 _DIRECT_MCP_OWNER_VALUE,
                 encoding="utf-8",
             )
@@ -1136,7 +1137,14 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
             raced = True
         else:
             return parent
-    marker = parent / _DIRECT_MCP_OWNER_MARKER
+    if not marker.exists():
+        try:
+            if any(parent.iterdir()):
+                raise RuntimeError("Direct MCP runtime parent ownership is invalid.")
+            with marker.open("x", encoding="utf-8") as handle:
+                handle.write(_DIRECT_MCP_OWNER_VALUE)
+        except FileExistsError:
+            pass
     deadline = time.monotonic() + 1.0 if raced else time.monotonic()
     while True:
         try:
