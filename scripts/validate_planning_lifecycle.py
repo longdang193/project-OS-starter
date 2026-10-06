@@ -24,7 +24,6 @@ lifecycle:
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 from pathlib import Path
 
 try:
@@ -49,13 +48,8 @@ from planning_artifact_schema import (
 )
 from agent_profile_registry import load_agent_profiles
 from planning_dependencies import DependencyContractError, parse_dependency_field, validate_dependency_graph
-
-
-@dataclass(frozen=True)
-class Finding:
-    category: str
-    path: str
-    message: str
+from validation_findings import ValidationFinding as Finding
+from validation_findings import has_blocking_findings, reclassify
 
 
 COORDINATION_STATES = {"pending", "active", "blocked", "completed"}
@@ -478,6 +472,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Retained for command compatibility; existing-artifact errors always fail.",
     )
+    parser.add_argument(
+        "--plan",
+        default=None,
+        help="Validate one bound plan instead of discovering all planning artifacts.",
+    )
     return parser
 
 
@@ -511,12 +510,39 @@ def discover_artifacts(root: Path, artifact_type: str) -> list[Path]:
     return sorted(paths)
 
 
-def validate_artifact(root: Path, path: Path, artifact_type: str) -> list[Finding]:
+def validate_artifact(
+    root: Path,
+    path: Path,
+    artifact_type: str,
+    *,
+    selected: bool = False,
+) -> list[Finding]:
     rel = relative_path(path, root)
     text = path.read_text(encoding="utf-8", errors="ignore")
-    payload = extract_frontmatter(path)
+    status_hint = re.search(r"(?im)^status:\s*([A-Za-z_-]+)\s*$", text)
+    status = status_hint.group(1).strip().lower() if status_hint else None
+    try:
+        payload = extract_frontmatter(path)
+    except yaml.YAMLError as exc:
+        return reclassify(
+            [
+                Finding(
+                    "planning_metadata_error",
+                    rel,
+                    f"invalid YAML frontmatter: {exc.__class__.__name__}",
+                )
+            ],
+            status=status,
+            selected=selected,
+            consumed_by_current_work=selected,
+        )
     if payload is None:
-        return [Finding("planning_metadata_error", rel, "missing valid YAML frontmatter")]
+        return reclassify(
+            [Finding("planning_metadata_error", rel, "missing valid YAML frontmatter")],
+            status=status,
+            selected=selected,
+            consumed_by_current_work=selected,
+        )
 
     findings: list[Finding] = []
     for field in get_required_fields(root, artifact_type):
@@ -565,10 +591,26 @@ def validate_artifact(root: Path, path: Path, artifact_type: str) -> list[Findin
             )
     if artifact_type == "plan":
         findings.extend(validate_execution_contract(root, Path(rel), payload, text))
-    return findings
+    return reclassify(
+        findings,
+        status=str(payload.get("status") or "").lower() or None,
+        selected=selected,
+        consumed_by_current_work=selected,
+    )
 
 
-def validate_planning_artifacts(root: Path) -> list[Finding]:
+def validate_planning_artifacts(root: Path, plan: Path | None = None) -> list[Finding]:
+    if plan is not None:
+        candidate = plan if plan.is_absolute() else root / plan
+        try:
+            relative = candidate.resolve().relative_to(root.resolve())
+        except ValueError:
+            return [Finding("planning_selection_error", str(plan), "bound plan must be inside repository root")]
+        selected_path = root / relative
+        if not selected_path.is_file():
+            return [Finding("planning_selection_error", relative.as_posix(), "bound plan does not exist")]
+        return validate_artifact(root, selected_path, "plan", selected=True)
+
     findings: list[Finding] = []
     for artifact_type in ("spec", "plan"):
         for path in discover_artifacts(root, artifact_type):
@@ -583,12 +625,15 @@ def main() -> int:
     except RuntimeError as exc:
         print(f"Planning lifecycle validation blocked: {exc}")
         return 2
-    findings = validate_planning_artifacts(root)
+    findings = validate_planning_artifacts(root, Path(args.plan) if args.plan else None)
     if findings:
         print("Planning artifact validation failed:")
         for finding in findings:
-            print(f"- [{finding.category}] {finding.path}: {finding.message}")
-        return 1
+            print(f"- [{finding.severity}] [{finding.code}] {finding.path}: {finding.message}")
+        if has_blocking_findings(findings):
+            return 1
+        print("Planning artifact validation passed with warnings.")
+        return 0
     print("Planning artifact validation passed.")
     return 0
 

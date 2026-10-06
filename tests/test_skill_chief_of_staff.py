@@ -91,7 +91,7 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "Top-level MAIN AGENTS are CoS execution lanes; sub-agents are subordinate lane\nworkers.",
         "CoS assigns top-level\nMAIN AGENTS through Herdr.",
         "MAIN\nAGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed",
-        "Before consumer local dispatch, run\n`py -B \"$HOME/.agents/project-os/scripts/validate_repo_contracts.py\" --repo-root . --fast`",
+        "Before consumer local dispatch, run\n`py -B \"$HOME/.agents/project-os/scripts/validate_repo_contracts.py\" --repo-root . --fast --plan \"$PLAN\"`",
         "Factory maintainers additionally run\n`py -B scripts/validate_agent_runtime_drift.py --all-platforms`",
         "CoS verifies the full lane contract",
         "launcher owns\nruntime projection, exact pane/cwd checks, Git-fact reporting, and delivery\nmechanics",

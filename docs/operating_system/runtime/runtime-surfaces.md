@@ -178,3 +178,14 @@ resources remain caller-owned through `runtime.json`.
   Idle, timeout, missing notification, disconnect, and connection closure are
   hints requiring reconciliation, not proof of completion, cancellation,
   retirement, or failure.
+- The in-process Secretary adapter is a contract fake. Activation ownership is
+  keyed by repository and workstream; request fingerprints include canonical
+  work, expected branch/base, normalized objective, and evidence references.
+  Delivery receipt reuse requires the same controller and payload fingerprint.
+  Released receipts never restore active ownership. Only a transport-owned
+  durable journal may claim process-crash recovery.
+- Secretary event hints use source-scoped identity. `observed_anchor` identifies
+  canonical evidence and optional `source_sequence` orders observations within
+  one source. Coalescing unions evidence references; older observations remain
+  actionable until current evidence explicitly resolves or supersedes their
+  source-scoped identity.

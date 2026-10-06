@@ -124,6 +124,12 @@ Example:
     outcome: accepted-runtime-interface
 ```
 
+When persistence is needed, use the execution-facing project path
+`docs/superpowers/secretary-docket.yaml`. Do not place the Docket under
+`docs/intent`; that namespace owns stable project what-and-why material. This
+skill defines the contract, but does not add a production loader until a real
+Docket or automated machine-readable consumer exists.
+
 ## Restart And Clearing
 
 On restart:

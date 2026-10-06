@@ -23,6 +23,10 @@ Project OS selects the smallest execution structure that safely fits the task:
 Project Secretary is optional. When active, it routes attention into this
 existing selection policy; when absent, all three paths remain directly
 callable. Secretary does not become another CoS or acceptance authority.
+Its optional Docket lives under execution-facing `docs/superpowers/` only when
+unresolved attention cannot be reconstructed from canonical evidence. Adapter
+receipts and event observations remain bounded evidence: they do not become
+plan/Git truth, acceptance, or lifecycle state.
 
 The Guided Story illustrates the coordinated multi-agent path:
 

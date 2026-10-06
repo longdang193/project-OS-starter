@@ -94,7 +94,7 @@ def test_main_propagates_subprocess_failure(monkeypatch) -> None:
     monkeypatch.setattr(
         VALIDATOR,
         "build_subprocess_steps",
-        lambda *, root, python_executable, fast: [["python", "fake-step"]],
+        lambda **kwargs: [["python", "fake-step"]],
     )
     monkeypatch.setattr(VALIDATOR, "run_step", lambda command, cwd: 1)
 
@@ -129,7 +129,7 @@ def test_build_subprocess_steps_excludes_retired_metadata_validators() -> None:
         and "--require-template-selection" in step
         for step in rendered
     )
-    assert any("validate_prompt_metadata_schema.py" in step for step in rendered)
+    assert not any("validate_prompt_metadata_schema.py" in step for step in rendered)
     assert any("validate_env_gitignore_contract.py" in step for step in rendered)
     assert any("validate_repo_config.py" in step for step in rendered)
     assert any(
@@ -159,10 +159,30 @@ def test_build_subprocess_steps_checks_all_adapter_platforms() -> None:
         fast=True,
     )
 
-    assert any(
-        "validate_agent_runtime_drift.py --all-platforms --skip-deploy-check" in " ".join(step)
-        for step in steps
+    assert not any("validate_agent_runtime_drift.py" in " ".join(step) for step in steps)
+
+
+def test_preflight_is_bound_to_plan_and_document(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.md"
+    steps = VALIDATOR.build_subprocess_steps(
+        root=REPO_ROOT,
+        python_executable="python",
+        fast=False,
+        scope="preflight",
+        plan=plan,
     )
+
+    rendered = [" ".join(step) for step in steps]
+
+    assert any("validate_planning_lifecycle.py" in step and "--plan" in step for step in rendered)
+    assert any("validate_template_required_sections.py" in step and "--document" in step for step in rendered)
+    assert not any("validate_learning_materials_format.py" in step for step in rendered)
+    assert not any("validate_prompt_metadata_schema.py" in step for step in rendered)
+    assert not any("validate_agent_runtime_drift.py" in step for step in rendered)
+
+
+def test_fast_scope_audit_conflict_is_rejected() -> None:
+    assert VALIDATOR.main(["--repo-root", str(REPO_ROOT), "--fast", "--scope", "audit"]) == 2
 
 
 def test_build_subprocess_steps_skips_factory_only_validators_when_absent(tmp_path: Path) -> None:

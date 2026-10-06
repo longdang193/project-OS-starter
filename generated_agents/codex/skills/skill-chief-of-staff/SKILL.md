@@ -156,7 +156,7 @@ CoS may be invoked from a native Codex session. Before Herdr control, use the
 repository launcher; it verifies target lane readiness, Git/cwd identity,
 runtime/profile binding, and task delivery. It does not attest CoS controller
 identity or own lane authority. Before consumer local dispatch, run
-`py -B "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast`;
+`py -B "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root . --fast --plan "$PLAN"`;
 a failed check returns `BLOCKED`. Factory maintainers additionally run
 `py -B scripts/validate_agent_runtime_drift.py --all-platforms`; that adapter
 drift check is not a consumer dependency.
