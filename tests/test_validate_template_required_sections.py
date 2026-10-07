@@ -125,6 +125,50 @@ required_frontmatter:
 """,
     )
 
+
+def test_active_selected_missing_template_id_blocks_but_completed_history_warns() -> None:
+    root = make_test_root()
+    try:
+        seed_template(root)
+        active = root / "docs" / "superpowers" / "plans" / "active.md"
+        completed = root / "docs" / "superpowers" / "plans" / "completed.md"
+        write_text(
+            active,
+            """---
+artifact_type: plan
+status: active
+---
+# Active Plan
+""",
+        )
+        write_text(
+            completed,
+            """---
+artifact_type: plan
+status: completed
+---
+# Completed Plan
+""",
+        )
+
+        rules, findings = VALIDATOR.discover_template_rules(root)
+        assert findings == []
+        active_findings = VALIDATOR.validate_documents(
+            root, rules, require_template_selection=True, documents=[active], selected=True
+        )
+        completed_findings = VALIDATOR.validate_documents(
+            root, rules, require_template_selection=True, documents=[completed]
+        )
+
+        assert [(item.code, item.severity) for item in active_findings] == [
+            ("template_selection_missing", "error")
+        ]
+        assert [(item.code, item.severity) for item in completed_findings] == [
+            ("template_selection_missing", "warning")
+        ]
+    finally:
+        rmtree(root, ignore_errors=True)
+
 def seed_audit_template(root: Path) -> None:
     write_text(
         root / "docs" / "operating_system" / "templates" / "audit-report-with-evidence-template.md",

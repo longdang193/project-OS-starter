@@ -44,7 +44,7 @@ It does not replace that policy.
 | --- | --- | --- |
 | question or status | answer from canonical evidence | Secretary or human-facing surface |
 | local reversible change | keep direct entry path | direct executor |
-| one bounded executor | issue bounded attention or task brief | selected executor |
+| one bounded executor | route bounded attention to selected execution owner | selected executor |
 | ordinary plan/execution path | retain existing plan/execution path | plan owner and executor |
 | sustained independent lanes | route to eligible Workstream CoS | CoS |
 | unresolved follow-up | retain compact Docket entry only when not reconstructible | owning workflow |
@@ -71,8 +71,10 @@ Logical exchanges stay sparse and directional:
 
 No CoS-to-CoS mesh exists. Local debugging, granted retries, authorized
 continuation, routine runtime activity, and accepted local work with no
-external consequence stay silent. Escalate at the lowest boundary that owns
-the decision.
+external consequence stay silent toward Secretary. Worker evidence still
+returns to CoS, and CoS still performs acceptance. No changed cross-boundary
+decision means no cross-boundary message. Escalate at the lowest boundary that
+owns the decision.
 
 ## Authority And Evidence
 

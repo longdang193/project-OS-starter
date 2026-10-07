@@ -228,8 +228,11 @@ Worker task briefs or replace CoS decisions.
 
 CoS sends only authorized task briefs to Workers and returns accepted outcomes
 or cross-workstream escalations to Secretary. CoS-to-CoS mesh communication is
-not part of this contract; route conflicts through Secretary or the human
-decision owner at the lowest boundary that owns the decision.
+not part of this contract. Worker evidence and acceptance remain inside the
+Worker-to-CoS boundary when no project-level consequence changes. No changed
+cross-boundary decision means no cross-boundary message. Route conflicts
+through Secretary or the human decision owner at the lowest boundary that owns
+the decision.
 
 ### Attention Audit
 

@@ -35,6 +35,8 @@ def test_project_secretary_owns_routing_not_worker_execution() -> None:
     assert "Secretary does not issue Worker task briefs" in normalized
     assert "Secretary is the sole active Docket writer" in normalized
     assert "No CoS-to-CoS mesh exists" in normalized
+    assert "silent toward Secretary" in normalized
+    assert "No changed cross-boundary decision means no cross-boundary message" in normalized
 
 
 def test_project_secretary_defines_right_sized_routing() -> None:

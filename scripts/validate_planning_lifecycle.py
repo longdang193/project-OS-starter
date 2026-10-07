@@ -547,9 +547,12 @@ def validate_artifact(
     findings: list[Finding] = []
     for field in get_required_fields(root, artifact_type):
         if field not in payload or payload[field] in (None, ""):
-            findings.append(
-                Finding("planning_required_metadata_missing", rel, f"missing required field `{field}`")
+            code = (
+                "planning_template_metadata_missing"
+                if field == "template_id"
+                else "planning_execution_metadata_missing"
             )
+            findings.append(Finding(code, rel, f"missing required field `{field}`"))
 
     for field, expected in get_required_values(root, artifact_type).items():
         if payload.get(field) != expected:

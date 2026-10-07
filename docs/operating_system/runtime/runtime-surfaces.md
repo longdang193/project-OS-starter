@@ -178,10 +178,12 @@ resources remain caller-owned through `runtime.json`.
   Idle, timeout, missing notification, disconnect, and connection closure are
   hints requiring reconciliation, not proof of completion, cancellation,
   retirement, or failure.
-- The in-process Secretary adapter is a contract fake. Activation ownership is
-  keyed by the complete `ControllerBinding`: repository identity, canonical
-  work, workstream, expected branch, and expected base. `AttentionDelta` and
-  `CoordinationDelta` are communication payloads, not activation identity.
+- The in-process Secretary adapter is a contract fake. Active ownership is
+  keyed by `(repository_identity, workstream)`; the complete
+  `ControllerBinding`—repository identity, canonical work, workstream,
+  expected branch, and expected base—detects binding drift. `AttentionDelta`
+  and `CoordinationDelta` are communication payloads, not activation identity,
+  and their set-like references are normalized at construction.
   `CommunicationEnvelope` carries a separate `message_id` and canonical
   evidence anchor. Activation reuse uses `activation_id`; delivery reuse uses
   `message_id`, controller identity, binding, and payload fingerprint.
@@ -189,8 +191,9 @@ resources remain caller-owned through `runtime.json`.
   delivery receipts, release state, and deterministic controller identity for
   this contract fake. Released receipts never restore active ownership. Only a
   transport-owned durable journal may claim process-crash recovery.
-- Secretary event hints use source-scoped identity. `observed_anchor` identifies
-  canonical evidence and optional `source_sequence` orders observations within
-  one source. Coalescing unions evidence references; older observations remain
-  actionable until current evidence explicitly resolves or supersedes their
-  source-scoped identity.
+- Secretary event hints use canonical identity `(source, workstream, event_type,
+  observed_identity)`. `observed_anchor` identifies canonical evidence and
+  optional `source_sequence` orders observations within one source. Coalescing
+  unions evidence references; older observations remain actionable until
+  current evidence explicitly resolves or supersedes that same canonical
+  identity.

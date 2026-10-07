@@ -53,6 +53,28 @@ def run_validator(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_missing_template_id_emits_semantic_metadata_code() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "specs" / "legacy.md",
+            """---
+artifact_type: spec
+status: completed
+layer: intent
+---
+# Legacy specification
+""",
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+        assert "[warning] [planning_template_metadata_missing]" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def git_tracked_plan(
     *,
     status: str = "active",

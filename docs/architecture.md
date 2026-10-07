@@ -27,6 +27,9 @@ Secretary selects which workstream needs attention; CoS selects the next
 authorized action inside that workstream; Workers select implementation
 details inside their assigned scope. Plan/Git owns workflow truth, and
 Secretary is the sole active Docket writer.
+No changed cross-boundary decision means no cross-boundary message; accepted
+local work stays silent toward Secretary while Worker evidence still returns
+to CoS for acceptance.
 Its optional Docket lives under execution-facing `docs/superpowers/` only when
 unresolved attention cannot be reconstructed from canonical evidence. Adapter
 receipts and event observations remain bounded evidence: they do not become

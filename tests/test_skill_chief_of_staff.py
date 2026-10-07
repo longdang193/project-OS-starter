@@ -409,3 +409,4 @@ def test_cos_selects_workstream_action_and_keeps_worker_boundary() -> None:
     assert "Workers select implementation details inside their assigned scope" in normalized
     assert "Secretary does not issue Worker task briefs" in normalized
     assert "CoS-to-CoS mesh communication is not part of this contract" in normalized
+    assert "No changed cross-boundary decision means no cross-boundary message" in normalized
