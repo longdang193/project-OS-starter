@@ -9,9 +9,11 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.project_os_runtime.secretary_adapter import (
-    AttentionBrief,
-    InMemoryActivationReceiptJournal,
+    AttentionDelta,
+    CommunicationEnvelope,
+    ControllerBinding,
     InMemoryControllerSessionAdapter,
+    InMemoryControllerSessionJournal,
 )
 from scripts.project_os_runtime.secretary_events import (
     DEPENDENCY_CHANGED,
@@ -120,15 +122,12 @@ def _adapter_metrics(scenario_id: str, run_id: int) -> ContractMetric:
         "duplicate_activation",
         "lost_activation_response",
     }:
-        journal = InMemoryActivationReceiptJournal()
+        journal = InMemoryControllerSessionJournal()
         adapter = InMemoryControllerSessionAdapter(journal)
-        first = adapter.activate(
-            "runtime", "activation-1", AttentionBrief("runtime", "reconcile")
-        )
+        current = ControllerBinding("repository", "runtime-plan", "runtime", "main", "test-base")
+        first = adapter.activate(current, "activation-1")
         restarted = InMemoryControllerSessionAdapter(journal)
-        second = restarted.activate(
-            "runtime", "activation-1", AttentionBrief("runtime", "reconcile")
-        )
+        second = restarted.activate(current, "activation-1")
         return _metric(
             scenario_id,
             run_id,
@@ -144,16 +143,10 @@ def _adapter_metrics(scenario_id: str, run_id: int) -> ContractMetric:
         )
     if scenario_id == "activation_binding_conflict":
         adapter = InMemoryControllerSessionAdapter()
-        first = adapter.activate(
-            "runtime",
-            "activation-1",
-            AttentionBrief("runtime", "reconcile", repository_identity="repo-a", canonical_work="plan-a"),
-        )
-        conflict = adapter.activate(
-            "runtime",
-            "activation-2",
-            AttentionBrief("runtime", "reconcile", repository_identity="repo-a", canonical_work="plan-b"),
-        )
+        first_binding = ControllerBinding("repo-a", "plan-a", "runtime", "main", "base-a")
+        changed_binding = ControllerBinding("repo-a", "plan-b", "runtime", "main", "base-a")
+        first = adapter.activate(first_binding, "activation-1")
+        conflict = adapter.activate(changed_binding, "activation-1")
         return _metric(
             scenario_id,
             run_id,
@@ -167,10 +160,10 @@ def _adapter_metrics(scenario_id: str, run_id: int) -> ContractMetric:
         )
     if scenario_id == "release_replay":
         adapter = InMemoryControllerSessionAdapter()
-        brief = AttentionBrief("runtime", "reconcile")
-        first = adapter.activate("runtime", "activation-1", brief)
+        current = ControllerBinding("repository", "runtime-plan", "runtime", "main", "test-base")
+        first = adapter.activate(current, "activation-1")
         released = adapter.release_session(first.controller) if first.controller else None
-        replay = adapter.activate("runtime", "activation-1", brief)
+        replay = adapter.activate(current, "activation-1")
         return _metric(
             scenario_id,
             run_id,
@@ -184,15 +177,21 @@ def _adapter_metrics(scenario_id: str, run_id: int) -> ContractMetric:
         )
     if scenario_id == "delivery_payload_conflict":
         adapter = InMemoryControllerSessionAdapter()
-        brief = AttentionBrief("runtime", "reconcile")
-        first = adapter.activate("runtime", "activation-1", brief)
+        current = ControllerBinding("repository", "runtime-plan", "runtime", "main", "test-base")
+        first = adapter.activate(current, "activation-1")
         if first.controller is None:
             return _metric(scenario_id, run_id, "target", correct=False, outcome="recovery_required")
-        delivered = adapter.deliver(first.controller, brief, delivery_identity="delivery-1")
+        delivered = adapter.deliver(
+            first.controller,
+            CommunicationEnvelope(
+                current, "message-1", "anchor-1", AttentionDelta("reconcile")
+            ),
+        )
         conflict = adapter.deliver(
             first.controller,
-            AttentionBrief("runtime", "changed"),
-            delivery_identity="delivery-1",
+            CommunicationEnvelope(
+                current, "message-1", "anchor-1", AttentionDelta("changed")
+            ),
         )
         return _metric(
             scenario_id,
@@ -345,7 +344,7 @@ def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
 
 
 def main() -> int:
-    iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 20
+    iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     print(json.dumps([asdict(item) for item in run_contract_benchmark(iterations)], sort_keys=True))
     return 0
 

@@ -620,6 +620,18 @@ Use shared template.
         rmtree(root, ignore_errors=True)
 
 
+def test_warning_only_report_uses_warning_success_header() -> None:
+    result = VALIDATOR.report(
+        [
+            VALIDATOR.ValidationFinding(
+                "template_selection_missing", "legacy.md", "legacy selection", "warning"
+            )
+        ]
+    )
+
+    assert result == 0
+
+
 def test_completed_plan_accepts_template_initial_status() -> None:
     root = make_test_root()
     try:

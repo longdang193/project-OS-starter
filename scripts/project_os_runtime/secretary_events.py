@@ -57,48 +57,76 @@ def event_identity(hint: EventHint) -> str:
     return f"{hint.source}:{hint.observed_identity}"
 
 
-def _ordering(hint: EventHint) -> tuple[int, str]:
-    return (hint.source_sequence if hint.source_sequence is not None else -1, hint.observed_anchor)
+def _ordering(hint: EventHint) -> int | None:
+    return hint.source_sequence
+
+
+def _merge_same_anchor(hints: list[EventHint]) -> EventHint:
+    first = hints[0]
+    sequences = [hint.source_sequence for hint in hints if hint.source_sequence is not None]
+    return EventHint(
+        source=first.source,
+        event_type=first.event_type,
+        workstream=first.workstream,
+        observed_identity=first.observed_identity,
+        observed_anchor=first.observed_anchor,
+        source_sequence=max(sequences) if sequences else None,
+        evidence_refs=tuple(sorted({ref for hint in hints for ref in hint.evidence_refs})),
+    )
 
 
 def coalesce_event_hints(hints: list[EventHint]) -> tuple[EventHint, ...]:
-    selected: dict[tuple[str, str, str, str], EventHint] = {}
+    grouped: dict[tuple[str, str, str, str], list[EventHint]] = {}
     for hint in hints:
         key = (hint.source, hint.workstream, hint.event_type, hint.observed_identity)
-        current = selected.get(key)
-        if current is None or _ordering(hint) >= _ordering(current):
-            selected[key] = EventHint(
-                source=hint.source,
-                event_type=hint.event_type,
-                workstream=hint.workstream,
-                observed_identity=hint.observed_identity,
-                observed_anchor=hint.observed_anchor,
-                source_sequence=hint.source_sequence,
-                evidence_refs=tuple(sorted(set(hint.evidence_refs) | set(current.evidence_refs)))
-                if current is not None
-                else tuple(sorted(set(hint.evidence_refs))),
+        grouped.setdefault(key, []).append(hint)
+
+    selected: list[EventHint] = []
+    for same_identity in grouped.values():
+        by_anchor: dict[str, list[EventHint]] = {}
+        for hint in same_identity:
+            by_anchor.setdefault(hint.observed_anchor, []).append(hint)
+        merged = [_merge_same_anchor(anchor_hints) for anchor_hints in by_anchor.values()]
+        if len(merged) == 1:
+            selected.extend(merged)
+            continue
+
+        sequences = [hint.source_sequence for hint in merged]
+        comparable = all(sequence is not None for sequence in sequences)
+        unique_max = comparable and sequences.count(max(sequences)) == 1
+        if unique_max:
+            winner = max(merged, key=lambda hint: hint.source_sequence or 0)
+            selected.append(
+                replace_event_evidence(
+                    winner,
+                    {ref for hint in merged for ref in hint.evidence_refs},
+                )
             )
-        elif current is not None:
-            selected[key] = EventHint(
-                source=current.source,
-                event_type=current.event_type,
-                workstream=current.workstream,
-                observed_identity=current.observed_identity,
-                observed_anchor=current.observed_anchor,
-                source_sequence=current.source_sequence,
-                evidence_refs=tuple(sorted(set(current.evidence_refs) | set(hint.evidence_refs))),
-            )
+        else:
+            selected.extend(merged)
+
     return tuple(
         sorted(
-            selected.values(),
+            selected,
             key=lambda item: (
                 item.workstream,
                 item.event_type,
                 item.observed_identity,
-                item.source_sequence if item.source_sequence is not None else -1,
                 item.observed_anchor,
             ),
         )
+    )
+
+
+def replace_event_evidence(hint: EventHint, evidence_refs: set[str]) -> EventHint:
+    return EventHint(
+        source=hint.source,
+        event_type=hint.event_type,
+        workstream=hint.workstream,
+        observed_identity=hint.observed_identity,
+        observed_anchor=hint.observed_anchor,
+        source_sequence=hint.source_sequence,
+        evidence_refs=tuple(sorted(evidence_refs)),
     )
 
 

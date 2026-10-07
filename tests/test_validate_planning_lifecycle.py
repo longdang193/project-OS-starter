@@ -137,6 +137,22 @@ def test_empty_repo_does_not_require_planning_artifacts() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_historical_cosmetic_finding_reports_warning_success() -> None:
+    root = make_test_root()
+    try:
+        write_text(
+            root / "docs" / "superpowers" / "plans" / "historical.md",
+            "---\nartifact_type: plan\ntemplate_id: implementation-plan\nstatus: completed\nlayer: retired\nparent_spec: none\n---\n# Historical\n",
+        )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+        assert "Planning validation passed with warnings:" in result.stdout
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_plan_parent_spec_must_resolve() -> None:
     root = make_test_root()
     try:

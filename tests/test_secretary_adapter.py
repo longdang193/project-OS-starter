@@ -1,36 +1,44 @@
 from scripts.project_os_runtime.secretary_adapter import (
-    AttentionBrief,
+    AttentionDelta,
+    CommunicationEnvelope,
+    ControllerBinding,
     ControllerRef,
-    InMemoryActivationReceiptJournal,
     InMemoryControllerSessionAdapter,
+    InMemoryControllerSessionJournal,
 )
 
 
-def brief(
+def binding(
     workstream: str = "runtime",
     *,
     repository_identity: str = "repo-a",
     canonical_work: str = "plan-a",
     expected_branch: str = "feature/runtime",
     expected_base: str = "base-a",
-    evidence_refs: tuple[str, ...] = (),
-) -> AttentionBrief:
-    return AttentionBrief(
-        workstream=workstream,
-        objective="reconcile attention",
-        evidence_refs=evidence_refs,
+) -> ControllerBinding:
+    return ControllerBinding(
         repository_identity=repository_identity,
         canonical_work=canonical_work,
+        workstream=workstream,
         expected_branch=expected_branch,
         expected_base=expected_base,
+    )
+
+
+def envelope(current: ControllerBinding | None = None, *, reason: str = "reconcile") -> CommunicationEnvelope:
+    return CommunicationEnvelope(
+        binding=current or binding(),
+        message_id="message-1",
+        canonical_anchor="evidence-1",
+        payload=AttentionDelta(reason=reason, evidence_refs=("evidence-1",)),
     )
 
 
 def test_activation_is_idempotent_and_has_one_side_effect() -> None:
     adapter = InMemoryControllerSessionAdapter()
 
-    first = adapter.activate("runtime", "activation-1", brief())
-    second = adapter.activate("runtime", "activation-1", brief())
+    first = adapter.activate(binding(), "activation-1")
+    second = adapter.activate(binding(), "activation-1")
 
     assert first.created is True
     assert second.reused is True
@@ -39,12 +47,12 @@ def test_activation_is_idempotent_and_has_one_side_effect() -> None:
 
 
 def test_activation_journal_reconciles_after_adapter_restart() -> None:
-    journal = InMemoryActivationReceiptJournal()
+    journal = InMemoryControllerSessionJournal()
     first_adapter = InMemoryControllerSessionAdapter(journal)
-    first = first_adapter.activate("runtime", "activation-1", brief())
+    first = first_adapter.activate(binding(), "activation-1")
 
     restarted_adapter = InMemoryControllerSessionAdapter(journal)
-    second = restarted_adapter.activate("runtime", "activation-1", brief())
+    second = restarted_adapter.activate(binding(), "activation-1")
 
     assert second.reused is True
     assert second.controller == first.controller
@@ -53,53 +61,72 @@ def test_activation_journal_reconciles_after_adapter_restart() -> None:
 
 def test_activation_mismatch_requires_recovery() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    adapter.activate("runtime", "activation-1", brief())
+    adapter.activate(binding(), "activation-1")
 
-    result = adapter.activate("other", "activation-1", brief("other"))
+    result = adapter.activate(binding("other"), "activation-1")
 
     assert result.recovery_required is True
-    assert result.reason == "activation key belongs to another workstream"
+    assert result.reason == "activation ID has a different binding"
     assert adapter.activation_side_effects == 1
 
 
-def test_resume_and_delivery_reject_stale_controller() -> None:
+def test_binding_mismatch_requires_recovery_for_each_lifecycle_operation() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    current = adapter.activate("runtime", "activation-1", brief()).controller
+    current = adapter.activate(binding(), "activation-1").controller
     assert current is not None
-    stale = ControllerRef("runtime", current.controller_id, "feature", "other-base")
+    changed = binding(expected_base="other-base")
 
-    resume = adapter.resume(stale, brief())
-    delivery = adapter.deliver(stale, brief())
+    resolve = adapter.resolve(changed)
+    resume = adapter.resume(current, changed)
+    delivery = adapter.deliver(current, envelope(changed))
 
+    assert resolve.found is False
+    assert resolve.recovery_required is True
     assert resume.recovery_required is True
     assert delivery.recovery_required is True
     assert adapter.delivery_side_effects == 0
 
 
-def test_observation_never_turns_unknown_into_success() -> None:
+def test_repository_work_canonical_workstream_branch_and_base_are_binding_fields() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    unknown = ControllerRef("runtime", "missing", "main", "test-base")
+    current = adapter.activate(binding(), "activation-1").controller
+    assert current is not None
+
+    for changed in (
+        binding(repository_identity="repo-b"),
+        binding(canonical_work="plan-b"),
+        binding(workstream="other"),
+        binding(expected_branch="other-branch"),
+        binding(expected_base="other-base"),
+    ):
+        assert adapter.resume(current, changed).recovery_required is True
+
+
+def test_observation_validates_identity_without_consuming_attention() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+    unknown = ControllerRef(binding(), "missing")
 
     result = adapter.observe(unknown)
 
     assert result.state == "unknown"
     assert result.recovery_required is True
+    assert result.deltas == ()
 
 
 def test_release_session_is_distinct_from_lane_retirement() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    controller = adapter.activate("runtime", "activation-1", brief()).controller
+    controller = adapter.activate(binding(), "activation-1").controller
     assert controller is not None
 
     result = adapter.release_session(controller)
 
     assert result.released is True
-    assert adapter.resolve("runtime").found is False
+    assert adapter.resolve(binding()).found is False
 
 
 def test_release_unknown_session_requires_reconciliation() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    unknown = ControllerRef("runtime", "missing", "main", "test-base")
+    unknown = ControllerRef(binding(), "missing")
 
     result = adapter.release_session(unknown)
 
@@ -109,64 +136,67 @@ def test_release_unknown_session_requires_reconciliation() -> None:
 
 def test_activation_owner_is_bound_to_repository_and_canonical_work() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    first = adapter.activate("runtime", "activation-1", brief()).controller
+    first = adapter.activate(binding(), "activation-1").controller
     assert first is not None
 
-    collision = adapter.activate(
-        "runtime",
-        "activation-2",
-        brief(canonical_work="plan-b"),
-    )
+    collision = adapter.activate(binding(canonical_work="plan-b"), "activation-2")
 
     assert collision.recovery_required is True
     assert adapter.activation_side_effects == 1
 
 
-def test_activation_rejects_same_key_with_changed_git_binding() -> None:
-    adapter = InMemoryControllerSessionAdapter()
-    adapter.activate("runtime", "activation-1", brief())
+def test_delta_reference_fields_normalize_to_tuples() -> None:
+    payload = AttentionDelta("reconcile", ["constraint"], ["evidence"])
 
-    changed = adapter.activate(
-        "runtime",
-        "activation-1",
-        brief(expected_branch="other-branch", expected_base="other-base"),
-    )
-
-    assert changed.recovery_required is True
-    assert changed.reason == "activation key has a different request fingerprint"
-    assert adapter.activation_side_effects == 1
+    assert payload.constraint_refs == ("constraint",)
+    assert payload.evidence_refs == ("evidence",)
 
 
 def test_release_does_not_replay_active_ownership() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    controller = adapter.activate("runtime", "activation-1", brief()).controller
+    controller = adapter.activate(binding(), "activation-1").controller
     assert controller is not None
     assert adapter.release_session(controller).released is True
 
-    replay = adapter.activate("runtime", "activation-1", brief())
+    replay = adapter.activate(binding(), "activation-1")
 
     assert replay.recovery_required is True
     assert replay.reused is False
-    assert adapter.resolve("runtime", repository_identity="repo-a").found is False
+    assert adapter.resolve(binding()).found is False
 
 
 def test_delivery_reuses_same_payload_and_rejects_changed_payload() -> None:
     adapter = InMemoryControllerSessionAdapter()
-    controller = adapter.activate("runtime", "activation-1", brief()).controller
+    controller = adapter.activate(binding(), "activation-1").controller
     assert controller is not None
 
-    first = adapter.deliver(controller, brief(), delivery_identity="delivery-1")
-    second = adapter.deliver(controller, brief(), delivery_identity="delivery-1")
-    changed = adapter.deliver(
-        controller,
-        AttentionBrief(
-            **{**brief().__dict__, "objective": "changed payload"}
-        ),
-        delivery_identity="delivery-1",
-    )
+    first = adapter.deliver(controller, envelope())
+    second = adapter.deliver(controller, envelope())
+    changed = adapter.deliver(controller, envelope(reason="changed payload"))
 
     assert first.delivered is True
     assert second.delivered is True
     assert second.recovery_required is False
     assert changed.recovery_required is True
     assert adapter.delivery_side_effects == 1
+
+
+def test_delivery_reuse_survives_adapter_recreation_and_message_identity_is_separate() -> None:
+    journal = InMemoryControllerSessionJournal()
+    first_adapter = InMemoryControllerSessionAdapter(journal)
+    controller = first_adapter.activate(binding(), "activation-1").controller
+    assert controller is not None
+    assert first_adapter.deliver(controller, envelope()).delivered is True
+
+    restarted_adapter = InMemoryControllerSessionAdapter(journal)
+    assert restarted_adapter.deliver(controller, envelope()).delivered is True
+    assert restarted_adapter.delivery_side_effects == 0
+
+    changed_message = CommunicationEnvelope(
+        binding=binding(),
+        message_id="message-2",
+        canonical_anchor="evidence-1",
+        payload=AttentionDelta(reason="reconcile", evidence_refs=("evidence-1",)),
+    )
+    assert restarted_adapter.deliver(controller, changed_message).delivered is True
+    assert restarted_adapter.delivery_side_effects == 1

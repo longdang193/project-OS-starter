@@ -7,36 +7,59 @@ from typing import Protocol
 
 
 @dataclass(frozen=True)
-class ControllerRef:
+class ControllerBinding:
+    repository_identity: str
+    canonical_work: str
     workstream: str
-    controller_id: str
-    branch: str
-    base_commit: str
-    repository_identity: str = "repository"
-    canonical_work: str = ""
+    expected_branch: str
+    expected_base: str
 
 
 @dataclass(frozen=True)
-class AttentionBrief:
-    workstream: str
-    objective: str
+class AttentionDelta:
+    reason: str
+    constraint_refs: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
-    repository_identity: str = "repository"
-    canonical_work: str = ""
-    expected_branch: str = "main"
-    expected_base: str = "test-base"
+    decision_needed: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "constraint_refs", tuple(self.constraint_refs))
+        object.__setattr__(self, "evidence_refs", tuple(self.evidence_refs))
 
 
 @dataclass(frozen=True)
 class CoordinationDelta:
     kind: str
-    summary: str
+    affected_workstreams: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
+    decision_needed: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "affected_workstreams", tuple(self.affected_workstreams))
+        object.__setattr__(self, "evidence_refs", tuple(self.evidence_refs))
+
+
+@dataclass(frozen=True)
+class CommunicationEnvelope:
+    binding: ControllerBinding
+    message_id: str
+    canonical_anchor: str
+    payload: AttentionDelta | CoordinationDelta
+
+
+@dataclass(frozen=True)
+class ControllerRef:
+    binding: ControllerBinding
+    controller_id: str
+
+    @property
+    def workstream(self) -> str:
+        return self.binding.workstream
 
 
 @dataclass(frozen=True)
 class ResolveReceipt:
-    workstream: str
+    binding: ControllerBinding
     controller: ControllerRef | None
     found: bool
     recovery_required: bool = False
@@ -45,14 +68,13 @@ class ResolveReceipt:
 
 @dataclass(frozen=True)
 class ActivationReceipt:
-    activation_key: str
-    workstream: str
+    activation_id: str
+    binding: ControllerBinding
     controller: ControllerRef | None
     created: bool
     reused: bool
     recovery_required: bool = False
     reason: str | None = None
-    request_fingerprint: str = ""
     released: bool = False
 
 
@@ -79,7 +101,7 @@ class DeliveryReceipt:
     delivered: bool
     recovery_required: bool = False
     reason: str | None = None
-    delivery_identity: str = ""
+    message_id: str = ""
     payload_fingerprint: str = ""
 
 
@@ -91,191 +113,169 @@ class SessionReleaseReceipt:
     reason: str | None = None
 
 
-class ActivationReceiptJournal(Protocol):
-    def lookup_activation(self, activation_key: str) -> ActivationReceipt | None:
+class ControllerSessionJournal(Protocol):
+    def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
         ...
 
     def record_activation(self, receipt: ActivationReceipt) -> None:
         ...
 
-    def mark_released(self, activation_key: str) -> None:
+    def lookup_controller(self, binding: ControllerBinding) -> ControllerRef | None:
+        ...
+
+    def lookup_workstream(self, workstream: str) -> ControllerRef | None:
+        ...
+
+    def record_controller(self, controller: ControllerRef) -> None:
+        ...
+
+    def release_controller(self, controller: ControllerRef) -> None:
+        ...
+
+    def lookup_delivery(self, controller: ControllerRef, message_id: str) -> str | None:
+        ...
+
+    def record_delivery(
+        self, controller: ControllerRef, message_id: str, payload_fingerprint: str
+    ) -> None:
         ...
 
 
 class ControllerSessionAdapter(Protocol):
-    def resolve(self, workstream: str) -> ResolveReceipt:
+    def resolve(self, binding: ControllerBinding) -> ResolveReceipt:
         ...
 
-    def lookup_activation(self, activation_key: str) -> ActivationReceipt | None:
+    def activate(self, binding: ControllerBinding, activation_id: str) -> ActivationReceipt:
         ...
 
-    def activate(
-        self,
-        workstream: str,
-        activation_key: str,
-        brief: AttentionBrief,
-    ) -> ActivationReceipt:
-        ...
-
-    def resume(self, controller: ControllerRef, brief: AttentionBrief) -> ResumeReceipt:
+    def resume(self, controller: ControllerRef, binding: ControllerBinding) -> ResumeReceipt:
         ...
 
     def observe(self, controller: ControllerRef) -> ObservationReceipt:
         ...
 
-    def deliver(
-        self,
-        controller: ControllerRef,
-        brief: AttentionBrief,
-        delivery_identity: str = "default",
-    ) -> DeliveryReceipt:
+    def deliver(self, controller: ControllerRef, envelope: CommunicationEnvelope) -> DeliveryReceipt:
         ...
 
     def release_session(self, controller: ControllerRef) -> SessionReleaseReceipt:
         ...
 
 
-class InMemoryActivationReceiptJournal:
+class InMemoryControllerSessionJournal:
     def __init__(self) -> None:
-        self._receipts: dict[str, ActivationReceipt] = {}
+        self._activations: dict[str, ActivationReceipt] = {}
+        self._controllers: dict[ControllerBinding, ControllerRef] = {}
+        self._deliveries: dict[tuple[str, str], str] = {}
 
-    def lookup_activation(self, activation_key: str) -> ActivationReceipt | None:
-        return self._receipts.get(activation_key)
+    def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
+        return self._activations.get(activation_id)
 
     def record_activation(self, receipt: ActivationReceipt) -> None:
-        current = self._receipts.get(receipt.activation_key)
+        current = self._activations.get(receipt.activation_id)
         if current is not None and (
-            current.request_fingerprint != receipt.request_fingerprint
-            or current.controller != receipt.controller
+            current.binding != receipt.binding or current.controller != receipt.controller
         ):
-            raise ValueError("activation key already has a different receipt")
-        self._receipts[receipt.activation_key] = receipt
+            raise ValueError("activation ID already has a different receipt")
+        self._activations[receipt.activation_id] = receipt
 
-    def mark_released(self, activation_key: str) -> None:
-        receipt = self._receipts.get(activation_key)
-        if receipt is not None:
-            self._receipts[activation_key] = replace(receipt, released=True)
+    def lookup_controller(self, binding: ControllerBinding) -> ControllerRef | None:
+        return self._controllers.get(binding)
+
+    def lookup_workstream(self, workstream: str) -> ControllerRef | None:
+        for controller in self._controllers.values():
+            if controller.binding.workstream == workstream:
+                return controller
+        return None
+
+    def record_controller(self, controller: ControllerRef) -> None:
+        self._controllers[controller.binding] = controller
+
+    def release_controller(self, controller: ControllerRef) -> None:
+        if self._controllers.get(controller.binding) == controller:
+            del self._controllers[controller.binding]
+        for activation_id, receipt in tuple(self._activations.items()):
+            if receipt.controller == controller:
+                self._activations[activation_id] = replace(receipt, released=True)
+
+    def lookup_delivery(self, controller: ControllerRef, message_id: str) -> str | None:
+        return self._deliveries.get((controller.controller_id, message_id))
+
+    def record_delivery(
+        self, controller: ControllerRef, message_id: str, payload_fingerprint: str
+    ) -> None:
+        self._deliveries[(controller.controller_id, message_id)] = payload_fingerprint
 
 
 class InMemoryControllerSessionAdapter:
-    def __init__(self, journal: ActivationReceiptJournal | None = None) -> None:
-        self.journal = journal or InMemoryActivationReceiptJournal()
-        self._controllers: dict[tuple[str, str], ControllerRef] = {}
-        self._activation_keys: dict[tuple[str, str], str] = {}
-        self._deliveries: dict[tuple[ControllerRef, str], str] = {}
-        self._next_controller = 1
+    def __init__(self, journal: ControllerSessionJournal | None = None) -> None:
+        self.journal = journal or InMemoryControllerSessionJournal()
         self.activation_side_effects = 0
         self.delivery_side_effects = 0
 
-    def resolve(self, workstream: str, repository_identity: str = "repository") -> ResolveReceipt:
-        controller = self._controllers.get((repository_identity, workstream))
+    def resolve(self, binding: ControllerBinding) -> ResolveReceipt:
+        controller = self.journal.lookup_controller(binding)
         if controller is None:
-            return ResolveReceipt(workstream=workstream, controller=None, found=False)
-        return ResolveReceipt(workstream=workstream, controller=controller, found=True)
-
-    def lookup_activation(self, activation_key: str) -> ActivationReceipt | None:
-        return self.journal.lookup_activation(activation_key)
-
-    def activate(
-        self,
-        workstream: str,
-        activation_key: str,
-        brief: AttentionBrief,
-    ) -> ActivationReceipt:
-        if brief.workstream != workstream:
-            return ActivationReceipt(
-                activation_key=activation_key,
-                workstream=workstream,
-                controller=None,
-                created=False,
-                reused=False,
-                recovery_required=True,
-                reason="brief workstream does not match activation workstream",
-            )
-
-        owner_key = (brief.repository_identity, workstream)
-        request_fingerprint = _fingerprint(
-            {
-                "repository_identity": brief.repository_identity,
-                "canonical_work": brief.canonical_work or workstream,
-                "expected_branch": brief.expected_branch,
-                "expected_base": brief.expected_base,
-                "objective": brief.objective.strip(),
-                "evidence_refs": sorted(set(brief.evidence_refs)),
-            }
+            conflicting = self.journal.lookup_workstream(binding.workstream)
+            if conflicting is not None:
+                return ResolveReceipt(
+                    binding=binding,
+                    controller=conflicting,
+                    found=False,
+                    recovery_required=True,
+                    reason="binding does not match active controller",
+                )
+        return ResolveReceipt(
+            binding=binding,
+            controller=controller,
+            found=controller is not None,
         )
-        existing = self.journal.lookup_activation(activation_key)
-        if existing is not None:
-            if existing.workstream != workstream:
-                return replace(
-                    existing,
-                    recovery_required=True,
-                    reason="activation key belongs to another workstream",
-                )
-            if existing.request_fingerprint != request_fingerprint:
-                return replace(
-                    existing,
-                    recovery_required=True,
-                    reason="activation key has a different request fingerprint",
-                )
-            if existing.released:
-                return replace(
-                    existing,
-                    created=False,
-                    reused=False,
-                    recovery_required=True,
-                    reason="activation receipt was released; new activation is required",
-                )
-            if existing.controller is not None:
-                self._controllers[owner_key] = existing.controller
-                self._activation_keys[owner_key] = activation_key
-            return replace(existing, created=False, reused=True)
 
-        if owner_key in self._controllers:
-            return ActivationReceipt(
-                activation_key=activation_key,
-                workstream=workstream,
-                controller=self._controllers[owner_key],
-                created=False,
-                reused=False,
-                recovery_required=True,
-                reason="workstream already has an active controller",
-                request_fingerprint=request_fingerprint,
+    def activate(self, binding: ControllerBinding, activation_id: str) -> ActivationReceipt:
+        previous = self.journal.lookup_activation(activation_id)
+        if previous is not None:
+            if previous.controller is not None and not matches_binding(previous.controller, binding):
+                return self._activation_recovery(
+                    binding, activation_id, "activation ID has a different binding"
+                )
+            if previous.released:
+                return self._activation_recovery(
+                    binding, activation_id, "activation ID belongs to a released controller"
+                )
+            return replace(previous, created=False, reused=True)
+
+        current = self.journal.lookup_controller(binding)
+        if current is None:
+            current = self.journal.lookup_workstream(binding.workstream)
+        if current is not None:
+            return self._activation_recovery(
+                binding, activation_id, "binding already has an active controller"
             )
 
         controller = ControllerRef(
-            workstream=workstream,
-            controller_id=f"controller-{self._next_controller}",
-            branch=brief.expected_branch,
-            base_commit=brief.expected_base,
-            repository_identity=brief.repository_identity,
-            canonical_work=brief.canonical_work or workstream,
+            binding=binding,
+            controller_id=f"controller-{_fingerprint({'activation_id': activation_id})[:16]}",
         )
-        self._next_controller += 1
         receipt = ActivationReceipt(
-            activation_key=activation_key,
-            workstream=workstream,
+            activation_id=activation_id,
+            binding=binding,
             controller=controller,
             created=True,
             reused=False,
-            request_fingerprint=request_fingerprint,
         )
         self.journal.record_activation(receipt)
-        self._controllers[owner_key] = controller
-        self._activation_keys[owner_key] = activation_key
+        self.journal.record_controller(controller)
         self.activation_side_effects += 1
         return receipt
 
-    def resume(self, controller: ControllerRef, brief: AttentionBrief) -> ResumeReceipt:
-        current = self._controllers.get((controller.repository_identity, controller.workstream))
-        if brief.workstream != controller.workstream:
+    def resume(self, controller: ControllerRef, binding: ControllerBinding) -> ResumeReceipt:
+        if not matches_binding(controller, binding):
             return ResumeReceipt(
                 controller=controller,
                 resumed=False,
                 recovery_required=True,
-                reason="brief workstream does not match controller workstream",
+                reason="binding does not match controller",
             )
-        if current != controller:
+        if self.journal.lookup_controller(binding) != controller:
             return ResumeReceipt(
                 controller=controller,
                 resumed=False,
@@ -285,7 +285,7 @@ class InMemoryControllerSessionAdapter:
         return ResumeReceipt(controller=controller, resumed=True)
 
     def observe(self, controller: ControllerRef) -> ObservationReceipt:
-        if self._controllers.get((controller.repository_identity, controller.workstream)) != controller:
+        if self.journal.lookup_controller(controller.binding) != controller:
             return ObservationReceipt(
                 controller=controller,
                 state="unknown",
@@ -295,93 +295,110 @@ class InMemoryControllerSessionAdapter:
         return ObservationReceipt(controller=controller, state="observed")
 
     def deliver(
-        self,
-        controller: ControllerRef,
-        brief: AttentionBrief,
-        delivery_identity: str = "default",
+        self, controller: ControllerRef, envelope: CommunicationEnvelope
     ) -> DeliveryReceipt:
-        if brief.workstream != controller.workstream:
+        if not matches_binding(controller, envelope.binding):
             return DeliveryReceipt(
                 controller=controller,
                 delivered=False,
                 recovery_required=True,
-                reason="brief workstream does not match controller workstream",
+                reason="binding does not match controller",
+                message_id=envelope.message_id,
             )
-        if self._controllers.get((controller.repository_identity, controller.workstream)) != controller:
+        if self.journal.lookup_controller(envelope.binding) != controller:
             return DeliveryReceipt(
                 controller=controller,
                 delivered=False,
                 recovery_required=True,
                 reason="controller identity is stale or unknown",
+                message_id=envelope.message_id,
             )
-        payload_fingerprint = _fingerprint(
-            {
-                "objective": brief.objective.strip(),
-                "evidence_refs": sorted(set(brief.evidence_refs)),
-                "repository_identity": brief.repository_identity,
-                "canonical_work": brief.canonical_work or brief.workstream,
-            }
-        )
-        delivery_key = (controller, delivery_identity)
-        previous = self._deliveries.get(delivery_key)
+
+        payload_fingerprint = _fingerprint(envelope)
+        previous = self.journal.lookup_delivery(controller, envelope.message_id)
         if previous is not None:
             if previous != payload_fingerprint:
                 return DeliveryReceipt(
                     controller=controller,
                     delivered=False,
                     recovery_required=True,
-                    reason="delivery identity has a different payload fingerprint",
-                    delivery_identity=delivery_identity,
+                    reason="message ID has a different payload fingerprint",
+                    message_id=envelope.message_id,
                     payload_fingerprint=payload_fingerprint,
                 )
             return DeliveryReceipt(
                 controller=controller,
                 delivered=True,
-                delivery_identity=delivery_identity,
+                message_id=envelope.message_id,
                 payload_fingerprint=payload_fingerprint,
             )
-        self._deliveries[delivery_key] = payload_fingerprint
+
+        self.journal.record_delivery(controller, envelope.message_id, payload_fingerprint)
         self.delivery_side_effects += 1
         return DeliveryReceipt(
             controller=controller,
             delivered=True,
-            delivery_identity=delivery_identity,
+            message_id=envelope.message_id,
             payload_fingerprint=payload_fingerprint,
         )
 
     def release_session(self, controller: ControllerRef) -> SessionReleaseReceipt:
-        owner_key = (controller.repository_identity, controller.workstream)
-        if self._controllers.get(owner_key) != controller:
+        if self.journal.lookup_controller(controller.binding) != controller:
             return SessionReleaseReceipt(
                 controller=controller,
                 released=False,
                 recovery_required=True,
                 reason="session identity is stale or unknown",
             )
-        del self._controllers[owner_key]
-        activation_key = self._activation_keys.pop(owner_key, None)
-        if activation_key is not None:
-            self.journal.mark_released(activation_key)
+        self.journal.release_controller(controller)
         return SessionReleaseReceipt(controller=controller, released=True)
 
+    @staticmethod
+    def _activation_recovery(
+        binding: ControllerBinding, activation_id: str, reason: str
+    ) -> ActivationReceipt:
+        return ActivationReceipt(
+            activation_id=activation_id,
+            binding=binding,
+            controller=None,
+            created=False,
+            reused=False,
+            recovery_required=True,
+            reason=reason,
+        )
 
-def _fingerprint(payload: dict[str, object]) -> str:
+
+def matches_binding(controller: ControllerRef, binding: ControllerBinding) -> bool:
+    return controller.binding == binding
+
+
+def _fingerprint(payload: object) -> str:
+    if isinstance(payload, CommunicationEnvelope):
+        payload = {
+            "binding": payload.binding.__dict__,
+            "message_id": payload.message_id,
+            "canonical_anchor": payload.canonical_anchor,
+            "payload": payload.payload.__dict__,
+        }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
 __all__ = [
     "ActivationReceipt",
-    "ActivationReceiptJournal",
-    "AttentionBrief",
+    "AttentionDelta",
+    "CommunicationEnvelope",
+    "ControllerBinding",
     "ControllerRef",
     "ControllerSessionAdapter",
+    "ControllerSessionJournal",
     "CoordinationDelta",
     "DeliveryReceipt",
-    "InMemoryActivationReceiptJournal",
     "InMemoryControllerSessionAdapter",
+    "InMemoryControllerSessionJournal",
     "ObservationReceipt",
     "ResolveReceipt",
     "ResumeReceipt",
     "SessionReleaseReceipt",
+    "matches_binding",
 ]
