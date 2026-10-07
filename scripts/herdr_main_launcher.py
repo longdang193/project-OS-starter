@@ -1064,6 +1064,16 @@ def _classify_deepagents_outcome(
             "completed": "reported_completed",
             "failed": "reported_failed",
         }.get(str(task_result.get("status")), "unverified")
+        if (
+            task_result.get("producer") == "dcode-project"
+            and task_result.get("status") == "completed"
+            and task_result.get("checkpoint") is None
+            and not (
+                isinstance(task_result.get("verification"), Mapping)
+                and task_result["verification"].get("references")
+            )
+        ):
+            task_result["state"] = "unverified"
         task_result["accepted"] = None
     status = "unknown"
     failure_kind = fallback_failure_kind

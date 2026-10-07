@@ -46,7 +46,9 @@ try:
     from project_os_runtime.results import (
         RESULT_MAX_BYTES,
         RESULT_SCHEMA,
+        TASK_RESULT_SCHEMA,
         encode_result_receipt,
+        parse_task_result,
         parse_result_receipt,
         publish_task_result,
     )
@@ -54,7 +56,9 @@ except ModuleNotFoundError:
     from scripts.project_os_runtime.results import (
         RESULT_MAX_BYTES,
         RESULT_SCHEMA,
+        TASK_RESULT_SCHEMA,
         encode_result_receipt,
+        parse_task_result,
         parse_result_receipt,
         publish_task_result,
     )
@@ -481,6 +485,28 @@ def _publish_result_receipt(
             temporary.unlink()
         except FileNotFoundError:
             pass
+
+
+def _task_result_status(worker_exit_code: int | None) -> str:
+    if isinstance(worker_exit_code, int) and worker_exit_code != 0:
+        return "failed"
+    return "unknown"
+
+
+def _worker_task_result(
+    task_result_file: Path,
+    binding: dict[str, object],
+) -> dict[str, object] | None:
+    result = parse_task_result(
+        task_result_file,
+        assignment_id=str(binding["assignment_id"]),
+        attempt_id=str(binding["attempt_id"]),
+        task_sha256=str(binding["task_sha256"]),
+        grant_digest=str(binding["grant_digest"]),
+    )
+    if result.get("state") != "confirmed" or result.get("producer") == "dcode-project":
+        return None
+    return result
 
 
 def _role_views_lock_path(repo_root: Path) -> Path:
@@ -1653,8 +1679,29 @@ def _bounded_task_context(repo_root: Path) -> str:
     )
 
 
-def _append_bounded_task_context(argv: list[str], repo_root: Path) -> None:
+def _append_bounded_task_context(
+    argv: list[str],
+    repo_root: Path,
+    *,
+    task_result_file: Path | None = None,
+    attempt_binding: dict[str, object] | None = None,
+) -> None:
     context = _bounded_task_context(repo_root)
+    if task_result_file is not None and attempt_binding is not None:
+        context += (
+            " Worker-owned semantic task result is required before final response. "
+            f"Publish valid JSON with schema `{TASK_RESULT_SCHEMA}` to "
+            f"`{task_result_file}`. Use producer `deepagents-worker`, preserve exact "
+            "assignment, attempt, task, and grant bindings, and publish only after "
+            "task work and verification finish. For completed work, include a settled "
+            "checkpoint and non-empty verification references. Use existing "
+            "`scripts.project_os_runtime.results.publish_task_result`; do not replace "
+            "this file with prose. Bindings: "
+            f"assignment_id={attempt_binding['assignment_id']}, "
+            f"attempt_id={attempt_binding['attempt_id']}, "
+            f"task_sha256={attempt_binding['task_sha256']}, "
+            f"grant_digest={attempt_binding['grant_digest']}."
+        )
     for index, argument in enumerate(argv):
         if argument in {"-n", "--non-interactive"}:
             if _option_value_missing(argv, index, argument):
@@ -2073,17 +2120,6 @@ def main(argv: list[str]) -> int:
             repo_root,
             _worker_timeout(child_argv, default=120.0, worker_name="Tura"),
         )
-    _append_bounded_task_context(child_argv, repo_root)
-    handoff_stdin: str | None = None
-    if handoff_file is not None:
-        _, payload = _validate_handoff(handoff_file, capabilities, selected)
-        handoff_stdin = _handoff_stdin(child_argv, payload)
-    _reject_conflicting_user_openai_base_url()
-    dcode = _find_dcode()
-    if not dcode:
-        raise RuntimeError("DeepAgents Code is not installed. Run scripts/setup_deepagents_runtime.ps1.")
-    environment = _runtime_environment(base_url, binding.read_api_key())
-    shell_capabilities: dict[str, object] | None = None
     attempt_guard_binding = None
     if assignment_id_value is not None:
         attempt_guard_binding = {
@@ -2094,6 +2130,22 @@ def main(argv: list[str]) -> int:
             "task_sha256": str(task_sha256),
             "grant_digest": str(grant_digest_value),
         }
+    _append_bounded_task_context(
+        child_argv,
+        repo_root,
+        task_result_file=task_result_file if attempt_guard_binding is not None else None,
+        attempt_binding=attempt_guard_binding,
+    )
+    handoff_stdin: str | None = None
+    if handoff_file is not None:
+        _, payload = _validate_handoff(handoff_file, capabilities, selected)
+        handoff_stdin = _handoff_stdin(child_argv, payload)
+    _reject_conflicting_user_openai_base_url()
+    dcode = _find_dcode()
+    if not dcode:
+        raise RuntimeError("DeepAgents Code is not installed. Run scripts/setup_deepagents_runtime.ps1.")
+    environment = _runtime_environment(base_url, binding.read_api_key())
+    shell_capabilities: dict[str, object] | None = None
     with _role_views_lock(repo_root):
         attempt_claim = None
         if attempt_guard_binding is not None:
@@ -2245,24 +2297,25 @@ def main(argv: list[str]) -> int:
                 )
             if task_result_file is not None and attempt_guard_binding is not None:
                 try:
-                    publish_task_result(
-                        task_result_file,
-                        {
-                            "schema": "dcode-project.task-result.v1",
-                            "assignment_id": str(attempt_guard_binding["assignment_id"]),
-                            "attempt_id": str(attempt_id),
-                            "task_sha256": str(attempt_guard_binding["task_sha256"]),
-                            "grant_digest": str(attempt_guard_binding["grant_digest"]),
-                            "producer": "dcode-project",
-                            "status": "completed" if worker_exit_code == 0 else "failed",
-                            "progress": {"worker_state": worker_state},
-                            "checkpoint": None,
-                            "remaining_work": [],
-                            "verification": {"references": []},
-                            "continuation": {"requested": False},
-                            "accepted": None,
-                        },
-                    )
+                    if _worker_task_result(task_result_file, attempt_guard_binding) is None:
+                        publish_task_result(
+                            task_result_file,
+                            {
+                                "schema": TASK_RESULT_SCHEMA,
+                                "assignment_id": str(attempt_guard_binding["assignment_id"]),
+                                "attempt_id": str(attempt_id),
+                                "task_sha256": str(attempt_guard_binding["task_sha256"]),
+                                "grant_digest": str(attempt_guard_binding["grant_digest"]),
+                                "producer": "dcode-project",
+                                "status": _task_result_status(worker_exit_code),
+                                "progress": {"worker_state": worker_state},
+                                "checkpoint": None,
+                                "remaining_work": ["semantic task result unavailable"],
+                                "verification": {"references": []},
+                                "continuation": {"requested": False},
+                                "accepted": None,
+                            },
+                        )
                 except (OSError, RuntimeError, ValueError):
                     task_result_file.unlink(missing_ok=True)
             if attempt_guard_binding is not None:
@@ -2282,8 +2335,8 @@ def main(argv: list[str]) -> int:
                     settlement_proven=settlement["settlement_proven"],
                     settlement_evidence=settlement_evidence,
                 )
-            if cleanup_error is not None:
-                raise cleanup_error
+        if cleanup_error is not None:
+            raise cleanup_error
         return int(worker_exit_code) if worker_exit_code is not None else 2
 
 

@@ -33,7 +33,11 @@ import pytest
 from project_os_test_paths import add_runtime_import_roots, runtime_script
 
 add_runtime_import_roots()
-from scripts.deepagents_result_contract import encode_result_receipt, parse_result_receipt
+from scripts.deepagents_result_contract import (
+    encode_result_receipt,
+    parse_result_receipt,
+    publish_task_result,
+)
 ROOT = Path(__file__).resolve().parent.parent
 LAUNCHER_PATH = runtime_script("dcode_project.py")
 
@@ -431,6 +435,123 @@ def test_result_contract_encoder_rejects_invalid_producer_payload() -> None:
             "cleanup": {"state": "removed", "role_views_state": "removed"},
             "recovery_required": False,
         })
+
+
+@pytest.mark.parametrize(
+    ("worker_exit_code", "expected"),
+    [(0, "unknown"), (7, "failed"), (None, "unknown")],
+)
+def test_task_result_status_never_promotes_worker_exit_to_completion(
+    worker_exit_code: int | None,
+    expected: str,
+) -> None:
+    assert LAUNCHER._task_result_status(worker_exit_code) == expected
+
+
+def test_bounded_task_context_requires_worker_owned_task_result(
+    tmp_path: Path,
+) -> None:
+    task_result_file = tmp_path / "task-result.json"
+    argv = ["-n", "task"]
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
+    }
+
+    LAUNCHER._append_bounded_task_context(
+        argv,
+        tmp_path,
+        task_result_file=task_result_file,
+        attempt_binding=binding,
+    )
+
+    assert str(task_result_file) in argv[1]
+    assert "dcode-project.task-result.v1" in argv[1]
+    assert "producer `deepagents-worker`" in argv[1]
+    assert "assignment-1" in argv[1]
+    assert "attempt-1" in argv[1]
+
+
+def test_deepagents_main_preserves_valid_worker_task_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "repository_identity": "repo-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
+    }
+
+    def run_worker(*args: object) -> int:
+        publish_task_result(
+            task_result_file,
+            {
+                "schema": "dcode-project.task-result.v1",
+                "assignment_id": binding["assignment_id"],
+                "attempt_id": binding["attempt_id"],
+                "task_sha256": binding["task_sha256"],
+                "grant_digest": binding["grant_digest"],
+                "producer": "deepagents-worker",
+                "status": "completed",
+                "progress": {"summary": "fixture changed"},
+                "checkpoint": {"revision": "deadbeef"},
+                "remaining_work": [],
+                "verification": {"references": ["tests/test_fixture.py"]},
+                "continuation": {"requested": False},
+                "accepted": None,
+            },
+        )
+        return 0
+
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", run_worker)
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", binding["attempt_id"],
+        "--assignment-id", binding["assignment_id"],
+        "--repository-identity", binding["repository_identity"],
+        "--task-sha256", binding["task_sha256"],
+        "--grant-digest", binding["grant_digest"],
+    ]) == 0
+
+    payload = json.loads(task_result_file.read_text(encoding="utf-8"))
+    assert payload["producer"] == "deepagents-worker"
+    assert payload["status"] == "completed"
+    assert payload["verification"]["references"] == ["tests/test_fixture.py"]
+
+
+def test_deepagents_main_demotes_missing_or_malformed_worker_task_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    task_result_file.write_text("{malformed", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", "attempt-1",
+        "--assignment-id", "assignment-1",
+        "--repository-identity", "repo-1",
+        "--task-sha256", "a" * 64,
+        "--grant-digest", "b" * 64,
+    ]) == 0
+
+    payload = json.loads(task_result_file.read_text(encoding="utf-8"))
+    assert payload["producer"] == "dcode-project"
+    assert payload["status"] == "unknown"
+    assert payload["remaining_work"] == ["semantic task result unavailable"]
 
 
 def test_deepagents_main_publishes_receipt_after_cleanup(
