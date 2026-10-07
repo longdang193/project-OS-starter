@@ -81,6 +81,7 @@ def test_binding_mismatch_requires_recovery_for_each_lifecycle_operation() -> No
     delivery = adapter.deliver(current, envelope(changed))
 
     assert resolve.found is False
+    assert resolve.recovery_required is True
     assert resume.recovery_required is True
     assert delivery.recovery_required is True
     assert adapter.delivery_side_effects == 0
@@ -140,9 +141,15 @@ def test_activation_owner_is_bound_to_repository_and_canonical_work() -> None:
 
     collision = adapter.activate(binding(canonical_work="plan-b"), "activation-2")
 
-    assert collision.created is True
-    assert collision.controller != first
-    assert adapter.activation_side_effects == 2
+    assert collision.recovery_required is True
+    assert adapter.activation_side_effects == 1
+
+
+def test_delta_reference_fields_normalize_to_tuples() -> None:
+    payload = AttentionDelta("reconcile", ["constraint"], ["evidence"])
+
+    assert payload.constraint_refs == ("constraint",)
+    assert payload.evidence_refs == ("evidence",)
 
 
 def test_release_does_not_replay_active_ownership() -> None:

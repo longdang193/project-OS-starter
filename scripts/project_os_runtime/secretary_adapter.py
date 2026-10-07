@@ -22,6 +22,10 @@ class AttentionDelta:
     evidence_refs: tuple[str, ...] = ()
     decision_needed: bool = False
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "constraint_refs", tuple(self.constraint_refs))
+        object.__setattr__(self, "evidence_refs", tuple(self.evidence_refs))
+
 
 @dataclass(frozen=True)
 class CoordinationDelta:
@@ -29,6 +33,10 @@ class CoordinationDelta:
     affected_workstreams: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     decision_needed: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "affected_workstreams", tuple(self.affected_workstreams))
+        object.__setattr__(self, "evidence_refs", tuple(self.evidence_refs))
 
 
 @dataclass(frozen=True)
@@ -115,6 +123,9 @@ class ControllerSessionJournal(Protocol):
     def lookup_controller(self, binding: ControllerBinding) -> ControllerRef | None:
         ...
 
+    def lookup_workstream(self, workstream: str) -> ControllerRef | None:
+        ...
+
     def record_controller(self, controller: ControllerRef) -> None:
         ...
 
@@ -170,6 +181,12 @@ class InMemoryControllerSessionJournal:
     def lookup_controller(self, binding: ControllerBinding) -> ControllerRef | None:
         return self._controllers.get(binding)
 
+    def lookup_workstream(self, workstream: str) -> ControllerRef | None:
+        for controller in self._controllers.values():
+            if controller.binding.workstream == workstream:
+                return controller
+        return None
+
     def record_controller(self, controller: ControllerRef) -> None:
         self._controllers[controller.binding] = controller
 
@@ -197,6 +214,16 @@ class InMemoryControllerSessionAdapter:
 
     def resolve(self, binding: ControllerBinding) -> ResolveReceipt:
         controller = self.journal.lookup_controller(binding)
+        if controller is None:
+            conflicting = self.journal.lookup_workstream(binding.workstream)
+            if conflicting is not None:
+                return ResolveReceipt(
+                    binding=binding,
+                    controller=conflicting,
+                    found=False,
+                    recovery_required=True,
+                    reason="binding does not match active controller",
+                )
         return ResolveReceipt(
             binding=binding,
             controller=controller,
@@ -206,7 +233,7 @@ class InMemoryControllerSessionAdapter:
     def activate(self, binding: ControllerBinding, activation_id: str) -> ActivationReceipt:
         previous = self.journal.lookup_activation(activation_id)
         if previous is not None:
-            if previous.binding != binding:
+            if previous.controller is not None and not matches_binding(previous.controller, binding):
                 return self._activation_recovery(
                     binding, activation_id, "activation ID has a different binding"
                 )
@@ -217,6 +244,8 @@ class InMemoryControllerSessionAdapter:
             return replace(previous, created=False, reused=True)
 
         current = self.journal.lookup_controller(binding)
+        if current is None:
+            current = self.journal.lookup_workstream(binding.workstream)
         if current is not None:
             return self._activation_recovery(
                 binding, activation_id, "binding already has an active controller"
