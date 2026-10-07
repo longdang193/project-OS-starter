@@ -115,6 +115,33 @@ disposable admission smoke now contains genuine worker-owned structured
 two task-owned worktrees remain retired; both old and fresh admission evidence
 artifacts stay retained through final verification.
 
+### Follow-up false acceptance
+
+Pair 1 exposed a separate acceptance-layer defect after the runtime correction.
+Workstream B's worker published valid worker-owned `dcode-project.task-result.v1`
+evidence with exit `0`, settled checkpoint, and verification references, but
+`probe_artifacts/follow-up-b.md` still contained the required literal
+`FOLLOW_UP_B_TODO`. The worker reported `status: complete`; runtime evidence
+therefore proved execution and lifecycle, not the required semantic artifact.
+
+Root cause is missing independent CoS reconciliation of task-local acceptance
+criteria. Repository search found no second synthetic `TaskResult` producer or
+shared runtime caller that could validate arbitrary fixture semantics. The
+shared failure mode is acceptance from worker/runtime completion without
+canonical artifact inspection.
+
+Corrective patch:
+
+- `skill-chief-of-staff` now requires independent reconciliation of every
+  task-local acceptance criterion against canonical artifact and Git state.
+- CoS must keep acceptance `false` or `BLOCKED` when a required artifact
+  condition is missing, unchanged, or contradicted, even when runtime evidence
+  is complete.
+- Focused skill regression proves runtime/lifecycle evidence cannot substitute
+  for semantic artifact proof.
+- Pair 1 remains `FAIL` evidence; no later matched pair runs until a fresh
+  corrected candidate trial passes this gate.
+
 ## Implementation Outcomes
 
 ### Live organizational evidence
@@ -198,16 +225,16 @@ Decision:
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
 - Branch: `main` for runtime correction; fresh probe branch required for Task 3
-- Base commit: `f0e11f0`
+- Base commit: `fd555868ae188d5b8ee3d9a57727f6640a755d59`
 - Expected workspace: primary `main` unchanged; preserve `.playwright-mcp/`, `db/`, and `temp_evidence.json`; probe resources isolated
-- Next action: create fresh probe worktrees and controllers, then run alternating Stage A trials
-- Blockers: none
+- Next action: resume Pair 1 matched baseline/candidate trial with independent CoS artifact reconciliation
+- Blockers: none after corrected follow-up worker proof; full Stage A correctness remains pending
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | disposable probe branch | `codex` | none | frozen base, prompts, grants, trial isolation | `c5f70076b6b0e3f5e8c9bccb75662f5d9433c61e`; fixture hashes and evidence artifact bound; primary checkout unchanged |
+| Task 1 | `completed` | disposable probe branch | `codex` | none | frozen base, prompts, grants, trial isolation | `fd555868ae188d5b8ee3d9a57727f6640a755d59`; fixture hashes and evidence artifact bound; primary checkout unchanged |
 | Task 2 | `completed` | fresh bypass worktree | `codex` | Task 1 | direct path bypass negative control | direct route selected; only bypass fixture changed; Secretary and CoS inactive; worktree retired |
-| Task 3 | `pending` | fresh worktrees per trial | `deepagents` | Task 1 | three matched alternating pairs | admission smoke `READY`; fresh Stage A trial evidence pending |
+| Task 3 | `pending` | fresh worktrees per trial | `deepagents` | Task 1 | corrected Pair 1 plus three matched alternating pairs | Prior Pair 1 `FAIL` retained; corrected follow-up worker passed semantic artifact proof with genuine worker-owned TaskResult; full matched evidence pending |
 | Task 4 | `pending` | fresh worktree per scenario | `unresolved` | Task 3 | boundary and recovery matrix | pending |
 | Task 5 | `pending` | current plan plus disposable resources | `unresolved` | Task 4 | separate result taxonomy, cleanup, final proof | pending |
 
@@ -248,7 +275,7 @@ base, fresh trial state, and no primary-checkout mutation.
 - Stop for: primary-checkout mutation, overlapping write ownership, shared trial state, unrelated file changes, or missing evidence-artifact ownership
 
 **Steps:**
-- [x] Step 1: Create a disposable branch from base `c5f70076b6b0e3f5e8c9bccb75662f5d9433c61e` and record exact branch/worktree identities.
+- [x] Step 1: Create a disposable branch from merged runtime base `fd555868ae188d5b8ee3d9a57727f6640a755d59` and record exact branch/worktree identities.
 - [x] Step 2: Create Workstream A fixtures `alpha.md`, `beta.md`, and `integration-a.md`; create Workstream B fixture `follow-up-b.md`; create bypass fixture `bypass.md`.
 - [x] Step 3: Freeze the initial fixture state and record `probe_base_sha`.
 - [x] Step 4: Freeze exact immutable copies or SHA-256 digests for objective, Secretary input, CoS input, Worker Alpha/Beta prompts, integration/follow-up prompts, runtime grants, model/profile selections, verification requirements, and `probe_base_sha`.
@@ -338,16 +365,17 @@ boundaries, and one true cross-workstream consequence.
 - Stop for: changed input digest, reused Git state, reused controller context, Secretary-issued Worker brief, Worker-written Docket state, unauthorized write, duplicate effect, or missing acceptance proof
 
 **Steps:**
-- [ ] Step 1: Pair 1 runs baseline then candidate; Pair 2 runs candidate then baseline; Pair 3 runs baseline then candidate.
+- [ ] Step 1: Pair 1 runs baseline then candidate; Pair 2 runs candidate then baseline; Pair 3 runs baseline then candidate. Pair 1's prior candidate failure remains retained as diagnostic evidence, not a valid pair result.
 - [ ] Step 2: For every run, start fresh from `probe_base_sha` with fresh Secretary/CoS/Worker contexts. Candidate Secretary and CoS remain separate sessions.
 - [ ] Step 3: Baseline runs CoS A/CoS B + Workers with no Secretary; the lead directly relays project dependency to CoS B. Candidate uses Secretary + CoS A/CoS B + Workers; the lead manually relays exact Secretary Attention Delta to CoS A and exact CoS A Coordination Delta back to Secretary when Workstream A releases Workstream B.
 - [ ] Step 4: Record `handoff_mode: manual-supervised`; measure human relay duration separately from Secretary reasoning, CoS coordination, Worker execution, and runtime receipt timing.
-- [ ] Step 5: Verify Alpha and Beta local completion stays inside Workstream A. Verify accepted Integration A creates exactly one reference-based project consequence to Secretary in candidate, then one bounded attention route to CoS B. Baseline records equivalent direct lead routing without Secretary.
+- [ ] Step 5: Verify Alpha and Beta local completion stays inside Workstream A. Verify accepted Integration A creates exactly one reference-based project consequence to Secretary in candidate, then one bounded attention route to CoS B. Baseline records equivalent direct lead routing without Secretary. Independently inspect every required artifact condition before recording CoS acceptance; worker/runtime completion evidence alone is insufficient.
 - [ ] Step 6: Run the same pre-baked local failure, contradicted assumption, tempting out-of-scope file, and incomplete-proof conditions in both variants.
 - [ ] Step 7: Record metrics: coordination startup latency from objective delivery to first Worker delivery; accepted completion latency from objective delivery to final CoS acceptance; Secretary/CoS/Worker turns; attempts; semantic cross-boundary messages; runtime receipts; human decisions; duplicate effects; boundary violations; unresolved obligations; and input digests.
 
 **Verification:**
 - [ ] Inspect every pair for identical input digests, base SHA, fresh contexts, acceptance criteria, and trial order.
+- [ ] Inspect every accepted artifact against its exact required semantic condition; classify any mismatch as `FAIL` or `BLOCKED` before comparing organizational value.
 - [ ] Inspect every cross-boundary message against ownership and changed-decision rules.
 - Expected: zero critical violations, no duplicate effects, correct acceptance, candidate one real Workstream A→Secretary→Workstream B consequence, baseline direct routing, and metrics separated by evidence class.
 
@@ -493,11 +521,11 @@ does not authorize Stage B transport implementation.
 
 Leave empty until execution:
 
-- Admission: `READY` — fresh disposable DeepAgents smoke `20261007-admission-smoke-r3` produced worker-owned `dcode-project.task-result.v1` with `status=completed`, settled checkpoint, verification references, exit `0`, confirmed cleanup, and Herdr `reported_completed`; evidence: `C:\tmp\project-os-secretary-probe\20261007-admission-smoke-r3-evidence.json`
+- Admission: `READY` — fresh post-merge disposable DeepAgents smoke `20261007-admission-smoke-r5` produced worker-owned `dcode-project.task-result.v1` with `status=completed`, settled checkpoint, verification references, exit `0`, confirmed cleanup, and Herdr `reported_completed`; evidence: `C:\tmp\project-os-secretary-probe\20261007-admission-smoke-r5-evidence.json`. Earlier r4 failed first on invalid grant bounds, then completed with wrapper-generated `unknown` proof; retained as failure evidence, not admission proof.
 - Correctness: `pending`
 - Value: `pending`
 - Recommendation: `pending`
-- Evidence artifact: `C:\tmp\project-os-secretary-probe\20261007-secretary-live-probe-r1\evidence.json` retained with admission section invalidated; fresh admission evidence retained at `C:\tmp\project-os-secretary-probe\20261007-admission-smoke-r3-evidence.json`
+- Evidence artifact: `C:\tmp\project-os-secretary-probe\20261007-secretary-live-probe-r1\evidence.json` retained through final verification; fresh post-merge admission evidence retained at `C:\tmp\project-os-secretary-probe\20261007-admission-smoke-r5\evidence.json`; corrected follow-up proof retained at `C:\tmp\herdr-result-22d9d6df08ee4b0493963472ce015075-hw6rrrgi\task-result.json` with worktree `C:\tmp\project-os-secretary-probe\20261007-stage-a-p1-corrected`; prior Pair 1 failure and r4 failure evidence remain retained for debugging traceability.
 - Handoff mode: `manual-supervised`
 - Transport readiness: `NOT_AVAILABLE`
 - Paseo: deferred
