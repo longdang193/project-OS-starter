@@ -22,6 +22,8 @@ PROJECT_EVENT_TYPES = frozenset(
     }
 )
 
+EventIdentity = tuple[str, str, str, str]
+
 NO_ACTION = "NO_ACTION"
 SECRETARY_ATTENTION = "SECRETARY_ATTENTION"
 RECONCILE = "RECONCILE"
@@ -49,12 +51,12 @@ class ReconciliationEvidence:
     current_anchor: str
     workstream_exists: bool = True
     controller_stale: bool = False
-    resolved_event_ids: frozenset[str] = frozenset()
-    superseded_event_ids: frozenset[str] = frozenset()
+    resolved_event_ids: frozenset[EventIdentity] = frozenset()
+    superseded_event_ids: frozenset[EventIdentity] = frozenset()
 
 
-def event_identity(hint: EventHint) -> str:
-    return f"{hint.source}:{hint.observed_identity}"
+def event_identity(hint: EventHint) -> EventIdentity:
+    return (hint.source, hint.workstream, hint.event_type, hint.observed_identity)
 
 
 def _ordering(hint: EventHint) -> int | None:
@@ -151,6 +153,7 @@ __all__ = [
     "BLOCKED",
     "CROSS_WORKSTREAM_CONFLICT",
     "DEPENDENCY_CHANGED",
+    "EventIdentity",
     "EXTERNAL_UNBLOCK",
     "EventHint",
     "INTENT_CHANGED",

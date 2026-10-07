@@ -3,6 +3,7 @@ import pytest
 from scripts.project_os_runtime.secretary_events import (
     BLOCKED,
     DEPENDENCY_CHANGED,
+    EXTERNAL_UNBLOCK,
     NO_ACTION,
     RECONCILE,
     ROUTINE_ACTIVITY,
@@ -10,6 +11,7 @@ from scripts.project_os_runtime.secretary_events import (
     EventHint,
     ReconciliationEvidence,
     coalesce_event_hints,
+    event_identity,
     reconcile_event_hint,
 )
 
@@ -25,7 +27,7 @@ def hint(
     return EventHint(source, event_type, "runtime", identity, anchor, sequence, evidence_refs)
 
 
-def evidence(anchor: str = "anchor-4", stale: bool = False, resolved: frozenset[str] = frozenset()) -> ReconciliationEvidence:
+def evidence(anchor: str = "anchor-4", stale: bool = False, resolved: frozenset = frozenset()) -> ReconciliationEvidence:
     return ReconciliationEvidence("runtime", anchor, controller_stale=stale, resolved_event_ids=resolved)
 
 
@@ -102,8 +104,21 @@ def test_explicit_resolution_suppresses_old_event() -> None:
     current = hint(anchor="anchor-3")
     assert reconcile_event_hint(
         current,
-        evidence(anchor="anchor-4", resolved=frozenset({current.source + ":" + current.observed_identity})),
+        evidence(anchor="anchor-4", resolved=frozenset({event_identity(current)})),
     ) == NO_ACTION
+
+
+def test_resolution_identity_includes_event_type() -> None:
+    current = hint(event_type=DEPENDENCY_CHANGED)
+    resolved = frozenset({event_identity(current)})
+
+    assert reconcile_event_hint(current, evidence(resolved=resolved)) == NO_ACTION
+    assert (
+        reconcile_event_hint(
+            hint(event_type=EXTERNAL_UNBLOCK), evidence(resolved=resolved)
+        )
+        == SECRETARY_ATTENTION
+    )
 
 
 def test_stale_controller_requires_reconciliation() -> None:

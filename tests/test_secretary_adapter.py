@@ -145,11 +145,25 @@ def test_activation_owner_is_bound_to_repository_and_canonical_work() -> None:
     assert adapter.activation_side_effects == 1
 
 
+def test_same_workstream_name_can_activate_in_different_repositories() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+
+    first = adapter.activate(binding(repository_identity="repo-a"), "activation-a")
+    second = adapter.activate(binding(repository_identity="repo-b"), "activation-b")
+
+    assert first.created is True
+    assert second.created is True
+    assert first.controller != second.controller
+    assert adapter.activation_side_effects == 2
+
+
 def test_delta_reference_fields_normalize_to_tuples() -> None:
-    payload = AttentionDelta("reconcile", ["constraint"], ["evidence"])
+    payload = AttentionDelta(
+        "reconcile", ["constraint", "constraint"], ["evidence", "earlier"]
+    )
 
     assert payload.constraint_refs == ("constraint",)
-    assert payload.evidence_refs == ("evidence",)
+    assert payload.evidence_refs == ("earlier", "evidence")
 
 
 def test_release_does_not_replay_active_ownership() -> None:

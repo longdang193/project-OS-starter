@@ -23,8 +23,8 @@ class AttentionDelta:
     decision_needed: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "constraint_refs", tuple(self.constraint_refs))
-        object.__setattr__(self, "evidence_refs", tuple(self.evidence_refs))
+        object.__setattr__(self, "constraint_refs", tuple(sorted(set(self.constraint_refs))))
+        object.__setattr__(self, "evidence_refs", tuple(sorted(set(self.evidence_refs))))
 
 
 @dataclass(frozen=True)
@@ -35,8 +35,8 @@ class CoordinationDelta:
     decision_needed: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "affected_workstreams", tuple(self.affected_workstreams))
-        object.__setattr__(self, "evidence_refs", tuple(self.evidence_refs))
+        object.__setattr__(self, "affected_workstreams", tuple(sorted(set(self.affected_workstreams))))
+        object.__setattr__(self, "evidence_refs", tuple(sorted(set(self.evidence_refs))))
 
 
 @dataclass(frozen=True)
@@ -123,7 +123,7 @@ class ControllerSessionJournal(Protocol):
     def lookup_controller(self, binding: ControllerBinding) -> ControllerRef | None:
         ...
 
-    def lookup_workstream(self, workstream: str) -> ControllerRef | None:
+    def lookup_owner(self, repository_identity: str, workstream: str) -> ControllerRef | None:
         ...
 
     def record_controller(self, controller: ControllerRef) -> None:
@@ -165,6 +165,7 @@ class InMemoryControllerSessionJournal:
     def __init__(self) -> None:
         self._activations: dict[str, ActivationReceipt] = {}
         self._controllers: dict[ControllerBinding, ControllerRef] = {}
+        self._owners: dict[tuple[str, str], ControllerRef] = {}
         self._deliveries: dict[tuple[str, str], str] = {}
 
     def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
@@ -181,18 +182,19 @@ class InMemoryControllerSessionJournal:
     def lookup_controller(self, binding: ControllerBinding) -> ControllerRef | None:
         return self._controllers.get(binding)
 
-    def lookup_workstream(self, workstream: str) -> ControllerRef | None:
-        for controller in self._controllers.values():
-            if controller.binding.workstream == workstream:
-                return controller
-        return None
+    def lookup_owner(self, repository_identity: str, workstream: str) -> ControllerRef | None:
+        return self._owners.get((repository_identity, workstream))
 
     def record_controller(self, controller: ControllerRef) -> None:
         self._controllers[controller.binding] = controller
+        self._owners[(controller.binding.repository_identity, controller.binding.workstream)] = controller
 
     def release_controller(self, controller: ControllerRef) -> None:
         if self._controllers.get(controller.binding) == controller:
             del self._controllers[controller.binding]
+        owner_key = (controller.binding.repository_identity, controller.binding.workstream)
+        if self._owners.get(owner_key) == controller:
+            del self._owners[owner_key]
         for activation_id, receipt in tuple(self._activations.items()):
             if receipt.controller == controller:
                 self._activations[activation_id] = replace(receipt, released=True)
@@ -215,7 +217,9 @@ class InMemoryControllerSessionAdapter:
     def resolve(self, binding: ControllerBinding) -> ResolveReceipt:
         controller = self.journal.lookup_controller(binding)
         if controller is None:
-            conflicting = self.journal.lookup_workstream(binding.workstream)
+            conflicting = self.journal.lookup_owner(
+                binding.repository_identity, binding.workstream
+            )
             if conflicting is not None:
                 return ResolveReceipt(
                     binding=binding,
@@ -245,7 +249,9 @@ class InMemoryControllerSessionAdapter:
 
         current = self.journal.lookup_controller(binding)
         if current is None:
-            current = self.journal.lookup_workstream(binding.workstream)
+            current = self.journal.lookup_owner(
+                binding.repository_identity, binding.workstream
+            )
         if current is not None:
             return self._activation_recovery(
                 binding, activation_id, "binding already has an active controller"

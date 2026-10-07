@@ -45,7 +45,7 @@ def test_warning_only_findings_do_not_block() -> None:
     assert not has_blocking_findings(findings)
 
 
-def test_selected_cosmetic_template_history_stays_warning() -> None:
+def test_completed_template_history_stays_warning_even_when_selected() -> None:
     assert (
         severity_for(
             "template_selection_missing",
@@ -54,6 +54,30 @@ def test_selected_cosmetic_template_history_stays_warning() -> None:
             consumed_by_current_work=True,
         )
         == "warning"
+    )
+
+
+def test_active_selected_template_metadata_blocks() -> None:
+    assert (
+        severity_for(
+            "template_selection_missing",
+            status="active",
+            selected=True,
+            consumed_by_current_work=True,
+        )
+        == "error"
+    )
+
+
+def test_execution_metadata_is_always_blocking() -> None:
+    assert (
+        severity_for(
+            "planning_execution_metadata_missing",
+            status="completed",
+            selected=False,
+            consumed_by_current_work=False,
+        )
+        == "error"
     )
 
 
