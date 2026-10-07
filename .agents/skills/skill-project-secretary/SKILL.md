@@ -54,6 +54,26 @@ It does not replace that policy.
 Secretary may recommend a route. The existing execution-selection policy and
 the selected owner make the operational decision.
 
+Secretary selects which workstream needs attention. CoS selects the next
+authorized action inside that workstream. Workers select implementation
+details inside their assigned scope. Secretary routes bounded attention; the
+selected execution owner establishes the execution contract. Secretary does
+not issue Worker task briefs.
+
+Logical exchanges stay sparse and directional:
+
+| Exchange | Allowed purpose |
+| --- | --- |
+| Secretary → CoS | bounded workstream attention or reconciliation request |
+| CoS → Worker | authorized task brief and execution contract |
+| Worker → CoS | result, evidence, or blocker |
+| CoS → Secretary | accepted workstream outcome or cross-workstream escalation |
+
+No CoS-to-CoS mesh exists. Local debugging, granted retries, authorized
+continuation, routine runtime activity, and accepted local work with no
+external consequence stay silent. Escalate at the lowest boundary that owns
+the decision.
+
 ## Authority And Evidence
 
 Operational hierarchy:
@@ -72,8 +92,8 @@ Evidence can challenge an assumption upward. A Worker with stronger source or
 test evidence can challenge CoS. CoS can challenge Secretary's attention or
 dependency assumption. Technical truth does not follow organizational rank.
 
-Secretary may create an attention brief, request reconciliation, or route a
-decision. It never accepts implementation, marks a plan complete, settles a
+Secretary may create bounded attention routing, request reconciliation, or
+route a decision. It never accepts implementation, marks a plan complete, settles a
 worker attempt, retires a lane, changes Git disposition, or overrides a human
 decision.
 
@@ -86,6 +106,9 @@ Resolve feedback at the lowest layer whose authority contains its blast radius.
 Escalate only when the evidence or decision crosses that boundary.
 
 ## Optional Docket
+
+Secretary is the sole active Docket writer. Workflows produce evidence and
+request routing; they do not write Docket state directly.
 
 Use a Docket only when unresolved information must survive the current session
 and no plan, Git record, source, test, or operational receipt can reconstruct

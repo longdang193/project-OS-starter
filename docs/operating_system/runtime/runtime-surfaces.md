@@ -179,11 +179,16 @@ resources remain caller-owned through `runtime.json`.
   hints requiring reconciliation, not proof of completion, cancellation,
   retirement, or failure.
 - The in-process Secretary adapter is a contract fake. Activation ownership is
-  keyed by repository and workstream; request fingerprints include canonical
-  work, expected branch/base, normalized objective, and evidence references.
-  Delivery receipt reuse requires the same controller and payload fingerprint.
-  Released receipts never restore active ownership. Only a transport-owned
-  durable journal may claim process-crash recovery.
+  keyed by the complete `ControllerBinding`: repository identity, canonical
+  work, workstream, expected branch, and expected base. `AttentionDelta` and
+  `CoordinationDelta` are communication payloads, not activation identity.
+  `CommunicationEnvelope` carries a separate `message_id` and canonical
+  evidence anchor. Activation reuse uses `activation_id`; delivery reuse uses
+  `message_id`, controller identity, binding, and payload fingerprint.
+  `ControllerSessionJournal` owns only in-memory receipts, active ownership,
+  delivery receipts, release state, and deterministic controller identity for
+  this contract fake. Released receipts never restore active ownership. Only a
+  transport-owned durable journal may claim process-crash recovery.
 - Secretary event hints use source-scoped identity. `observed_anchor` identifies
   canonical evidence and optional `source_sequence` orders observations within
   one source. Coalescing unions evidence references; older observations remain

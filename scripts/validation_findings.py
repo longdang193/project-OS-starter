@@ -18,6 +18,29 @@ HISTORICAL_WARNING_CODES = {
     "template_document_type_mismatch",
 }
 
+ALWAYS_WARNING_CODES = {
+    "template_selection_legacy_missing",
+    "template_selection_missing",
+}
+
+HISTORICAL_COSMETIC_CODES = {
+    "template_document_type_mismatch",
+}
+
+CONSUMED_BLOCKING_CODES = {
+    "planning_frontmatter_malformed",
+    "planning_authority_invalid",
+    "planning_dependency_invalid",
+    "planning_workspace_invalid",
+    "planning_proof_missing",
+    "planning_integrity_error",
+    "planning_security_error",
+    "planning_runtime_error",
+    "template_selection_invalid",
+    "template_required_section_missing",
+    "template_required_section_empty",
+}
+
 
 @dataclass(frozen=True)
 class ValidationFinding:
@@ -38,6 +61,12 @@ def severity_for(
     selected: bool,
     consumed_by_current_work: bool,
 ) -> Severity:
+    if code in ALWAYS_WARNING_CODES:
+        return "warning"
+    if code in HISTORICAL_COSMETIC_CODES and status in {"completed", "superseded"}:
+        return "warning"
+    if code in CONSUMED_BLOCKING_CODES:
+        return "error"
     if selected or consumed_by_current_work:
         return "error"
     if status in {"completed", "superseded"} and code in HISTORICAL_WARNING_CODES:
@@ -70,3 +99,16 @@ def reclassify(
 
 def has_blocking_findings(findings: Iterable[ValidationFinding]) -> bool:
     return any(finding.severity == "error" for finding in findings)
+
+
+__all__ = [
+    "ALWAYS_WARNING_CODES",
+    "CONSUMED_BLOCKING_CODES",
+    "HISTORICAL_WARNING_CODES",
+    "HISTORICAL_COSMETIC_CODES",
+    "Severity",
+    "ValidationFinding",
+    "has_blocking_findings",
+    "reclassify",
+    "severity_for",
+]

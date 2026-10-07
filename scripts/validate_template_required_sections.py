@@ -447,12 +447,16 @@ def report(findings: list[Finding]) -> int:
     if not findings:
         print("Template required-sections validation passed.")
         return 0
-    print("Template required-sections validation failed:")
+    blocking = has_blocking_findings(findings)
+    print(
+        "Template required-sections validation failed:"
+        if blocking
+        else "Template required-sections validation passed with warnings:"
+    )
     for finding in findings:
         print(f"- [{finding.severity}] {finding.code}: {finding.path} - {finding.message}")
-    if has_blocking_findings(findings):
+    if blocking:
         return 1
-    print("Template required-sections validation passed with warnings.")
     return 0
 
 

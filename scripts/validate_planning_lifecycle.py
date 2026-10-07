@@ -527,7 +527,7 @@ def validate_artifact(
         return reclassify(
             [
                 Finding(
-                    "planning_metadata_error",
+                    "planning_frontmatter_malformed",
                     rel,
                     f"invalid YAML frontmatter: {exc.__class__.__name__}",
                 )
@@ -538,7 +538,7 @@ def validate_artifact(
         )
     if payload is None:
         return reclassify(
-            [Finding("planning_metadata_error", rel, "missing valid YAML frontmatter")],
+            [Finding("planning_frontmatter_malformed", rel, "missing valid YAML frontmatter")],
             status=status,
             selected=selected,
             consumed_by_current_work=selected,
@@ -548,7 +548,7 @@ def validate_artifact(
     for field in get_required_fields(root, artifact_type):
         if field not in payload or payload[field] in (None, ""):
             findings.append(
-                Finding("planning_metadata_error", rel, f"missing required field `{field}`")
+                Finding("planning_required_metadata_missing", rel, f"missing required field `{field}`")
             )
 
     for field, expected in get_required_values(root, artifact_type).items():
@@ -627,12 +627,16 @@ def main() -> int:
         return 2
     findings = validate_planning_artifacts(root, Path(args.plan) if args.plan else None)
     if findings:
-        print("Planning artifact validation failed:")
+        blocking = has_blocking_findings(findings)
+        print(
+            "Planning artifact validation failed:"
+            if blocking
+            else "Planning validation passed with warnings:"
+        )
         for finding in findings:
             print(f"- [{finding.severity}] [{finding.code}] {finding.path}: {finding.message}")
-        if has_blocking_findings(findings):
+        if blocking:
             return 1
-        print("Planning artifact validation passed with warnings.")
         return 0
     print("Planning artifact validation passed.")
     return 0

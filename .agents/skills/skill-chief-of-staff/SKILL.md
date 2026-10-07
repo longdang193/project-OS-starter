@@ -212,6 +212,17 @@ mechanism is implied by this skill. Herdr lifecycle state is diagnostic runtime
 observation only. It does not prove task acceptance, update the ledger, release
 assignment ownership, or replace canonical work truth.
 
+Secretary selects which workstream needs attention. CoS selects the next
+authorized action inside that workstream. Workers select implementation
+details inside their assigned scope. CoS owns workstream-local attention,
+escalation, assignment, continuation, and acceptance; Secretary does not issue
+Worker task briefs or replace CoS decisions.
+
+CoS sends only authorized task briefs to Workers and returns accepted outcomes
+or cross-workstream escalations to Secretary. CoS-to-CoS mesh communication is
+not part of this contract; route conflicts through Secretary or the human
+decision owner at the lowest boundary that owns the decision.
+
 ### Attention Audit
 
 Attention Audit applies to both coordination modes. On each explicit CoS turn

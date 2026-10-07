@@ -26,6 +26,17 @@ def test_project_secretary_is_optional_attention_surface() -> None:
     assert "events are hints" in normalized
 
 
+def test_project_secretary_owns_routing_not_worker_execution() -> None:
+    skill = read(".agents/skills/skill-project-secretary/SKILL.md")
+    normalized = " ".join(skill.split())
+    assert "Secretary selects which workstream needs attention" in normalized
+    assert "CoS selects the next authorized action inside that workstream" in normalized
+    assert "Workers select implementation details inside their assigned scope" in normalized
+    assert "Secretary does not issue Worker task briefs" in normalized
+    assert "Secretary is the sole active Docket writer" in normalized
+    assert "No CoS-to-CoS mesh exists" in normalized
+
+
 def test_project_secretary_defines_right_sized_routing() -> None:
     skill = read(".agents/skills/skill-project-secretary/SKILL.md")
     normalized = " ".join(skill.split()).casefold()

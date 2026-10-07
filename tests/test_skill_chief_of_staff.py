@@ -399,3 +399,13 @@ def test_project_secretary_is_optional_and_does_not_replace_cos() -> None:
     assert "when absent, direct, bounded, plan-bound, and cos entry points operate unchanged" in normalized
     assert "does not add an executor, replace cos" in normalized
     assert "cos owns assignment, continuation, escalation, and acceptance" in normalized
+
+
+def test_cos_selects_workstream_action_and_keeps_worker_boundary() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    normalized = " ".join(skill.split())
+    assert "Secretary selects which workstream needs attention" in normalized
+    assert "CoS selects the next authorized action inside that workstream" in normalized
+    assert "Workers select implementation details inside their assigned scope" in normalized
+    assert "Secretary does not issue Worker task briefs" in normalized
+    assert "CoS-to-CoS mesh communication is not part of this contract" in normalized

@@ -43,3 +43,27 @@ def test_warning_only_findings_do_not_block() -> None:
     findings = [ValidationFinding("planning_metadata_error", "old.md", "legacy", "warning")]
 
     assert not has_blocking_findings(findings)
+
+
+def test_selected_cosmetic_template_history_stays_warning() -> None:
+    assert (
+        severity_for(
+            "template_selection_missing",
+            status="completed",
+            selected=True,
+            consumed_by_current_work=True,
+        )
+        == "warning"
+    )
+
+
+def test_safety_codes_remain_blocking_without_message_inspection() -> None:
+    assert (
+        severity_for(
+            "planning_authority_invalid",
+            status="completed",
+            selected=False,
+            consumed_by_current_work=False,
+        )
+        == "error"
+    )

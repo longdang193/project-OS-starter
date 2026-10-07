@@ -29,7 +29,7 @@ def evidence(anchor: str = "anchor-4", stale: bool = False, resolved: frozenset[
     return ReconciliationEvidence("runtime", anchor, controller_stale=stale, resolved_event_ids=resolved)
 
 
-def test_coalescer_keeps_newest_hint_for_same_identity() -> None:
+def test_coalescer_uses_source_sequence_for_same_identity() -> None:
     result = coalesce_event_hints([hint(anchor="anchor-4", sequence=4), hint(anchor="anchor-6", sequence=6)])
 
     assert len(result) == 1
@@ -50,6 +50,30 @@ def test_coalescer_unions_evidence_references() -> None:
 def test_coalescer_preserves_distinct_project_decisions() -> None:
     result = coalesce_event_hints(
         [hint(identity="event-1"), hint(identity="event-2")]
+    )
+
+    assert len(result) == 2
+
+
+def test_coalescer_preserves_conflicting_anchors_without_sequence() -> None:
+    result = coalesce_event_hints(
+        [hint(anchor="zz-old"), hint(anchor="aa-new")]
+    )
+
+    assert [item.observed_anchor for item in result] == ["aa-new", "zz-old"]
+
+
+def test_coalescer_preserves_equal_sequence_conflicts() -> None:
+    result = coalesce_event_hints(
+        [hint(anchor="anchor-a", sequence=4), hint(anchor="anchor-b", sequence=4)]
+    )
+
+    assert len(result) == 2
+
+
+def test_coalescer_preserves_one_missing_sequence_conflict() -> None:
+    result = coalesce_event_hints(
+        [hint(anchor="anchor-a", sequence=4), hint(anchor="anchor-b")]
     )
 
     assert len(result) == 2
