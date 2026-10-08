@@ -7,6 +7,13 @@ from typing import Any, Mapping
 
 
 SECRETARY_PROVIDER = "9router"
+SOURCE_PRODUCERS = {
+    "launch": "herdr_main_launcher",
+    "secretary": "secretary_live_runtime",
+    "task_result": "dcode-project",
+    "settlement": "project_os_runtime.attempt",
+    "acceptance": "cos",
+}
 REQUIRED_BINDINGS = (
     "pair_id",
     "arm",
@@ -44,7 +51,7 @@ REQUIRED_METRIC_KEYS = (
     "cost",
 )
 _SENSITIVE_KEY = re.compile(
-    r"(?:^|[_-])(?:authorization|api[_-]?key|password|secret|cookie|credential|raw[_-]?(?:body|header|response))$",
+    r"(?:^|[_-])(?:authorization(?:[_-]headers?)?|api[_-]?keys?|passwords?|secrets?|cookies?|credentials?|raw[_-]?(?:bodies?|headers?|prompts?|responses?|transport[_-]?bodies?))$",
     re.IGNORECASE,
 )
 
@@ -121,8 +128,9 @@ def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
     parsed = []
     for field in REQUIRED_TIMESTAMP_KEYS:
         parsed_value = _timestamp(timestamps.get(field), f"timestamps.{field}")
-        if parsed_value is not None:
-            parsed.append((field, parsed_value))
+        if parsed_value is None:
+            raise ReceiptValidationError(f"timestamps.{field} is required")
+        parsed.append((field, parsed_value))
     for (left_name, left), (right_name, right) in zip(parsed, parsed[1:]):
         if right < left:
             raise ReceiptValidationError(f"timestamps are not monotonic: {left_name}, {right_name}")
@@ -148,14 +156,16 @@ def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
     _text(metrics["acceptance_decision"], "metrics.acceptance_decision")
 
     sources = receipt.get("sources")
-    if not isinstance(sources, Mapping) or not sources:
-        raise ReceiptValidationError("sources must be a non-empty object")
+    if not isinstance(sources, Mapping) or set(sources) != set(SOURCE_PRODUCERS):
+        raise ReceiptValidationError("sources must include launch, secretary, task_result, settlement, and acceptance")
     for name, source in sources.items():
         if not isinstance(source, Mapping):
             raise ReceiptValidationError(f"sources.{name} must be an object")
-        _text(source.get("producer"), f"sources.{name}.producer")
-        for field in REQUIRED_BINDINGS + ("provider", "model"):
-            if field in source and source[field] != receipt.get(field):
+        if source.get("producer") != SOURCE_PRODUCERS[name]:
+            raise ReceiptValidationError(f"sources.{name}.producer is not authoritative")
+        for field in REQUIRED_BINDINGS + ("provider", "model", "controller_id", "session_id"):
+            _text(source.get(field), f"sources.{name}.{field}")
+            if source[field] != receipt.get(field):
                 raise ReceiptValidationError(f"sources.{name}.{field} mismatch")
 
     normalized = json.loads(json.dumps(receipt))

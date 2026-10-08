@@ -140,12 +140,91 @@ def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -
             "token_usage": "unknown",
             "cost": "unknown",
         },
-        sources={"secretary": {"producer": "secretary_live_runtime"}},
+        sources={
+            name: {
+                "producer": producer,
+                **common,
+                "provider": "9router",
+                "model": "combo-high",
+                "controller_id": receipt["controller_id"],
+                "session_id": receipt["session_id"],
+            }
+            for name, producer in {
+                "launch": "herdr_main_launcher",
+                "secretary": "secretary_live_runtime",
+                "task_result": "dcode-project",
+                "settlement": "project_os_runtime.attempt",
+                "acceptance": "cos",
+            }.items()
+        },
     )
 
     normalized = validate_receipt(receipt, manifest)
 
     assert normalized["live_receipt"]["valid"] is True
+
+
+@pytest.mark.parametrize("field", ["model", "controller_id", "session_id", "workstream", "checkpoint"])
+def test_validate_receipt_rejects_live_receipt_identity_mismatch(tmp_path: Path, field: str) -> None:
+    manifest = _manifest(tmp_path)
+    receipt = _receipt(tmp_path, "pair-1", "candidate", interventions=0, completion=100)
+    common = {name: receipt[name] for name in (
+        "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "workstream", "checkpoint",
+    )}
+    receipt["live_receipt"] = build_live_receipt(
+        binding=common,
+        runtime={
+            "provider": "9router",
+            "model": receipt["model"],
+            "controller_id": receipt["controller_id"],
+            "session_id": receipt["session_id"],
+        },
+        timestamps={
+            "run_started": "2026-10-08T10:00:00+00:00",
+            "cos_entry": "2026-10-08T10:00:01+00:00",
+            "secretary_entry": "2026-10-08T10:00:02+00:00",
+            "worker_entry": "2026-10-08T10:00:03+00:00",
+            "publication": "2026-10-08T10:00:40+00:00",
+            "settlement": "2026-10-08T10:00:50+00:00",
+            "acceptance": "2026-10-08T10:01:00+00:00",
+            "secretary_exit": "2026-10-08T10:01:05+00:00",
+            "cos_exit": "2026-10-08T10:01:08+00:00",
+            "run_finished": "2026-10-08T10:01:10+00:00",
+        },
+        metrics={
+            "cos_turns": 2,
+            "secretary_turns": 1,
+            "human_interventions": 0,
+            "publication_success": True,
+            "settlement_proven": True,
+            "acceptance_decision": "PASS",
+            "token_usage": "unknown",
+            "cost": "unknown",
+        },
+        sources={
+            name: {
+                "producer": producer,
+                **common,
+                "provider": "9router",
+                "model": receipt["model"],
+                "controller_id": receipt["controller_id"],
+                "session_id": receipt["session_id"],
+            }
+            for name, producer in {
+                "launch": "herdr_main_launcher",
+                "secretary": "secretary_live_runtime",
+                "task_result": "dcode-project",
+                "settlement": "project_os_runtime.attempt",
+                "acceptance": "cos",
+            }.items()
+        },
+    )
+    receipt["live_receipt"][field] = "mismatch"
+
+    with pytest.raises(PilotReceiptError, match=f"{field} mismatch"):
+        validate_receipt(receipt, manifest)
 
 
 def test_validate_receipt_rejects_relabelled_historical_evidence(tmp_path: Path) -> None:

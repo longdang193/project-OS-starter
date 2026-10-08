@@ -2,7 +2,7 @@
 layer: change
 artifact_type: plan
 contract_version: "1"
-status: completed
+status: active
 template_id: implementation-plan
 name: secretary-live-runtime-and-evidence-surface
 targets:
@@ -112,16 +112,16 @@ no benefit is inferred from deterministic or partial data.
 - Base commit: `581844d` (merged Secretary live-evidence pilot baseline).
 - Expected workspace: tracked clean before execution; preserve unrelated untracked files and prior pilot artifacts.
 - Next action: preserve validated smoke receipt and explicit trial disposition.
-- Blockers: none
-- Residual disposition: matched-trial efficiency remains `INCONCLUSIVE` because no correctness-gated Worker/publication/settlement/acceptance pair was available.
+- Blockers: live Secretary runtime completion receipt unavailable; configured `9router` route only produced submission/target-resolution evidence.
+- Residual disposition: `BLOCKED_CAPABILITY`; no attributable live Secretary execution or efficiency claim.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current | `codex` | none | owned launch boundary and route inventory | `capability-inventory.json` |
 | Task 2 | `completed` | current | `codex` | Task 1 | bounded Herdr/Codex launch and binding tests | launch tests and sanitized launch receipt |
 | Task 3 | `completed` | current | `codex` | Task 2 | producer-bound sanitized receipt contract | `receipt-schema.json` and focused tests |
-| Task 4 | `completed` | current | `codex` | Task 2, Task 3 | one attributable live smoke receipt | `smoke-receipt.json` |
-| Task 5 | `completed` | current | `codex` | Task 4 | correctness-gated matched trials | `workload-manifest.json` and `comparison-report.md` (`INCONCLUSIVE`, 0 pairs) |
+| Task 4 | `blocked` | current | `codex` | Task 2, Task 3 | one attributable live smoke receipt | `smoke-receipt.json` (`BLOCKED_CAPABILITY`) |
+| Task 5 | `blocked` | current | `codex` | Task 4 | correctness-gated matched trials | `workload-manifest.json` and `comparison-report.md` (`BLOCKED_CAPABILITY`, 0 pairs) |
 | Task 6 | `completed` | current | `codex` | Task 1–5 | final reconciliation and fresh verification | test and validator output |
 
 ## Task Breakdown

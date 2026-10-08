@@ -58,11 +58,32 @@ def _receipt(**overrides: object) -> dict[str, object]:
             "cost": "unknown",
         },
         sources={
-            "launch": {"producer": "herdr_main_launcher"},
-            "secretary": {"producer": "secretary_live_runtime"},
-            "task_result": {"producer": "dcode-project"},
-            "settlement": {"producer": "project_os_runtime.attempt"},
-            "acceptance": {"producer": "cos"},
+            name: {
+                "producer": producer,
+                "pair_id": "pair-1",
+                "arm": "candidate",
+                "run_id": "run-1",
+                "attempt_id": "attempt-1",
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "repository_identity": "repo/example",
+                "plan_identity": "plan/example",
+                "git_revision": "581844d",
+                "worktree": "C:/worktree",
+                "workstream": "secretary",
+                "checkpoint": "plan-rev-1:task-1",
+                "provider": "9router",
+                "model": "gpt-test",
+                "controller_id": "cos-1",
+                "session_id": "session-1",
+            }
+            for name, producer in {
+                "launch": "herdr_main_launcher",
+                "secretary": "secretary_live_runtime",
+                "task_result": "dcode-project",
+                "settlement": "project_os_runtime.attempt",
+                "acceptance": "cos",
+            }.items()
         },
     )
 
@@ -98,4 +119,37 @@ def test_live_receipt_rejects_secret_bearing_payload() -> None:
     receipt["sources"]["secretary"]["authorization"] = "Bearer secret"
 
     with pytest.raises(ReceiptValidationError, match="sensitive"):
+        validate_live_receipt(receipt)
+
+
+@pytest.mark.parametrize("field", ["credentials", "raw_responses", "authorization_headers"])
+def test_live_receipt_rejects_plural_sensitive_fields(field: str) -> None:
+    receipt = _receipt()
+    receipt["sources"]["secretary"][field] = "secret"
+
+    with pytest.raises(ReceiptValidationError, match="sensitive"):
+        validate_live_receipt(receipt)
+
+
+def test_live_receipt_requires_every_timestamp() -> None:
+    receipt = _receipt()
+    del receipt["timestamps"]["acceptance"]
+
+    with pytest.raises(ReceiptValidationError, match="timestamps.acceptance"):
+        validate_live_receipt(receipt)
+
+
+def test_live_receipt_rejects_unknown_source_producer() -> None:
+    receipt = _receipt()
+    receipt["sources"]["secretary"]["producer"] = "unknown"
+
+    with pytest.raises(ReceiptValidationError, match="producer"):
+        validate_live_receipt(receipt)
+
+
+def test_live_receipt_requires_source_bindings() -> None:
+    receipt = _receipt()
+    del receipt["sources"]["secretary"]["session_id"]
+
+    with pytest.raises(ReceiptValidationError, match="session_id"):
         validate_live_receipt(receipt)

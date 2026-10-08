@@ -24,6 +24,12 @@
     "settlement": "project_os_runtime.attempt",
     "acceptance": "cos"
   },
+  "source_binding_fields": [
+    "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+    "repository_identity", "plan_identity", "git_revision", "worktree",
+    "workstream", "checkpoint", "provider", "model", "controller_id",
+    "session_id"
+  ],
   "redacted_fields": [
     "credentials", "authorization_headers", "raw_prompts", "raw_responses",
     "raw_transport_bodies"

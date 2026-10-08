@@ -34,6 +34,7 @@ _SAFE_ASSIGNMENT_KEYS = {
     "failure_kind",
     "reconciliation_required",
 }
+_RUNTIME_BINDING_KEYS = ("task_id", "plan_revision", "attempt_id", "run_id")
 
 
 def _required_text(value: object, label: str) -> str:
@@ -155,6 +156,38 @@ def select_launcher_payload(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     return selected
 
 
+def _observed_runtime(payload: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    runtime = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
+    if not isinstance(runtime, Mapping) or runtime.get("observed") is not True:
+        return None
+    return runtime
+
+
+def _binding_matches(request: SecretaryLaunchRequest, runtime: Mapping[str, Any], assignment: Mapping[str, Any] | None) -> bool:
+    expected = {key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS}
+    if any(runtime.get(key) != value for key, value in expected.items()):
+        return False
+    return not isinstance(assignment, Mapping) or assignment.get("attempt_id") in (None, request.attempt_id)
+
+
+def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str, Any] | None) -> bool:
+    if runtime is None or not isinstance(payload, Mapping):
+        return False
+    assignment = payload.get("assignment")
+    execution = assignment.get("execution") if isinstance(assignment, Mapping) else None
+    task_result = assignment.get("task_result") if isinstance(assignment, Mapping) else None
+    return (
+        isinstance(assignment, Mapping)
+        and assignment.get("status") == "completed"
+        and isinstance(execution, Mapping)
+        and execution.get("state") == "completed"
+        and isinstance(task_result, Mapping)
+        and task_result.get("state") == "reported_completed"
+        and isinstance(runtime.get("timestamps"), Mapping)
+        and isinstance(runtime.get("metrics"), Mapping)
+    )
+
+
 def sanitize_launcher_result(
     request: SecretaryLaunchRequest,
     *,
@@ -171,17 +204,34 @@ def sanitize_launcher_result(
     }
     codex = payload.get("codex") if isinstance(payload, Mapping) else None
     herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
-    structured_binding = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
-    if isinstance(structured_binding, Mapping):
-        structured_binding = {
-            field: structured_binding.get(field)
-            for field in ("task_id", "plan_revision", "attempt_id", "run_id")
+    raw_runtime = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
+    observed_runtime = _observed_runtime(payload)
+    structured_binding = (
+        {
+            **{field: raw_runtime.get(field) for field in _RUNTIME_BINDING_KEYS},
+            **(
+                {
+                    "observed": True,
+                    "timestamps": dict(observed_runtime.get("timestamps", {})),
+                    "metrics": dict(observed_runtime.get("metrics", {})),
+                }
+                if isinstance(observed_runtime, Mapping)
+                else {}
+            ),
         }
-    else:
-        structured_binding = None
+        if isinstance(raw_runtime, Mapping)
+        else None
+    )
+    live_attributed = (
+        returncode == 0
+        and observed_runtime is not None
+        and _binding_matches(request, observed_runtime, assignment if isinstance(assignment, Mapping) else None)
+        and _completion_observed(payload, observed_runtime)
+    )
+    observed_metrics = observed_runtime.get("metrics") if isinstance(observed_runtime, Mapping) else None
     return {
         "schema_version": "secretary-live-runtime-v1",
-        "evidence_provenance": "live-attributed" if returncode == 0 else "capability-probe",
+        "evidence_provenance": "live-attributed" if live_attributed else "capability-probe",
         "provider": request.provider,
         "task_id": request.task_id,
         "plan_revision": request.plan_revision,
@@ -205,16 +255,14 @@ def sanitize_launcher_result(
             "run_finished": finished_at,
         },
         "metrics": {
-            "cos_turns": "unknown",
-            "secretary_turns": 1 if returncode == 0 else 0,
-            "human_interventions": "unknown",
-            "publication_success": "unknown",
-            "settlement_proven": "unknown",
-            "acceptance_decision": "unknown",
-            "token_usage": "unknown",
-            "cost": "unknown",
+            key: observed_metrics.get(key, "unknown") if isinstance(observed_metrics, Mapping) else "unknown"
+            for key in (
+                "cos_turns", "secretary_turns", "human_interventions", "publication_success",
+                "settlement_proven", "acceptance_decision", "token_usage", "cost",
+            )
         },
-        "disposition": "READY" if returncode == 0 else "BLOCKED_CAPABILITY",
+        "disposition": "READY" if live_attributed else "BLOCKED_CAPABILITY",
+        "failure_kind": None if live_attributed else "runtime_completion_evidence_missing",
     }
 
 
@@ -245,6 +293,13 @@ def _smoke_receipt(
     request: SecretaryLaunchRequest,
     result: Mapping[str, Any],
 ) -> dict[str, Any]:
+    if result.get("evidence_provenance") != "live-attributed":
+        return {
+            "schema_version": "secretary-live-runtime-receipt-v1",
+            "disposition": "BLOCKED_CAPABILITY",
+            "evidence_provenance": "capability-probe",
+            "reason": result.get("failure_kind", "runtime_completion_evidence_missing"),
+        }
     runtime_identity = result.get("runtime_identity")
     if not isinstance(runtime_identity, Mapping):
         runtime_identity = {}
@@ -268,38 +323,28 @@ def _smoke_receipt(
         "controller_id": "cos-supervised",
         "session_id": runtime_identity.get("session") or "unknown",
     }
-    timestamps = result.get("timestamps")
+    structured_runtime = runtime_identity.get("secretary_runtime") if isinstance(runtime_identity, Mapping) else None
+    timestamps = structured_runtime.get("timestamps") if isinstance(structured_runtime, Mapping) else None
     if not isinstance(timestamps, Mapping):
-        timestamps = {}
+        raise RuntimeError("live Secretary receipt missing observed timestamps")
+    observed_metrics = structured_runtime.get("metrics") if isinstance(structured_runtime, Mapping) else None
+    if not isinstance(observed_metrics, Mapping):
+        raise RuntimeError("live Secretary receipt missing observed metrics")
     return validate_live_receipt(
         build_live_receipt(
             binding=binding,
             runtime=runtime,
             timestamps={
                 "run_started": timestamps.get("run_started"),
-                "cos_entry": None,
-                "secretary_entry": timestamps.get("run_started"),
-                "worker_entry": None,
-                "publication": None,
-                "settlement": None,
-                "acceptance": None,
-                "secretary_exit": timestamps.get("run_finished"),
-                "cos_exit": None,
-                "run_finished": timestamps.get("run_finished"),
+                **timestamps,
             },
-            metrics={
-                "cos_turns": "unknown",
-                "secretary_turns": result.get("metrics", {}).get("secretary_turns", "unknown"),
-                "human_interventions": "unknown",
-                "publication_success": "unknown",
-                "settlement_proven": "unknown",
-                "acceptance_decision": "unknown",
-                "token_usage": "unknown",
-                "cost": "unknown",
-            },
+            metrics=observed_metrics,
             sources={
                 "launch": {"producer": "herdr_main_launcher", **binding, **runtime},
                 "secretary": {"producer": "secretary_live_runtime", **binding, **runtime},
+                "task_result": {"producer": "dcode-project", **binding, **runtime},
+                "settlement": {"producer": "project_os_runtime.attempt", **binding, **runtime},
+                "acceptance": {"producer": "cos", **binding, **runtime},
             },
         )
     )

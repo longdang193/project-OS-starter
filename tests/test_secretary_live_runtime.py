@@ -98,6 +98,56 @@ def test_sanitize_launcher_result_preserves_structured_runtime_binding() -> None
     assert result["runtime_identity"]["secretary_runtime"]["run_id"] == "run-1"
 
 
+def test_sanitize_launcher_result_rejects_submission_as_live_execution() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "assignment": {
+                "status": "submitted",
+                "attempt_id": "attempt-1",
+            },
+            "secretary_runtime": {
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+            },
+        },
+    )
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["evidence_provenance"] == "capability-probe"
+    assert result["metrics"]["secretary_turns"] == "unknown"
+
+
+def test_sanitize_launcher_result_rejects_mismatched_observed_binding() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "assignment": {
+                "status": "completed",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {"state": "reported_completed"},
+            },
+            "secretary_runtime": {
+                "observed": True,
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-other",
+                "timestamps": {"run_started": "2026-10-08T10:00:00+00:00"},
+                "metrics": {"secretary_turns": 1},
+            },
+        },
+    )
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["evidence_provenance"] == "capability-probe"
+
+
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
     payload = select_launcher_payload(
         [

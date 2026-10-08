@@ -214,6 +214,12 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
             "plan_identity",
             "git_revision",
             "worktree",
+            "workstream",
+            "checkpoint",
+            "model",
+            "controller_id",
+            "session_id",
+            "provider",
         ):
             if normalized_live_receipt.get(field) != receipt.get(field):
                 raise PilotReceiptError(f"live receipt {field} mismatch")
