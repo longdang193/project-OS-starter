@@ -1065,7 +1065,7 @@ def _classify_deepagents_outcome(
             "failed": "reported_failed",
         }.get(str(task_result.get("status")), "unverified")
         if (
-            task_result.get("producer") == "dcode-project"
+            task_result.get("producer") in {"deepagents-worker", "dcode-project"}
             and task_result.get("status") == "completed"
             and task_result.get("checkpoint") is None
             and not (

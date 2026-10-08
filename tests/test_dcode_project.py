@@ -551,7 +551,52 @@ def test_deepagents_main_demotes_missing_or_malformed_worker_task_result(
     payload = json.loads(task_result_file.read_text(encoding="utf-8"))
     assert payload["producer"] == "dcode-project"
     assert payload["status"] == "unknown"
-    assert payload["remaining_work"] == ["semantic task result unavailable"]
+    assert payload["remaining_work"] == ["task result malformed"]
+    assert payload["progress"]["publication_diagnostic"] == {"reason": "task result malformed"}
+
+
+def test_deepagents_main_rejects_unauthorized_worker_producer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    task_result_file.write_text(
+        json.dumps(
+            {
+                "schema": "dcode-project.task-result.v1",
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "task_sha256": "a" * 64,
+                "grant_digest": "b" * 64,
+                "producer": "untrusted-worker",
+                "status": "completed",
+                "progress": {},
+                "checkpoint": {"revision": "deadbeef"},
+                "remaining_work": [],
+                "verification": {"references": ["tests/test_fixture.py"]},
+                "continuation": {"requested": False},
+                "accepted": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", "attempt-1",
+        "--assignment-id", "assignment-1", "--repository-identity", "repo-1",
+        "--task-sha256", "a" * 64, "--grant-digest", "b" * 64,
+    ]) == 0
+
+    payload = json.loads(task_result_file.read_text(encoding="utf-8"))
+    assert payload["producer"] == "dcode-project"
+    assert payload["progress"]["publication_diagnostic"] == {
+        "reason": "task result producer unauthorized"
+    }
 
 
 def test_deepagents_main_publishes_receipt_after_cleanup(
