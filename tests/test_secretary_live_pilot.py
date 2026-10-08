@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -10,6 +12,7 @@ from scripts.secretary_live_pilot import (
     prepare_manifest,
     validate_receipt,
 )
+from scripts.project_os_runtime.secretary_receipts import build_live_receipt
 
 
 def _manifest(tmp_path: Path) -> dict[str, object]:
@@ -104,6 +107,47 @@ def test_validate_receipt_requires_producer_owned_sources(tmp_path: Path) -> Non
     assert len(normalized["source_digests"]) == 4
 
 
+def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    receipt = _receipt(tmp_path, "pair-1", "candidate", interventions=0, completion=100)
+    common = {field: receipt[field] for field in (
+        "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "workstream", "checkpoint",
+    )}
+    receipt["live_receipt"] = build_live_receipt(
+        binding=common,
+        runtime={"provider": "9router", "model": "combo-high", "controller_id": receipt["controller_id"], "session_id": receipt["session_id"]},
+        timestamps={
+            "run_started": "2026-10-08T10:00:00+00:00",
+            "cos_entry": "2026-10-08T10:00:01+00:00",
+            "secretary_entry": "2026-10-08T10:00:02+00:00",
+            "worker_entry": "2026-10-08T10:00:03+00:00",
+            "publication": "2026-10-08T10:00:40+00:00",
+            "settlement": "2026-10-08T10:00:50+00:00",
+            "acceptance": "2026-10-08T10:01:00+00:00",
+            "secretary_exit": "2026-10-08T10:01:05+00:00",
+            "cos_exit": "2026-10-08T10:01:08+00:00",
+            "run_finished": "2026-10-08T10:01:10+00:00",
+        },
+        metrics={
+            "cos_turns": 2,
+            "secretary_turns": 1,
+            "human_interventions": 0,
+            "publication_success": True,
+            "settlement_proven": True,
+            "acceptance_decision": "PASS",
+            "token_usage": "unknown",
+            "cost": "unknown",
+        },
+        sources={"secretary": {"producer": "secretary_live_runtime"}},
+    )
+
+    normalized = validate_receipt(receipt, manifest)
+
+    assert normalized["live_receipt"]["valid"] is True
+
+
 def test_validate_receipt_rejects_relabelled_historical_evidence(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     receipt = _receipt(tmp_path, "pair-1", "baseline", interventions=1, completion=100)
@@ -192,3 +236,15 @@ def test_compare_records_is_inconclusive_below_minimum_pairs(tmp_path: Path) -> 
 
 def test_compare_records_stops_on_blocked_capability(tmp_path: Path) -> None:
     assert compare_records([], _manifest(tmp_path), capability_status="BLOCKED_CAPABILITY")["classification"] == "BLOCKED_CAPABILITY"
+
+
+def test_pilot_script_supports_direct_execution() -> None:
+    result = subprocess.run(
+        [sys.executable, "-B", "scripts/secretary_live_pilot.py", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "prepare" in result.stdout

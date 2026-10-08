@@ -1,0 +1,36 @@
+{
+  "arms": [
+    "baseline",
+    "candidate"
+  ],
+  "benefit_min_intervention_reduction": 1,
+  "checkpoint": "secretary-live-runtime-v1:Task-5-Matched-Trials:63d2d377ddb75b2d3eb4b028dc4ae582b12691ff26ca7f39103dd909c6b4c7dd",
+  "git_revision": "581844d",
+  "max_arm_runs": 10,
+  "max_attempted_pairs": 5,
+  "max_candidate_completion_regression": 0.1,
+  "max_total_wall_clock_minutes": 180,
+  "minimum_valid_pairs": 3,
+  "plan_identity": "secretary-live-runtime-and-evidence-surface",
+  "plan_revision": "secretary-live-runtime-v1",
+  "primary_metric": "human_interventions_per_accepted_workstream",
+  "repository_identity": "longdang193/project-OS-starter",
+  "schema_version": "secretary-live-pilot-v1",
+  "task_id": "Task-5-Matched-Trials",
+  "workload_digest": "63d2d377ddb75b2d3eb4b028dc4ae582b12691ff26ca7f39103dd909c6b4c7dd",
+  "workstream": "secretary-live-runtime",
+  "workload": {
+    "dependency": "runtime-evidence-to-acceptance",
+    "task_order": [
+      "launch Secretary receipt",
+      "validate Worker publication",
+      "settle attempt",
+      "CoS acceptance"
+    ],
+    "worker_profile": "normal",
+    "provider": "9router",
+    "model": "combo-normal",
+    "correctness_gate": "publication, settlement, acceptance, no duplicate execution, no unauthorized write",
+    "fresh_worktrees": true
+  }
+}

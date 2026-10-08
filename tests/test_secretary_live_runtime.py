@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+from scripts.secretary_live_runtime import (
+    SECRETARY_PROVIDER,
+    SecretaryLaunchRequest,
+    build_launcher_command,
+    sanitize_launcher_result,
+    select_launcher_payload,
+)
+
+
+def request(**overrides: object) -> SecretaryLaunchRequest:
+    values: dict[str, object] = {
+        "task_id": "task-1",
+        "plan_revision": "plan-rev-1",
+        "attempt_id": "attempt-1",
+        "run_id": "run-1",
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "git_revision": "581844d",
+        "worktree": Path("C:/worktree"),
+        "expected_base": "581844d",
+        "task": "Read-only Secretary attention probe.",
+        "codex_home": Path("C:/Users/example/.codex"),
+    }
+    values.update(overrides)
+    return SecretaryLaunchRequest(**values)
+
+
+def test_launch_request_requires_secretary_provider() -> None:
+    with pytest.raises(ValueError, match="9router"):
+        request(provider="other-provider")
+
+
+def test_launcher_command_binds_ids_and_configured_codex_home() -> None:
+    command = build_launcher_command(request())
+
+    assert "--executor" in command
+    assert command[command.index("--executor") + 1] == "codex"
+    assert "--codex-home" in command
+    assert command[command.index("--codex-home") + 1] == str(Path("C:/Users/example/.codex"))
+    task = command[command.index("--task") + 1]
+    for value in ("task-1", "plan-rev-1", "attempt-1", "run-1"):
+        assert value in task
+    for option, value in (
+        ("--secretary-task-id", "task-1"),
+        ("--secretary-plan-revision", "plan-rev-1"),
+        ("--secretary-attempt-id", "attempt-1"),
+        ("--secretary-run-id", "run-1"),
+    ):
+        assert command[command.index(option) + 1] == value
+    assert "--assignment-id" not in command
+
+
+def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "assignment": {"status": "completed", "attempt_id": "attempt-1"},
+            "stdout": "Authorization: bearer secret-value",
+            "stderr": "raw response body",
+            "api_key": "secret-value",
+        },
+    )
+
+    assert result["provider"] == SECRETARY_PROVIDER
+    assert result["task_id"] == "task-1"
+    assert result["plan_revision"] == "plan-rev-1"
+    assert result["attempt_id"] == "attempt-1"
+    assert result["run_id"] == "run-1"
+    assert "stdout" not in result
+    assert "stderr" not in result
+    assert "api_key" not in result
+    assert "secret-value" not in str(result)
+
+
+def test_sanitize_launcher_result_preserves_structured_runtime_binding() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "secretary_runtime": {
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+            }
+        },
+    )
+
+    assert result["runtime_identity"]["secretary_runtime"]["run_id"] == "run-1"
+
+
+def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
+    payload = select_launcher_payload(
+        [
+            {
+                "herdr": {"agent_name": "secretary-main", "session": "project-os", "pane": "w4:p1"},
+                "codex": {"version": "codex-cli 0.154.0"},
+                "secretary_runtime": {"run_id": "run-1"},
+            },
+            {"assignment": {"status": "submitted", "attempt_id": "attempt-1"}},
+        ]
+    )
+
+    assert payload["herdr"]["agent_name"] == "secretary-main"
+    assert payload["secretary_runtime"]["run_id"] == "run-1"
+    assert payload["assignment"]["status"] == "submitted"
+
+
+def test_runtime_script_runs_directly_from_repository_root() -> None:
+    completed = subprocess.run(
+        [sys.executable, "scripts/secretary_live_runtime.py", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "smoke" in completed.stdout

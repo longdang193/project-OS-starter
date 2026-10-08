@@ -200,6 +200,14 @@ resources remain caller-owned through `runtime.json`.
   delivery receipts, release state, and deterministic controller identity for
   this contract fake. Released receipts never restore active ownership. Only a
   transport-owned durable journal may claim process-crash recovery.
+- The bounded live Secretary wrapper is `scripts/secretary_live_runtime.py`.
+  It launches through `scripts/herdr_main_launcher.py`, resolves one configured
+  `CODEX_HOME` containing `config.toml` and `auth.json`, requires provider
+  `9router`, and emits sanitized producer-bound receipts. Live launch requires
+  an existing Herdr pane matching the requested worktree; missing target
+  resolution is `BLOCKED_CAPABILITY`, not permission to use fallback transport.
+  Receipt validity does not prove Worker publication, settlement, or CoS
+  acceptance.
 - Secretary event hints use canonical identity `(source, workstream, event_type,
   observed_identity)`. `observed_anchor` identifies canonical evidence and
   optional `source_sequence` orders observations within one source. Coalescing

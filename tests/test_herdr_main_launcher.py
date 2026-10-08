@@ -55,6 +55,30 @@ def _confirmed_task_result(status: str = "completed") -> dict[str, object]:
     return {"state": "confirmed", "status": status}
 
 
+def test_secretary_runtime_binding_requires_all_identity_fields() -> None:
+    binding = LAUNCHER._normalize_secretary_runtime_binding(
+        task_id="task-1",
+        plan_revision="plan-1",
+        attempt_id="attempt-1",
+        run_id="run-1",
+    )
+
+    assert binding == {
+        "task_id": "task-1",
+        "plan_revision": "plan-1",
+        "attempt_id": "attempt-1",
+        "run_id": "run-1",
+    }
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="all four"):
+        LAUNCHER._normalize_secretary_runtime_binding(
+            task_id="task-1",
+            plan_revision="plan-1",
+            attempt_id=None,
+            run_id="run-1",
+        )
+
+
 def test_deepagents_classification_ignores_pane_failure_after_structured_success() -> None:
     result = LAUNCHER._classify_deepagents_outcome(
         delivery={"state": "delivered"},

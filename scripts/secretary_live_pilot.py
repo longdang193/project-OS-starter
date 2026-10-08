@@ -8,6 +8,17 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Mapping
 
+try:
+    from scripts.project_os_runtime.secretary_receipts import (
+        ReceiptValidationError,
+        validate_live_receipt,
+    )
+except ModuleNotFoundError:
+    from project_os_runtime.secretary_receipts import (
+        ReceiptValidationError,
+        validate_live_receipt,
+    )
+
 
 DEFAULT_MANIFEST = {
     "schema_version": "secretary-live-pilot-v1",
@@ -186,6 +197,29 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
         if receipt[field] != manifest.get(field):
             raise PilotReceiptError(f"receipt {field} does not match workload")
 
+    live_receipt = receipt.get("live_receipt")
+    if live_receipt is not None:
+        try:
+            normalized_live_receipt = validate_live_receipt(live_receipt)
+        except ReceiptValidationError as exc:
+            raise PilotReceiptError(f"live receipt invalid: {exc}") from exc
+        for field in (
+            "pair_id",
+            "arm",
+            "run_id",
+            "attempt_id",
+            "task_id",
+            "plan_revision",
+            "repository_identity",
+            "plan_identity",
+            "git_revision",
+            "worktree",
+        ):
+            if normalized_live_receipt.get(field) != receipt.get(field):
+                raise PilotReceiptError(f"live receipt {field} mismatch")
+    else:
+        normalized_live_receipt = None
+
     timestamps = receipt["timestamps"]
     if not isinstance(timestamps, Mapping):
         raise PilotReceiptError("timestamps must be an object")
@@ -242,12 +276,15 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
     supplied_digests = receipt.get("source_digests")
     if supplied_digests is not None and supplied_digests != source_digests:
         raise PilotReceiptError("source digest mismatch")
-    return {
+    result = {
         **dict(receipt),
         "valid": True,
         "evidence_provenance": "live-attributed",
         "source_digests": source_digests,
     }
+    if normalized_live_receipt is not None:
+        result["live_receipt"] = normalized_live_receipt
+    return result
 
 
 def compare_records(
