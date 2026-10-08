@@ -28,7 +28,7 @@
     "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
     "repository_identity", "plan_identity", "git_revision", "worktree",
     "workstream", "checkpoint", "provider", "model", "controller_id",
-    "session_id"
+    "session_id", "source_ref", "source_digest"
   ],
   "redacted_fields": [
     "credentials", "authorization_headers", "raw_prompts", "raw_responses",

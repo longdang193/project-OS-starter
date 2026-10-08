@@ -47,6 +47,7 @@ _OBSERVED_METRIC_KEYS = (
 _SOURCE_KEYS = ("launch", "secretary", "task_result", "settlement", "acceptance")
 _SOURCE_SAFE_FIELDS = {
     "producer",
+    "source_ref", "source_digest",
     "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
     "repository_identity", "plan_identity", "git_revision", "worktree",
     "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
@@ -164,11 +165,14 @@ def _json_payloads(output: str) -> list[dict[str, Any]]:
 def select_launcher_payload(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     selected: dict[str, Any] = {}
     for payload in payloads:
-        if any(key in payload for key in ("herdr", "codex", "runtime", "assignment", "secretary_runtime")):
-            for key in ("herdr", "codex", "runtime", "assignment", "secretary_runtime"):
+        if any(key in payload for key in ("herdr", "codex", "runtime", "git", "registry_launcher", "assignment", "secretary_runtime")):
+            for key in ("herdr", "codex", "runtime", "git", "registry_launcher", "assignment", "secretary_runtime"):
                 value = payload.get(key)
                 if isinstance(value, Mapping):
-                    selected[key] = dict(value)
+                    value = dict(value)
+                    if key in selected and selected[key] != value:
+                        raise ValueError(f"conflicting launcher evidence for {key}")
+                    selected[key] = value
     return selected
 
 
@@ -227,27 +231,85 @@ def _launcher_identity_matches(runtime: Mapping[str, Any], herdr: Mapping[str, A
     return not isinstance(session, str) or not session.strip() or runtime.get("session_id") == session
 
 
-def _safe_runtime_snapshot(runtime: Mapping[str, Any]) -> dict[str, Any]:
+def _launcher_facts_match(
+    request: SecretaryLaunchRequest,
+    payload: Mapping[str, Any] | None,
+    runtime: Mapping[str, Any],
+    configured_model: str | None,
+) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    git = payload.get("git")
+    registry = payload.get("registry_launcher")
+    if not isinstance(git, Mapping) or not isinstance(registry, Mapping):
+        return False
+    if git.get("worktree") != str(request.worktree.resolve()) or git.get("repo_root") != str(request.worktree.resolve()):
+        return False
+    if git.get("expected_base") != request.expected_base:
+        return False
+    if runtime.get("git_revision") != git.get("head"):
+        return False
+    if registry.get("repository_identity") != request.repository_identity:
+        return False
+    if registry.get("plan_identity") != request.plan_identity:
+        return False
+    if registry.get("model_provider") != request.provider:
+        return False
+    return configured_model is None or registry.get("model") == configured_model
+
+
+def _safe_metrics(metrics: Mapping[str, Any] | None) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    integer_fields = {"cos_turns", "secretary_turns", "human_interventions"}
+    boolean_fields = {"publication_success", "settlement_proven"}
+    number_fields = {"token_usage", "cost"}
+    for field in _OBSERVED_METRIC_KEYS:
+        value = metrics.get(field) if isinstance(metrics, Mapping) else None
+        if field in integer_fields and isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            result[field] = value
+        elif field in boolean_fields and isinstance(value, bool):
+            result[field] = value
+        elif field in number_fields and isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+            result[field] = value
+        elif field == "acceptance_decision" and value in {"PASS", "FAIL", "unknown"}:
+            result[field] = value
+        else:
+            result[field] = "unknown"
+    return result
+
+
+def _safe_timestamps(timestamps: Mapping[str, Any] | None) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for field in _OBSERVED_TIMESTAMP_KEYS:
+        value = timestamps.get(field) if isinstance(timestamps, Mapping) else None
+        if not isinstance(value, str):
+            continue
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        result[field] = value
+    return result
+
+
+def _safe_runtime_snapshot(
+    runtime: Mapping[str, Any],
+    expected_values: Mapping[str, str],
+) -> dict[str, Any]:
+    identity_fields = _RUNTIME_BINDING_KEYS + (
+        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "provider", "model", "controller_id", "session_id",
+    )
     snapshot = {
-        key: runtime.get(key)
-        for key in _RUNTIME_BINDING_KEYS + (
-            "repository_identity", "plan_identity", "git_revision", "worktree",
-            "provider", "model", "controller_id", "session_id",
-        )
+        key: runtime[key]
+        for key in identity_fields
+        if key in runtime and runtime.get(key) == expected_values.get(key)
     }
     snapshot["observed"] = runtime.get("observed") is True
     timestamps = runtime.get("timestamps")
-    snapshot["timestamps"] = {
-        key: timestamps[key]
-        for key in _OBSERVED_TIMESTAMP_KEYS
-        if isinstance(timestamps, Mapping) and isinstance(timestamps.get(key), str)
-    }
+    snapshot["timestamps"] = _safe_timestamps(timestamps if isinstance(timestamps, Mapping) else None)
     metrics = runtime.get("metrics")
-    snapshot["metrics"] = {
-        key: metrics[key]
-        for key in _OBSERVED_METRIC_KEYS
-        if isinstance(metrics, Mapping) and isinstance(metrics.get(key), (str, int, float, bool))
-    }
+    snapshot["metrics"] = _safe_metrics(metrics if isinstance(metrics, Mapping) else None)
     sources = runtime.get("sources")
     if isinstance(sources, Mapping):
         snapshot["sources"] = {
@@ -281,8 +343,21 @@ def sanitize_launcher_result(
     herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
     raw_runtime = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
     observed_runtime = _observed_runtime(payload)
+    expected_values = {
+        **{key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS},
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "git_revision": request.git_revision,
+        "worktree": str(request.worktree.resolve()),
+        "provider": request.provider,
+        "controller_id": SECRETARY_CONTROLLER,
+    }
+    if configured_model is not None:
+        expected_values["model"] = configured_model
+    if isinstance(herdr, Mapping) and isinstance(herdr.get("session"), str) and herdr["session"].strip():
+        expected_values["session_id"] = herdr["session"]
     structured_binding = (
-        _safe_runtime_snapshot(raw_runtime)
+        _safe_runtime_snapshot(raw_runtime, expected_values)
         if isinstance(raw_runtime, Mapping)
         else None
     )
@@ -292,9 +367,10 @@ def sanitize_launcher_result(
         and (configured_model is None or observed_runtime.get("model") == configured_model)
         and _binding_matches(request, observed_runtime, assignment if isinstance(assignment, Mapping) else None)
         and _launcher_identity_matches(observed_runtime, herdr if isinstance(herdr, Mapping) else None)
+        and _launcher_facts_match(request, payload, observed_runtime, configured_model)
         and _completion_observed(payload, observed_runtime)
     )
-    observed_metrics = observed_runtime.get("metrics") if isinstance(observed_runtime, Mapping) else None
+    observed_metrics = structured_binding.get("metrics") if isinstance(structured_binding, Mapping) else None
     return {
         "schema_version": "secretary-live-runtime-v1",
         "evidence_provenance": "live-attributed" if live_attributed else "capability-probe",
@@ -314,10 +390,10 @@ def sanitize_launcher_result(
             "session": herdr.get("session") if isinstance(herdr, Mapping) else None,
             "pane": herdr.get("pane") if isinstance(herdr, Mapping) else None,
             "codex_version": codex.get("version") if isinstance(codex, Mapping) else None,
-            "provider": observed_runtime.get("provider") if isinstance(observed_runtime, Mapping) else None,
-            "model": observed_runtime.get("model") if isinstance(observed_runtime, Mapping) else None,
-            "controller_id": observed_runtime.get("controller_id") if isinstance(observed_runtime, Mapping) else None,
-            "session_id": observed_runtime.get("session_id") if isinstance(observed_runtime, Mapping) else None,
+            "provider": structured_binding.get("provider") if isinstance(structured_binding, Mapping) else None,
+            "model": structured_binding.get("model") if isinstance(structured_binding, Mapping) else None,
+            "controller_id": structured_binding.get("controller_id") if isinstance(structured_binding, Mapping) else None,
+            "session_id": structured_binding.get("session_id") if isinstance(structured_binding, Mapping) else None,
             "secretary_runtime": structured_binding,
         },
         "timestamps": {
@@ -325,11 +401,7 @@ def sanitize_launcher_result(
             "run_finished": finished_at,
         },
         "metrics": {
-            key: observed_metrics.get(key, "unknown") if isinstance(observed_metrics, Mapping) else "unknown"
-            for key in (
-                "cos_turns", "secretary_turns", "human_interventions", "publication_success",
-                "settlement_proven", "acceptance_decision", "token_usage", "cost",
-            )
+            **_safe_metrics(observed_metrics if isinstance(observed_metrics, Mapping) else None)
         },
         "disposition": "READY" if live_attributed else "BLOCKED_CAPABILITY",
         "failure_kind": None if live_attributed else "runtime_completion_evidence_missing",

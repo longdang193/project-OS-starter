@@ -60,6 +60,8 @@ def _receipt(**overrides: object) -> dict[str, object]:
         sources={
             name: {
                 "producer": producer,
+                "source_ref": f"receipt://{name}/run-1",
+                "source_digest": "0" * 64,
                 "pair_id": "pair-1",
                 "arm": "candidate",
                 "run_id": "run-1",
@@ -152,4 +154,12 @@ def test_live_receipt_requires_source_bindings() -> None:
     del receipt["sources"]["secretary"]["session_id"]
 
     with pytest.raises(ReceiptValidationError, match="session_id"):
+        validate_live_receipt(receipt)
+
+
+def test_live_receipt_requires_source_proof() -> None:
+    receipt = _receipt()
+    del receipt["sources"]["secretary"]["source_digest"]
+
+    with pytest.raises(ReceiptValidationError, match="source_digest"):
         validate_live_receipt(receipt)

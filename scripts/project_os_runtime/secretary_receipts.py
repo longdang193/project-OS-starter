@@ -14,6 +14,7 @@ SOURCE_PRODUCERS = {
     "settlement": "project_os_runtime.attempt",
     "acceptance": "cos",
 }
+SOURCE_PROOF_FIELDS = ("source_ref", "source_digest")
 REQUIRED_BINDINGS = (
     "pair_id",
     "arm",
@@ -167,6 +168,10 @@ def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
             _text(source.get(field), f"sources.{name}.{field}")
             if source[field] != receipt.get(field):
                 raise ReceiptValidationError(f"sources.{name}.{field} mismatch")
+        for field in SOURCE_PROOF_FIELDS:
+            _text(source.get(field), f"sources.{name}.{field}")
+        if not re.fullmatch(r"[0-9a-f]{64}", source["source_digest"]):
+            raise ReceiptValidationError(f"sources.{name}.source_digest must be SHA-256 hex")
 
     normalized = json.loads(json.dumps(receipt))
     normalized["valid"] = True

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 
@@ -96,6 +97,15 @@ def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, comp
     }
 
 
+def _live_source_proof(receipt: dict[str, object], name: str) -> tuple[str, str]:
+    refs = receipt["source_refs"]
+    if isinstance(refs, dict) and name in refs:
+        path = Path(refs[name])
+        return str(path), hashlib.sha256(path.read_bytes()).hexdigest()
+    source_ref = f"runtime://{name}/{receipt['run_id']}"
+    return source_ref, hashlib.sha256(source_ref.encode()).hexdigest()
+
+
 def test_validate_receipt_requires_producer_owned_sources(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     receipt = _receipt(tmp_path, "pair-1", "baseline", interventions=1, completion=100)
@@ -143,6 +153,8 @@ def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -
         sources={
             name: {
                 "producer": producer,
+                    "source_ref": _live_source_proof(receipt, name)[0],
+                    "source_digest": _live_source_proof(receipt, name)[1],
                 **common,
                 "provider": "9router",
                 "model": "combo-high",
@@ -162,6 +174,10 @@ def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -
     normalized = validate_receipt(receipt, manifest)
 
     assert normalized["live_receipt"]["valid"] is True
+    receipt["live_receipt"]["metrics"]["publication_success"] = False
+
+    with pytest.raises(PilotReceiptError, match="live receipt metrics.publication_success"):
+        validate_receipt(receipt, manifest)
 
 
 @pytest.mark.parametrize("field", ["model", "controller_id", "session_id", "workstream", "checkpoint"])
@@ -206,6 +222,8 @@ def test_validate_receipt_rejects_live_receipt_identity_mismatch(tmp_path: Path,
         sources={
             name: {
                 "producer": producer,
+                    "source_ref": _live_source_proof(receipt, name)[0],
+                    "source_digest": _live_source_proof(receipt, name)[1],
                 **common,
                 "provider": "9router",
                 "model": receipt["model"],

@@ -223,6 +223,16 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
         ):
             if normalized_live_receipt.get(field) != receipt.get(field):
                 raise PilotReceiptError(f"live receipt {field} mismatch")
+        live_metrics = normalized_live_receipt["metrics"]
+        for live_field, outer_field in (
+            ("human_interventions", "human_interventions"),
+            ("publication_success", "publication_success"),
+        ):
+            if live_metrics[live_field] != receipt["metrics"].get(outer_field):
+                raise PilotReceiptError(f"live receipt metrics.{live_field} mismatch")
+        for field in ("run_started", "publication", "settlement", "acceptance", "run_finished"):
+            if normalized_live_receipt["timestamps"][field] != receipt["timestamps"].get(field):
+                raise PilotReceiptError(f"live receipt timestamps.{field} mismatch")
     else:
         normalized_live_receipt = None
 
@@ -275,6 +285,14 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
         raise PilotReceiptError("producer settlement is not proven")
     if sources["acceptance"].get("decision") != "PASS":
         raise PilotReceiptError("producer acceptance did not pass")
+    if normalized_live_receipt is not None:
+        live_metrics = normalized_live_receipt["metrics"]
+        if live_metrics["publication_success"] is not True:
+            raise PilotReceiptError("live receipt publication did not succeed")
+        if live_metrics["settlement_proven"] is not True:
+            raise PilotReceiptError("live receipt settlement is not proven")
+        if live_metrics["acceptance_decision"] != sources["acceptance"].get("decision"):
+            raise PilotReceiptError("live receipt acceptance decision mismatch")
     source_digests = {
         kind: hashlib.sha256(Path(_text(refs[kind], f"source_refs.{kind}")).read_bytes()).hexdigest()
         for kind in REQUIRED_SOURCE_KEYS
@@ -282,6 +300,13 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
     supplied_digests = receipt.get("source_digests")
     if supplied_digests is not None and supplied_digests != source_digests:
         raise PilotReceiptError("source digest mismatch")
+    if normalized_live_receipt is not None:
+        for kind in REQUIRED_SOURCE_KEYS:
+            live_source = normalized_live_receipt["sources"].get(kind)
+            if not isinstance(live_source, Mapping):
+                raise PilotReceiptError(f"live receipt sources.{kind} missing")
+            if live_source["source_ref"] != refs[kind] or live_source["source_digest"] != source_digests[kind]:
+                raise PilotReceiptError(f"live receipt sources.{kind} provenance mismatch")
     result = {
         **dict(receipt),
         "valid": True,
