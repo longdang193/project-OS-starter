@@ -1,0 +1,91 @@
+{
+  "schema_version": "secretary-live-evidence-capability-v1",
+  "baseline": {
+    "repository": "project-OS-starter",
+    "commit": "34d6e8d",
+    "branch": "main",
+    "acceptance_boundary": "scripts/project_os_runtime/acceptance.py:evaluate_acceptance,authorize_dependent_transition",
+    "plan_mutation_boundary": "scripts/project_os_runtime/plan_preparation.py:apply_accepted_plan_transitions"
+  },
+  "provider": {
+    "route": "9router",
+    "configured": true,
+    "config_path": "~/.codex/config.toml",
+    "auth_path_present": true,
+    "auth_path": "~/.codex/auth.json",
+    "secret_values_recorded": false
+  },
+  "capabilities": {
+    "native_cos_launcher": {
+      "status": "AVAILABLE",
+      "interface": "scripts/herdr_main_launcher.py",
+      "command": "py -B scripts/herdr_main_launcher.py --help",
+      "evidence": "launcher help lists registry-bound lane launch and correlated assignment/plan/task fields"
+    },
+    "bounded_worker_dispatch": {
+      "status": "AVAILABLE",
+      "interface": "scripts/herdr_parallel_dispatch.py",
+      "command": "py -B scripts/herdr_parallel_dispatch.py --help",
+      "evidence": "dispatcher supports plan-file, task, runtime-bindings, and bounded concurrency"
+    },
+    "secretary_contract": {
+      "status": "AVAILABLE_CONTRACT_ONLY",
+      "interface": "scripts/project_os_runtime/secretary_adapter.py:ControllerSessionAdapter",
+      "implementation": "InMemoryControllerSessionAdapter",
+      "evidence": "transport-neutral protocol and deterministic journal exist"
+    },
+    "live_secretary_runtime": {
+      "status": "BLOCKED_CAPABILITY",
+      "interface": "ControllerSessionAdapter.activate/resolve/resume/observe/deliver/release_session",
+      "command": null,
+      "reason": "No owned live Secretary-to-CoS launcher, endpoint, or attributable provider receipt found in repository/runtime surfaces"
+    },
+    "ordinary_cos_acceptance_caller": {
+      "status": "BLOCKED_CAPABILITY",
+      "interface": "scripts/project_os_runtime/plan_preparation.py:apply_accepted_plan_transitions",
+      "command": null,
+      "reason": "Acceptance and Plan mutation boundaries exist; no ordinary native CoS caller was found in launcher/dispatcher paths"
+    }
+  },
+  "native_probe_definitions": {
+    "activation": {
+      "status": "BLOCKED_CAPABILITY",
+      "interface": "ControllerSessionAdapter.activate",
+      "command": null,
+      "target_binding": ["repository_identity", "plan_identity", "workstream", "expected_branch", "expected_base"],
+      "max_turns": 1,
+      "max_duration_seconds": 30,
+      "disposable_state": "none available without live transport",
+      "expected_receipt": "ActivationReceipt with activation_id, controller identity, binding, created/reused, recovery_required",
+      "authorized_effects": "none until owned live transport exists",
+      "cleanup": "release_session when supported"
+    },
+    "delivery": {
+      "status": "BLOCKED_CAPABILITY",
+      "interface": "ControllerSessionAdapter.deliver",
+      "command": null,
+      "target_binding": ["controller_id", "message_id", "payload_fingerprint"],
+      "max_turns": 1,
+      "max_duration_seconds": 30,
+      "disposable_state": "none available without live transport",
+      "expected_receipt": "DeliveryReceipt with delivered, message_id, payload_fingerprint, recovery_required",
+      "authorized_effects": "none until owned live transport exists",
+      "cleanup": "release_session when supported"
+    },
+    "resume_replay_binding_authority": {
+      "status": "BLOCKED_CAPABILITY",
+      "interface": "ControllerSessionAdapter.resume/activate/deliver",
+      "command": null,
+      "target_binding": ["repository_identity", "plan_identity", "workstream", "attempt_id"],
+      "max_turns": 2,
+      "max_duration_seconds": 60,
+      "disposable_state": "none available without live transport",
+      "expected_receipt": "ResumeReceipt or recovery-required receipt for replay, binding drift, and unauthorized operation",
+      "authorized_effects": "none until owned live transport exists",
+      "cleanup": "release_session when supported"
+    }
+  },
+  "readiness": "BLOCKED_CAPABILITY",
+  "readiness_reason": "Contract fake and native Worker/CoS launcher exist; owned live Secretary transport and ordinary CoS acceptance caller do not.",
+  "next_action": "Implement read-only evidence and receipt validation; do not build transport adapter."
+}
