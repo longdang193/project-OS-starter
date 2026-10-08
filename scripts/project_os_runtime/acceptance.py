@@ -8,6 +8,7 @@ from typing import Any
 
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
 ACCEPTANCE_AUTHORITY = "cos"
+ELIGIBLE_TASK_STATE = "active"
 
 
 def _missing_text(mapping: Mapping[str, Any], field: str, label: str) -> str | None:
@@ -52,10 +53,28 @@ def evaluate_acceptance(
         reasons.append("Git and task plan binding mismatch")
     if controller.get("task_id") != task.get("task_id"):
         reasons.append("controller and task identity mismatch")
-    if not artifact_conditions:
-        reasons.append("artifact conditions")
-    elif any(not isinstance(value, bool) for value in artifact_conditions.values()):
+    required_conditions = task.get("required_conditions")
+    required_condition_ids: set[str] = set()
+    if not isinstance(required_conditions, Mapping) or not required_conditions:
+        reasons.append("required condition set")
+    else:
+        required_condition_ids = {
+            condition_id
+            for condition_id in required_conditions
+            if isinstance(condition_id, str) and condition_id.strip()
+        }
+        if len(required_condition_ids) != len(required_conditions):
+            reasons.append("required condition set")
+
+    if not isinstance(artifact_conditions, Mapping) or any(
+        not isinstance(value, bool) for value in artifact_conditions.values()
+    ):
         reasons.append("artifact condition type")
+    elif set(artifact_conditions) != required_condition_ids:
+        reasons.append("artifact condition coverage")
+
+    if task.get("state") != ELIGIBLE_TASK_STATE:
+        reasons.append("task state eligibility")
 
     false_checks: list[str] = []
     for mapping, fields in (
@@ -73,11 +92,12 @@ def evaluate_acceptance(
         missing, value = _required_bool(settlement, field, label)
         if missing or value is False:
             reasons.append(missing or label)
-    false_checks.extend(
-        f"artifact condition: {name}"
-        for name, value in artifact_conditions.items()
-        if value is False
-    )
+    if isinstance(artifact_conditions, Mapping):
+        false_checks.extend(
+            f"artifact condition: {name}"
+            for name, value in artifact_conditions.items()
+            if value is False
+        )
 
     if reasons:
         decision = "BLOCKED"
@@ -92,18 +112,40 @@ def evaluate_acceptance(
         "current_state": current_state,
         "next_state": "completed" if decision == "PASS" else current_state,
     }
+    acceptance_proof = {
+        "task_id": task.get("task_id"),
+        "plan_identity": task.get("plan_identity"),
+        "task_state": current_state,
+        "required_conditions": dict(required_conditions) if isinstance(required_conditions, Mapping) else {},
+        "artifact_conditions": dict(artifact_conditions) if isinstance(artifact_conditions, Mapping) else {},
+        "freshness": {
+            "head_matches": git.get("head_matches"),
+            "write_scope_matches": git.get("write_scope_matches"),
+        },
+        "git": {
+            "repository_identity": git.get("repository_identity"),
+            "plan_identity": git.get("plan_identity"),
+        },
+        "settlement": {
+            "settlement_proven": settlement.get("settlement_proven"),
+            "resource_settled": settlement.get("resource_settled"),
+        },
+    }
     return {
         "decision": decision,
         "reasons": reasons or ["acceptance criteria satisfied"],
         "controller": {
             "identity": controller.get("identity"),
             "authority": controller.get("authority"),
+            "plan_identity": controller.get("plan_identity"),
+            "task_id": controller.get("task_id"),
         },
         "task": {
             "task_id": task.get("task_id"),
             "plan_identity": task.get("plan_identity"),
         },
         "task_transition": task_transition,
+        "acceptance_proof": acceptance_proof,
     }
 
 
@@ -130,7 +172,24 @@ def authorize_dependent_transition(
             "next_state": current_state,
             "reason": "acceptance did not pass",
         }
+    controller = decision.get("controller")
     accepted_task = decision.get("task")
+    task_transition = decision.get("task_transition")
+    proof = decision.get("acceptance_proof")
+    if not all(isinstance(value, Mapping) for value in (controller, accepted_task, task_transition, proof)):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
+        }
+    if controller.get("authority") != ACCEPTANCE_AUTHORITY or _missing_text(controller, "identity", "controller identity") is not None:
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
+        }
     accepted_task_id = accepted_task.get("task_id") if isinstance(accepted_task, Mapping) else None
     if accepted_task_id != completed_task_id:
         return {
@@ -153,6 +212,43 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "accepted and dependent task plan binding mismatch",
+        }
+    if (
+        task_transition.get("authorized") is not True
+        or task_transition.get("current_state") != ELIGIBLE_TASK_STATE
+        or task_transition.get("next_state") != "completed"
+        or proof.get("task_id") != accepted_task_id
+        or proof.get("plan_identity") != accepted_plan_identity
+        or proof.get("task_state") != ELIGIBLE_TASK_STATE
+    ):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
+        }
+    required_conditions = proof.get("required_conditions")
+    artifact_conditions = proof.get("artifact_conditions")
+    freshness = proof.get("freshness")
+    settlement = proof.get("settlement")
+    if (
+        not isinstance(required_conditions, Mapping)
+        or not required_conditions
+        or not isinstance(artifact_conditions, Mapping)
+        or set(artifact_conditions) != set(required_conditions)
+        or any(value is not True for value in artifact_conditions.values())
+        or not isinstance(freshness, Mapping)
+        or freshness.get("head_matches") is not True
+        or freshness.get("write_scope_matches") is not True
+        or not isinstance(settlement, Mapping)
+        or settlement.get("settlement_proven") is not True
+        or settlement.get("resource_settled") is not True
+    ):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
         }
     if completed_task_id not in dependencies:
         return {
@@ -177,6 +273,8 @@ def authorize_dependent_transition(
         }
     return {
         "authorized": True,
+        "task_id": dependent_task.get("task_id"),
+        "plan_identity": dependent_task.get("plan_identity"),
         "current_state": current_state,
         "next_state": "active",
         "reason": "accepted dependency permits advancement",
