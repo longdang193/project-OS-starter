@@ -94,6 +94,24 @@ def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
     assert "SYNTHETIC_SESSION_CANARY" not in str(result)
 
 
+@pytest.mark.parametrize("session_id", [
+    '{"raw_bodies":"REVIEW_SESSION_CANARY"}',
+    '{"raw_transport_bodies":"REVIEW_SESSION_CANARY"}',
+    '{"rawBody":"REVIEW_SESSION_CANARY"}',
+])
+def test_sanitize_launcher_result_rejects_sensitive_session_payload(session_id: str) -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=1,
+        payload={
+            "herdr": {"session": session_id},
+            "secretary_runtime": {"session_id": session_id},
+        },
+    )
+
+    assert "REVIEW_SESSION_CANARY" not in str(result)
+
+
 def test_sanitize_launcher_result_preserves_structured_runtime_binding() -> None:
     result = sanitize_launcher_result(
         request(),

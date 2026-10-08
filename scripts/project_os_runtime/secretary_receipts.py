@@ -52,11 +52,11 @@ REQUIRED_METRIC_KEYS = (
     "cost",
 )
 _SENSITIVE_KEY = re.compile(
-    r"(?:^|[_-])(?:authorization(?:[_-]headers?)?|api[_-]?keys?|passwords?|secrets?|cookies?|credentials?|raw[_-]?(?:body|bodies|header|headers|prompt|prompts|response|responses|transport[_-]?body|transport[_-]?bodies))$",
+    r"(?:^|[_-])(?:authorization(?:[_-]headers?)?|api[_-]?keys?|passwords?|secrets?|cookies?|credentials?|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))$",
     re.IGNORECASE,
 )
 _SENSITIVE_VALUE = re.compile(
-    r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw[_-](?:body|header|prompt|response))",
+    r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))",
     re.IGNORECASE,
 )
 

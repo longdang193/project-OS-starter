@@ -57,7 +57,7 @@ _SOURCE_SAFE_FIELDS = {
 }
 _SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
 _SAFE_SOURCE_VALUE = re.compile(
-    r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw[_-](?:body|header|prompt|response))",
+    r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))",
     re.IGNORECASE,
 )
 

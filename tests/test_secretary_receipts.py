@@ -133,6 +133,21 @@ def test_live_receipt_rejects_plural_sensitive_fields(field: str) -> None:
         validate_live_receipt(receipt)
 
 
+@pytest.mark.parametrize("session_id", [
+    '{"raw_bodies":"REVIEW_SESSION_CANARY"}',
+    '{"raw_transport_bodies":"REVIEW_SESSION_CANARY"}',
+    '{"rawBody":"REVIEW_SESSION_CANARY"}',
+])
+def test_live_receipt_rejects_sensitive_payload_in_session(session_id: str) -> None:
+    receipt = _receipt()
+    receipt["session_id"] = session_id
+    for source in receipt["sources"].values():
+        source["session_id"] = session_id
+
+    with pytest.raises(ReceiptValidationError, match="sensitive"):
+        validate_live_receipt(receipt)
+
+
 def test_live_receipt_requires_every_timestamp() -> None:
     receipt = _receipt()
     del receipt["timestamps"]["acceptance"]
