@@ -123,6 +123,30 @@ def test_deepagents_classification_rejects_wrapper_completion_without_task_proof
     assert result["launcher_exit_code"] == 2
 
 
+def test_deepagents_classification_rejects_worker_completion_without_task_proof() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered"},
+        observation={
+            "state": "completed",
+            "report_present": False,
+            "observation_error": None,
+        },
+        receipt=_confirmed_success_receipt(),
+        fallback_failure_kind=None,
+        task_result_evidence={
+            "state": "confirmed",
+            "producer": "deepagents-worker",
+            "status": "completed",
+            "checkpoint": None,
+            "verification": {"references": []},
+        },
+    )
+
+    assert result["task_result"]["state"] == "unverified"
+    assert result["failure_kind"] == "task_result_unverified"
+    assert result["launcher_exit_code"] == 2
+
+
 def test_deepagents_completion_observation_returns_confirmed_receipt_without_pane_read(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -46,6 +46,20 @@ def lane(
     }
 
 
+def launch_lane(lane_id: str, root: Path) -> dict[str, object]:
+    item = lane(lane_id, root)
+    repository_root = Path(__file__).resolve().parent.parent
+    item.update(
+        {
+            "worktree": str(repository_root),
+            "expected_base": subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=repository_root, text=True
+            ).strip(),
+        }
+    )
+    return item
+
+
 def write_lanes(tmp_path: Path, lanes: list[dict[str, object]]) -> Path:
     path = tmp_path / "lanes.json"
     path.write_text(json.dumps(lanes), encoding="utf-8")
@@ -508,7 +522,7 @@ def test_run_lane_expired_dispatch_deadline_retires_unowned_capacity(tmp_path: P
         launched = True
         raise AssertionError("expired dispatch launched")
 
-    item = lane("a", tmp_path)
+    item = launch_lane("a", tmp_path)
     item["attempt_deadline"] = time.monotonic() - 1
     result = dispatcher.run_lane(item, popen_factory=popen)
 
@@ -589,7 +603,7 @@ def test_run_lane_timeout_keeps_capacity_occupied(tmp_path: Path) -> None:
             raise subprocess.TimeoutExpired("launcher", timeout)
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: HangingProcess(),
         timeout_seconds=0.01,
     )
@@ -601,7 +615,7 @@ def test_run_lane_timeout_keeps_capacity_occupied(tmp_path: Path) -> None:
 
 def test_run_lane_start_failure_is_settled_without_retiring_siblings(tmp_path: Path) -> None:
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: (_ for _ in ()).throw(OSError("pane unavailable")),
     )
 
@@ -623,7 +637,7 @@ def test_run_lane_tags_child_exit_and_capacity(tmp_path: Path) -> None:
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -645,7 +659,7 @@ def test_run_lane_zero_exit_without_final_assignment_stays_occupied(tmp_path: Pa
             return json.dumps({"registry_launcher": {"attempt_id": "a"}}), ""
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -681,7 +695,7 @@ def test_run_lane_uncertain_final_assignment_stays_occupied(
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -711,7 +725,7 @@ def test_run_lane_valid_settled_assignment_retires_capacity(tmp_path: Path) -> N
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -722,7 +736,7 @@ def test_run_lane_valid_settled_assignment_retires_capacity(tmp_path: Path) -> N
 def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
     tmp_path: Path,
 ) -> None:
-    item = lane("a", tmp_path)
+    item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
     class CompletedProcess:
         returncode = 2
@@ -793,7 +807,7 @@ def test_run_lane_malformed_evidence_keeps_capacity_occupied(tmp_path: Path) -> 
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -894,7 +908,7 @@ def test_run_lane_zero_exit_without_final_assignment_stays_unresolved(tmp_path: 
             return (json.dumps({"registry_launcher": {"attempt_id": "a"}}), "")
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -915,7 +929,7 @@ def test_run_lane_final_assignment_attempt_mismatch_preserves_evidence(tmp_path:
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -939,7 +953,7 @@ def test_run_lane_timeout_before_preparation_preserves_partial_streams(tmp_path:
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: TimedOut(),
         timeout_seconds=0.01,
     )
@@ -969,7 +983,7 @@ def test_run_lane_timeout_after_preparation_preserves_partial_streams_and_owners
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: TimedOut(),
         timeout_seconds=0.01,
     )
@@ -995,7 +1009,7 @@ def test_run_lane_decodes_byte_streams_and_reports_incomplete_trailing_json(
             )
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: CompletedProcess(),
     )
 
@@ -1033,7 +1047,7 @@ def test_run_lane_missing_or_unknown_descendant_state_stays_occupied(
                 "",
             )
 
-    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+    result = dispatcher.run_lane(launch_lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["capacity"] == "occupied"
     assert result["unresolved"] is True
@@ -1043,7 +1057,7 @@ def test_run_lane_missing_or_unknown_descendant_state_stays_occupied(
 def test_run_lane_explicit_descendant_retirement_requires_cleanup(
     tmp_path: Path, descendant_state: str,
 ) -> None:
-    item = lane("a", tmp_path)
+    item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
     assignment = {
         "attempt_id": "a",
@@ -1077,7 +1091,7 @@ def test_run_lane_explicit_descendant_retirement_requires_cleanup(
 
 
 def test_launcher_command_forwards_admitted_runtime_grant_and_mcp_select(tmp_path: Path) -> None:
-    item = lane("a", tmp_path)
+    item = launch_lane("a", tmp_path)
     item.update({
         "grant_turns": 8,
         "grant_wall_clock_seconds": 600,
@@ -1145,7 +1159,7 @@ def test_run_lane_grant_digest_mismatch_keeps_settled_capacity_reusable(tmp_path
                 "",
             )
 
-    result = dispatcher.run_lane(lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+    result = dispatcher.run_lane(launch_lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["capacity"] == "retired"
     assert result["unresolved"] is True
@@ -1154,7 +1168,7 @@ def test_run_lane_grant_digest_mismatch_keeps_settled_capacity_reusable(tmp_path
 
 
 def test_run_lane_stale_assignment_identity_keeps_capacity_occupied(tmp_path: Path) -> None:
-    item = lane("a", tmp_path)
+    item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
     task_sha256 = dispatcher._sha256_text(str(item["task"]))
 
@@ -1211,7 +1225,7 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
 ) -> None:
     from scripts import herdr_main_launcher as launcher
 
-    item = lane("a", tmp_path)
+    item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
 
     classified = launcher._classify_deepagents_outcome(
@@ -1451,7 +1465,7 @@ def test_run_lane_timeout_preserves_file_backed_late_output(tmp_path: Path) -> N
         return process
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=popen_factory,
         timeout_seconds=0.01,
     )
@@ -1478,7 +1492,7 @@ def test_run_lane_timeout_without_reaping_keeps_capacity_occupied(tmp_path: Path
             return ("late output", "")
 
     result = dispatcher.run_lane(
-        lane("a", tmp_path),
+        launch_lane("a", tmp_path),
         popen_factory=lambda *args, **kwargs: NotReaped(),
         timeout_seconds=0.01,
     )

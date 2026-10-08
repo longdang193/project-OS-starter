@@ -49,6 +49,12 @@ from .admission import (
     legacy_admission_lists,
     validate_admission_results,
 )
+from .acceptance import (
+    ACCEPTANCE_AUTHORITY,
+    ACCEPTANCE_DECISIONS,
+    authorize_dependent_transition,
+    evaluate_acceptance,
+)
 from .results import (
     CLEANUP_STATES,
     DESCENDANT_STATES,
@@ -89,12 +95,15 @@ __all__ = [
     "AttemptContractError",
     "AdmissionBatch",
     "AdmissionResult",
+    "ACCEPTANCE_AUTHORITY",
+    "ACCEPTANCE_DECISIONS",
     "PreparedLane",
     "PlanGraph",
     "PlanTask",
     "PreparedTask",
     "WORKER_STATES",
     "assignment_id",
+    "authorize_dependent_transition",
     "attempt_decision",
     "capability_digest",
     "capability_evidence_matches",
@@ -105,6 +114,7 @@ __all__ = [
     "effective_local_capabilities",
     "encode_result_receipt",
     "encode_task_result",
+    "evaluate_acceptance",
     "grant_digest",
     "normalize_attempt",
     "normalize_local_capabilities",

@@ -262,7 +262,7 @@ def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
     preflight = launch_preflight(lane)
     if preflight.binding_status == "UNVERIFIED" and _is_coordinated_lane(lane):
         raise ValueError("coordinated launch binding evidence is unavailable")
-    if preflight.blockers and _is_coordinated_lane(lane):
+    if preflight.blockers:
         raise ValueError(preflight.blockers[0].detail or preflight.blockers[0].code or "launch preflight blocked")
     return lane
 
@@ -801,7 +801,7 @@ def run_lane(
             "capacity": "retired",
             "failure_kind": "launch_binding_unverified",
         }
-    if preflight.blockers and coordinated:
+    if preflight.blockers:
         detail = preflight.blockers[0].detail or preflight.blockers[0].code or "launch preflight blocked"
         return {
             "lane_id": lane_id,

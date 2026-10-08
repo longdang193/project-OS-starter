@@ -493,6 +493,27 @@ def _task_result_status(worker_exit_code: int | None) -> str:
     return "unknown"
 
 
+_AUTHORIZED_WORKER_PRODUCER = "deepagents-worker"
+
+
+def _worker_task_result_diagnostic(
+    task_result_file: Path,
+    binding: dict[str, object],
+) -> str | None:
+    result = parse_task_result(
+        task_result_file,
+        assignment_id=str(binding["assignment_id"]),
+        attempt_id=str(binding["attempt_id"]),
+        task_sha256=str(binding["task_sha256"]),
+        grant_digest=str(binding["grant_digest"]),
+    )
+    if result.get("state") != "confirmed":
+        return str(result.get("detail", "task result unavailable"))
+    if result.get("producer") != _AUTHORIZED_WORKER_PRODUCER:
+        return "task result producer unauthorized"
+    return None
+
+
 def _worker_task_result(
     task_result_file: Path,
     binding: dict[str, object],
@@ -504,7 +525,7 @@ def _worker_task_result(
         task_sha256=str(binding["task_sha256"]),
         grant_digest=str(binding["grant_digest"]),
     )
-    if result.get("state") != "confirmed" or result.get("producer") == "dcode-project":
+    if result.get("state") != "confirmed" or result.get("producer") != _AUTHORIZED_WORKER_PRODUCER:
         return None
     return result
 
@@ -2297,7 +2318,11 @@ def main(argv: list[str]) -> int:
                 )
             if task_result_file is not None and attempt_guard_binding is not None:
                 try:
-                    if _worker_task_result(task_result_file, attempt_guard_binding) is None:
+                    publication_diagnostic = _worker_task_result_diagnostic(
+                        task_result_file,
+                        attempt_guard_binding,
+                    )
+                    if publication_diagnostic is not None:
                         publish_task_result(
                             task_result_file,
                             {
@@ -2308,9 +2333,14 @@ def main(argv: list[str]) -> int:
                                 "grant_digest": str(attempt_guard_binding["grant_digest"]),
                                 "producer": "dcode-project",
                                 "status": _task_result_status(worker_exit_code),
-                                "progress": {"worker_state": worker_state},
+                                "progress": {
+                                    "worker_state": worker_state,
+                                    "publication_diagnostic": {
+                                        "reason": publication_diagnostic,
+                                    },
+                                },
                                 "checkpoint": None,
-                                "remaining_work": ["semantic task result unavailable"],
+                                "remaining_work": [publication_diagnostic],
                                 "verification": {"references": []},
                                 "continuation": {"requested": False},
                                 "accepted": None,
