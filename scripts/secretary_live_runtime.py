@@ -26,6 +26,7 @@ except ModuleNotFoundError:
 
 
 SECRETARY_PROVIDER = "9router"
+SECRETARY_CONTROLLER = "cos-supervised"
 _SAFE_ASSIGNMENT_KEYS = {
     "status",
     "launcher_exit_code",
@@ -35,6 +36,21 @@ _SAFE_ASSIGNMENT_KEYS = {
     "reconciliation_required",
 }
 _RUNTIME_BINDING_KEYS = ("task_id", "plan_revision", "attempt_id", "run_id")
+_OBSERVED_TIMESTAMP_KEYS = (
+    "run_started", "cos_entry", "secretary_entry", "worker_entry", "publication",
+    "settlement", "acceptance", "secretary_exit", "cos_exit", "run_finished",
+)
+_OBSERVED_METRIC_KEYS = (
+    "cos_turns", "secretary_turns", "human_interventions", "publication_success",
+    "settlement_proven", "acceptance_decision", "token_usage", "cost",
+)
+_SOURCE_KEYS = ("launch", "secretary", "task_result", "settlement", "acceptance")
+_SOURCE_SAFE_FIELDS = {
+    "producer",
+    "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+    "repository_identity", "plan_identity", "git_revision", "worktree",
+    "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
+}
 
 
 def _required_text(value: object, label: str) -> str:
@@ -167,6 +183,20 @@ def _binding_matches(request: SecretaryLaunchRequest, runtime: Mapping[str, Any]
     expected = {key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS}
     if any(runtime.get(key) != value for key, value in expected.items()):
         return False
+    for field, value in {
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "git_revision": request.git_revision,
+        "worktree": str(request.worktree.resolve()),
+        "provider": request.provider,
+    }.items():
+        if runtime.get(field) != value:
+            return False
+    if runtime.get("controller_id") != SECRETARY_CONTROLLER:
+        return False
+    for field in ("model", "session_id"):
+        if not isinstance(runtime.get(field), str) or not runtime[field].strip():
+            return False
     return not isinstance(assignment, Mapping) or assignment.get("attempt_id") in (None, request.attempt_id)
 
 
@@ -185,7 +215,51 @@ def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str
         and task_result.get("state") == "reported_completed"
         and isinstance(runtime.get("timestamps"), Mapping)
         and isinstance(runtime.get("metrics"), Mapping)
+        and isinstance(runtime.get("sources"), Mapping)
+        and set(runtime["sources"]) == set(_SOURCE_KEYS)
     )
+
+
+def _launcher_identity_matches(runtime: Mapping[str, Any], herdr: Mapping[str, Any] | None) -> bool:
+    if not isinstance(herdr, Mapping):
+        return False
+    session = herdr.get("session")
+    return not isinstance(session, str) or not session.strip() or runtime.get("session_id") == session
+
+
+def _safe_runtime_snapshot(runtime: Mapping[str, Any]) -> dict[str, Any]:
+    snapshot = {
+        key: runtime.get(key)
+        for key in _RUNTIME_BINDING_KEYS + (
+            "repository_identity", "plan_identity", "git_revision", "worktree",
+            "provider", "model", "controller_id", "session_id",
+        )
+    }
+    snapshot["observed"] = runtime.get("observed") is True
+    timestamps = runtime.get("timestamps")
+    snapshot["timestamps"] = {
+        key: timestamps[key]
+        for key in _OBSERVED_TIMESTAMP_KEYS
+        if isinstance(timestamps, Mapping) and isinstance(timestamps.get(key), str)
+    }
+    metrics = runtime.get("metrics")
+    snapshot["metrics"] = {
+        key: metrics[key]
+        for key in _OBSERVED_METRIC_KEYS
+        if isinstance(metrics, Mapping) and isinstance(metrics.get(key), (str, int, float, bool))
+    }
+    sources = runtime.get("sources")
+    if isinstance(sources, Mapping):
+        snapshot["sources"] = {
+            name: {
+                key: source[key]
+                for key in _SOURCE_SAFE_FIELDS
+                if isinstance(source, Mapping) and key in source
+            }
+            for name, source in sources.items()
+            if name in _SOURCE_KEYS and isinstance(source, Mapping)
+        }
+    return snapshot
 
 
 def sanitize_launcher_result(
@@ -193,6 +267,7 @@ def sanitize_launcher_result(
     *,
     returncode: int,
     payload: Mapping[str, Any] | None,
+    configured_model: str | None = None,
     started_at: str | None = None,
     finished_at: str | None = None,
 ) -> dict[str, Any]:
@@ -207,25 +282,16 @@ def sanitize_launcher_result(
     raw_runtime = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
     observed_runtime = _observed_runtime(payload)
     structured_binding = (
-        {
-            **{field: raw_runtime.get(field) for field in _RUNTIME_BINDING_KEYS},
-            **(
-                {
-                    "observed": True,
-                    "timestamps": dict(observed_runtime.get("timestamps", {})),
-                    "metrics": dict(observed_runtime.get("metrics", {})),
-                }
-                if isinstance(observed_runtime, Mapping)
-                else {}
-            ),
-        }
+        _safe_runtime_snapshot(raw_runtime)
         if isinstance(raw_runtime, Mapping)
         else None
     )
     live_attributed = (
         returncode == 0
         and observed_runtime is not None
+        and (configured_model is None or observed_runtime.get("model") == configured_model)
         and _binding_matches(request, observed_runtime, assignment if isinstance(assignment, Mapping) else None)
+        and _launcher_identity_matches(observed_runtime, herdr if isinstance(herdr, Mapping) else None)
         and _completion_observed(payload, observed_runtime)
     )
     observed_metrics = observed_runtime.get("metrics") if isinstance(observed_runtime, Mapping) else None
@@ -248,6 +314,10 @@ def sanitize_launcher_result(
             "session": herdr.get("session") if isinstance(herdr, Mapping) else None,
             "pane": herdr.get("pane") if isinstance(herdr, Mapping) else None,
             "codex_version": codex.get("version") if isinstance(codex, Mapping) else None,
+            "provider": observed_runtime.get("provider") if isinstance(observed_runtime, Mapping) else None,
+            "model": observed_runtime.get("model") if isinstance(observed_runtime, Mapping) else None,
+            "controller_id": observed_runtime.get("controller_id") if isinstance(observed_runtime, Mapping) else None,
+            "session_id": observed_runtime.get("session_id") if isinstance(observed_runtime, Mapping) else None,
             "secretary_runtime": structured_binding,
         },
         "timestamps": {
@@ -318,10 +388,10 @@ def _smoke_receipt(
         "checkpoint": f"{request.plan_revision}:{request.task_id}",
     }
     runtime = {
-        "provider": request.provider,
-        "model": _configured_model(request),
-        "controller_id": "cos-supervised",
-        "session_id": runtime_identity.get("session") or "unknown",
+        "provider": runtime_identity.get("provider"),
+        "model": runtime_identity.get("model"),
+        "controller_id": runtime_identity.get("controller_id"),
+        "session_id": runtime_identity.get("session_id"),
     }
     structured_runtime = runtime_identity.get("secretary_runtime") if isinstance(runtime_identity, Mapping) else None
     timestamps = structured_runtime.get("timestamps") if isinstance(structured_runtime, Mapping) else None
@@ -339,20 +409,14 @@ def _smoke_receipt(
                 **timestamps,
             },
             metrics=observed_metrics,
-            sources={
-                "launch": {"producer": "herdr_main_launcher", **binding, **runtime},
-                "secretary": {"producer": "secretary_live_runtime", **binding, **runtime},
-                "task_result": {"producer": "dcode-project", **binding, **runtime},
-                "settlement": {"producer": "project_os_runtime.attempt", **binding, **runtime},
-                "acceptance": {"producer": "cos", **binding, **runtime},
-            },
+            sources=structured_runtime.get("sources", {}),
         )
     )
 
 
 def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any]:
     _configured_provider(request.codex_home)
-    _configured_model(request)
+    configured_model = _configured_model(request)
     started = datetime.now(timezone.utc).isoformat()
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(request.codex_home.resolve())
@@ -370,6 +434,7 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         request,
         returncode=completed.returncode,
         payload=payload,
+        configured_model=configured_model,
         started_at=started,
         finished_at=datetime.now(timezone.utc).isoformat(),
     )

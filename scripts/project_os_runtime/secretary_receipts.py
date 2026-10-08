@@ -51,7 +51,7 @@ REQUIRED_METRIC_KEYS = (
     "cost",
 )
 _SENSITIVE_KEY = re.compile(
-    r"(?:^|[_-])(?:authorization(?:[_-]headers?)?|api[_-]?keys?|passwords?|secrets?|cookies?|credentials?|raw[_-]?(?:bodies?|headers?|prompts?|responses?|transport[_-]?bodies?))$",
+    r"(?:^|[_-])(?:authorization(?:[_-]headers?)?|api[_-]?keys?|passwords?|secrets?|cookies?|credentials?|raw[_-]?(?:body|bodies|header|headers|prompt|prompts|response|responses|transport[_-]?body|transport[_-]?bodies))$",
     re.IGNORECASE,
 )
 

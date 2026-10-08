@@ -148,6 +148,62 @@ def test_sanitize_launcher_result_rejects_mismatched_observed_binding() -> None:
     assert result["evidence_provenance"] == "capability-probe"
 
 
+def test_sanitize_launcher_result_requires_authoritative_runtime_sources() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        configured_model="gpt-test",
+        payload={
+            "assignment": {
+                "status": "completed",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {"state": "reported_completed"},
+            },
+            "secretary_runtime": {
+                "observed": True,
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+                "repository_identity": "repo/example",
+                "plan_identity": "plan/example",
+                "git_revision": "581844d",
+                "worktree": str(Path("C:/worktree").resolve()),
+                "provider": "9router",
+                "model": "gpt-test",
+                "controller_id": "cos-1",
+                "session_id": "session-1",
+                "timestamps": {"run_started": "2026-10-08T10:00:00+00:00"},
+                "metrics": {"secretary_turns": 1},
+            },
+        },
+    )
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+
+
+def test_sanitize_launcher_result_drops_unapproved_observed_fields() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "secretary_runtime": {
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+                "observed": True,
+                "timestamps": {"run_started": "2026-10-08T10:00:00+00:00", "credentials": "secret"},
+                "metrics": {"secretary_turns": 1, "raw_body": "secret"},
+            }
+        },
+    )
+
+    assert "credentials" not in str(result)
+    assert "raw_body" not in str(result)
+
+
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
     payload = select_launcher_payload(
         [

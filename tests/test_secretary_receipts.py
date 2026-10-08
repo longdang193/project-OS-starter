@@ -122,7 +122,7 @@ def test_live_receipt_rejects_secret_bearing_payload() -> None:
         validate_live_receipt(receipt)
 
 
-@pytest.mark.parametrize("field", ["credentials", "raw_responses", "authorization_headers"])
+@pytest.mark.parametrize("field", ["credentials", "raw_responses", "authorization_headers", "raw_body", "raw_transport_body"])
 def test_live_receipt_rejects_plural_sensitive_fields(field: str) -> None:
     receipt = _receipt()
     receipt["sources"]["secretary"][field] = "secret"
