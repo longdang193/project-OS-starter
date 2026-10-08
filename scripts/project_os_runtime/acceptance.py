@@ -48,6 +48,8 @@ def evaluate_acceptance(
         reasons.append("CoS acceptance authority")
     if controller.get("plan_identity") != task.get("plan_identity"):
         reasons.append("controller and task plan binding mismatch")
+    if git.get("plan_identity") != task.get("plan_identity"):
+        reasons.append("Git and task plan binding mismatch")
     if controller.get("task_id") != task.get("task_id"):
         reasons.append("controller and task identity mismatch")
     if not artifact_conditions:
@@ -127,6 +129,15 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "acceptance did not pass",
+        }
+    accepted_task = decision.get("task")
+    accepted_task_id = accepted_task.get("task_id") if isinstance(accepted_task, Mapping) else None
+    if accepted_task_id != completed_task_id:
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "accepted task does not match completed task",
         }
     if completed_task_id not in dependencies:
         return {

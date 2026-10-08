@@ -118,9 +118,9 @@ latency are unavailable; deterministic Secretary tests remain labeled
 | Task 2 | `completed` | isolated worktree | `codex` | Task 1 | universal blocker regression suite | `82 passed`; both dispatcher callers covered |
 | Task 3 | `completed` | isolated worktree | `codex` | Task 1 | reconciled cohort and root-cause classification | summary says `3/5`; raw attempt IDs unavailable; no helper justified |
 | Task 4 | `completed` | isolated worktree | `codex` | Task 1, Task 3 | diagnostic projection and evidence-stage tests | `347 passed` across parser, wrapper, launcher, and runtime compatibility tests; exact `deepagents-worker` provenance enforced; sanitized fallback reason preserved |
-| Task 5 | `completed` | isolated worktree | `codex` | Task 4 | native CoS negative/positive acceptance evidence | native Codex/`9router` probe on October 8, 2026 exercised `evaluate_acceptance()` and `authorize_dependent_transition()` without file changes: false artifact → `FAIL`, dependent `pending`; valid evidence → `PASS`, dependent `active`; focused acceptance tests `13 passed` |
+| Task 5 | `completed` | isolated worktree | `codex` | Task 4 | native CoS negative/positive acceptance evidence | native Codex/`9router` probe on October 8, 2026 exercised `evaluate_acceptance()` and `authorize_dependent_transition()` without file changes: false artifact → `FAIL`, dependent `pending`; valid evidence → `PASS`, dependent `active`; focused acceptance tests `15 passed`, including Git-plan and accepted-task identity regressions |
 | Task 6 | `completed` | isolated worktree | `codex` | Task 4 | reconstruction-cost decision and matched Secretary measurements | prior approved live-supervised probe: matched baseline/candidate order, fresh worktrees/contexts, `matched_inputs=true`, semantic reconciliation `PASS`; value `INCONCLUSIVE`; timing/token counters unavailable, no projection added |
-| Task 7 | `completed` | isolated worktree | `codex` | Task 2, Task 4 | Phase A deterministic release gate | `959 passed, 1 skipped`; preflight, audit, lifecycle, adapter, runtime-drift, and diff checks pass; Phase A independently releasable |
+| Task 7 | `completed` | isolated worktree | `codex` | Task 2, Task 4 | Phase A deterministic release gate | `961 passed, 1 skipped`; preflight, audit, lifecycle, adapter, runtime-drift, and diff checks pass; Phase A independently releasable |
 | Task 8 | `completed` | isolated worktree | `codex` | Task 5, Task 6, Task 7 | final verification and plan reconciliation | deterministic tests, validators, generated sync, runtime drift, and diff checks pass; approved measurement limitation reconciled |
 
 Only lead controller writes this ledger. Checkboxes record progress, not proof.
@@ -601,7 +601,7 @@ Only lead controller writes this ledger. Checkboxes record progress, not proof.
   weakening the deterministic gate.
 
 **Verification:**
-- [x] `py -B -m pytest -p no:cacheprovider -q` — `959 passed, 1 skipped in 53.20s`.
+- [x] `py -B -m pytest -p no:cacheprovider -q` — `961 passed, 1 skipped in 53.17s`.
 - [x] `py -B scripts/validate_repo_contracts.py --repo-root . --scope preflight --plan docs/superpowers/plans/2026-10-08-evidence-handoff-reliability-and-coordination-validation-plan.md` — passed.
 - [x] `py -B scripts/validate_repo_contracts.py --repo-root . --scope audit` — passed.
 - [x] `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-08-evidence-handoff-reliability-and-coordination-validation-plan.md` — passed.
@@ -670,7 +670,7 @@ pass. Efficiency value remains `INCONCLUSIVE`; unavailable counters and
 timestamps are explicitly preserved as unknown, with no efficiency claim.
 
 **Verification:**
-- [x] `py -B -m pytest -p no:cacheprovider -q` — `959 passed, 1 skipped in 53.20s`.
+- [x] `py -B -m pytest -p no:cacheprovider -q` — `961 passed, 1 skipped in 53.17s`.
 - [x] `py -B scripts/validate_repo_contracts.py --repo-root . --scope preflight --plan docs/superpowers/plans/2026-10-08-evidence-handoff-reliability-and-coordination-validation-plan.md` — passed.
 - [x] `py -B scripts/validate_repo_contracts.py --repo-root . --scope audit` — passed.
 - [x] `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-08-evidence-handoff-reliability-and-coordination-validation-plan.md` — passed.
@@ -710,8 +710,8 @@ timestamps are explicitly preserved as unknown, with no efficiency claim.
 | Worker publication cohort is reconciled | proven with limitation | Task 3 cohort summary: `3/5` valid; raw attempt IDs unavailable | six-attempt discrepancy remains explicit; no helper justified | obtain raw attempt IDs if source becomes available |
 | Worker publication failures retain sanitized causes | proven | Task 4 focused proof included in `347 passed` | raw payloads excluded | retain regression coverage |
 | Completion proof is separate from publication | proven | Task 4 launcher and runtime tests included in `347 passed` | task-specific proof varies | retain stage boundaries |
-| Native CoS rejects false completion | proven | native Codex/`9router` probe on October 8, 2026: `FAIL`, dependent `pending`; focused regression proof `13 passed` | controller identity is explicit probe input; plan/Git remain caller-owned | retain gate and review output |
-| Native CoS accepts correct implementation | proven | native Codex/`9router` probe on October 8, 2026: `PASS`, dependent `active`; focused regression proof `13 passed` | controller identity is explicit probe input; plan/Git remain caller-owned | retain gate and review output |
+| Native CoS rejects false completion | proven | native Codex/`9router` probe on October 8, 2026: `FAIL`, dependent `pending`; focused regression proof `15 passed` | controller identity is explicit probe input; plan/Git remain caller-owned | retain gate and review output |
+| Native CoS accepts correct implementation | proven | native Codex/`9router` probe on October 8, 2026: `PASS`, dependent `active`; focused regression proof `15 passed` | controller identity is explicit probe input; plan/Git remain caller-owned | retain gate and review output |
 | Evidence slice reduces reconstruction cost | inconclusive | approved live-supervised probe and targeted canonical reads; no projection added | repeated attributable reconstruction cost unavailable | revisit only when native counters exist |
 | Secretary improves coordination efficiency | inconclusive | `C:\tmp\project-os-secretary-probe\20261008-task4-r2\evidence.json`; matched inputs and semantic reconciliation `PASS`; Secretary benchmark `38 passed` | `live=false` deterministic benchmark; no provider token/turn counters | make no efficiency claim |
 | Latency interval is attributed | inconclusive | live-supervised probe records trial order and correctness evidence | phase timestamps unavailable; intervals remain unknown | revisit only with attributed timestamps |
