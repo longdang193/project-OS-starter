@@ -261,7 +261,10 @@ def _launcher_identity_matches(runtime: Mapping[str, Any], herdr: Mapping[str, A
     if not isinstance(herdr, Mapping):
         return False
     session = herdr.get("session")
-    return not isinstance(session, str) or not session.strip() or runtime.get("session_id") == session
+    if isinstance(session, str) and session.strip():
+        safe_session = _safe_text(session)
+        return safe_session is not None and runtime.get("session_id") == safe_session
+    return True
 
 
 def _launcher_facts_match(
@@ -361,7 +364,8 @@ def _safe_runtime_snapshot(
                     if isinstance(value, str) and value == SOURCE_PRODUCERS.get(name):
                         safe[key] = value
                 elif key in expected_values and value == expected_values[key]:
-                    safe[key] = value
+                    if key != "session_id" or _safe_text(value) is not None:
+                        safe[key] = value
             return safe
         snapshot["sources"] = {
             name: safe_source(name, source)
@@ -401,8 +405,10 @@ def sanitize_launcher_result(
     }
     if configured_model is not None:
         expected_values["model"] = configured_model
-    if isinstance(herdr, Mapping) and isinstance(herdr.get("session"), str) and herdr["session"].strip():
-        expected_values["session_id"] = herdr["session"]
+    if isinstance(herdr, Mapping):
+        session_id = _safe_text(herdr.get("session"))
+        if session_id is not None and session_id.strip():
+            expected_values["session_id"] = session_id
     structured_binding = (
         _safe_runtime_snapshot(raw_runtime, expected_values)
         if isinstance(raw_runtime, Mapping)

@@ -286,6 +286,12 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
     sources = {kind: _json(Path(_text(refs[kind], f"source_refs.{kind}"))) for kind in REQUIRED_SOURCE_KEYS}
     for kind in REQUIRED_SOURCE_KEYS:
         _validate_source(sources[kind], kind=kind, receipt=receipt, fields=SOURCE_BINDING_FIELDS)
+    for source_field, source_value in (
+        ("settlement_proven", sources["settlement"].get("settlement_proven")),
+        ("acceptance_decision", sources["acceptance"].get("decision")),
+    ):
+        if source_field in receipt["metrics"] and receipt["metrics"][source_field] != source_value:
+            raise PilotReceiptError(f"receipt metrics.{source_field} mismatch")
     if sources["launch"].get("provider") != receipt["provider"] or sources["launch"].get("model") != receipt["model"]:
         raise PilotReceiptError("provider/model binding mismatch")
     if sources["launch"].get("timestamps") != receipt["timestamps"]:

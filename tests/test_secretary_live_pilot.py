@@ -121,6 +121,30 @@ def test_validate_receipt_requires_producer_owned_sources(tmp_path: Path) -> Non
     assert len(normalized["source_digests"]) == 4
 
 
+def test_validate_receipt_rejects_outer_settlement_and_acceptance_without_live_receipt(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    receipt = _receipt(tmp_path, "pair-1", "baseline", interventions=1, completion=100)
+    launch_path = Path(receipt["source_refs"]["launch"])
+    launch = __import__("json").loads(launch_path.read_text(encoding="utf-8"))
+    for field, value in (("settlement_proven", False), ("acceptance_decision", "FAIL")):
+        receipt["metrics"][field] = value
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
+        with pytest.raises(PilotReceiptError, match=rf"receipt metrics\.{field} mismatch"):
+            validate_receipt(receipt, manifest)
+        del receipt["metrics"][field]
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
+
+
 def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     receipt = _receipt(tmp_path, "pair-1", "candidate", interventions=0, completion=100)
@@ -188,7 +212,7 @@ def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -
             __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
-        with pytest.raises(PilotReceiptError, match="live receipt metrics"):
+        with pytest.raises(PilotReceiptError, match="metrics.*mismatch"):
             validate_receipt(receipt, manifest)
         del receipt["metrics"][field]
         launch["metrics"] = dict(receipt["metrics"])

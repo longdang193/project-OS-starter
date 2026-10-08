@@ -72,6 +72,7 @@ def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
             },
             "herdr": {"agent_name": {"authorization": "REVIEW_HERDR_CANARY"}},
             "codex": {"version": ["REVIEW_CODEX_CANARY"]},
+            "secretary_runtime": {"session_id": "Bearer SYNTHETIC_SESSION_CANARY"},
             "stdout": "Authorization: bearer secret-value",
             "stderr": "raw response body",
             "api_key": "secret-value",
@@ -90,6 +91,7 @@ def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
     assert "REVIEW_ASSIGNMENT_CANARY" not in str(result)
     assert "REVIEW_HERDR_CANARY" not in str(result)
     assert "REVIEW_CODEX_CANARY" not in str(result)
+    assert "SYNTHETIC_SESSION_CANARY" not in str(result)
 
 
 def test_sanitize_launcher_result_preserves_structured_runtime_binding() -> None:
