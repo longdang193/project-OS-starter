@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -79,6 +80,40 @@ _REAPING_RESERVE_SECONDS = 30.0
 _DISPATCH_DEADLINE_SECONDS = 5.0
 
 
+@dataclass(frozen=True, slots=True)
+class LaunchCheck:
+    name: str
+    status: str
+    code: str | None = None
+    detail: str | None = None
+    because: str | None = None
+
+    def to_dict(self) -> dict[str, str]:
+        value = {"name": self.name, "status": self.status}
+        for key, item in (("code", self.code), ("detail", self.detail), ("because", self.because)):
+            if item is not None:
+                value[key] = item
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class LaunchPreflight:
+    lane: PreparedLane
+    checks: tuple[LaunchCheck, ...]
+
+    @property
+    def blockers(self) -> tuple[LaunchCheck, ...]:
+        return tuple(check for check in self.checks if check.status == "BLOCKED")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "lane_id": self.lane["lane_id"],
+            "checks": [check.to_dict() for check in self.checks],
+            "blockers": [check.to_dict() for check in self.blockers],
+            "ready": not self.blockers,
+        }
+
+
 def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -104,45 +139,70 @@ def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
     return {"lane_id": str(lane.get("lane_id", "<missing>")), "reason": reason}
 
 
-def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
-    """Revalidate plan-bound facts immediately before launch."""
-    if lane.get("execution_binding_digest") is None:
-        return lane
-    expected_digest = _execution_binding_digest(lane)
-    if lane["execution_binding_digest"] != expected_digest:
-        raise ValueError("execution_binding_digest does not match selected task binding")
+def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
+    """Collect launch-bound checks without duplicating PreparedLane facts."""
+    checks: list[LaunchCheck] = []
+    binding_digest = lane.get("execution_binding_digest")
+    if binding_digest is None:
+        checks.append(LaunchCheck("execution_binding", "NOT_EVALUATED", code="not_supplied"))
+        return LaunchPreflight(lane, tuple(checks))
+    elif binding_digest != _execution_binding_digest(lane):
+        checks.append(LaunchCheck("execution_binding", "BLOCKED", code="binding_mismatch", detail="execution_binding_digest does not match selected task binding"))
+    else:
+        checks.append(LaunchCheck("execution_binding", "PASS"))
+
     worktree = Path(str(lane["worktree"]))
     if not worktree.is_dir():
-        raise ValueError("worktree does not exist")
+        checks.append(LaunchCheck("worktree", "BLOCKED", code="worktree_not_found", detail="worktree does not exist"))
+        for name in ("plan_source", "git_base", "prerequisites"):
+            checks.append(LaunchCheck(name, "NOT_EVALUATED", because="worktree_not_found"))
+        return LaunchPreflight(lane, tuple(checks))
+    checks.append(LaunchCheck("worktree", "PASS"))
+
     plan_source = lane.get("plan_source")
     plan_revision = lane.get("plan_revision")
-    if plan_source is not None:
-        if not isinstance(plan_revision, str) or not plan_revision.strip():
-            raise ValueError("plan revision is missing for plan source")
+    if plan_source is None:
+        checks.append(LaunchCheck("plan_source", "NOT_EVALUATED", code="not_supplied"))
+    elif not isinstance(plan_revision, str) or not plan_revision.strip():
+        checks.append(LaunchCheck("plan_source", "BLOCKED", code="plan_revision_missing", detail="plan revision is missing for plan source"))
+    else:
         try:
             current_revision = _sha256_text(Path(str(plan_source)).read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise ValueError("plan source is unavailable") from exc
-        if current_revision != plan_revision:
-            raise ValueError("plan revision changed after admission")
-    expected_base = str(lane["expected_base"])
+        except OSError:
+            checks.append(LaunchCheck("plan_source", "BLOCKED", code="plan_source_unavailable", detail="plan source is unavailable"))
+        else:
+            checks.append(LaunchCheck(
+                "plan_source",
+                "PASS" if current_revision == plan_revision else "BLOCKED",
+                code=None if current_revision == plan_revision else "plan_revision_changed",
+                detail=None if current_revision == plan_revision else "plan revision changed after admission",
+            ))
+
     base_check = subprocess.run(
-        ["git", "-C", str(worktree), "merge-base", "--is-ancestor", expected_base, "HEAD"],
+        ["git", "-C", str(worktree), "merge-base", "--is-ancestor", str(lane["expected_base"]), "HEAD"],
         capture_output=True,
         text=True,
         check=False,
     )
-    if base_check.returncode != 0:
-        raise ValueError("expected_base is not reachable from worktree HEAD")
+    checks.append(LaunchCheck(
+        "git_base",
+        "PASS" if base_check.returncode == 0 else "BLOCKED",
+        code=None if base_check.returncode == 0 else "base_not_reachable",
+        detail=None if base_check.returncode == 0 else "expected_base is not reachable from worktree HEAD",
+    ))
+
     accepted = lane.get("accepted_prerequisites", {})
+    prerequisite_checks: list[LaunchCheck] = []
     for dependency in lane.get("dependencies", ()):
         binding = accepted.get(dependency) if isinstance(accepted, Mapping) else None
         if not isinstance(binding, Mapping):
-            raise ValueError(f"missing accepted prerequisite binding: {dependency}")
+            prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="binding_missing", detail=f"missing accepted prerequisite binding: {dependency}"))
+            continue
         revision = binding.get("accepted_revision")
         artifact_ref = binding.get("artifact_ref")
         if not isinstance(revision, str) or not revision.strip():
-            raise ValueError(f"missing accepted revision: {dependency}")
+            prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_missing", detail=f"missing accepted revision: {dependency}"))
+            continue
         revision_check = subprocess.run(
             ["git", "-C", str(worktree), "merge-base", "--is-ancestor", revision, "HEAD"],
             capture_output=True,
@@ -150,10 +210,12 @@ def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
             check=False,
         )
         if revision_check.returncode != 0:
-            raise ValueError(f"accepted revision is not contained in worktree: {dependency}")
+            prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_not_contained", detail=f"accepted revision is not contained in worktree: {dependency}"))
+            continue
         if artifact_ref is not None:
             if not isinstance(artifact_ref, str) or not artifact_ref.strip():
-                raise ValueError(f"invalid artifact reference: {dependency}")
+                prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="artifact_ref_invalid", detail=f"invalid artifact reference: {dependency}"))
+                continue
             artifact_path = Path(artifact_ref)
             if not artifact_path.is_absolute():
                 artifact_path = worktree / artifact_path
@@ -167,7 +229,18 @@ def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
                 )
                 artifact_exists = artifact_check.returncode == 0
             if not artifact_exists and artifact_ref != revision:
-                raise ValueError(f"artifact reference is unavailable: {dependency}")
+                prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="artifact_ref_unavailable", detail=f"artifact reference is unavailable: {dependency}"))
+                continue
+        prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "PASS"))
+    checks.extend(prerequisite_checks or [LaunchCheck("prerequisites", "NOT_EVALUATED", code="none")])
+    return LaunchPreflight(lane, tuple(checks))
+
+
+def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
+    """Revalidate plan-bound facts immediately before launch."""
+    preflight = launch_preflight(lane)
+    if preflight.blockers:
+        raise ValueError(preflight.blockers[0].detail or preflight.blockers[0].code or "launch preflight blocked")
     return lane
 
 
@@ -559,16 +632,22 @@ def _grant_evidence_matches(lane: Mapping[str, Any], parsed: Mapping[str, Any]) 
     )
 
 
+def _same_sequence(left: object, right: object) -> bool:
+    if not isinstance(left, (list, tuple)) or not isinstance(right, (list, tuple)):
+        return left == right
+    return tuple(left) == tuple(right)
+
+
 def _capability_evidence_matches(
     expected: Mapping[str, Any], actual: object
 ) -> bool:
     if not isinstance(actual, Mapping):
         return False
     for key in ("requested", "effective", "verification_commands", "source_task_sha256", "digest"):
-        if key in expected and actual.get(key) != expected.get(key):
+        if key in expected and not _same_sequence(actual.get(key), expected.get(key)):
             return False
     for key in ("passed_to_worker", "validated_available"):
-        if key in actual and actual.get(key) != expected.get("effective", []):
+        if key in actual and not _same_sequence(actual.get(key), expected.get("effective", ())):
             return False
     return True
 
@@ -582,9 +661,9 @@ def _worker_capability_evidence_matches(
     if not isinstance(actual, Mapping):
         return False
     return (
-        actual.get("requested") == expected.get("requested", [])
-        and actual.get("passed_to_worker") == expected.get("effective", [])
-        and actual.get("validated_available") == expected.get("effective", [])
+        _same_sequence(actual.get("requested"), expected.get("requested", ()))
+        and _same_sequence(actual.get("passed_to_worker"), expected.get("effective", ()))
+        and _same_sequence(actual.get("validated_available"), expected.get("effective", ()))
         and actual.get("digest") == expected.get("digest")
         and actual.get("validation_error") is None
     )
@@ -673,7 +752,7 @@ def run_lane(
                 "failure_kind": "grant_invalid",
             }
     try:
-        lane = verify_launch_bindings(lane)
+        preflight = launch_preflight(lane)
     except (TypeError, ValueError, RuntimeError) as exc:
         return {
             "lane_id": lane_id,
@@ -681,6 +760,19 @@ def run_lane(
             "exit_code": None,
             "records": [_tagged(lane_id, "unresolved", {"reason": str(exc)})],
             "stderr": str(exc),
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "launch_binding_stale",
+        }
+    if preflight.blockers:
+        detail = preflight.blockers[0].detail or preflight.blockers[0].code or "launch preflight blocked"
+        return {
+            "lane_id": lane_id,
+            "command": [],
+            "exit_code": None,
+            "records": [_tagged(lane_id, "unresolved", {"reason": detail})],
+            "stderr": detail,
+            "preflight": preflight.to_dict(),
             "unresolved": False,
             "capacity": "retired",
             "failure_kind": "launch_binding_stale",

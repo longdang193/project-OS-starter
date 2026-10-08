@@ -41,6 +41,14 @@ adapter to that owner. Plan mode is mutually exclusive with `--lanes-file`;
 both modes share admission, launch-bound freshness verification, and
 `run_parallel()`.
 
+`PreparedLane` remains the normalized static launch contract. The dispatcher may
+produce an ephemeral `LaunchPreflight` projection immediately before delivery;
+it reports root blockers as `PASS`, `BLOCKED`, or `NOT_EVALUATED` and must not
+copy stable lane authority into a second contract. Runtime discovery stays out
+of `plan_preparation.py`. Assignment identity remains stable across retries;
+real launch attempts receive fresh attempt identity and attempt-scoped result
+paths.
+
 Canonical plan input projects plan goal, the complete selected task section,
 accepted prerequisite identities, non-duplicative required proof, and the
 allowlisted shared constraints `Required skills`, `Preauthorized local actions`,

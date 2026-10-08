@@ -79,4 +79,9 @@ rejected, blocked, or unresolved execution is a nonzero dispatcher outcome.
 - Git-tracked plans preserve durable coordination state when coordination is
   selected.
 - Runtime completion stays distinct from acceptance.
+- Plan-bound launch preparation keeps `PreparedLane` as the normalized static
+  contract. Launcher readiness is an ephemeral projection that refreshes
+  mutable worktree, Git, target, dependency, and budget facts immediately
+  before delivery. It reports evidence and blockers; it does not create
+  workflow truth or replace CoS acceptance.
 - Unknown or incomplete evidence stays `BLOCKED` instead of becoming success.

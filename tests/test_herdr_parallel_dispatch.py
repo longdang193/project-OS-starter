@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 import subprocess
 import sys
 import threading
@@ -118,6 +119,37 @@ def test_launcher_command_preserves_boolean_prior_attempt_known(
             python_executable="python",
             launcher_path="launcher.py",
         )
+
+
+def test_launch_preflight_reports_root_blocker_without_cascade(tmp_path: Path) -> None:
+    descriptor = lane("a", tmp_path)
+    prepared = dispatcher.prepare_lane(descriptor)
+    prepared = replace(
+        prepared,
+        execution_binding_digest=dispatcher._execution_binding_digest(prepared),
+    )
+    preflight = dispatcher.launch_preflight(prepared)
+
+    assert [item.status for item in preflight.checks if item.name == "worktree"] == ["BLOCKED"]
+    assert [item.status for item in preflight.checks if item.name == "git_base"] == ["NOT_EVALUATED"]
+    assert preflight.blockers[0].code == "worktree_not_found"
+
+
+def test_launch_preflight_reports_independent_plan_and_base_blockers(tmp_path: Path) -> None:
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    item = lane("a", tmp_path)
+    item["worktree"] = str(worktree)
+    prepared = dispatcher.prepare_lane(item)
+    prepared = replace(
+        prepared,
+        execution_binding_digest=dispatcher._execution_binding_digest(prepared),
+    )
+    preflight = dispatcher.launch_preflight(prepared)
+
+    names = {item.name for item in preflight.blockers}
+    assert "git_base" in names
+    assert any(item.code == "not_supplied" for item in preflight.checks if item.name == "plan_source")
 
 
 def test_load_lane_descriptors_caps_capacity_and_reports_queued_lane(tmp_path: Path) -> None:
@@ -1182,6 +1214,37 @@ def test_local_capability_evidence_mismatch_stays_unverified(tmp_path: Path) -> 
         "assignment": {"grant_digest": item["grant_digest"], "local_capabilities": item["local_capabilities"]},
     }
     assert dispatcher._grant_evidence_matches(item, parsed) is False
+
+
+def test_local_capability_evidence_accepts_json_lists_for_prepared_tuples(
+    tmp_path: Path,
+) -> None:
+    prepared = dispatcher.prepare_lane(lane("a", tmp_path))
+    capabilities = prepared["local_capabilities"]
+    json_capabilities = {
+        key: list(value) if isinstance(value, tuple) else value
+        for key, value in capabilities.items()
+    }
+    parsed = {
+        "preparation": {"registry_launcher": {
+            "runtime_grant": prepared["runtime_grant"],
+            "grant_digest": prepared["grant_digest"],
+            "local_capabilities": json_capabilities,
+        }},
+        "assignment": {
+            "grant_digest": prepared["grant_digest"],
+            "capability_state": "confirmed",
+            "capabilities": {
+                "requested": list(capabilities["requested"]),
+                "passed_to_worker": list(capabilities["effective"]),
+                "validated_available": list(capabilities["effective"]),
+                "digest": capabilities["digest"],
+                "validation_error": None,
+            },
+        },
+    }
+
+    assert dispatcher._grant_evidence_matches(prepared, parsed) is True
 
 
 def test_grant_evidence_uses_stable_requested_binding_for_dynamic_budget(tmp_path: Path) -> None:
