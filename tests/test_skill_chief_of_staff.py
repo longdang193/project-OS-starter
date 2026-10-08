@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 from project_os_test_paths import runtime_doc
@@ -19,6 +20,20 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "`deepagents` uses a CoS-managed `dcode-project`" in normalized
     assert "`tura` is not a CoS MAIN lane" in skill
     assert "top-level lane selection" in skill
+
+
+def test_inspection_snapshot_detects_mutation_without_claiming_prevention(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact.txt"
+    artifact.write_text("before", encoding="utf-8")
+    before = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+    artifact.write_text("after", encoding="utf-8")
+    after = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+    assert before != after
+    assert "instruction-level, not host-enforced" in " ".join(
+        read(".agents/skills/skill-chief-of-staff/SKILL.md").split()
+    )
 
 
 def test_chief_of_staff_defines_transient_runtime_grant_boundary() -> None:
