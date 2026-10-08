@@ -65,7 +65,13 @@ def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
         request(),
         returncode=0,
         payload={
-            "assignment": {"status": "completed", "attempt_id": "attempt-1"},
+            "assignment": {
+                "status": "completed",
+                "attempt_id": "attempt-1",
+                "failure_kind": {"raw_body": "REVIEW_ASSIGNMENT_CANARY"},
+            },
+            "herdr": {"agent_name": {"authorization": "REVIEW_HERDR_CANARY"}},
+            "codex": {"version": ["REVIEW_CODEX_CANARY"]},
             "stdout": "Authorization: bearer secret-value",
             "stderr": "raw response body",
             "api_key": "secret-value",
@@ -81,6 +87,9 @@ def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
     assert "stderr" not in result
     assert "api_key" not in result
     assert "secret-value" not in str(result)
+    assert "REVIEW_ASSIGNMENT_CANARY" not in str(result)
+    assert "REVIEW_HERDR_CANARY" not in str(result)
+    assert "REVIEW_CODEX_CANARY" not in str(result)
 
 
 def test_sanitize_launcher_result_preserves_structured_runtime_binding() -> None:

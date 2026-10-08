@@ -68,6 +68,31 @@ def _required_text(value: object, label: str) -> str:
     return value.strip()
 
 
+def _safe_text(value: object) -> str | None:
+    if isinstance(value, str) and not _SAFE_SOURCE_VALUE.search(value):
+        return value
+    return None
+
+
+def _safe_assignment(assignment: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(assignment, Mapping):
+        return {}
+    safe: dict[str, Any] = {}
+    for key in _SAFE_ASSIGNMENT_KEYS:
+        value = assignment.get(key)
+        if key == "launcher_exit_code":
+            if isinstance(value, int) and not isinstance(value, bool):
+                safe[key] = value
+        elif key == "reconciliation_required":
+            if isinstance(value, bool):
+                safe[key] = value
+        else:
+            safe_value = _safe_text(value)
+            if safe_value is not None:
+                safe[key] = safe_value
+    return safe
+
+
 @dataclass(frozen=True)
 class SecretaryLaunchRequest:
     task_id: str
@@ -356,11 +381,7 @@ def sanitize_launcher_result(
     finished_at: str | None = None,
 ) -> dict[str, Any]:
     assignment = payload.get("assignment") if isinstance(payload, Mapping) else None
-    safe_assignment = {
-        key: assignment[key]
-        for key in _SAFE_ASSIGNMENT_KEYS
-        if isinstance(assignment, Mapping) and key in assignment
-    }
+    safe_assignment = _safe_assignment(assignment if isinstance(assignment, Mapping) else None)
     codex = payload.get("codex") if isinstance(payload, Mapping) else None
     herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
     raw_runtime = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
@@ -412,10 +433,10 @@ def sanitize_launcher_result(
         "returncode": returncode,
         "assignment": safe_assignment,
         "runtime_identity": {
-            "agent_name": herdr.get("agent_name") if isinstance(herdr, Mapping) else None,
-            "session": herdr.get("session") if isinstance(herdr, Mapping) else None,
-            "pane": herdr.get("pane") if isinstance(herdr, Mapping) else None,
-            "codex_version": codex.get("version") if isinstance(codex, Mapping) else None,
+            "agent_name": _safe_text(herdr.get("agent_name")) if isinstance(herdr, Mapping) else None,
+            "session": _safe_text(herdr.get("session")) if isinstance(herdr, Mapping) else None,
+            "pane": _safe_text(herdr.get("pane")) if isinstance(herdr, Mapping) else None,
+            "codex_version": _safe_text(codex.get("version")) if isinstance(codex, Mapping) else None,
             "provider": structured_binding.get("provider") if isinstance(structured_binding, Mapping) else None,
             "model": structured_binding.get("model") if isinstance(structured_binding, Mapping) else None,
             "controller_id": structured_binding.get("controller_id") if isinstance(structured_binding, Mapping) else None,
