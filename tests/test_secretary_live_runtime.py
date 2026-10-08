@@ -9,6 +9,8 @@ import pytest
 from scripts.secretary_live_runtime import (
     SECRETARY_PROVIDER,
     SecretaryLaunchRequest,
+    _safe_runtime_snapshot,
+    _smoke_receipt,
     build_launcher_command,
     sanitize_launcher_result,
     select_launcher_payload,
@@ -202,6 +204,99 @@ def test_sanitize_launcher_result_drops_unapproved_observed_fields() -> None:
 
     assert "credentials" not in str(result)
     assert "raw_body" not in str(result)
+
+
+def test_safe_runtime_snapshot_drops_untrusted_producer_payload() -> None:
+    snapshot = _safe_runtime_snapshot(
+        {
+            "sources": {
+                "launch": {
+                    "producer": {"authorization": "Bearer SYNTHETIC-REVIEW-CANARY"},
+                }
+            }
+        },
+        {"pair_id": "run-1", "arm": "candidate", "workstream": "secretary-live-runtime", "checkpoint": "plan-rev-1:task-1"},
+    )
+
+    assert "producer" not in snapshot["sources"]["launch"]
+    assert "SYNTHETIC-REVIEW-CANARY" not in str(snapshot)
+
+
+def test_smoke_receipt_preserves_required_source_bindings() -> None:
+    request_value = request()
+    binding = {
+        "pair_id": request_value.run_id,
+        "arm": "candidate",
+        "run_id": request_value.run_id,
+        "attempt_id": request_value.attempt_id,
+        "task_id": request_value.task_id,
+        "plan_revision": request_value.plan_revision,
+        "repository_identity": request_value.repository_identity,
+        "plan_identity": request_value.plan_identity,
+        "git_revision": request_value.git_revision,
+        "worktree": str(request_value.worktree.resolve()),
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request_value.plan_revision}:{request_value.task_id}",
+        "provider": SECRETARY_PROVIDER,
+        "model": "gpt-test",
+        "controller_id": "cos-supervised",
+        "session_id": "session-1",
+    }
+    producers = {
+        "launch": "herdr_main_launcher",
+        "secretary": "secretary_live_runtime",
+        "task_result": "dcode-project",
+        "settlement": "project_os_runtime.attempt",
+        "acceptance": "cos",
+    }
+    sources = {
+        name: {"producer": producer, "source_ref": f"runtime://{name}/run-1", "source_digest": "a" * 64, **binding}
+        for name, producer in producers.items()
+    }
+    raw_runtime = {
+        **binding,
+        "observed": True,
+        "timestamps": {
+            "run_started": "2026-10-08T10:00:00+00:00",
+            "cos_entry": "2026-10-08T10:00:01+00:00",
+            "secretary_entry": "2026-10-08T10:00:02+00:00",
+            "worker_entry": "2026-10-08T10:00:03+00:00",
+            "publication": "2026-10-08T10:00:40+00:00",
+            "settlement": "2026-10-08T10:00:50+00:00",
+            "acceptance": "2026-10-08T10:01:00+00:00",
+            "secretary_exit": "2026-10-08T10:01:05+00:00",
+            "cos_exit": "2026-10-08T10:01:08+00:00",
+            "run_finished": "2026-10-08T10:01:10+00:00",
+        },
+        "metrics": {
+            "cos_turns": 0,
+            "secretary_turns": 1,
+            "human_interventions": 0,
+            "publication_success": True,
+            "settlement_proven": True,
+            "acceptance_decision": "PASS",
+            "token_usage": "unknown",
+            "cost": "unknown",
+        },
+        "sources": sources,
+    }
+    expected = {key: binding[key] for key in ("pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision", "repository_identity", "plan_identity", "git_revision", "worktree", "workstream", "checkpoint", "provider", "model", "controller_id", "session_id")}
+    structured = _safe_runtime_snapshot(raw_runtime, expected)
+    receipt = _smoke_receipt(
+        request_value,
+        {
+            "evidence_provenance": "live-attributed",
+            "runtime_identity": {
+                "provider": SECRETARY_PROVIDER,
+                "model": "gpt-test",
+                "controller_id": "cos-supervised",
+                "session_id": "session-1",
+                "secretary_runtime": structured,
+            },
+        },
+    )
+
+    assert receipt["valid"] is True
 
 
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:

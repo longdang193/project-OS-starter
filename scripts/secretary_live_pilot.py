@@ -306,6 +306,12 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
             raise PilotReceiptError("live receipt settlement is not proven")
         if live_metrics["acceptance_decision"] != sources["acceptance"].get("decision"):
             raise PilotReceiptError("live receipt acceptance decision mismatch")
+        for live_field, outer_field in (
+            ("settlement_proven", "settlement_proven"),
+            ("acceptance_decision", "acceptance_decision"),
+        ):
+            if outer_field in receipt["metrics"] and live_metrics[live_field] != receipt["metrics"][outer_field]:
+                raise PilotReceiptError(f"live receipt metrics.{live_field} mismatch")
     source_digests = {
         kind: hashlib.sha256(Path(_text(refs[kind], f"source_refs.{kind}")).read_bytes()).hexdigest()
         for kind in REQUIRED_SOURCE_KEYS

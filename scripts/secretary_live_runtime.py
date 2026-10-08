@@ -16,11 +16,13 @@ from typing import Any, Mapping
 
 try:
     from project_os_runtime.secretary_receipts import (
+        SOURCE_PRODUCERS,
         build_live_receipt,
         validate_live_receipt,
     )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.secretary_receipts import (
+        SOURCE_PRODUCERS,
         build_live_receipt,
         validate_live_receipt,
     )
@@ -320,7 +322,7 @@ def _safe_runtime_snapshot(
     snapshot["metrics"] = _safe_metrics(metrics if isinstance(metrics, Mapping) else None)
     sources = runtime.get("sources")
     if isinstance(sources, Mapping):
-        def safe_source(source: Mapping[str, Any]) -> dict[str, Any]:
+        def safe_source(name: str, source: Mapping[str, Any]) -> dict[str, Any]:
             safe: dict[str, Any] = {}
             for key in _SOURCE_SAFE_FIELDS:
                 value = source.get(key)
@@ -331,12 +333,13 @@ def _safe_runtime_snapshot(
                     if isinstance(value, str) and not _SAFE_SOURCE_VALUE.search(value):
                         safe[key] = value
                 elif key == "producer":
-                    safe[key] = value
+                    if isinstance(value, str) and value == SOURCE_PRODUCERS.get(name):
+                        safe[key] = value
                 elif key in expected_values and value == expected_values[key]:
                     safe[key] = value
             return safe
         snapshot["sources"] = {
-            name: safe_source(source)
+            name: safe_source(name, source)
             for name, source in sources.items()
             if name in _SOURCE_KEYS and isinstance(source, Mapping)
         }
@@ -370,6 +373,10 @@ def sanitize_launcher_result(
         "worktree": str(request.worktree.resolve()),
         "provider": request.provider,
         "controller_id": SECRETARY_CONTROLLER,
+        "pair_id": request.run_id,
+        "arm": "candidate",
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request.plan_revision}:{request.task_id}",
     }
     if configured_model is not None:
         expected_values["model"] = configured_model

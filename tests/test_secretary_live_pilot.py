@@ -178,6 +178,25 @@ def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -
     normalized = validate_receipt(receipt, manifest)
 
     assert normalized["live_receipt"]["valid"] is True
+    launch_path = Path(receipt["source_refs"]["launch"])
+    for field, value in (("settlement_proven", False), ("acceptance_decision", "FAIL")):
+        receipt["metrics"][field] = value
+        launch = __import__("json").loads(launch_path.read_text(encoding="utf-8"))
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
+        with pytest.raises(PilotReceiptError, match="live receipt metrics"):
+            validate_receipt(receipt, manifest)
+        del receipt["metrics"][field]
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
     receipt["live_receipt"]["metrics"]["publication_success"] = False
 
     with pytest.raises(PilotReceiptError, match="live receipt metrics.publication_success"):
