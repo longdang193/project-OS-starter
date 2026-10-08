@@ -152,6 +152,130 @@ def test_launch_preflight_reports_independent_plan_and_base_blockers(tmp_path: P
     assert any(item.code == "not_supplied" for item in preflight.checks if item.name == "plan_source")
 
 
+def test_launch_preflight_marks_missing_binding_unverified_and_not_ready(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parent.parent
+    item = lane("a", root)
+    item.update({
+        "worktree": str(root),
+        "expected_base": subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True
+        ).strip(),
+    })
+
+    preflight = dispatcher.launch_preflight(dispatcher.prepare_lane(item))
+
+    assert preflight.binding_status == "UNVERIFIED"
+    assert preflight.to_dict()["ready"] is False
+    assert preflight.to_dict()["scope"] == "plan_binding"
+
+
+def test_run_lane_rejects_coordinated_missing_binding_before_worker_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parent.parent
+    plan_source = tmp_path / "plan.md"
+    plan_source.write_text("plan", encoding="utf-8")
+    item = lane("a", root)
+    item.update(
+        {
+            "worktree": str(root),
+            "expected_base": subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=root, text=True
+            ).strip(),
+            "plan_source": str(plan_source),
+            "plan_revision": dispatcher._sha256_text(plan_source.read_text(encoding="utf-8")),
+        }
+    )
+    started = False
+
+    def fake_popen(*args, **kwargs):
+        nonlocal started
+        started = True
+        raise AssertionError("worker must not start")
+
+    monkeypatch.setattr(dispatcher, "_launcher_command", lambda *args, **kwargs: ["worker"])
+    result = dispatcher.run_lane(item, popen_factory=fake_popen)
+
+    assert result["failure_kind"] == "launch_binding_unverified"
+    assert result["preflight"]["binding_status"] == "UNVERIFIED"
+    assert started is False
+
+
+def test_run_lane_preserves_legacy_missing_binding_eligibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(__file__).resolve().parent.parent
+    item = lane("a", root)
+    item.update({
+        "worktree": str(root),
+        "expected_base": subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True
+        ).strip(),
+    })
+    started = False
+
+    class FinishedProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return "", ""
+
+    def fake_popen(*args, **kwargs):
+        nonlocal started
+        started = True
+        return FinishedProcess()
+
+    monkeypatch.setattr(dispatcher, "_launcher_command", lambda *args, **kwargs: ["worker"])
+    result = dispatcher.run_lane(item, popen_factory=fake_popen)
+
+    assert started is True
+    assert result["preflight"]["binding_status"] == "UNVERIFIED"
+    assert result["failure_kind"] != "launch_binding_unverified"
+
+
+def test_launch_preflight_checks_plan_source_when_worktree_missing(tmp_path: Path) -> None:
+    plan_source = tmp_path / "plan.md"
+    plan_source.write_text("plan", encoding="utf-8")
+    item = lane("a", tmp_path)
+    item.update(
+        {
+            "plan_source": str(plan_source),
+            "plan_revision": dispatcher._sha256_text(plan_source.read_text(encoding="utf-8")),
+        }
+    )
+
+    preflight = dispatcher.launch_preflight(dispatcher.prepare_lane(item))
+    checks = {check.name: check for check in preflight.checks}
+
+    assert checks["plan_source"].status == "PASS"
+    assert checks["git_base"].status == "NOT_EVALUATED"
+    assert checks["prerequisites"].status == "NOT_APPLICABLE"
+
+
+def test_launch_preflight_preserves_independent_blockers(tmp_path: Path) -> None:
+    plan_source = tmp_path / "plan.md"
+    plan_source.write_text("plan", encoding="utf-8")
+    item = lane("a", Path(__file__).resolve().parent.parent)
+    item.update(
+        {
+            "worktree": str(Path(__file__).resolve().parent.parent),
+            "plan_source": str(plan_source),
+            "dependencies": ["Task 1"],
+            "expected_base": "not-a-revision",
+        }
+    )
+
+    preflight = dispatcher.launch_preflight(dispatcher.prepare_lane(item))
+
+    assert {check.name for check in preflight.blockers} >= {
+        "plan_source",
+        "git_base",
+        "prerequisite:Task 1",
+    }
+
+
 def test_load_lane_descriptors_caps_capacity_and_reports_queued_lane(tmp_path: Path) -> None:
     result = dispatcher.load_lane_descriptors(
         write_lanes(tmp_path, [lane("a", tmp_path), lane("b", tmp_path), lane("c", tmp_path)])
@@ -1401,6 +1525,26 @@ def test_verify_launch_bindings_accepts_contained_revision_without_artifact_ref(
     raw["execution_binding_digest"] = dispatcher._execution_binding_digest(prepared)
 
     assert dispatcher.verify_launch_bindings(dispatcher.prepare_lane(raw))
+
+
+def test_verify_launch_bindings_rejects_coordinated_missing_binding(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parent.parent
+    plan_source = tmp_path / "plan.md"
+    plan_source.write_text("plan", encoding="utf-8")
+    raw = lane("a", root)
+    raw.update(
+        {
+            "worktree": str(root),
+            "expected_base": subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=root, text=True
+            ).strip(),
+            "plan_source": str(plan_source),
+            "plan_revision": dispatcher._sha256_text(plan_source.read_text(encoding="utf-8")),
+        }
+    )
+
+    with pytest.raises(ValueError, match="binding evidence is unavailable"):
+        dispatcher.verify_launch_bindings(dispatcher.prepare_lane(raw))
 
 
 @pytest.mark.parametrize("dependency_count", [0, 1, 2])
