@@ -102,6 +102,17 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         assert text in skill
 
 
+def test_chief_of_staff_reconciles_semantic_artifact_proof_before_acceptance() -> None:
+    skill = " ".join(read(".agents/skills/skill-chief-of-staff/SKILL.md").split())
+    for text in (
+        "Before accepting task completion, CoS must independently reconcile every task-local acceptance criterion against canonical artifact and Git state.",
+        "Worker-owned `TaskResult.status=completed`, exit `0`, a settled checkpoint, and verification references prove execution and lifecycle only; they do not prove semantic artifact correctness.",
+        "A missing, unchanged, or contradicted required artifact condition keeps acceptance `false` or `BLOCKED`",
+        "Never infer semantic success from worker claims, runtime status, commits, or verification command lists alone.",
+    ):
+        assert text in skill
+
+
 def test_chief_of_staff_requires_cold_start_dispatch_evidence() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
     for text in (

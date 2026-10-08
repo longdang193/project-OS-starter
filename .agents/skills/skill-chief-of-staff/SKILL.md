@@ -409,6 +409,16 @@ Lane commits remain implementation artifacts. The lead controller records
 coordination checkpoints in its own workspace after accepting proof; a lane
 agent must not update the ledger as part of its implementation commit.
 
+Before accepting task completion, CoS must independently reconcile every
+task-local acceptance criterion against canonical artifact and Git state.
+Worker-owned `TaskResult.status=completed`, exit `0`, a settled checkpoint, and
+verification references prove execution and lifecycle only; they do not prove
+semantic artifact correctness. A missing, unchanged, or contradicted required
+artifact condition keeps acceptance `false` or `BLOCKED`, records the exact
+failed condition, and routes continuation or escalation. Never infer semantic
+success from worker claims, runtime status, commits, or verification command
+lists alone.
+
 ## Review And Integration (plan-bound execution)
 
 Request review through `skill-requesting-code-review`. CoS dispatches only an
