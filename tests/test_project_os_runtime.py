@@ -159,6 +159,7 @@ def _acceptance_inputs() -> dict[str, dict[str, object]]:
             "task_id": "Task 1",
             "plan_identity": "plan-1",
             "required_proof": "artifact proof",
+            "required_conditions": {"required artifact exists": "artifact proof"},
             "evidence": "docs/evidence.md",
             "state": "active",
         },
@@ -295,3 +296,131 @@ def test_cos_acceptance_blocks_unsettled_resources() -> None:
 
     assert decision["decision"] == "BLOCKED"
     assert "resource settlement" in decision["reasons"]
+
+
+@pytest.mark.parametrize("state", [None, "pending", "blocked", "completed"])
+def test_cos_acceptance_requires_active_task_state(state: str | None) -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    if state is None:
+        inputs["task"].pop("state")
+    else:
+        inputs["task"]["state"] = state
+
+    decision = evaluate_acceptance(**inputs)
+
+    assert decision["decision"] == "BLOCKED"
+    assert "task state eligibility" in decision["reasons"]
+
+
+def test_cos_acceptance_blocks_caller_supplied_subset_of_plan_conditions() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["task"]["required_conditions"] = {
+        "required artifact exists": "artifact proof",
+        "verification recorded": "verification proof",
+    }
+
+    decision = evaluate_acceptance(**inputs)
+
+    assert decision["decision"] == "BLOCKED"
+    assert "artifact condition coverage" in decision["reasons"]
+
+
+def test_cos_acceptance_blocks_missing_canonical_condition_set() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["task"].pop("required_conditions")
+
+    decision = evaluate_acceptance(**inputs)
+
+    assert decision["decision"] == "BLOCKED"
+    assert "required condition set" in decision["reasons"]
+
+
+def test_cos_acceptance_blocks_non_mapping_artifact_conditions() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["artifact_conditions"] = []  # type: ignore[assignment]
+
+    decision = evaluate_acceptance(**inputs)
+
+    assert decision["decision"] == "BLOCKED"
+    assert "artifact condition type" in decision["reasons"]
+
+
+def test_cos_acceptance_rejects_minimal_pass_decision() -> None:
+    from scripts.project_os_runtime.acceptance import authorize_dependent_transition
+
+    transition = authorize_dependent_transition(
+        {"decision": "PASS"},
+        completed_task_id="Task 1",
+        dependent_task={
+            "task_id": "Task 2",
+            "plan_identity": "plan-1",
+            "state": "pending",
+            "dependencies": ["Task 1"],
+        },
+        dependency_states={"Task 1": "completed"},
+    )
+
+    assert transition["authorized"] is False
+    assert transition["next_state"] == "pending"
+    assert transition["reason"] == "acceptance decision incomplete"
+
+
+def test_cos_acceptance_rejects_inconsistent_transition_proof() -> None:
+    from scripts.project_os_runtime.acceptance import (
+        authorize_dependent_transition,
+        evaluate_acceptance,
+    )
+
+    decision = evaluate_acceptance(**_acceptance_inputs())
+    decision["task_transition"]["next_state"] = "active"
+
+    transition = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={
+            "task_id": "Task 2",
+            "plan_identity": "plan-1",
+            "state": "pending",
+            "dependencies": ["Task 1"],
+        },
+        dependency_states={"Task 1": "completed"},
+    )
+
+    assert transition["authorized"] is False
+    assert transition["next_state"] == "pending"
+    assert transition["reason"] == "acceptance decision incomplete"
+
+
+def test_cos_acceptance_rejects_repeated_source_completion() -> None:
+    from scripts.project_os_runtime.acceptance import (
+        authorize_dependent_transition,
+        evaluate_acceptance,
+    )
+
+    inputs = _acceptance_inputs()
+    inputs["task"]["state"] = "completed"
+    decision = evaluate_acceptance(**inputs)
+
+    transition = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={
+            "task_id": "Task 2",
+            "plan_identity": "plan-1",
+            "state": "pending",
+            "dependencies": ["Task 1"],
+        },
+        dependency_states={"Task 1": "completed"},
+    )
+
+    assert decision["decision"] == "BLOCKED"
+    assert transition["authorized"] is False
+    assert transition["next_state"] == "pending"

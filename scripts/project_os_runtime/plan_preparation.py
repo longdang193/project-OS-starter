@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 
 from .attempt import execution_binding_digest, normalize_runtime_grant
@@ -263,6 +265,255 @@ def load_plan(source: str | os.PathLike[str]) -> PlanGraph:
         return parse_plan(source)
     path = Path(source)
     return parse_plan(path.read_text(encoding="utf-8"))
+
+
+@contextmanager
+def _plan_write_lock(path: Path):
+    lock_root = Path(tempfile.gettempdir()) / "project-os-plan-locks"
+    lock_root.mkdir(parents=True, exist_ok=True)
+    lock_name = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()
+    lock_path = lock_root / f"{lock_name}.lock"
+    with lock_path.open("a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def apply_accepted_plan_transitions(
+    source: str | os.PathLike[str],
+    decision: Mapping[str, Any],
+    transitions: Sequence[Mapping[str, str]],
+    *,
+    dependent_transition: Mapping[str, Any] | None = None,
+    expected_revision: str,
+) -> dict[str, Any]:
+    """Apply Plan transitions only from complete CoS acceptance proof."""
+
+    controller = decision.get("controller")
+    task = decision.get("task")
+    task_transition = decision.get("task_transition")
+    proof = decision.get("acceptance_proof")
+    if (
+        decision.get("decision") != "PASS"
+        or not all(isinstance(value, Mapping) for value in (controller, task, task_transition, proof))
+        or not isinstance(controller.get("identity"), str)
+        or not controller.get("identity").strip()
+        or controller.get("authority") != "cos"
+        or not isinstance(controller.get("plan_identity"), str)
+        or not controller.get("plan_identity").strip()
+        or not isinstance(controller.get("task_id"), str)
+        or not controller.get("task_id").strip()
+        or not isinstance(task.get("task_id"), str)
+        or not task.get("task_id").strip()
+        or not isinstance(task.get("plan_identity"), str)
+        or not task.get("plan_identity").strip()
+        or controller.get("plan_identity") != task.get("plan_identity")
+        or controller.get("task_id") != task.get("task_id")
+        or task_transition.get("authorized") is not True
+        or task_transition.get("current_state") != "active"
+        or task_transition.get("next_state") != "completed"
+    ):
+        return {"authorized": False, "reason": "acceptance decision incomplete"}
+    required_conditions = proof.get("required_conditions")
+    artifact_conditions = proof.get("artifact_conditions")
+    freshness = proof.get("freshness")
+    git_proof = proof.get("git")
+    settlement = proof.get("settlement")
+    if (
+        not isinstance(required_conditions, Mapping)
+        or not required_conditions
+        or not isinstance(artifact_conditions, Mapping)
+        or set(artifact_conditions) != set(required_conditions)
+        or any(value is not True for value in artifact_conditions.values())
+        or proof.get("task_id") != task.get("task_id")
+        or proof.get("plan_identity") != task.get("plan_identity")
+        or proof.get("task_state") != "active"
+        or not isinstance(freshness, Mapping)
+        or freshness.get("head_matches") is not True
+        or freshness.get("write_scope_matches") is not True
+        or not isinstance(git_proof, Mapping)
+        or not isinstance(git_proof.get("repository_identity"), str)
+        or not git_proof.get("repository_identity").strip()
+        or git_proof.get("plan_identity") != task.get("plan_identity")
+        or not isinstance(settlement, Mapping)
+        or settlement.get("settlement_proven") is not True
+        or settlement.get("resource_settled") is not True
+    ):
+        return {"authorized": False, "reason": "acceptance decision incomplete"}
+    try:
+        target_plan_identity = _source_parts(source)[2]
+    except (OSError, ValueError):
+        return {"authorized": False, "reason": "acceptance decision incomplete"}
+    if target_plan_identity != task.get("plan_identity"):
+        return {"authorized": False, "reason": "acceptance decision incomplete"}
+    accepted_task_id = task.get("task_id")
+    accepted_transition = {
+        "task_id": accepted_task_id,
+        "expected_state": "active",
+        "next_state": "completed",
+    }
+    expected_transitions: list[Mapping[str, Any]] = [accepted_transition]
+    if dependent_transition is not None:
+        if (
+            dependent_transition.get("authorized") is not True
+            or dependent_transition.get("current_state") != "pending"
+            or dependent_transition.get("next_state") != "active"
+            or not isinstance(dependent_transition.get("task_id"), str)
+            or not dependent_transition.get("task_id").strip()
+            or dependent_transition.get("plan_identity") != task.get("plan_identity")
+        ):
+            return {"authorized": False, "reason": "acceptance transition mismatch"}
+        expected_transitions.append(
+            {
+                "task_id": dependent_transition.get("task_id"),
+                "expected_state": "pending",
+                "next_state": "active",
+            }
+        )
+    if not isinstance(accepted_task_id, str) or list(transitions) != expected_transitions:
+        return {"authorized": False, "reason": "acceptance transition mismatch"}
+    return apply_plan_transitions(source, transitions, expected_revision=expected_revision)
+
+
+def apply_plan_transitions(
+    source: str | os.PathLike[str],
+    transitions: Sequence[Mapping[str, str]],
+    *,
+    expected_revision: str,
+) -> dict[str, Any]:
+    path = Path(source)
+    with _plan_write_lock(path):
+        return _apply_plan_transitions_locked(path, transitions, expected_revision=expected_revision)
+
+
+def _apply_plan_transitions_locked(
+    source: str | os.PathLike[str],
+    transitions: Sequence[Mapping[str, str]],
+    *,
+    expected_revision: str,
+) -> dict[str, Any]:
+    """Apply one guarded lead-controller transition batch to a plan ledger."""
+
+    path = Path(source)
+    text = path.read_text(encoding="utf-8")
+    revision = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if revision != expected_revision:
+        return {
+            "authorized": False,
+            "reason": "plan revision changed",
+            "revision": revision,
+        }
+    if not transitions:
+        return {"authorized": False, "reason": "no plan transitions", "revision": revision}
+
+    graph = parse_plan(text)
+    normalized: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for transition in transitions:
+        task_id = _canonical_task_id(str(transition.get("task_id", "")))
+        expected_state = _cell(str(transition.get("expected_state", ""))).casefold()
+        next_state = _cell(str(transition.get("next_state", ""))).casefold()
+        if task_id in seen:
+            return {"authorized": False, "reason": "duplicate plan transition", "revision": revision}
+        seen.add(task_id)
+        task = graph.tasks.get(task_id)
+        if task is None:
+            return {"authorized": False, "reason": "unknown plan task", "revision": revision}
+        if task.state != expected_state:
+            return {"authorized": False, "reason": "task state changed", "revision": revision}
+        if (expected_state, next_state) not in {("active", "completed"), ("pending", "active")}:
+            return {"authorized": False, "reason": "unsupported plan transition", "revision": revision}
+        normalized.append((task_id, expected_state, next_state))
+
+    proposed_states = {task_id: task.state for task_id, task in graph.tasks.items()}
+    proposed_states.update({task_id: next_state for task_id, _, next_state in normalized})
+    for task_id, _, next_state in normalized:
+        if next_state == "active" and any(
+            proposed_states.get(dependency) != "completed"
+            for dependency in graph.tasks[task_id].dependencies
+        ):
+            return {"authorized": False, "reason": "dependent prerequisites incomplete", "revision": revision}
+
+    lines = text.splitlines(keepends=True)
+    header_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if (cells := _split_row(line))
+            and tuple(_cell(item).casefold() for item in cells) == _TASK_ROW_HEADER
+        ),
+        None,
+    )
+    if header_index is None:
+        return {"authorized": False, "reason": "plan task ledger table not found", "revision": revision}
+    row_end = header_index + 2
+    while row_end < len(lines) and lines[row_end].lstrip().startswith("|"):
+        row_end += 1
+
+    for task_id, _, next_state in normalized:
+        row_pattern = re.compile(rf"^(\|\s*{re.escape(task_id)}\s*\|\s*)[^|]+(\|.*)$", re.IGNORECASE)
+        matches = [index for index in range(header_index + 2, row_end) if row_pattern.match(lines[index])]
+        if len(matches) != 1:
+            return {"authorized": False, "reason": "plan task row unavailable", "revision": revision}
+        row_index = matches[0]
+        lines[row_index] = row_pattern.sub(
+            lambda match: f"{match.group(1)}`{next_state}`{match.group(2)}",
+            lines[row_index],
+            count=1,
+        )
+
+    updated = "".join(lines)
+    latest_text = path.read_text(encoding="utf-8")
+    if hashlib.sha256(latest_text.encode("utf-8")).hexdigest() != revision:
+        return {
+            "authorized": False,
+            "reason": "plan revision changed",
+            "revision": hashlib.sha256(latest_text.encode("utf-8")).hexdigest(),
+        }
+    temporary_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = handle.name
+            handle.write(updated)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+    return {
+        "authorized": True,
+        "revision": revision,
+        "new_revision": hashlib.sha256(updated.encode("utf-8")).hexdigest(),
+        "transitions": [
+            {"task_id": task_id, "next_state": next_state}
+            for task_id, _, next_state in normalized
+        ],
+    }
 
 
 def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
