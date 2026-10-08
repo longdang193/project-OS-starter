@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import subprocess
+import sys
 
 import pytest
 
@@ -10,6 +13,7 @@ from scripts.secretary_live_pilot import (
     prepare_manifest,
     validate_receipt,
 )
+from scripts.project_os_runtime.secretary_receipts import build_live_receipt
 
 
 def _manifest(tmp_path: Path) -> dict[str, object]:
@@ -81,6 +85,10 @@ def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, comp
     refs = {}
     for name, value in {"launch": launch, "task_result": task_result, "settlement": settlement, "acceptance": acceptance}.items():
         path = tmp_path / f"{run_id}-{name}.json"
+        value["source_ref"] = str(path)
+        value["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
         path.write_text(__import__("json").dumps(value), encoding="utf-8")
         refs[name] = str(path)
     return {
@@ -93,6 +101,15 @@ def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, comp
     }
 
 
+def _live_source_proof(receipt: dict[str, object], name: str) -> tuple[str, str]:
+    refs = receipt["source_refs"]
+    if isinstance(refs, dict) and name in refs:
+        path = Path(refs[name])
+        return str(path), hashlib.sha256(path.read_bytes()).hexdigest()
+    source_ref = f"runtime://{name}/{receipt['run_id']}"
+    return source_ref, hashlib.sha256(source_ref.encode()).hexdigest()
+
+
 def test_validate_receipt_requires_producer_owned_sources(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     receipt = _receipt(tmp_path, "pair-1", "baseline", interventions=1, completion=100)
@@ -102,6 +119,177 @@ def test_validate_receipt_requires_producer_owned_sources(tmp_path: Path) -> Non
     assert normalized["valid"] is True
     assert normalized["evidence_provenance"] == "live-attributed"
     assert len(normalized["source_digests"]) == 4
+
+
+def test_validate_receipt_rejects_outer_settlement_and_acceptance_without_live_receipt(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    receipt = _receipt(tmp_path, "pair-1", "baseline", interventions=1, completion=100)
+    launch_path = Path(receipt["source_refs"]["launch"])
+    launch = __import__("json").loads(launch_path.read_text(encoding="utf-8"))
+    for field, value in (("settlement_proven", False), ("acceptance_decision", "FAIL")):
+        receipt["metrics"][field] = value
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
+        with pytest.raises(PilotReceiptError, match=rf"receipt metrics\.{field} mismatch"):
+            validate_receipt(receipt, manifest)
+        del receipt["metrics"][field]
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
+
+
+def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    receipt = _receipt(tmp_path, "pair-1", "candidate", interventions=0, completion=100)
+    common = {field: receipt[field] for field in (
+        "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "workstream", "checkpoint",
+    )}
+    receipt["live_receipt"] = build_live_receipt(
+        binding=common,
+        runtime={"provider": "9router", "model": "combo-high", "controller_id": receipt["controller_id"], "session_id": receipt["session_id"]},
+        timestamps={
+            "run_started": "2026-10-08T10:00:00+00:00",
+            "cos_entry": "2026-10-08T10:00:01+00:00",
+            "secretary_entry": "2026-10-08T10:00:02+00:00",
+            "worker_entry": "2026-10-08T10:00:03+00:00",
+            "publication": "2026-10-08T10:00:40+00:00",
+            "settlement": "2026-10-08T10:00:50+00:00",
+            "acceptance": "2026-10-08T10:01:00+00:00",
+            "secretary_exit": "2026-10-08T10:01:05+00:00",
+            "cos_exit": "2026-10-08T10:01:08+00:00",
+            "run_finished": "2026-10-08T10:01:10+00:00",
+        },
+        metrics={
+            "cos_turns": 0,
+            "secretary_turns": 1,
+            "human_interventions": 0,
+            "publication_success": True,
+            "settlement_proven": True,
+            "acceptance_decision": "PASS",
+            "token_usage": "unknown",
+            "cost": "unknown",
+        },
+        sources={
+            name: {
+                "producer": producer,
+                    "source_ref": _live_source_proof(receipt, name)[0],
+                    "source_digest": _live_source_proof(receipt, name)[1],
+                **common,
+                "provider": "9router",
+                "model": "combo-high",
+                "controller_id": receipt["controller_id"],
+                "session_id": receipt["session_id"],
+            }
+            for name, producer in {
+                "launch": "herdr_main_launcher",
+                "secretary": "secretary_live_runtime",
+                "task_result": "dcode-project",
+                "settlement": "project_os_runtime.attempt",
+                "acceptance": "cos",
+            }.items()
+        },
+    )
+
+    normalized = validate_receipt(receipt, manifest)
+
+    assert normalized["live_receipt"]["valid"] is True
+    launch_path = Path(receipt["source_refs"]["launch"])
+    for field, value in (("settlement_proven", False), ("acceptance_decision", "FAIL")):
+        receipt["metrics"][field] = value
+        launch = __import__("json").loads(launch_path.read_text(encoding="utf-8"))
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
+        with pytest.raises(PilotReceiptError, match="metrics.*mismatch"):
+            validate_receipt(receipt, manifest)
+        del receipt["metrics"][field]
+        launch["metrics"] = dict(receipt["metrics"])
+        launch_without_digest = {key: item for key, item in launch.items() if key != "source_digest"}
+        launch["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(launch_without_digest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        launch_path.write_text(__import__("json").dumps(launch), encoding="utf-8")
+    receipt["live_receipt"]["metrics"]["publication_success"] = False
+
+    with pytest.raises(PilotReceiptError, match="live receipt metrics.publication_success"):
+        validate_receipt(receipt, manifest)
+
+
+@pytest.mark.parametrize("field", ["model", "controller_id", "session_id", "workstream", "checkpoint"])
+def test_validate_receipt_rejects_live_receipt_identity_mismatch(tmp_path: Path, field: str) -> None:
+    manifest = _manifest(tmp_path)
+    receipt = _receipt(tmp_path, "pair-1", "candidate", interventions=0, completion=100)
+    common = {name: receipt[name] for name in (
+        "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "workstream", "checkpoint",
+    )}
+    receipt["live_receipt"] = build_live_receipt(
+        binding=common,
+        runtime={
+            "provider": "9router",
+            "model": receipt["model"],
+            "controller_id": receipt["controller_id"],
+            "session_id": receipt["session_id"],
+        },
+        timestamps={
+            "run_started": "2026-10-08T10:00:00+00:00",
+            "cos_entry": "2026-10-08T10:00:01+00:00",
+            "secretary_entry": "2026-10-08T10:00:02+00:00",
+            "worker_entry": "2026-10-08T10:00:03+00:00",
+            "publication": "2026-10-08T10:00:40+00:00",
+            "settlement": "2026-10-08T10:00:50+00:00",
+            "acceptance": "2026-10-08T10:01:00+00:00",
+            "secretary_exit": "2026-10-08T10:01:05+00:00",
+            "cos_exit": "2026-10-08T10:01:08+00:00",
+            "run_finished": "2026-10-08T10:01:10+00:00",
+        },
+        metrics={
+            "cos_turns": 0,
+            "secretary_turns": 1,
+            "human_interventions": 0,
+            "publication_success": True,
+            "settlement_proven": True,
+            "acceptance_decision": "PASS",
+            "token_usage": "unknown",
+            "cost": "unknown",
+        },
+        sources={
+            name: {
+                "producer": producer,
+                    "source_ref": _live_source_proof(receipt, name)[0],
+                    "source_digest": _live_source_proof(receipt, name)[1],
+                **common,
+                "provider": "9router",
+                "model": receipt["model"],
+                "controller_id": receipt["controller_id"],
+                "session_id": receipt["session_id"],
+            }
+            for name, producer in {
+                "launch": "herdr_main_launcher",
+                "secretary": "secretary_live_runtime",
+                "task_result": "dcode-project",
+                "settlement": "project_os_runtime.attempt",
+                "acceptance": "cos",
+            }.items()
+        },
+    )
+    receipt["live_receipt"][field] = "mismatch"
+
+    with pytest.raises(PilotReceiptError, match=f"{field} mismatch"):
+        validate_receipt(receipt, manifest)
 
 
 def test_validate_receipt_rejects_relabelled_historical_evidence(tmp_path: Path) -> None:
@@ -192,3 +380,15 @@ def test_compare_records_is_inconclusive_below_minimum_pairs(tmp_path: Path) -> 
 
 def test_compare_records_stops_on_blocked_capability(tmp_path: Path) -> None:
     assert compare_records([], _manifest(tmp_path), capability_status="BLOCKED_CAPABILITY")["classification"] == "BLOCKED_CAPABILITY"
+
+
+def test_pilot_script_supports_direct_execution() -> None:
+    result = subprocess.run(
+        [sys.executable, "-B", "scripts/secretary_live_pilot.py", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "prepare" in result.stdout

@@ -1,0 +1,34 @@
+{
+  "schema_version": "secretary-live-runtime-capability-v1",
+  "repository_identity": "longdang193/project-OS-starter",
+  "baseline_commit": "581844d8c0c3a58b9d74619695ec599de7fed952",
+  "codex_home": "configured CODEX_HOME (path withheld)",
+  "config_present": true,
+  "auth_present": true,
+  "provider_route": "9router",
+  "provider_fallback": false,
+  "codex_version": "codex-cli 0.154.0",
+  "herdr_launcher": {
+    "path": "scripts/herdr_main_launcher.py",
+    "entrypoint": "build_parser/main",
+    "supported_executor": "codex",
+    "native_identity_fields": ["assignment_id", "attempt_id", "repository_identity", "plan_identity", "task_sha256", "grant_digest"]
+  },
+  "secretary_current_surface": {
+    "path": "scripts/project_os_runtime/secretary_adapter.py",
+    "kind": "in-process contract fake",
+    "live_launch": false,
+    "authority": "read-only attention surface"
+  },
+  "bounded_follow_up_surface": {
+    "owner": "scripts/secretary_live_runtime.py",
+    "transport_owner": "scripts/herdr_main_launcher.py",
+    "receipt_owner": "scripts/project_os_runtime/secretary_receipts.py",
+    "required_bindings": ["task_id", "plan_revision", "attempt_id", "run_id"],
+    "stop_on": ["missing_runtime_identity", "provider_route_mismatch", "secret_exposure", "unattributed_receipt", "target_resolution_not_found"]
+  },
+  "credential_exposure": "none observed; values omitted",
+  "disposition": "BLOCKED_CAPABILITY",
+  "blocking_fact": "target_resolution=blocked; eligible candidates=0",
+  "smoke_receipt": "pilot_artifacts/secretary-live-runtime/smoke-receipt.json"
+}
