@@ -139,6 +139,21 @@ def authorize_dependent_transition(
             "next_state": current_state,
             "reason": "accepted task does not match completed task",
         }
+    accepted_plan_identity = accepted_task.get("plan_identity") if isinstance(accepted_task, Mapping) else None
+    dependent_plan_identity = dependent_task.get("plan_identity")
+    if (
+        not isinstance(accepted_plan_identity, str)
+        or not accepted_plan_identity.strip()
+        or not isinstance(dependent_plan_identity, str)
+        or not dependent_plan_identity.strip()
+        or accepted_plan_identity != dependent_plan_identity
+    ):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "accepted and dependent task plan binding mismatch",
+        }
     if completed_task_id not in dependencies:
         return {
             "authorized": False,

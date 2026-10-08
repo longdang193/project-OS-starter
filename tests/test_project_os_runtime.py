@@ -192,7 +192,7 @@ def test_cos_acceptance_rejects_false_artifact_and_keeps_dependent_pending() -> 
     transition = authorize_dependent_transition(
         decision,
         completed_task_id="Task 1",
-        dependent_task={"task_id": "Task 2", "state": "pending", "dependencies": ["Task 1"]},
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 1"]},
         dependency_states={"Task 1": "active"},
     )
 
@@ -212,7 +212,7 @@ def test_cos_acceptance_passes_and_authorizes_only_ready_dependent() -> None:
     transition = authorize_dependent_transition(
         decision,
         completed_task_id="Task 1",
-        dependent_task={"task_id": "Task 2", "state": "pending", "dependencies": ["Task 1"]},
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 1"]},
         dependency_states={"Task 1": "completed"},
     )
 
@@ -244,13 +244,32 @@ def test_cos_acceptance_rejects_transition_for_unrelated_completed_task() -> Non
     transition = authorize_dependent_transition(
         decision,
         completed_task_id="Task 99",
-        dependent_task={"task_id": "Task 2", "state": "pending", "dependencies": ["Task 99"]},
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 99"]},
         dependency_states={"Task 99": "completed"},
     )
 
     assert transition["authorized"] is False
     assert transition["next_state"] == "pending"
     assert transition["reason"] == "accepted task does not match completed task"
+
+
+def test_cos_acceptance_rejects_cross_plan_dependent_transition() -> None:
+    from scripts.project_os_runtime.acceptance import (
+        authorize_dependent_transition,
+        evaluate_acceptance,
+    )
+
+    decision = evaluate_acceptance(**_acceptance_inputs())
+    transition = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-2", "state": "pending", "dependencies": ["Task 1"]},
+        dependency_states={"Task 1": "completed"},
+    )
+
+    assert transition["authorized"] is False
+    assert transition["next_state"] == "pending"
+    assert transition["reason"] == "accepted and dependent task plan binding mismatch"
 
 
 def test_cos_acceptance_blocks_missing_controller_binding() -> None:
