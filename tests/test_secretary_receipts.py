@@ -61,7 +61,7 @@ def _receipt(**overrides: object) -> dict[str, object]:
             name: {
                 "producer": producer,
                 "source_ref": f"receipt://{name}/run-1",
-                "source_digest": "0" * 64,
+                "source_digest": "1" * 64,
                 "pair_id": "pair-1",
                 "arm": "candidate",
                 "run_id": "run-1",

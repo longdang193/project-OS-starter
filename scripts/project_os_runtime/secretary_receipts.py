@@ -55,6 +55,10 @@ _SENSITIVE_KEY = re.compile(
     r"(?:^|[_-])(?:authorization(?:[_-]headers?)?|api[_-]?keys?|passwords?|secrets?|cookies?|credentials?|raw[_-]?(?:body|bodies|header|headers|prompt|prompts|response|responses|transport[_-]?body|transport[_-]?bodies))$",
     re.IGNORECASE,
 )
+_SENSITIVE_VALUE = re.compile(
+    r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw[_-](?:body|header|prompt|response))",
+    re.IGNORECASE,
+)
 
 
 class ReceiptValidationError(ValueError):
@@ -87,6 +91,8 @@ def _reject_sensitive(value: object, path: str = "receipt") -> None:
     elif isinstance(value, (list, tuple)):
         for index, child in enumerate(value):
             _reject_sensitive(child, f"{path}[{index}]")
+    elif isinstance(value, str) and _SENSITIVE_VALUE.search(value):
+        raise ReceiptValidationError(f"sensitive value present: {path}")
 
 
 def build_live_receipt(
@@ -170,7 +176,7 @@ def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
                 raise ReceiptValidationError(f"sources.{name}.{field} mismatch")
         for field in SOURCE_PROOF_FIELDS:
             _text(source.get(field), f"sources.{name}.{field}")
-        if not re.fullmatch(r"[0-9a-f]{64}", source["source_digest"]):
+        if not re.fullmatch(r"[0-9a-f]{64}", source["source_digest"]) or set(source["source_digest"]) == {"0"}:
             raise ReceiptValidationError(f"sources.{name}.source_digest must be SHA-256 hex")
 
     normalized = json.loads(json.dumps(receipt))

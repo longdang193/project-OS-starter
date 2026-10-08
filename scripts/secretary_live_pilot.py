@@ -135,6 +135,10 @@ def _validate_source(
 ) -> None:
     if source.get("producer") != PRODUCERS[kind]:
         raise PilotReceiptError(f"{kind} producer is not authoritative")
+    _text(source.get("source_ref"), f"{kind}.source_ref")
+    source_digest = _text(source.get("source_digest"), f"{kind}.source_digest")
+    if len(source_digest) != 64 or set(source_digest) == {"0"} or any(character not in "0123456789abcdef" for character in source_digest):
+        raise PilotReceiptError(f"{kind}.source_digest must be SHA-256 hex")
     for field in fields:
         _text(source.get(field), f"{kind}.{field}")
     _equal(source, receipt, fields, f"{kind} binding")
@@ -230,6 +234,15 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
         ):
             if live_metrics[live_field] != receipt["metrics"].get(outer_field):
                 raise PilotReceiptError(f"live receipt metrics.{live_field} mismatch")
+        if (
+            isinstance(live_metrics.get("cos_turns"), int)
+            and isinstance(live_metrics.get("secretary_turns"), int)
+            and live_metrics["cos_turns"] + live_metrics["secretary_turns"] != receipt["metrics"].get("management_turns")
+        ):
+            raise PilotReceiptError("live receipt turn count mismatch")
+        for field in ("token_usage", "cost"):
+            if live_metrics[field] != receipt["metrics"].get(field, "unknown"):
+                raise PilotReceiptError(f"live receipt metrics.{field} mismatch")
         for field in ("run_started", "publication", "settlement", "acceptance", "run_finished"):
             if normalized_live_receipt["timestamps"][field] != receipt["timestamps"].get(field):
                 raise PilotReceiptError(f"live receipt timestamps.{field} mismatch")
@@ -297,6 +310,18 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
         kind: hashlib.sha256(Path(_text(refs[kind], f"source_refs.{kind}")).read_bytes()).hexdigest()
         for kind in REQUIRED_SOURCE_KEYS
     }
+    for kind in REQUIRED_SOURCE_KEYS:
+        source = sources[kind]
+        if source["source_ref"] != refs[kind]:
+            raise PilotReceiptError(f"{kind} source_ref is not producer-bound")
+        canonical_source = json.dumps(
+            {key: value for key, value in source.items() if key != "source_digest"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        expected_source_digest = hashlib.sha256(canonical_source).hexdigest()
+        if source["source_digest"] != expected_source_digest:
+            raise PilotReceiptError(f"{kind} source_digest is not producer-bound")
     supplied_digests = receipt.get("source_digests")
     if supplied_digests is not None and supplied_digests != source_digests:
         raise PilotReceiptError("source digest mismatch")

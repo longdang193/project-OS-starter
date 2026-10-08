@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tomllib
@@ -52,6 +53,11 @@ _SOURCE_SAFE_FIELDS = {
     "repository_identity", "plan_identity", "git_revision", "worktree",
     "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
 }
+_SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
+_SAFE_SOURCE_VALUE = re.compile(
+    r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw[_-](?:body|header|prompt|response))",
+    re.IGNORECASE,
+)
 
 
 def _required_text(value: object, label: str) -> str:
@@ -253,6 +259,8 @@ def _launcher_facts_match(
         return False
     if registry.get("plan_identity") != request.plan_identity:
         return False
+    if registry.get("attempt_id") != request.attempt_id:
+        return False
     if registry.get("model_provider") != request.provider:
         return False
     return configured_model is None or registry.get("model") == configured_model
@@ -312,12 +320,23 @@ def _safe_runtime_snapshot(
     snapshot["metrics"] = _safe_metrics(metrics if isinstance(metrics, Mapping) else None)
     sources = runtime.get("sources")
     if isinstance(sources, Mapping):
+        def safe_source(source: Mapping[str, Any]) -> dict[str, Any]:
+            safe: dict[str, Any] = {}
+            for key in _SOURCE_SAFE_FIELDS:
+                value = source.get(key)
+                if key == "source_digest":
+                    if isinstance(value, str) and _SAFE_SOURCE_DIGEST.fullmatch(value) and set(value) != {"0"}:
+                        safe[key] = value
+                elif key == "source_ref":
+                    if isinstance(value, str) and not _SAFE_SOURCE_VALUE.search(value):
+                        safe[key] = value
+                elif key == "producer":
+                    safe[key] = value
+                elif key in expected_values and value == expected_values[key]:
+                    safe[key] = value
+            return safe
         snapshot["sources"] = {
-            name: {
-                key: source[key]
-                for key in _SOURCE_SAFE_FIELDS
-                if isinstance(source, Mapping) and key in source
-            }
+            name: safe_source(source)
             for name, source in sources.items()
             if name in _SOURCE_KEYS and isinstance(source, Mapping)
         }

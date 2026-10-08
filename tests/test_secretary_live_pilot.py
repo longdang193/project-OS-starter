@@ -85,6 +85,10 @@ def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, comp
     refs = {}
     for name, value in {"launch": launch, "task_result": task_result, "settlement": settlement, "acceptance": acceptance}.items():
         path = tmp_path / f"{run_id}-{name}.json"
+        value["source_ref"] = str(path)
+        value["source_digest"] = hashlib.sha256(
+            __import__("json").dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
         path.write_text(__import__("json").dumps(value), encoding="utf-8")
         refs[name] = str(path)
     return {
@@ -141,7 +145,7 @@ def test_validate_receipt_accepts_bound_live_secretary_receipt(tmp_path: Path) -
             "run_finished": "2026-10-08T10:01:10+00:00",
         },
         metrics={
-            "cos_turns": 2,
+            "cos_turns": 0,
             "secretary_turns": 1,
             "human_interventions": 0,
             "publication_success": True,
@@ -210,7 +214,7 @@ def test_validate_receipt_rejects_live_receipt_identity_mismatch(tmp_path: Path,
             "run_finished": "2026-10-08T10:01:10+00:00",
         },
         metrics={
-            "cos_turns": 2,
+            "cos_turns": 0,
             "secretary_turns": 1,
             "human_interventions": 0,
             "publication_success": True,
