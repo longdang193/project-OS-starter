@@ -137,7 +137,24 @@ $migrationNeeded = -not $alreadyApplied -and $null -ne $supersededPatch -and
 
 if ($migrationNeeded) {
   if ($VerifyOnly) {
-    Write-Output "Verified 9router Responses overlay $($selected.Manifest.version) can replace superseded overlay at $head."
+    $supersededRemoved = $false
+    try {
+      Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
+      $supersededRemoved = $true
+      $trackedChanges = @(& $git -C $targetPath status --porcelain=v1 --untracked-files=no)
+      if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in $targetPath." }
+      if ($trackedChanges.Count -gt 0) {
+        throw "Target has unrelated tracked changes; clean them before migrating the Responses overlay: $targetPath"
+      }
+      if (-not (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $patch)))) {
+        throw "Overlay $($selected.Manifest.version) does not apply cleanly after removing superseded overlay."
+      }
+      Write-Output "Verified 9router Responses overlay $($selected.Manifest.version) can replace superseded overlay at $head."
+    } finally {
+      if ($supersededRemoved -and (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $supersededPatch)))) {
+        Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--", $supersededPatch))
+      }
+    }
     exit 0
   }
   Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
