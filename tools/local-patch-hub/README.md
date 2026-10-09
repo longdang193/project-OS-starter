@@ -65,6 +65,8 @@ Run verification without changing files:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-LightMem2CodexOverlay.ps1 -TargetRoot C:\path\to\LightMem2 -VerifyOnly
 ```
 
+Verification checks wrapper, handler, and compiled compact-fallback runtime signatures in both target and installed adapter bundles.
+
 Apply source only in disposable verification targets; this avoids global Codex,
 hook, daemon, and startup changes:
 

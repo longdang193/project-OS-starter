@@ -22,6 +22,9 @@ def test_lightmem2_overlay_is_centralized_and_exact_base_bound() -> None:
     assert "No LightMem2 Codex overlay matches target HEAD" in reconciler
     assert "ProjectOS-LightMem2-Codex-Overlay.cmd" in reconciler
     assert "hooks-handler.js" in reconciler
+    assert "dist\\cli.js" in reconciler
+    assert "delete projected\\.stream" in reconciler
+    assert "fallbackPayload \\? params\\.fallbackPayload\\(payload\\)" in reconciler
     assert "targetRuntimeReady" in reconciler
     assert "installedRuntimeReady" in reconciler
 

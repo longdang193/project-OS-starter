@@ -50,8 +50,16 @@ function Test-WindowsHookWrapper {
 function Test-CodexRuntime {
   param([string]$Root)
 
-  return (Test-WindowsHookWrapper (Join-Path $Root "dist\tokenpilot-codex-hook.cmd")) -and
-    (Test-Path -LiteralPath (Join-Path $Root "dist\hooks-handler.js") -PathType Leaf)
+  $cliPath = Join-Path $Root "dist\cli.js"
+  if (-not (Test-WindowsHookWrapper (Join-Path $Root "dist\tokenpilot-codex-hook.cmd")) -or
+      -not (Test-Path -LiteralPath (Join-Path $Root "dist\hooks-handler.js") -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $cliPath -PathType Leaf)) {
+    return $false
+  }
+  $content = [IO.File]::ReadAllText($cliPath)
+  return $content -match 'endpointPath === "/responses/compact"' -and
+    $content -match 'fallbackPayload \? params\.fallbackPayload\(payload\)' -and
+    $content -match 'delete projected\.stream'
 }
 
 $targetPath = (Resolve-Path -LiteralPath $TargetRoot).Path
