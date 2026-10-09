@@ -21,6 +21,9 @@ def test_lightmem2_overlay_is_centralized_and_exact_base_bound() -> None:
     assert "SkipInstall" in reconciler
     assert "No LightMem2 Codex overlay matches target HEAD" in reconciler
     assert "ProjectOS-LightMem2-Codex-Overlay.cmd" in reconciler
+    assert "hooks-handler.js" in reconciler
+    assert "targetRuntimeReady" in reconciler
+    assert "installedRuntimeReady" in reconciler
 
 
 def test_lightrsi_compaction_overlay_is_exact_base_bound() -> None:

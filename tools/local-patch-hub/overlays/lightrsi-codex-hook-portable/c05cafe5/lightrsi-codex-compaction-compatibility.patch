@@ -1,5 +1,5 @@
 diff --git a/components/adapters/codex/src/proxy-runtime.ts b/components/adapters/codex/src/proxy-runtime.ts
-index 5fec0d2..5b61a9c 100644
+index 5fec0d2..db8786f 100644
 --- a/components/adapters/codex/src/proxy-runtime.ts
 +++ b/components/adapters/codex/src/proxy-runtime.ts
 @@ -200,6 +200,12 @@ function cloneJsonObject(value: JsonObject): JsonObject {
@@ -36,12 +36,15 @@ index 5fec0d2..5b61a9c 100644
        const inboundPayload = JSON.parse(body) as JsonObject;
        inboundPayload.input = normalizeResponsesInputForUpstream(inboundPayload?.input);
        const inboundPromptCacheKey =
-@@ -1323,12 +1332,19 @@ export async function startCodexResponsesProxy(params: {
+@@ -1323,12 +1332,22 @@ export async function startCodexResponsesProxy(params: {
          if (response.status >= 200 && response.status < 300) successfulGenerations += 1;
          return response;
        };
 +      const projectUpstreamPayload = (nextPayload: JsonObject): JsonObject => {
-+        if (!compactRequest) return nextPayload;
++        return nextPayload;
++      };
++      const compactFallbackPayload = (nextPayload: JsonObject): JsonObject | undefined => {
++        if (!compactRequest) return undefined;
 +        const projected = cloneJsonObject(nextPayload);
 +        projected.input = stripHistoricalWebSearchCalls(projected.input);
 +        return projected;
@@ -58,15 +61,16 @@ index 5fec0d2..5b61a9c 100644
              requestId,
              inboundAuthorization: authorization,
              lightmem2CacheContractDigest:
-@@ -1337,6 +1353,7 @@ export async function startCodexResponsesProxy(params: {
+@@ -1337,6 +1356,8 @@ export async function startCodexResponsesProxy(params: {
                  : undefined,
              stateDir: config.stateDir,
              signal: requestAbortController.signal,
 +            endpointPath: compactRequest ? "/responses/compact" : undefined,
++            fallbackPayload: compactFallbackPayload(projectedPayload),
            }));
            const attempt = forwardingAttempts.at(-1);
            if (attempt) attempt.outcome = response.status >= 200 && response.status < 300 ? "completed" : "failed";
-@@ -1931,12 +1948,13 @@ export async function startCodexResponsesProxy(params: {
+@@ -1931,12 +1952,13 @@ export async function startCodexResponsesProxy(params: {
            trackOptionalTask(runOptional());
            return;
          }
@@ -82,16 +86,17 @@ index 5fec0d2..5b61a9c 100644
              requestId,
              inboundAuthorization: authorization,
              lightmem2CacheContractDigest:
-@@ -1945,6 +1963,7 @@ export async function startCodexResponsesProxy(params: {
+@@ -1945,6 +1967,8 @@ export async function startCodexResponsesProxy(params: {
                  : undefined,
              stateDir: config.stateDir,
              signal: requestAbortController.signal,
 +            endpointPath: compactRequest ? "/responses/compact" : undefined,
++            fallbackPayload: compactFallbackPayload(projectedPayload),
            }));
          } catch (error) {
            const attempt = forwardingAttempts.at(-1);
 diff --git a/components/adapters/codex/src/upstream.ts b/components/adapters/codex/src/upstream.ts
-index 704083a..6ef0b5c 100644
+index 704083a..a1350e5 100644
 --- a/components/adapters/codex/src/upstream.ts
 +++ b/components/adapters/codex/src/upstream.ts
 @@ -130,11 +130,11 @@ async function resolveNineRouterPayloadModel(
@@ -144,11 +149,12 @@ index 704083a..6ef0b5c 100644
        method: "POST",
        headers: requestHeaders(params),
        body: JSON.stringify(payload),
-@@ -516,11 +518,13 @@ export async function requestUpstreamResponses(params: {
+@@ -516,11 +518,14 @@ export async function requestUpstreamResponses(params: {
    stateDir?: string;
    requestId?: string;
    signal?: AbortSignal;
 +  endpointPath?: string;
++  fallbackPayload?: any;
  }): Promise<UpstreamHttpResponse> {
    let transportFetches = 0;
 +  let endpointPath = params.endpointPath ?? "/responses";
@@ -159,23 +165,24 @@ index 704083a..6ef0b5c 100644
    };
    let payload = await resolveNineRouterPayloadModel(
      clonePayloadWithoutUnsupportedFields(params.payload, new Set()),
-@@ -532,6 +536,11 @@ export async function requestUpstreamResponses(params: {
+@@ -532,6 +537,11 @@ export async function requestUpstreamResponses(params: {
    payload = clonePayloadWithoutUnsupportedFields(payload, unsupportedFields);
    let resp = await send(payload);
    let text = await resp.text();
 +  if (resp.status === 404 && endpointPath === "/responses/compact") {
 +    endpointPath = "/responses";
-+    resp = await send(payload);
++    resp = await send(params.fallbackPayload ?? payload);
 +    text = await resp.text();
 +  }
    if (!resp.ok) {
      const unsupportedField = unsupportedOptionalFieldFromText(text);
      if (resp.status !== 401 && resp.status !== 403 && unsupportedField && !unsupportedFields.has(unsupportedField)) {
-@@ -563,11 +572,13 @@ export async function requestUpstreamResponsesStream(params: {
+@@ -563,11 +573,14 @@ export async function requestUpstreamResponsesStream(params: {
    stateDir?: string;
    requestId?: string;
    signal?: AbortSignal;
 +  endpointPath?: string;
++  fallbackPayload?: any;
  }): Promise<UpstreamStreamResponse> {
    let transportFetches = 0;
 +  let endpointPath = params.endpointPath ?? "/responses";
@@ -186,24 +193,24 @@ index 704083a..6ef0b5c 100644
    };
    let payload = await resolveNineRouterPayloadModel(
      clonePayloadWithoutUnsupportedFields(params.payload, new Set()),
-@@ -578,6 +589,11 @@ export async function requestUpstreamResponsesStream(params: {
+@@ -578,6 +591,11 @@ export async function requestUpstreamResponsesStream(params: {
    const unsupportedFields = await loadUnsupportedOptionalFields(params.stateDir, params.upstream, resolvedModel);
    payload = clonePayloadWithoutUnsupportedFields(payload, unsupportedFields);
    let resp = await send(payload);
 +  if (resp.status === 404 && endpointPath === "/responses/compact") {
 +    await resp.text();
 +    endpointPath = "/responses";
-+    resp = await send(payload);
++    resp = await send(params.fallbackPayload ?? payload);
 +  }
    if (!resp.ok) {
      const text = await resp.text();
      const unsupportedField = unsupportedOptionalFieldFromText(text);
 diff --git a/components/adapters/codex/tests/compaction-route.test.ts b/components/adapters/codex/tests/compaction-route.test.ts
 new file mode 100644
-index 0000000..28b101d
+index 0000000..69bee82
 --- /dev/null
 +++ b/components/adapters/codex/tests/compaction-route.test.ts
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,257 @@
 +import assert from "node:assert/strict";
 +import { createServer } from "node:http";
 +import { mkdtemp, rm } from "node:fs/promises";
@@ -320,7 +327,7 @@ index 0000000..28b101d
 +  }
 +});
 +
-+test("compact stream route strips history and preserves completion SSE", async () => {
++test("compact stream route preserves history and native completion SSE", async () => {
 +  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-compact-stream-"));
 +  const proxyPort = await reserveUnusedPort();
 +  const upstream = await startSseUpstream();
@@ -356,7 +363,7 @@ index 0000000..28b101d
 +    assert.equal(upstream.requests.length, 1);
 +    assert.deepEqual(upstream.paths, ["/v1/responses/compact"]);
 +    assert.match(text, /"type":"compaction"/);
-+    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), true);
 +  } finally {
 +    await runtime.close();
 +    await upstream.close();
@@ -384,11 +391,16 @@ index 0000000..28b101d
 +    const response = await fetch(`${runtime.baseUrl}/responses/compact`, {
 +      method: "POST",
 +      headers: { "content-type": "application/json" },
-+      body: JSON.stringify({ model: "capture-model", stream: true, input: [] }),
++      body: JSON.stringify({
++        model: "capture-model",
++        stream: true,
++        input: [{ type: "web_search_call", id: "search_1", status: "completed" }],
++      }),
 +    });
 +    assert.equal(response.status, 200);
 +    await response.text();
 +    assert.deepEqual(upstream.paths, ["/v1/responses/compact", "/v1/responses"]);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
 +  } finally {
 +    await runtime.close();
 +    await upstream.close();

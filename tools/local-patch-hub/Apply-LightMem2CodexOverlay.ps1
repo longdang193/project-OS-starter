@@ -47,6 +47,13 @@ function Test-WindowsHookWrapper {
   return $content -match '(?s)\A@echo off\r?\nnode\.exe "%~dp0hooks-handler\.js" %\*\r?\n?\z'
 }
 
+function Test-CodexRuntime {
+  param([string]$Root)
+
+  return (Test-WindowsHookWrapper (Join-Path $Root "dist\tokenpilot-codex-hook.cmd")) -and
+    (Test-Path -LiteralPath (Join-Path $Root "dist\hooks-handler.js") -PathType Leaf)
+}
+
 $targetPath = (Resolve-Path -LiteralPath $TargetRoot).Path
 $overlayBase = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "overlays\lightrsi-codex-hook-portable")).Path
 $scriptPath = (Resolve-Path -LiteralPath $MyInvocation.MyCommand.Path).Path
@@ -107,8 +114,10 @@ if ($canApply) {
 $adapterPath = Join-Path $targetPath "components\adapters\codex"
 $wrapperPath = Join-Path $adapterPath "dist\tokenpilot-codex-hook.cmd"
 $runtimeWrapperPath = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter\dist\tokenpilot-codex-hook.cmd"
-$wrapperReady = Test-WindowsHookWrapper $wrapperPath
-$wrapperReady = $wrapperReady -or (Test-WindowsHookWrapper $runtimeWrapperPath)
+$targetRuntimeReady = Test-CodexRuntime $adapterPath
+$runtimeRoot = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter"
+$installedRuntimeReady = Test-CodexRuntime $runtimeRoot
+$wrapperReady = $targetRuntimeReady -and $installedRuntimeReady
 $needsInstall = $patchApplied -or -not $wrapperReady
 
 if ($VerifyOnly) {
