@@ -122,11 +122,16 @@ if ($null -eq $selected) {
 $patch = $selected.Patch
 if (-not (Test-Path -LiteralPath $patch -PathType Leaf)) { throw "Overlay patch missing: $patch" }
 
+if (-not $alreadyApplied -and
+    (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--check", "--", $patch)))) {
+  $alreadyApplied = $true
+}
+
 $supersededPatch = $null
 if ($selected.Manifest.supersedes) {
   $supersededPatch = Join-Path (Split-Path -Parent $patch) ([string]$selected.Manifest.supersedes)
 }
-$migrationNeeded = $null -ne $supersededPatch -and
+$migrationNeeded = -not $alreadyApplied -and $null -ne $supersededPatch -and
   (Test-Path -LiteralPath $supersededPatch -PathType Leaf) -and
   (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--check", "--", $supersededPatch)))
 
