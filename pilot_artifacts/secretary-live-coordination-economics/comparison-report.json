@@ -1,0 +1,37 @@
+{
+  "arms": {
+    "baseline": {
+      "accepted": 3,
+      "attempted": 3,
+      "coordination_turns": 3,
+      "cost_per_accepted_outcome": "unknown",
+      "human_interventions": 0,
+      "total_cost": "unknown"
+    },
+    "candidate": {
+      "accepted": 3,
+      "attempted": 3,
+      "coordination_turns": 6,
+      "cost_per_accepted_outcome": "unknown",
+      "human_interventions": 0,
+      "total_cost": "unknown"
+    }
+  },
+  "attempted": 6,
+  "eligible_pairs": 3,
+  "paired_deltas": [
+    {
+      "candidate_minus_baseline_cost": "unknown",
+      "pair_id": "pair-1"
+    },
+    {
+      "candidate_minus_baseline_cost": "unknown",
+      "pair_id": "pair-2"
+    },
+    {
+      "candidate_minus_baseline_cost": "unknown",
+      "pair_id": "pair-3"
+    }
+  ],
+  "status": "INCONCLUSIVE"
+}

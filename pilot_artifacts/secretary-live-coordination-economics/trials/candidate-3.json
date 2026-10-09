@@ -1,0 +1,37 @@
+{
+  "attempt_id": "attempt-candidate-3-r2",
+  "completion": {
+    "exit_code": 0,
+    "observed": true,
+    "operation": "secretary_smoke"
+  },
+  "metrics": {
+    "cos_turns": 1,
+    "cost": null,
+    "human_interventions": 0,
+    "secretary_turns": 1,
+    "token_usage": null
+  },
+  "model": "combo-high",
+  "outcomes": {
+    "acceptance": "accepted",
+    "publication": "success",
+    "settlement": "observed"
+  },
+  "plan_revision": "2026-10-09-secretary-recommended-implementation-sequence-and-live-coordination-economics",
+  "provenance": {
+    "observed": true,
+    "producer": "secretary-live-runtime",
+    "source_ref": "herdr:pane:w5K:p1:attempt:attempt-candidate-3-r2",
+    "source_type": "runtime"
+  },
+  "provider": "9router",
+  "run_id": "run-candidate-3-r2",
+  "schema": "project-os.secretary-live-receipt.v1",
+  "status": "READY",
+  "task_id": "secretary-live-coordination-economics",
+  "timestamps": {
+    "entry_at": "2026-10-09T09:18:02.397363Z",
+    "exit_at": "2026-10-09T09:18:19.249589Z"
+  }
+}

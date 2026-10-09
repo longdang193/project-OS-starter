@@ -75,6 +75,13 @@ capability evidence is cacheable; mutable execution identity is fresh.
 6. Smoke-check unfamiliar provider before relying on its material output.
 7. Use source-first fallback for safe work only when fallback does not replace required evidence.
 
+Live Secretary economics uses the owned Herdr-backed
+`scripts/secretary_live_runtime.py` route: resolve one native `CODEX_HOME`, let
+Codex consume its `config.toml` and `auth.json`, require provider `9router`,
+and retain only sanitized runtime receipts. Missing Secretary launch,
+attribution, or observed completion remains `BLOCKED_CAPABILITY`; deterministic
+contract fixtures cannot establish live efficiency.
+
 Provider names are runtime facts or explicit method choices, not architecture.
 Keep named providers only for an explicitly selected method, committed repository
 dependency, or required security/runtime boundary.

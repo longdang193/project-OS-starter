@@ -1,0 +1,23 @@
+{
+  "blocked_admission": {
+    "admitted": false,
+    "status": "BLOCKED_CAPABILITY",
+    "trials_started": 0
+  },
+  "interrupted_attempt": {
+    "acceptance": "rejected",
+    "accounted": true,
+    "arm": "candidate",
+    "attempt_id": "candidate-probe-1",
+    "correctness": false,
+    "cost": null,
+    "duplicate_launch": false,
+    "outcome": "interrupted",
+    "pair_id": "probe-1",
+    "run_id": "run-candidate-probe-1",
+    "settlement": "unresolved"
+  },
+  "live_execution": "READY",
+  "reason": "Live smoke and three matched pairs completed through the owned Herdr/Codex runtime; blocked-admission and interrupted-attempt probes remain contract-bound diagnostics.",
+  "schema": "project-os.secretary-live-edge-probes.v1"
+}

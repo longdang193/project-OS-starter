@@ -1,0 +1,15 @@
+{
+  "schema": "project-os.secretary-live-capability.v1",
+  "base_revision": "82793195d0d5abb4c91fb69d78d5c308c46a9732",
+  "provider": "9router",
+  "codex_home": "C:/Users/HOANG PHI LONG DANG/.codex",
+  "config_toml_present": true,
+  "auth_json_present": true,
+  "auth_values_published": false,
+  "secretary_entrypoint": "scripts/secretary_live_runtime.py",
+  "secretary_completion_observer": "Herdr pane run plus Codex output-last-message and exit marker",
+  "launcher_attempt_id_owner": "scripts/herdr_main_launcher.py",
+  "candidate_materialization": "working-tree-source-snapshot",
+  "live_economics": "INCONCLUSIVE",
+  "reason": "Owned Herdr/Codex runtime emitted attributable receipts and three valid pairs; provider token usage and cost were unavailable."
+}
