@@ -47,6 +47,25 @@ function Test-WindowsHookWrapper {
   return $content -match '(?s)\A@echo off\r?\nnode\.exe "%~dp0hooks-handler\.js" %\*\r?\n?\z'
 }
 
+function Test-CodexRuntime {
+  param(
+    [string]$Root,
+    [bool]$RequireCompactCompatibility
+  )
+
+  $cliPath = Join-Path $Root "dist\cli.js"
+  if (-not (Test-WindowsHookWrapper (Join-Path $Root "dist\tokenpilot-codex-hook.cmd")) -or
+      -not (Test-Path -LiteralPath (Join-Path $Root "dist\hooks-handler.js") -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $cliPath -PathType Leaf)) {
+    return $false
+  }
+  if (-not $RequireCompactCompatibility) { return $true }
+  $content = [IO.File]::ReadAllText($cliPath)
+  return $content -match 'endpointPath === "/responses/compact"' -and
+    $content -match 'fallbackPayload \? params\.fallbackPayload\(payload\)' -and
+    $content -match 'delete projected\.stream'
+}
+
 $targetPath = (Resolve-Path -LiteralPath $TargetRoot).Path
 $overlayBase = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "overlays\lightrsi-codex-hook-portable")).Path
 $scriptPath = (Resolve-Path -LiteralPath $MyInvocation.MyCommand.Path).Path
@@ -107,8 +126,11 @@ if ($canApply) {
 $adapterPath = Join-Path $targetPath "components\adapters\codex"
 $wrapperPath = Join-Path $adapterPath "dist\tokenpilot-codex-hook.cmd"
 $runtimeWrapperPath = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter\dist\tokenpilot-codex-hook.cmd"
-$wrapperReady = Test-WindowsHookWrapper $wrapperPath
-$wrapperReady = $wrapperReady -or (Test-WindowsHookWrapper $runtimeWrapperPath)
+$requireCompactCompatibility = [string]$manifest.id -eq "lightrsi-codex-compaction-compatibility"
+$targetRuntimeReady = Test-CodexRuntime -Root $adapterPath -RequireCompactCompatibility:$requireCompactCompatibility
+$runtimeRoot = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter"
+$installedRuntimeReady = Test-CodexRuntime -Root $runtimeRoot -RequireCompactCompatibility:$requireCompactCompatibility
+$wrapperReady = $targetRuntimeReady -and $installedRuntimeReady
 $needsInstall = $patchApplied -or -not $wrapperReady
 
 if ($VerifyOnly) {

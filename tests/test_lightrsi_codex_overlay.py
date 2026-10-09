@@ -21,6 +21,14 @@ def test_lightmem2_overlay_is_centralized_and_exact_base_bound() -> None:
     assert "SkipInstall" in reconciler
     assert "No LightMem2 Codex overlay matches target HEAD" in reconciler
     assert "ProjectOS-LightMem2-Codex-Overlay.cmd" in reconciler
+    assert "hooks-handler.js" in reconciler
+    assert "dist\\cli.js" in reconciler
+    assert "RequireCompactCompatibility" in reconciler
+    assert 'manifest.id -eq "lightrsi-codex-compaction-compatibility"' in reconciler
+    assert "delete projected\\.stream" in reconciler
+    assert "fallbackPayload \\? params\\.fallbackPayload\\(payload\\)" in reconciler
+    assert "targetRuntimeReady" in reconciler
+    assert "installedRuntimeReady" in reconciler
 
 
 def test_lightrsi_compaction_overlay_is_exact_base_bound() -> None:
@@ -29,7 +37,7 @@ def test_lightrsi_compaction_overlay_is_exact_base_bound() -> None:
     readme = (PATCH_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert '"id": "lightrsi-codex-compaction-compatibility"' in manifest
-    assert '"version": "1.2.0"' in manifest
+    assert '"version": "1.4.0"' in manifest
     assert '"baseCommit": "c05cafe502fb474ab28e29e9e184adba8446a6a1"' in manifest
     assert "components/adapters/codex/src/proxy-runtime.ts" in patch
     assert "components/adapters/codex/src/upstream.ts" in patch

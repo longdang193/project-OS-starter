@@ -1,5 +1,5 @@
 diff --git a/components/adapters/codex/src/proxy-runtime.ts b/components/adapters/codex/src/proxy-runtime.ts
-index 5fec0d2..5b61a9c 100644
+index 5fec0d2..5c3c960 100644
 --- a/components/adapters/codex/src/proxy-runtime.ts
 +++ b/components/adapters/codex/src/proxy-runtime.ts
 @@ -200,6 +200,12 @@ function cloneJsonObject(value: JsonObject): JsonObject {
@@ -36,15 +36,23 @@ index 5fec0d2..5b61a9c 100644
        const inboundPayload = JSON.parse(body) as JsonObject;
        inboundPayload.input = normalizeResponsesInputForUpstream(inboundPayload?.input);
        const inboundPromptCacheKey =
-@@ -1323,12 +1332,19 @@ export async function startCodexResponsesProxy(params: {
+@@ -1323,12 +1332,27 @@ export async function startCodexResponsesProxy(params: {
          if (response.status >= 200 && response.status < 300) successfulGenerations += 1;
          return response;
        };
 +      const projectUpstreamPayload = (nextPayload: JsonObject): JsonObject => {
-+        if (!compactRequest) return nextPayload;
++        if (!compactRequest || nextPayload.stream !== false) return nextPayload;
 +        const projected = cloneJsonObject(nextPayload);
-+        projected.input = stripHistoricalWebSearchCalls(projected.input);
++        delete projected.stream;
 +        return projected;
++      };
++      const compactFallbackPayload = (): ((nextPayload: JsonObject) => JsonObject) | undefined => {
++        if (!compactRequest) return undefined;
++        return (nextPayload) => {
++          const projected = cloneJsonObject(nextPayload);
++          projected.input = stripHistoricalWebSearchCalls(projected.input);
++          return projected;
++        };
 +      };
        const sendUpstream = async (nextPayload: JsonObject) => {
 -        recordForwardingAttempt(nextPayload);
@@ -58,15 +66,16 @@ index 5fec0d2..5b61a9c 100644
              requestId,
              inboundAuthorization: authorization,
              lightmem2CacheContractDigest:
-@@ -1337,6 +1353,7 @@ export async function startCodexResponsesProxy(params: {
+@@ -1337,6 +1361,8 @@ export async function startCodexResponsesProxy(params: {
                  : undefined,
              stateDir: config.stateDir,
              signal: requestAbortController.signal,
 +            endpointPath: compactRequest ? "/responses/compact" : undefined,
++            fallbackPayload: compactFallbackPayload(),
            }));
            const attempt = forwardingAttempts.at(-1);
            if (attempt) attempt.outcome = response.status >= 200 && response.status < 300 ? "completed" : "failed";
-@@ -1931,12 +1948,13 @@ export async function startCodexResponsesProxy(params: {
+@@ -1931,12 +1957,13 @@ export async function startCodexResponsesProxy(params: {
            trackOptionalTask(runOptional());
            return;
          }
@@ -82,16 +91,17 @@ index 5fec0d2..5b61a9c 100644
              requestId,
              inboundAuthorization: authorization,
              lightmem2CacheContractDigest:
-@@ -1945,6 +1963,7 @@ export async function startCodexResponsesProxy(params: {
+@@ -1945,6 +1972,8 @@ export async function startCodexResponsesProxy(params: {
                  : undefined,
              stateDir: config.stateDir,
              signal: requestAbortController.signal,
 +            endpointPath: compactRequest ? "/responses/compact" : undefined,
++            fallbackPayload: compactFallbackPayload(),
            }));
          } catch (error) {
            const attempt = forwardingAttempts.at(-1);
 diff --git a/components/adapters/codex/src/upstream.ts b/components/adapters/codex/src/upstream.ts
-index 704083a..6ef0b5c 100644
+index 704083a..85c977a 100644
 --- a/components/adapters/codex/src/upstream.ts
 +++ b/components/adapters/codex/src/upstream.ts
 @@ -130,11 +130,11 @@ async function resolveNineRouterPayloadModel(
@@ -144,11 +154,12 @@ index 704083a..6ef0b5c 100644
        method: "POST",
        headers: requestHeaders(params),
        body: JSON.stringify(payload),
-@@ -516,11 +518,13 @@ export async function requestUpstreamResponses(params: {
+@@ -516,11 +518,14 @@ export async function requestUpstreamResponses(params: {
    stateDir?: string;
    requestId?: string;
    signal?: AbortSignal;
 +  endpointPath?: string;
++  fallbackPayload?: (payload: any) => any;
  }): Promise<UpstreamHttpResponse> {
    let transportFetches = 0;
 +  let endpointPath = params.endpointPath ?? "/responses";
@@ -159,23 +170,25 @@ index 704083a..6ef0b5c 100644
    };
    let payload = await resolveNineRouterPayloadModel(
      clonePayloadWithoutUnsupportedFields(params.payload, new Set()),
-@@ -532,6 +536,11 @@ export async function requestUpstreamResponses(params: {
+@@ -532,6 +537,12 @@ export async function requestUpstreamResponses(params: {
    payload = clonePayloadWithoutUnsupportedFields(payload, unsupportedFields);
    let resp = await send(payload);
    let text = await resp.text();
 +  if (resp.status === 404 && endpointPath === "/responses/compact") {
 +    endpointPath = "/responses";
++    payload = params.fallbackPayload ? params.fallbackPayload(payload) : payload;
 +    resp = await send(payload);
 +    text = await resp.text();
 +  }
    if (!resp.ok) {
      const unsupportedField = unsupportedOptionalFieldFromText(text);
      if (resp.status !== 401 && resp.status !== 403 && unsupportedField && !unsupportedFields.has(unsupportedField)) {
-@@ -563,11 +572,13 @@ export async function requestUpstreamResponsesStream(params: {
+@@ -563,11 +574,14 @@ export async function requestUpstreamResponsesStream(params: {
    stateDir?: string;
    requestId?: string;
    signal?: AbortSignal;
 +  endpointPath?: string;
++  fallbackPayload?: (payload: any) => any;
  }): Promise<UpstreamStreamResponse> {
    let transportFetches = 0;
 +  let endpointPath = params.endpointPath ?? "/responses";
@@ -186,13 +199,14 @@ index 704083a..6ef0b5c 100644
    };
    let payload = await resolveNineRouterPayloadModel(
      clonePayloadWithoutUnsupportedFields(params.payload, new Set()),
-@@ -578,6 +589,11 @@ export async function requestUpstreamResponsesStream(params: {
+@@ -578,6 +592,12 @@ export async function requestUpstreamResponsesStream(params: {
    const unsupportedFields = await loadUnsupportedOptionalFields(params.stateDir, params.upstream, resolvedModel);
    payload = clonePayloadWithoutUnsupportedFields(payload, unsupportedFields);
    let resp = await send(payload);
 +  if (resp.status === 404 && endpointPath === "/responses/compact") {
 +    await resp.text();
 +    endpointPath = "/responses";
++    payload = params.fallbackPayload ? params.fallbackPayload(payload) : payload;
 +    resp = await send(payload);
 +  }
    if (!resp.ok) {
@@ -200,10 +214,10 @@ index 704083a..6ef0b5c 100644
      const unsupportedField = unsupportedOptionalFieldFromText(text);
 diff --git a/components/adapters/codex/tests/compaction-route.test.ts b/components/adapters/codex/tests/compaction-route.test.ts
 new file mode 100644
-index 0000000..28b101d
+index 0000000..e7569ba
 --- /dev/null
 +++ b/components/adapters/codex/tests/compaction-route.test.ts
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,260 @@
 +import assert from "node:assert/strict";
 +import { createServer } from "node:http";
 +import { mkdtemp, rm } from "node:fs/promises";
@@ -213,13 +227,12 @@ index 0000000..28b101d
 +import {
 +  reserveUnusedPort,
 +  startMockCachingJsonUpstream,
-+  startMockJsonUpstream,
 +} from "@lightrsi/host-adapter";
 +import { normalizeTokenPilotCodexConfig } from "../src/config.js";
 +import { createConsoleLogger } from "../src/logger.js";
 +import { startCodexResponsesProxy } from "../src/proxy-runtime.js";
 +
-+async function startSseUpstream(options: { compactStatus?: number } = {}) {
++async function startSseUpstream(options: { compactStatus?: number; json?: boolean; rejectStreamField?: boolean } = {}) {
 +  const port = await reserveUnusedPort();
 +  const requests: Array<Record<string, unknown>> = [];
 +  const paths: string[] = [];
@@ -237,8 +250,19 @@ index 0000000..28b101d
 +      res.end("not found");
 +      return;
 +    }
-+    requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
++    const payload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
++    if (options.rejectStreamField && "stream" in payload) {
++      res.statusCode = 400;
++      res.end(JSON.stringify({ error: { message: "Unsupported parameter: stream" } }));
++      return;
++    }
++    requests.push(payload);
 +    res.statusCode = 200;
++    if (options.json) {
++      res.setHeader("content-type", "application/json");
++      res.end(JSON.stringify({ id: "resp_compact_json", object: "response", status: "completed", output: [] }));
++      return;
++    }
 +    res.setHeader("content-type", "text/event-stream");
 +    res.end([
 +      `event: response.created\ndata: ${JSON.stringify({
@@ -273,17 +297,10 @@ index 0000000..28b101d
 +  };
 +}
 +
-+test("compact route strips historical web search items on request-only projection", async () => {
++test("compact route preserves native non-stream payload without stream field", async () => {
 +  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-compact-route-"));
 +  const proxyPort = await reserveUnusedPort();
-+  const upstream = await startMockJsonUpstream({
-+    responseBody: {
-+      id: "resp_compact_test",
-+      object: "response",
-+      status: "completed",
-+      output: [],
-+    },
-+  });
++  const upstream = await startSseUpstream({ json: true, rejectStreamField: true });
 +  const runtime = await startCodexResponsesProxy({
 +    config: normalizeTokenPilotCodexConfig({
 +      proxyPort,
@@ -312,7 +329,7 @@ index 0000000..28b101d
 +
 +    assert.equal(response.status, 200);
 +    assert.equal(upstream.requests.length, 1);
-+    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), true);
 +  } finally {
 +    await runtime.close();
 +    await upstream.close();
@@ -320,7 +337,7 @@ index 0000000..28b101d
 +  }
 +});
 +
-+test("compact stream route strips history and preserves completion SSE", async () => {
++test("compact stream route preserves history and native completion SSE", async () => {
 +  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-compact-stream-"));
 +  const proxyPort = await reserveUnusedPort();
 +  const upstream = await startSseUpstream();
@@ -356,7 +373,7 @@ index 0000000..28b101d
 +    assert.equal(upstream.requests.length, 1);
 +    assert.deepEqual(upstream.paths, ["/v1/responses/compact"]);
 +    assert.match(text, /"type":"compaction"/);
-+    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), true);
 +  } finally {
 +    await runtime.close();
 +    await upstream.close();
@@ -384,11 +401,16 @@ index 0000000..28b101d
 +    const response = await fetch(`${runtime.baseUrl}/responses/compact`, {
 +      method: "POST",
 +      headers: { "content-type": "application/json" },
-+      body: JSON.stringify({ model: "capture-model", stream: true, input: [] }),
++      body: JSON.stringify({
++        model: "capture-model",
++        stream: true,
++        input: [{ type: "web_search_call", id: "search_1", status: "completed" }],
++      }),
 +    });
 +    assert.equal(response.status, 200);
 +    await response.text();
 +    assert.deepEqual(upstream.paths, ["/v1/responses/compact", "/v1/responses"]);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
 +  } finally {
 +    await runtime.close();
 +    await upstream.close();
@@ -456,6 +478,120 @@ index 0000000..28b101d
 +    await rm(stateDir, { recursive: true, force: true });
 +  }
 +});
+diff --git a/components/adapters/codex/tests/upstream.test.ts b/components/adapters/codex/tests/upstream.test.ts
+index 0db8017..9c989d1 100644
+--- a/components/adapters/codex/tests/upstream.test.ts
++++ b/components/adapters/codex/tests/upstream.test.ts
+@@ -245,6 +245,109 @@ test("unsupported prompt_cache_options is persisted and retried once without tha
+   }
+ });
+ 
++test("compact fallback keeps normalized payload through unsupported-field retry", async () => {
++  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-codex-compact-fallback-retry-"));
++  const requests: Array<{ path: string; payload: Record<string, unknown> }> = [];
++  const server = createServer(async (req, res) => {
++    const chunks: Buffer[] = [];
++    for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
++    if (req.url === "/v1/models") {
++      res.statusCode = 200;
++      res.setHeader("content-type", "application/json");
++      res.end(JSON.stringify({ data: [{ id: "provider/json-model" }, { id: "provider/stream-model" }] }));
++      return;
++    }
++    const payload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
++    requests.push({ path: req.url ?? "", payload });
++    if (req.url === "/v1/responses/compact") {
++      res.statusCode = 404;
++      res.end("not found");
++      return;
++    }
++    if ("prompt_cache_retention" in payload) {
++      res.statusCode = 400;
++      res.end(JSON.stringify({ error: { message: "Unsupported parameter: prompt_cache_retention" } }));
++      return;
++    }
++    res.statusCode = 200;
++    if (payload.stream === true) {
++      res.setHeader("content-type", "text/event-stream");
++      res.end("event: response.completed\n\n");
++    } else {
++      res.setHeader("content-type", "application/json");
++      res.end(JSON.stringify({ status: "completed", output: [] }));
++    }
++  });
++  await new Promise<void>((resolve, reject) => {
++    server.once("error", reject);
++    server.listen(0, "127.0.0.1", () => {
++      server.off("error", reject);
++      resolve();
++    });
++  });
++  const address = server.address();
++  if (!address || typeof address === "string") throw new Error("fixture did not bind a port");
++  const upstream = {
++    name: "9router",
++    baseUrl: `http://127.0.0.1:${address.port}/v1`,
++    wireApi: "responses" as const,
++    requiresOpenAIAuth: false,
++  };
++  const fallbackPayload = (payload: any) => ({
++    ...payload,
++    input: Array.isArray(payload.input)
++      ? payload.input.filter((item: any) => item?.type !== "web_search_call")
++      : payload.input,
++  });
++  try {
++    const json = await requestUpstreamResponses({
++      upstream,
++      stateDir,
++      endpointPath: "/responses/compact",
++      payload: {
++        model: "json-model",
++        prompt_cache_retention: "24h",
++        input: [{ type: "web_search_call", id: "search_json" }],
++      },
++      fallbackPayload,
++    });
++    assert.equal(json.status, 200);
++    assert.equal(json.transportFetches, 3);
++
++    const stream = await requestUpstreamResponsesStream({
++      upstream,
++      stateDir,
++      endpointPath: "/responses/compact",
++      payload: {
++        model: "stream-model",
++        prompt_cache_retention: "24h",
++        stream: true,
++        input: [{ type: "web_search_call", id: "search_stream" }],
++      },
++      fallbackPayload,
++    });
++    for await (const _chunk of stream.stream) {
++    }
++    assert.equal(stream.status, 200);
++    assert.equal(stream.transportFetches, 3);
++
++    for (const offset of [0, 3]) {
++      assert.equal(requests[offset]?.path, "/v1/responses/compact");
++      assert.equal(requests[offset + 1]?.path, "/v1/responses");
++      assert.equal(requests[offset + 2]?.path, "/v1/responses");
++      assert.equal(requests[offset + 1]?.payload.model, `provider/${offset === 0 ? "json-model" : "stream-model"}`);
++      assert.equal(requests[offset + 2]?.payload.model, requests[offset + 1]?.payload.model);
++      assert.equal((requests[offset + 1]?.payload.input as any[])?.some((item) => item?.type === "web_search_call"), false);
++      assert.equal((requests[offset + 2]?.payload.input as any[])?.some((item) => item?.type === "web_search_call"), false);
++      assert.equal("prompt_cache_retention" in (requests[offset + 1]?.payload ?? {}), true);
++      assert.equal("prompt_cache_retention" in (requests[offset + 2]?.payload ?? {}), false);
++    }
++  } finally {
++    await new Promise<void>((resolve) => server.close(() => resolve()));
++    await rm(stateDir, { recursive: true, force: true });
++  }
++});
++
+ test("stream upstream learns unsupported nested prompt_cache_breakpoint and retries without it", async () => {
+   const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-codex-breakpoint-capability-"));
+   const requests: Array<Record<string, unknown>> = [];
 diff --git a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts b/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
 index fe27758..2459a43 100644
 --- a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
