@@ -1,0 +1,14 @@
+{
+  "plan_revision": "2026-10-09-secretary-recommended-implementation-sequence-and-live-coordination-economics",
+  "schema": "project-os.secretary-live-workload.v1",
+  "task_id": "secretary-live-coordination-economics",
+  "workload": {
+    "arms": [
+      "cos-only",
+      "cos-plus-secretary"
+    ],
+    "dependency": "cross-workstream",
+    "pairs": 5
+  },
+  "workload_digest": "2fe4a8caef91bf711a9bd1e8a3437d234ea67e95b5b26769c2befffac9cfe751"
+}

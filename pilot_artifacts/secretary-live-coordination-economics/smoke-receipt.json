@@ -1,0 +1,39 @@
+{
+  "attempt_id": "attempt-secretary-live-final",
+  "completion": {
+    "exit_code": 0,
+    "observed": false,
+    "operation": "secretary_smoke"
+  },
+  "metrics": {
+    "cos_turns": 1,
+    "cost": null,
+    "human_interventions": 0,
+    "secretary_turns": 1,
+    "token_usage": null
+  },
+  "model": "combo-high",
+  "outcomes": {
+    "acceptance": "unverified",
+    "publication": "unverified",
+    "settlement": "unverified"
+  },
+  "plan_revision": "2026-10-09-secretary-recommended-implementation-sequence-and-live-coordination-economics",
+  "provenance": {
+    "observed": false,
+    "producer": "legacy-probe-fixture",
+    "source_ref": "herdr:pane:w5M:p1:attempt:attempt-secretary-live-final",
+    "source_type": "probe"
+  },
+  "provider": "9router",
+  "run_id": "run-secretary-live-final",
+  "schema": "project-os.secretary-live-receipt.v1",
+  "status": "UNVERIFIED_PROBE",
+  "evidence_disposition": "probe-only",
+  "evidence_note": "Legacy fixture predates current hardened receipt contract and is not eligible for acceptance or economics comparison.",
+  "task_id": "secretary-live-coordination-economics",
+  "timestamps": {
+    "entry_at": "2026-10-09T09:21:59.092379Z",
+    "exit_at": "2026-10-09T09:22:06.285290Z"
+  }
+}

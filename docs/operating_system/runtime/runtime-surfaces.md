@@ -112,6 +112,14 @@ resources remain caller-owned through `runtime.json`.
   available to the top-level controller without multiplying browser processes
   across workers.
 - Codex Herdr probes use one resolved `CODEX_HOME`; the launcher passes it to Herdr and Codex child processes and blocks when project and home `hooks.json` both define `Stop` hooks.
+- Live Secretary probes consume native Codex `config.toml` and `auth.json` only
+  through the resolved `CODEX_HOME`; pilot code never reads, copies, injects, or
+  publishes credential values. The configured provider must be `9router`. A
+  receipt-backed `READY` state uses the owned
+  `scripts/secretary_live_runtime.py` Herdr pane runner, independently observed
+  Codex completion, launcher-owned `attempt_id`, and sanitized
+  timestamps/outcomes. Missing launcher, attribution, or completion is
+  `BLOCKED_CAPABILITY`, not provider fallback or synthetic live evidence.
 - Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. Each dispatch has one `dispatch_id`; each launch attempt carries one `attempt_id` across delivery, observation, reconciliation, and retirement; coordinated DeepAgents also carries one stable `assignment_id` across retries. Terminal results keep delivery, execution, observation, task result, cleanup, and performance sections independent. Runtime completion is not task acceptance: the launcher emits no new `task_result.accepted: true` path, and CoS retains `PASS | FAIL | BLOCKED` acceptance authority. The launcher and its tests own task-delivery mechanics; CoS accepts only final delivery evidence, never readiness or intent alone. The launcher does not use `--until working` because that can match unrelated active work.
 - Codex prompt submission is non-blocking; successful `agent start` also requires a live, newly observed Codex process before prompt delivery. `agent prompt` acknowledgement owns delivery evidence, while `agent get`/`agent read` own bounded execution observation. Observation timeout or stale output never rewrites confirmed delivery as rejection. A timed-out execution may retain `cleanup: unverified` and `reconciliation_required: true`; cleanup uncertainty does not erase timeout evidence.
 - DeepAgents lifecycle receipts own worker execution and settlement facts. Structured `TaskResult` records own reported task outcomes; a confirmed receipt without confirmed structured result remains `unverified` and reconciliation-required. Pane observation supplies pre-receipt diagnostics and legacy fallback only; pane text never promotes managed completion to task success. CoS retains `PASS | FAIL | BLOCKED` acceptance authority.

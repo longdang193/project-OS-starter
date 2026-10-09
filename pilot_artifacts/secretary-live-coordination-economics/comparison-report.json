@@ -1,0 +1,26 @@
+{
+  "arms": {
+    "baseline": {
+      "accepted": 0,
+      "attempted": 3,
+      "coordination_turns": "unknown",
+      "cost_per_accepted_outcome": "unknown",
+      "human_interventions": "unknown",
+      "total_cost": "unknown"
+    },
+    "candidate": {
+      "accepted": 0,
+      "attempted": 3,
+      "coordination_turns": "unknown",
+      "cost_per_accepted_outcome": "unknown",
+      "human_interventions": "unknown",
+      "total_cost": "unknown"
+    }
+  },
+  "attempted": 6,
+  "eligible_pairs": 0,
+  "paired_deltas": [],
+  "status": "INCONCLUSIVE",
+  "evidence_disposition": "UNVERIFIED_PROBE",
+  "reason": "Legacy fixtures fail current receipt validation and cannot establish correctness-valid matched trials."
+}
