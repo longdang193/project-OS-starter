@@ -123,7 +123,7 @@ def reconcile(
         if not isinstance(value, str) or not value.strip():
             missing.append(MissingEvidence(name, "stable action reference is absent"))
 
-    if local.dirty and not local.working_tree_digest and not local.checkpoint_sha:
+    if local.dirty and not local.working_tree_digest:
         missing.append(MissingEvidence("working_tree_digest", "dirty candidate has no binding"))
     if remote.available and remote.head_sha != local.lane_head_sha:
         contradictions.append(Contradiction("PR_HEAD_MISMATCH", "remote PR head differs from local lane head"))

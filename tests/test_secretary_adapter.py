@@ -147,6 +147,18 @@ def test_compact_released_does_not_remove_active_controller() -> None:
     assert adapter.resolve(binding()).found is True
 
 
+def test_compact_old_released_controller_preserves_replacement() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+    old = adapter.activate(binding(), "activation-1").controller
+    assert old is not None
+    assert adapter.release_session(old).released is True
+    replacement = adapter.activate(binding(), "activation-2").controller
+    assert replacement is not None
+
+    assert adapter.compact_released(old) is True
+    assert adapter.resolve(binding()).controller == replacement
+
+
 def test_release_unknown_session_requires_reconciliation() -> None:
     adapter = InMemoryControllerSessionAdapter()
     unknown = ControllerRef(binding(), "missing")

@@ -228,7 +228,8 @@ class InMemoryControllerSessionJournal:
                 reason="activation compacted; replay remains blocked",
             )
             del self._activations[activation_id]
-        self._controllers.pop(controller.binding, None)
+        if self._controllers.get(controller.binding) == controller:
+            self._controllers.pop(controller.binding, None)
         owner_key = (controller.binding.repository_identity, controller.binding.workstream)
         if self._owners.get(owner_key) == controller:
             del self._owners[owner_key]

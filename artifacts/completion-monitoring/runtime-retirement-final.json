@@ -1,12 +1,12 @@
 {
   "schema": "completion-monitoring-evidence/v2",
-  "generated_at": "2026-10-09T23:15:35.813588+00:00",
+  "generated_at": "2026-10-09T23:27:49.103741+00:00",
   "python": "3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]",
   "os": "Windows-10-10.0.19045-SP0",
   "baseline_revision": "187f28e492ae1c4726cdd2f7b5a261a2b8b6c695",
-  "candidate_revision": "bd9d648fa7dc87cae865777f4fa400530c15f559",
+  "candidate_revision": "03d16032385d0ff7ce42a802f7ff364b1891458c",
   "baseline_source_sha256": "81ce55796dfc7e42f506541340e443617d80b4b16c5affaad096c9fd7d18931c",
-  "candidate_source_sha256": "f999a96c705405da8892fd6b684e82de6036d60347b070fb86814306cbe3bc23",
+  "candidate_source_sha256": "fbaac643ea00a2dcb787363046f3766c4c0442cb63c27cada5ca9de2094a6dd6",
   "harness": "stdlib deterministic fake-Herdr command/receipt seam",
   "harness_digest": "f1741a14dbb0d63641ed983395644056ee8603648e9ea67cee53bc27687104ff",
   "fixed_budgets": {

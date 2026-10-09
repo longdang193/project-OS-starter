@@ -2225,6 +2225,16 @@ def retire_lane(
         }
     selected = next((item for item in panes if isinstance(item, dict) and item.get("pane_id") == pane), None)
     if selected is None:
+        if (
+            bound_attempt.get("settled") is not True
+            or bound_attempt.get("recovery_required") is True
+            or bound_attempt.get("process_retirement_proven") is not True
+        ):
+            return {
+                "state": "unresolved",
+                "recovery_required": True,
+                "reason": "absent pane lacks settled process-retirement proof",
+            }
         return {
             "state": "removed",
             "recovery_required": False,
@@ -2263,7 +2273,17 @@ def retire_lane(
         }
     process_identity = bound_attempt.get("process_identity")
     expected_pid = process_identity.get("pid") if isinstance(process_identity, Mapping) else None
-    if isinstance(expected_pid, bool) or not isinstance(expected_pid, int) or expected_pid <= 0:
+    expected_name = process_identity.get("name") if isinstance(process_identity, Mapping) else None
+    expected_cwd = process_identity.get("cwd") if isinstance(process_identity, Mapping) else None
+    if (
+        isinstance(expected_pid, bool)
+        or not isinstance(expected_pid, int)
+        or expected_pid <= 0
+        or not isinstance(expected_name, str)
+        or not expected_name.strip()
+        or not isinstance(expected_cwd, str)
+        or not expected_cwd.strip()
+    ):
         return {
             "state": "unresolved",
             "recovery_required": True,
@@ -2276,7 +2296,8 @@ def retire_lane(
         )
         process_info = process_result.get("result", {}).get("process_info") if isinstance(process_result, dict) else None
         foreground = process_info.get("foreground_processes") if isinstance(process_info, dict) else None
-        current_process_ids = _process_ids(_process_records(foreground), require_non_shell=True)
+        current_processes = _process_records(foreground)
+        current_process_ids = _process_ids(current_processes, require_non_shell=True)
     except (LaunchBlocked, CommandTransportTimeout) as exc:
         return {
             "state": "unresolved",
@@ -2284,7 +2305,15 @@ def retire_lane(
             "reason": "process ownership evidence unavailable",
             "detail": str(exc),
         }
-    if expected_pid not in current_process_ids:
+    current_process = next(
+        (process for process in current_processes if int(process["pid"]) == expected_pid),
+        None,
+    )
+    if (
+        current_process is None
+        or str(current_process.get("name", "")) != expected_name
+        or Path(str(current_process.get("cwd", ""))).resolve() != Path(expected_cwd).resolve()
+    ):
         return {
             "state": "unresolved",
             "recovery_required": True,

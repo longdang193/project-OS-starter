@@ -81,3 +81,14 @@ def test_reconcile_rejects_stale_checkpoint_and_unready_dependencies():
     assert snapshot.next_action == "RECONCILE"
     assert {item.code for item in snapshot.contradictions} == {"CHECKPOINT_HEAD_MISMATCH"}
     assert any(item.field == "dependencies_ready" for item in snapshot.missing_evidence)
+
+
+def test_reconcile_requires_dirty_worktree_digest_even_with_checkpoint():
+    snapshot = reconcile(
+        _local(dirty=True, working_tree_digest=None),
+        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
+        _runtime(),
+    )
+
+    assert snapshot.eligible.verification is False
+    assert any(item.field == "working_tree_digest" for item in snapshot.missing_evidence)
