@@ -1,0 +1,310 @@
+diff --git a/components/adapters/codex/src/proxy-runtime.ts b/components/adapters/codex/src/proxy-runtime.ts
+index 5fec0d2..56d31cc 100644
+--- a/components/adapters/codex/src/proxy-runtime.ts
++++ b/components/adapters/codex/src/proxy-runtime.ts
+@@ -200,6 +200,12 @@ function cloneJsonObject(value: JsonObject): JsonObject {
+   return JSON.parse(JSON.stringify(value)) as JsonObject;
+ }
+ 
++function stripHistoricalWebSearchCalls(input: unknown): unknown {
++  if (!Array.isArray(input)) return input;
++  const retained = input.filter((item) => asJsonObject(item)?.type !== "web_search_call");
++  return retained;
++}
++
+ function hashJson(value: unknown): string {
+   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);
+ }
+@@ -698,7 +704,9 @@ export async function startCodexResponsesProxy(params: {
+ 
+   const runtime = await startHostGatewayRuntimeServer({
+     port: config.proxyPort,
+-    requestPath: "/v1/responses",
++    requestPath: config.proxyMode.pureForward
++      ? "/v1/responses"
++      : ["/v1/responses", "/v1/responses/compact"],
+     basePath: "/v1",
+     healthPayload: {
+       ok: true,
+@@ -743,7 +751,8 @@ export async function startCodexResponsesProxy(params: {
+       }
+       return true;
+     },
+-    async handleRequest({ req, res, body }) {
++    async handleRequest({ req, res, pathname, body }) {
++      const compactRequest = pathname === "/v1/responses/compact";
+       const inboundPayload = JSON.parse(body) as JsonObject;
+       inboundPayload.input = normalizeResponsesInputForUpstream(inboundPayload?.input);
+       const inboundPromptCacheKey =
+@@ -1323,12 +1332,19 @@ export async function startCodexResponsesProxy(params: {
+         if (response.status >= 200 && response.status < 300) successfulGenerations += 1;
+         return response;
+       };
++      const projectUpstreamPayload = (nextPayload: JsonObject): JsonObject => {
++        if (!compactRequest) return nextPayload;
++        const projected = cloneJsonObject(nextPayload);
++        projected.input = stripHistoricalWebSearchCalls(projected.input);
++        return projected;
++      };
+       const sendUpstream = async (nextPayload: JsonObject) => {
+-        recordForwardingAttempt(nextPayload);
++        const projectedPayload = projectUpstreamPayload(nextPayload);
++        recordForwardingAttempt(projectedPayload);
+         try {
+           const response = countUpstreamResponse(await requestUpstreamResponses({
+             upstream,
+-            payload: nextPayload,
++            payload: projectedPayload,
+             requestId,
+             inboundAuthorization: authorization,
+             lightmem2CacheContractDigest:
+@@ -1931,12 +1947,13 @@ export async function startCodexResponsesProxy(params: {
+           trackOptionalTask(runOptional());
+           return;
+         }
+-        recordForwardingAttempt(payload);
++        const projectedPayload = projectUpstreamPayload(payload);
++        recordForwardingAttempt(projectedPayload);
+         let upstreamResp;
+         try {
+           upstreamResp = countUpstreamResponse(await requestUpstreamResponsesStream({
+             upstream,
+-            payload,
++            payload: projectedPayload,
+             requestId,
+             inboundAuthorization: authorization,
+             lightmem2CacheContractDigest:
+diff --git a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts b/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
+index fe27758..2459a43 100644
+--- a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
++++ b/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
+@@ -13,7 +13,7 @@ export type HostGatewayRuntimeServer = {
+ 
+ export async function startHostGatewayRuntimeServer(params: {
+   port: number;
+-  requestPath: string;
++  requestPath: string | string[];
+   basePath?: string;
+   healthPayload: unknown;
+   handleRoute?(args: {
+@@ -56,7 +56,8 @@ export async function startHostGatewayRuntimeServer(params: {
+         });
+         if (handled) return;
+       }
+-      if (req.method !== "POST" || pathname !== params.requestPath) {
++      const requestPaths = Array.isArray(params.requestPath) ? params.requestPath : [params.requestPath];
++      if (req.method !== "POST" || !requestPaths.includes(pathname)) {
+         sendJsonResponse(res, 404, { error: "not found" });
+         return;
+       }
+diff --git a/components/adapters/codex/tests/compaction-route.test.ts b/components/adapters/codex/tests/compaction-route.test.ts
+new file mode 100644
+index 0000000..822a114
+--- /dev/null
++++ b/components/adapters/codex/tests/compaction-route.test.ts
+@@ -0,0 +1,205 @@
++import assert from "node:assert/strict";
++import { createServer } from "node:http";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import test from "node:test";
++import {
++  reserveUnusedPort,
++  startMockCachingJsonUpstream,
++  startMockJsonUpstream,
++} from "@lightrsi/host-adapter";
++import { normalizeTokenPilotCodexConfig } from "../src/config.js";
++import { createConsoleLogger } from "../src/logger.js";
++import { startCodexResponsesProxy } from "../src/proxy-runtime.js";
++
++async function startSseUpstream() {
++  const port = await reserveUnusedPort();
++  const requests: Array<Record<string, unknown>> = [];
++  const server = createServer(async (req, res) => {
++    const chunks: Buffer[] = [];
++    for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
++    if (req.method !== "POST" || req.url !== "/v1/responses") {
++      res.statusCode = 404;
++      res.end("not found");
++      return;
++    }
++    requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
++    res.statusCode = 200;
++    res.setHeader("content-type", "text/event-stream");
++    res.end([
++      `event: response.created\ndata: ${JSON.stringify({
++        type: "response.created",
++        response: { id: "resp_compact_stream", object: "response", status: "in_progress" },
++      })}`,
++      `event: response.completed\ndata: ${JSON.stringify({
++        type: "response.completed",
++        response: { id: "resp_compact_stream", object: "response", status: "completed", output: [] },
++      })}`,
++      "",
++      "",
++    ].join("\n"));
++  });
++  await new Promise<void>((resolve, reject) => {
++    server.once("error", reject);
++    server.listen(port, "127.0.0.1", () => {
++      server.off("error", reject);
++      resolve();
++    });
++  });
++  return {
++    baseUrl: `http://127.0.0.1:${port}/v1`,
++    requests,
++    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
++  };
++}
++
++test("compact route strips historical web search items on request-only projection", async () => {
++  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-compact-route-"));
++  const proxyPort = await reserveUnusedPort();
++  const upstream = await startMockJsonUpstream({
++    responseBody: {
++      id: "resp_compact_test",
++      object: "response",
++      status: "completed",
++      output: [],
++    },
++  });
++  const runtime = await startCodexResponsesProxy({
++    config: normalizeTokenPilotCodexConfig({
++      proxyPort,
++      stateDir,
++      upstream: { name: "capture", baseUrl: upstream.baseUrl, wireApi: "responses" },
++      proxyMode: { pureForward: false },
++      modules: { stabilizer: false, reduction: false },
++      contextRewrite: { enabled: false },
++    }),
++    logger: createConsoleLogger(false),
++  });
++
++  try {
++    const response = await fetch(`${runtime.baseUrl}/responses/compact`, {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({
++        model: "capture-model",
++        stream: false,
++        input: [
++          { type: "message", role: "user", content: [{ type: "input_text", text: "compact" }] },
++          { type: "web_search_call", id: "search_1", status: "completed" },
++        ],
++      }),
++    });
++
++    assert.equal(response.status, 200);
++    assert.equal(upstream.requests.length, 1);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
++  } finally {
++    await runtime.close();
++    await upstream.close();
++    await rm(stateDir, { recursive: true, force: true });
++  }
++});
++
++test("compact stream route strips history and preserves completion SSE", async () => {
++  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-compact-stream-"));
++  const proxyPort = await reserveUnusedPort();
++  const upstream = await startSseUpstream();
++  const runtime = await startCodexResponsesProxy({
++    config: normalizeTokenPilotCodexConfig({
++      proxyPort,
++      stateDir,
++      upstream: { name: "capture", baseUrl: upstream.baseUrl, wireApi: "responses" },
++      proxyMode: { pureForward: false },
++      modules: { stabilizer: false, reduction: false },
++      contextRewrite: { enabled: false },
++    }),
++    logger: createConsoleLogger(false),
++  });
++
++  try {
++    const response = await fetch(`${runtime.baseUrl}/responses/compact`, {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({
++        model: "capture-model",
++        stream: true,
++        input: [
++          { type: "message", role: "user", content: [{ type: "input_text", text: "compact" }] },
++          { type: "web_search_call", id: "search_1", status: "completed" },
++        ],
++      }),
++    });
++
++    const text = await response.text();
++    assert.equal(response.status, 200);
++    assert.match(text, /event: response\.completed/);
++    assert.equal(upstream.requests.length, 1);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
++  } finally {
++    await runtime.close();
++    await upstream.close();
++    await rm(stateDir, { recursive: true, force: true });
++  }
++});
++
++test("compact route keeps same-thread continuation and normal-route history", async () => {
++  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-compact-continuation-"));
++  const proxyPort = await reserveUnusedPort();
++  const upstream = await startMockCachingJsonUpstream({
++    responseFactory: (_request, index) => ({
++      id: `resp_compact_continuation_${index + 1}`,
++      object: "response",
++      status: "completed",
++      output: [],
++    }),
++  });
++  const runtime = await startCodexResponsesProxy({
++    config: normalizeTokenPilotCodexConfig({
++      proxyPort,
++      stateDir,
++      upstream: { name: "capture", baseUrl: upstream.baseUrl, wireApi: "responses" },
++      proxyMode: { pureForward: false },
++      modules: { stabilizer: false, reduction: false },
++      contextRewrite: { enabled: false },
++    }),
++    logger: createConsoleLogger(false),
++  });
++
++  try {
++    const first = await fetch(`${runtime.baseUrl}/responses/compact`, {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({
++        model: "capture-model",
++        stream: false,
++        input: [
++          { type: "message", role: "user", content: [{ type: "input_text", text: "compact" }] },
++          { type: "web_search_call", id: "search_1", status: "completed" },
++        ],
++      }),
++    });
++    const firstBody = await first.json() as { id: string };
++
++    const second = await fetch(`${runtime.baseUrl}/responses`, {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({
++        model: "capture-model",
++        stream: false,
++        previous_response_id: firstBody.id,
++        input: [{ type: "web_search_call", id: "search_2", status: "completed" }],
++      }),
++    });
++    assert.equal(first.status, 200);
++    assert.equal(second.status, 200);
++    assert.equal(upstream.requests.length, 2);
++    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
++    assert.equal(upstream.requests[1]?.previous_response_id, firstBody.id);
++    assert.equal(upstream.requests[1]?.input?.some((item: any) => item?.type === "web_search_call"), true);
++  } finally {
++    await runtime.close();
++    await upstream.close();
++    await rm(stateDir, { recursive: true, force: true });
++  }
++});

@@ -18,6 +18,8 @@ targets:
   - pilot_artifacts/secretary-live-coordination-economics/capability-inventory.json
   - pilot_artifacts/secretary-live-coordination-economics/workload-manifest.json
   - pilot_artifacts/secretary-live-coordination-economics/smoke-receipt.json
+  - pilot_artifacts/secretary-live-coordination-economics/live-economics-smoke.json
+  - pilot_artifacts/secretary-live-coordination-economics/live-economics-status-probe.json
   - pilot_artifacts/secretary-live-coordination-economics/edge-case-probes.json
   - pilot_artifacts/secretary-live-coordination-economics/comparison-report.md
 ---

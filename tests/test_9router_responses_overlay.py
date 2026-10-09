@@ -17,12 +17,23 @@ def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
     installer = (PATCH_ROOT / "Install-9RouterGlobal.ps1").read_text(encoding="utf-8")
     security_script = (PATCH_ROOT / "Apply-9RouterSecurityOverlay.ps1").read_text(encoding="utf-8")
 
+    assert '"id": "9router-responses-compatibility"' in manifest
+    assert '"version": "1.1.0"' in manifest
     assert '"baseCommit": "e0be411184e67687171a1e13ae2e5686c14dd43a"' in manifest
     assert '"baseCommit": "eb712ca821f0ba6bc41043fbd14494c5af5daba5"' in latest_manifest
+    assert "open-sse/executors/base.js" in patch
+    assert "open-sse/executors/codex.js" in patch
+    assert "body?._compact" in patch
+    assert "tests/unit/codex-compact-routing.test.js" in patch
     assert "open-sse/transformer/responsesTransformer.js" in patch
     assert "tests/unit/responses-transformer-completed-output.test.js" in patch
     assert "responseOutput: []" in patch
     assert "output: state.responseOutput.filter(Boolean)" in patch
+    assert "errorSeen: false" in patch
+    assert 'eventType === "error"' in patch
+    assert "open-sse/transformer/streamToJsonConverter.js" in patch
+    assert "tests/unit/responses-stream-error-preservation.test.js" in patch
+    assert "state.error = parsed.error || parsed" in patch
     assert "open-sse/transformer/responsesTransformer.js" in latest_patch
     assert "tests/unit/responses-transformer-completed-output.test.js" in latest_patch
     assert "open-sse/translator/index.js" in latest_patch

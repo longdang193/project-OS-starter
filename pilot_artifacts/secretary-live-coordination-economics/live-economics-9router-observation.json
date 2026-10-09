@@ -1,0 +1,8 @@
+{
+  "disposition": "inconclusive",
+  "observed_session_count": 1,
+  "reason": "no_session_rows",
+  "schema_version": "9router-usage-observation-v1",
+  "source": "9router-local-read-only",
+  "usage_count": 1
+}

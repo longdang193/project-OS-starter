@@ -1,0 +1,596 @@
+{
+  "schema_version": "secretary-economics-confirmation-v1",
+  "status": "diagnostic-window-attributed-only",
+  "runtime_capability": "BLOCKED_CAPABILITY",
+  "provider": "9router",
+  "primary_metric": "cache_read_input_tokens",
+  "acceptance_economics": "unknown",
+  "note": "Direct Codex sessions measured through read-only 9router usageHistory windows. Cache-read is primary metric, but unequal request counts and missing owned Secretary receipt make this diagnostic only.",
+  "arms": {
+    "baseline": {
+      "windows": 3,
+      "windows_with_rows": 3,
+      "total_requests": 22,
+      "total_cache_read_input_tokens": 1725440,
+      "median_cache_read_input_tokens_per_window": 448512,
+      "total_tokens": 2204344,
+      "median_total_tokens_per_window": 544345,
+      "total_router_recorded_cost_usd": 1.7248299999999999,
+      "median_router_recorded_cost_usd_per_window": 0.37352550000000007
+    },
+    "candidate": {
+      "windows": 3,
+      "windows_with_rows": 3,
+      "total_requests": 13,
+      "total_cache_read_input_tokens": 1000704,
+      "median_cache_read_input_tokens_per_window": 217088,
+      "total_tokens": 1291469,
+      "median_total_tokens_per_window": 316273,
+      "total_router_recorded_cost_usd": 1.0223985,
+      "median_router_recorded_cost_usd_per_window": 0.31309950000000003
+    }
+  },
+  "pairs": [
+    {
+      "arm": "baseline",
+      "index": 1,
+      "started_at": "2026-10-09T16:03:36.1598596Z",
+      "process_finished_at": "2026-10-09T16:04:00.2304201Z",
+      "observed_at": "2026-10-09T16:04:02.6507217Z",
+      "before_usage_id": 365070,
+      "exit_code": 0,
+      "request_count": 4,
+      "rows": [
+        {
+          "id": 365071,
+          "timestamp": "2026-10-09T16:03:43.9Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 220072,
+          "completion_tokens": 490,
+          "cache_read_input_tokens": 218368,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.068287,
+          "status": "ok"
+        },
+        {
+          "id": 365072,
+          "timestamp": "2026-10-09T16:03:52.375Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 26847,
+          "completion_tokens": 140,
+          "cache_read_input_tokens": 5376,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0582315,
+          "status": "ok"
+        },
+        {
+          "id": 365073,
+          "timestamp": "2026-10-09T16:03:59.268Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 224192,
+          "completion_tokens": 446,
+          "cache_read_input_tokens": 219392,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.078323,
+          "status": "ok"
+        },
+        {
+          "id": 365074,
+          "timestamp": "2026-10-09T16:03:59.992Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 72138,
+          "completion_tokens": 20,
+          "cache_read_input_tokens": 5376,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.16868400000000003,
+          "status": "ok"
+        }
+      ],
+      "attribution": "diagnostic-window-attributed-only"
+    },
+    {
+      "arm": "candidate",
+      "index": 1,
+      "started_at": "2026-10-09T16:04:02.7252296Z",
+      "process_finished_at": "2026-10-09T16:04:38.6233139Z",
+      "observed_at": "2026-10-09T16:04:40.9569934Z",
+      "before_usage_id": 365074,
+      "exit_code": 0,
+      "request_count": 6,
+      "rows": [
+        {
+          "id": 365075,
+          "timestamp": "2026-10-09T16:04:13.022Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 125647,
+          "completion_tokens": 49,
+          "cache_read_input_tokens": 125184,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.03333849999999999,
+          "status": "ok"
+        },
+        {
+          "id": 365076,
+          "timestamp": "2026-10-09T16:04:17.622Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 225410,
+          "completion_tokens": 591,
+          "cache_read_input_tokens": 223488,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.07410199999999999,
+          "status": "ok"
+        },
+        {
+          "id": 365077,
+          "timestamp": "2026-10-09T16:04:19.601Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 26863,
+          "completion_tokens": 179,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.06404950000000001,
+          "status": "ok"
+        },
+        {
+          "id": 365078,
+          "timestamp": "2026-10-09T16:04:28.098Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 72193,
+          "completion_tokens": 91,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.17467450000000004,
+          "status": "ok"
+        },
+        {
+          "id": 365079,
+          "timestamp": "2026-10-09T16:04:35.045Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 226086,
+          "completion_tokens": 532,
+          "cache_read_input_tokens": 224512,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.07170299999999999,
+          "status": "ok"
+        },
+        {
+          "id": 365080,
+          "timestamp": "2026-10-09T16:04:38.278Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 72398,
+          "completion_tokens": 44,
+          "cache_read_input_tokens": 71936,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.020264,
+          "status": "ok"
+        }
+      ],
+      "attribution": "diagnostic-window-attributed-only"
+    },
+    {
+      "arm": "baseline",
+      "index": 2,
+      "started_at": "2026-10-09T16:04:41.0299587Z",
+      "process_finished_at": "2026-10-09T16:05:05.2213997Z",
+      "observed_at": "2026-10-09T16:05:07.547285Z",
+      "before_usage_id": 365080,
+      "exit_code": 0,
+      "request_count": 3,
+      "rows": [
+        {
+          "id": 365081,
+          "timestamp": "2026-10-09T16:04:51.281Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 125745,
+          "completion_tokens": 45,
+          "cache_read_input_tokens": 125184,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0334635,
+          "status": "ok"
+        },
+        {
+          "id": 365082,
+          "timestamp": "2026-10-09T16:04:56.847Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 26847,
+          "completion_tokens": 155,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0633195,
+          "status": "ok"
+        },
+        {
+          "id": 365083,
+          "timestamp": "2026-10-09T16:05:04.996Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 72124,
+          "completion_tokens": 22,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.173317,
+          "status": "ok"
+        }
+      ],
+      "attribution": "diagnostic-window-attributed-only"
+    },
+    {
+      "arm": "candidate",
+      "index": 2,
+      "started_at": "2026-10-09T16:05:07.6162822Z",
+      "process_finished_at": "2026-10-09T16:05:32.183896Z",
+      "observed_at": "2026-10-09T16:05:34.5301854Z",
+      "before_usage_id": 365083,
+      "exit_code": 0,
+      "request_count": 3,
+      "rows": [
+        {
+          "id": 365084,
+          "timestamp": "2026-10-09T16:05:23.28Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 26863,
+          "completion_tokens": 180,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.06410950000000001,
+          "status": "ok"
+        },
+        {
+          "id": 365085,
+          "timestamp": "2026-10-09T16:05:27.495Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 125837,
+          "completion_tokens": 45,
+          "cache_read_input_tokens": 125184,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0336935,
+          "status": "ok"
+        },
+        {
+          "id": 365086,
+          "timestamp": "2026-10-09T16:05:31.895Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 72167,
+          "completion_tokens": 21,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.17336450000000003,
+          "status": "ok"
+        }
+      ],
+      "attribution": "diagnostic-window-attributed-only"
+    },
+    {
+      "arm": "baseline",
+      "index": 3,
+      "started_at": "2026-10-09T16:05:34.612186Z",
+      "process_finished_at": "2026-10-09T16:06:55.9367071Z",
+      "observed_at": "2026-10-09T16:06:58.3627046Z",
+      "before_usage_id": 365086,
+      "exit_code": 0,
+      "request_count": 15,
+      "rows": [
+        {
+          "id": 365087,
+          "timestamp": "2026-10-09T16:05:41.898Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 226630,
+          "completion_tokens": 506,
+          "cache_read_input_tokens": 225536,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.071839,
+          "status": "ok"
+        },
+        {
+          "id": 365088,
+          "timestamp": "2026-10-09T16:05:54.726Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 26847,
+          "completion_tokens": 211,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0648195,
+          "status": "ok"
+        },
+        {
+          "id": 365089,
+          "timestamp": "2026-10-09T16:06:03.704Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 125931,
+          "completion_tokens": 50,
+          "cache_read_input_tokens": 125184,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0340785,
+          "status": "ok"
+        },
+        {
+          "id": 365090,
+          "timestamp": "2026-10-09T16:06:04.979Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 70315,
+          "completion_tokens": 137,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.17113450000000002,
+          "status": "ok"
+        },
+        {
+          "id": 365091,
+          "timestamp": "2026-10-09T16:06:10.784Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 167054,
+          "completion_tokens": 1338,
+          "cache_read_input_tokens": 3840,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.43680500000000005,
+          "status": "ok"
+        },
+        {
+          "id": 365092,
+          "timestamp": "2026-10-09T16:06:13.748Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 70566,
+          "completion_tokens": 126,
+          "cache_read_input_tokens": 69888,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.021656999999999996,
+          "status": "ok"
+        },
+        {
+          "id": 365093,
+          "timestamp": "2026-10-09T16:06:23.004Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 79189,
+          "completion_tokens": 336,
+          "cache_read_input_tokens": 63744,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.061478500000000005,
+          "status": "ok"
+        },
+        {
+          "id": 365094,
+          "timestamp": "2026-10-09T16:06:24.736Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 70833,
+          "completion_tokens": 106,
+          "cache_read_input_tokens": 69888,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0217245,
+          "status": "ok"
+        },
+        {
+          "id": 365095,
+          "timestamp": "2026-10-09T16:06:30.884Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 81907,
+          "completion_tokens": 51,
+          "cache_read_input_tokens": 78080,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.030317500000000004,
+          "status": "ok"
+        },
+        {
+          "id": 365096,
+          "timestamp": "2026-10-09T16:06:37.086Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 71052,
+          "completion_tokens": 107,
+          "cache_read_input_tokens": 69888,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.022586999999999996,
+          "status": "ok"
+        },
+        {
+          "id": 365097,
+          "timestamp": "2026-10-09T16:06:39.758Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 126028,
+          "completion_tokens": 45,
+          "cache_read_input_tokens": 125184,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.034171,
+          "status": "ok"
+        },
+        {
+          "id": 365098,
+          "timestamp": "2026-10-09T16:06:42.009Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 82837,
+          "completion_tokens": 222,
+          "cache_read_input_tokens": 81152,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0282055,
+          "status": "ok"
+        },
+        {
+          "id": 365099,
+          "timestamp": "2026-10-09T16:06:46.853Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 73179,
+          "completion_tokens": 105,
+          "cache_read_input_tokens": 70912,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0253005,
+          "status": "ok"
+        },
+        {
+          "id": 365100,
+          "timestamp": "2026-10-09T16:06:54.159Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 85525,
+          "completion_tokens": 361,
+          "cache_read_input_tokens": 82176,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0358465,
+          "status": "ok"
+        },
+        {
+          "id": 365101,
+          "timestamp": "2026-10-09T16:06:55.789Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 73398,
+          "completion_tokens": 69,
+          "cache_read_input_tokens": 72960,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.02124,
+          "status": "ok"
+        }
+      ],
+      "attribution": "diagnostic-window-attributed-only"
+    },
+    {
+      "arm": "candidate",
+      "index": 3,
+      "started_at": "2026-10-09T16:06:58.4447024Z",
+      "process_finished_at": "2026-10-09T16:07:24.9393908Z",
+      "observed_at": "2026-10-09T16:07:27.2718671Z",
+      "before_usage_id": 365101,
+      "exit_code": 0,
+      "request_count": 4,
+      "rows": [
+        {
+          "id": 365102,
+          "timestamp": "2026-10-09T16:07:13.991Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 26863,
+          "completion_tokens": 180,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.06410950000000001,
+          "status": "ok"
+        },
+        {
+          "id": 365103,
+          "timestamp": "2026-10-09T16:07:15.028Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 90537,
+          "completion_tokens": 292,
+          "cache_read_input_tokens": 85248,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.0397845,
+          "status": "ok"
+        },
+        {
+          "id": 365104,
+          "timestamp": "2026-10-09T16:07:18.392Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 126121,
+          "completion_tokens": 57,
+          "cache_read_input_tokens": 125184,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.034763499999999996,
+          "status": "ok"
+        },
+        {
+          "id": 365105,
+          "timestamp": "2026-10-09T16:07:24.603Z",
+          "provider": "codex",
+          "model": "gpt-5.6-luna(high)",
+          "prompt_tokens": 72166,
+          "completion_tokens": 57,
+          "cache_read_input_tokens": 3328,
+          "cache_creation_input_tokens": 0,
+          "cost_usd": 0.174442,
+          "status": "ok"
+        }
+      ],
+      "attribution": "diagnostic-window-attributed-only"
+    }
+  ],
+  "analysis": {
+    "window_stats": [
+      {
+        "arm": "baseline",
+        "index": 1,
+        "request_count": 4,
+        "cache_read_input_tokens": 448512,
+        "total_tokens": 544345,
+        "cost_usd": 0.37352550000000007,
+        "exit_code": 0
+      },
+      {
+        "arm": "candidate",
+        "index": 1,
+        "request_count": 6,
+        "cache_read_input_tokens": 651776,
+        "total_tokens": 750083,
+        "cost_usd": 0.43813149999999995,
+        "exit_code": 0
+      },
+      {
+        "arm": "baseline",
+        "index": 2,
+        "request_count": 3,
+        "cache_read_input_tokens": 131840,
+        "total_tokens": 224938,
+        "cost_usd": 0.2701,
+        "exit_code": 0
+      },
+      {
+        "arm": "candidate",
+        "index": 2,
+        "request_count": 3,
+        "cache_read_input_tokens": 131840,
+        "total_tokens": 225113,
+        "cost_usd": 0.27116750000000006,
+        "exit_code": 0
+      },
+      {
+        "arm": "baseline",
+        "index": 3,
+        "request_count": 15,
+        "cache_read_input_tokens": 1145088,
+        "total_tokens": 1435061,
+        "cost_usd": 1.0812045,
+        "exit_code": 0
+      },
+      {
+        "arm": "candidate",
+        "index": 3,
+        "request_count": 4,
+        "cache_read_input_tokens": 217088,
+        "total_tokens": 316273,
+        "cost_usd": 0.31309950000000003,
+        "exit_code": 0
+      }
+    ],
+    "median_cache_read_input_tokens_delta": -231424.0,
+    "median_cache_read_input_tokens_delta_percent": -51.598173515981735,
+    "request_count_comparable": false,
+    "causal_claim": "not_supported",
+    "reason": "diagnostic prompts produced unequal request counts and no owned Secretary runtime receipt"
+  }
+}
