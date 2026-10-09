@@ -170,6 +170,35 @@ def test_safe_runtime_snapshot_preserves_structured_economics() -> None:
     assert result["metrics"]["cost"]["kind"] == "estimated"
 
 
+def test_safe_runtime_snapshot_normalizes_9router_usage_fields() -> None:
+    result = _safe_runtime_snapshot(
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+            "metrics": {
+                "token_usage": {
+                    "prompt_tokens": 1_000,
+                    "completion_tokens": 100,
+                    "cached_tokens": 800,
+                    "cache_creation_input_tokens": 50,
+                }
+            },
+            "timestamps": {},
+        },
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+        },
+    )
+
+    assert result["metrics"]["token_usage"]["cache_read_input_tokens"] == 800
+    assert result["metrics"]["token_usage"]["cache_write_input_tokens"] == 50
+
+
 def test_safe_runtime_snapshot_preserves_unknown_cost_reason() -> None:
     result = _safe_runtime_snapshot(
         {

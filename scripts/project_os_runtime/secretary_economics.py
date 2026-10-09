@@ -63,6 +63,55 @@ def _tokens(usage: Mapping[str, Any]) -> tuple[int, int, int]:
     return values["input_tokens"], values["output_tokens"], values["total_tokens"]
 
 
+def normalize_response_usage(value: object) -> object:
+    if value == "unknown":
+        return value
+    if not isinstance(value, Mapping):
+        raise EconomicsValidationError("token usage must be number, object, or unknown")
+    if "source" in value or "confidence" in value:
+        return dict(value)
+
+    prompt_details = value.get("prompt_tokens_details")
+    input_details = value.get("input_tokens_details")
+    if not isinstance(prompt_details, Mapping):
+        prompt_details = {}
+    if not isinstance(input_details, Mapping):
+        input_details = {}
+
+    raw_fields = {
+        "input_tokens": value.get("prompt_tokens", value.get("input_tokens")),
+        "output_tokens": value.get("completion_tokens", value.get("output_tokens")),
+        "total_tokens": value.get("total_tokens"),
+        "cache_read_input_tokens": value.get(
+            "cached_tokens",
+            value.get(
+                "cache_read_input_tokens",
+                prompt_details.get("cached_tokens", input_details.get("cached_tokens")),
+            ),
+        ),
+        "cache_write_input_tokens": value.get(
+            "cache_creation_input_tokens",
+            value.get("cache_write_input_tokens"),
+        ),
+    }
+    if not any(field in value for field in ("prompt_tokens", "completion_tokens", "cached_tokens", "cache_creation_input_tokens")):
+        raise EconomicsValidationError("token usage must identify observed response usage")
+    if raw_fields["total_tokens"] is None and all(
+        isinstance(raw_fields[field], int) and not isinstance(raw_fields[field], bool)
+        for field in ("input_tokens", "output_tokens")
+    ):
+        raw_fields["total_tokens"] = raw_fields["input_tokens"] + raw_fields["output_tokens"]
+    normalized = {
+        field: raw_fields[field]
+        for field in ("input_tokens", "output_tokens", "total_tokens")
+    }
+    for field in ("cache_read_input_tokens", "cache_write_input_tokens"):
+        if raw_fields[field] is not None:
+            normalized[field] = raw_fields[field]
+    normalized.update({"source": "response.usage", "confidence": "observed"})
+    return normalized
+
+
 def validate_token_usage(value: object) -> object:
     if value == "unknown":
         return value
@@ -70,10 +119,11 @@ def validate_token_usage(value: object) -> object:
         if isinstance(value, float) and not Decimal(str(value)).is_finite():
             raise EconomicsValidationError("token usage must be finite")
         return value
-    if not isinstance(value, Mapping):
+    normalized = normalize_response_usage(value)
+    if not isinstance(normalized, Mapping):
         raise EconomicsValidationError("token usage must be number, object, or unknown")
-    input_tokens, output_tokens, total_tokens = _tokens(value)
-    if value.get("source") != "response.usage" or value.get("confidence") != "observed":
+    input_tokens, output_tokens, total_tokens = _tokens(normalized)
+    if normalized.get("source") != "response.usage" or normalized.get("confidence") != "observed":
         raise EconomicsValidationError("token usage must identify observed response usage")
     result = {
         "input_tokens": input_tokens,
@@ -83,8 +133,8 @@ def validate_token_usage(value: object) -> object:
         "confidence": "observed",
     }
     for field in ("cache_read_input_tokens", "cache_write_input_tokens"):
-        if field in value:
-            result[field] = value[field]
+        if field in normalized:
+            result[field] = normalized[field]
     return result
 
 
@@ -178,6 +228,7 @@ __all__ = [
     "EconomicsValidationError",
     "NINE_ROUTER_PUBLISHED_RATE_CARD",
     "estimate_published_cost",
+    "normalize_response_usage",
     "validate_cost_estimate",
     "validate_token_usage",
 ]

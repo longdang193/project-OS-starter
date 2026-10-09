@@ -123,6 +123,28 @@ def test_live_receipt_accepts_observed_tokens_and_estimated_cost() -> None:
     assert result["metrics"]["cost"]["kind"] == "estimated"
 
 
+def test_live_receipt_normalizes_9router_usage_fields() -> None:
+    receipt = _receipt()
+    receipt["metrics"]["token_usage"] = {
+        "prompt_tokens": 1_000,
+        "completion_tokens": 100,
+        "cached_tokens": 800,
+        "cache_creation_input_tokens": 50,
+    }
+
+    result = validate_live_receipt(receipt)
+
+    assert result["metrics"]["token_usage"] == {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "cache_read_input_tokens": 800,
+        "cache_write_input_tokens": 50,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
+
+
 def test_live_receipt_rejects_binding_mismatch() -> None:
     receipt = _receipt()
     receipt["sources"]["launch"]["attempt_id"] = "attempt-other"

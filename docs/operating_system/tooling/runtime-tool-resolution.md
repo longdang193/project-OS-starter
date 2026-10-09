@@ -94,7 +94,9 @@ output). Do not apply those rates to `combo-normal` or `combo-high` without
 downstream model attribution. Current local combo members are `cx/gpt-*`
 Codex subscription routes, so token comparison remains valid while dollar
 comparison remains `unknown` unless receipt cost is explicitly `estimated`.
-Normalize provider cache usage as `cache_read_input_tokens` and
+Normalize 9Router `prompt_tokens`, `completion_tokens`, `cached_tokens` or
+`prompt_tokens_details.cached_tokens`, and `cache_creation_input_tokens` into
+canonical `input_tokens`, `output_tokens`, `cache_read_input_tokens`, and
 `cache_write_input_tokens`. Apply separate cache-read/cache-write rates only
 when the selected model rate card publishes them; otherwise preserve usage but
 keep cost `unknown` with an explicit cache-rate reason. Never charge cached

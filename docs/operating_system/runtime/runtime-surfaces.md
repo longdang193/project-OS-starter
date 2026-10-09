@@ -225,10 +225,12 @@ resources remain caller-owned through `runtime.json`.
   `minimax/MiniMax-M2.1` at `$0.20/M` input and `$1.00/M` output, sourced from
   the 9router GitHub docs effective `2026-10-09`. `combo-normal` and
   `combo-high` remain `unknown` until 9router exposes downstream attribution.
-  Cached input usage is preserved as `cache_read_input_tokens` and
-  `cache_write_input_tokens`. Cached tokens are never charged at normal input
-  rates: cost stays `unknown` until matching cache-read/cache-write rates are
-  published and attributed to the model.
+  9Router usage is normalized from `prompt_tokens`, `completion_tokens`,
+  `cached_tokens` or `prompt_tokens_details.cached_tokens`, and
+  `cache_creation_input_tokens` into `input_tokens`, `output_tokens`,
+  `cache_read_input_tokens`, and `cache_write_input_tokens`. Cached tokens are
+  never charged at normal input rates: cost stays `unknown` until matching
+  cache-read/cache-write rates are published and attributed to the model.
   Local 9router config currently resolves them to `cx/gpt-*` Codex subscription
   members; combo membership is route state, not a stable repository rate card.
   Pilot comparison reports paired input/output/total token deltas even when

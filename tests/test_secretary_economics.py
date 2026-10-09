@@ -4,11 +4,34 @@ from scripts.project_os_runtime.secretary_economics import (
     EconomicsValidationError,
     NINE_ROUTER_PUBLISHED_RATE_CARD,
     estimate_published_cost,
+    normalize_response_usage,
     validate_cost_estimate,
 )
 
 
 PRICING = NINE_ROUTER_PUBLISHED_RATE_CARD
+
+
+def test_normalize_9router_usage_fields() -> None:
+    result = normalize_response_usage(
+        {
+            "prompt_tokens": 1_000,
+            "completion_tokens": 100,
+            "cached_tokens": 800,
+            "cache_creation_input_tokens": 50,
+            "prompt_tokens_details": {"cached_tokens": 800},
+        }
+    )
+
+    assert result == {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "cache_read_input_tokens": 800,
+        "cache_write_input_tokens": 50,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
 
 
 def test_glm_estimate_uses_observed_input_and_output_tokens() -> None:

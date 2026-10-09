@@ -15,12 +15,14 @@ import tomllib
 from typing import Any, Mapping
 
 try:
+    from project_os_runtime.secretary_economics import normalize_response_usage
     from project_os_runtime.secretary_receipts import (
         SOURCE_PRODUCERS,
         build_live_receipt,
         validate_live_receipt,
     )
 except ModuleNotFoundError:
+    from scripts.project_os_runtime.secretary_economics import normalize_response_usage
     from scripts.project_os_runtime.secretary_receipts import (
         SOURCE_PRODUCERS,
         build_live_receipt,
@@ -337,20 +339,21 @@ def _safe_token_usage(value: object) -> object:
         return value
     if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
         return value
-    if not isinstance(value, Mapping):
+    try:
+        normalized = normalize_response_usage(value)
+    except ValueError:
         return "unknown"
-    input_tokens = value.get("input_tokens")
-    output_tokens = value.get("output_tokens")
-    total_tokens = value.get("total_tokens")
-    if (
-        any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in (input_tokens, output_tokens, total_tokens))
-        or input_tokens + output_tokens != total_tokens
-        or value.get("source") != "response.usage"
-        or value.get("confidence") != "observed"
-    ):
+    if not isinstance(normalized, Mapping):
+        return "unknown"
+    input_tokens = normalized.get("input_tokens")
+    output_tokens = normalized.get("output_tokens")
+    total_tokens = normalized.get("total_tokens")
+    if any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in (input_tokens, output_tokens, total_tokens)):
+        return "unknown"
+    if input_tokens + output_tokens != total_tokens:
         return "unknown"
     cache_fields = ("cache_read_input_tokens", "cache_write_input_tokens")
-    cache_values = {field: value.get(field, 0) for field in cache_fields}
+    cache_values = {field: normalized.get(field, 0) for field in cache_fields}
     if any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in cache_values.values()):
         return "unknown"
     if sum(cache_values.values()) > input_tokens:
@@ -362,7 +365,7 @@ def _safe_token_usage(value: object) -> object:
         "source": "response.usage",
         "confidence": "observed",
     }
-    result.update({field: value.get(field) for field in cache_fields if field in value})
+    result.update({field: normalized.get(field) for field in cache_fields if field in normalized})
     return result
 
 
