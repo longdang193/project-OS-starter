@@ -78,8 +78,7 @@ def observe_usage(
             row_at = _timestamp(timestamp)
             if not start_at <= row_at <= end_at:
                 continue
-            if row_session:
-                session_ids.add(row_session)
+            session_ids.add(row_session or "<unattributed>")
             if row_session != session_id:
                 continue
             requests.append(
