@@ -423,6 +423,7 @@ def test_compare_records_measures_tokens_and_estimated_cost(tmp_path: Path) -> N
                             "output_tokens": output_tokens,
                             "total_tokens": input_tokens + output_tokens,
                             "cache_read_input_tokens": cache_read_tokens,
+                            "cache_write_input_tokens": 0,
                             "source": "response.usage",
                             "confidence": "observed",
                         },
@@ -457,6 +458,41 @@ def test_compare_records_measures_tokens_and_estimated_cost(tmp_path: Path) -> N
         "candidate_median": 0.000066,
         "delta": -0.000016,
     }
+
+
+def test_compare_records_does_not_zero_fill_missing_cache_counts(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    records = []
+    for pair_number in range(1, 4):
+        for arm, interventions in (("baseline", 1), ("candidate", 0)):
+            token_usage = {
+                "input_tokens": 100,
+                "output_tokens": 10,
+                "total_tokens": 110,
+                "source": "response.usage",
+                "confidence": "observed",
+            }
+            if arm == "baseline":
+                token_usage["cache_read_input_tokens"] = 20
+            records.append(
+                validate_receipt(
+                    _receipt(
+                        tmp_path,
+                        f"pair-{pair_number}",
+                        arm,
+                        interventions=interventions,
+                        completion=100,
+                        token_usage=token_usage,
+                    ),
+                    manifest,
+                )
+            )
+
+    result = compare_records(records, manifest)["token_usage_comparison"]
+
+    assert result["status"] == "measured"
+    assert "cache_read_input_tokens" not in result["baseline_median"]
+    assert "cache_read_input_tokens" not in result["delta"]
 
 
 def test_compare_records_rejects_mixed_cost_currencies(tmp_path: Path) -> None:

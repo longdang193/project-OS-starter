@@ -345,6 +345,8 @@ def _safe_token_usage(value: object) -> object:
         return "unknown"
     if not isinstance(normalized, Mapping):
         return "unknown"
+    if normalized.get("source") != "response.usage" or normalized.get("confidence") != "observed":
+        return "unknown"
     input_tokens = normalized.get("input_tokens")
     output_tokens = normalized.get("output_tokens")
     total_tokens = normalized.get("total_tokens")

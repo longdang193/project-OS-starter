@@ -104,10 +104,12 @@ def _token_usage_comparison(pairs: list[Mapping[str, Any]]) -> dict[str, Any]:
         "candidate_median": candidate_median,
         "delta": {field: candidate_median[field] - baseline_median[field] for field in fields},
     }
-    if any(field in arm for pair in observations for arm in pair for field in cache_fields):
-        result["baseline_median"].update({field: median(item[0].get(field, 0) for item in observations) for field in cache_fields})
-        result["candidate_median"].update({field: median(item[1].get(field, 0) for item in observations) for field in cache_fields})
-        result["delta"].update({field: result["candidate_median"][field] - result["baseline_median"][field] for field in cache_fields})
+    for field in cache_fields:
+        if not all(field in arm for pair in observations for arm in pair):
+            continue
+        result["baseline_median"][field] = median(item[0][field] for item in observations)
+        result["candidate_median"][field] = median(item[1][field] for item in observations)
+        result["delta"][field] = result["candidate_median"][field] - result["baseline_median"][field]
     return result
 
 
