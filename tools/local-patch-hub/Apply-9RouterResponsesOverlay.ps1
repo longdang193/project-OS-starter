@@ -181,14 +181,15 @@ if ($migrationNeeded) {
         if ($changedPaths -contains $relativePath) { continue }
         $sourcePath = Join-Path $targetPath $relativePath
         $destinationPath = Join-Path $verificationRoot $relativePath
+        if (Test-Path -LiteralPath $sourcePath -PathType Container) {
+          throw "Target path collision: replacement file path is an existing directory: $sourcePath"
+        }
         if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
           $destinationParent = Split-Path -Parent $destinationPath
           if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
             New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
           }
           Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
-        } elseif (Test-Path -LiteralPath $sourcePath -PathType Container) {
-          New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
         }
       }
       Invoke-Native $git (@("-C", $verificationRoot, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
