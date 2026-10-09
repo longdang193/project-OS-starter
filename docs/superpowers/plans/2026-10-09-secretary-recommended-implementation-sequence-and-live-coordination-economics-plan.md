@@ -96,7 +96,7 @@ efficiency evidence.
 | Task 4 | `completed` | current | `codex` | Task 3 | trial validity and failure-inclusive comparison | pilot tests and manifest |
 | Task 5 | `completed` | current | `codex` | Task 4 | receipt-driven admission and diagnostics | pilot CLI and probes |
 | Task 6 | `completed` | current | `codex` | Task 5 | sparse communication and runtime docs | docs and adapter checks |
-| Task 7 | `completed` | current | `codex` | Task 6 | live smoke, edge probes, and paired economics | `READY` smoke; three correctness-valid pairs; economics `INCONCLUSIVE` because cost/token values are unknown |
+| Task 7 | `completed` | current | `codex` | Task 6 | live smoke, edge probes, and paired economics | implementation complete; legacy smoke/trial fixtures reclassified `UNVERIFIED_PROBE`; live economics `INCONCLUSIVE` |
 | Task 8 | `completed` | current | `codex` | Task 0, Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7 | fresh final verification | full suite and validators |
 
 ## Task Breakdown
@@ -415,7 +415,7 @@ efficiency evidence.
 - Expected: no live efficiency claim without owned entrypoint, attributable receipt, correctness-valid pairs, and known economics.
 
 **Exit Criteria:**
-- Runtime readiness is `READY`; live economics is `INCONCLUSIVE` because provider-reported token usage and cost are unavailable.
+- Runtime surface implementation is complete; committed legacy smoke/trial fixtures are `UNVERIFIED_PROBE` under current receipt validation; live economics is `INCONCLUSIVE` because provider-reported token usage and cost are unavailable.
 
 ### Task 8: Reconcile and verify final artifacts
 
@@ -446,7 +446,7 @@ efficiency evidence.
 **Steps:**
 - [x] Inspect final diff, tracked/untracked state, generated surfaces, and artifacts.
 - [x] Run focused tests, full suite, repository validators, adapter sync, runtime drift, and whitespace checks.
-- [x] Record completed Task 7 with `INCONCLUSIVE` economics and retained unknown-cost evidence.
+- [x] Record completed Task 7 with probe-only legacy evidence and `INCONCLUSIVE` economics; do not treat fixtures as correctness-valid trials.
 
 **Verification:**
 - [x] `py -B -m pytest -q`
@@ -478,4 +478,4 @@ efficiency evidence.
 4. Failure-inclusive economics distinguishes unknown and undefined values.
 5. Native Codex uses configured `config.toml` and `auth.json` with `9router`; no fallback or secret publication.
 6. Owned Secretary runtime emits attributable sanitized receipts through Herdr/Codex; no synthetic live claim exists.
-7. Fresh local verification passes; Task 7 records three correctness-valid pairs and `INCONCLUSIVE` economics because cost/token attribution is unknown.
+7. Fresh local verification passes; Task 7 records probe-only legacy fixtures and `INCONCLUSIVE` economics because current receipt validation cannot establish correctness-valid pairs or cost/token attribution.

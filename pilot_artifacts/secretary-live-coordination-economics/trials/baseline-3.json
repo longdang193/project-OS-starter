@@ -28,7 +28,9 @@
   "provider": "9router",
   "run_id": "run-baseline-3-r2",
   "schema": "project-os.secretary-live-receipt.v1",
-  "status": "READY",
+  "status": "UNVERIFIED_PROBE",
+  "evidence_disposition": "probe-only",
+  "evidence_note": "Legacy fixture predates current hardened receipt contract and is not eligible for acceptance or economics comparison.",
   "task_id": "secretary-live-coordination-economics",
   "timestamps": {
     "entry_at": "2026-10-09T09:15:43.909169Z",

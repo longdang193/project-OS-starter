@@ -11,5 +11,5 @@
   "launcher_attempt_id_owner": "scripts/herdr_main_launcher.py",
   "candidate_materialization": "working-tree-source-snapshot",
   "live_economics": "INCONCLUSIVE",
-  "reason": "Owned Herdr/Codex runtime emitted attributable receipts and three valid pairs; provider token usage and cost were unavailable."
+  "reason": "Owned Herdr/Codex runtime surface exists, but committed legacy smoke/trial fixtures fail current receipt validation; no correctness-valid matched pairs are established. Provider token usage and cost remain unavailable."
 }

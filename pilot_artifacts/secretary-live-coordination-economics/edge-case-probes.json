@@ -17,7 +17,7 @@
     "run_id": "run-candidate-probe-1",
     "settlement": "unresolved"
   },
-  "live_execution": "READY",
-  "reason": "Live smoke and three matched pairs completed through the owned Herdr/Codex runtime; blocked-admission and interrupted-attempt probes remain contract-bound diagnostics.",
+  "live_execution": "UNVERIFIED_PROBE",
+  "reason": "Legacy live smoke and trial fixtures are retained as probe history only; current receipt validation does not establish operation-backed completion or matched-pair correctness. Blocked-admission and interrupted-attempt probes remain contract-bound diagnostics.",
   "schema": "project-os.secretary-live-edge-probes.v1"
 }
