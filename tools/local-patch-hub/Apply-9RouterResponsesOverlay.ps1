@@ -172,6 +172,21 @@ if ($migrationNeeded) {
           Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
         }
       }
+      $replacementPatchPaths = @(Get-Content -LiteralPath $patch | ForEach-Object {
+        if ($_ -match '^\+\+\+ b/(.+)$') { $Matches[1] }
+      })
+      foreach ($relativePath in $replacementPatchPaths) {
+        if ($changedPaths -contains $relativePath) { continue }
+        $sourcePath = Join-Path $targetPath $relativePath
+        $destinationPath = Join-Path $verificationRoot $relativePath
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+          $destinationParent = Split-Path -Parent $destinationPath
+          if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+          }
+          Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        }
+      }
       Invoke-Native $git (@("-C", $verificationRoot, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
       $trackedChanges = @(& $git -C $verificationRoot status --porcelain=v1 --untracked-files=no)
       if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in verification checkout." }
