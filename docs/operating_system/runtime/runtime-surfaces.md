@@ -216,6 +216,23 @@ resources remain caller-owned through `runtime.json`.
   resolution is `BLOCKED_CAPABILITY`, not permission to use fallback transport.
   Receipt validity does not prove Worker publication, settlement, or CoS
   acceptance.
+- Live receipts may carry measured token usage from `response.usage` and a
+  separately marked published-rate-card cost estimate. Missing model/rate
+  attribution keeps cost `unknown`; estimates never claim provider billing.
+  For `9router`, published dashboard pricing is reference/savings pricing;
+  it must be reported as an estimate, never as actual spend. Current direct
+  mappings are `glm/glm-4.7` at `$0.60/M` input and `$2.20/M` output, and
+  `minimax/MiniMax-M2.1` at `$0.20/M` input and `$1.00/M` output, sourced from
+  the 9router GitHub docs effective `2026-10-09`. `combo-normal` and
+  `combo-high` remain `unknown` until 9router exposes downstream attribution.
+  Cached input usage is preserved as `cache_read_input_tokens` and
+  `cache_write_input_tokens`. Cached tokens are never charged at normal input
+  rates: cost stays `unknown` until matching cache-read/cache-write rates are
+  published and attributed to the model.
+  Local 9router config currently resolves them to `cx/gpt-*` Codex subscription
+  members; combo membership is route state, not a stable repository rate card.
+  Pilot comparison reports paired input/output/total token deltas even when
+  estimated cost is unavailable.
 - Secretary event hints use canonical identity `(source, workstream, event_type,
   observed_identity)`. `observed_anchor` identifies canonical evidence and
   optional `source_sequence` orders observations within one source. Coalescing

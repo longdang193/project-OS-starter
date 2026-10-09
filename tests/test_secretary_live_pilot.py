@@ -30,7 +30,17 @@ def _manifest(tmp_path: Path) -> dict[str, object]:
     )
 
 
-def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, completion: int) -> dict[str, object]:
+def _receipt(
+    tmp_path: Path,
+    pair_id: str,
+    arm: str,
+    *,
+    interventions: int,
+    completion: int,
+    model: str = "combo-high",
+    token_usage: object = "unknown",
+    cost: object = "unknown",
+) -> dict[str, object]:
     run_id = f"{pair_id}-{arm}"
     assignment_id = f"assignment-{pair_id}"
     attempt_id = f"attempt-{pair_id}-{arm}"
@@ -51,8 +61,8 @@ def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, comp
         "publication_success": True,
         "duplicate_execution": False,
         "unauthorized_writes": False,
-        "token_usage": "unknown",
-        "cost": "unknown",
+        "token_usage": token_usage,
+        "cost": cost,
     }
     common = {
         "pair_id": pair_id,
@@ -75,7 +85,7 @@ def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, comp
         "producer": "herdr_main_launcher",
         **common,
         "provider": "9router",
-        "model": "combo-high",
+        "model": model,
         "timestamps": timestamps,
         "metrics": metrics,
     }
@@ -94,7 +104,7 @@ def _receipt(tmp_path: Path, pair_id: str, arm: str, *, interventions: int, comp
     return {
         **common,
         "provider": "9router",
-        "model": "combo-high",
+        "model": model,
         "timestamps": timestamps,
         "metrics": metrics,
         "source_refs": refs,
@@ -119,6 +129,39 @@ def test_validate_receipt_requires_producer_owned_sources(tmp_path: Path) -> Non
     assert normalized["valid"] is True
     assert normalized["evidence_provenance"] == "live-attributed"
     assert len(normalized["source_digests"]) == 4
+
+
+def test_validate_receipt_accepts_structured_economics(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    receipt = _receipt(
+        tmp_path,
+        "pair-1",
+        "candidate",
+        interventions=0,
+        completion=100,
+        model="glm/glm-4.7",
+        token_usage={
+            "input_tokens": 883,
+            "output_tokens": 6,
+            "total_tokens": 889,
+            "source": "response.usage",
+            "confidence": "observed",
+        },
+        cost={
+            "value": 0.000543,
+            "kind": "estimated",
+            "currency": "USD",
+            "pricing_source": "published-rate-card",
+            "pricing_effective_date": "2026-10-09",
+            "model": "glm/glm-4.7",
+            "model_resolution": "exact",
+        },
+    )
+
+    normalized = validate_receipt(receipt, manifest)
+
+    assert normalized["metrics"]["token_usage"]["total_tokens"] == 889
+    assert normalized["metrics"]["cost"]["kind"] == "estimated"
 
 
 def test_validate_receipt_rejects_outer_settlement_and_acceptance_without_live_receipt(tmp_path: Path) -> None:
@@ -353,6 +396,67 @@ def test_compare_records_requires_three_valid_pairs_for_benefit_claim(tmp_path: 
     assert result["classification"] == "VERIFIED_BENEFIT"
     assert result["valid_pairs"] == 3
     assert result["intervention_reduction"] == 1
+    assert result["token_usage_comparison"] == {"status": "unknown", "pairs": 0}
+    assert result["estimated_cost_comparison"] == {"status": "unknown", "pairs": 0}
+
+
+def test_compare_records_measures_tokens_and_estimated_cost(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    records = []
+    for pair_number in range(1, 4):
+        for arm, interventions, completion, input_tokens, output_tokens, cost in (
+            ("baseline", 1, 100, 100, 10, 0.000082),
+            ("candidate", 0, 105, 80, 8, 0.000066),
+        ):
+            cache_read_tokens = 20 if arm == "baseline" else 10
+            records.append(
+                validate_receipt(
+                    _receipt(
+                        tmp_path,
+                        f"pair-{pair_number}",
+                        arm,
+                        interventions=interventions,
+                        completion=completion,
+                        model="glm/glm-4.7",
+                        token_usage={
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "total_tokens": input_tokens + output_tokens,
+                            "cache_read_input_tokens": cache_read_tokens,
+                            "source": "response.usage",
+                            "confidence": "observed",
+                        },
+                        cost={
+                            "value": cost,
+                            "kind": "estimated",
+                            "currency": "USD",
+                            "pricing_source": "published-rate-card",
+                            "pricing_effective_date": "2026-10-09",
+                            "model": "glm/glm-4.7",
+                            "model_resolution": "exact",
+                        },
+                    ),
+                    manifest,
+                )
+            )
+
+    result = compare_records(records, manifest)
+
+    assert result["token_usage_comparison"] == {
+        "status": "measured",
+        "pairs": 3,
+        "baseline_median": {"input_tokens": 100, "output_tokens": 10, "total_tokens": 110, "cache_read_input_tokens": 20, "cache_write_input_tokens": 0},
+        "candidate_median": {"input_tokens": 80, "output_tokens": 8, "total_tokens": 88, "cache_read_input_tokens": 10, "cache_write_input_tokens": 0},
+        "delta": {"input_tokens": -20, "output_tokens": -2, "total_tokens": -22, "cache_read_input_tokens": -10, "cache_write_input_tokens": 0},
+    }
+    assert result["estimated_cost_comparison"] == {
+        "status": "estimated",
+        "pairs": 3,
+        "currency": "USD",
+        "baseline_median": 0.000082,
+        "candidate_median": 0.000066,
+        "delta": -0.000016,
+    }
 
 
 def test_compare_records_reports_no_measured_benefit_when_threshold_fails(tmp_path: Path) -> None:

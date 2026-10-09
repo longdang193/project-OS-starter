@@ -13,10 +13,20 @@ try:
         ReceiptValidationError,
         validate_live_receipt,
     )
+    from scripts.project_os_runtime.secretary_economics import (
+        EconomicsValidationError,
+        validate_cost_estimate,
+        validate_token_usage,
+    )
 except ModuleNotFoundError:
     from project_os_runtime.secretary_receipts import (
         ReceiptValidationError,
         validate_live_receipt,
+    )
+    from project_os_runtime.secretary_economics import (
+        EconomicsValidationError,
+        validate_cost_estimate,
+        validate_token_usage,
     )
 
 
@@ -66,6 +76,75 @@ PRODUCERS = {
 
 class PilotReceiptError(ValueError):
     pass
+
+
+def _token_usage_comparison(pairs: list[Mapping[str, Any]]) -> dict[str, Any]:
+    observations: list[tuple[Mapping[str, int], Mapping[str, int]]] = []
+    for pair in pairs:
+        baseline = pair["baseline"].get("metrics", {}).get("token_usage")
+        candidate = pair["candidate"].get("metrics", {}).get("token_usage")
+        fields = ("input_tokens", "output_tokens", "total_tokens")
+        if (
+            isinstance(baseline, Mapping)
+            and isinstance(candidate, Mapping)
+            and all(isinstance(baseline.get(field), int) for field in fields)
+            and all(isinstance(candidate.get(field), int) for field in fields)
+        ):
+            observations.append((baseline, candidate))
+    if not observations:
+        return {"status": "unknown", "pairs": 0}
+    fields = ("input_tokens", "output_tokens", "total_tokens")
+    cache_fields = ("cache_read_input_tokens", "cache_write_input_tokens")
+    baseline_median = {field: median(item[0][field] for item in observations) for field in fields}
+    candidate_median = {field: median(item[1][field] for item in observations) for field in fields}
+    result = {
+        "status": "measured",
+        "pairs": len(observations),
+        "baseline_median": baseline_median,
+        "candidate_median": candidate_median,
+        "delta": {field: candidate_median[field] - baseline_median[field] for field in fields},
+    }
+    if any(field in arm for pair in observations for arm in pair for field in cache_fields):
+        result["baseline_median"].update({field: median(item[0].get(field, 0) for item in observations) for field in cache_fields})
+        result["candidate_median"].update({field: median(item[1].get(field, 0) for item in observations) for field in cache_fields})
+        result["delta"].update({field: result["candidate_median"][field] - result["baseline_median"][field] for field in cache_fields})
+    return result
+
+
+def _estimated_cost_comparison(pairs: list[Mapping[str, Any]]) -> dict[str, Any]:
+    observations: list[tuple[float, float, str]] = []
+    for pair in pairs:
+        values: list[float] = []
+        currencies: list[str] = []
+        for arm in ("baseline", "candidate"):
+            cost = pair[arm].get("metrics", {}).get("cost")
+            value = cost.get("value") if isinstance(cost, Mapping) else None
+            currency = cost.get("currency") if isinstance(cost, Mapping) else None
+            if (
+                not isinstance(cost, Mapping)
+                or cost.get("kind") != "estimated"
+                or isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isinstance(currency, str)
+                or not currency.strip()
+            ):
+                break
+            values.append(float(value))
+            currencies.append(currency)
+        if len(values) == 2 and currencies[0] == currencies[1]:
+            observations.append((values[0], values[1], currencies[0]))
+    if not observations:
+        return {"status": "unknown", "pairs": 0}
+    baseline_median = median(item[0] for item in observations)
+    candidate_median = median(item[1] for item in observations)
+    return {
+        "status": "estimated",
+        "pairs": len(observations),
+        "currency": observations[0][2],
+        "baseline_median": baseline_median,
+        "candidate_median": candidate_median,
+        "delta": round(candidate_median - baseline_median, 12),
+    }
 
 
 def _text(value: Any, label: str) -> str:
@@ -272,10 +351,11 @@ def validate_receipt(receipt: Mapping[str, Any], manifest: Mapping[str, Any]) ->
         raise PilotReceiptError("publication did not succeed")
     if metrics.get("duplicate_execution") is not False or metrics.get("unauthorized_writes") is not False:
         raise PilotReceiptError("correctness defect present")
-    if not isinstance(metrics.get("token_usage", "unknown"), (int, float, str)):
-        raise PilotReceiptError("token usage must be numeric or unknown")
-    if not isinstance(metrics.get("cost", "unknown"), (int, float, str)):
-        raise PilotReceiptError("cost must be numeric or unknown")
+    try:
+        validate_token_usage(metrics.get("token_usage", "unknown"))
+        validate_cost_estimate(metrics.get("cost", "unknown"))
+    except EconomicsValidationError as exc:
+        raise PilotReceiptError(str(exc)) from exc
     relay_seconds = metrics.get("manual_relay_seconds", 0)
     if not isinstance(relay_seconds, (int, float)) or isinstance(relay_seconds, bool) or relay_seconds < 0:
         raise PilotReceiptError("manual relay time must be non-negative")
@@ -388,12 +468,21 @@ def compare_records(
     if len(grouped) > max_pairs:
         raise PilotReceiptError("pair count exceeds maximum attempted pair budget")
     valid_pairs = [pair for pair in grouped.values() if set(pair) == {"baseline", "candidate"}]
+    comparison_pairs = valid_pairs[:min_pairs]
+    token_usage_comparison = _token_usage_comparison(comparison_pairs)
+    estimated_cost_comparison = _estimated_cost_comparison(comparison_pairs)
     if len(valid_pairs) < min_pairs:
-        return {"classification": "INCONCLUSIVE", "valid_pairs": len(valid_pairs), "attempted_pairs": len(grouped)}
-    baseline_interventions = median(pair["baseline"]["metrics"]["human_interventions"] for pair in valid_pairs[:min_pairs])
-    candidate_interventions = median(pair["candidate"]["metrics"]["human_interventions"] for pair in valid_pairs[:min_pairs])
-    baseline_completion = median(pair["baseline"]["metrics"]["accepted_completion_seconds"] for pair in valid_pairs[:min_pairs])
-    candidate_completion = median(pair["candidate"]["metrics"]["accepted_completion_seconds"] for pair in valid_pairs[:min_pairs])
+        return {
+            "classification": "INCONCLUSIVE",
+            "valid_pairs": len(valid_pairs),
+            "attempted_pairs": len(grouped),
+            "token_usage_comparison": token_usage_comparison,
+            "estimated_cost_comparison": estimated_cost_comparison,
+        }
+    baseline_interventions = median(pair["baseline"]["metrics"]["human_interventions"] for pair in comparison_pairs)
+    candidate_interventions = median(pair["candidate"]["metrics"]["human_interventions"] for pair in comparison_pairs)
+    baseline_completion = median(pair["baseline"]["metrics"]["accepted_completion_seconds"] for pair in comparison_pairs)
+    candidate_completion = median(pair["candidate"]["metrics"]["accepted_completion_seconds"] for pair in comparison_pairs)
     intervention_reduction = baseline_interventions - candidate_interventions
     completion_regression = (candidate_completion / baseline_completion) - 1
     benefit = (
@@ -411,6 +500,8 @@ def compare_records(
         "baseline_median_completion_seconds": baseline_completion,
         "candidate_median_completion_seconds": candidate_completion,
         "completion_regression": completion_regression,
+        "token_usage_comparison": token_usage_comparison,
+        "estimated_cost_comparison": estimated_cost_comparison,
     }
 
 
