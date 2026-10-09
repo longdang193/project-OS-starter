@@ -170,6 +170,8 @@ if ($migrationNeeded) {
             New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
           }
           Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        } elseif (Test-Path -LiteralPath $sourcePath -PathType Container) {
+          New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
         }
       }
       $replacementPatchPaths = @(Get-Content -LiteralPath $patch | ForEach-Object {
@@ -185,6 +187,8 @@ if ($migrationNeeded) {
             New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
           }
           Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        } elseif (Test-Path -LiteralPath $sourcePath -PathType Container) {
+          New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
         }
       }
       Invoke-Native $git (@("-C", $verificationRoot, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
