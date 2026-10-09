@@ -32,7 +32,7 @@ def test_lightrsi_compaction_overlay_is_exact_base_bound() -> None:
     readme = (PATCH_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert '"id": "lightrsi-codex-compaction-compatibility"' in manifest
-    assert '"version": "1.3.0"' in manifest
+    assert '"version": "1.4.0"' in manifest
     assert '"baseCommit": "c05cafe502fb474ab28e29e9e184adba8446a6a1"' in manifest
     assert "components/adapters/codex/src/proxy-runtime.ts" in patch
     assert "components/adapters/codex/src/upstream.ts" in patch
