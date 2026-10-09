@@ -5156,6 +5156,22 @@ def test_deepagents_completion_stops_observing_after_terminal_evidence(
     assert evidence["receipt_authoritative"] is True
 
 
+def test_discard_receipt_preserves_when_canonical_task_result_is_missing(tmp_path: Path) -> None:
+    receipt = tmp_path / "result.json"
+    receipt.write_text("{}", encoding="utf-8")
+
+    result = LAUNCHER._discard_deepagents_receipt(
+        receipt,
+        assignment_id="assignment-1",
+        attempt_id="attempt-1",
+        accepted_checkpoint_sha="checkpoint-1",
+        settlement_persisted=True,
+    )
+
+    assert result["state"] == "preserved"
+    assert receipt.exists()
+
+
 def test_retire_lane_is_idempotent_when_exact_pane_is_already_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

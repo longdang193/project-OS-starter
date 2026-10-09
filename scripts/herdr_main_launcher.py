@@ -284,30 +284,19 @@ def _discard_deepagents_receipt(
     if path is None:
         return {"state": "preserved", "reason": "receipt unavailable"}
     task_result_path = path.with_name("task-result.json")
-    if task_result_path.exists():
-        if not settlement_persisted or not all(
-            isinstance(value, str) and value
-            for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
-        ):
-            return {"state": "preserved", "reason": "acceptance release binding unavailable"}
-        return release_attempt_evidence(
-            path.parent,
-            assignment_id,
-            attempt_id,
-            accepted_checkpoint_sha,
-        )
-    removed = False
-    try:
-        path.unlink()
-        removed = True
-    except FileNotFoundError:
-        pass
-    if removed:
-        try:
-            path.parent.rmdir()
-        except OSError:
-            pass
-    return {"state": "removed" if removed else "preserved"}
+    if not task_result_path.exists():
+        return {"state": "preserved", "reason": "canonical task result unavailable"}
+    if not settlement_persisted or not all(
+        isinstance(value, str) and value
+        for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
+    ):
+        return {"state": "preserved", "reason": "acceptance release binding unavailable"}
+    return release_attempt_evidence(
+        path.parent,
+        assignment_id,
+        attempt_id,
+        accepted_checkpoint_sha,
+    )
 
 
 def _codex_runtime(cwd: Path, configured_home: Path | None = None) -> dict[str, Any]:
@@ -2034,6 +2023,7 @@ def _terminate_codex_lane(
     pane: str,
     *,
     env: dict[str, str],
+    expected_process_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     before_result = _run(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -2053,6 +2043,29 @@ def _terminate_codex_lane(
         if not isinstance(before_info, dict):
             raise LaunchBlocked("termination verification returned invalid process information")
         before_processes = before_info.get("foreground_processes")
+        before_records = _process_records(before_processes)
+        if expected_process_identity is not None:
+            expected_pid = expected_process_identity.get("pid")
+            expected_name = expected_process_identity.get("name")
+            expected_cwd = expected_process_identity.get("cwd")
+            current_process = next(
+                (process for process in before_records if process.get("pid") == expected_pid),
+                None,
+            )
+            if (
+                not isinstance(expected_pid, int)
+                or not isinstance(expected_name, str)
+                or not isinstance(expected_cwd, str)
+                or not isinstance(current_process, dict)
+                or current_process.get("name") != expected_name
+                or Path(str(current_process.get("cwd", ""))).resolve() != Path(expected_cwd).resolve()
+            ):
+                return {
+                    "requested": False,
+                    "action": "pane-close",
+                    "verified": False,
+                    "detail": "destructive process identity verification failed",
+                }
         before_ids = _process_ids(before_processes, require_non_shell=True)
     except (LaunchBlocked, json.JSONDecodeError) as exc:
         return {
@@ -2319,7 +2332,13 @@ def retire_lane(
             "recovery_required": True,
             "reason": "recorded process identity mismatch",
         }
-    cleanup = _terminate_codex_lane(herdr, session, pane, env=environment)
+    cleanup = _terminate_codex_lane(
+        herdr,
+        session,
+        pane,
+        env=environment,
+        expected_process_identity=process_identity,
+    )
     verified = cleanup.get("verified") is True
     return {
         "state": "removed" if verified else "unresolved",

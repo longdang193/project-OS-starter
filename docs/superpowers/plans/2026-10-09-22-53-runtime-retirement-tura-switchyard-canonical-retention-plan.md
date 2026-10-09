@@ -904,7 +904,7 @@ captured at baseline and final revisions; each metric is marked
 - Review: first independent `review-1` pass found four P1 trust-boundary defects;
   retirement ownership, evidence preservation, release-only compaction, and
   checkpoint/dependency gates were patched; corrected-head review pending.
-- Focused proof: `239 passed`; post-fix full suite: `1065 passed, 1 skipped`.
+- Focused proof: `239 passed`; post-fix full suite: `1066 passed, 1 skipped`.
 - Contract proof: adapter sync check, runtime drift validation, repository contracts,
   planning lifecycle, starter-kit build/validation, and `git diff --check` passed.
 - Runtime proof: final deterministic benchmark outcomes match baseline across all
