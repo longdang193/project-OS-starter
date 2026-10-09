@@ -18,6 +18,7 @@ def test_lightmem2_overlay_is_centralized_and_exact_base_bound() -> None:
     assert "rev-parse HEAD" in reconciler
     assert "appliedRecords" in reconciler
     assert "--reverse" in reconciler
+    assert "SkipInstall" in reconciler
     assert "No LightMem2 Codex overlay matches target HEAD" in reconciler
     assert "ProjectOS-LightMem2-Codex-Overlay.cmd" in reconciler
 
@@ -37,3 +38,4 @@ def test_lightrsi_compaction_overlay_is_exact_base_bound() -> None:
     assert "stripHistoricalWebSearchCalls" in patch
     assert "projectUpstreamPayload" in patch
     assert "ordinary `/responses` stays unchanged" in readme
+    assert "-SkipInstall" in readme

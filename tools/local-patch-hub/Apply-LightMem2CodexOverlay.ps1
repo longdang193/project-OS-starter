@@ -3,6 +3,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$TargetRoot,
   [switch]$InstallStartup,
+  [switch]$SkipInstall,
   [switch]$VerifyOnly
 )
 
@@ -113,6 +114,11 @@ if ($VerifyOnly) {
     throw "Overlay source is present, but generated Windows hook is stale or missing."
   }
   Write-Output "Verified LightMem2 Codex overlay $($manifest.version) at $targetHead."
+  exit 0
+}
+
+if ($SkipInstall) {
+  Write-Output "Applied LightMem2 Codex overlay source $($manifest.version) at $targetHead; generated install skipped."
   exit 0
 }
 
