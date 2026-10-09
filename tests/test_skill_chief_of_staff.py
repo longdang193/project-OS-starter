@@ -18,7 +18,7 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "CoS has no direct Git or PR authority" in skill
     normalized = " ".join(skill.split())
     assert "`deepagents` uses a CoS-managed `dcode-project`" in normalized
-    assert "`tura` is not a CoS MAIN lane" in skill
+    assert "`tura`" not in skill
     assert "top-level lane selection" in skill
 
 
@@ -105,7 +105,7 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "does not attest CoS controller\nidentity or own lane authority",
         "Top-level MAIN AGENTS are CoS execution lanes; sub-agents are subordinate lane\nworkers.",
         "CoS assigns top-level\nMAIN AGENTS through Herdr.",
-        "MAIN\nAGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed",
+        "MAIN\nAGENT may spawn Native Codex or DeepAgents sub-agents when needed",
         "Before consumer local dispatch, run\n`py -B \"$HOME/.agents/project-os/scripts/validate_repo_contracts.py\" --repo-root . --fast --plan \"$PLAN\"`",
         "Factory maintainers additionally run\n`py -B scripts/validate_agent_runtime_drift.py --all-platforms`",
         "CoS verifies the full lane contract",
@@ -297,7 +297,7 @@ def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
         "`multi_agent_v1`",
         "native Codex subagents",
         "DeepAgents internal `task` workers",
-        "Tura internal workers",
+        "executor-local workers",
         "executor-local reviewers or helpers",
     ):
         assert forbidden in skill
@@ -327,7 +327,7 @@ def test_executor_skill_keeps_cos_as_codex_controlled() -> None:
     assert "only a Herdr-\nsupervised top-level Codex main agent or bounded DeepAgents pane process" in skill
     assert "CoS must not call `multi_agent_v1`, native Codex subagents" in skill
     assert "`dcode-project` for `deepagents`" in skill
-    assert "project-delegate` for `tura`" in skill
+    assert "project-delegate" not in skill
 
 
 def test_planning_dispatch_selects_cos_for_sustained_implementation_coordination() -> None:
@@ -344,7 +344,7 @@ def test_planning_dispatch_selects_cos_for_sustained_implementation_coordination
     assert "Herdr is\nruntime transport and diagnostic observation, not lifecycle ownership" in dispatch
     assert "only independent Herdr top-level MAIN AGENT\nlanes" in dispatch
     assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch
-    assert "`tura` retains\nits existing peer executor path" in dispatch
+    assert "`tura`" not in dispatch
 
 
 def test_main_agents_can_delegate_without_granting_peer_authority() -> None:
@@ -352,9 +352,9 @@ def test_main_agents_can_delegate_without_granting_peer_authority() -> None:
     execution = read(".agents/skills/skill-executing-plans/SKILL.md")
     deepagents = read(".agents/skills/skill-deepagents-executing-plans/SKILL.md")
     for text in (
-        "MAIN AGENTS own assigned lanes and may spawn Native Codex, DeepAgents, or Tura",
+        "MAIN AGENTS own assigned lanes and may spawn Native Codex or DeepAgents",
         "Sub-agents remain subordinate to their parent lane",
-        "Assigned MAIN AGENTS may spawn Native Codex, DeepAgents, or Tura",
+        "Assigned MAIN AGENTS may spawn Native Codex or DeepAgents",
         "must not spawn peer MAIN AGENTS or activate CoS",
         "MAIN AGENTS may use nested delegation when needed within assigned lane scope",
     ):
@@ -388,12 +388,11 @@ def test_planning_dispatch_defines_cos_executor_eligibility_overlay() -> None:
         "CoS eligibility limits which selected executors CoS may dispatch through Herdr",
         "`codex`: implementation, review, integration, acceptance, MCP, connected tools",
         "`deepagents`: bounded repo-local implementation lane",
-        "`tura`: not a CoS Herdr lane",
         "CoS coordinates only eligible `codex` and `deepagents` lanes",
-        "CoS does not translate or reroute it",
-        "CoS resumes from plan and Git after reconciliation",
     ):
         assert text in normalized
+    assert "`tura`" not in normalized
+    assert "project-delegate" not in normalized
 
 
 def test_chief_of_staff_references_cos_executor_eligibility_contract() -> None:

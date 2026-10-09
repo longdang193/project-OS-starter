@@ -103,7 +103,7 @@ base mutation, force push, retargeting, protection bypass, semantic conflict
 resolution, destructive recovery, discard, and unrelated cleanup still need
 explicit user authorization.
 
-Task ledger `Executor` values are `codex`, `deepagents`, or `tura`; pending or
+Task ledger `Executor` values are `codex` or `deepagents`; pending or
 blocked tasks may use `unresolved` until the lead controller resolves them.
 The task ledger is the sole durable executor choice for Git-tracked plans.
 Executor choice does not select profile; `Template Profile` and optional

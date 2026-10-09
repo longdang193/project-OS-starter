@@ -17,7 +17,7 @@ runtime evidence, recovery, and acceptance remain explicit across runtimes.
 - Python 3.12 or newer
 - `requirements.txt` for core repository validation
 - `requirements-benchmark.txt` for benchmark-only evaluation
-- Optional Codex, DeepAgents, or Tura runtime setup for execution paths
+- Optional Codex or DeepAgents runtime setup for execution paths
 - Optional Herdr setup for coordinated transport and diagnostics
 - PowerShell 7 (`pwsh`) for optional DeepAgents Code setup
 
@@ -119,7 +119,7 @@ Workers own engineering inside assigned scope. The controller owns orchestration
 - **Canonical sources** — one owning layer for rules, procedures, templates, and configuration.
 - **Generated projections** — downstream instruction and starter-kit outputs derived from canonical sources; edit canonical sources, then regenerate outputs.
 - **Validation tooling** — repository, metadata, configuration, lifecycle, and package-boundary checks.
-- **Runtime adapters** — conventions for Codex, DeepAgents, Tura, and related local execution paths.
+- **Runtime adapters** — conventions for Codex, DeepAgents, and related local execution paths.
 - **Regression coverage** — tests for delivery, isolation, capability selection, lifecycle, and evidence contracts.
 
 ## Open-Source Ecosystem
@@ -128,7 +128,6 @@ Project OS Starter composes replaceable runtimes, providers, and validation tool
 
 - [Codex CLI](https://github.com/openai/codex) — native coding-agent runtime.
 - [DeepAgents](https://github.com/langchain-ai/deepagents) — supported agent-harness SDK ecosystem.
-- [Tura](https://github.com/Tura-AI/tura) — optional executor.
 - Optional runtime integrations and overlays remain replaceable; this README
   does not define support guarantees for them.
 
@@ -144,7 +143,7 @@ Project OS Starter composes replaceable runtimes, providers, and validation tool
 
 ```text
 Coding runtime
-Codex / DeepAgents / Tura
+Codex / DeepAgents
           │
           ▼
 Project OS Starter
@@ -201,7 +200,7 @@ Adopt only the layers your project can own, expose, and validate. Keep project-s
 ## Local Adoption
 
 - Native personal work follows `native-personal-local`; use `planning-dispatch.md` to choose an execution path.
-- Native execution uses Codex, DeepAgents, or Tura, selected per bounded task.
+- Native execution uses Codex or DeepAgents, selected per bounded task.
 - Shared operating-system docs, reusable scripts, and skills stay under a shared Project OS installation. Keep project-specific project-local folders such as `docs/intent/`, `repo_config/`, code, tests, and scripts in the consuming repository.
 - When adopting this starter, create `docs/intent/` when durable project purpose needs more than `README.md`.
 - DeepAgents Code runtime setup owns its version; version pinned by `scripts/setup_deepagents_runtime.ps1` is the source of truth. Use that setup path and its contract tests instead of copying numeric version values into project docs.

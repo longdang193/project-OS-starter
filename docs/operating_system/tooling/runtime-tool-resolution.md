@@ -169,7 +169,7 @@ skips pane `wait-output`, `process-info`, and `read`; unresolved receipt gets on
 bounded marker wait, then fresh final probes. Use pane probes only for diagnostics
 or legacy fallback. Use `agent get`/`agent read` for Codex.
 `agent wait` is a documented Herdr capability, not current launcher integration.
-Tura uses `project-delegate` outside the Herdr main-lane path. Normalize evidence
+Normalize evidence
 fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds
 repository identity, canonical plan identity, and stable lane identity across
 retries; `dcode-project` claims before worker spawn and settles only after

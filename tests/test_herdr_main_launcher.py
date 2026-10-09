@@ -5154,3 +5154,55 @@ def test_deepagents_completion_stops_observing_after_terminal_evidence(
     assert evidence["lifecycle_receipt"] == confirmed
     assert evidence["state"] == "completed"
     assert evidence["receipt_authoritative"] is True
+
+
+def test_retire_lane_is_idempotent_when_exact_pane_is_already_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda *args, **kwargs: {"result": {"panes": []}})
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(Path.cwd()),
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "removed"
+    assert result["idempotent"] is True
+    assert result["resources"]["session"]["state"] == "preserved"
+
+
+def test_retire_lane_preserves_on_worktree_binding_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda *args, **kwargs: {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path / "other")}]}} ,
+    )
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "unresolved"
+    assert result["recovery_required"] is True

@@ -597,7 +597,7 @@ def test_task_executor_must_use_canonical_value() -> None:
         result = run_validator(root)
 
         assert result.returncode == 1
-        assert "task `Task 1` executor must be one of: codex, deepagents, tura" in result.stdout
+        assert "task `Task 1` executor must be one of: codex, deepagents" in result.stdout
     finally:
         rmtree(root, ignore_errors=True)
 

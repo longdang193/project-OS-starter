@@ -140,6 +140,9 @@ class ControllerSessionJournal(Protocol):
     ) -> None:
         ...
 
+    def compact_released(self, controller: ControllerRef) -> bool:
+        ...
+
 
 class ControllerSessionAdapter(Protocol):
     def resolve(self, binding: ControllerBinding) -> ResolveReceipt:
@@ -167,9 +170,10 @@ class InMemoryControllerSessionJournal:
         self._controllers: dict[ControllerBinding, ControllerRef] = {}
         self._owners: dict[tuple[str, str], ControllerRef] = {}
         self._deliveries: dict[tuple[str, str], str] = {}
+        self._activation_tombstones: dict[str, ActivationReceipt] = {}
 
     def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
-        return self._activations.get(activation_id)
+        return self._activations.get(activation_id) or self._activation_tombstones.get(activation_id)
 
     def record_activation(self, receipt: ActivationReceipt) -> None:
         current = self._activations.get(receipt.activation_id)
@@ -207,6 +211,29 @@ class InMemoryControllerSessionJournal:
     ) -> None:
         self._deliveries[(controller.controller_id, message_id)] = payload_fingerprint
 
+    def compact_released(self, controller: ControllerRef) -> bool:
+        matching = [
+            (activation_id, receipt)
+            for activation_id, receipt in self._activations.items()
+            if receipt.controller == controller and receipt.released
+        ]
+        if not matching and self._controllers.get(controller.binding) != controller:
+            return False
+        for activation_id, receipt in matching:
+            self._activation_tombstones[activation_id] = replace(
+                receipt,
+                controller=None,
+                created=False,
+                reused=False,
+                reason="activation compacted; replay remains blocked",
+            )
+            del self._activations[activation_id]
+        self._controllers.pop(controller.binding, None)
+        owner_key = (controller.binding.repository_identity, controller.binding.workstream)
+        if self._owners.get(owner_key) == controller:
+            del self._owners[owner_key]
+        return True
+
 
 class InMemoryControllerSessionAdapter:
     def __init__(self, journal: ControllerSessionJournal | None = None) -> None:
@@ -243,7 +270,9 @@ class InMemoryControllerSessionAdapter:
                 )
             if previous.released:
                 return self._activation_recovery(
-                    binding, activation_id, "activation ID belongs to a released controller"
+                    binding,
+                    activation_id,
+                    previous.reason or "activation ID belongs to a released controller",
                 )
             return replace(previous, created=False, reused=True)
 
@@ -358,6 +387,9 @@ class InMemoryControllerSessionAdapter:
             )
         self.journal.release_controller(controller)
         return SessionReleaseReceipt(controller=controller, released=True)
+
+    def compact_released(self, controller: ControllerRef) -> bool:
+        return self.journal.compact_released(controller)
 
     @staticmethod
     def _activation_recovery(

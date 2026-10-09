@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Mapping
 
+from .reconciliation import LocalEvidence, RemotePrEvidence, RuntimeEvidence, reconcile
+
 
 CURRENT = "CURRENT"
 MISSING = "MISSING"
@@ -28,6 +30,7 @@ class EvidenceSnapshot:
     next_action: str | None
     reasons: tuple[str, ...]
     sources: tuple[tuple[str, str], ...]
+    reconciliation: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -45,6 +48,7 @@ def build_evidence_snapshot(
     settlement: Mapping[str, Any],
     acceptance: Mapping[str, Any],
     next_action: Mapping[str, Any],
+    remote: Mapping[str, Any] | RemotePrEvidence | None = None,
 ) -> EvidenceSnapshot:
     values = {
         "repository_identity": plan.get("repository_identity"),
@@ -141,6 +145,43 @@ def build_evidence_snapshot(
             if any(any(marker in reason for marker in stale_markers) for reason in unique_reasons)
             else MISSING
         )
+    canonical = None
+    if remote is not None:
+        canonical = reconcile(
+            LocalEvidence(
+                repository_identity=_text(plan.get("repository_identity")),
+                plan_ref=_text(plan.get("source_ref")) or _text(plan.get("plan_identity")),
+                plan_revision=_text(plan.get("plan_revision")),
+                task_id=_text(plan.get("task_id")),
+                task_state=_text(plan.get("task_state")),
+                checkpoint_sha=_text(plan.get("checkpoint_sha")) or _text(plan.get("checkpoint")),
+                lane_head_sha=_text(git.get("git_revision")),
+                dirty=git.get("dirty") is True,
+                working_tree_digest=_text(git.get("working_tree_digest")),
+                source_ref=_text(plan.get("source_ref")),
+            ),
+            remote,
+            RuntimeEvidence(
+                attempt_id=_text(plan.get("attempt_id")),
+                worker_terminal=worker.get("publication_valid") is True,
+                task_result_published=worker.get("publication_valid") is True,
+                settlement_proven=settlement.get("settlement_proven") is True,
+                retirement_state=settlement.get("cleanup_state"),
+                source_ref=_text(settlement.get("receipt_ref")),
+            ),
+        )
+        reasons.extend(
+            [item.detail for item in canonical.contradictions]
+            + [f"missing {item.field}: {item.reason}" for item in canonical.missing_evidence]
+        )
+        if canonical.contradictions:
+            status = STALE
+        elif canonical.missing_evidence:
+            status = MISSING
+        else:
+            status = CURRENT
+        unique_reasons = tuple(dict.fromkeys(reasons))
+
     return EvidenceSnapshot(
         status=status,
         repository_identity=values["repository_identity"] if isinstance(values["repository_identity"], str) else None,
@@ -158,7 +199,12 @@ def build_evidence_snapshot(
         next_action=values["next_action"] if isinstance(values["next_action"], str) else None,
         reasons=unique_reasons,
         sources=tuple(sorted((name, value) for name, value in source_fields.items() if isinstance(value, str) and value.strip())),
+        reconciliation=canonical.to_dict() if canonical is not None else None,
     )
+
+
+def _text(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 __all__ = ["CURRENT", "MISSING", "STALE", "EvidenceSnapshot", "build_evidence_snapshot"]

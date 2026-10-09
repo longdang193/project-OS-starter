@@ -1,0 +1,993 @@
+{
+  "schema": "completion-monitoring-evidence/v2",
+  "generated_at": "2026-10-09T22:58:13.178555+00:00",
+  "python": "3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]",
+  "os": "Windows-10-10.0.19045-SP0",
+  "baseline_revision": "187f28e492ae1c4726cdd2f7b5a261a2b8b6c695",
+  "candidate_revision": "187f28e492ae1c4726cdd2f7b5a261a2b8b6c695",
+  "baseline_source_sha256": "81ce55796dfc7e42f506541340e443617d80b4b16c5affaad096c9fd7d18931c",
+  "candidate_source_sha256": "96b916399262c82be87bd8153f0a6b183bc581ed5fe5501edf533cee87b858e5",
+  "harness": "stdlib deterministic fake-Herdr command/receipt seam",
+  "harness_digest": "f1741a14dbb0d63641ed983395644056ee8603648e9ea67cee53bc27687104ff",
+  "fixed_budgets": {
+    "diagnostic_timeout_seconds": 0.5,
+    "receipt_poll_seconds": 0.1,
+    "diagnostic_poll_seconds": 2.0
+  },
+  "cases": [
+    "process_info_stall_receipt",
+    "pane_read_stall_receipt",
+    "both_diagnostics_timeout_no_receipt",
+    "diagnostic_error_late_receipt",
+    "normal_success",
+    "terminal_process_without_receipt"
+  ],
+  "repetitions_per_case_and_side": 3,
+  "rows": [
+    {
+      "mode": "baseline",
+      "case": "process_info_stall_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "candidate",
+      "case": "process_info_stall_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "baseline",
+      "case": "process_info_stall_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "candidate",
+      "case": "process_info_stall_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "baseline",
+      "case": "process_info_stall_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "candidate",
+      "case": "process_info_stall_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "baseline",
+      "case": "pane_read_stall_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "candidate",
+      "case": "pane_read_stall_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "baseline",
+      "case": "pane_read_stall_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "candidate",
+      "case": "pane_read_stall_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "baseline",
+      "case": "pane_read_stall_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "candidate",
+      "case": "pane_read_stall_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "baseline",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "candidate",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "baseline",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "candidate",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "baseline",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "candidate",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "baseline",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "candidate",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "baseline",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "candidate",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "baseline",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "candidate",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "baseline",
+      "case": "normal_success",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "candidate",
+      "case": "normal_success",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "baseline",
+      "case": "normal_success",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "candidate",
+      "case": "normal_success",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "baseline",
+      "case": "normal_success",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "candidate",
+      "case": "normal_success",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "baseline",
+      "case": "terminal_process_without_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    },
+    {
+      "mode": "candidate",
+      "case": "terminal_process_without_receipt",
+      "repetition": 1,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    },
+    {
+      "mode": "baseline",
+      "case": "terminal_process_without_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    },
+    {
+      "mode": "candidate",
+      "case": "terminal_process_without_receipt",
+      "repetition": 2,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    },
+    {
+      "mode": "baseline",
+      "case": "terminal_process_without_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    },
+    {
+      "mode": "candidate",
+      "case": "terminal_process_without_receipt",
+      "repetition": 3,
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    }
+  ],
+  "pairs": [
+    {
+      "case": "process_info_stall_receipt",
+      "repetition": 1,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "process_info_stall_receipt",
+      "repetition": 2,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "process_info_stall_receipt",
+      "repetition": 3,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "pane_read_stall_receipt",
+      "repetition": 1,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "pane_read_stall_receipt",
+      "repetition": 2,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "pane_read_stall_receipt",
+      "repetition": 3,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 1,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 2,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 3,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 1,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 2,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 3,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "normal_success",
+      "repetition": 1,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "normal_success",
+      "repetition": 2,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "normal_success",
+      "repetition": 3,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "terminal_process_without_receipt",
+      "repetition": 1,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "terminal_process_without_receipt",
+      "repetition": 2,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    },
+    {
+      "case": "terminal_process_without_receipt",
+      "repetition": 3,
+      "lifecycle_match": true,
+      "cleanup_match": true,
+      "reconciliation_match": true
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "subprocess_total": {
+        "median": 2.0,
+        "p95": 2.0
+      },
+      "time_to_receipt_ms": {
+        "median": 400.0,
+        "p95": 650.0
+      },
+      "receipt_to_completion_return_ms": {
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "timeout_count": 12,
+      "lifecycle_mismatches": 0,
+      "max_elapsed_seconds": 32.0,
+      "receipt_case_max_elapsed_seconds": 0.65
+    },
+    "candidate": {
+      "subprocess_total": {
+        "median": 2.0,
+        "p95": 2.0
+      },
+      "time_to_receipt_ms": {
+        "median": 400.0,
+        "p95": 650.0
+      },
+      "receipt_to_completion_return_ms": {
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "timeout_count": 12,
+      "lifecycle_mismatches": 0,
+      "max_elapsed_seconds": 32.0,
+      "receipt_case_max_elapsed_seconds": 0.65
+    }
+  },
+  "correctness": {
+    "lifecycle_mismatches": 0,
+    "cleanup_mismatches": 0,
+    "reconciliation_mismatches": 0,
+    "all_outcomes_match": true
+  },
+  "receipt_availability": "harness control data; not production receipt-publication evidence"
+}

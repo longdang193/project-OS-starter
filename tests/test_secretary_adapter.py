@@ -70,6 +70,20 @@ def test_activation_mismatch_requires_recovery() -> None:
     assert adapter.activation_side_effects == 1
 
 
+def test_compaction_releases_session_but_keeps_replay_protection() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+    activation = adapter.activate(binding(), "activation-1")
+    controller = activation.controller
+    assert controller is not None
+
+    assert adapter.release_session(controller).released is True
+    assert adapter.compact_released(controller) is True
+    replay = adapter.activate(binding(), "activation-1")
+
+    assert replay.recovery_required is True
+    assert "compacted" in (replay.reason or "")
+
+
 def test_binding_mismatch_requires_recovery_for_each_lifecycle_operation() -> None:
     adapter = InMemoryControllerSessionAdapter()
     current = adapter.activate(binding(), "activation-1").controller

@@ -298,3 +298,53 @@ def parse_task_result(
         "continuation_eligible": False,
         "accepted": payload.get("accepted"),
     }
+
+
+def release_attempt_evidence(
+    attempt_dir: Path,
+    assignment_id: str,
+    attempt_id: str,
+    accepted_checkpoint_sha: str,
+    *,
+    expected_plan_ref: str | None = None,
+    expected_repository_identity: str | None = None,
+) -> dict[str, Any]:
+    """Release task-owned evidence only after exact acceptance binding."""
+
+    task_result_path = attempt_dir / "task-result.json"
+    try:
+        payload = validate_task_result(json.loads(task_result_path.read_text(encoding="utf-8")))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return {"state": "preserved", "reason": "task result unavailable", "detail": str(exc)}
+    checkpoint = payload.get("checkpoint")
+    checkpoint_sha = checkpoint.get("sha") if isinstance(checkpoint, dict) else None
+    if (
+        payload.get("assignment_id") != assignment_id
+        or payload.get("attempt_id") != attempt_id
+        or payload.get("accepted") is not True
+        or checkpoint_sha != accepted_checkpoint_sha
+        or (
+            expected_plan_ref is not None
+            and payload.get("plan_ref") != expected_plan_ref
+        )
+        or (
+            expected_repository_identity is not None
+            and payload.get("repository_identity") != expected_repository_identity
+        )
+    ):
+        return {"state": "preserved", "reason": "acceptance binding mismatch"}
+    removed: list[str] = []
+    for name in ("result.json", "task-result.json"):
+        path = attempt_dir / name
+        try:
+            path.unlink()
+            removed.append(name)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            return {"state": "unverified", "reason": "evidence deletion failed", "detail": str(exc), "removed": removed}
+    try:
+        attempt_dir.rmdir()
+    except OSError:
+        pass
+    return {"state": "removed", "removed": removed}

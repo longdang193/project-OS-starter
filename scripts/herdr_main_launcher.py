@@ -40,6 +40,7 @@ try:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
+        release_attempt_evidence,
     )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.results import (
@@ -48,6 +49,7 @@ except ModuleNotFoundError:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
+        release_attempt_evidence,
     )
 try:
     from project_os_runtime.attempt import (
@@ -271,9 +273,29 @@ def _read_deepagents_task_result(
     )
 
 
-def _discard_deepagents_receipt(path: Path | None) -> None:
+def _discard_deepagents_receipt(
+    path: Path | None,
+    *,
+    assignment_id: str | None = None,
+    attempt_id: str | None = None,
+    accepted_checkpoint_sha: str | None = None,
+    settlement_persisted: bool = False,
+) -> dict[str, Any]:
     if path is None:
-        return
+        return {"state": "preserved", "reason": "receipt unavailable"}
+    task_result_path = path.with_name("task-result.json")
+    if task_result_path.exists():
+        if not settlement_persisted or not all(
+            isinstance(value, str) and value
+            for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
+        ):
+            return {"state": "preserved", "reason": "acceptance release binding unavailable"}
+        return release_attempt_evidence(
+            path.parent,
+            assignment_id,
+            attempt_id,
+            accepted_checkpoint_sha,
+        )
     removed = False
     try:
         path.unlink()
@@ -285,6 +307,7 @@ def _discard_deepagents_receipt(path: Path | None) -> None:
             path.parent.rmdir()
         except OSError:
             pass
+    return {"state": "removed" if removed else "preserved"}
 
 
 def _codex_runtime(cwd: Path, configured_home: Path | None = None) -> dict[str, Any]:
@@ -2151,6 +2174,101 @@ def _terminate_codex_lane(
     }
 
 
+def retire_lane(
+    bound_attempt: Mapping[str, Any],
+    *,
+    herdr: str,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Retire only resources positively bound to one completed attempt."""
+
+    required = (
+        "repository_identity",
+        "assignment_id",
+        "attempt_id",
+        "session",
+        "pane",
+        "worktree",
+    )
+    missing = [name for name in required if not isinstance(bound_attempt.get(name), str) or not str(bound_attempt[name]).strip()]
+    if not isinstance(bound_attempt.get("plan_identity") or bound_attempt.get("lane_id"), str):
+        missing.append("plan_identity_or_lane_id")
+    if missing:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "retirement binding incomplete",
+            "missing": missing,
+        }
+
+    session = str(bound_attempt["session"])
+    pane = str(bound_attempt["pane"])
+    worktree = Path(str(bound_attempt["worktree"])).resolve()
+    environment = env or _herdr_environment()
+    try:
+        panes = _result(
+            _json_command([herdr, "--session", session, "pane", "list"], env=environment),
+            "panes",
+        )
+    except (LaunchBlocked, CommandTransportTimeout) as exc:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "pane inventory unavailable",
+            "detail": str(exc),
+        }
+    if not isinstance(panes, list):
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "pane inventory invalid",
+        }
+    selected = next((item for item in panes if isinstance(item, dict) and item.get("pane_id") == pane), None)
+    if selected is None:
+        return {
+            "state": "removed",
+            "recovery_required": False,
+            "idempotent": True,
+            "resources": {
+                "process": {"state": "removed", "reason": "already_absent"},
+                "pane": {"state": "removed", "reason": "already_absent"},
+                "session": {"state": "preserved", "reason": "session deletion not authorized"},
+            },
+        }
+    selected_cwd = selected.get("cwd")
+    if not isinstance(selected_cwd, str) or Path(selected_cwd).resolve() != worktree:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "pane worktree binding mismatch",
+        }
+    expected_agent = bound_attempt.get("agent_name")
+    if isinstance(expected_agent, str) and selected.get("agent") not in {None, expected_agent}:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "pane agent binding mismatch",
+        }
+    cleanup = _terminate_codex_lane(herdr, session, pane, env=environment)
+    verified = cleanup.get("verified") is True
+    return {
+        "state": "removed" if verified else "unresolved",
+        "recovery_required": not verified,
+        "resources": {
+            "process": {
+                "state": "removed" if verified else "unresolved",
+                "detail": cleanup.get("detail"),
+            },
+            "pane": {
+                "state": "removed" if verified else "unresolved",
+                "detail": cleanup.get("detail"),
+            },
+            "session": {"state": "preserved", "reason": "session deletion not authorized"},
+        },
+        "termination": cleanup,
+    }
+
+
 def resolve_launch(
     *,
     profile_name: str,
@@ -2773,7 +2891,19 @@ def _main_body(args: argparse.Namespace) -> int:
                     }
                 )
                 if receipt.get("state") == "confirmed" and not receipt.get("recovery_required"):
-                    _discard_deepagents_receipt(receipt_file)
+                    checkpoint = task_result.get("checkpoint")
+                    accepted_checkpoint_sha = (
+                        checkpoint.get("sha")
+                        if isinstance(checkpoint, Mapping)
+                        else None
+                    )
+                    cleanup["evidence_release"] = _discard_deepagents_receipt(
+                        receipt_file,
+                        assignment_id=assignment.get("assignment_id"),
+                        attempt_id=assignment.get("attempt_id"),
+                        accepted_checkpoint_sha=accepted_checkpoint_sha,
+                        settlement_persisted=receipt.get("cleanup_state") == "removed",
+                    )
             legacy = {
                 key: value
                 for key, value in assignment.items()
