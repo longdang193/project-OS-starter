@@ -17,6 +17,7 @@ def test_lightmem2_overlay_is_centralized_and_exact_base_bound() -> None:
     assert "components/adapters/codex/tests/install.test.ts" in patch
     assert "rev-parse HEAD" in reconciler
     assert "appliedRecords" in reconciler
+    assert "compactionRecords" in reconciler
     assert "--reverse" in reconciler
     assert "SkipInstall" in reconciler
     assert "No LightMem2 Codex overlay matches target HEAD" in reconciler
