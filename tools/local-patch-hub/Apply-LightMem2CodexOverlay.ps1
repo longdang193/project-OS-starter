@@ -96,7 +96,13 @@ if ($null -eq $selected) {
   $appliedRecords = @($records | Where-Object {
     Test-NativeSuccess $git @("-C", $targetPath, "apply", "--reverse", "--check", "--", $_.PatchPath)
   })
-  if ($appliedRecords.Count -eq 1) {
+  $compactionRecords = @($appliedRecords | Where-Object {
+    [string]$_.Manifest.id -eq "lightrsi-codex-compaction-compatibility"
+  })
+  if ($compactionRecords.Count -eq 1) {
+    $selected = $compactionRecords[0]
+    $alreadyApplied = $true
+  } elseif ($appliedRecords.Count -eq 1) {
     $selected = $appliedRecords[0]
     $alreadyApplied = $true
   } else {
