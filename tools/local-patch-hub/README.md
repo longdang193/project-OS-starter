@@ -98,7 +98,7 @@ The script reapplies the unmerged security fix with Git 3-way merge. It stops on
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterSecurityOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
 ```
 
-When upstream changes the patched files, create a new base directory under `overlays/9router-security/` and rebase the patch there. Keep old overlays for existing checkouts.
+When upstream changes the patched files, create a new base directory under `overlays/9router-security/` and rebase the patch there. Current security bases include `eb712ca8` (`0.5.69`) and `ce4460ef` (`0.5.99`). Keep old overlays for existing checkouts.
 
 Apply the Responses API output compatibility overlay separately:
 
