@@ -137,22 +137,39 @@ $migrationNeeded = -not $alreadyApplied -and $null -ne $supersededPatch -and
 
 if ($migrationNeeded) {
   if ($VerifyOnly) {
-    $supersededRemoved = $false
+    $verificationRoot = Join-Path ([IO.Path]::GetTempPath()) ("9router-overlay-verify-" + [Guid]::NewGuid().ToString("N"))
+    $verificationCreated = $false
     try {
-      Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
-      $supersededRemoved = $true
-      $trackedChanges = @(& $git -C $targetPath status --porcelain=v1 --untracked-files=no)
+      Invoke-Native $git (@("-C", $targetPath, "worktree", "add", "--detach", $verificationRoot, $head))
+      $verificationCreated = $true
+      $changedPaths = @(& $git -C $targetPath diff --name-only HEAD --)
       if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in $targetPath." }
+      foreach ($relativePath in $changedPaths) {
+        $sourcePath = Join-Path $targetPath $relativePath
+        $destinationPath = Join-Path $verificationRoot $relativePath
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+          $destinationParent = Split-Path -Parent $destinationPath
+          if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+          }
+          Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        } elseif (Test-Path -LiteralPath $destinationPath) {
+          Remove-Item -LiteralPath $destinationPath -Force
+        }
+      }
+      Invoke-Native $git (@("-C", $verificationRoot, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
+      $trackedChanges = @(& $git -C $verificationRoot status --porcelain=v1 --untracked-files=no)
+      if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in verification checkout." }
       if ($trackedChanges.Count -gt 0) {
         throw "Target has unrelated tracked changes; clean them before migrating the Responses overlay: $targetPath"
       }
-      if (-not (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $patch)))) {
+      if (-not (Test-NativeSuccess $git (@("-C", $verificationRoot, "apply") + $applyFlags + @("--check", "--", $patch)))) {
         throw "Overlay $($selected.Manifest.version) does not apply cleanly after removing superseded overlay."
       }
       Write-Output "Verified 9router Responses overlay $($selected.Manifest.version) can replace superseded overlay at $head."
     } finally {
-      if ($supersededRemoved -and (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $supersededPatch)))) {
-        Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--", $supersededPatch))
+      if ($verificationCreated) {
+        Invoke-Native $git (@("-C", $targetPath, "worktree", "remove", "--force", $verificationRoot))
       }
     }
     exit 0
