@@ -1,0 +1,7 @@
+{
+  "id": "9router-security",
+  "version": "1.1.0",
+  "targetRepository": "https://github.com/decolua/9router.git",
+  "baseCommit": "ce4460ef79382bfddb4aa5fc0ff9f3cb0d5f95a8",
+  "patch": "9router-security.patch"
+}
