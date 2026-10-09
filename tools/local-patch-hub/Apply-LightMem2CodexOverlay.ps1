@@ -106,7 +106,9 @@ if ($canApply) {
 
 $adapterPath = Join-Path $targetPath "components\adapters\codex"
 $wrapperPath = Join-Path $adapterPath "dist\tokenpilot-codex-hook.cmd"
+$runtimeWrapperPath = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter\dist\tokenpilot-codex-hook.cmd"
 $wrapperReady = Test-WindowsHookWrapper $wrapperPath
+$wrapperReady = $wrapperReady -or (Test-WindowsHookWrapper $runtimeWrapperPath)
 $needsInstall = $patchApplied -or -not $wrapperReady
 
 if ($VerifyOnly) {
