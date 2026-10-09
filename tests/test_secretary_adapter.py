@@ -138,6 +138,15 @@ def test_release_session_is_distinct_from_lane_retirement() -> None:
     assert adapter.resolve(binding()).found is False
 
 
+def test_compact_released_does_not_remove_active_controller() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+    controller = adapter.activate(binding(), "activation-1").controller
+    assert controller is not None
+
+    assert adapter.compact_released(controller) is False
+    assert adapter.resolve(binding()).found is True
+
+
 def test_release_unknown_session_requires_reconciliation() -> None:
     adapter = InMemoryControllerSessionAdapter()
     unknown = ControllerRef(binding(), "missing")

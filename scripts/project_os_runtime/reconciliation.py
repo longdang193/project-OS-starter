@@ -116,6 +116,7 @@ def reconcile(
     for name, value in (
         ("plan_ref", local.plan_ref),
         ("task_id", local.task_id),
+        ("checkpoint_sha", local.checkpoint_sha),
         ("lane_head_sha", local.lane_head_sha),
         ("attempt_id", runtime.attempt_id),
     ):
@@ -126,6 +127,10 @@ def reconcile(
         missing.append(MissingEvidence("working_tree_digest", "dirty candidate has no binding"))
     if remote.available and remote.head_sha != local.lane_head_sha:
         contradictions.append(Contradiction("PR_HEAD_MISMATCH", "remote PR head differs from local lane head"))
+    if local.checkpoint_sha and local.lane_head_sha and local.checkpoint_sha != local.lane_head_sha:
+        contradictions.append(Contradiction("CHECKPOINT_HEAD_MISMATCH", "checkpoint differs from local lane head"))
+    if local.dependencies_ready is not True:
+        missing.append(MissingEvidence("dependencies_ready", "task dependencies are not proven ready"))
     if not remote.available:
         remote_status = REMOTE_EVIDENCE_UNAVAILABLE
     else:

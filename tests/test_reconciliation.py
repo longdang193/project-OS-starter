@@ -16,6 +16,7 @@ def _local(**overrides):
         task_state="active",
         checkpoint_sha="abc",
         lane_head_sha="abc",
+        dependencies_ready=True,
         source_ref="git",
     )
     values.update(overrides)
@@ -66,3 +67,17 @@ def test_reconcile_accepts_bound_current_evidence():
     assert snapshot.eligible.acceptance is True
     assert snapshot.eligible.integration is True
     assert snapshot.next_action == "NO_ACTION"
+
+
+def test_reconcile_rejects_stale_checkpoint_and_unready_dependencies():
+    snapshot = reconcile(
+        _local(checkpoint_sha="stale", dependencies_ready=False),
+        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
+        _runtime(),
+    )
+
+    assert snapshot.eligible.acceptance is False
+    assert snapshot.eligible.integration is False
+    assert snapshot.next_action == "RECONCILE"
+    assert {item.code for item in snapshot.contradictions} == {"CHECKPOINT_HEAD_MISMATCH"}
+    assert any(item.field == "dependencies_ready" for item in snapshot.missing_evidence)

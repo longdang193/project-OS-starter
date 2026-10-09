@@ -5206,3 +5206,70 @@ def test_retire_lane_preserves_on_worktree_binding_mismatch(
 
     assert result["state"] == "unresolved"
     assert result["recovery_required"] is True
+
+
+def test_retire_lane_preserves_when_attempt_requires_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda *args, **kwargs: {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path), "agent": "agent-1"}]}},
+    )
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+            "agent_name": "agent-1",
+            "settled": True,
+            "recovery_required": True,
+            "process_identity": {"pid": 41},
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "unresolved"
+    assert result["recovery_required"] is True
+    assert result["reason"] == "attempt requires recovery"
+
+
+def test_retire_lane_preserves_when_recorded_process_identity_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def json_command(args, **kwargs):
+        if "pane" in args and "list" in args:
+            return {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path), "agent": "agent-1"}]}}
+        return {"result": {"process_info": {"foreground_processes": [{"pid": 42, "name": "codex.exe", "cwd": str(tmp_path), "children": []}]}}}
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", json_command)
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: pytest.fail("must not terminate stale process"))
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+            "agent_name": "agent-1",
+            "settled": True,
+            "recovery_required": False,
+            "process_identity": {"pid": 41},
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "unresolved"
+    assert result["recovery_required"] is True

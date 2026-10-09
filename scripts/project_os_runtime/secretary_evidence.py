@@ -154,10 +154,11 @@ def build_evidence_snapshot(
                 plan_revision=_text(plan.get("plan_revision")),
                 task_id=_text(plan.get("task_id")),
                 task_state=_text(plan.get("task_state")),
-                checkpoint_sha=_text(plan.get("checkpoint_sha")) or _text(plan.get("checkpoint")),
+                checkpoint_sha=_text(plan.get("checkpoint_sha")),
                 lane_head_sha=_text(git.get("git_revision")),
                 dirty=git.get("dirty") is True,
                 working_tree_digest=_text(git.get("working_tree_digest")),
+                dependencies_ready=plan.get("dependencies_ready"),
                 source_ref=_text(plan.get("source_ref")),
             ),
             remote,
@@ -178,7 +179,7 @@ def build_evidence_snapshot(
             status = STALE
         elif canonical.missing_evidence:
             status = MISSING
-        else:
+        elif not unique_reasons:
             status = CURRENT
         unique_reasons = tuple(dict.fromkeys(reasons))
 

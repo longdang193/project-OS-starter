@@ -2243,11 +2243,52 @@ def retire_lane(
             "reason": "pane worktree binding mismatch",
         }
     expected_agent = bound_attempt.get("agent_name")
-    if isinstance(expected_agent, str) and selected.get("agent") not in {None, expected_agent}:
+    if not isinstance(expected_agent, str) or selected.get("agent") != expected_agent:
         return {
             "state": "unresolved",
             "recovery_required": True,
             "reason": "pane agent binding mismatch",
+        }
+    if bound_attempt.get("recovery_required") is True:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "attempt requires recovery",
+        }
+    if bound_attempt.get("settled") is not True:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "attempt settlement is not proven",
+        }
+    process_identity = bound_attempt.get("process_identity")
+    expected_pid = process_identity.get("pid") if isinstance(process_identity, Mapping) else None
+    if isinstance(expected_pid, bool) or not isinstance(expected_pid, int) or expected_pid <= 0:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "process ownership identity is unavailable",
+        }
+    try:
+        process_result = _json_command(
+            [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+            env=environment,
+        )
+        process_info = process_result.get("result", {}).get("process_info") if isinstance(process_result, dict) else None
+        foreground = process_info.get("foreground_processes") if isinstance(process_info, dict) else None
+        current_process_ids = _process_ids(_process_records(foreground), require_non_shell=True)
+    except (LaunchBlocked, CommandTransportTimeout) as exc:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "process ownership evidence unavailable",
+            "detail": str(exc),
+        }
+    if expected_pid not in current_process_ids:
+        return {
+            "state": "unresolved",
+            "recovery_required": True,
+            "reason": "recorded process identity mismatch",
         }
     cleanup = _terminate_codex_lane(herdr, session, pane, env=environment)
     verified = cleanup.get("verified") is True

@@ -217,7 +217,7 @@ class InMemoryControllerSessionJournal:
             for activation_id, receipt in self._activations.items()
             if receipt.controller == controller and receipt.released
         ]
-        if not matching and self._controllers.get(controller.binding) != controller:
+        if not matching:
             return False
         for activation_id, receipt in matching:
             self._activation_tombstones[activation_id] = replace(
