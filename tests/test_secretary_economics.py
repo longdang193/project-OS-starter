@@ -6,10 +6,35 @@ from scripts.project_os_runtime.secretary_economics import (
     estimate_published_cost,
     normalize_response_usage,
     validate_cost_estimate,
+    validate_token_usage,
 )
 
 
 PRICING = NINE_ROUTER_PUBLISHED_RATE_CARD
+
+
+def test_validate_token_usage_accepts_scalar_total() -> None:
+    assert validate_token_usage(889) == 889
+
+
+def test_normalize_response_usage_accepts_native_responses_fields() -> None:
+    result = normalize_response_usage(
+        {
+            "input_tokens": 1_000,
+            "output_tokens": 100,
+            "total_tokens": 1_100,
+            "input_tokens_details": {"cached_tokens": 800},
+        }
+    )
+
+    assert result == {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "cache_read_input_tokens": 800,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
 
 
 def test_normalize_9router_usage_fields() -> None:

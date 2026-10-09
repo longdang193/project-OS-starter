@@ -459,6 +459,43 @@ def test_compare_records_measures_tokens_and_estimated_cost(tmp_path: Path) -> N
     }
 
 
+def test_compare_records_rejects_mixed_cost_currencies(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    records = []
+    for pair_number, currency in ((1, "USD"), (2, "EUR"), (3, "USD")):
+        for arm, interventions, completion in (("baseline", 1, 100), ("candidate", 0, 105)):
+            records.append(
+                validate_receipt(
+                    _receipt(
+                        tmp_path,
+                        f"pair-{pair_number}",
+                        arm,
+                        interventions=interventions,
+                        completion=completion,
+                        model="glm/glm-4.7",
+                        cost={
+                            "value": 0.0001,
+                            "kind": "estimated",
+                            "currency": currency,
+                            "pricing_source": "published-rate-card",
+                            "pricing_effective_date": "2026-10-09",
+                            "model": "glm/glm-4.7",
+                            "model_resolution": "exact",
+                        },
+                    ),
+                    manifest,
+                )
+            )
+
+    result = compare_records(records, manifest)
+
+    assert result["estimated_cost_comparison"] == {
+        "status": "unknown",
+        "pairs": 3,
+        "reason": "mixed_currency",
+    }
+
+
 def test_compare_records_reports_no_measured_benefit_when_threshold_fails(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     records = []

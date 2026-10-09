@@ -3,5 +3,6 @@
   "version": "1.1.0",
   "targetRepository": "https://github.com/decolua/9router.git",
   "baseCommit": "e0be411184e67687171a1e13ae2e5686c14dd43a",
-  "patch": "9router-responses-output.patch"
+  "patch": "9router-responses-output.patch",
+  "supersedes": "9router-responses-output-v1.0.patch"
 }

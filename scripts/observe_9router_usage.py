@@ -130,6 +130,17 @@ def observe_usage(
                 usage_count=len(usage),
                 observed_session_count=len(session_ids),
             )
+        request_keys = [
+            (request["timestamp"], request["provider"], request["model"], request["connection_id"])
+            for request in requests
+        ]
+        if len(request_keys) != len(set(request_keys)):
+            return _result(
+                "inconclusive",
+                "usage_join_ambiguous",
+                request_count=len(requests),
+            )
+
         if len(usage) != len(requests):
             return _result(
                 "inconclusive",

@@ -155,8 +155,7 @@ def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
         if value != "unknown" and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
             raise ReceiptValidationError(f"metrics.{field} must be non-negative integer or unknown")
     try:
-        normalized_token_usage = normalize_response_usage(metrics["token_usage"])
-        validate_token_usage(normalized_token_usage)
+        normalized_token_usage = validate_token_usage(metrics["token_usage"])
         validate_cost_estimate(metrics["cost"])
     except ValueError as exc:
         raise ReceiptValidationError(str(exc)) from exc

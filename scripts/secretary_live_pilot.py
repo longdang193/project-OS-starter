@@ -112,7 +112,7 @@ def _token_usage_comparison(pairs: list[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def _estimated_cost_comparison(pairs: list[Mapping[str, Any]]) -> dict[str, Any]:
-    observations: list[tuple[float, float, str]] = []
+    observations: list[tuple[float, float, str, str]] = []
     for pair in pairs:
         values: list[float] = []
         currencies: list[str] = []
@@ -131,16 +131,19 @@ def _estimated_cost_comparison(pairs: list[Mapping[str, Any]]) -> dict[str, Any]
                 break
             values.append(float(value))
             currencies.append(currency)
-        if len(values) == 2 and currencies[0] == currencies[1]:
-            observations.append((values[0], values[1], currencies[0]))
+        if len(values) == 2:
+            observations.append((values[0], values[1], currencies[0], currencies[1]))
     if not observations:
         return {"status": "unknown", "pairs": 0}
+    observed_currencies = {currency for item in observations for currency in item[2:]}
+    if len(observed_currencies) != 1:
+        return {"status": "unknown", "pairs": len(observations), "reason": "mixed_currency"}
     baseline_median = median(item[0] for item in observations)
     candidate_median = median(item[1] for item in observations)
     return {
         "status": "estimated",
         "pairs": len(observations),
-        "currency": observations[0][2],
+        "currency": next(iter(observed_currencies)),
         "baseline_median": baseline_median,
         "candidate_median": candidate_median,
         "delta": round(candidate_median - baseline_median, 12),

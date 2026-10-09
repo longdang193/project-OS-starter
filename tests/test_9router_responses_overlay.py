@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATCH_ROOT = ROOT / "tools" / "local-patch-hub"
 OVERLAY_ROOT = PATCH_ROOT / "overlays" / "9router-responses" / "e0be4111"
-LATEST_OVERLAY_ROOT = PATCH_ROOT / "overlays" / "9router-responses" / "eb712ca8"
+LATEST_OVERLAY_ROOT = PATCH_ROOT / "overlays" / "9router-responses" / "ce4460ef"
 
 
 def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
@@ -19,8 +19,10 @@ def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
 
     assert '"id": "9router-responses-compatibility"' in manifest
     assert '"version": "1.1.0"' in manifest
+    assert '"supersedes": "9router-responses-output-v1.0.patch"' in manifest
     assert '"baseCommit": "e0be411184e67687171a1e13ae2e5686c14dd43a"' in manifest
-    assert '"baseCommit": "eb712ca821f0ba6bc41043fbd14494c5af5daba5"' in latest_manifest
+    assert '"version": "1.3.0"' in latest_manifest
+    assert '"baseCommit": "ce4460ef79382bfddb4aa5fc0ff9f3cb0d5f95a8"' in latest_manifest
     assert "open-sse/executors/base.js" in patch
     assert "open-sse/executors/codex.js" in patch
     assert "body?._compact" in patch
@@ -34,6 +36,9 @@ def test_9router_responses_overlay_is_versioned_and_update_safe() -> None:
     assert "open-sse/transformer/streamToJsonConverter.js" in patch
     assert "tests/unit/responses-stream-error-preservation.test.js" in patch
     assert "state.error = parsed.error || parsed" in patch
+    assert (OVERLAY_ROOT / "9router-responses-output-v1.0.patch").exists()
+    assert "migration" in script.lower()
+    assert "unrelated tracked changes" in script
     assert "open-sse/transformer/responsesTransformer.js" in latest_patch
     assert "tests/unit/responses-transformer-completed-output.test.js" in latest_patch
     assert "open-sse/translator/index.js" in latest_patch

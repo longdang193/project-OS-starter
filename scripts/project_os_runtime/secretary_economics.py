@@ -94,7 +94,18 @@ def normalize_response_usage(value: object) -> object:
             value.get("cache_write_input_tokens"),
         ),
     }
-    if not any(field in value for field in ("prompt_tokens", "completion_tokens", "cached_tokens", "cache_creation_input_tokens")):
+    if not any(
+        field in value
+        for field in (
+            "prompt_tokens",
+            "completion_tokens",
+            "input_tokens",
+            "output_tokens",
+            "cached_tokens",
+            "cache_creation_input_tokens",
+            "input_tokens_details",
+        )
+    ):
         raise EconomicsValidationError("token usage must identify observed response usage")
     if raw_fields["total_tokens"] is None and all(
         isinstance(raw_fields[field], int) and not isinstance(raw_fields[field], bool)

@@ -108,6 +108,30 @@ def test_observer_rejects_session_rows_outside_window(tmp_path: Path) -> None:
     assert result["reason"] == "timestamp_boundary_unproven"
 
 
+def test_observer_rejects_duplicate_request_join_keys(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+    connection = sqlite3.connect(database)
+    data = json.dumps({"providerRequest": {"client_metadata": {"session_id": "session-1"}}})
+    connection.execute(
+        "insert into requestDetails values (?, ?, 'codex', ?, 'connection-1', 'success', ?)",
+        ("request-duplicate", "2026-10-09T14:24:50.000Z", "gpt-test", data),
+    )
+    connection.commit()
+    connection.close()
+
+    result = observe_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        session_id="session-1",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "inconclusive"
+    assert result["reason"] == "usage_join_ambiguous"
+
+
 def test_observer_never_selects_sensitive_columns(tmp_path: Path) -> None:
     database = tmp_path / "data.sqlite"
     _database(database)

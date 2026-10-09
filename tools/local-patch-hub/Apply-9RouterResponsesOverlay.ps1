@@ -122,6 +122,43 @@ if ($null -eq $selected) {
 $patch = $selected.Patch
 if (-not (Test-Path -LiteralPath $patch -PathType Leaf)) { throw "Overlay patch missing: $patch" }
 
+$supersededPatch = $null
+if ($selected.Manifest.supersedes) {
+  $supersededPatch = Join-Path (Split-Path -Parent $patch) ([string]$selected.Manifest.supersedes)
+}
+$migrationNeeded = $null -ne $supersededPatch -and
+  (Test-Path -LiteralPath $supersededPatch -PathType Leaf) -and
+  (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--check", "--", $supersededPatch)))
+
+if ($migrationNeeded) {
+  if ($VerifyOnly) {
+    Write-Output "Verified 9router Responses overlay $($selected.Manifest.version) can replace superseded overlay at $head."
+    exit 0
+  }
+  Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
+  try {
+    $trackedChanges = @(& $git -C $targetPath status --porcelain=v1 --untracked-files=no)
+    if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in $targetPath." }
+    if ($trackedChanges.Count -gt 0) {
+      throw "Target has unrelated tracked changes; clean them before migrating the Responses overlay: $targetPath"
+    }
+    if (-not (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $patch)))) {
+      throw "Overlay $($selected.Manifest.version) does not apply cleanly after removing superseded overlay."
+    }
+    Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--", $patch))
+  } catch {
+    if (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $supersededPatch))) {
+      Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--", $supersededPatch))
+    }
+    throw
+  }
+  if ($InstallGlobal) {
+    Install-9RouterGlobal -TargetPath $targetPath -AllowDowngrade:$AllowDowngrade
+  }
+  Write-Output "Migrated 9router Responses overlay to $($selected.Manifest.version) at $head."
+  exit 0
+}
+
 $appliedNow = $false
 if (-not $alreadyApplied) {
   $checkArgs = @("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $patch)

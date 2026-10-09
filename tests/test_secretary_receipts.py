@@ -123,6 +123,32 @@ def test_live_receipt_accepts_observed_tokens_and_estimated_cost() -> None:
     assert result["metrics"]["cost"]["kind"] == "estimated"
 
 
+def test_live_receipt_accepts_scalar_token_usage() -> None:
+    receipt = _receipt()
+    receipt["metrics"]["token_usage"] = 889
+
+    assert validate_live_receipt(receipt)["metrics"]["token_usage"] == 889
+
+
+def test_live_receipt_normalizes_native_responses_usage() -> None:
+    receipt = _receipt()
+    receipt["metrics"]["token_usage"] = {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "input_tokens_details": {"cached_tokens": 800},
+    }
+
+    assert validate_live_receipt(receipt)["metrics"]["token_usage"] == {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "cache_read_input_tokens": 800,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
+
+
 def test_live_receipt_normalizes_9router_usage_fields() -> None:
     receipt = _receipt()
     receipt["metrics"]["token_usage"] = {
