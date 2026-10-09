@@ -48,7 +48,10 @@ function Test-WindowsHookWrapper {
 }
 
 function Test-CodexRuntime {
-  param([string]$Root)
+  param(
+    [string]$Root,
+    [bool]$RequireCompactCompatibility
+  )
 
   $cliPath = Join-Path $Root "dist\cli.js"
   if (-not (Test-WindowsHookWrapper (Join-Path $Root "dist\tokenpilot-codex-hook.cmd")) -or
@@ -56,6 +59,7 @@ function Test-CodexRuntime {
       -not (Test-Path -LiteralPath $cliPath -PathType Leaf)) {
     return $false
   }
+  if (-not $RequireCompactCompatibility) { return $true }
   $content = [IO.File]::ReadAllText($cliPath)
   return $content -match 'endpointPath === "/responses/compact"' -and
     $content -match 'fallbackPayload \? params\.fallbackPayload\(payload\)' -and
@@ -122,9 +126,10 @@ if ($canApply) {
 $adapterPath = Join-Path $targetPath "components\adapters\codex"
 $wrapperPath = Join-Path $adapterPath "dist\tokenpilot-codex-hook.cmd"
 $runtimeWrapperPath = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter\dist\tokenpilot-codex-hook.cmd"
-$targetRuntimeReady = Test-CodexRuntime $adapterPath
+$requireCompactCompatibility = [string]$manifest.id -eq "lightrsi-codex-compaction-compatibility"
+$targetRuntimeReady = Test-CodexRuntime -Root $adapterPath -RequireCompactCompatibility:$requireCompactCompatibility
 $runtimeRoot = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter"
-$installedRuntimeReady = Test-CodexRuntime $runtimeRoot
+$installedRuntimeReady = Test-CodexRuntime -Root $runtimeRoot -RequireCompactCompatibility:$requireCompactCompatibility
 $wrapperReady = $targetRuntimeReady -and $installedRuntimeReady
 $needsInstall = $patchApplied -or -not $wrapperReady
 
