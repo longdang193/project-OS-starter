@@ -15,6 +15,7 @@ try:
     )
     from scripts.project_os_runtime.secretary_economics import (
         EconomicsValidationError,
+        normalize_response_usage,
         validate_cost_estimate,
         validate_token_usage,
     )
@@ -25,6 +26,7 @@ except ModuleNotFoundError:
     )
     from project_os_runtime.secretary_economics import (
         EconomicsValidationError,
+        normalize_response_usage,
         validate_cost_estimate,
         validate_token_usage,
     )
@@ -81,8 +83,15 @@ class PilotReceiptError(ValueError):
 def _token_usage_comparison(pairs: list[Mapping[str, Any]]) -> dict[str, Any]:
     observations: list[tuple[Mapping[str, int], Mapping[str, int]]] = []
     for pair in pairs:
-        baseline = pair["baseline"].get("metrics", {}).get("token_usage")
-        candidate = pair["candidate"].get("metrics", {}).get("token_usage")
+        try:
+            baseline = validate_token_usage(
+                normalize_response_usage(pair["baseline"].get("metrics", {}).get("token_usage"))
+            )
+            candidate = validate_token_usage(
+                normalize_response_usage(pair["candidate"].get("metrics", {}).get("token_usage"))
+            )
+        except EconomicsValidationError:
+            continue
         fields = ("input_tokens", "output_tokens", "total_tokens")
         if (
             isinstance(baseline, Mapping)

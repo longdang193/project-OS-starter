@@ -460,6 +460,38 @@ def test_compare_records_measures_tokens_and_estimated_cost(tmp_path: Path) -> N
     }
 
 
+def test_compare_records_normalizes_raw_response_usage(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    records = []
+    for pair_number in range(1, 4):
+        for arm, interventions, input_tokens, output_tokens in (
+            ("baseline", 1, 100, 10),
+            ("candidate", 0, 80, 8),
+        ):
+            records.append(
+                validate_receipt(
+                    _receipt(
+                        tmp_path,
+                        f"pair-{pair_number}",
+                        arm,
+                        interventions=interventions,
+                        completion=100,
+                        token_usage={
+                            "prompt_tokens": input_tokens,
+                            "completion_tokens": output_tokens,
+                        },
+                    ),
+                    manifest,
+                )
+            )
+
+    result = compare_records(records, manifest)["token_usage_comparison"]
+
+    assert result["status"] == "measured"
+    assert result["baseline_median"] == {"input_tokens": 100, "output_tokens": 10, "total_tokens": 110}
+    assert result["candidate_median"] == {"input_tokens": 80, "output_tokens": 8, "total_tokens": 88}
+
+
 def test_compare_records_does_not_zero_fill_missing_cache_counts(tmp_path: Path) -> None:
     manifest = _manifest(tmp_path)
     records = []

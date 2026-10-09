@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import sqlite3
 from typing import Any
@@ -65,23 +66,25 @@ def observe_usage(
             select timestamp, provider, model, connectionId, status,
                    json_extract(data, '$.providerRequest.client_metadata.session_id')
             from requestDetails
-            where timestamp >= ? and timestamp <= ?
-              and provider = 'codex'
+            where provider = 'codex'
               and (? is null or connectionId = ?)
             order by timestamp
             """,
-            (start, end, connection_id, connection_id),
+            (connection_id, connection_id),
         ).fetchall()
         requests: list[dict[str, Any]] = []
         session_ids: set[str] = set()
         for timestamp, provider, model, row_connection, status, row_session in request_rows:
+            row_at = _timestamp(timestamp)
+            if not start_at <= row_at <= end_at:
+                continue
             if row_session:
                 session_ids.add(row_session)
             if row_session != session_id:
                 continue
             requests.append(
                 {
-                    "timestamp": timestamp,
+                    "timestamp": row_at.isoformat(),
                     "provider": provider,
                     "model": model,
                     "connection_id": row_connection,
@@ -94,27 +97,30 @@ def observe_usage(
             select timestamp, provider, model, connectionId, endpoint,
                    promptTokens, completionTokens, cost, status
             from usageHistory
-            where timestamp >= ? and timestamp <= ?
-              and provider = 'codex'
+            where provider = 'codex'
               and (? is null or connectionId = ?)
             order by timestamp
             """,
-            (start, end, connection_id, connection_id),
+            (connection_id, connection_id),
         ).fetchall()
-        usage = [
-            {
-                "timestamp": row[0],
-                "provider": row[1],
-                "model": row[2],
-                "connection_id": row[3],
-                "endpoint": row[4],
-                "input_tokens": row[5],
-                "output_tokens": row[6],
-                "cost": row[7],
-                "status": row[8],
-            }
-            for row in usage_rows
-        ]
+        usage = []
+        for row in usage_rows:
+            row_at = _timestamp(row[0])
+            if not start_at <= row_at <= end_at:
+                continue
+            usage.append(
+                {
+                    "timestamp": row_at.isoformat(),
+                    "provider": row[1],
+                    "model": row[2],
+                    "connection_id": row[3],
+                    "endpoint": row[4],
+                    "input_tokens": row[5],
+                    "output_tokens": row[6],
+                    "cost": row[7],
+                    "status": row[8],
+                }
+            )
         if session_ids != {session_id}:
             if not requests:
                 return _result(
@@ -164,7 +170,12 @@ def observe_usage(
                 return _result("inconclusive", "request_not_successful", request_count=len(requests), matched_count=len(matched))
             if any(not isinstance(row[field], int) or isinstance(row[field], bool) or row[field] < 0 for field in ("input_tokens", "output_tokens")):
                 return _result("inconclusive", "invalid_token_counts", request_count=len(requests), matched_count=len(matched))
-            if not isinstance(row["cost"], (int, float)) or isinstance(row["cost"], bool) or row["cost"] < 0:
+            if (
+                not isinstance(row["cost"], (int, float))
+                or isinstance(row["cost"], bool)
+                or row["cost"] < 0
+                or (isinstance(row["cost"], float) and not math.isfinite(row["cost"]))
+            ):
                 return _result("inconclusive", "invalid_cost", request_count=len(requests), matched_count=len(matched))
             matched.append(row)
 

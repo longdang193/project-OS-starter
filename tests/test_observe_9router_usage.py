@@ -76,6 +76,49 @@ def test_observer_matches_session_and_aggregates_cost(tmp_path: Path) -> None:
     assert result["cost"] == 0.44
 
 
+def test_observer_normalizes_timestamp_formats_before_joining(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "update requestDetails set timestamp = ? where id = ?",
+        ("2026-10-09T16:24:50+02:00", "request-0"),
+    )
+    connection.commit()
+    connection.close()
+
+    result = observe_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        session_id="session-1",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "matched"
+    assert result["request_count"] == 2
+
+
+def test_observer_rejects_non_finite_cost(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+    connection = sqlite3.connect(database)
+    connection.execute("update usageHistory set cost = ? where id = 0", (float("inf"),))
+    connection.commit()
+    connection.close()
+
+    result = observe_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        session_id="session-1",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "inconclusive"
+    assert result["reason"] == "invalid_cost"
+
+
 def test_observer_rejects_overlapping_sessions(tmp_path: Path) -> None:
     database = tmp_path / "data.sqlite"
     _database(database, other_session=True)
