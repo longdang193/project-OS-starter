@@ -55,6 +55,30 @@ def _confirmed_task_result(status: str = "completed") -> dict[str, object]:
     return {"state": "confirmed", "status": status}
 
 
+def test_secretary_runtime_binding_requires_all_identity_fields() -> None:
+    binding = LAUNCHER._normalize_secretary_runtime_binding(
+        task_id="task-1",
+        plan_revision="plan-1",
+        attempt_id="attempt-1",
+        run_id="run-1",
+    )
+
+    assert binding == {
+        "task_id": "task-1",
+        "plan_revision": "plan-1",
+        "attempt_id": "attempt-1",
+        "run_id": "run-1",
+    }
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="all four"):
+        LAUNCHER._normalize_secretary_runtime_binding(
+            task_id="task-1",
+            plan_revision="plan-1",
+            attempt_id=None,
+            run_id="run-1",
+        )
+
+
 def test_deepagents_classification_ignores_pane_failure_after_structured_success() -> None:
     result = LAUNCHER._classify_deepagents_outcome(
         delivery={"state": "delivered"},
@@ -112,6 +136,30 @@ def test_deepagents_classification_rejects_wrapper_completion_without_task_proof
         task_result_evidence={
             "state": "confirmed",
             "producer": "dcode-project",
+            "status": "completed",
+            "checkpoint": None,
+            "verification": {"references": []},
+        },
+    )
+
+    assert result["task_result"]["state"] == "unverified"
+    assert result["failure_kind"] == "task_result_unverified"
+    assert result["launcher_exit_code"] == 2
+
+
+def test_deepagents_classification_rejects_worker_completion_without_task_proof() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered"},
+        observation={
+            "state": "completed",
+            "report_present": False,
+            "observation_error": None,
+        },
+        receipt=_confirmed_success_receipt(),
+        fallback_failure_kind=None,
+        task_result_evidence={
+            "state": "confirmed",
+            "producer": "deepagents-worker",
             "status": "completed",
             "checkpoint": None,
             "verification": {"references": []},

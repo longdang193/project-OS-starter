@@ -29,6 +29,10 @@ jobs:
           tests/test_validate_planning_lifecycle.py
           tests/test_validate_repo_contracts.py
           tests/test_validate_agent_runtime_drift.py
+          tests/test_secretary_evidence.py
+          tests/test_secretary_receipts.py
+          tests/test_secretary_live_runtime.py
+          tests/test_secretary_live_pilot.py
       - name: Check guided story projections
         if: github.event_name == 'pull_request'
         shell: bash

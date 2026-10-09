@@ -1,141 +1,195 @@
-"""Validation and sanitization for live Secretary receipts."""
-
 from __future__ import annotations
 
-import hashlib
+from datetime import datetime
 import json
+import re
 from typing import Any, Mapping
 
 
-LIVE_RECEIPT_SCHEMA = "project-os.secretary-live-receipt.v1"
-READY = "READY"
-BLOCKED_CAPABILITY = "BLOCKED_CAPABILITY"
-_STATUSES = {READY, BLOCKED_CAPABILITY}
-_SENSITIVE_KEYS = {
-    "api_key",
-    "auth",
-    "authorization",
-    "credential",
-    "error",
-    "password",
-    "prompt",
-    "raw_transport_body",
-    "secret",
-    "token",
+SECRETARY_PROVIDER = "9router"
+SOURCE_PRODUCERS = {
+    "launch": "herdr_main_launcher",
+    "secretary": "secretary_live_runtime",
+    "task_result": "dcode-project",
+    "settlement": "project_os_runtime.attempt",
+    "acceptance": "cos",
 }
-_REQUIRED_FIELDS = (
-    "schema",
-    "status",
+SOURCE_PROOF_FIELDS = ("source_ref", "source_digest")
+REQUIRED_BINDINGS = (
+    "pair_id",
+    "arm",
+    "run_id",
+    "attempt_id",
     "task_id",
     "plan_revision",
-    "attempt_id",
-    "run_id",
-    "provider",
-    "model",
-    "timestamps",
-    "completion",
-    "provenance",
-    "metrics",
-    "outcomes",
+    "repository_identity",
+    "plan_identity",
+    "git_revision",
+    "worktree",
+    "workstream",
+    "checkpoint",
+)
+REQUIRED_TIMESTAMP_KEYS = (
+    "run_started",
+    "cos_entry",
+    "secretary_entry",
+    "worker_entry",
+    "publication",
+    "settlement",
+    "acceptance",
+    "secretary_exit",
+    "cos_exit",
+    "run_finished",
+)
+REQUIRED_METRIC_KEYS = (
+    "cos_turns",
+    "secretary_turns",
+    "human_interventions",
+    "publication_success",
+    "settlement_proven",
+    "acceptance_decision",
+    "token_usage",
+    "cost",
+)
+_SENSITIVE_KEY = re.compile(
+    r"(?:^|[_-])(?:authorization(?:[_-]headers?)?|api[_-]?keys?|passwords?|secrets?|cookies?|credentials?|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))$",
+    re.IGNORECASE,
+)
+_SENSITIVE_VALUE = re.compile(
+    r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))",
+    re.IGNORECASE,
 )
 
 
 class ReceiptValidationError(ValueError):
-    """Raised when a receipt cannot prove live, bound runtime evidence."""
+    pass
 
 
-def _required_string(payload: Mapping[str, Any], name: str) -> str:
-    value = payload.get(name)
+def _text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ReceiptValidationError(f"receipt {name} invalid")
+        raise ReceiptValidationError(f"{label} must be non-empty text")
     return value.strip()
 
 
-def _is_sensitive(key: str) -> bool:
-    lowered = key.casefold()
-    return lowered in _SENSITIVE_KEYS or lowered.endswith(("_secret", "_credential", "_password"))
+def _timestamp(value: object, label: str) -> datetime | None:
+    if value is None:
+        return None
+    text = _text(value, label).replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ReceiptValidationError(f"{label} must be ISO-8601") from exc
 
 
-def sanitize_receipt(value: Any) -> Any:
+def _reject_sensitive(value: object, path: str = "receipt") -> None:
     if isinstance(value, Mapping):
-        return {
-            str(key): sanitize_receipt(item)
-            for key, item in value.items()
-            if not _is_sensitive(str(key))
-        }
-    if isinstance(value, list):
-        return [sanitize_receipt(item) for item in value]
-    if isinstance(value, tuple):
-        return [sanitize_receipt(item) for item in value]
-    return value
+        for key, child in value.items():
+            key_text = str(key)
+            if _SENSITIVE_KEY.search(key_text):
+                raise ReceiptValidationError(f"sensitive field present: {path}.{key_text}")
+            _reject_sensitive(child, f"{path}.{key_text}")
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            _reject_sensitive(child, f"{path}[{index}]")
+    elif isinstance(value, str) and _SENSITIVE_VALUE.search(value):
+        raise ReceiptValidationError(f"sensitive value present: {path}")
 
 
-def validate_live_receipt(
-    payload: Mapping[str, Any],
+def build_live_receipt(
     *,
-    expected: Mapping[str, str] | None = None,
+    binding: Mapping[str, Any],
+    runtime: Mapping[str, Any],
+    timestamps: Mapping[str, Any],
+    metrics: Mapping[str, Any],
+    sources: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if not isinstance(payload, Mapping):
+    receipt = {
+        "schema_version": "secretary-live-runtime-receipt-v1",
+        **dict(binding),
+        "provider": runtime.get("provider"),
+        "model": runtime.get("model"),
+        "controller_id": runtime.get("controller_id"),
+        "session_id": runtime.get("session_id"),
+        "timestamps": dict(timestamps),
+        "metrics": dict(metrics),
+        "sources": dict(sources),
+    }
+    return receipt
+
+
+def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(receipt, Mapping):
         raise ReceiptValidationError("receipt must be an object")
-    if any(field not in payload for field in _REQUIRED_FIELDS):
-        raise ReceiptValidationError("receipt required fields missing")
-    if payload.get("schema") != LIVE_RECEIPT_SCHEMA:
-        raise ReceiptValidationError("receipt schema unsupported")
-    status = payload.get("status")
-    if status not in _STATUSES:
-        raise ReceiptValidationError("receipt status invalid")
-    for field in ("task_id", "plan_revision", "attempt_id", "run_id", "provider", "model"):
-        _required_string(payload, field)
-    if expected:
-        for field, value in expected.items():
-            if payload.get(field) != value:
-                raise ReceiptValidationError(f"receipt {field} mismatch")
-    timestamps = payload["timestamps"]
-    if not isinstance(timestamps, Mapping) or not _required_string(timestamps, "entry_at"):
-        raise ReceiptValidationError("receipt timestamps invalid")
-    exit_at = timestamps.get("exit_at")
-    if exit_at is not None and (not isinstance(exit_at, str) or not exit_at.strip()):
-        raise ReceiptValidationError("receipt exit timestamp invalid")
-    completion = payload["completion"]
-    if not isinstance(completion, Mapping) or not isinstance(completion.get("observed"), bool):
-        raise ReceiptValidationError("receipt completion evidence invalid")
-    if status == READY and completion["observed"] is not True:
-        raise ReceiptValidationError("ready receipt lacks observed completion")
-    provenance = payload["provenance"]
-    if not isinstance(provenance, Mapping):
-        raise ReceiptValidationError("receipt provenance invalid")
-    if provenance.get("source_type") != "runtime" or provenance.get("observed") is not True:
-        raise ReceiptValidationError("receipt provenance is not independently observed")
-    _required_string(provenance, "producer")
-    _required_string(provenance, "source_ref")
-    metrics = payload["metrics"]
+    _reject_sensitive(receipt)
+    for field in REQUIRED_BINDINGS:
+        _text(receipt.get(field), field)
+    if receipt.get("provider") != SECRETARY_PROVIDER:
+        raise ReceiptValidationError(f"provider must be {SECRETARY_PROVIDER}")
+    _text(receipt.get("model"), "model")
+    _text(receipt.get("controller_id"), "controller_id")
+    _text(receipt.get("session_id"), "session_id")
+
+    timestamps = receipt.get("timestamps")
+    if not isinstance(timestamps, Mapping):
+        raise ReceiptValidationError("timestamps must be an object")
+    parsed = []
+    for field in REQUIRED_TIMESTAMP_KEYS:
+        parsed_value = _timestamp(timestamps.get(field), f"timestamps.{field}")
+        if parsed_value is None:
+            raise ReceiptValidationError(f"timestamps.{field} is required")
+        parsed.append((field, parsed_value))
+    for (left_name, left), (right_name, right) in zip(parsed, parsed[1:]):
+        if right < left:
+            raise ReceiptValidationError(f"timestamps are not monotonic: {left_name}, {right_name}")
+
+    metrics = receipt.get("metrics")
     if not isinstance(metrics, Mapping):
-        raise ReceiptValidationError("receipt metrics invalid")
-    for name in ("cos_turns", "secretary_turns", "human_interventions"):
-        value = metrics.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise ReceiptValidationError(f"receipt metric {name} invalid")
-    for name in ("token_usage", "cost"):
-        value = metrics.get(name)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
-            raise ReceiptValidationError(f"receipt metric {name} invalid")
-    if not isinstance(payload["outcomes"], Mapping):
-        raise ReceiptValidationError("receipt outcomes invalid")
-    return sanitize_receipt(dict(payload))
+        raise ReceiptValidationError("metrics must be an object")
+    for field in REQUIRED_METRIC_KEYS:
+        if field not in metrics:
+            raise ReceiptValidationError(f"missing metrics.{field}")
+    for field in ("cos_turns", "secretary_turns", "human_interventions"):
+        value = metrics[field]
+        if value != "unknown" and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+            raise ReceiptValidationError(f"metrics.{field} must be non-negative integer or unknown")
+    for field in ("token_usage", "cost"):
+        value = metrics[field]
+        if value != "unknown" and (not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0):
+            raise ReceiptValidationError(f"metrics.{field} must be non-negative number or unknown")
+    if metrics["publication_success"] not in (True, False, "unknown"):
+        raise ReceiptValidationError("metrics.publication_success must be boolean or unknown")
+    if metrics["settlement_proven"] not in (True, False, "unknown"):
+        raise ReceiptValidationError("metrics.settlement_proven must be boolean or unknown")
+    _text(metrics["acceptance_decision"], "metrics.acceptance_decision")
 
+    sources = receipt.get("sources")
+    if not isinstance(sources, Mapping) or set(sources) != set(SOURCE_PRODUCERS):
+        raise ReceiptValidationError("sources must include launch, secretary, task_result, settlement, and acceptance")
+    for name, source in sources.items():
+        if not isinstance(source, Mapping):
+            raise ReceiptValidationError(f"sources.{name} must be an object")
+        if source.get("producer") != SOURCE_PRODUCERS[name]:
+            raise ReceiptValidationError(f"sources.{name}.producer is not authoritative")
+        for field in REQUIRED_BINDINGS + ("provider", "model", "controller_id", "session_id"):
+            _text(source.get(field), f"sources.{name}.{field}")
+            if source[field] != receipt.get(field):
+                raise ReceiptValidationError(f"sources.{name}.{field} mismatch")
+        for field in SOURCE_PROOF_FIELDS:
+            _text(source.get(field), f"sources.{name}.{field}")
+        if not re.fullmatch(r"[0-9a-f]{64}", source["source_digest"]) or set(source["source_digest"]) == {"0"}:
+            raise ReceiptValidationError(f"sources.{name}.source_digest must be SHA-256 hex")
 
-def receipt_digest(payload: Mapping[str, Any]) -> str:
-    sanitized = validate_live_receipt(payload)
-    encoded = json.dumps(sanitized, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    normalized = json.loads(json.dumps(receipt))
+    normalized["valid"] = True
+    normalized["evidence_provenance"] = "live-attributed"
+    return normalized
 
 
 __all__ = [
-    "BLOCKED_CAPABILITY",
-    "LIVE_RECEIPT_SCHEMA",
-    "READY",
+    "REQUIRED_BINDINGS",
+    "REQUIRED_METRIC_KEYS",
+    "REQUIRED_TIMESTAMP_KEYS",
     "ReceiptValidationError",
-    "receipt_digest",
-    "sanitize_receipt",
+    "build_live_receipt",
     "validate_live_receipt",
 ]

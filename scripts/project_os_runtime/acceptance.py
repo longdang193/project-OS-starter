@@ -1,0 +1,289 @@
+"""Native CoS acceptance decisions over existing plan and runtime evidence."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+
+ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
+ACCEPTANCE_AUTHORITY = "cos"
+ELIGIBLE_TASK_STATE = "active"
+
+
+def _missing_text(mapping: Mapping[str, Any], field: str, label: str) -> str | None:
+    value = mapping.get(field)
+    if not isinstance(value, str) or not value.strip():
+        return label
+    return None
+
+
+def _required_bool(mapping: Mapping[str, Any], field: str, label: str) -> tuple[str | None, bool | None]:
+    value = mapping.get(field)
+    if not isinstance(value, bool):
+        return label, None
+    return None, value
+
+
+def evaluate_acceptance(
+    *,
+    controller: Mapping[str, Any],
+    task: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    artifact_conditions: Mapping[str, Any],
+    git: Mapping[str, Any],
+    verification: Mapping[str, Any],
+    settlement: Mapping[str, Any],
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    for mapping, fields in (
+        (controller, (("identity", "controller identity"), ("plan_identity", "controller plan binding"), ("task_id", "controller task binding"))),
+        (task, (("task_id", "task identity"), ("plan_identity", "task plan binding"), ("required_proof", "required proof"), ("evidence", "task evidence reference"))),
+        (git, (("repository_identity", "Git repository binding"), ("plan_identity", "Git plan binding"))),
+    ):
+        for field, label in fields:
+            missing = _missing_text(mapping, field, label)
+            if missing:
+                reasons.append(missing)
+    if controller.get("authority") != ACCEPTANCE_AUTHORITY:
+        reasons.append("CoS acceptance authority")
+    if controller.get("plan_identity") != task.get("plan_identity"):
+        reasons.append("controller and task plan binding mismatch")
+    if git.get("plan_identity") != task.get("plan_identity"):
+        reasons.append("Git and task plan binding mismatch")
+    if controller.get("task_id") != task.get("task_id"):
+        reasons.append("controller and task identity mismatch")
+    required_conditions = task.get("required_conditions")
+    required_condition_ids: set[str] = set()
+    if not isinstance(required_conditions, Mapping) or not required_conditions:
+        reasons.append("required condition set")
+    else:
+        required_condition_ids = {
+            condition_id
+            for condition_id in required_conditions
+            if isinstance(condition_id, str) and condition_id.strip()
+        }
+        if len(required_condition_ids) != len(required_conditions):
+            reasons.append("required condition set")
+
+    if not isinstance(artifact_conditions, Mapping) or any(
+        not isinstance(value, bool) for value in artifact_conditions.values()
+    ):
+        reasons.append("artifact condition type")
+    elif set(artifact_conditions) != required_condition_ids:
+        reasons.append("artifact condition coverage")
+
+    if task.get("state") != ELIGIBLE_TASK_STATE:
+        reasons.append("task state eligibility")
+
+    false_checks: list[str] = []
+    for mapping, fields in (
+        (evidence, (("publication_valid", "Worker publication"), ("task_completed", "task completion"), ("task_identity_matches", "task identity"))),
+        (git, (("head_matches", "Git checkpoint"), ("write_scope_matches", "Git write scope"))),
+        (verification, (("passed", "verification"),)),
+    ):
+        for field, label in fields:
+            missing, value = _required_bool(mapping, field, label)
+            if missing:
+                reasons.append(missing)
+            elif value is False:
+                false_checks.append(label)
+    for field, label in (("settlement_proven", "settlement proof"), ("resource_settled", "resource settlement")):
+        missing, value = _required_bool(settlement, field, label)
+        if missing or value is False:
+            reasons.append(missing or label)
+    if isinstance(artifact_conditions, Mapping):
+        false_checks.extend(
+            f"artifact condition: {name}"
+            for name, value in artifact_conditions.items()
+            if value is False
+        )
+
+    if reasons:
+        decision = "BLOCKED"
+    elif false_checks:
+        decision = "FAIL"
+        reasons = false_checks
+    else:
+        decision = "PASS"
+    current_state = task.get("state")
+    task_transition = {
+        "authorized": decision == "PASS",
+        "current_state": current_state,
+        "next_state": "completed" if decision == "PASS" else current_state,
+    }
+    acceptance_proof = {
+        "task_id": task.get("task_id"),
+        "plan_identity": task.get("plan_identity"),
+        "task_state": current_state,
+        "required_conditions": dict(required_conditions) if isinstance(required_conditions, Mapping) else {},
+        "artifact_conditions": dict(artifact_conditions) if isinstance(artifact_conditions, Mapping) else {},
+        "freshness": {
+            "head_matches": git.get("head_matches"),
+            "write_scope_matches": git.get("write_scope_matches"),
+        },
+        "git": {
+            "repository_identity": git.get("repository_identity"),
+            "plan_identity": git.get("plan_identity"),
+        },
+        "settlement": {
+            "settlement_proven": settlement.get("settlement_proven"),
+            "resource_settled": settlement.get("resource_settled"),
+        },
+    }
+    return {
+        "decision": decision,
+        "reasons": reasons or ["acceptance criteria satisfied"],
+        "controller": {
+            "identity": controller.get("identity"),
+            "authority": controller.get("authority"),
+            "plan_identity": controller.get("plan_identity"),
+            "task_id": controller.get("task_id"),
+        },
+        "task": {
+            "task_id": task.get("task_id"),
+            "plan_identity": task.get("plan_identity"),
+        },
+        "task_transition": task_transition,
+        "acceptance_proof": acceptance_proof,
+    }
+
+
+def authorize_dependent_transition(
+    decision: Mapping[str, Any],
+    *,
+    completed_task_id: str,
+    dependent_task: Mapping[str, Any],
+    dependency_states: Mapping[str, str],
+) -> dict[str, Any]:
+    current_state = dependent_task.get("state")
+    dependencies = dependent_task.get("dependencies")
+    if not isinstance(dependencies, Sequence) or isinstance(dependencies, (str, bytes)):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "dependent task dependencies unavailable",
+        }
+    if decision.get("decision") != "PASS":
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance did not pass",
+        }
+    controller = decision.get("controller")
+    accepted_task = decision.get("task")
+    task_transition = decision.get("task_transition")
+    proof = decision.get("acceptance_proof")
+    if not all(isinstance(value, Mapping) for value in (controller, accepted_task, task_transition, proof)):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
+        }
+    if controller.get("authority") != ACCEPTANCE_AUTHORITY or _missing_text(controller, "identity", "controller identity") is not None:
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
+        }
+    accepted_task_id = accepted_task.get("task_id") if isinstance(accepted_task, Mapping) else None
+    if accepted_task_id != completed_task_id:
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "accepted task does not match completed task",
+        }
+    accepted_plan_identity = accepted_task.get("plan_identity") if isinstance(accepted_task, Mapping) else None
+    dependent_plan_identity = dependent_task.get("plan_identity")
+    if (
+        not isinstance(accepted_plan_identity, str)
+        or not accepted_plan_identity.strip()
+        or not isinstance(dependent_plan_identity, str)
+        or not dependent_plan_identity.strip()
+        or accepted_plan_identity != dependent_plan_identity
+    ):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "accepted and dependent task plan binding mismatch",
+        }
+    if (
+        task_transition.get("authorized") is not True
+        or task_transition.get("current_state") != ELIGIBLE_TASK_STATE
+        or task_transition.get("next_state") != "completed"
+        or proof.get("task_id") != accepted_task_id
+        or proof.get("plan_identity") != accepted_plan_identity
+        or proof.get("task_state") != ELIGIBLE_TASK_STATE
+    ):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
+        }
+    required_conditions = proof.get("required_conditions")
+    artifact_conditions = proof.get("artifact_conditions")
+    freshness = proof.get("freshness")
+    settlement = proof.get("settlement")
+    if (
+        not isinstance(required_conditions, Mapping)
+        or not required_conditions
+        or not isinstance(artifact_conditions, Mapping)
+        or set(artifact_conditions) != set(required_conditions)
+        or any(value is not True for value in artifact_conditions.values())
+        or not isinstance(freshness, Mapping)
+        or freshness.get("head_matches") is not True
+        or freshness.get("write_scope_matches") is not True
+        or not isinstance(settlement, Mapping)
+        or settlement.get("settlement_proven") is not True
+        or settlement.get("resource_settled") is not True
+    ):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "acceptance decision incomplete",
+        }
+    if completed_task_id not in dependencies:
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "accepted task is not a dependency",
+        }
+    if any(dependency_states.get(str(task_id)) != "completed" for task_id in dependencies):
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "dependent prerequisites incomplete",
+        }
+    if current_state != "pending":
+        return {
+            "authorized": False,
+            "current_state": current_state,
+            "next_state": current_state,
+            "reason": "dependent task is not pending",
+        }
+    return {
+        "authorized": True,
+        "task_id": dependent_task.get("task_id"),
+        "plan_identity": dependent_task.get("plan_identity"),
+        "current_state": current_state,
+        "next_state": "active",
+        "reason": "accepted dependency permits advancement",
+    }
+
+
+__all__ = [
+    "ACCEPTANCE_AUTHORITY",
+    "ACCEPTANCE_DECISIONS",
+    "authorize_dependent_transition",
+    "evaluate_acceptance",
+]

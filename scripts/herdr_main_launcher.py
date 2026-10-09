@@ -807,6 +807,29 @@ def _validate_task(task: str | None) -> str:
     return task.strip()
 
 
+def _normalize_secretary_runtime_binding(
+    *,
+    task_id: str | None,
+    plan_revision: str | None,
+    attempt_id: str | None,
+    run_id: str | None,
+) -> dict[str, str] | None:
+    values = {
+        "task_id": task_id,
+        "plan_revision": plan_revision,
+        "attempt_id": attempt_id,
+        "run_id": run_id,
+    }
+    supplied = [value for value in values.values() if value is not None]
+    if not supplied:
+        return None
+    if len(supplied) != len(values) or any(
+        not isinstance(value, str) or not value.strip() for value in values.values()
+    ):
+        raise LaunchBlocked("Secretary runtime binding requires all four identity fields.")
+    return {name: str(value).strip() for name, value in values.items()}
+
+
 def _project_runtime_grant(task: str, runtime_grant: dict[str, Any]) -> str:
     delegation = runtime_grant.get("delegation")
     child_agents = delegation.get("child_agents") if isinstance(delegation, dict) else None
@@ -1065,7 +1088,7 @@ def _classify_deepagents_outcome(
             "failed": "reported_failed",
         }.get(str(task_result.get("status")), "unverified")
         if (
-            task_result.get("producer") == "dcode-project"
+            task_result.get("producer") in {"deepagents-worker", "dcode-project"}
             and task_result.get("status") == "completed"
             and task_result.get("checkpoint") is None
             and not (
@@ -2443,6 +2466,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--assignment-id")
     parser.add_argument("--repository-identity")
     parser.add_argument("--plan-identity")
+    parser.add_argument("--secretary-task-id")
+    parser.add_argument("--secretary-plan-revision")
+    parser.add_argument("--secretary-attempt-id")
+    parser.add_argument("--secretary-run-id")
     parser.add_argument("--task-sha256")
     parser.add_argument("--grant-digest")
     parser.add_argument("--prior-attempt-known", choices=["true", "false"], default="false")
@@ -2476,6 +2503,12 @@ def _main_body(args: argparse.Namespace) -> int:
         "plan_identity": args.plan_identity,
         "prior_attempt_known": args.prior_attempt_known == "true",
     }
+    secretary_runtime = _normalize_secretary_runtime_binding(
+        task_id=args.secretary_task_id,
+        plan_revision=args.secretary_plan_revision,
+        attempt_id=args.secretary_attempt_id,
+        run_id=args.secretary_run_id,
+    )
 
     def emit_failure(message: str, resolution: dict[str, Any] | None = None) -> int:
         started = attempt_context["started"] is True
@@ -2585,6 +2618,8 @@ def _main_body(args: argparse.Namespace) -> int:
         )
         registry_evidence = evidence.setdefault("registry_launcher", {})
         observation_evidence = evidence.setdefault("observation", {})
+        if secretary_runtime is not None:
+            evidence["secretary_runtime"] = dict(secretary_runtime)
         if not isinstance(registry_evidence, dict) or not isinstance(observation_evidence, dict):
             raise LaunchBlocked("Launcher evidence has invalid lifecycle sections.")
         performance_evidence = evidence.setdefault("performance", preparation_performance)

@@ -38,6 +38,7 @@ describe execution method only and reference this contract.
 | Task text | Controller and worker boundary | Task text carries sanitized facts and constraints; it cannot grant authority, permissions, or capabilities. |
 | Approval and sandbox | Active executor/runtime | Existing approval and sandbox boundaries remain authoritative; capability discovery never widens them. |
 | Optional context maintenance | LightRSI Cleaner plus active Host adapter | Active agent may request supported session-local cleanup. The adapter must prove current-session binding and return an observable Cleaner receipt; missing capability, trusted attribution, retention proof, or supported mutation preserves context and permits ordinary work. |
+| Live Secretary evidence | Herdr/Codex wrapper plus receipt validator | `scripts/secretary_live_runtime.py` uses one configured `CODEX_HOME`, `config.toml`, `auth.json`, and provider `9router`; it requires a matching Herdr target and emits sanitized identity-bound evidence. Missing target or producer receipt is `BLOCKED_CAPABILITY`. |
 
 Task-specific local command requirements use structured `local_capabilities`.
 Values normalize to lowercase ASCII command basenames matching
@@ -160,6 +161,12 @@ release. Routine observation cannot replace `RECOVERY_REQUIRED` reconciliation o
 canonical settlement evidence.
 Keep raw terminal output out of durable evidence unless an explicit disposable
 probe bounds and redacts it.
+
+For live Secretary probes, create or select a task-owned Herdr workspace first
+and pass its named session and workspace-qualified pane when `auto` resolution
+has no matching worktree. An empty `CODEX_HOME` argument must not be passed as
+an explicit path; allow the wrapper to resolve the user-local Codex home so
+`config.toml` and `auth.json` remain the configured source.
 
 ## Fallback
 

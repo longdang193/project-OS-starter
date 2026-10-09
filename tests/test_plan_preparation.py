@@ -1,26 +1,39 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 import textwrap
 import pytest
 
 from scripts import herdr_parallel_dispatch as dispatcher
+from scripts.project_os_runtime import plan_preparation as plan_preparation_module
 from scripts.project_os_runtime.plan_preparation import (
     load_plan,
+    apply_accepted_plan_transitions,
+    apply_plan_transitions,
     parse_plan,
     prepare_lane_inputs,
     prepare_plan_lanes,
     prepare_task,
 )
+from scripts.project_os_runtime.acceptance import (
+    authorize_dependent_transition,
+    evaluate_acceptance,
+)
 from scripts.project_os_runtime.lane import prepare_lane
 from scripts.planning_dependencies import parse_dependency_field, validate_dependency_graph
 
 
-PLAN = """# Plan
+PLAN = """---
+name: plan-1
+---
+
+# Plan
 
 ## Goal
 Reduce repeated coordination.
@@ -94,6 +107,298 @@ def test_parse_plan_parses_three_named_dependencies() -> None:
     plan = PLAN.replace("Tasks 1-3", "Task 1, Task 2, Task 3")
 
     assert parse_plan(plan).tasks["Task 4"].dependencies == ("Task 1", "Task 2", "Task 3")
+
+
+def test_apply_plan_transitions_updates_source_and_dependent_atomically(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan = plan.replace("| Task 2 | `completed` |", "| Task 2 | `pending` |")
+    plan_path.write_text(plan, encoding="utf-8")
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+
+    result = apply_plan_transitions(
+        plan_path,
+        [
+            {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
+            {"task_id": "Task 2", "expected_state": "pending", "next_state": "active"},
+        ],
+        expected_revision=revision,
+    )
+
+    assert result["authorized"] is True
+    graph = load_plan(plan_path)
+    assert graph.tasks["Task 1"].state == "completed"
+    assert graph.tasks["Task 2"].state == "active"
+    assert prepare_task(graph, "Task 2").execution_eligible is True
+
+
+def test_apply_plan_transitions_rejects_stale_revision_without_write(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(PLAN, encoding="utf-8")
+    original = plan_path.read_text(encoding="utf-8")
+
+    result = apply_plan_transitions(
+        plan_path,
+        [{"task_id": "Task 3", "expected_state": "pending", "next_state": "active"}],
+        expected_revision="stale",
+    )
+
+    assert result["authorized"] is False
+    assert result["reason"] == "plan revision changed"
+    assert plan_path.read_text(encoding="utf-8") == original
+
+
+def test_apply_accepted_plan_transitions_requires_complete_cos_decision(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |").replace(
+        "| Task 2 | `completed` |", "| Task 2 | `pending` |"
+    )
+    plan_path.write_text(plan, encoding="utf-8")
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+
+    result = apply_accepted_plan_transitions(
+        plan_path,
+        {"decision": "PASS"},
+        [
+            {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
+        ],
+        expected_revision=revision,
+    )
+
+    assert result["authorized"] is False
+    assert result["reason"] == "acceptance decision incomplete"
+    assert plan_path.read_text(encoding="utf-8") == plan
+
+
+def test_apply_accepted_plan_transitions_rejects_tampered_proof(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan_path.write_text(plan, encoding="utf-8")
+    inputs = {
+        "controller": {
+            "identity": "native-cos",
+            "authority": "cos",
+            "plan_identity": "plan-1",
+            "task_id": "Task 1",
+        },
+        "task": {
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "required_proof": "artifact proof",
+            "required_conditions": {"required artifact exists": "artifact proof"},
+            "evidence": "evidence-1",
+            "state": "active",
+        },
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"required artifact exists": True},
+        "git": {
+            "repository_identity": "repo",
+            "plan_identity": "plan-1",
+            "head_matches": True,
+            "write_scope_matches": True,
+        },
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    decision["controller"]["identity"] = ""
+    decision["task"]["task_id"] = "Task 99"
+    decision["acceptance_proof"]["task_state"] = "blocked"
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+
+    result = apply_accepted_plan_transitions(
+        plan_path,
+        decision,
+        [{"task_id": "Task 1", "expected_state": "active", "next_state": "completed"}],
+        expected_revision=revision,
+    )
+
+    assert result["authorized"] is False
+    assert result["reason"] == "acceptance decision incomplete"
+    assert plan_path.read_text(encoding="utf-8") == plan
+
+
+def test_apply_accepted_plan_transitions_rejects_unapproved_batch_task(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan_path.write_text(plan, encoding="utf-8")
+    inputs = {
+        "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
+        "task": {
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "required_proof": "artifact proof",
+            "required_conditions": {"required artifact exists": "artifact proof"},
+            "evidence": "evidence-1",
+            "state": "active",
+        },
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"required artifact exists": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+
+    result = apply_accepted_plan_transitions(
+        plan_path,
+        decision,
+        [
+            {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
+            {"task_id": "Task 3", "expected_state": "pending", "next_state": "completed"},
+        ],
+        expected_revision=revision,
+    )
+
+    assert result["authorized"] is False
+    assert result["reason"] == "acceptance transition mismatch"
+    assert plan_path.read_text(encoding="utf-8") == plan
+
+
+def test_apply_accepted_plan_transitions_rejects_cross_plan_replay(tmp_path: Path) -> None:
+    plan_a = PLAN.replace("name: plan-1", "name: plan-a").replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan_b = PLAN.replace("name: plan-1", "name: plan-b").replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan_path = tmp_path / "plan-b.md"
+    plan_path.write_text(plan_b, encoding="utf-8")
+    inputs = {
+        "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-a", "task_id": "Task 1"},
+        "task": {
+            "task_id": "Task 1",
+            "plan_identity": "plan-a",
+            "required_proof": "artifact proof",
+            "required_conditions": {"required artifact exists": "artifact proof"},
+            "evidence": "evidence-1",
+            "state": "active",
+        },
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"required artifact exists": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-a", "head_matches": True, "write_scope_matches": True},
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    original = plan_path.read_text(encoding="utf-8")
+
+    result = apply_accepted_plan_transitions(
+        plan_path,
+        decision,
+        [{"task_id": "Task 1", "expected_state": "active", "next_state": "completed"}],
+        expected_revision=hashlib.sha256(original.encode("utf-8")).hexdigest(),
+    )
+
+    assert result["authorized"] is False
+    assert result["reason"] == "acceptance decision incomplete"
+    assert plan_path.read_text(encoding="utf-8") == original
+
+
+def test_apply_plan_transitions_waits_for_cooperating_writer_lock(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(PLAN, encoding="utf-8")
+    revision = hashlib.sha256(PLAN.encode("utf-8")).hexdigest()
+    result_holder: list[dict[str, object]] = []
+
+    def write_transition() -> None:
+        result_holder.append(
+            apply_plan_transitions(
+                plan_path,
+                [{"task_id": "Task 3", "expected_state": "pending", "next_state": "active"}],
+                expected_revision=revision,
+            )
+        )
+
+    with plan_preparation_module._plan_write_lock(plan_path):
+        writer = threading.Thread(target=write_transition)
+        writer.start()
+        time.sleep(0.05)
+        assert result_holder == []
+    writer.join(timeout=2)
+
+    assert len(result_holder) == 1
+    assert result_holder[0]["authorized"] is True
+    assert result_holder[0]["revision"] == revision
+    assert result_holder[0]["transitions"] == [{"task_id": "Task 3", "next_state": "active"}]
+    assert load_plan(plan_path).tasks["Task 3"].state == "active"
+
+
+def test_native_cos_negative_to_positive_plan_cycle(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan = plan.replace("| Task 2 | `completed` |", "| Task 2 | `pending` |")
+    plan_path.write_text(plan, encoding="utf-8")
+
+    inputs = {
+        "controller": {
+            "identity": "native-cos",
+            "authority": "cos",
+            "plan_identity": "plan-1",
+            "task_id": "Task 1",
+        },
+        "task": {
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "required_proof": "artifact proof",
+            "required_conditions": {"required artifact exists": "artifact proof"},
+            "evidence": "evidence-1",
+            "state": "active",
+        },
+        "evidence": {
+            "publication_valid": True,
+            "task_completed": True,
+            "task_identity_matches": True,
+        },
+        "artifact_conditions": {"required artifact exists": False},
+        "git": {
+            "repository_identity": "repo",
+            "plan_identity": "plan-1",
+            "head_matches": True,
+            "write_scope_matches": True,
+        },
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    rejected = evaluate_acceptance(**inputs)
+    assert rejected["decision"] == "FAIL"
+    assert plan_path.read_text(encoding="utf-8") == plan
+
+    inputs["artifact_conditions"] = {"required artifact exists": True}
+    accepted = evaluate_acceptance(**inputs)
+    dependent = authorize_dependent_transition(
+        accepted,
+        completed_task_id="Task 1",
+        dependent_task={
+            "task_id": "Task 2",
+            "plan_identity": "plan-1",
+            "state": "pending",
+            "dependencies": ["Task 1"],
+        },
+        dependency_states={"Task 1": "completed"},
+    )
+    assert accepted["decision"] == "PASS"
+    assert dependent["authorized"] is True
+
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+    applied = apply_accepted_plan_transitions(
+        plan_path,
+        accepted,
+        [
+            {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
+            {"task_id": "Task 2", "expected_state": "pending", "next_state": dependent["next_state"]},
+        ],
+        dependent_transition=dependent,
+        expected_revision=revision,
+    )
+    assert applied["authorized"] is True
+    assert load_plan(plan_path).tasks["Task 1"].state == "completed"
+    assert load_plan(plan_path).tasks["Task 2"].state == "active"
+
+    replay = apply_plan_transitions(
+        plan_path,
+        [{"task_id": "Task 1", "expected_state": "active", "next_state": "completed"}],
+        expected_revision=revision,
+    )
+    assert replay["authorized"] is False
+    assert replay["reason"] == "plan revision changed"
 
 
 def test_parse_plan_rejects_invalid_graph() -> None:

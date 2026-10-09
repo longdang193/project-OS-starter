@@ -105,12 +105,23 @@ class LaunchPreflight:
     def blockers(self) -> tuple[LaunchCheck, ...]:
         return tuple(check for check in self.checks if check.status == "BLOCKED")
 
+    @property
+    def binding_status(self) -> str:
+        required = tuple(check for check in self.checks if check.status != "NOT_APPLICABLE")
+        if any(check.status == "BLOCKED" for check in required):
+            return "BLOCKED"
+        if any(check.status == "NOT_EVALUATED" for check in required):
+            return "UNVERIFIED"
+        return "PASS"
+
     def to_dict(self) -> dict[str, object]:
         return {
             "lane_id": self.lane["lane_id"],
+            "scope": "plan_binding",
+            "binding_status": self.binding_status,
             "checks": [check.to_dict() for check in self.checks],
             "blockers": [check.to_dict() for check in self.blockers],
-            "ready": not self.blockers,
+            "ready": self.binding_status == "PASS",
         }
 
 
@@ -139,30 +150,32 @@ def _reject(lane: Mapping[str, Any], reason: str) -> dict[str, str]:
     return {"lane_id": str(lane.get("lane_id", "<missing>")), "reason": reason}
 
 
+def _is_coordinated_lane(lane: Mapping[str, Any]) -> bool:
+    return any(lane.get(name) is not None for name in ("plan_revision", "plan_source", "execution_binding_digest"))
+
+
 def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
     """Collect launch-bound checks without duplicating PreparedLane facts."""
     checks: list[LaunchCheck] = []
     binding_digest = lane.get("execution_binding_digest")
     if binding_digest is None:
         checks.append(LaunchCheck("execution_binding", "NOT_EVALUATED", code="not_supplied"))
-        return LaunchPreflight(lane, tuple(checks))
     elif binding_digest != _execution_binding_digest(lane):
         checks.append(LaunchCheck("execution_binding", "BLOCKED", code="binding_mismatch", detail="execution_binding_digest does not match selected task binding"))
     else:
         checks.append(LaunchCheck("execution_binding", "PASS"))
 
     worktree = Path(str(lane["worktree"]))
-    if not worktree.is_dir():
+    worktree_available = worktree.is_dir()
+    if not worktree_available:
         checks.append(LaunchCheck("worktree", "BLOCKED", code="worktree_not_found", detail="worktree does not exist"))
-        for name in ("plan_source", "git_base", "prerequisites"):
-            checks.append(LaunchCheck(name, "NOT_EVALUATED", because="worktree_not_found"))
-        return LaunchPreflight(lane, tuple(checks))
-    checks.append(LaunchCheck("worktree", "PASS"))
+    else:
+        checks.append(LaunchCheck("worktree", "PASS"))
 
     plan_source = lane.get("plan_source")
     plan_revision = lane.get("plan_revision")
     if plan_source is None:
-        checks.append(LaunchCheck("plan_source", "NOT_EVALUATED", code="not_supplied"))
+        checks.append(LaunchCheck("plan_source", "NOT_APPLICABLE", code="not_supplied"))
     elif not isinstance(plan_revision, str) or not plan_revision.strip():
         checks.append(LaunchCheck("plan_source", "BLOCKED", code="plan_revision_missing", detail="plan revision is missing for plan source"))
     else:
@@ -177,6 +190,14 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
                 code=None if current_revision == plan_revision else "plan_revision_changed",
                 detail=None if current_revision == plan_revision else "plan revision changed after admission",
             ))
+
+    if not worktree_available:
+        for name in ("git_base", "prerequisites"):
+            if name == "prerequisites" and not lane.get("dependencies"):
+                checks.append(LaunchCheck(name, "NOT_APPLICABLE", because="no_dependencies"))
+            else:
+                checks.append(LaunchCheck(name, "NOT_EVALUATED", because="worktree_not_found"))
+        return LaunchPreflight(lane, tuple(checks))
 
     base_check = subprocess.run(
         ["git", "-C", str(worktree), "merge-base", "--is-ancestor", str(lane["expected_base"]), "HEAD"],
@@ -232,13 +253,15 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
                 prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="artifact_ref_unavailable", detail=f"artifact reference is unavailable: {dependency}"))
                 continue
         prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "PASS"))
-    checks.extend(prerequisite_checks or [LaunchCheck("prerequisites", "NOT_EVALUATED", code="none")])
+    checks.extend(prerequisite_checks or [LaunchCheck("prerequisites", "NOT_APPLICABLE", code="none")])
     return LaunchPreflight(lane, tuple(checks))
 
 
 def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
     """Revalidate plan-bound facts immediately before launch."""
     preflight = launch_preflight(lane)
+    if preflight.binding_status == "UNVERIFIED" and _is_coordinated_lane(lane):
+        raise ValueError("coordinated launch binding evidence is unavailable")
     if preflight.blockers:
         raise ValueError(preflight.blockers[0].detail or preflight.blockers[0].code or "launch preflight blocked")
     return lane
@@ -764,6 +787,20 @@ def run_lane(
             "capacity": "retired",
             "failure_kind": "launch_binding_stale",
         }
+    coordinated = _is_coordinated_lane(lane)
+    if preflight.binding_status == "UNVERIFIED" and coordinated:
+        detail = "coordinated launch binding evidence is unavailable"
+        return {
+            "lane_id": lane_id,
+            "command": [],
+            "exit_code": None,
+            "records": [_tagged(lane_id, "unresolved", {"reason": detail})],
+            "stderr": detail,
+            "preflight": preflight.to_dict(),
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "launch_binding_unverified",
+        }
     if preflight.blockers:
         detail = preflight.blockers[0].detail or preflight.blockers[0].code or "launch preflight blocked"
         return {
@@ -946,6 +983,7 @@ def run_lane(
         "records": records,
         "preparation": parsed["preparation"],
         "assignment": parsed["assignment"],
+        "preflight": preflight.to_dict(),
         "malformed": parsed["malformed"],
         "stdout": stdout,
         "stderr": stderr or "",

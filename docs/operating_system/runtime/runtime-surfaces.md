@@ -88,7 +88,8 @@ resources remain caller-owned through `runtime.json`.
 - Plan plus Git owns workflow truth, authority, dependencies, checkpoints, and acceptance history.
 - CoS owns assignment, continuation, escalation, and acceptance decisions.
 - `scripts/project_os_runtime/` owns lane preparation, admission, capability/evidence semantics, budget containment, settlement proof, lifecycle, and eligibility semantics. `scripts/herdr_attempt_contract.py` remains a compatibility forwarding surface.
-- `prepare_plan_lanes()` admits selected tasks only when their recorded state is `pending` or `active`; `blocked` and `completed` fail before lane construction. Predecessor completion remains a separate structural-readiness fact.
+- `scripts/project_os_runtime/acceptance.py` exposes the native CoS acceptance boundary. `evaluate_acceptance()` derives `PASS`, `FAIL`, or `BLOCKED` from controller identity and authority, plan/task binding, active task eligibility, Worker evidence, the approved task condition set with exact observed coverage, Git checkpoint, verification, and settlement facts. `authorize_dependent_transition()` accepts only a complete internally consistent decision with fresh proof, matching task/plan identity, and completed dependencies; neither function writes plan state or creates a second authority.
+- `prepare_plan_lanes()` admits selected tasks only when their recorded state is `pending` or `active`; `blocked` and `completed` fail before lane construction. `apply_accepted_plan_transitions()` is the canonical CoS mutation boundary: it requires the complete acceptance decision, Git proof, exact accepted transition, and revision-bound batch before delegating to the guarded writer. `apply_plan_transitions()` serializes cooperating writers with a cross-process lock and rejects stale revisions, wrong expected states, unsupported transitions, and incomplete prerequisites. Predecessor completion remains a separate structural-readiness fact.
 - `scripts/herdr_parallel_dispatch.py` owns bounded scheduling, invocation, and event delivery; `scripts/herdr_main_launcher.py` owns Herdr transport and observation.
 - Herdr CLI status is nonzero when any result has unresolved ownership or a non-null `failure_kind`; lifecycle facts such as `unresolved: false` and `capacity: retired` remain unchanged for safely settled failures.
 - `scripts/dcode_project.py` owns worker execution, deadlines, PATH availability, descendants, cleanup, receipts, and same-worktree attempt claims; the shared runtime core owns lifecycle classification and eligibility.
@@ -207,6 +208,14 @@ resources remain caller-owned through `runtime.json`.
   delivery receipts, release state, and deterministic controller identity for
   this contract fake. Released receipts never restore active ownership. Only a
   transport-owned durable journal may claim process-crash recovery.
+- The bounded live Secretary wrapper is `scripts/secretary_live_runtime.py`.
+  It launches through `scripts/herdr_main_launcher.py`, resolves one configured
+  `CODEX_HOME` containing `config.toml` and `auth.json`, requires provider
+  `9router`, and emits sanitized producer-bound receipts. Live launch requires
+  an existing Herdr pane matching the requested worktree; missing target
+  resolution is `BLOCKED_CAPABILITY`, not permission to use fallback transport.
+  Receipt validity does not prove Worker publication, settlement, or CoS
+  acceptance.
 - Secretary event hints use canonical identity `(source, workstream, event_type,
   observed_identity)`. `observed_anchor` identifies canonical evidence and
   optional `source_sequence` orders observations within one source. Coalescing

@@ -1,0 +1,34 @@
+{
+  "arms": [
+    "baseline",
+    "candidate"
+  ],
+  "benefit_min_intervention_reduction": 1,
+  "checkpoint": "3e79803282757041ca0b241d0225efc27882dc805217dc62e724c47abd40800c:Task 4:f8fc7965a8ac6a5947984f0675a0312ec0dbfa9a2bfc549cc819f1f554b0e1a2",
+  "git_revision": "34d6e8d",
+  "max_arm_runs": 10,
+  "max_attempted_pairs": 5,
+  "max_candidate_completion_regression": 0.1,
+  "max_total_wall_clock_minutes": 180,
+  "minimum_valid_pairs": 3,
+  "plan_identity": "secretary-live-evidence-and-transport-readiness-pilot",
+  "plan_revision": "3e79803282757041ca0b241d0225efc27882dc805217dc62e724c47abd40800c",
+  "primary_metric": "human_interventions_per_accepted_workstream",
+  "repository_identity": "project-OS-starter",
+  "schema_version": "secretary-live-pilot-v1",
+  "task_id": "Task 4",
+  "workstream": "cross-workstream-1",
+  "workload_digest": "f8fc7965a8ac6a5947984f0675a0312ec0dbfa9a2bfc549cc819f1f554b0e1a2",
+  "workload": {
+    "dependency": "cross-workstream-1",
+    "task_order": [
+      "Task 4",
+      "dependent task"
+    ],
+    "worker_profile": "frozen from approved runtime binding",
+    "correctness_gate": "publication, settlement, acceptance, no duplicate execution, no unauthorized write",
+    "fresh_worktrees": true,
+    "provider": "9router",
+    "model": "combo-high"
+  }
+}

@@ -1,166 +1,357 @@
-import json
+from __future__ import annotations
+
 from pathlib import Path
+import subprocess
+import sys
+
+import pytest
 
 from scripts.secretary_live_runtime import (
-    _parse_codex_token_usage,
-    _parse_json_object,
-    _trial_metrics,
-    resolve_codex_runtime,
-    run_smoke,
+    SECRETARY_PROVIDER,
+    SecretaryLaunchRequest,
+    _safe_runtime_snapshot,
+    _smoke_receipt,
+    build_launcher_command,
+    sanitize_launcher_result,
+    select_launcher_payload,
 )
 
 
-def test_resolve_codex_runtime_uses_native_home_and_redacts_auth(tmp_path: Path) -> None:
-    (tmp_path / "config.toml").write_text(
-        'model_provider = "9router"\nmodel = "combo-high"\n', encoding="utf-8"
-    )
-    (tmp_path / "auth.json").write_text(
-        json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": "secret"}), encoding="utf-8"
-    )
-    runtime = resolve_codex_runtime(tmp_path)
-    assert runtime["provider"] == "9router"
-    assert runtime["model"] == "combo-high"
-    assert runtime["auth_present"] is True
-    assert "OPENAI_API_KEY" not in json.dumps(runtime)
-
-
-def test_run_smoke_blocks_without_owned_secretary_runtime(tmp_path: Path) -> None:
-    (tmp_path / "config.toml").write_text(
-        'model_provider = "9router"\nmodel = "combo-high"\n', encoding="utf-8"
-    )
-    (tmp_path / "auth.json").write_text('{"auth_mode":"apikey"}', encoding="utf-8")
-    result = run_smoke(
-        task_id="task-1",
-        plan_revision="plan-1",
-        run_id="run-1",
-        attempt_id="attempt-1",
-        codex_home=tmp_path,
-        runner=None,
-    )
-    assert result["status"] == "BLOCKED_CAPABILITY"
-    assert result["provider"] == "9router"
-
-
-def test_run_smoke_blocks_provider_mismatch_without_fallback(tmp_path: Path) -> None:
-    (tmp_path / "config.toml").write_text(
-        'model_provider = "other"\nmodel = "combo-high"\n', encoding="utf-8"
-    )
-    (tmp_path / "auth.json").write_text('{"auth_mode":"apikey"}', encoding="utf-8")
-    result = run_smoke(
-        task_id="task-1",
-        plan_revision="plan-1",
-        run_id="run-1",
-        attempt_id="attempt-1",
-        codex_home=tmp_path,
-        runner=None,
-    )
-    assert result["status"] == "BLOCKED_CAPABILITY"
-    assert result["capability_reason"] == "configured provider is not 9router"
-
-
-def test_runtime_parses_machine_response_and_codex_usage(tmp_path: Path) -> None:
-    events = tmp_path / "events.jsonl"
-    events.write_text(
-        '{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":8}}\n',
-        encoding="utf-8",
-    )
-    assert _parse_json_object('{"publication":"success"}') == {"publication": "success"}
-    assert _parse_codex_token_usage(events) == 20
-
-
-def test_runner_receives_all_runtime_identity_fields(tmp_path: Path) -> None:
-    (tmp_path / "config.toml").write_text(
-        'model_provider = "9router"\nmodel = "combo-high"\n', encoding="utf-8"
-    )
-    (tmp_path / "auth.json").write_text('{"auth_mode":"apikey"}', encoding="utf-8")
-    captured = {}
-
-    def runner(runtime, **identifiers):
-        captured.update(runtime=runtime, identifiers=identifiers)
-        return {
-            "schema": "project-os.secretary-live-receipt.v1",
-            "status": "READY",
-            **identifiers,
-            "provider": runtime["provider"],
-            "model": runtime["model"],
-            "timestamps": {"entry_at": "2026-10-09T10:00:00Z", "exit_at": "2026-10-09T10:00:01Z"},
-            "completion": {"observed": True, "operation": "secretary_smoke"},
-            "provenance": {"source_type": "runtime", "producer": "test", "source_ref": "test", "observed": True},
-            "metrics": {"cos_turns": 1, "secretary_turns": 1, "human_interventions": 0, "token_usage": None, "cost": None},
-            "outcomes": {"publication": "success", "settlement": "observed", "acceptance": "accepted"},
-        }
-
-    result = run_smoke(
-        task_id="task-1",
-        plan_revision="plan-1",
-        run_id="run-1",
-        attempt_id="attempt-1",
-        codex_home=tmp_path,
-        runner=runner,
-    )
-    assert result["status"] == "READY"
-    assert result["metrics"]["cos_turns"] == 1
-    assert captured["identifiers"] == {
+def request(**overrides: object) -> SecretaryLaunchRequest:
+    values: dict[str, object] = {
         "task_id": "task-1",
-        "plan_revision": "plan-1",
-        "run_id": "run-1",
+        "plan_revision": "plan-rev-1",
         "attempt_id": "attempt-1",
+        "run_id": "run-1",
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "git_revision": "581844d",
+        "worktree": Path("C:/worktree"),
+        "expected_base": "581844d",
+        "task": "Read-only Secretary attention probe.",
+        "codex_home": Path("C:/Users/example/.codex"),
     }
+    values.update(overrides)
+    return SecretaryLaunchRequest(**values)
 
 
-def test_baseline_arm_has_no_secretary_turn(tmp_path: Path) -> None:
-    (tmp_path / "config.toml").write_text(
-        'model_provider = "9router"\nmodel = "combo-high"\n', encoding="utf-8"
+def test_launch_request_requires_secretary_provider() -> None:
+    with pytest.raises(ValueError, match="9router"):
+        request(provider="other-provider")
+
+
+def test_launcher_command_binds_ids_and_configured_codex_home() -> None:
+    command = build_launcher_command(request())
+
+    assert "--executor" in command
+    assert command[command.index("--executor") + 1] == "codex"
+    assert "--codex-home" in command
+    assert command[command.index("--codex-home") + 1] == str(Path("C:/Users/example/.codex"))
+    task = command[command.index("--task") + 1]
+    for value in ("task-1", "plan-rev-1", "attempt-1", "run-1"):
+        assert value in task
+    for option, value in (
+        ("--secretary-task-id", "task-1"),
+        ("--secretary-plan-revision", "plan-rev-1"),
+        ("--secretary-attempt-id", "attempt-1"),
+        ("--secretary-run-id", "run-1"),
+    ):
+        assert command[command.index(option) + 1] == value
+    assert "--assignment-id" not in command
+
+
+def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "assignment": {
+                "status": "completed",
+                "attempt_id": "attempt-1",
+                "failure_kind": {"raw_body": "REVIEW_ASSIGNMENT_CANARY"},
+            },
+            "herdr": {"agent_name": {"authorization": "REVIEW_HERDR_CANARY"}},
+            "codex": {"version": ["REVIEW_CODEX_CANARY"]},
+            "secretary_runtime": {"session_id": "Bearer SYNTHETIC_SESSION_CANARY"},
+            "stdout": "Authorization: bearer secret-value",
+            "stderr": "raw response body",
+            "api_key": "secret-value",
+        },
     )
-    (tmp_path / "auth.json").write_text('{"auth_mode":"apikey"}', encoding="utf-8")
 
-    def runner(runtime, **identifiers):
-        return {
-            "schema": "project-os.secretary-live-receipt.v1",
-            "status": "READY",
-            **identifiers,
-            "provider": runtime["provider"],
-            "model": runtime["model"],
-            "timestamps": {"entry_at": "2026-10-09T10:00:00Z", "exit_at": "2026-10-09T10:00:01Z"},
-            "completion": {"observed": True, "operation": "secretary_smoke"},
-            "provenance": {"source_type": "runtime", "producer": "test", "source_ref": "test", "observed": True},
-            "metrics": {"cos_turns": 1, "secretary_turns": 0, "human_interventions": 0, "token_usage": None, "cost": None},
-            "outcomes": {"publication": "success", "settlement": "observed", "acceptance": "accepted"},
-        }
+    assert result["provider"] == SECRETARY_PROVIDER
+    assert result["task_id"] == "task-1"
+    assert result["plan_revision"] == "plan-rev-1"
+    assert result["attempt_id"] == "attempt-1"
+    assert result["run_id"] == "run-1"
+    assert "stdout" not in result
+    assert "stderr" not in result
+    assert "api_key" not in result
+    assert "secret-value" not in str(result)
+    assert "REVIEW_ASSIGNMENT_CANARY" not in str(result)
+    assert "REVIEW_HERDR_CANARY" not in str(result)
+    assert "REVIEW_CODEX_CANARY" not in str(result)
+    assert "SYNTHETIC_SESSION_CANARY" not in str(result)
 
-    result = run_smoke(
-        task_id="task-1",
-        plan_revision="plan-1",
-        run_id="run-1",
-        attempt_id="attempt-1",
-        codex_home=tmp_path,
-        runner=runner,
+
+@pytest.mark.parametrize("session_id", [
+    '{"raw_bodies":"REVIEW_SESSION_CANARY"}',
+    '{"raw_transport_bodies":"REVIEW_SESSION_CANARY"}',
+    '{"rawBody":"REVIEW_SESSION_CANARY"}',
+])
+def test_sanitize_launcher_result_rejects_sensitive_session_payload(session_id: str) -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=1,
+        payload={
+            "herdr": {"session": session_id},
+            "secretary_runtime": {"session_id": session_id},
+        },
     )
-    assert result["metrics"]["secretary_turns"] == 0
+
+    assert "REVIEW_SESSION_CANARY" not in str(result)
 
 
-def test_trial_metrics_always_counts_controller_turn() -> None:
-    assert _trial_metrics(secretary_enabled=False, token_usage=None) == {
-        "cos_turns": 1,
-        "secretary_turns": 0,
-        "human_interventions": 0,
-        "token_usage": None,
-        "cost": None,
+def test_sanitize_launcher_result_preserves_structured_runtime_binding() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "secretary_runtime": {
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+            }
+        },
+    )
+
+    assert result["runtime_identity"]["secretary_runtime"]["run_id"] == "run-1"
+
+
+def test_sanitize_launcher_result_rejects_submission_as_live_execution() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "assignment": {
+                "status": "submitted",
+                "attempt_id": "attempt-1",
+            },
+            "secretary_runtime": {
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+            },
+        },
+    )
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["evidence_provenance"] == "capability-probe"
+    assert result["metrics"]["secretary_turns"] == "unknown"
+
+
+def test_sanitize_launcher_result_rejects_mismatched_observed_binding() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "assignment": {
+                "status": "completed",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {"state": "reported_completed"},
+            },
+            "secretary_runtime": {
+                "observed": True,
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-other",
+                "timestamps": {"run_started": "2026-10-08T10:00:00+00:00"},
+                "metrics": {"secretary_turns": 1},
+            },
+        },
+    )
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["evidence_provenance"] == "capability-probe"
+
+
+def test_sanitize_launcher_result_requires_authoritative_runtime_sources() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        configured_model="gpt-test",
+        payload={
+            "assignment": {
+                "status": "completed",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {"state": "reported_completed"},
+            },
+            "secretary_runtime": {
+                "observed": True,
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+                "repository_identity": "repo/example",
+                "plan_identity": "plan/example",
+                "git_revision": "581844d",
+                "worktree": str(Path("C:/worktree").resolve()),
+                "provider": "9router",
+                "model": "gpt-test",
+                "controller_id": "cos-1",
+                "session_id": "session-1",
+                "timestamps": {"run_started": "2026-10-08T10:00:00+00:00"},
+                "metrics": {"secretary_turns": 1},
+            },
+        },
+    )
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+
+
+def test_sanitize_launcher_result_drops_unapproved_observed_fields() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "secretary_runtime": {
+                "task_id": "task-1",
+                "plan_revision": "plan-rev-1",
+                "attempt_id": "attempt-1",
+                "run_id": "run-1",
+                "observed": True,
+                "timestamps": {"run_started": "2026-10-08T10:00:00+00:00", "credentials": "secret"},
+                "metrics": {"secretary_turns": 1, "raw_body": "secret"},
+            }
+        },
+    )
+
+    assert "credentials" not in str(result)
+    assert "raw_body" not in str(result)
+
+
+def test_safe_runtime_snapshot_drops_untrusted_producer_payload() -> None:
+    snapshot = _safe_runtime_snapshot(
+        {
+            "sources": {
+                "launch": {
+                    "producer": {"authorization": "Bearer SYNTHETIC-REVIEW-CANARY"},
+                }
+            }
+        },
+        {"pair_id": "run-1", "arm": "candidate", "workstream": "secretary-live-runtime", "checkpoint": "plan-rev-1:task-1"},
+    )
+
+    assert "producer" not in snapshot["sources"]["launch"]
+    assert "SYNTHETIC-REVIEW-CANARY" not in str(snapshot)
+
+
+def test_smoke_receipt_preserves_required_source_bindings() -> None:
+    request_value = request()
+    binding = {
+        "pair_id": request_value.run_id,
+        "arm": "candidate",
+        "run_id": request_value.run_id,
+        "attempt_id": request_value.attempt_id,
+        "task_id": request_value.task_id,
+        "plan_revision": request_value.plan_revision,
+        "repository_identity": request_value.repository_identity,
+        "plan_identity": request_value.plan_identity,
+        "git_revision": request_value.git_revision,
+        "worktree": str(request_value.worktree.resolve()),
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request_value.plan_revision}:{request_value.task_id}",
+        "provider": SECRETARY_PROVIDER,
+        "model": "gpt-test",
+        "controller_id": "cos-supervised",
+        "session_id": "session-1",
     }
+    producers = {
+        "launch": "herdr_main_launcher",
+        "secretary": "secretary_live_runtime",
+        "task_result": "dcode-project",
+        "settlement": "project_os_runtime.attempt",
+        "acceptance": "cos",
+    }
+    sources = {
+        name: {"producer": producer, "source_ref": f"runtime://{name}/run-1", "source_digest": "a" * 64, **binding}
+        for name, producer in producers.items()
+    }
+    raw_runtime = {
+        **binding,
+        "observed": True,
+        "timestamps": {
+            "run_started": "2026-10-08T10:00:00+00:00",
+            "cos_entry": "2026-10-08T10:00:01+00:00",
+            "secretary_entry": "2026-10-08T10:00:02+00:00",
+            "worker_entry": "2026-10-08T10:00:03+00:00",
+            "publication": "2026-10-08T10:00:40+00:00",
+            "settlement": "2026-10-08T10:00:50+00:00",
+            "acceptance": "2026-10-08T10:01:00+00:00",
+            "secretary_exit": "2026-10-08T10:01:05+00:00",
+            "cos_exit": "2026-10-08T10:01:08+00:00",
+            "run_finished": "2026-10-08T10:01:10+00:00",
+        },
+        "metrics": {
+            "cos_turns": 0,
+            "secretary_turns": 1,
+            "human_interventions": 0,
+            "publication_success": True,
+            "settlement_proven": True,
+            "acceptance_decision": "PASS",
+            "token_usage": "unknown",
+            "cost": "unknown",
+        },
+        "sources": sources,
+    }
+    expected = {key: binding[key] for key in ("pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision", "repository_identity", "plan_identity", "git_revision", "worktree", "workstream", "checkpoint", "provider", "model", "controller_id", "session_id")}
+    structured = _safe_runtime_snapshot(raw_runtime, expected)
+    receipt = _smoke_receipt(
+        request_value,
+        {
+            "evidence_provenance": "live-attributed",
+            "runtime_identity": {
+                "provider": SECRETARY_PROVIDER,
+                "model": "gpt-test",
+                "controller_id": "cos-supervised",
+                "session_id": "session-1",
+                "secretary_runtime": structured,
+            },
+        },
+    )
+
+    assert receipt["valid"] is True
 
 
-def test_default_runner_converts_missing_herdr_to_blocked(tmp_path: Path, monkeypatch) -> None:
-    (tmp_path / "config.toml").write_text(
-        'model_provider = "9router"\nmodel = "combo-high"\n', encoding="utf-8"
+def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
+    payload = select_launcher_payload(
+        [
+            {
+                "herdr": {"agent_name": "secretary-main", "session": "project-os", "pane": "w4:p1"},
+                "codex": {"version": "codex-cli 0.154.0"},
+                "secretary_runtime": {"run_id": "run-1"},
+            },
+            {"assignment": {"status": "submitted", "attempt_id": "attempt-1"}},
+        ]
     )
-    (tmp_path / "auth.json").write_text('{"auth_mode":"apikey"}', encoding="utf-8")
-    monkeypatch.setattr("scripts.secretary_live_runtime.shutil.which", lambda name: None)
-    result = run_smoke(
-        task_id="task-1",
-        plan_revision="plan-1",
-        run_id="run-1",
-        attempt_id="attempt-1",
-        codex_home=tmp_path,
+
+    assert payload["herdr"]["agent_name"] == "secretary-main"
+    assert payload["secretary_runtime"]["run_id"] == "run-1"
+    assert payload["assignment"]["status"] == "submitted"
+
+
+def test_runtime_script_runs_directly_from_repository_root() -> None:
+    completed = subprocess.run(
+        [sys.executable, "scripts/secretary_live_runtime.py", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    assert result["status"] == "BLOCKED_CAPABILITY"
-    assert result["capability_reason"] == "Herdr or Codex executable unavailable"
+
+    assert completed.returncode == 0
+    assert "smoke" in completed.stdout
