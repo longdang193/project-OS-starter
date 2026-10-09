@@ -1,5 +1,5 @@
 diff --git a/components/adapters/codex/src/proxy-runtime.ts b/components/adapters/codex/src/proxy-runtime.ts
-index 5fec0d2..56d31cc 100644
+index 5fec0d2..5b61a9c 100644
 --- a/components/adapters/codex/src/proxy-runtime.ts
 +++ b/components/adapters/codex/src/proxy-runtime.ts
 @@ -200,6 +200,12 @@ function cloneJsonObject(value: JsonObject): JsonObject {
@@ -58,7 +58,15 @@ index 5fec0d2..56d31cc 100644
              requestId,
              inboundAuthorization: authorization,
              lightmem2CacheContractDigest:
-@@ -1931,12 +1947,13 @@ export async function startCodexResponsesProxy(params: {
+@@ -1337,6 +1353,7 @@ export async function startCodexResponsesProxy(params: {
+                 : undefined,
+             stateDir: config.stateDir,
+             signal: requestAbortController.signal,
++            endpointPath: compactRequest ? "/responses/compact" : undefined,
+           }));
+           const attempt = forwardingAttempts.at(-1);
+           if (attempt) attempt.outcome = response.status >= 200 && response.status < 300 ? "completed" : "failed";
+@@ -1931,12 +1948,13 @@ export async function startCodexResponsesProxy(params: {
            trackOptionalTask(runOptional());
            return;
          }
@@ -74,35 +82,128 @@ index 5fec0d2..56d31cc 100644
              requestId,
              inboundAuthorization: authorization,
              lightmem2CacheContractDigest:
-diff --git a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts b/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
-index fe27758..2459a43 100644
---- a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
-+++ b/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
-@@ -13,7 +13,7 @@ export type HostGatewayRuntimeServer = {
+@@ -1945,6 +1963,7 @@ export async function startCodexResponsesProxy(params: {
+                 : undefined,
+             stateDir: config.stateDir,
+             signal: requestAbortController.signal,
++            endpointPath: compactRequest ? "/responses/compact" : undefined,
+           }));
+         } catch (error) {
+           const attempt = forwardingAttempts.at(-1);
+diff --git a/components/adapters/codex/src/upstream.ts b/components/adapters/codex/src/upstream.ts
+index 704083a..6ef0b5c 100644
+--- a/components/adapters/codex/src/upstream.ts
++++ b/components/adapters/codex/src/upstream.ts
+@@ -130,11 +130,11 @@ async function resolveNineRouterPayloadModel(
+   return resolvedModel === payload.model ? payload : { ...payload, model: resolvedModel };
+ }
  
- export async function startHostGatewayRuntimeServer(params: {
-   port: number;
--  requestPath: string;
-+  requestPath: string | string[];
-   basePath?: string;
-   healthPayload: unknown;
-   handleRoute?(args: {
-@@ -56,7 +56,8 @@ export async function startHostGatewayRuntimeServer(params: {
-         });
-         if (handled) return;
-       }
--      if (req.method !== "POST" || pathname !== params.requestPath) {
-+      const requestPaths = Array.isArray(params.requestPath) ? params.requestPath : [params.requestPath];
-+      if (req.method !== "POST" || !requestPaths.includes(pathname)) {
-         sendJsonResponse(res, 404, { error: "not found" });
-         return;
-       }
+-function endpointFor(upstream: CodexProviderConfig): string {
++function endpointFor(upstream: CodexProviderConfig, path = "/responses"): string {
+   const base = upstream.baseUrl.replace(/\/+$/, "");
+-  if (base.endsWith("/v1")) return `${base}/responses`;
+-  if (base.endsWith("/v1/responses")) return base;
+-  return `${base}/v1/responses`;
++  if (base.endsWith("/v1")) return `${base}${path}`;
++  if (base.endsWith("/v1/responses")) return `${base.slice(0, -"/responses".length)}${path}`;
++  return `${base}/v1${path}`;
+ }
+ 
+ function responseText(content: unknown): string {
+@@ -239,6 +239,7 @@ async function appendUpstreamTrace(
+     requestId?: string;
+     upstream: CodexProviderConfig;
+     payload: any;
++    endpointPath?: string;
+   },
+   details: Record<string, unknown>,
+ ): Promise<void> {
+@@ -247,7 +248,7 @@ async function appendUpstreamTrace(
+     await appendTrace(params.stateDir, {
+       requestId: params.requestId,
+       model: typeof params.payload?.model === "string" ? params.payload.model : null,
+-      upstreamEndpointId: codexRebaseEndpointIdentity(endpointFor(params.upstream)),
++      upstreamEndpointId: codexRebaseEndpointIdentity(endpointFor(params.upstream, params.endpointPath)),
+       ...details,
+     });
+   } catch {
+@@ -262,6 +263,7 @@ async function sendUpstreamRequest(
+     stateDir?: string;
+     requestId?: string;
+     signal?: AbortSignal;
++    endpointPath?: string;
+   },
+   payload: any,
+   attempt: number,
+@@ -269,7 +271,7 @@ async function sendUpstreamRequest(
+ ): Promise<Response> {
+   const startedAt = performance.now();
+   try {
+-    const response = await fetch(endpointFor(params.upstream), {
++    const response = await fetch(endpointFor(params.upstream, params.endpointPath), {
+       method: "POST",
+       headers: requestHeaders(params),
+       body: JSON.stringify(payload),
+@@ -516,11 +518,13 @@ export async function requestUpstreamResponses(params: {
+   stateDir?: string;
+   requestId?: string;
+   signal?: AbortSignal;
++  endpointPath?: string;
+ }): Promise<UpstreamHttpResponse> {
+   let transportFetches = 0;
++  let endpointPath = params.endpointPath ?? "/responses";
+   const send = (payload: any) => {
+     transportFetches += 1;
+-    return sendUpstreamRequest(params, payload, transportFetches, false);
++    return sendUpstreamRequest({ ...params, endpointPath }, payload, transportFetches, false);
+   };
+   let payload = await resolveNineRouterPayloadModel(
+     clonePayloadWithoutUnsupportedFields(params.payload, new Set()),
+@@ -532,6 +536,11 @@ export async function requestUpstreamResponses(params: {
+   payload = clonePayloadWithoutUnsupportedFields(payload, unsupportedFields);
+   let resp = await send(payload);
+   let text = await resp.text();
++  if (resp.status === 404 && endpointPath === "/responses/compact") {
++    endpointPath = "/responses";
++    resp = await send(payload);
++    text = await resp.text();
++  }
+   if (!resp.ok) {
+     const unsupportedField = unsupportedOptionalFieldFromText(text);
+     if (resp.status !== 401 && resp.status !== 403 && unsupportedField && !unsupportedFields.has(unsupportedField)) {
+@@ -563,11 +572,13 @@ export async function requestUpstreamResponsesStream(params: {
+   stateDir?: string;
+   requestId?: string;
+   signal?: AbortSignal;
++  endpointPath?: string;
+ }): Promise<UpstreamStreamResponse> {
+   let transportFetches = 0;
++  let endpointPath = params.endpointPath ?? "/responses";
+   const send = (payload: any) => {
+     transportFetches += 1;
+-    return sendUpstreamRequest(params, payload, transportFetches, true);
++    return sendUpstreamRequest({ ...params, endpointPath }, payload, transportFetches, true);
+   };
+   let payload = await resolveNineRouterPayloadModel(
+     clonePayloadWithoutUnsupportedFields(params.payload, new Set()),
+@@ -578,6 +589,11 @@ export async function requestUpstreamResponsesStream(params: {
+   const unsupportedFields = await loadUnsupportedOptionalFields(params.stateDir, params.upstream, resolvedModel);
+   payload = clonePayloadWithoutUnsupportedFields(payload, unsupportedFields);
+   let resp = await send(payload);
++  if (resp.status === 404 && endpointPath === "/responses/compact") {
++    await resp.text();
++    endpointPath = "/responses";
++    resp = await send(payload);
++  }
+   if (!resp.ok) {
+     const text = await resp.text();
+     const unsupportedField = unsupportedOptionalFieldFromText(text);
 diff --git a/components/adapters/codex/tests/compaction-route.test.ts b/components/adapters/codex/tests/compaction-route.test.ts
 new file mode 100644
-index 0000000..822a114
+index 0000000..28b101d
 --- /dev/null
 +++ b/components/adapters/codex/tests/compaction-route.test.ts
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,252 @@
 +import assert from "node:assert/strict";
 +import { createServer } from "node:http";
 +import { mkdtemp, rm } from "node:fs/promises";
@@ -118,14 +219,21 @@ index 0000000..822a114
 +import { createConsoleLogger } from "../src/logger.js";
 +import { startCodexResponsesProxy } from "../src/proxy-runtime.js";
 +
-+async function startSseUpstream() {
++async function startSseUpstream(options: { compactStatus?: number } = {}) {
 +  const port = await reserveUnusedPort();
 +  const requests: Array<Record<string, unknown>> = [];
++  const paths: string[] = [];
 +  const server = createServer(async (req, res) => {
 +    const chunks: Buffer[] = [];
 +    for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-+    if (req.method !== "POST" || req.url !== "/v1/responses") {
++    if (req.method !== "POST" || !["/v1/responses", "/v1/responses/compact"].includes(req.url ?? "")) {
 +      res.statusCode = 404;
++      res.end("not found");
++      return;
++    }
++    paths.push(req.url ?? "");
++    if (req.url === "/v1/responses/compact" && options.compactStatus !== undefined && options.compactStatus !== 200) {
++      res.statusCode = options.compactStatus;
 +      res.end("not found");
 +      return;
 +    }
@@ -139,7 +247,12 @@ index 0000000..822a114
 +      })}`,
 +      `event: response.completed\ndata: ${JSON.stringify({
 +        type: "response.completed",
-+        response: { id: "resp_compact_stream", object: "response", status: "completed", output: [] },
++        response: {
++          id: "resp_compact_stream",
++          object: "response",
++          status: "completed",
++          output: req.url === "/v1/responses/compact" ? [{ type: "compaction", id: "cmp_1" }] : [],
++        },
 +      })}`,
 +      "",
 +      "",
@@ -155,6 +268,7 @@ index 0000000..822a114
 +  return {
 +    baseUrl: `http://127.0.0.1:${port}/v1`,
 +    requests,
++    paths,
 +    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
 +  };
 +}
@@ -240,7 +354,41 @@ index 0000000..822a114
 +    assert.equal(response.status, 200);
 +    assert.match(text, /event: response\.completed/);
 +    assert.equal(upstream.requests.length, 1);
++    assert.deepEqual(upstream.paths, ["/v1/responses/compact"]);
++    assert.match(text, /"type":"compaction"/);
 +    assert.equal(upstream.requests[0]?.input?.some((item: any) => item?.type === "web_search_call"), false);
++  } finally {
++    await runtime.close();
++    await upstream.close();
++    await rm(stateDir, { recursive: true, force: true });
++  }
++});
++
++test("compact route falls back when upstream lacks compact endpoint", async () => {
++  const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-compact-fallback-"));
++  const proxyPort = await reserveUnusedPort();
++  const upstream = await startSseUpstream({ compactStatus: 404 });
++  const runtime = await startCodexResponsesProxy({
++    config: normalizeTokenPilotCodexConfig({
++      proxyPort,
++      stateDir,
++      upstream: { name: "capture", baseUrl: upstream.baseUrl, wireApi: "responses" },
++      proxyMode: { pureForward: false },
++      modules: { stabilizer: false, reduction: false },
++      contextRewrite: { enabled: false },
++    }),
++    logger: createConsoleLogger(false),
++  });
++
++  try {
++    const response = await fetch(`${runtime.baseUrl}/responses/compact`, {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({ model: "capture-model", stream: true, input: [] }),
++    });
++    assert.equal(response.status, 200);
++    await response.text();
++    assert.deepEqual(upstream.paths, ["/v1/responses/compact", "/v1/responses"]);
 +  } finally {
 +    await runtime.close();
 +    await upstream.close();
@@ -308,3 +456,26 @@ index 0000000..822a114
 +    await rm(stateDir, { recursive: true, force: true });
 +  }
 +});
+diff --git a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts b/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
+index fe27758..2459a43 100644
+--- a/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
++++ b/components/packages/foundation/host-adapter/src/gateway/runtime-server.ts
+@@ -13,7 +13,7 @@ export type HostGatewayRuntimeServer = {
+ 
+ export async function startHostGatewayRuntimeServer(params: {
+   port: number;
+-  requestPath: string;
++  requestPath: string | string[];
+   basePath?: string;
+   healthPayload: unknown;
+   handleRoute?(args: {
+@@ -56,7 +56,8 @@ export async function startHostGatewayRuntimeServer(params: {
+         });
+         if (handled) return;
+       }
+-      if (req.method !== "POST" || pathname !== params.requestPath) {
++      const requestPaths = Array.isArray(params.requestPath) ? params.requestPath : [params.requestPath];
++      if (req.method !== "POST" || !requestPaths.includes(pathname)) {
+         sendJsonResponse(res, 404, { error: "not found" });
+         return;
+       }

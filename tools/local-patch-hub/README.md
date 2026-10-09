@@ -74,7 +74,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-
 
 To apply the overlay whenever the patched OpenDesign launcher starts, set `LIGHTMEM2_ROOT` or pass `-LightMem2Root` to `Start-OpenDesignPatched.ps1`.
 
-Add a new versioned directory under `overlays/lightrsi-codex-hook-portable/` after rebasing the patch onto a new upstream commit. The current Codex compatibility overlay also accepts explicit `/v1/responses/compact`, strips only historical `web_search_call` items on the outbound clone, and forwards to normal upstream `/responses`; ordinary `/responses` stays unchanged. Do not edit generated `dist/tokenpilot-codex-hook.cmd` files.
+Add a new versioned directory under `overlays/lightrsi-codex-hook-portable/` after rebasing the patch onto a new upstream commit. The current Codex compatibility overlay accepts explicit `/v1/responses/compact`, strips only historical `web_search_call` items on the outbound clone, tries upstream `/responses/compact`, and falls back to `/responses` on upstream `404`; ordinary `/responses` stays unchanged. Do not edit generated `dist/tokenpilot-codex-hook.cmd` files.
 
 ## 9router overlays
 

@@ -37,7 +37,8 @@ after upstream repair.
 - LightRSI applies only transparent compact routing or the separately selected
   request-only `strip` fallback; it never injects the preservation schema.
 - Current provider capability evidence keeps router preservation `off` and
-  forwards LightRSI compact projections to normal upstream `/responses`.
+  forwards LightRSI compact projections to upstream `/responses/compact` when
+  available, with normal `/responses` fallback on provider `404`.
 - Retained items preserve deep equality, relative order, IDs, content, and opaque fields.
 - Canonical history and ordinary `/responses` traffic remain unchanged.
 - Ambiguous or unmarked ordinary `/responses` traffic is forwarded unchanged.
@@ -125,7 +126,7 @@ Required corrections before execution:
 | Task 2 | `completed` | current plus external provider route | `codex` | Task 1 | route replay, removal control, search count, continuation disposition | Fresh authorized replay: `/responses/compact` returned `404` with preserved and stripped payloads; normal `/responses` historical-search payload returned HTTP `200` SSE error, while stripped control completed with zero search events; exact original fixture remains unavailable |
 | Task 3 | `completed` | 9Router disposable checkout | `codex` | Task 2 | corrected preservation behavior and provider capability proof | upstream `/responses/compact` returned 404; router preserve stays off |
 | Task 4 | `completed` | LightRSI disposable checkout | `codex` | Task 3 | fallback projection tests and owner selection | explicit compact route strips historical search items on cloned request payload; ordinary route remains unchanged |
-| Task 5 | `completed` | LightRSI disposable checkout | `codex` | Task 4 | inbound compact route and normal upstream target tests | compact inbound accepted; upstream remains `/responses` |
+| Task 5 | `completed` | LightRSI disposable checkout | `codex` | Task 4 | inbound compact route, native compact target, and fallback tests | compact inbound accepted; upstream `/responses/compact` is attempted first and `/responses` is used only after `404` |
 | Task 6 | `completed` | isolated `C:\tmp\9router-compaction-compat-e0be411` plus LightRSI route boundary | `codex` | Task 1, Task 3 | focused SSE tests plus compact-route boundary proof | Clean detached worktree created at `e0be411184e67687171a1e13ae2e5686c14dd43a`; focused assertions passed; Vitest unavailable locally, no dependency install performed |
 | Task 7 | `completed` | overlay tooling plus isolated target worktrees | `codex` | Task 5, Task 6 | exact target-commit overlay validation | 9Router and LightRSI manifests/patches added; clean-base apply and reverse checks pass; overlay tests pass `3` |
 | Task 8 | `completed` | LightRSI disposable integration workspace | `codex` | Task 5, Task 6 | compact success plus same-thread continuation | compact non-stream, compact SSE, and normal continuation route tests pass |

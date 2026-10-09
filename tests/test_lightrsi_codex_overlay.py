@@ -29,13 +29,15 @@ def test_lightrsi_compaction_overlay_is_exact_base_bound() -> None:
     readme = (PATCH_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert '"id": "lightrsi-codex-compaction-compatibility"' in manifest
-    assert '"version": "1.1.0"' in manifest
+    assert '"version": "1.2.0"' in manifest
     assert '"baseCommit": "c05cafe502fb474ab28e29e9e184adba8446a6a1"' in manifest
     assert "components/adapters/codex/src/proxy-runtime.ts" in patch
+    assert "components/adapters/codex/src/upstream.ts" in patch
     assert "components/packages/foundation/host-adapter/src/gateway/runtime-server.ts" in patch
     assert "components/adapters/codex/tests/compaction-route.test.ts" in patch
     assert 'pathname === "/v1/responses/compact"' in patch
     assert "stripHistoricalWebSearchCalls" in patch
     assert "projectUpstreamPayload" in patch
-    assert "ordinary `/responses` stays unchanged" in readme
+    assert 'endpointPath: compactRequest ? "/responses/compact" : undefined' in patch
+    assert "falls back to `/responses` on upstream `404`" in readme
     assert "-SkipInstall" in readme
