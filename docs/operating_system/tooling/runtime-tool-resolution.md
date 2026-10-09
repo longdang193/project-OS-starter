@@ -82,6 +82,25 @@ Codex consume its `config.toml` and `auth.json`, require provider `9router`,
 and retain only sanitized runtime receipts. Missing Secretary launch,
 attribution, or observed completion remains `BLOCKED_CAPABILITY`; deterministic
 contract fixtures cannot establish live efficiency.
+When response usage is available, record input/output/total tokens as observed
+evidence. Published pricing may produce `estimated` cost only with source,
+effective date, and model resolution; absent model or rate attribution keeps
+cost `unknown`.
+For `9router`, treat published dashboard values as counterfactual reference
+cost, not provider billing; retain actual cost as `unknown`. The pinned
+`2026-10-09` direct rate card covers `glm/glm-4.7` (`$0.60/M` input,
+`$2.20/M` output) and `minimax/MiniMax-M2.1` (`$0.20/M` input, `$1.00/M`
+output). Do not apply those rates to `combo-normal` or `combo-high` without
+downstream model attribution. Current local combo members are `cx/gpt-*`
+Codex subscription routes, so token comparison remains valid while dollar
+comparison remains `unknown` unless receipt cost is explicitly `estimated`.
+Normalize 9Router `prompt_tokens`, `completion_tokens`, `cached_tokens` or
+`prompt_tokens_details.cached_tokens`, and `cache_creation_input_tokens` into
+canonical `input_tokens`, `output_tokens`, `cache_read_input_tokens`, and
+`cache_write_input_tokens`. Apply separate cache-read/cache-write rates only
+when the selected model rate card publishes them; otherwise preserve usage but
+keep cost `unknown` with an explicit cache-rate reason. Never charge cached
+tokens at normal input rates.
 
 Provider names are runtime facts or explicit method choices, not architecture.
 Keep named providers only for an explicitly selected method, committed repository

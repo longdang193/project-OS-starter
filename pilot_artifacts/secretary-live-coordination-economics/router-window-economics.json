@@ -1,0 +1,209 @@
+{
+  "arms": {
+    "baseline": {
+      "accepted_outcomes": "unknown",
+      "complete_windows": 3,
+      "cost_per_accepted_outcome": "unknown",
+      "formula_verified_rows": 3,
+      "median_cache_read_input_tokens": 24832,
+      "median_router_recorded_cost_usd": 0.008430499999999999,
+      "median_total_tokens": 25380,
+      "total_cache_read_input_tokens": 74496,
+      "total_router_recorded_cost_usd": 0.026071499999999997,
+      "total_tokens": 76166,
+      "windows": 3
+    },
+    "candidate": {
+      "accepted_outcomes": "unknown",
+      "complete_windows": 3,
+      "cost_per_accepted_outcome": "unknown",
+      "formula_verified_rows": 3,
+      "median_cache_read_input_tokens": 24832,
+      "median_router_recorded_cost_usd": 0.008487999999999999,
+      "median_total_tokens": 25377,
+      "total_cache_read_input_tokens": 52992,
+      "total_router_recorded_cost_usd": 0.073578,
+      "total_tokens": 76134,
+      "windows": 3
+    }
+  },
+  "caveat": "Rows match trial timestamp windows; cost math is verified against 9router pricing, but producer-owned run binding and correctness-valid acceptance remain unavailable.",
+  "evidence_provenance": "9router-usageHistory-window-observation",
+  "formula_audit": {
+    "all_rows_match": true,
+    "implementation_source": "9router/open-sse/providers/pricing.js:412",
+    "pricing_match": "gpt-5.6-* pattern",
+    "rates_usd_per_million": {
+      "cache_creation": 2.5,
+      "cached": 0.25,
+      "input": 2.5,
+      "output": 15.0,
+      "reasoning": 15.0
+    },
+    "status": "verified"
+  },
+  "impact": {
+    "median_cache_read_input_tokens_delta": 0,
+    "median_cost_delta_percent": 0.6820473281537343,
+    "median_cost_delta_usd": 5.750000000000026e-05,
+    "median_total_tokens_delta": -3,
+    "total_cache_read_input_tokens_delta": -21504,
+    "total_cost_delta_percent": 182.2162131062655,
+    "total_cost_delta_usd": 0.04750650000000001
+  },
+  "records": [
+    {
+      "arm": "baseline",
+      "attribution": "window-attributed-only",
+      "run_id": "run-baseline-1-r2",
+      "trial": "baseline-1",
+      "usage_row": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 24832,
+        "computed_cost_usd": 0.0093605,
+        "cost_matches_formula": true,
+        "input_tokens": 25337,
+        "model": "gpt-5.6-luna(high)",
+        "output_tokens": 74,
+        "provider": "codex",
+        "reasoning_tokens": 52,
+        "router_recorded_cost_usd": 0.009360499999999999,
+        "status": "ok",
+        "timestamp": "2026-10-09T09:15:30.689Z",
+        "total_tokens": 25411
+      },
+      "window": {
+        "end": "2026-10-09T09:15:31.134550Z",
+        "start": "2026-10-09T09:15:20.128095Z"
+      }
+    },
+    {
+      "arm": "baseline",
+      "attribution": "window-attributed-only",
+      "run_id": "run-baseline-2-r2",
+      "trial": "baseline-2",
+      "usage_row": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 24832,
+        "computed_cost_usd": 0.0082805,
+        "cost_matches_formula": true,
+        "input_tokens": 25337,
+        "model": "gpt-5.6-luna(high)",
+        "output_tokens": 38,
+        "provider": "codex",
+        "reasoning_tokens": 16,
+        "router_recorded_cost_usd": 0.0082805,
+        "status": "ok",
+        "timestamp": "2026-10-09T09:15:43.054Z",
+        "total_tokens": 25375
+      },
+      "window": {
+        "end": "2026-10-09T09:15:43.610955Z",
+        "start": "2026-10-09T09:15:31.400272Z"
+      }
+    },
+    {
+      "arm": "baseline",
+      "attribution": "window-attributed-only",
+      "run_id": "run-baseline-3-r2",
+      "trial": "baseline-3",
+      "usage_row": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 24832,
+        "computed_cost_usd": 0.0084305,
+        "cost_matches_formula": true,
+        "input_tokens": 25337,
+        "model": "gpt-5.6-luna(high)",
+        "output_tokens": 43,
+        "provider": "codex",
+        "reasoning_tokens": 21,
+        "router_recorded_cost_usd": 0.008430499999999999,
+        "status": "ok",
+        "timestamp": "2026-10-09T09:16:02.142Z",
+        "total_tokens": 25380
+      },
+      "window": {
+        "end": "2026-10-09T09:16:03.425922Z",
+        "start": "2026-10-09T09:15:43.909169Z"
+      }
+    },
+    {
+      "arm": "candidate",
+      "attribution": "window-attributed-only",
+      "run_id": "run-candidate-1-r2",
+      "trial": "candidate-1",
+      "usage_row": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 24832,
+        "computed_cost_usd": 0.008338,
+        "cost_matches_formula": true,
+        "input_tokens": 25336,
+        "model": "gpt-5.6-luna(high)",
+        "output_tokens": 40,
+        "provider": "codex",
+        "reasoning_tokens": 18,
+        "router_recorded_cost_usd": 0.008338,
+        "status": "ok",
+        "timestamp": "2026-10-09T09:17:48.897Z",
+        "total_tokens": 25376
+      },
+      "window": {
+        "end": "2026-10-09T09:17:49.366114Z",
+        "start": "2026-10-09T09:17:37.334695Z"
+      }
+    },
+    {
+      "arm": "candidate",
+      "attribution": "window-attributed-only",
+      "run_id": "run-candidate-2-r2",
+      "trial": "candidate-2",
+      "usage_row": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 3328,
+        "computed_cost_usd": 0.056752,
+        "cost_matches_formula": true,
+        "input_tokens": 25336,
+        "model": "gpt-5.6-luna(high)",
+        "output_tokens": 41,
+        "provider": "codex",
+        "reasoning_tokens": 19,
+        "router_recorded_cost_usd": 0.056752000000000004,
+        "status": "ok",
+        "timestamp": "2026-10-09T09:18:01.336Z",
+        "total_tokens": 25377
+      },
+      "window": {
+        "end": "2026-10-09T09:18:02.078043Z",
+        "start": "2026-10-09T09:17:49.658212Z"
+      }
+    },
+    {
+      "arm": "candidate",
+      "attribution": "window-attributed-only",
+      "run_id": "run-candidate-3-r2",
+      "trial": "candidate-3",
+      "usage_row": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 24832,
+        "computed_cost_usd": 0.008488,
+        "cost_matches_formula": true,
+        "input_tokens": 25336,
+        "model": "gpt-5.6-luna(high)",
+        "output_tokens": 45,
+        "provider": "codex",
+        "reasoning_tokens": 23,
+        "router_recorded_cost_usd": 0.008487999999999999,
+        "status": "ok",
+        "timestamp": "2026-10-09T09:18:18.605Z",
+        "total_tokens": 25381
+      },
+      "window": {
+        "end": "2026-10-09T09:18:19.249589Z",
+        "start": "2026-10-09T09:18:02.397363Z"
+      }
+    }
+  ],
+  "schema_version": "secretary-router-window-economics-v1",
+  "source": "9router local SQLite, read-only",
+  "status": "WINDOW_ATTRIBUTED_ONLY"
+}

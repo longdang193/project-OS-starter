@@ -1,0 +1,8 @@
+{
+  "disposition": "inconclusive",
+  "matched_count": 1,
+  "reason": "timestamp_boundary_unproven",
+  "request_count": 1,
+  "schema_version": "9router-usage-observation-v1",
+  "source": "9router-local-read-only"
+}

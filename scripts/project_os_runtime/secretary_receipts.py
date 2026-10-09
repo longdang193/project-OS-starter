@@ -5,6 +5,8 @@ import json
 import re
 from typing import Any, Mapping
 
+from .secretary_economics import normalize_response_usage, validate_cost_estimate, validate_token_usage
+
 
 SECRETARY_PROVIDER = "9router"
 SOURCE_PRODUCERS = {
@@ -152,10 +154,11 @@ def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
         value = metrics[field]
         if value != "unknown" and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
             raise ReceiptValidationError(f"metrics.{field} must be non-negative integer or unknown")
-    for field in ("token_usage", "cost"):
-        value = metrics[field]
-        if value != "unknown" and (not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0):
-            raise ReceiptValidationError(f"metrics.{field} must be non-negative number or unknown")
+    try:
+        normalized_token_usage = validate_token_usage(metrics["token_usage"])
+        validate_cost_estimate(metrics["cost"])
+    except ValueError as exc:
+        raise ReceiptValidationError(str(exc)) from exc
     if metrics["publication_success"] not in (True, False, "unknown"):
         raise ReceiptValidationError("metrics.publication_success must be boolean or unknown")
     if metrics["settlement_proven"] not in (True, False, "unknown"):
@@ -180,6 +183,7 @@ def validate_live_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
             raise ReceiptValidationError(f"sources.{name}.source_digest must be SHA-256 hex")
 
     normalized = json.loads(json.dumps(receipt))
+    normalized["metrics"]["token_usage"] = normalized_token_usage
     normalized["valid"] = True
     normalized["evidence_provenance"] = "live-attributed"
     return normalized

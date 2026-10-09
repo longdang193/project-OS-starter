@@ -65,9 +65,16 @@ Run verification without changing files:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-LightMem2CodexOverlay.ps1 -TargetRoot C:\path\to\LightMem2 -VerifyOnly
 ```
 
+Apply source only in disposable verification targets; this avoids global Codex,
+hook, daemon, and startup changes:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-LightMem2CodexOverlay.ps1 -TargetRoot C:\path\to\LightMem2 -SkipInstall
+```
+
 To apply the overlay whenever the patched OpenDesign launcher starts, set `LIGHTMEM2_ROOT` or pass `-LightMem2Root` to `Start-OpenDesignPatched.ps1`.
 
-Add a new versioned directory under `overlays/lightrsi-codex-hook-portable/` after rebasing the patch onto a new upstream commit. Do not edit generated `dist/tokenpilot-codex-hook.cmd` files.
+Add a new versioned directory under `overlays/lightrsi-codex-hook-portable/` after rebasing the patch onto a new upstream commit. The current Codex compatibility overlay accepts explicit `/v1/responses/compact`, strips only historical `web_search_call` items on the outbound clone, tries upstream `/responses/compact`, and falls back to `/responses` on upstream `404`; ordinary `/responses` stays unchanged. Do not edit generated `dist/tokenpilot-codex-hook.cmd` files.
 
 ## 9router overlays
 
@@ -103,4 +110,21 @@ Verify update safety without changing files:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterResponsesOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
 ```
 
-The Responses overlay fixes `response.completed.response.output`, which is required by `wire_api = "responses"`, across translated and native same-format passthrough streams. The reconciler accepts exact bases, already-applied overlays, upstream-native fixes, and clean Git 3-way rebases; whitespace-only line-ending changes do not block application. It checks every patched runtime path before treating an existing install as complete, so older partial overlays receive the missing fix. Rebase verification applies into a temporary Git index, so conflict checks do not mutate the target. `-InstallGlobal` stops and waits for all 9router Node processes, validates `cli\app` before replacement, packs the CLI before global install so npm cannot leave a Junction to a disposable worktree, rejects linked global packages, then verifies global `cli.js`, standalone app files, `9router.cmd`, and executable version; relaunch with `9router --tray --skip-update -p 20128`. Use `-AllowDowngrade` only for intentional older-version installs. When upstream changes a patched file, add a new exact-base directory under `overlays/9router-responses/` and rebase the patch there. Keep old overlays for existing checkouts.
+Current 9router Responses overlays cover `0.5.65` (`e0be4111`), `0.5.69`
+(`eb712ca8`), and `0.5.99` (`ce4460ef`). The Responses overlay fixes
+`response.completed.response.output`, preserves upstream SSE errors instead of
+inventing empty completion events, and keeps Codex compact URL selection
+request-local. The reconciler accepts exact bases, already-applied overlays,
+upstream-native fixes, and clean Git 3-way rebases; whitespace-only line-ending
+changes do not block application. It checks every patched runtime path before
+treating an existing install as complete, so older partial overlays receive the
+missing fix. Rebase verification applies into a temporary Git index, so conflict
+checks do not mutate the target. `-InstallGlobal` stops and waits for all 9router
+Node processes, validates `cli\app` before replacement, packs the CLI before
+global install so npm cannot leave a Junction to a disposable worktree, rejects
+linked global packages, then verifies global `cli.js`, standalone app files,
+`9router.cmd`, and executable version; relaunch with
+`9router --tray --skip-update -p 20128`. Use `-AllowDowngrade` only for
+intentional older-version installs. When upstream changes a patched file, add a
+new exact-base directory under `overlays/9router-responses/` and rebase the patch
+there. Keep old overlays for existing checkouts.

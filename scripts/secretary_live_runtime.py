@@ -15,12 +15,14 @@ import tomllib
 from typing import Any, Mapping
 
 try:
+    from project_os_runtime.secretary_economics import normalize_response_usage
     from project_os_runtime.secretary_receipts import (
         SOURCE_PRODUCERS,
         build_live_receipt,
         validate_live_receipt,
     )
 except ModuleNotFoundError:
+    from scripts.project_os_runtime.secretary_economics import normalize_response_usage
     from scripts.project_os_runtime.secretary_receipts import (
         SOURCE_PRODUCERS,
         build_live_receipt,
@@ -307,8 +309,10 @@ def _safe_metrics(metrics: Mapping[str, Any] | None) -> dict[str, Any]:
             result[field] = value
         elif field in boolean_fields and isinstance(value, bool):
             result[field] = value
-        elif field in number_fields and isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
-            result[field] = value
+        elif field == "token_usage":
+            result[field] = _safe_token_usage(value)
+        elif field == "cost":
+            result[field] = _safe_cost(value)
         elif field == "acceptance_decision" and value in {"PASS", "FAIL", "unknown"}:
             result[field] = value
         else:
@@ -328,6 +332,70 @@ def _safe_timestamps(timestamps: Mapping[str, Any] | None) -> dict[str, str]:
             continue
         result[field] = value
     return result
+
+
+def _safe_token_usage(value: object) -> object:
+    if value == "unknown":
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+        return value
+    try:
+        normalized = normalize_response_usage(value)
+    except ValueError:
+        return "unknown"
+    if not isinstance(normalized, Mapping):
+        return "unknown"
+    if normalized.get("source") != "response.usage" or normalized.get("confidence") != "observed":
+        return "unknown"
+    input_tokens = normalized.get("input_tokens")
+    output_tokens = normalized.get("output_tokens")
+    total_tokens = normalized.get("total_tokens")
+    if any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in (input_tokens, output_tokens, total_tokens)):
+        return "unknown"
+    if input_tokens + output_tokens != total_tokens:
+        return "unknown"
+    cache_fields = ("cache_read_input_tokens", "cache_write_input_tokens")
+    cache_values = {field: normalized.get(field, 0) for field in cache_fields}
+    if any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in cache_values.values()):
+        return "unknown"
+    if sum(cache_values.values()) > input_tokens:
+        return "unknown"
+    result = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
+    result.update({field: normalized.get(field) for field in cache_fields if field in normalized})
+    return result
+
+
+def _safe_cost(value: object) -> object:
+    if value == "unknown":
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+        return value
+    if not isinstance(value, Mapping):
+        return "unknown"
+    numeric_value = value.get("value")
+    if numeric_value == "unknown":
+        reason = _safe_text(value.get("reason"))
+        return {"value": "unknown", "reason": reason} if reason is not None else "unknown"
+    if value.get("kind") != "estimated":
+        return "unknown"
+    if isinstance(numeric_value, bool) or not isinstance(numeric_value, (int, float)) or numeric_value < 0:
+        return "unknown"
+    fields = ("currency", "pricing_source", "pricing_effective_date", "model")
+    text_values = {field: _safe_text(value.get(field)) for field in fields}
+    if any(text_values[field] is None for field in fields) or value.get("model_resolution") not in {"exact", "requested", "scenario"}:
+        return "unknown"
+    return {
+        "value": numeric_value,
+        "kind": "estimated",
+        **text_values,
+        "model_resolution": value["model_resolution"],
+    }
 
 
 def _safe_runtime_snapshot(

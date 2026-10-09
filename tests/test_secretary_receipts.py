@@ -42,7 +42,7 @@ def _receipt(**overrides: object) -> dict[str, object]:
         },
         runtime={
             "provider": "9router",
-            "model": "gpt-test",
+            "model": "glm/glm-4.7",
             "controller_id": "cos-1",
             "session_id": "session-1",
         },
@@ -75,7 +75,7 @@ def _receipt(**overrides: object) -> dict[str, object]:
                 "workstream": "secretary",
                 "checkpoint": "plan-rev-1:task-1",
                 "provider": "9router",
-                "model": "gpt-test",
+                "model": "glm/glm-4.7",
                 "controller_id": "cos-1",
                 "session_id": "session-1",
             }
@@ -96,6 +96,79 @@ def test_live_receipt_accepts_unknown_economics_and_normalizes_provenance() -> N
     assert result["valid"] is True
     assert result["evidence_provenance"] == "live-attributed"
     assert result["metrics"]["token_usage"] == "unknown"
+
+
+def test_live_receipt_accepts_observed_tokens_and_estimated_cost() -> None:
+    receipt = _receipt()
+    receipt["metrics"]["token_usage"] = {
+        "input_tokens": 883,
+        "output_tokens": 6,
+        "total_tokens": 889,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
+    receipt["metrics"]["cost"] = {
+        "value": 0.000543,
+        "kind": "estimated",
+        "currency": "USD",
+        "pricing_source": "published-rate-card",
+        "pricing_effective_date": "2026-10-09",
+        "model": "glm/glm-4.7",
+        "model_resolution": "exact",
+    }
+
+    result = validate_live_receipt(receipt)
+
+    assert result["metrics"]["token_usage"]["total_tokens"] == 889
+    assert result["metrics"]["cost"]["kind"] == "estimated"
+
+
+def test_live_receipt_accepts_scalar_token_usage() -> None:
+    receipt = _receipt()
+    receipt["metrics"]["token_usage"] = 889
+
+    assert validate_live_receipt(receipt)["metrics"]["token_usage"] == 889
+
+
+def test_live_receipt_normalizes_native_responses_usage() -> None:
+    receipt = _receipt()
+    receipt["metrics"]["token_usage"] = {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "input_tokens_details": {"cached_tokens": 800},
+    }
+
+    assert validate_live_receipt(receipt)["metrics"]["token_usage"] == {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "cache_read_input_tokens": 800,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
+
+
+def test_live_receipt_normalizes_9router_usage_fields() -> None:
+    receipt = _receipt()
+    receipt["metrics"]["token_usage"] = {
+        "prompt_tokens": 1_000,
+        "completion_tokens": 100,
+        "cached_tokens": 800,
+        "cache_creation_input_tokens": 50,
+    }
+
+    result = validate_live_receipt(receipt)
+
+    assert result["metrics"]["token_usage"] == {
+        "input_tokens": 1_000,
+        "output_tokens": 100,
+        "total_tokens": 1_100,
+        "cache_read_input_tokens": 800,
+        "cache_write_input_tokens": 50,
+        "source": "response.usage",
+        "confidence": "observed",
+    }
 
 
 def test_live_receipt_rejects_binding_mismatch() -> None:

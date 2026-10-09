@@ -129,6 +129,134 @@ def test_sanitize_launcher_result_preserves_structured_runtime_binding() -> None
     assert result["runtime_identity"]["secretary_runtime"]["run_id"] == "run-1"
 
 
+def test_safe_runtime_snapshot_preserves_structured_economics() -> None:
+    result = _safe_runtime_snapshot(
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+            "metrics": {
+                "token_usage": {
+                    "input_tokens": 883,
+                    "output_tokens": 6,
+                    "total_tokens": 889,
+                    "cache_read_input_tokens": 400,
+                    "source": "response.usage",
+                    "confidence": "observed",
+                },
+                "cost": {
+                    "value": 0.000543,
+                    "kind": "estimated",
+                    "currency": "USD",
+                    "pricing_source": "published-rate-card",
+                    "pricing_effective_date": "2026-10-09",
+                    "model": "glm/glm-4.7",
+                    "model_resolution": "exact",
+                },
+            },
+            "timestamps": {},
+        },
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+        },
+    )
+
+    assert result["metrics"]["token_usage"]["total_tokens"] == 889
+    assert result["metrics"]["token_usage"]["cache_read_input_tokens"] == 400
+    assert result["metrics"]["cost"]["kind"] == "estimated"
+
+
+def test_safe_runtime_snapshot_drops_unobserved_token_provenance() -> None:
+    result = _safe_runtime_snapshot(
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+            "metrics": {
+                "token_usage": {
+                    "input_tokens": 883,
+                    "output_tokens": 6,
+                    "total_tokens": 889,
+                    "source": "session-status",
+                    "confidence": "estimated",
+                }
+            },
+            "timestamps": {},
+        },
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+        },
+    )
+
+    assert result["metrics"]["token_usage"] == "unknown"
+
+
+def test_safe_runtime_snapshot_normalizes_9router_usage_fields() -> None:
+    result = _safe_runtime_snapshot(
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+            "metrics": {
+                "token_usage": {
+                    "prompt_tokens": 1_000,
+                    "completion_tokens": 100,
+                    "cached_tokens": 800,
+                    "cache_creation_input_tokens": 50,
+                }
+            },
+            "timestamps": {},
+        },
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+        },
+    )
+
+    assert result["metrics"]["token_usage"]["cache_read_input_tokens"] == 800
+    assert result["metrics"]["token_usage"]["cache_write_input_tokens"] == 50
+
+
+def test_safe_runtime_snapshot_preserves_unknown_cost_reason() -> None:
+    result = _safe_runtime_snapshot(
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+            "metrics": {
+                "cost": {
+                    "value": "unknown",
+                    "reason": "model_rate_unavailable",
+                }
+            },
+            "timestamps": {},
+        },
+        {
+            "task_id": "task-1",
+            "plan_revision": "plan-rev-1",
+            "attempt_id": "attempt-1",
+            "run_id": "run-1",
+        },
+    )
+
+    assert result["metrics"]["cost"] == {
+        "value": "unknown",
+        "reason": "model_rate_unavailable",
+    }
+
+
 def test_sanitize_launcher_result_rejects_submission_as_live_execution() -> None:
     result = sanitize_launcher_result(
         request(),

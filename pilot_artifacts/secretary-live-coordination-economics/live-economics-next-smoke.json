@@ -1,0 +1,71 @@
+{
+  "assignment": {
+    "agent_name": "normal-main-86bac7a9",
+    "attempt_id": "5268352f86d34bbf872a3d9d462196e9",
+    "launcher_exit_code": 0,
+    "reconciliation_required": false,
+    "status": "submitted"
+  },
+  "attempt_id": "attempt-economics-20261009-r3",
+  "disposition": "BLOCKED_CAPABILITY",
+  "evidence_provenance": "capability-probe",
+  "failure_kind": "runtime_completion_evidence_missing",
+  "git_revision": "46d9323995622a677c6cc7df010b374506c7dfe7",
+  "metrics": {
+    "acceptance_decision": "unknown",
+    "cos_turns": "unknown",
+    "cost": "unknown",
+    "human_interventions": "unknown",
+    "publication_success": "unknown",
+    "secretary_turns": "unknown",
+    "settlement_proven": "unknown",
+    "token_usage": "unknown"
+  },
+  "plan_identity": "secretary-recommended-implementation-sequence-and-live-coordination-economics",
+  "plan_revision": "secretary-recommended-implementation-sequence-and-live-coordination-economics",
+  "provider": "9router",
+  "receipt": {
+    "disposition": "BLOCKED_CAPABILITY",
+    "evidence_provenance": "capability-probe",
+    "reason": "runtime_completion_evidence_missing",
+    "schema_version": "secretary-live-runtime-receipt-v1"
+  },
+  "repository_identity": "project-OS-starter",
+  "returncode": 0,
+  "run_id": "run-economics-20261009-r3",
+  "runtime_identity": {
+    "agent_name": "normal-main-86bac7a9",
+    "codex_version": "codex-cli 0.162.0",
+    "controller_id": null,
+    "model": null,
+    "pane": "w56:p1",
+    "provider": null,
+    "secretary_runtime": {
+      "attempt_id": "attempt-economics-20261009-r3",
+      "metrics": {
+        "acceptance_decision": "unknown",
+        "cos_turns": "unknown",
+        "cost": "unknown",
+        "human_interventions": "unknown",
+        "publication_success": "unknown",
+        "secretary_turns": "unknown",
+        "settlement_proven": "unknown",
+        "token_usage": "unknown"
+      },
+      "observed": false,
+      "plan_revision": "secretary-recommended-implementation-sequence-and-live-coordination-economics",
+      "run_id": "run-economics-20261009-r3",
+      "task_id": "secretary-live-economics-smoke-next",
+      "timestamps": {}
+    },
+    "session": "default",
+    "session_id": null
+  },
+  "schema_version": "secretary-live-runtime-v1",
+  "task_id": "secretary-live-economics-smoke-next",
+  "timestamps": {
+    "run_finished": "2026-10-09T14:24:58.741867+00:00",
+    "run_started": "2026-10-09T14:24:49.949456+00:00"
+  },
+  "worktree": "C:\\Users\\HOANG PHI LONG DANG\\repos\\project-OS-starter"
+}

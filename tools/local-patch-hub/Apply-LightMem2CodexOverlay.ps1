@@ -3,6 +3,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$TargetRoot,
   [switch]$InstallStartup,
+  [switch]$SkipInstall,
   [switch]$VerifyOnly
 )
 
@@ -105,7 +106,9 @@ if ($canApply) {
 
 $adapterPath = Join-Path $targetPath "components\adapters\codex"
 $wrapperPath = Join-Path $adapterPath "dist\tokenpilot-codex-hook.cmd"
+$runtimeWrapperPath = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter\dist\tokenpilot-codex-hook.cmd"
 $wrapperReady = Test-WindowsHookWrapper $wrapperPath
+$wrapperReady = $wrapperReady -or (Test-WindowsHookWrapper $runtimeWrapperPath)
 $needsInstall = $patchApplied -or -not $wrapperReady
 
 if ($VerifyOnly) {
@@ -113,6 +116,11 @@ if ($VerifyOnly) {
     throw "Overlay source is present, but generated Windows hook is stale or missing."
   }
   Write-Output "Verified LightMem2 Codex overlay $($manifest.version) at $targetHead."
+  exit 0
+}
+
+if ($SkipInstall) {
+  Write-Output "Applied LightMem2 Codex overlay source $($manifest.version) at $targetHead; generated install skipped."
   exit 0
 }
 

@@ -122,6 +122,117 @@ if ($null -eq $selected) {
 $patch = $selected.Patch
 if (-not (Test-Path -LiteralPath $patch -PathType Leaf)) { throw "Overlay patch missing: $patch" }
 
+if (-not $alreadyApplied -and
+    (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--check", "--", $patch)))) {
+  $alreadyApplied = $true
+}
+
+$supersededPatch = $null
+if ($selected.Manifest.supersedes) {
+  $supersededPatch = Join-Path (Split-Path -Parent $patch) ([string]$selected.Manifest.supersedes)
+}
+$migrationNeeded = -not $alreadyApplied -and $null -ne $supersededPatch -and
+  (Test-Path -LiteralPath $supersededPatch -PathType Leaf) -and
+  (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--check", "--", $supersededPatch)))
+
+if ($migrationNeeded) {
+  if ($VerifyOnly) {
+    $verificationRoot = Join-Path ([IO.Path]::GetTempPath()) ("9router-overlay-verify-" + [Guid]::NewGuid().ToString("N"))
+    $verificationCreated = $false
+    try {
+      Invoke-Native $git (@("-C", $targetPath, "worktree", "add", "--detach", $verificationRoot, $head))
+      $verificationCreated = $true
+      $changedPaths = @(& $git -C $targetPath diff --name-only HEAD --)
+      if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in $targetPath." }
+      foreach ($relativePath in $changedPaths) {
+        $sourcePath = Join-Path $targetPath $relativePath
+        $destinationPath = Join-Path $verificationRoot $relativePath
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+          $destinationParent = Split-Path -Parent $destinationPath
+          if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+          }
+          Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        } elseif (Test-Path -LiteralPath $destinationPath) {
+          Remove-Item -LiteralPath $destinationPath -Force
+        }
+      }
+      $supersededPatchPaths = @(Get-Content -LiteralPath $supersededPatch | ForEach-Object {
+        if ($_ -match '^\+\+\+ b/(.+)$') { $Matches[1] }
+      })
+      foreach ($relativePath in $supersededPatchPaths) {
+        if ($changedPaths -contains $relativePath) { continue }
+        $sourcePath = Join-Path $targetPath $relativePath
+        $destinationPath = Join-Path $verificationRoot $relativePath
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+          $destinationParent = Split-Path -Parent $destinationPath
+          if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+          }
+          Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        } elseif (Test-Path -LiteralPath $sourcePath -PathType Container) {
+          New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
+        }
+      }
+      $replacementPatchPaths = @(Get-Content -LiteralPath $patch | ForEach-Object {
+        if ($_ -match '^\+\+\+ b/(.+)$') { $Matches[1] }
+      })
+      foreach ($relativePath in $replacementPatchPaths) {
+        if ($changedPaths -contains $relativePath) { continue }
+        $sourcePath = Join-Path $targetPath $relativePath
+        $destinationPath = Join-Path $verificationRoot $relativePath
+        if (Test-Path -LiteralPath $sourcePath -PathType Container) {
+          throw "Target path collision: replacement file path is an existing directory: $sourcePath"
+        }
+        if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+          $destinationParent = Split-Path -Parent $destinationPath
+          if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+          }
+          Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        }
+      }
+      Invoke-Native $git (@("-C", $verificationRoot, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
+      $trackedChanges = @(& $git -C $verificationRoot status --porcelain=v1 --untracked-files=no)
+      if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in verification checkout." }
+      if ($trackedChanges.Count -gt 0) {
+        throw "Target has unrelated tracked changes; clean them before migrating the Responses overlay: $targetPath"
+      }
+      if (-not (Test-NativeSuccess $git (@("-C", $verificationRoot, "apply") + $applyFlags + @("--check", "--", $patch)))) {
+        throw "Overlay $($selected.Manifest.version) does not apply cleanly after removing superseded overlay."
+      }
+      Write-Output "Verified 9router Responses overlay $($selected.Manifest.version) can replace superseded overlay at $head."
+    } finally {
+      if ($verificationCreated) {
+        Invoke-Native $git (@("-C", $targetPath, "worktree", "remove", "--force", $verificationRoot))
+      }
+    }
+    exit 0
+  }
+  Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--reverse", "--", $supersededPatch))
+  try {
+    $trackedChanges = @(& $git -C $targetPath status --porcelain=v1 --untracked-files=no)
+    if ($LASTEXITCODE -ne 0) { throw "Cannot inspect tracked changes in $targetPath." }
+    if ($trackedChanges.Count -gt 0) {
+      throw "Target has unrelated tracked changes; clean them before migrating the Responses overlay: $targetPath"
+    }
+    if (-not (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $patch)))) {
+      throw "Overlay $($selected.Manifest.version) does not apply cleanly after removing superseded overlay."
+    }
+    Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--", $patch))
+  } catch {
+    if (Test-NativeSuccess $git (@("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $supersededPatch))) {
+      Invoke-Native $git (@("-C", $targetPath, "apply") + $applyFlags + @("--", $supersededPatch))
+    }
+    throw
+  }
+  if ($InstallGlobal) {
+    Install-9RouterGlobal -TargetPath $targetPath -AllowDowngrade:$AllowDowngrade
+  }
+  Write-Output "Migrated 9router Responses overlay to $($selected.Manifest.version) at $head."
+  exit 0
+}
+
 $appliedNow = $false
 if (-not $alreadyApplied) {
   $checkArgs = @("-C", $targetPath, "apply") + $applyFlags + @("--check", "--", $patch)
