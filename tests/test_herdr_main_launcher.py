@@ -4686,7 +4686,7 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
         return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102})
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
 
     result = LAUNCHER._terminate_codex_lane(
         "herdr.exe",
@@ -4736,7 +4736,7 @@ def test_terminate_codex_lane_tracks_owned_descendants_after_pane_close(
         return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102})
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
 
     result = LAUNCHER._terminate_codex_lane(
         "herdr.exe",
@@ -4747,7 +4747,7 @@ def test_terminate_codex_lane_tracks_owned_descendants_after_pane_close(
             "session": "session",
             "pane": "pane",
             "agent": "codex-main",
-            "process_ids": [101, 102],
+            "process_ids": [101],
             "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
         },
     )

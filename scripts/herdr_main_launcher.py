@@ -2180,7 +2180,8 @@ def _terminate_codex_lane_unlocked(
     except (LaunchBlocked, json.JSONDecodeError, TypeError):
         selected = None
     if not isinstance(selected, dict):
-        remaining_ids = sorted(_process_ids_alive(set(ownership.get("process_ids", before_ids))))
+        owned_process_ids = set(ownership.get("process_ids", ())) | before_ids
+        remaining_ids = sorted(_process_ids_alive(owned_process_ids))
         return {
             "requested": False,
             "action": "pane-close",
@@ -2247,7 +2248,8 @@ def _terminate_codex_lane_unlocked(
         }
     selected = next((item for item in panes if item.get("pane_id") == pane), None)
     if not isinstance(selected, dict):
-        remaining_ids = sorted(_process_ids_alive(set(ownership.get("process_ids", before_ids))))
+        owned_process_ids = set(ownership.get("process_ids", ())) | before_ids
+        remaining_ids = sorted(_process_ids_alive(owned_process_ids))
         if remaining_ids:
             return {
                 "requested": True,

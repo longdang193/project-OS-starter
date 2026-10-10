@@ -225,7 +225,9 @@ def authorize_evidence_release(
         artifact_conditions = proof.get("artifact_conditions")
         if (
             not isinstance(required_conditions, Mapping)
+            or not required_conditions
             or not isinstance(artifact_conditions, Mapping)
+            or not artifact_conditions
             or set(required_conditions) != set(artifact_conditions)
             or any(value is not True for value in artifact_conditions.values())
         ):
