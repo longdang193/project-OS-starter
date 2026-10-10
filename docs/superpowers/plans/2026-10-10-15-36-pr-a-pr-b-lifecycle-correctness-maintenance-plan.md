@@ -159,15 +159,15 @@ about current GitHub state.
 - Branch: `codex/pr-a-lifecycle-correctness` from `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; PR B branch from the merged PR A commit; do not use local main a8a1fc5`
 - Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec`
 - Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\pr-a-lifecycle-correctness\project-OS-starter; PR B will use a new dedicated worktree; preserve the current main checkout's 9router overlay, untracked plans, db/, .playwright-mcp/, and temp_evidence.json`
-- Next action: `implement Task 3 Git-recorded Plan consequence gating`
+- Next action: `implement Task 4 effective review-policy evidence`
 - Blockers: `push, merge, remote CI, and worktree transitions remain approval-gated`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | PR A worktree | `codex` | none | base/inventory/before-measurement proof | dc91924; baseline PASS |
 | Task 2 | `completed` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | d66fdc2; 224 passed |
-| Task 3 | `active` | PR A worktree | `codex` | Task 2 | Git consequence gating and release replay tests | pending |
-| Task 4 | `pending` | PR A worktree | `unresolved` | Task 2 | effective review-policy tests | pending |
+| Task 3 | `completed` | PR A worktree | `codex` | Task 2 | Git consequence gating and release replay tests | b3e73b7; 245 passed; validator PASS |
+| Task 4 | `active` | PR A worktree | `codex` | Task 2 | effective review-policy tests | pending |
 | Task 5 | `pending` | PR A worktree | `unresolved` | Tasks 3, 4 | PR A matrix, validators, review gate | pending |
 | Task 6 | `pending` | PR B worktree | `unresolved` | Task 5 | compaction and obsolete-attempt tests | pending |
 | Task 7 | `pending` | PR B worktree | `unresolved` | Task 6 | Secretary caller/invariant tests | pending |
@@ -399,36 +399,36 @@ about current GitHub state.
 - Stop for: `release after an uncommitted write, acceptance of a commit that does not contain the expected Plan revision, or a generic durability database`
 
 **Steps:**
-- [ ] Step 1: Extend the canonical Git consequence with `owner: git`,
+- [x] Step 1: Extend the canonical Git consequence with `owner: git`,
   `commit_sha`, `coordination_ref`, `plan_path`, and
   `expected_plan_revision`; leave `commit_sha` unset in the pre-commit record.
-- [ ] Step 2: Persist the immutable pending release binding before the guarded
+- [x] Step 2: Persist the immutable pending release binding before the guarded
   Plan transition, or atomically with the transition under the existing owner
   lock. The low-level Plan writer remains Git-agnostic and does not create
   commits or invoke Git.
-- [ ] Step 3: Perform the accepted Plan transition without unlinking evidence;
+- [x] Step 3: Perform the accepted Plan transition without unlinking evidence;
   add restart/failure proof for both the persisted-pending-before-transition
   boundary and the transition-before-checkpoint boundary. Then have the
   controller/lead create the task checkpoint commit and
   verify that the checkpoint contains the expected Plan revision and is
   reachable from `coordination_ref`.
-- [ ] Step 4: Supply or derive the durable checkpoint SHA only after the commit
+- [x] Step 4: Supply or derive the durable checkpoint SHA only after the commit
   exists, update the pending consequence with that SHA, and make release
   eligible only after the verifier succeeds. Never require a future SHA before
   commit creation.
-- [ ] Step 5: Keep pending evidence when the Plan is modified but uncommitted,
+- [x] Step 5: Keep pending evidence when the Plan is modified but uncommitted,
   the commit is unrelated, the revision differs, or the checkpoint is
   unreachable; complete the post-checkpoint replay idempotently without GitHub.
 
 **Verification:**
-- [ ] CoS `PASS` plus an uncommitted Plan edit preserves evidence.
-- [ ] A commit missing the expected Plan revision preserves evidence.
-- [ ] The correct reachable checkpoint releases the exact artifact once.
-- [ ] Replaying after a completed release is a no-op; a GitHub outage does not
+- [x] CoS `PASS` plus an uncommitted Plan edit preserves evidence.
+- [x] A commit missing the expected Plan revision preserves evidence.
+- [x] The correct reachable checkpoint releases the exact artifact once.
+- [x] Replaying after a completed release is a no-op; a GitHub outage does not
   block local Plan acceptance or local retirement.
-- [ ] The Plan writer has no Git side effect; controller-owned checkpoint
+- [x] The Plan writer has no Git side effect; controller-owned checkpoint
   orchestration is separately covered.
-- [ ] A restart after pending-binding persistence and a restart after the Plan
+- [x] A restart after pending-binding persistence and a restart after the Plan
   transition both recover the same pending release without evidence loss.
 
 **Exit Criteria:**
@@ -446,8 +446,8 @@ about current GitHub state.
 - Normalize and validate ephemeral remote integration evidence.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: `pending until Planning Dispatch resolves the executor profile`
+- Controller-selected: `none (lead controller)`
+- Selection basis: `controller-owned remote evidence normalization and policy tests`
 
 **Validator Profile:**
 - Controller-selected: `none`
