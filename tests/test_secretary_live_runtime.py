@@ -298,6 +298,32 @@ def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
     assert "SYNTHETIC_SESSION_CANARY" not in str(result)
 
 
+@pytest.mark.parametrize(
+    ("launcher_failure", "expected_failure"),
+    [
+        ("Command failed (1): herdr api snapshot: server_not_running", "herdr_server_unavailable"),
+        ("target_resolution=not_found; eligible candidates=0", "target_not_found"),
+    ],
+)
+def test_sanitize_launcher_result_preserves_actionable_launcher_failure(
+    launcher_failure: str,
+    expected_failure: str,
+) -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=2,
+        payload={
+            "assignment": {
+                "status": "blocked",
+                "failure_kind": launcher_failure,
+                "launcher_exit_code": 2,
+            },
+        },
+    )
+
+    assert result["failure_kind"] == expected_failure
+
+
 @pytest.mark.parametrize("session_id", [
     '{"raw_bodies":"REVIEW_SESSION_CANARY"}',
     '{"raw_transport_bodies":"REVIEW_SESSION_CANARY"}',

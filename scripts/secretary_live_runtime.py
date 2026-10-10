@@ -119,6 +119,22 @@ def _safe_assignment(assignment: Mapping[str, Any] | None) -> dict[str, Any]:
     return safe
 
 
+def _launcher_failure_kind(assignment: Mapping[str, Any]) -> str | None:
+    failure = assignment.get("failure_kind")
+    if not isinstance(failure, str):
+        return None
+    normalized = failure.casefold()
+    if "server_not_running" in normalized:
+        return "herdr_server_unavailable"
+    if "target_resolution=not_found" in normalized:
+        return "target_not_found"
+    if "target_resolution=blocked" in normalized:
+        return "target_resolution_blocked"
+    if "target_resolution=incomplete" in normalized or "transport_timeout" in normalized:
+        return "herdr_transport_incomplete"
+    return None
+
+
 @dataclass(frozen=True)
 class SecretaryLaunchRequest:
     task_id: str
@@ -843,6 +859,7 @@ def sanitize_launcher_result(
         and _completion_observed(payload, observed_runtime)
     )
     observed_metrics = structured_binding.get("metrics") if isinstance(structured_binding, Mapping) else None
+    failure_kind = _launcher_failure_kind(safe_assignment)
     return {
         "schema_version": "secretary-live-runtime-v1",
         "evidence_provenance": "live-attributed" if live_attributed else "capability-probe",
@@ -876,7 +893,7 @@ def sanitize_launcher_result(
             **_safe_metrics(observed_metrics if isinstance(observed_metrics, Mapping) else None)
         },
         "disposition": "READY" if live_attributed else "BLOCKED_CAPABILITY",
-        "failure_kind": None if live_attributed else "runtime_completion_evidence_missing",
+        "failure_kind": None if live_attributed else failure_kind or "runtime_completion_evidence_missing",
         **_classify_capabilities("READY" if live_attributed else "BLOCKED_CAPABILITY", None),
     }
 
