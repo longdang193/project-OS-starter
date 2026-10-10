@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -311,6 +312,7 @@ def _observe_submitted_codex(
             env=env,
         )
     observation["cleanup"] = cleanup
+    observation["observed_at"] = datetime.now(timezone.utc).isoformat()
     return observation
 
 
@@ -626,6 +628,172 @@ def _safe_runtime_snapshot(
     return snapshot
 
 
+def _sha256_json(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _build_codex_runtime_snapshot(
+    request: SecretaryLaunchRequest,
+    payload: Mapping[str, Any] | None,
+    observation: Mapping[str, Any],
+    *,
+    configured_model: str | None,
+    started_at: str,
+    finished_at: str,
+    provider_telemetry: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if observation.get("state") != "idle":
+        return None
+    cleanup = observation.get("cleanup")
+    if not isinstance(cleanup, Mapping) or cleanup.get("state") != "removed":
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+
+    herdr = payload.get("herdr")
+    git = payload.get("git")
+    registry = payload.get("registry_launcher")
+    if not all(isinstance(value, Mapping) for value in (herdr, git, registry)):
+        return None
+    session_id = _safe_text(herdr.get("session"))
+    model = _safe_text(registry.get("model")) or configured_model
+    if session_id is None or model is None:
+        return None
+    if git.get("worktree") != str(request.worktree.resolve()) or git.get("repo_root") != str(request.worktree.resolve()):
+        return None
+    if git.get("expected_base") != request.expected_base or git.get("head") != request.git_revision:
+        return None
+    if registry.get("repository_identity") != request.repository_identity:
+        return None
+    if registry.get("plan_identity") != request.plan_identity:
+        return None
+    if registry.get("model_provider") != request.provider:
+        return None
+    if configured_model is not None and registry.get("model") != configured_model:
+        return None
+
+    observed_at = _safe_text(observation.get("observed_at")) or finished_at
+    raw_runtime = payload.get("secretary_runtime")
+    expected_values = {
+        **{key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS},
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "git_revision": request.git_revision,
+        "worktree": str(request.worktree.resolve()),
+        "provider": request.provider,
+        "model": model,
+        "controller_id": SECRETARY_CONTROLLER,
+        "session_id": session_id,
+        "pair_id": request.run_id,
+        "arm": "candidate",
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request.plan_revision}:{request.task_id}",
+    }
+    existing = (
+        _safe_runtime_snapshot(raw_runtime, expected_values)
+        if isinstance(raw_runtime, Mapping)
+        else {}
+    )
+    fallback_timestamps = {
+        "run_started": started_at,
+        "cos_entry": started_at,
+        "secretary_entry": started_at,
+        "worker_entry": started_at,
+        "publication": observed_at,
+        "settlement": observed_at,
+        "acceptance": observed_at,
+        "secretary_exit": finished_at,
+        "cos_exit": finished_at,
+        "run_finished": finished_at,
+    }
+    timestamps = {
+        key: existing.get("timestamps", {}).get(key, fallback)
+        for key, fallback in fallback_timestamps.items()
+    }
+    try:
+        parsed_timestamps = [
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            for value in timestamps.values()
+        ]
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if any(right < left for left, right in zip(parsed_timestamps, parsed_timestamps[1:])):
+        return None
+
+    metrics = _safe_metrics(existing.get("metrics"))
+    if (
+        metrics["token_usage"] == "unknown"
+        and isinstance(provider_telemetry, Mapping)
+        and provider_telemetry.get("disposition") == "matched"
+    ):
+        metrics["token_usage"] = _safe_token_usage(
+            {
+                "input_tokens": provider_telemetry.get("input_tokens"),
+                "output_tokens": provider_telemetry.get("output_tokens"),
+                "total_tokens": provider_telemetry.get("total_tokens"),
+                "cache_read_input_tokens": provider_telemetry.get("cache_read_input_tokens", 0),
+                "cache_write_input_tokens": provider_telemetry.get("cache_write_input_tokens", 0),
+                "source": "response.usage",
+                "confidence": "observed",
+            }
+        )
+        request_count = provider_telemetry.get("request_count")
+        if (
+            metrics["token_usage"] != "unknown"
+            and metrics["secretary_turns"] == "unknown"
+            and isinstance(request_count, int)
+            and not isinstance(request_count, bool)
+            and request_count >= 0
+        ):
+            metrics["secretary_turns"] = request_count
+
+    binding = {
+        "pair_id": request.run_id,
+        "arm": "candidate",
+        "run_id": request.run_id,
+        "attempt_id": request.attempt_id,
+        "task_id": request.task_id,
+        "plan_revision": request.plan_revision,
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "git_revision": request.git_revision,
+        "worktree": str(request.worktree.resolve()),
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request.plan_revision}:{request.task_id}",
+    }
+    runtime_identity = {
+        **binding,
+        "provider": request.provider,
+        "model": model,
+        "controller_id": SECRETARY_CONTROLLER,
+        "session_id": session_id,
+    }
+    source_evidence = {
+        "launch": {key: payload.get(key) for key in ("herdr", "codex", "git", "registry_launcher")},
+        "secretary": {"timestamps": timestamps, "metrics": metrics},
+        "task_result": {"observation": dict(observation)},
+        "settlement": {"state": "unobserved"},
+        "acceptance": {"decision": "unknown"},
+    }
+    sources = {
+        name: {
+            "producer": producer,
+            "source_ref": f"runtime://{name}/{request.run_id}",
+            "source_digest": _sha256_json(source_evidence[name]),
+            **runtime_identity,
+        }
+        for name, producer in SOURCE_PRODUCERS.items()
+    }
+    return {
+        **runtime_identity,
+        "observed": True,
+        "timestamps": timestamps,
+        "metrics": metrics,
+        "sources": sources,
+    }
+
+
 def sanitize_launcher_result(
     request: SecretaryLaunchRequest,
     *,
@@ -831,6 +999,32 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         started,
         datetime.now(timezone.utc).isoformat(),
     )
+    runtime_snapshot = _build_codex_runtime_snapshot(
+        request,
+        payload,
+        result.get("post_submit_observation", {}),
+        configured_model=configured_model,
+        started_at=started,
+        finished_at=datetime.now(timezone.utc).isoformat(),
+        provider_telemetry=result.get("provider_telemetry"),
+    )
+    if runtime_snapshot is not None:
+        previous_identity = result.get("runtime_identity")
+        previous_identity = previous_identity if isinstance(previous_identity, Mapping) else {}
+        result["evidence_provenance"] = "live-attributed"
+        result["runtime_identity"] = {
+            "agent_name": previous_identity.get("agent_name"),
+            "session": runtime_snapshot["session_id"],
+            "pane": previous_identity.get("pane"),
+            "codex_version": previous_identity.get("codex_version"),
+            **{key: runtime_snapshot[key] for key in ("provider", "model", "controller_id", "session_id")},
+            "secretary_runtime": runtime_snapshot,
+        }
+        result["timestamps"] = runtime_snapshot["timestamps"]
+        result["metrics"] = runtime_snapshot["metrics"]
+        result["disposition"] = "READY"
+        result["failure_kind"] = None
+        result.update(_classify_capabilities("READY", result.get("post_submit_observation")))
     result["receipt"] = _smoke_receipt(request, result)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

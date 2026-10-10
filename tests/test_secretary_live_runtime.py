@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import subprocess
 import sys
 
@@ -10,6 +11,7 @@ from scripts.secretary_live_runtime import (
     SECRETARY_PROVIDER,
     SecretaryLaunchRequest,
     _safe_runtime_snapshot,
+    _build_codex_runtime_snapshot,
     _observe_submitted_codex,
     _observe_provider_telemetry,
     _release_codex_agent,
@@ -202,6 +204,64 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
 
     assert result["disposition"] == "READY"
     assert result["evidence_provenance"] == "live-attributed"
+
+
+def test_run_smoke_emits_codex_runtime_receipt_after_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    request_value = request(session="live-session", pane="w1:p1")
+    payload = {
+        "herdr": {
+            "session": "live-session",
+            "pane": "w1:p1",
+            "agent_name": "normal-main-1234",
+            "version": "herdr-test",
+        },
+        "codex": {"version": "codex-test"},
+        "git": {
+            "worktree": str(request_value.worktree.resolve()),
+            "repo_root": str(request_value.worktree.resolve()),
+            "expected_base": request_value.expected_base,
+            "head": request_value.git_revision,
+        },
+        "registry_launcher": {
+            "repository_identity": request_value.repository_identity,
+            "plan_identity": request_value.plan_identity,
+            "model_provider": SECRETARY_PROVIDER,
+            "model": "gpt-test",
+        },
+        "assignment": {"status": "submitted", "attempt_id": request_value.attempt_id},
+    }
+    monkeypatch.setattr("scripts.secretary_live_runtime._configured_provider", lambda _: SECRETARY_PROVIDER)
+    monkeypatch.setattr("scripts.secretary_live_runtime._configured_model", lambda _: "gpt-test")
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime.subprocess.run",
+        lambda *args, **kwargs: type(
+            "Result",
+            (),
+            {"returncode": 0, "stdout": json.dumps(payload), "stderr": ""},
+        )(),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._observe_submitted_codex",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "cleanup": {"state": "removed"},
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._observe_provider_telemetry",
+        lambda *args, **kwargs: {"disposition": "observed_window", "cost": 0.01},
+    )
+
+    result = run_smoke(request_value, output=tmp_path / "smoke.json")
+
+    assert result["disposition"] == "READY"
+    assert result["missing_capabilities"] == []
+    assert result["receipt"]["valid"] is True
+    assert result["receipt"]["metrics"]["settlement_proven"] == "unknown"
+    assert result["receipt"]["metrics"]["acceptance_decision"] == "unknown"
 
 
 def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
@@ -502,6 +562,107 @@ def test_completed_transport_names_only_remaining_secretary_blocker() -> None:
     assert result == {
         "transport_evidence": "proven",
         "missing_capabilities": ["secretary_runtime_receipt"],
+    }
+
+
+def test_completed_codex_transport_produces_bound_runtime_snapshot() -> None:
+    request_value = request(session="live-session", pane="w1:p1")
+    snapshot = _build_codex_runtime_snapshot(
+        request_value,
+        {
+            "herdr": {
+                "session": "live-session",
+                "pane": "w1:p1",
+                "agent_name": "normal-main-1234",
+                "version": "herdr-test",
+            },
+            "codex": {"version": "codex-test"},
+            "git": {
+                "worktree": str(request_value.worktree.resolve()),
+                "repo_root": str(request_value.worktree.resolve()),
+                "expected_base": request_value.expected_base,
+                "head": request_value.git_revision,
+            },
+            "registry_launcher": {
+                "repository_identity": request_value.repository_identity,
+                "plan_identity": request_value.plan_identity,
+                "model_provider": SECRETARY_PROVIDER,
+                "model": "gpt-test",
+            },
+        },
+        {
+            "state": "idle",
+            "cleanup": {"state": "removed"},
+            "observed_at": "2026-10-10T10:00:05+00:00",
+        },
+        configured_model="gpt-test",
+        started_at="2026-10-10T10:00:00+00:00",
+        finished_at="2026-10-10T10:00:06+00:00",
+        provider_telemetry={
+            "disposition": "observed_window",
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "total_tokens": 110,
+            "cache_read_input_tokens": 80,
+            "cache_write_input_tokens": 0,
+            "cost": 0.01,
+        },
+    )
+
+    assert snapshot is not None
+    assert snapshot["observed"] is True
+    assert snapshot["session_id"] == "live-session"
+    assert snapshot["metrics"]["token_usage"] == "unknown"
+    assert snapshot["metrics"]["cost"] == "unknown"
+    assert set(snapshot["sources"]) == {"launch", "secretary", "task_result", "settlement", "acceptance"}
+    assert all(source["attempt_id"] == request_value.attempt_id for source in snapshot["sources"].values())
+
+
+def test_completed_codex_transport_promotes_only_matched_9router_usage() -> None:
+    request_value = request(session="live-session", pane="w1:p1")
+    payload = {
+        "herdr": {"session": "live-session"},
+        "git": {
+            "worktree": str(request_value.worktree.resolve()),
+            "repo_root": str(request_value.worktree.resolve()),
+            "expected_base": request_value.expected_base,
+            "head": request_value.git_revision,
+        },
+        "registry_launcher": {
+            "repository_identity": request_value.repository_identity,
+            "plan_identity": request_value.plan_identity,
+            "model_provider": SECRETARY_PROVIDER,
+            "model": "gpt-test",
+        },
+    }
+    snapshot = _build_codex_runtime_snapshot(
+        request_value,
+        payload,
+        {"state": "idle", "cleanup": {"state": "removed"}},
+        configured_model="gpt-test",
+        started_at="2026-10-10T10:00:00+00:00",
+        finished_at="2026-10-10T10:00:06+00:00",
+        provider_telemetry={
+            "disposition": "matched",
+            "request_count": 1,
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "total_tokens": 110,
+            "cache_read_input_tokens": 80,
+            "cache_write_input_tokens": 5,
+        },
+    )
+
+    assert snapshot is not None
+    assert snapshot["metrics"]["secretary_turns"] == 1
+    assert snapshot["metrics"]["token_usage"] == {
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "total_tokens": 110,
+        "cache_read_input_tokens": 80,
+        "cache_write_input_tokens": 5,
+        "source": "response.usage",
+        "confidence": "observed",
     }
 
 
