@@ -4834,6 +4834,61 @@ def test_process_ids_alive_tracks_live_and_reaped_processes() -> None:
             process.wait(timeout=5)
 
 
+def test_process_ids_alive_rejects_exit_code_259_as_live() -> None:
+    process = subprocess.Popen([
+        LAUNCHER.sys.executable,
+        "-c",
+        "raise SystemExit(259)",
+    ])
+    try:
+        process.wait(timeout=5)
+        assert process.pid not in LAUNCHER._process_ids_alive({process.pid})
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def test_terminate_codex_lane_rejects_malformed_post_close_pane_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter([
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"process_info": {"foreground_processes": [
+                {"pid": 101, "name": "codex.exe", "start_time": 1, "children": []},
+            ]}}}),
+            "",
+        ),
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+            "",
+        ),
+        subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], 0, "not-json", ""),
+    ])
+
+    monkeypatch.setattr(LAUNCHER, "_run", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert "verification failed" in result["detail"]
+
+
 def test_terminate_codex_lane_blocks_empty_live_process_evidence_before_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

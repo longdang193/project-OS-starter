@@ -1663,14 +1663,16 @@ def _process_is_alive(pid: int) -> bool:
         import ctypes
 
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        handle = kernel32.OpenProcess(0x1000, False, pid)
+        handle = kernel32.OpenProcess(0x00100000 | 0x00001000, False, pid)
         if not handle:
             return ctypes.get_last_error() not in {87, 1168}
-        exit_code = ctypes.c_ulong()
         try:
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            wait_status = kernel32.WaitForSingleObject(handle, 0)
+            if wait_status == 0:
+                return False
+            if wait_status == 0x00000102:
                 return True
-            return exit_code.value == 259
+            return True
         finally:
             kernel32.CloseHandle(handle)
     except Exception:
@@ -2192,9 +2194,16 @@ def _terminate_codex_lane_unlocked(
         }
     try:
         panes = _result(json.loads(pane_list_result.stdout), "panes")
+        if not isinstance(panes, list) or any(not isinstance(item, dict) for item in panes):
+            raise LaunchBlocked("termination verification returned invalid panes")
         selected = next((item for item in panes if item.get("pane_id") == pane), None)
-    except (LaunchBlocked, json.JSONDecodeError, TypeError):
-        selected = None
+    except (LaunchBlocked, json.JSONDecodeError, TypeError) as exc:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": f"pane ownership verification failed: {exc}",
+        }
     if not isinstance(selected, dict):
         owned_process_ids = set(ownership.get("process_ids", ())) | before_ids
         remaining_ids = sorted(_process_ids_alive(owned_process_ids))
