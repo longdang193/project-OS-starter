@@ -9,6 +9,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import subprocess
 import tempfile
 from typing import Any
 
@@ -310,6 +311,69 @@ def _plan_write_lock(path: Path):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def _verify_git_checkpoint(
+    source: str | os.PathLike[str],
+    consequence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify that a Git checkpoint records the accepted Plan revision."""
+
+    required = ("commit_sha", "coordination_ref", "plan_path", "expected_plan_revision")
+    if any(not isinstance(consequence.get(field), str) or not consequence.get(field).strip() for field in required):
+        return {"verified": False, "reason": "Git checkpoint metadata incomplete"}
+    plan_path = Path(source).resolve()
+    try:
+        root = Path(
+            subprocess.run(
+                ["git", "-C", str(plan_path.parent), "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        relative_plan = plan_path.relative_to(root).as_posix()
+        commit_sha = str(consequence["commit_sha"])
+        coordination_ref = str(consequence["coordination_ref"])
+        if str(consequence["plan_path"]).replace("\\", "/") != relative_plan:
+            return {"verified": False, "reason": "Git checkpoint Plan path mismatch"}
+        expected_revision = str(consequence["expected_plan_revision"])
+        subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", f"{commit_sha}^{{commit}}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", commit_sha, coordination_ref],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        committed_plan = subprocess.run(
+            ["git", "-C", str(root), "show", f"{commit_sha}:{relative_plan}"],
+            check=True,
+            capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        return {"verified": False, "reason": f"Git checkpoint verification failed: {exc}"}
+    actual_revision = hashlib.sha256(committed_plan).hexdigest()
+    if actual_revision != expected_revision:
+        return {
+            "verified": False,
+            "reason": "Git checkpoint Plan revision mismatch",
+            "actual_plan_revision": actual_revision,
+        }
+    return {
+        **dict(consequence),
+        "verified": True,
+        "owner": "git",
+        "checkpoint_verified": True,
+        "plan_path": relative_plan,
+        "expected_plan_revision": expected_revision,
+        "commit_sha": commit_sha,
+        "coordination_ref": coordination_ref,
+    }
+
+
 def apply_accepted_plan_transitions(
     source: str | os.PathLike[str],
     decision: Mapping[str, Any],
@@ -417,9 +481,19 @@ def apply_accepted_plan_transitions(
             evidence_ref = release_binding.get("evidence_ref")
             if not isinstance(evidence_ref, str) or not evidence_ref.strip():
                 raise ValueError("evidence release binding is missing evidence_ref")
+            recorded_resources = persisted_release_record.get("resources") if isinstance(persisted_release_record, Mapping) else None
+            recorded_resource = recorded_resources.get(evidence_ref) if isinstance(recorded_resources, Mapping) else None
+            configured_resources = evidence_release.get("resources")
+            configured_resource = configured_resources.get(evidence_ref) if isinstance(configured_resources, Mapping) else None
+            pending_resource = dict(recorded_resource) if isinstance(recorded_resource, Mapping) else (
+                dict(configured_resource) if isinstance(configured_resource, Mapping) else {}
+            )
+            if pending_resource.get("state") not in {"removed", "already_absent"}:
+                pending_resource["state"] = "pending"
             pending_authorization = {
                 **dict(attempt_guard.get("release_authorization", {})),
-                "resources": {evidence_ref: {"state": "pending"}},
+                "canonical_consequence": dict(evidence_release.get("canonical_consequence", {})),
+                "resources": {evidence_ref: pending_resource},
             }
             persisted_guard = persist_release_authorization(
                 assignment_id=str(attempt_guard["assignment_id"]),
@@ -454,10 +528,14 @@ def apply_accepted_plan_transitions(
         result = {**result, "authorized": True, "replayed": True}
     if evidence_release is None:
         return result
+    canonical_consequence = dict(evidence_release.get("canonical_consequence", {}))
+    checkpoint = _verify_git_checkpoint(source, canonical_consequence)
+    if checkpoint.get("verified") is True:
+        canonical_consequence = checkpoint
     release_result = release_authorized_evidence(
         decision,
         binding=evidence_release.get("binding", {}),
-        canonical_consequence=evidence_release.get("canonical_consequence", {}),
+        canonical_consequence=canonical_consequence,
         required_consumers=evidence_release.get("required_consumers", ()),
         consumer_releases=evidence_release.get("consumer_releases", {}),
         retention=evidence_release.get("retention", {}),
@@ -478,7 +556,13 @@ def apply_accepted_plan_transitions(
                 binding=dict(attempt_guard["binding"]),
                 release_authorization={
                     **dict(attempt_guard.get("release_authorization", {})),
-                    "resources": release_result.get("resources", {}),
+                    "canonical_consequence": canonical_consequence,
+                    "resources": release_result.get("resources")
+                    or (
+                        persisted_release_record.get("resources", {})
+                        if isinstance(persisted_release_record, Mapping)
+                        else {}
+                    ),
                 },
             )
         except (KeyError, RuntimeError, TypeError, ValueError) as exc:

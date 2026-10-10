@@ -98,6 +98,20 @@ def _resource(
     }
 
 
+def _canonical_consequence(binding: dict[str, str] | None = None) -> dict[str, object]:
+    current = _binding() if binding is None else binding
+    return {
+        "authorized": True,
+        "owner": "git",
+        "checkpoint_verified": True,
+        "commit_sha": "commit-1",
+        "coordination_ref": "coordination",
+        "plan_path": "plan.md",
+        "expected_plan_revision": "revision-1",
+        **{key: value for key, value in current.items() if key != "evidence_ref"},
+    }
+
+
 def _release(
     tmp_path: Path,
     *,
@@ -118,7 +132,7 @@ def _release(
     return release_authorized_evidence(
         _acceptance_decision() if decision is None else decision,
         binding=_binding(),
-        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        canonical_consequence=_canonical_consequence(),
         required_consumers=["controller"],
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
@@ -146,13 +160,37 @@ def test_release_requires_retirement_proof(tmp_path: Path):
     assert (tmp_path / "task-result.json").exists()
 
 
+def test_release_requires_verified_git_checkpoint(tmp_path: Path):
+    task_result = tmp_path / "task-result.json"
+    publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))
+    result = release_authorized_evidence(
+        _acceptance_decision(),
+        binding=_binding(),
+        canonical_consequence={**_canonical_consequence(), "checkpoint_verified": False},
+        required_consumers=["controller"],
+        consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
+        retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
+        evidence_paths={"task-result": task_result},
+        retirement_proof=_retirement_proof(),
+        release_record={
+            "authorized": True,
+            "binding": _binding(),
+            "resources": {"task-result": _resource(tmp_path)},
+            "attempt_guard": _attempt_guard(worktree=tmp_path),
+        },
+    )
+    assert result["authorized"] is False
+    assert "verified Git checkpoint" in result["reasons"]
+    assert task_result.exists()
+
+
 def test_release_requires_durable_authorization_record(tmp_path: Path):
     task_result = tmp_path / "task-result.json"
     publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))
     result = release_authorized_evidence(
         _acceptance_decision(),
         binding=_binding(),
-        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        canonical_consequence=_canonical_consequence(),
         required_consumers=["controller"],
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
@@ -191,7 +229,7 @@ def test_release_replay_requires_durable_complete_record(tmp_path: Path):
     result = release_authorized_evidence(
         _acceptance_decision(),
         binding=_binding(),
-        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        canonical_consequence=_canonical_consequence(),
         required_consumers=["controller"],
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
@@ -207,7 +245,7 @@ def test_release_replay_rejects_incomplete_durable_record(tmp_path: Path):
     result = release_authorized_evidence(
         _acceptance_decision(),
         binding=_binding(),
-        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        canonical_consequence=_canonical_consequence(),
         required_consumers=["controller"],
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
@@ -228,7 +266,7 @@ def test_release_replay_recovers_after_disposal_before_final_record(tmp_path: Pa
     result = release_authorized_evidence(
         _acceptance_decision(),
         binding=_binding(),
-        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        canonical_consequence=_canonical_consequence(),
         required_consumers=["controller"],
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
@@ -257,10 +295,7 @@ def _invoke_release(
     return release_authorized_evidence(
         _acceptance_decision(),
         binding=current_binding,
-        canonical_consequence={
-            "authorized": True,
-            **{key: value for key, value in current_binding.items() if key != "evidence_ref"},
-        },
+        canonical_consequence=_canonical_consequence(current_binding),
         required_consumers=["controller"],
         consumer_releases={
             "controller": {"authorized": True, "consumer": "controller", **current_binding}

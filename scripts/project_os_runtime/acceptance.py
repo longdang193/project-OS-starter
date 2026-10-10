@@ -271,6 +271,19 @@ def authorize_evidence_release(
     else:
         if canonical_consequence.get("authorized") is not True:
             reasons.append("canonical consequence")
+        if (
+            canonical_consequence.get("owner") != "git"
+            or canonical_consequence.get("checkpoint_verified") is not True
+            or not isinstance(canonical_consequence.get("commit_sha"), str)
+            or not canonical_consequence.get("commit_sha", "").strip()
+            or not isinstance(canonical_consequence.get("coordination_ref"), str)
+            or not canonical_consequence.get("coordination_ref", "").strip()
+            or not isinstance(canonical_consequence.get("plan_path"), str)
+            or not canonical_consequence.get("plan_path", "").strip()
+            or not isinstance(canonical_consequence.get("expected_plan_revision"), str)
+            or not canonical_consequence.get("expected_plan_revision", "").strip()
+        ):
+            reasons.append("verified Git checkpoint")
         for field in RELEASE_BINDING_FIELDS[:-1]:
             if canonical_consequence.get(field) != binding.get(field):
                 reasons.append(f"canonical {field} binding")

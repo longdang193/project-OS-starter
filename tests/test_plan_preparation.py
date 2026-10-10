@@ -13,6 +13,7 @@ import pytest
 from scripts import herdr_parallel_dispatch as dispatcher
 from scripts.project_os_runtime import plan_preparation as plan_preparation_module
 from scripts.project_os_runtime.plan_preparation import (
+    _verify_git_checkpoint,
     load_plan,
     apply_accepted_plan_transitions,
     apply_plan_transitions,
@@ -68,6 +69,24 @@ Reduce repeated coordination.
 **Template Profile:**
 - Controller-selected: `normal`
 """
+
+
+def _git_repo(tmp_path: Path, content: str) -> tuple[Path, Path, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    plan_path = repo / "plan.md"
+    plan_path.write_text(content, encoding="utf-8")
+    for args in (("init",), ("config", "user.email", "tests@example.invalid"), ("config", "user.name", "Tests")):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], check=True, capture_output=True, text=True)
+    commit = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return repo, plan_path, commit
 
 
 
@@ -450,6 +469,133 @@ def test_apply_accepted_plan_transitions_replays_release_after_transition_commit
     assert replay["authorized"] is True
     assert replay["replayed"] is True
     assert calls == ["release"]
+
+
+def test_git_checkpoint_verifier_requires_reachable_exact_plan_revision(tmp_path: Path) -> None:
+    repo, plan_path, commit = _git_repo(tmp_path, PLAN)
+    revision = hashlib.sha256(PLAN.encode("utf-8")).hexdigest()
+    consequence = {
+        "owner": "git",
+        "commit_sha": commit,
+        "coordination_ref": "HEAD",
+        "plan_path": "plan.md",
+        "expected_plan_revision": revision,
+    }
+
+    verified = _verify_git_checkpoint(plan_path, consequence)
+    assert verified["verified"] is True
+    assert verified["checkpoint_verified"] is True
+
+    changed = PLAN + "\nchanged but uncommitted\n"
+    plan_path.write_text(changed, encoding="utf-8")
+    rejected = _verify_git_checkpoint(
+        plan_path,
+        {**consequence, "expected_plan_revision": hashlib.sha256(changed.encode("utf-8")).hexdigest()},
+    )
+    assert rejected["verified"] is False
+    assert "revision mismatch" in rejected["reason"]
+
+    plan_path.write_text(PLAN, encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "switch", "--orphan", "unrelated"], check=True, capture_output=True, text=True)
+    plan_path.write_text("unrelated plan\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "unrelated"], check=True, capture_output=True, text=True)
+    unreachable = _verify_git_checkpoint(
+        plan_path,
+        {**consequence, "coordination_ref": "HEAD"},
+    )
+    assert unreachable["verified"] is False
+    assert "verification failed" in unreachable["reason"]
+
+
+def test_accepted_transition_keeps_pending_release_until_checkpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, plan_path, commit = _git_repo(
+        tmp_path,
+        PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |").replace(
+            "| Task 2 | `completed` |", "| Task 2 | `pending` |"
+        ),
+    )
+    plan = plan_path.read_text(encoding="utf-8")
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+    inputs = {
+        "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"artifact": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    dependent = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 1"]},
+        dependency_states={"Task 1": "completed"},
+    )
+    transitions = [
+        {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
+        {"task_id": "Task 2", "expected_state": "pending", "next_state": "active"},
+    ]
+    artifact = repo / "task-result.json"
+    artifact.write_text('{"producer":"dcode-project","schema":"dcode-project.task-result.v1"}', encoding="utf-8")
+    binding = {"plan_ref": "plan-1", "task_id": "Task 1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "candidate_sha": commit, "acceptance_checkpoint_sha": commit, "evidence_ref": "task-result"}
+    resource = {"state": "pending", "attempt_id": "attempt-1", "evidence_ref": "task-result", "attempt_root": str(repo.resolve()), "relative_path": "task-result.json", "content_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(), "producer": "dcode-project", "schema": "dcode-project.task-result.v1"}
+    persist_calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_persist(*, assignment_id, binding, release_authorization):
+        persist_calls.append((hashlib.sha256(plan_path.read_text(encoding="utf-8").encode("utf-8")).hexdigest(), dict(release_authorization)))
+        resources = release_authorization.get("resources", {"task-result": resource})
+        return {"release_authorized": True, "release_state": "pending", "resources": resources, "attempt_guard": {"release_authorized": True, "release_state": "pending"}}
+
+    def fake_release(decision, *, canonical_consequence, **kwargs):
+        if canonical_consequence.get("checkpoint_verified") is True:
+            return {"authorized": True, "payload_released": True, "resources": {"task-result": {**resource, "state": "removed"}}}
+        return {"authorized": False, "payload_released": False, "resources": {"task-result": resource}, "reasons": ["verified Git checkpoint"]}
+
+    monkeypatch.setattr("scripts.dcode_project.record_release_authorization", fake_persist)
+    monkeypatch.setattr(plan_preparation_module, "release_authorized_evidence", fake_release)
+    evidence_release = {
+        "binding": binding,
+        "resources": {"task-result": resource},
+        "canonical_consequence": {"authorized": True, "owner": "git", "coordination_ref": "HEAD", "plan_path": "plan.md", "expected_plan_revision": revision},
+        "attempt_guard": {"assignment_id": "assignment-1", "binding": {"attempt_id": "attempt-1"}},
+        "required_consumers": [],
+        "consumer_releases": {},
+        "retention": {},
+        "evidence_paths": {"task-result": artifact},
+        "retirement_proof": {"retirement_complete": True, "plan_ref": "plan-1", "task_id": "Task 1", "assignment_id": "assignment-1", "attempt_id": "attempt-1"},
+    }
+
+    first = apply_accepted_plan_transitions(plan_path, decision, transitions, dependent_transition=dependent, evidence_release=evidence_release, expected_revision=revision)
+    assert first["authorized"] is True
+    assert first["evidence_release"]["payload_released"] is False
+    assert persist_calls[0][0] == revision
+    post_transition_revision = first["new_revision"]
+
+    subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "plan checkpoint"], check=True, capture_output=True, text=True)
+    checkpoint = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    replay = apply_accepted_plan_transitions(
+        plan_path,
+        decision,
+        transitions,
+        dependent_transition=dependent,
+        evidence_release={
+            **evidence_release,
+            "canonical_consequence": {
+                **evidence_release["canonical_consequence"],
+                "commit_sha": checkpoint,
+                "expected_plan_revision": post_transition_revision,
+            },
+        },
+        expected_revision=revision,
+    )
+    assert replay["replayed"] is True
+    assert replay["evidence_release"]["payload_released"] is True
+    assert persist_calls[0][1]["resources"]["task-result"]["state"] == "pending"
 
 
 def test_parse_plan_rejects_invalid_graph() -> None:
