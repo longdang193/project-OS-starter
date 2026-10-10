@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from typing import Any
 
-from .attempt import execution_binding_digest, normalize_runtime_grant
+from .attempt import execution_binding_digest, normalize_runtime_grant, same_attempt_binding
 from .acceptance import release_authorized_evidence
 try:
     from ..planning_dependencies import (
@@ -500,11 +500,21 @@ def apply_accepted_plan_transitions(
                 binding=dict(attempt_guard["binding"]),
                 release_authorization=pending_authorization,
             )
-            authoritative_resources = persisted_guard.get("released_resources")
-            if not isinstance(authoritative_resources, Mapping):
-                by_attempt = persisted_guard.get("released_resources_by_attempt")
-                attempt_resources = by_attempt.get(str(attempt_guard["binding"].get("attempt_id"))) if isinstance(by_attempt, Mapping) else None
-                authoritative_resources = attempt_resources if isinstance(attempt_resources, Mapping) else pending_authorization["resources"]
+            by_attempt = persisted_guard.get("released_resources_by_attempt")
+            attempt_key = str(attempt_guard["binding"].get("attempt_id"))
+            attempt_resources = by_attempt.get(attempt_key) if isinstance(by_attempt, Mapping) else None
+            if isinstance(attempt_resources, Mapping):
+                authoritative_resources = attempt_resources
+            else:
+                legacy_binding = persisted_guard.get("release_binding")
+                legacy_resources = persisted_guard.get("released_resources")
+                authoritative_resources = (
+                    legacy_resources
+                    if isinstance(legacy_resources, Mapping)
+                    and isinstance(legacy_binding, Mapping)
+                    and same_attempt_binding(legacy_binding, attempt_guard["binding"])
+                    else pending_authorization["resources"]
+                )
             persisted_release_record = {
                 "authorized": True,
                 "binding": release_binding,

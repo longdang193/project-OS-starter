@@ -471,6 +471,92 @@ def test_apply_accepted_plan_transitions_replays_release_after_transition_commit
     assert calls == ["release"]
 
 
+def test_apply_accepted_plan_transitions_prefers_current_attempt_resources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan = plan.replace("| Task 2 | `completed` |", "| Task 2 | `pending` |")
+    plan_path.write_text(plan, encoding="utf-8")
+    inputs = {
+        "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"artifact": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    dependent = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 1"]},
+        dependency_states={"Task 1": "completed"},
+    )
+    transitions = [
+        {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
+        {"task_id": "Task 2", "expected_state": "pending", "next_state": "active"},
+    ]
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+    assert apply_plan_transitions(plan_path, transitions, expected_revision=revision)["authorized"] is True
+    current_binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-2",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-2",
+    }
+    legacy_binding = {**current_binding, "attempt_id": "attempt-1", "grant_digest": "grant-1"}
+    captured: list[dict] = []
+
+    def fake_persist(**kwargs):
+        return {
+            "release_binding": legacy_binding,
+            "released_resources": {"task-result": {"state": "removed", "attempt_id": "attempt-1"}},
+            "released_resources_by_attempt": {
+                "attempt-2": {"task-result": {"state": "pending", "attempt_id": "attempt-2"}},
+            },
+            "release_authorized": True,
+            "release_state": "pending",
+        }
+
+    def fake_release(*args, **kwargs):
+        captured.append(kwargs["release_record"])
+        return {"authorized": True, "payload_released": False, "resources": {}}
+
+    monkeypatch.setattr("scripts.dcode_project.record_release_authorization", fake_persist)
+    monkeypatch.setattr(plan_preparation_module, "release_authorized_evidence", fake_release)
+    replay = apply_accepted_plan_transitions(
+        plan_path,
+        decision,
+        transitions,
+        dependent_transition=dependent,
+        evidence_release={
+            "binding": {
+                "plan_ref": "plan-1",
+                "task_id": "Task 1",
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-2",
+                "candidate_sha": "candidate-1",
+                "acceptance_checkpoint_sha": "checkpoint-1",
+                "evidence_ref": "task-result",
+            },
+            "attempt_guard": {
+                "assignment_id": "assignment-1",
+                "binding": current_binding,
+                "release_authorization": {},
+            },
+            "release_record": {"authorized": True},
+        },
+        expected_revision=revision,
+    )
+
+    assert replay["authorized"] is True
+    assert captured[0]["resources"] == {"task-result": {"state": "pending", "attempt_id": "attempt-2"}}
+
+
 def test_git_checkpoint_verifier_requires_reachable_exact_plan_revision(tmp_path: Path) -> None:
     repo, plan_path, commit = _git_repo(tmp_path, PLAN)
     revision = hashlib.sha256(PLAN.encode("utf-8")).hexdigest()

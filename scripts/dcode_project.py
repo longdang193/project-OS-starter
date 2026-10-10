@@ -965,12 +965,22 @@ def record_release_authorization(
                 if normalized_resource.get("evidence_ref") not in {None, evidence_ref}:
                     raise RuntimeError("dcode-project release resource evidence binding mismatch.")
                 previous_resource = released_resources.get(evidence_ref)
-                if (
-                    isinstance(previous_resource, dict)
-                    and previous_resource.get("state") in {"removed", "already_absent"}
-                    and normalized_resource.get("state") not in {"removed", "already_absent"}
-                ):
-                    normalized_resource = previous_resource
+                if isinstance(previous_resource, dict):
+                    if previous_resource.get("state") in {"removed", "already_absent"}:
+                        normalized_resource = previous_resource
+                    elif previous_resource.get("state") == "pending":
+                        for field in (
+                            "attempt_id",
+                            "evidence_ref",
+                            "attempt_root",
+                            "relative_path",
+                            "content_sha256",
+                            "artifact_digest",
+                            "producer",
+                            "schema",
+                        ):
+                            if field in previous_resource:
+                                normalized_resource[field] = previous_resource[field]
                 released_resources[evidence_ref] = normalized_resource
         release_authorizations = dict(existing.get("release_authorizations", {})) if isinstance(existing.get("release_authorizations"), dict) else {}
         if isinstance(existing.get("release_authorization"), dict):

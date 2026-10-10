@@ -386,6 +386,43 @@ def test_pending_digest_mismatch_preserves_artifact(tmp_path: Path):
     assert task_result.exists()
 
 
+def test_pending_replacement_after_validation_preserves_artifact(
+    monkeypatch, tmp_path: Path
+):
+    task_result = tmp_path / "task-result.json"
+    publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))
+    original = task_result.read_bytes()
+    resource = _resource(tmp_path, digest=hashlib.sha256(original).hexdigest())
+    original_read_bytes = Path.read_bytes
+    reads = 0
+
+    def replace_after_first_read(path: Path) -> bytes:
+        nonlocal reads
+        content = original_read_bytes(path)
+        if path == task_result:
+            reads += 1
+            if reads == 1:
+                path.write_text(
+                    '{"producer": "dcode-project", "schema": "dcode-project.task-result.v1"}',
+                    encoding="utf-8",
+                )
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_first_read)
+    result = _invoke_release(
+        tmp_path,
+        {
+            "authorized": True,
+            "binding": _binding(),
+            "resources": {"task-result": resource},
+            "attempt_guard": _attempt_guard(worktree=tmp_path),
+        },
+    )
+    assert result["authorized"] is False
+    assert "digest mismatch" in result["reasons"][0]
+    assert task_result.read_text(encoding="utf-8").startswith('{"producer": "dcode-project"')
+
+
 def test_pending_wrong_attempt_preserves_artifact(tmp_path: Path):
     task_result = tmp_path / "task-result.json"
     publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))

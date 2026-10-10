@@ -495,6 +495,22 @@ def release_authorized_evidence(
                 evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
             },
         }
+    mismatch = _release_resource_mismatch(
+        recorded_resource,
+        binding=binding,
+        evidence_ref=evidence_ref,
+        attempt_guard=attempt_guard,
+        path=path,
+    )
+    if mismatch is not None:
+        return {
+            **result,
+            "authorized": False,
+            "reasons": [f"binding_mismatch: {mismatch}"],
+            "resources": {
+                evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
+            },
+        }
     if not path.exists():
         return {
             **result,
