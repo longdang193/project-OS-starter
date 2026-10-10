@@ -500,10 +500,15 @@ def apply_accepted_plan_transitions(
                 binding=dict(attempt_guard["binding"]),
                 release_authorization=pending_authorization,
             )
+            authoritative_resources = persisted_guard.get("released_resources")
+            if not isinstance(authoritative_resources, Mapping):
+                by_attempt = persisted_guard.get("released_resources_by_attempt")
+                attempt_resources = by_attempt.get(str(attempt_guard["binding"].get("attempt_id"))) if isinstance(by_attempt, Mapping) else None
+                authoritative_resources = attempt_resources if isinstance(attempt_resources, Mapping) else pending_authorization["resources"]
             persisted_release_record = {
                 "authorized": True,
                 "binding": release_binding,
-                "resources": pending_authorization["resources"],
+                "resources": dict(authoritative_resources),
                 "attempt_guard": persisted_guard,
             }
             record_release_authorization = persist_release_authorization
