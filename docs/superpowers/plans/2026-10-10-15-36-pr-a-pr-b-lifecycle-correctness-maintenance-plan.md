@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: pr-a-pr-b-lifecycle-correctness-maintenance
 targets:
@@ -156,11 +156,11 @@ about current GitHub state.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `codex/pr-a-lifecycle-correctness` from `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; PR B branch from the merged PR A commit; do not use local main a8a1fc5`
-- Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec`
-- Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\pr-a-lifecycle-correctness\project-OS-starter; PR B will use a new dedicated worktree; preserve the current main checkout's 9router overlay, untracked plans, db/, .playwright-mcp/, and temp_evidence.json`
-- Next action: `user-authorized PR A push and remote-head CI/review; do not start PR B before PR A merge`
-- Blockers: `push, merge, remote CI, and worktree transitions remain approval-gated`
+- Branch: `PR A = codex/pr-a-lifecycle-correctness; PR B = codex/pr-b-maintenance; merged remote main is the completed integration state`
+- Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec; PR B final head = 891440aebdaebf558ab89fbedb45a15150a72bbd; PR B merge = 15a01ac9fce8a06e05798ddcd2682b6a90cc91ee`
+- Expected workspace: `merged PR B state; preserve unrelated primary-checkout artifacts and retain BLOCKED_CAPABILITY for live Herdr measurement`
+- Next action: `none; implementation and verification are complete`
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -172,7 +172,7 @@ about current GitHub state.
 | Task 6 | `completed` | PR B worktree | `codex` | Task 5 | compaction and obsolete-attempt tests | focused lifecycle suite PASS; generation/tombstone compaction proof |
 | Task 7 | `completed` | PR B worktree | `codex` | Task 6 | Secretary caller/invariant tests | `605 passed`; reference-only evidence and zero-message benchmark proof |
 | Task 8 | `completed` | PR B worktree | `codex` | Task 7 | next_action inventory and Herdr provenance measurement | no production `next_action` callers; provenance tests PASS; live measurement `BLOCKED_CAPABILITY` |
-| Task 9 | `pending` | PR B worktree | `unresolved` | Tasks 6–8 | CI/template split and PR B verification | pending |
+| Task 9 | `completed` | PR B worktree | `codex` | Tasks 6–8 | CI/template split and PR B verification | PR #73 merged at `15a01ac9`; final reviewed head `891440a`; remote checks PASS |
 
 ## Task Breakdown
 
@@ -861,8 +861,8 @@ The PR A review gate is inherited from the merged PR A commit.
 - Align maintained contracts and perform final cross-surface verification.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: `pending until Planning Dispatch resolves the executor profile`
+- Controller-selected: `none (lead controller)`
+- Selection basis: `lead controller completed the bounded CI, documentation, and verification lane`
 
 **Validator Profile:**
 - Controller-selected: `review-2`
@@ -893,65 +893,80 @@ The PR A review gate is inherited from the merged PR A commit.
 - Stop for: `path-based CI filtering before ownership is clean, mutable current-status prose in plans/templates, generated-surface edits without canonical input changes, or unrelated workflow redesign`
 
 **Steps:**
-- [ ] Step 1: Keep Repository Contracts limited to planning lifecycle,
+- [x] Step 1: Keep Repository Contracts limited to planning lifecycle,
   repository schemas/config, generated drift, and static/invariant validators.
-- [ ] Step 2: Keep Runtime Contracts limited to reconciliation,
+- [x] Step 2: Keep Runtime Contracts limited to reconciliation,
   acceptance/release, Herdr, DeepAgents, Secretary, and OS behavior; keep
   Benchmark limited to performance contract tests.
-- [ ] Step 3: Update plan/template guidance to record PR numbers, candidate
+- [x] Step 3: Update plan/template guidance to record PR numbers, candidate
   SHAs, policy sources, and evidence references, while rejecting prose that
   claims a mutable current PR/check/review state as durable truth.
-- [ ] Step 4: Run the local ready gate: full repository validator, the full
+- [x] Step 4: Run the local ready gate: full repository validator, the full
   affected suite available on the local platform, diff check, and the existing
   Secretary/worker benchmark command. Compare only metrics marked supported in
   the Task 1 table; retain `UNAVAILABLE`, `NOT_APPLICABLE`, or
   `BLOCKED_CAPABILITY` outcomes for the rest. Use direct lifecycle regression
   tests for cleanup correctness, and do not present deterministic-fake
   benchmarks as live resource or operating-cost evidence.
-- [ ] Step 5: Request independent review for PR B; if findings change code,
+- [x] Step 5: Request independent review for PR B; if findings change code,
   rerun affected proof and bind the final review to the new code head.
-- [ ] Step 6: Create the PR B checkpoint commit with durable candidate
+- [x] Step 6: Create the PR B checkpoint commit with durable candidate
   evidence, then after user-authorized push record remote PR-head CI for
   Repository Contracts, Ubuntu Runtime, Windows Runtime, and Benchmark gates.
 
 **Verification:**
-- [ ] `python scripts/validate_repo_contracts.py` passes.
-- [ ] The local ready gate passes on the available platform; remote PR-head CI
+- [x] `python scripts/validate_repo_contracts.py` passes.
+- [x] The local ready gate passes on the available platform; remote PR-head CI
   supplies Ubuntu and Windows results after authorized push.
-- [ ] `git diff --check` passes.
-- [ ] Benchmark comparison uses identical workloads and keeps incorrect cleanup
+- [x] `git diff --check` passes.
+- [x] Benchmark comparison uses identical workloads and keeps incorrect cleanup
   events at zero where the direct lifecycle tests support that claim; unsupported
   live-resource metrics are explicitly deferred.
-- [ ] CI workflow ownership has no duplicate Secretary/Herdr behavioral test
+- [x] CI workflow ownership has no duplicate Secretary/Herdr behavioral test
   ownership without an explicit contract reason.
-- [ ] Independent review returns no unresolved PR B finding.
-- [ ] Final review and remote CI are bound to the same final PR B code head.
+- [x] Independent review returns no unresolved PR B finding.
+- [x] Final review and remote CI are bound to the same final PR B code head.
 
 **Exit Criteria:**
 - PR B is review-ready, CI ownership is explicit, plan guidance is durable,
   and the before/after measurement supports the maintenance change without a
   correctness regression.
 
+**Task 9 Evidence:**
+- Repository Contracts and Runtime Contracts ownership was split as planned;
+  Benchmark remains performance-only.
+- Plan/template guidance records durable PR, commit, policy, and evidence
+  references rather than mutable current GitHub status.
+- Local ready gate: `1134 passed, 2 skipped`; final independent review suite:
+  `829 passed, 1 skipped`; focused dcode/lifecycle suite: `155 passed`.
+- Repository validator and `git diff --check` passed. Deterministic Secretary
+  benchmark passed with synthetic-only provenance; live Herdr measurement is
+  explicitly `BLOCKED_CAPABILITY`.
+- PR #73 final reviewed head `891440aebdaebf558ab89fbedb45a15150a72bbd`,
+  independent review `PASS`, remote Repository Contracts, Ubuntu Runtime,
+  Windows Runtime, and Benchmark checks `PASS`; merged as
+  `15a01ac9fce8a06e05798ddcd2682b6a90cc91ee`.
+
 ## Verification
 
-- [ ] PR A focused matrix passes before any PR B implementation begins.
-- [ ] PR A independent review passes against terminal release, exact binding,
+- [x] PR A focused matrix passes before any PR B implementation begins.
+- [x] PR A independent review passes against terminal release, exact binding,
   Git checkpoint, local outage, and review-policy criteria.
-- [ ] PR B compaction, Secretary, `next_action`, session-provenance, and CI
+- [x] PR B compaction, Secretary, `next_action`, session-provenance, and CI
   ownership tests pass after the PR A checkpoint.
-- [ ] `python scripts/validate_repo_contracts.py` passes from the execution
+- [x] `python scripts/validate_repo_contracts.py` passes from the execution
   worktree.
-- [ ] Local ready gates pass on the available platform for PR A and PR B;
+- [x] Local ready gates pass on the available platform for PR A and PR B;
   remote PR-head CI supplies Ubuntu and Windows runtime results after each
   user-authorized push.
-- [ ] `git diff --check` passes.
-- [ ] Identical before/after measurements compare every metric marked supported
+- [x] `git diff --check` passes.
+- [x] Identical before/after measurements compare every metric marked supported
   in the Task 1 table, including coordination overhead per accepted change,
   retained attempt/release records, retained temporary bytes, Secretary
   activations, Herdr subprocess calls, empty sessions, incorrect cleanup
   events, and fresh-controller recovery time. Unsupported or blocked metrics
   retain their explicit status and are not used for cost claims.
-- [ ] Final independent review for each PR is bound to that PR's final code
+- [x] Final independent review for each PR is bound to that PR's final code
   head, and no review PASS from a superseded candidate is reused.
 
 ## Completion Criteria
