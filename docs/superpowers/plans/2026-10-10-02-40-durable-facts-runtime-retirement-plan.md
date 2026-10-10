@@ -108,8 +108,8 @@ concurrency remains. New contract tests run in current repository workflows.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | none | inventory, baseline validators, preserved-untracked proof | pending |
-| Task 2 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 1 | phase contract and reconciliation tests | pending |
+| Task 1 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | none | inventory, baseline validators, preserved-untracked proof | `origin/main=187f28e492ae1c4726cdd2f7b5a261a2b8b6c695; validate_repo_contracts=0; validate_planning_lifecycle=0; focused tests=119 passed; unrelated drafting workspace preserved` |
+| Task 2 | `active` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 1 | phase contract and reconciliation tests | pending |
 | Task 3 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | GitHub identity/freshness and acceptance-release tests | pending |
 | Task 4 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | launcher binding, lock race, resource retirement tests | pending |
 | Task 5 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 3, 4 | Secretary ownership, compaction, replay tests | pending |
@@ -130,7 +130,7 @@ concurrency remains. New contract tests run in current repository workflows.
 - Repository truth and migration-safety audit.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - Durable ownership, historical compatibility, rollback safety,
@@ -193,7 +193,7 @@ deletion target lacks a caller/test decision.
 - Runtime contract correction and boundary integration.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - Dispatch independence, dependency readiness, checkpoint/candidate separation,
