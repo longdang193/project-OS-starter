@@ -4756,6 +4756,62 @@ def test_terminate_codex_lane_tracks_owned_descendants_after_pane_close(
     assert result["remaining_process_ids"] == [102]
 
 
+def test_terminate_codex_lane_checks_observed_descendants_when_pane_remains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_infos = iter([
+        {"foreground_processes": [{
+            "pid": 101,
+            "name": "codex.exe",
+            "start_time": 1,
+            "children": [{"pid": 102, "name": "node.exe", "children": []}],
+        }]},
+        {"foreground_processes": [{"pid": 103, "name": "powershell.exe", "children": []}]},
+    ])
+    commands: list[list[str]] = []
+    list_calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal list_calls
+        commands.append(command)
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"result": {"process_info": next(process_infos)}}), "",
+            )
+        if "close" in command:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            list_calls += 1
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["state"] == "shell-only"
+    assert result["remaining_owned_process_ids"] == [102]
+
+
 def test_terminate_codex_lane_blocks_empty_live_process_evidence_before_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

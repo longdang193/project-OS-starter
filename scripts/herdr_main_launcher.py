@@ -2311,7 +2311,7 @@ def _terminate_codex_lane_unlocked(
         for process in after_processes
         if str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
     ]
-    remaining_owned_ids = _process_ids_alive(set(ownership.get("process_ids", before_ids)))
+    remaining_owned_ids = _process_ids_alive(set(ownership.get("process_ids", ())) | before_ids)
     return {
         "requested": True,
         "action": "pane-close",
