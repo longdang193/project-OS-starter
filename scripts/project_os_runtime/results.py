@@ -298,5 +298,3 @@ def parse_task_result(
         "continuation_eligible": False,
         "accepted": payload.get("accepted"),
     }
-
-
