@@ -1,4 +1,5 @@
 import pytest
+from dataclasses import replace
 
 from scripts.project_os_runtime.reconciliation import (
     ReconciliationInput,
@@ -21,6 +22,10 @@ def _remote(*, head_sha="H", merged=False, reviewed_head_sha="H", checks=None):
             {"name": "Runtime contracts (ubuntu-latest)", "head_sha": head_sha, "conclusion": "success"},
         ),
         policy_source="github://ruleset/main",
+        review_policy_source="github://ruleset/main",
+        review_policy_satisfied=True,
+        effective_review_state="APPROVED",
+        review_required=True,
         review_identity="review-1",
         review_pr_number=7,
         reviewed_head_sha=reviewed_head_sha,
@@ -110,6 +115,45 @@ def test_integrate_rejects_review_for_old_head() -> None:
     }, _remote(reviewed_head_sha="OLD")))
     assert result.eligible is False
     assert "review_bound_to_head" in result.contradictions
+
+
+@pytest.mark.parametrize("state", ["COMMENTED", "CHANGES_REQUESTED", "DISMISSED"])
+def test_integrate_rejects_non_approving_effective_review_state(state: str) -> None:
+    remote = _remote()
+    remote = replace(remote, effective_review_state=state, review_policy_satisfied=False)
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, remote))
+    assert result.eligible is False
+    assert "review_policy" in result.contradictions
+
+
+def test_integrate_allows_review_not_required_policy() -> None:
+    remote = _remote()
+    remote = replace(
+        remote,
+        review_policy_source="repo-contract://review-not-required",
+        review_policy_satisfied=True,
+        effective_review_state="NONE",
+        review_required=False,
+        review_identity=None,
+        review_pr_number=None,
+        reviewed_head_sha=None,
+    )
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, remote))
+    assert result.eligible is True
 
 
 def test_integrate_eligibility_does_not_claim_merge_completion() -> None:

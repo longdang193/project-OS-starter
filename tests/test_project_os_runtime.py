@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -230,7 +231,7 @@ def test_evidence_release_requires_consumer_release_and_expired_retention() -> N
         "acceptance_checkpoint_sha": "checkpoint-1",
         "evidence_ref": "task-result-1",
     }
-    canonical = {**binding, "authorized": True}
+    canonical = {**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"}
     releases = {
         "secretary": {
             "consumer": "secretary",
@@ -287,7 +288,7 @@ def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) ->
     result = release_authorized_evidence(
         decision,
         binding=binding,
-        canonical_consequence={**binding, "authorized": True},
+        canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=["secretary"],
         consumer_releases={
             "secretary": {
@@ -308,8 +309,21 @@ def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) ->
         release_record={
             "authorized": True,
             "binding": binding,
-            "resources": {"task-result-1": {"state": "pending"}},
-            "attempt_guard": {"release_authorized": True, "release_state": "pending"},
+            "resources": {
+                "task-result-1": {
+                    "state": "pending",
+                    "attempt_id": "attempt-1",
+                    "evidence_ref": "task-result-1",
+                    "attempt_root": str(tmp_path.resolve()),
+                    "relative_path": "task-result.json",
+                    "content_sha256": hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+                }
+            },
+            "attempt_guard": {
+                "release_authorized": True,
+                "release_state": "pending",
+                "worktree": str(tmp_path.resolve()),
+            },
         },
     )
 
@@ -345,7 +359,7 @@ def test_evidence_release_rejects_stale_acceptance_proof(tmp_path: Path) -> None
     result = release_authorized_evidence(
         decision,
         binding=binding,
-        canonical_consequence={**binding, "authorized": True},
+        canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=["secretary"],
         consumer_releases={"secretary": {**binding, "consumer": "secretary", "authorized": True}},
         retention={"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}},
@@ -384,7 +398,7 @@ def test_evidence_release_rejects_empty_acceptance_conditions(tmp_path: Path) ->
     result = release_authorized_evidence(
         decision,
         binding=binding,
-        canonical_consequence={**binding, "authorized": True},
+        canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=["secretary"],
         consumer_releases={"secretary": {**binding, "consumer": "secretary", "authorized": True}},
         retention={"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}},
@@ -420,7 +434,7 @@ def test_worker_acceptance_does_not_authorize_evidence_release() -> None:
     result = authorize_evidence_release(
         decision,
         binding=binding,
-        canonical_consequence={**binding, "authorized": True},
+        canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=["secretary"],
         consumer_releases={},
         retention={},
@@ -454,7 +468,7 @@ def test_evidence_release_rejects_wrong_task_and_empty_consumer_inventory() -> N
     result = authorize_evidence_release(
         decision,
         binding=binding,
-        canonical_consequence={**binding, "authorized": True},
+        canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=[],
         consumer_releases={},
         retention={},

@@ -9,10 +9,11 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import subprocess
 import tempfile
 from typing import Any
 
-from .attempt import execution_binding_digest, normalize_runtime_grant
+from .attempt import execution_binding_digest, normalize_runtime_grant, same_attempt_binding
 from .acceptance import release_authorized_evidence
 try:
     from ..planning_dependencies import (
@@ -37,6 +38,14 @@ _SINGLE_DEPENDENCY = re.compile(r"^Task\s+(\d+)$", re.IGNORECASE)
 _NAMED_DEPENDENCIES = re.compile(r"^Task\s+\d+(?:\s*,\s*Task\s+\d+)+$", re.IGNORECASE)
 _NUMBERED_DEPENDENCIES = re.compile(r"^Tasks?\s+\d+(?:\s*,\s*\d+)+$", re.IGNORECASE)
 _RANGE_DEPENDENCY = re.compile(r"^Tasks?\s+(\d+)\s*-\s*(?:Task\s+)?(\d+)$", re.IGNORECASE)
+
+
+def _plan_revision(value: str | bytes) -> str:
+    text = value.decode("utf-8") if isinstance(value, bytes) else value
+    canonical = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 EXECUTION_ELIGIBLE_STATES = frozenset({"pending", "active"})
 _SHARED_CONSTRAINT_LABELS = (
     "Required skills",
@@ -254,7 +263,7 @@ def parse_plan(text: str) -> PlanGraph:
     tasks = {task_id: task for task_id, task in task_rows}
 
     return PlanGraph(
-        plan_identity=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        plan_identity=_plan_revision(text),
         goal=_section(text, "Goal"),
         shared_constraints=_shared_constraints(_section(text, "Execution Approach")),
         tasks=tasks,
@@ -308,6 +317,69 @@ def _plan_write_lock(path: Path):
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _verify_git_checkpoint(
+    source: str | os.PathLike[str],
+    consequence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify that a Git checkpoint records the accepted Plan revision."""
+
+    required = ("commit_sha", "coordination_ref", "plan_path", "expected_plan_revision")
+    if any(not isinstance(consequence.get(field), str) or not consequence.get(field).strip() for field in required):
+        return {"verified": False, "reason": "Git checkpoint metadata incomplete"}
+    plan_path = Path(source).resolve()
+    try:
+        root = Path(
+            subprocess.run(
+                ["git", "-C", str(plan_path.parent), "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        relative_plan = plan_path.relative_to(root).as_posix()
+        commit_sha = str(consequence["commit_sha"])
+        coordination_ref = str(consequence["coordination_ref"])
+        if str(consequence["plan_path"]).replace("\\", "/") != relative_plan:
+            return {"verified": False, "reason": "Git checkpoint Plan path mismatch"}
+        expected_revision = str(consequence["expected_plan_revision"])
+        subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", f"{commit_sha}^{{commit}}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", commit_sha, coordination_ref],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        committed_plan = subprocess.run(
+            ["git", "-C", str(root), "show", f"{commit_sha}:{relative_plan}"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        actual_revision = _plan_revision(committed_plan)
+    except (OSError, subprocess.CalledProcessError, UnicodeError, ValueError) as exc:
+        return {"verified": False, "reason": f"Git checkpoint verification failed: {exc}"}
+    if actual_revision != expected_revision:
+        return {
+            "verified": False,
+            "reason": "Git checkpoint Plan revision mismatch",
+            "actual_plan_revision": actual_revision,
+        }
+    return {
+        **dict(consequence),
+        "verified": True,
+        "owner": "git",
+        "checkpoint_verified": True,
+        "plan_path": relative_plan,
+        "expected_plan_revision": expected_revision,
+        "commit_sha": commit_sha,
+        "coordination_ref": coordination_ref,
+    }
 
 
 def apply_accepted_plan_transitions(
@@ -417,19 +489,44 @@ def apply_accepted_plan_transitions(
             evidence_ref = release_binding.get("evidence_ref")
             if not isinstance(evidence_ref, str) or not evidence_ref.strip():
                 raise ValueError("evidence release binding is missing evidence_ref")
+            recorded_resources = persisted_release_record.get("resources") if isinstance(persisted_release_record, Mapping) else None
+            recorded_resource = recorded_resources.get(evidence_ref) if isinstance(recorded_resources, Mapping) else None
+            configured_resources = evidence_release.get("resources")
+            configured_resource = configured_resources.get(evidence_ref) if isinstance(configured_resources, Mapping) else None
+            pending_resource = dict(recorded_resource) if isinstance(recorded_resource, Mapping) else (
+                dict(configured_resource) if isinstance(configured_resource, Mapping) else {}
+            )
+            if pending_resource.get("state") not in {"removed", "already_absent"}:
+                pending_resource["state"] = "pending"
             pending_authorization = {
                 **dict(attempt_guard.get("release_authorization", {})),
-                "resources": {evidence_ref: {"state": "pending"}},
+                "canonical_consequence": dict(evidence_release.get("canonical_consequence", {})),
+                "resources": {evidence_ref: pending_resource},
             }
             persisted_guard = persist_release_authorization(
                 assignment_id=str(attempt_guard["assignment_id"]),
                 binding=dict(attempt_guard["binding"]),
                 release_authorization=pending_authorization,
             )
+            by_attempt = persisted_guard.get("released_resources_by_attempt")
+            attempt_key = str(attempt_guard["binding"].get("attempt_id"))
+            attempt_resources = by_attempt.get(attempt_key) if isinstance(by_attempt, Mapping) else None
+            if isinstance(attempt_resources, Mapping):
+                authoritative_resources = attempt_resources
+            else:
+                legacy_binding = persisted_guard.get("release_binding")
+                legacy_resources = persisted_guard.get("released_resources")
+                authoritative_resources = (
+                    legacy_resources
+                    if isinstance(legacy_resources, Mapping)
+                    and isinstance(legacy_binding, Mapping)
+                    and same_attempt_binding(legacy_binding, attempt_guard["binding"])
+                    else pending_authorization["resources"]
+                )
             persisted_release_record = {
                 "authorized": True,
                 "binding": release_binding,
-                "resources": pending_authorization["resources"],
+                "resources": dict(authoritative_resources),
                 "attempt_guard": persisted_guard,
             }
             record_release_authorization = persist_release_authorization
@@ -454,10 +551,28 @@ def apply_accepted_plan_transitions(
         result = {**result, "authorized": True, "replayed": True}
     if evidence_release is None:
         return result
+    canonical_consequence = dict(evidence_release.get("canonical_consequence", {}))
+    transition_revision = result.get("new_revision") or result.get("revision")
+    if canonical_consequence.get("expected_plan_revision") != transition_revision:
+        checkpoint = {
+            "verified": False,
+            "reason": "Git checkpoint expected Plan revision does not match transition",
+        }
+    else:
+        checkpoint = _verify_git_checkpoint(source, canonical_consequence)
+    if checkpoint.get("verified") is True:
+        canonical_consequence = checkpoint
+    else:
+        canonical_consequence = {
+            "authorized": False,
+            "owner": "git",
+            "checkpoint_verified": False,
+            "reason": checkpoint.get("reason", "Git checkpoint verification failed"),
+        }
     release_result = release_authorized_evidence(
         decision,
         binding=evidence_release.get("binding", {}),
-        canonical_consequence=evidence_release.get("canonical_consequence", {}),
+        canonical_consequence=canonical_consequence,
         required_consumers=evidence_release.get("required_consumers", ()),
         consumer_releases=evidence_release.get("consumer_releases", {}),
         retention=evidence_release.get("retention", {}),
@@ -478,7 +593,13 @@ def apply_accepted_plan_transitions(
                 binding=dict(attempt_guard["binding"]),
                 release_authorization={
                     **dict(attempt_guard.get("release_authorization", {})),
-                    "resources": release_result.get("resources", {}),
+                    "canonical_consequence": canonical_consequence,
+                    "resources": release_result.get("resources")
+                    or (
+                        persisted_release_record.get("resources", {})
+                        if isinstance(persisted_release_record, Mapping)
+                        else {}
+                    ),
                 },
             )
         except (KeyError, RuntimeError, TypeError, ValueError) as exc:
@@ -512,7 +633,7 @@ def _apply_plan_transitions_locked(
 
     path = Path(source)
     text = path.read_text(encoding="utf-8")
-    revision = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    revision = _plan_revision(text)
     if revision != expected_revision:
         return {
             "authorized": False,
@@ -580,11 +701,12 @@ def _apply_plan_transitions_locked(
 
     updated = "".join(lines)
     latest_text = path.read_text(encoding="utf-8")
-    if hashlib.sha256(latest_text.encode("utf-8")).hexdigest() != revision:
+    latest_revision = _plan_revision(latest_text)
+    if latest_revision != revision:
         return {
             "authorized": False,
             "reason": "plan revision changed",
-            "revision": hashlib.sha256(latest_text.encode("utf-8")).hexdigest(),
+            "revision": latest_revision,
         }
     temporary_path: str | None = None
     try:
@@ -607,7 +729,7 @@ def _apply_plan_transitions_locked(
     return {
         "authorized": True,
         "revision": revision,
-        "new_revision": hashlib.sha256(updated.encode("utf-8")).hexdigest(),
+        "new_revision": _plan_revision(updated),
         "transitions": [
             {"task_id": task_id, "next_state": next_state}
             for task_id, _, next_state in normalized
@@ -772,7 +894,7 @@ def _source_parts(source: str | os.PathLike[str] | PlanGraph) -> tuple[str | Non
     if isinstance(source, PlanGraph):
         return None, source, source.plan_identity, None
     if isinstance(source, str) and ("\n" in source or "\r" in source):
-        return source, parse_plan(source), hashlib.sha256(source.encode("utf-8")).hexdigest(), None
+        return source, parse_plan(source), _plan_revision(source), None
     path = Path(source)
     text = path.read_text(encoding="utf-8")
     return text, parse_plan(text), _frontmatter_value(text, "name") or path.stem, str(path.resolve())
@@ -811,7 +933,7 @@ def _prepare_plan_lanes(
     unknown = sorted(set(selected) - set(graph.tasks))
     if unknown:
         raise ValueError(f"unknown selected task: {unknown[0]}")
-    plan_revision = hashlib.sha256(text.encode("utf-8")).hexdigest() if text is not None else graph.plan_identity
+    plan_revision = _plan_revision(text) if text is not None else graph.plan_identity
     lanes: list[dict[str, Any]] = []
     for task_id in selected:
         task = graph.tasks[task_id]

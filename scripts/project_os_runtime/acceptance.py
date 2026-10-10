@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import hashlib
+import json
+import os
 from pathlib import Path
+import stat
+import tempfile
 from typing import Any
 
 from .reconciliation import ReconciliationInput, reconcile
+from .results import evidence_path_lock
 
 
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
@@ -269,6 +275,19 @@ def authorize_evidence_release(
     else:
         if canonical_consequence.get("authorized") is not True:
             reasons.append("canonical consequence")
+        if (
+            canonical_consequence.get("owner") != "git"
+            or canonical_consequence.get("checkpoint_verified") is not True
+            or not isinstance(canonical_consequence.get("commit_sha"), str)
+            or not canonical_consequence.get("commit_sha", "").strip()
+            or not isinstance(canonical_consequence.get("coordination_ref"), str)
+            or not canonical_consequence.get("coordination_ref", "").strip()
+            or not isinstance(canonical_consequence.get("plan_path"), str)
+            or not canonical_consequence.get("plan_path", "").strip()
+            or not isinstance(canonical_consequence.get("expected_plan_revision"), str)
+            or not canonical_consequence.get("expected_plan_revision", "").strip()
+        ):
+            reasons.append("verified Git checkpoint")
         for field in RELEASE_BINDING_FIELDS[:-1]:
             if canonical_consequence.get(field) != binding.get(field):
                 reasons.append(f"canonical {field} binding")
@@ -324,6 +343,208 @@ def authorize_evidence_release(
     }
 
 
+def _release_resource_check(
+    resource: Mapping[str, Any],
+    *,
+    binding: Mapping[str, Any],
+    evidence_ref: str,
+    attempt_guard: Mapping[str, Any],
+    path: Path,
+) -> tuple[str | None, os.stat_result | None]:
+    if resource.get("attempt_id") != binding.get("attempt_id"):
+        return "attempt binding mismatch", None
+    if resource.get("evidence_ref") != evidence_ref:
+        return "evidence reference binding mismatch", None
+    attempt_root = resource.get("attempt_root")
+    relative_path = resource.get("relative_path")
+    digest = resource.get("content_sha256") or resource.get("artifact_digest")
+    if not all(isinstance(value, str) and value.strip() for value in (attempt_root, relative_path, digest)):
+        return "physical release binding missing", None
+    root = Path(attempt_root)
+    relative = Path(relative_path)
+    if not root.is_absolute() or relative.is_absolute() or ".." in relative.parts:
+        return "physical release binding invalid", None
+    def has_link_or_reparse(value: Path) -> bool:
+        if value.is_symlink():
+            return True
+        try:
+            attributes = getattr(os.lstat(value), "st_file_attributes", 0)
+        except OSError:
+            return False
+        return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+    if has_link_or_reparse(root) or not root.is_dir():
+        return "attempt root binding mismatch", None
+    guarded_root = attempt_guard.get("worktree")
+    if isinstance(guarded_root, str) and guarded_root:
+        if root.resolve(strict=True) != Path(guarded_root).resolve(strict=True):
+            return "attempt root binding mismatch", None
+    expected_path = root / relative
+    parent = root
+    for component in relative.parts[:-1]:
+        parent = parent / component
+        if parent.exists() and has_link_or_reparse(parent):
+            return "evidence path traverses link or reparse point", None
+    if has_link_or_reparse(path):
+        return "evidence path is symlink", None
+    try:
+        resolved_root = root.resolve(strict=True)
+        resolved_path = path.resolve(strict=False)
+        if resolved_path != expected_path.resolve(strict=False):
+            return "evidence path binding mismatch", None
+        resolved_path.relative_to(resolved_root)
+    except OSError:
+        return "evidence path binding mismatch", None
+    except ValueError:
+        return "evidence path outside attempt root", None
+    if not path.exists():
+        return None, None
+    if not path.is_file():
+        return "evidence artifact type mismatch", None
+    try:
+        actual_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return "evidence artifact unreadable", None
+    if actual_digest != digest:
+        return "evidence artifact digest mismatch", None
+    for field in ("producer", "schema"):
+        expected = resource.get(field)
+        if expected is None:
+            continue
+        if not isinstance(expected, str) or not expected.strip():
+            return f"{field} identity invalid", None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return "artifact identity unavailable", None
+        if not isinstance(payload, Mapping) or payload.get(field) != expected:
+            return f"{field} identity mismatch", None
+    try:
+        verified_stat = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return "evidence artifact unavailable", None
+    return None, verified_stat
+
+
+def _same_file_identity(first: os.stat_result, second: os.stat_result) -> bool:
+    return (first.st_dev, first.st_ino) == (second.st_dev, second.st_ino)
+
+
+def _unlink_verified_file(path: Path, verified_stat: os.stat_result, expected_digest: str) -> str | None:
+    with evidence_path_lock(path):
+        return _unlink_verified_file_unlocked(path, verified_stat, expected_digest)
+
+
+def _unlink_verified_file_unlocked(path: Path, verified_stat: os.stat_result, expected_digest: str) -> str | None:
+    if os.name == "nt":
+        import ctypes
+        import ctypes.wintypes
+        import msvcrt
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = [
+            ctypes.wintypes.LPCWSTR,
+            ctypes.wintypes.DWORD,
+            ctypes.wintypes.DWORD,
+            ctypes.wintypes.LPVOID,
+            ctypes.wintypes.DWORD,
+            ctypes.wintypes.DWORD,
+            ctypes.wintypes.HANDLE,
+        ]
+        create_file.restype = ctypes.wintypes.HANDLE
+        set_file_information = kernel32.SetFileInformationByHandle
+        set_file_information.argtypes = [
+            ctypes.wintypes.HANDLE,
+            ctypes.wintypes.INT,
+            ctypes.wintypes.LPVOID,
+            ctypes.wintypes.DWORD,
+        ]
+        set_file_information.restype = ctypes.wintypes.BOOL
+        handle = kernel32.CreateFileW(
+            str(path),
+            0x80000000 | 0x00010000 | 0x00000080,
+            0x00000001 | 0x00000004,
+            None,
+            3,
+            0x00000080,
+            None,
+        )
+        if handle == ctypes.wintypes.HANDLE(-1).value:
+            return "evidence artifact unavailable"
+        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+        try:
+            if not _same_file_identity(os.fstat(fd), verified_stat):
+                return "evidence artifact changed"
+            if _digest_for_fd(fd) != expected_digest:
+                return "evidence artifact changed"
+            disposition = ctypes.c_byte(1)
+            if not set_file_information(
+                msvcrt.get_osfhandle(fd),
+                4,
+                ctypes.byref(disposition),
+                ctypes.sizeof(disposition),
+            ):
+                return "evidence disposal failed"
+            return None
+        finally:
+            os.close(fd)
+    quarantine_path: Path | None = None
+    quarantined_unverified = False
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+    except OSError:
+        return "evidence artifact unavailable"
+    try:
+        if not _same_file_identity(os.fstat(fd), verified_stat):
+            return "evidence artifact changed"
+        if _digest_for_fd(fd) != expected_digest:
+            return "evidence artifact changed"
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".release",
+            delete=False,
+        ) as quarantine:
+            quarantine_path = Path(quarantine.name)
+        quarantine_path.unlink()
+        os.rename(path, quarantine_path)
+        quarantined_unverified = True
+        if (
+            not _same_file_identity(os.stat(quarantine_path, follow_symlinks=False), verified_stat)
+            or _digest_for_fd(fd) != expected_digest
+        ):
+            try:
+                os.link(quarantine_path, path)
+                quarantine_path.unlink()
+                quarantined_unverified = False
+            except FileExistsError:
+                pass
+            return "evidence artifact changed"
+        quarantine_path.unlink()
+        quarantined_unverified = False
+    except FileNotFoundError:
+        return "already absent"
+    except OSError:
+        return "evidence disposal failed"
+    finally:
+        if quarantine_path and not quarantined_unverified and quarantine_path.exists():
+            try:
+                quarantine_path.unlink()
+            except OSError:
+                pass
+        os.close(fd)
+    return None
+
+
+def _digest_for_fd(fd: int) -> str:
+    os.lseek(fd, 0, os.SEEK_SET)
+    digest = hashlib.sha256()
+    while chunk := os.read(fd, 1024 * 1024):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def release_authorized_evidence(
     decision: Mapping[str, Any],
     *,
@@ -369,16 +590,59 @@ def release_authorized_evidence(
             "authorized": False,
             "reasons": ["durable release authorization required"],
         }
+    if recorded_resource.get("state") in {"removed", "already_absent"}:
+        return {
+            **result,
+            "payload_released": True,
+            "resources": {evidence_ref: dict(recorded_resource)},
+        }
     path = evidence_paths.get(evidence_ref) if isinstance(evidence_ref, str) else None
-    if not isinstance(path, Path) or not path.is_file() or path.is_symlink():
-        if (
-            recorded_resource.get("state") in {"removed", "already_absent"}
-        ):
-            return {
-                **result,
-                "payload_released": True,
-                "resources": {evidence_ref: dict(recorded_resource)},
-            }
+    if not isinstance(path, Path):
+        return {
+            **result,
+            "authorized": False,
+            "reasons": ["binding_mismatch: exact evidence path unavailable"],
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
+        }
+    mismatch, verified_stat = _release_resource_check(
+        recorded_resource,
+        binding=binding,
+        evidence_ref=evidence_ref,
+        attempt_guard=attempt_guard,
+        path=path,
+    )
+    if mismatch is not None:
+        return {
+            **result,
+            "authorized": False,
+            "reasons": [f"binding_mismatch: {mismatch}"],
+            "resources": {
+                evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
+            },
+        }
+    if mismatch is not None:
+        return {
+            **result,
+            "authorized": False,
+            "reasons": [f"binding_mismatch: {mismatch}"],
+            "resources": {
+                evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
+            },
+        }
+    if not path.exists():
+        return {
+            **result,
+            "payload_released": True,
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "already_absent"}},
+        }
+    if verified_stat is None:
+        return {
+            **result,
+            "authorized": False,
+            "reasons": ["binding_mismatch: evidence artifact identity unavailable"],
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
+        }
+    if not path.is_file() or path.is_symlink():
         if (
             isinstance(path, Path)
             and not path.is_symlink()
@@ -393,23 +657,27 @@ def release_authorized_evidence(
         return {
             **result,
             "authorized": False,
-            "reasons": ["exact evidence path unavailable"],
+            "reasons": ["binding_mismatch: exact evidence path unavailable"],
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
         }
     resources: dict[str, dict[str, Any]] = {}
-    try:
-        path.unlink()
-    except FileNotFoundError:
+    expected_digest = recorded_resource.get("content_sha256") or recorded_resource.get("artifact_digest")
+    unlink_error = _unlink_verified_file(path, verified_stat, str(expected_digest))
+    if unlink_error == "already absent":
         resources[evidence_ref] = {"state": "already_absent"}
-    except OSError as exc:
-        resources[evidence_ref] = {"state": "unverified", "detail": str(exc)}
-    else:
+    elif unlink_error is None:
         resources[evidence_ref] = {"state": "removed"}
+    else:
+        resources[evidence_ref] = {
+            "state": "unverified",
+            "reason": "replacement_detected" if unlink_error == "evidence artifact changed" else unlink_error,
+        }
     failed = [name for name, state in resources.items() if state["state"] == "unverified"]
     if failed:
         return {
             **result,
             "authorized": False,
-            "reasons": [f"evidence disposal failed: {name}" for name in failed],
+            "reasons": [f"{resources[name].get('reason', 'evidence disposal failed')}: {name}" for name in failed],
             "resources": resources,
         }
     return {
