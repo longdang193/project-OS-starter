@@ -901,11 +901,11 @@ captured at baseline and final revisions; each metric is marked
 
 - Worktree: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\runtime-retirement-migration\project-OS-starter`
 - Branch: `codex/runtime-retirement-migration`; base: `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695`
-- Review: independent `review-1` findings were patched across three passes;
+- Review: independent `review-1` findings were patched across four passes;
   canonical acceptance proof now binds repository, Plan, task, attempt, and
   checkpoint before evidence deletion; reconciliation requires explicit
   acceptance and settlement; MCP cleanup failures propagate to settlement.
-- Focused proof: `405 passed`; final full suite: `1074 passed, 1 skipped`.
+- Focused proof: `407 passed`; final full suite: `1076 passed, 1 skipped`.
 - Contract proof: adapter sync check, runtime drift validation, repository contracts,
   planning lifecycle, starter-kit build/validation, and `git diff --check` passed
   after review fixes.

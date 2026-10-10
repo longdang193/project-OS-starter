@@ -132,3 +132,18 @@ def test_release_preserves_missing_canonical_bindings(tmp_path: Path):
     )
 
     assert result["state"] == "preserved"
+
+
+def test_release_preserves_empty_checkpoint_binding(tmp_path: Path):
+    publish_task_result(tmp_path / "task-result.json", _payload(accepted=True, checkpoint_sha=""))
+
+    result = release_attempt_evidence(
+        tmp_path, "assignment-1", "attempt-1", "",
+        expected_plan_identity="plan-1",
+        expected_task_id="Task 1",
+        expected_repository_identity="repo",
+        acceptance_decision=_acceptance_decision(),
+    )
+
+    assert result["state"] == "preserved"
+    assert (tmp_path / "task-result.json").exists()

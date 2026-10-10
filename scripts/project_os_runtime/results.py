@@ -322,6 +322,10 @@ def release_attempt_evidence(
         return {"state": "preserved", "reason": "task result unavailable", "detail": str(exc)}
     checkpoint = payload.get("checkpoint")
     checkpoint_sha = checkpoint.get("sha") if isinstance(checkpoint, dict) else None
+    if not isinstance(accepted_checkpoint_sha, str) or not accepted_checkpoint_sha.strip():
+        return {"state": "preserved", "reason": "canonical checkpoint binding unavailable"}
+    if not isinstance(checkpoint_sha, str) or not checkpoint_sha.strip():
+        return {"state": "preserved", "reason": "task result checkpoint unavailable"}
     if not all(
         isinstance(value, str) and value.strip()
         for value in (
@@ -348,6 +352,8 @@ def release_attempt_evidence(
         or proof.get("task_id") != expected_task_id
         or proof.get("repository_identity") != expected_repository_identity
         or proof.get("checkpoint_sha") != accepted_checkpoint_sha
+        or not isinstance(proof.get("checkpoint_sha"), str)
+        or not proof.get("checkpoint_sha")
         or not isinstance(proof.get("repository_identity"), str)
         or not proof.get("repository_identity")
         or not isinstance(proof.get("plan_identity"), str)

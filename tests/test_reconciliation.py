@@ -143,3 +143,16 @@ def test_reconcile_does_not_hide_missing_task_result_after_retirement():
     assert snapshot.eligible.integration is False
     assert snapshot.next_action == "RECONCILE"
     assert any(item.field == "task_result" for item in snapshot.missing_evidence)
+
+
+def test_reconcile_keeps_completed_task_actionable_when_worker_state_unknown():
+    snapshot = reconcile(
+        _local(task_state="completed"),
+        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
+        _runtime(worker_terminal=None, task_result_published=False, retirement_state="removed"),
+    )
+
+    assert snapshot.eligible.acceptance is False
+    assert snapshot.eligible.integration is False
+    assert snapshot.next_action == "RECONCILE"
+    assert any(item.field == "task_result" for item in snapshot.missing_evidence)
