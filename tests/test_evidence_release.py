@@ -419,7 +419,7 @@ def test_pending_replacement_after_validation_preserves_artifact(
         },
     )
     assert result["authorized"] is False
-    assert "digest mismatch" in result["reasons"][0]
+    assert "replacement_detected" in result["reasons"][0]
     assert task_result.read_text(encoding="utf-8").startswith('{"producer": "dcode-project"')
 
 
