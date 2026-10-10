@@ -57,7 +57,7 @@ Executor and profile selection are independent. For Git-tracked plans, the task
 ledger owns the durable executor choice; pending or blocked tasks may keep
 `Executor: unresolved` until the lead controller resolves them before
 activation. Use Codex when controller authority is required or delegated
-benefit is unclear; use Tura or DeepAgents only when task-specific evidence
+benefit is unclear; use DeepAgents only when task-specific evidence
 supports that choice.
 
 When a plan names `deepagents` as executor, record only executor choice and

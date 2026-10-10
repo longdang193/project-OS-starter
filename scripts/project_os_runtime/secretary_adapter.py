@@ -45,6 +45,13 @@ class CommunicationEnvelope:
     message_id: str
     canonical_anchor: str
     payload: AttentionDelta | CoordinationDelta
+    task_ref: str | None = None
+    canonical_consequence_ref: str | None = None
+    reconciled_result_ref: str | None = None
+    blocking_refs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "blocking_refs", tuple(sorted(set(self.blocking_refs))))
 
 
 @dataclass(frozen=True)
@@ -113,8 +120,19 @@ class SessionReleaseReceipt:
     reason: str | None = None
 
 
+@dataclass(frozen=True)
+class CompactionReceipt:
+    controller: ControllerRef
+    compacted: bool
+    recovery_required: bool = False
+    reason: str | None = None
+
+
 class ControllerSessionJournal(Protocol):
     def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
+        ...
+
+    def lookup_released_activation(self, controller: ControllerRef) -> ActivationReceipt | None:
         ...
 
     def record_activation(self, receipt: ActivationReceipt) -> None:
@@ -140,6 +158,9 @@ class ControllerSessionJournal(Protocol):
     ) -> None:
         ...
 
+    def compact_delivery_payload(self, controller: ControllerRef) -> bool:
+        ...
+
 
 class ControllerSessionAdapter(Protocol):
     def resolve(self, binding: ControllerBinding) -> ResolveReceipt:
@@ -160,6 +181,9 @@ class ControllerSessionAdapter(Protocol):
     def release_session(self, controller: ControllerRef) -> SessionReleaseReceipt:
         ...
 
+    def compact_released(self, controller: ControllerRef) -> CompactionReceipt:
+        ...
+
 
 class InMemoryControllerSessionJournal:
     def __init__(self) -> None:
@@ -170,6 +194,16 @@ class InMemoryControllerSessionJournal:
 
     def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
         return self._activations.get(activation_id)
+
+    def lookup_released_activation(self, controller: ControllerRef) -> ActivationReceipt | None:
+        return next(
+            (
+                receipt
+                for receipt in self._activations.values()
+                if receipt.controller == controller and receipt.released
+            ),
+            None,
+        )
 
     def record_activation(self, receipt: ActivationReceipt) -> None:
         current = self._activations.get(receipt.activation_id)
@@ -206,6 +240,16 @@ class InMemoryControllerSessionJournal:
         self, controller: ControllerRef, message_id: str, payload_fingerprint: str
     ) -> None:
         self._deliveries[(controller.controller_id, message_id)] = payload_fingerprint
+
+    def compact_delivery_payload(self, controller: ControllerRef) -> bool:
+        if any(key[0] == controller.controller_id for key in self._deliveries):
+            self._deliveries = {
+                key: value
+                for key, value in self._deliveries.items()
+                if key[0] != controller.controller_id
+            }
+            return True
+        return False
 
 
 class InMemoryControllerSessionAdapter:
@@ -359,6 +403,25 @@ class InMemoryControllerSessionAdapter:
         self.journal.release_controller(controller)
         return SessionReleaseReceipt(controller=controller, released=True)
 
+    def compact_released(self, controller: ControllerRef) -> CompactionReceipt:
+        if self.journal.lookup_controller(controller.binding) == controller:
+            return CompactionReceipt(
+                controller=controller,
+                compacted=False,
+                recovery_required=True,
+                reason="active controller has not been released",
+            )
+        activation = self.journal.lookup_released_activation(controller)
+        if activation is None or not activation.released:
+            return CompactionReceipt(
+                controller=controller,
+                compacted=False,
+                recovery_required=True,
+                reason="released activation tombstone unavailable",
+            )
+        compacted = self.journal.compact_delivery_payload(controller)
+        return CompactionReceipt(controller=controller, compacted=compacted)
+
     @staticmethod
     def _activation_recovery(
         binding: ControllerBinding, activation_id: str, reason: str
@@ -385,6 +448,10 @@ def _fingerprint(payload: object) -> str:
             "message_id": payload.message_id,
             "canonical_anchor": payload.canonical_anchor,
             "payload": payload.payload.__dict__,
+            "task_ref": payload.task_ref,
+            "canonical_consequence_ref": payload.canonical_consequence_ref,
+            "reconciled_result_ref": payload.reconciled_result_ref,
+            "blocking_refs": payload.blocking_refs,
         }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -394,6 +461,7 @@ __all__ = [
     "ActivationReceipt",
     "AttentionDelta",
     "CommunicationEnvelope",
+    "CompactionReceipt",
     "ControllerBinding",
     "ControllerRef",
     "ControllerSessionAdapter",

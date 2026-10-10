@@ -1,12 +1,12 @@
 {
   "schema": "completion-monitoring-evidence/v2",
-  "generated_at": "2026-09-27T10:31:47.554882+00:00",
+  "generated_at": "2026-10-09T21:54:31.961434+00:00",
   "python": "3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]",
   "os": "Windows-10-10.0.19045-SP0",
-  "baseline_revision": "d797028",
-  "candidate_revision": "318ac66cf8637b4e63049b0673cc5971f207379b",
-  "baseline_source_sha256": "dcaeedc854ef15c04e42a8629f79733282b6f9b308258e608d9cbb3979ad7a85",
-  "candidate_source_sha256": "b0fab2950838a878519118da06046b2833b6116fb1492108345cafd44996169a",
+  "baseline_revision": "187f28e492ae1c4726cdd2f7b5a261a2b8b6c695",
+  "candidate_revision": "187f28e492ae1c4726cdd2f7b5a261a2b8b6c695",
+  "baseline_source_sha256": "81ce55796dfc7e42f506541340e443617d80b4b16c5affaad096c9fd7d18931c",
+  "candidate_source_sha256": "81ce55796dfc7e42f506541340e443617d80b4b16c5affaad096c9fd7d18931c",
   "harness": "stdlib deterministic fake-Herdr command/receipt seam",
   "harness_digest": "f1741a14dbb0d63641ed983395644056ee8603648e9ea67cee53bc27687104ff",
   "fixed_budgets": {
@@ -31,20 +31,20 @@
       "subprocess_counts": {
         "wait-output": 0,
         "process-info": 1,
-        "read": 1
+        "read": 0
       },
-      "subprocess_total": 2,
+      "subprocess_total": 1,
       "timeout_count": 1,
       "receipt_checks": 2,
       "diagnostic_probe_count": 1,
-      "time_to_receipt_ms": 1950.0,
+      "time_to_receipt_ms": 500.0,
       "receipt_to_completion_return_ms": 0.0,
       "lifecycle": "completed",
       "expected_lifecycle": "completed",
       "outcome_match": true,
       "cleanup": "removed",
       "reconciliation": "not-required",
-      "elapsed_seconds": 1.95
+      "elapsed_seconds": 0.5
     },
     {
       "mode": "candidate",
@@ -75,20 +75,20 @@
       "subprocess_counts": {
         "wait-output": 0,
         "process-info": 1,
-        "read": 1
+        "read": 0
       },
-      "subprocess_total": 2,
+      "subprocess_total": 1,
       "timeout_count": 1,
       "receipt_checks": 2,
       "diagnostic_probe_count": 1,
-      "time_to_receipt_ms": 1950.0,
+      "time_to_receipt_ms": 500.0,
       "receipt_to_completion_return_ms": 0.0,
       "lifecycle": "completed",
       "expected_lifecycle": "completed",
       "outcome_match": true,
       "cleanup": "removed",
       "reconciliation": "not-required",
-      "elapsed_seconds": 1.95
+      "elapsed_seconds": 0.5
     },
     {
       "mode": "candidate",
@@ -119,20 +119,20 @@
       "subprocess_counts": {
         "wait-output": 0,
         "process-info": 1,
-        "read": 1
+        "read": 0
       },
-      "subprocess_total": 2,
+      "subprocess_total": 1,
       "timeout_count": 1,
       "receipt_checks": 2,
       "diagnostic_probe_count": 1,
-      "time_to_receipt_ms": 1950.0,
+      "time_to_receipt_ms": 500.0,
       "receipt_to_completion_return_ms": 0.0,
       "lifecycle": "completed",
       "expected_lifecycle": "completed",
       "outcome_match": true,
       "cleanup": "removed",
       "reconciliation": "not-required",
-      "elapsed_seconds": 1.95
+      "elapsed_seconds": 0.5
     },
     {
       "mode": "candidate",
@@ -167,16 +167,16 @@
       },
       "subprocess_total": 2,
       "timeout_count": 1,
-      "receipt_checks": 2,
+      "receipt_checks": 3,
       "diagnostic_probe_count": 1,
-      "time_to_receipt_ms": 2100.0,
+      "time_to_receipt_ms": 650.0,
       "receipt_to_completion_return_ms": 0.0,
       "lifecycle": "completed",
       "expected_lifecycle": "completed",
       "outcome_match": true,
       "cleanup": "removed",
       "reconciliation": "not-required",
-      "elapsed_seconds": 2.1
+      "elapsed_seconds": 0.65
     },
     {
       "mode": "candidate",
@@ -211,16 +211,16 @@
       },
       "subprocess_total": 2,
       "timeout_count": 1,
-      "receipt_checks": 2,
+      "receipt_checks": 3,
       "diagnostic_probe_count": 1,
-      "time_to_receipt_ms": 2100.0,
+      "time_to_receipt_ms": 650.0,
       "receipt_to_completion_return_ms": 0.0,
       "lifecycle": "completed",
       "expected_lifecycle": "completed",
       "outcome_match": true,
       "cleanup": "removed",
       "reconciliation": "not-required",
-      "elapsed_seconds": 2.1
+      "elapsed_seconds": 0.65
     },
     {
       "mode": "candidate",
@@ -255,16 +255,16 @@
       },
       "subprocess_total": 2,
       "timeout_count": 1,
-      "receipt_checks": 2,
+      "receipt_checks": 3,
       "diagnostic_probe_count": 1,
-      "time_to_receipt_ms": 2100.0,
+      "time_to_receipt_ms": 650.0,
       "receipt_to_completion_return_ms": 0.0,
       "lifecycle": "completed",
       "expected_lifecycle": "completed",
       "outcome_match": true,
       "cleanup": "removed",
       "reconciliation": "not-required",
-      "elapsed_seconds": 2.1
+      "elapsed_seconds": 0.65
     },
     {
       "mode": "candidate",
@@ -299,7 +299,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 2,
-      "receipt_checks": 300,
+      "receipt_checks": 311,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": null,
       "receipt_to_completion_return_ms": null,
@@ -343,7 +343,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 2,
-      "receipt_checks": 300,
+      "receipt_checks": 311,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": null,
       "receipt_to_completion_return_ms": null,
@@ -387,7 +387,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 2,
-      "receipt_checks": 300,
+      "receipt_checks": 311,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": null,
       "receipt_to_completion_return_ms": null,
@@ -431,7 +431,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 3,
+      "receipt_checks": 4,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": 300.0,
       "receipt_to_completion_return_ms": 0.0,
@@ -475,7 +475,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 3,
+      "receipt_checks": 4,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": 300.0,
       "receipt_to_completion_return_ms": 0.0,
@@ -519,7 +519,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 3,
+      "receipt_checks": 4,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": 300.0,
       "receipt_to_completion_return_ms": 0.0,
@@ -563,7 +563,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 2,
+      "receipt_checks": 3,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": 200.0,
       "receipt_to_completion_return_ms": 0.0,
@@ -607,7 +607,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 2,
+      "receipt_checks": 3,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": 200.0,
       "receipt_to_completion_return_ms": 0.0,
@@ -651,7 +651,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 2,
+      "receipt_checks": 3,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": 200.0,
       "receipt_to_completion_return_ms": 0.0,
@@ -695,7 +695,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 300,
+      "receipt_checks": 301,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": null,
       "receipt_to_completion_return_ms": null,
@@ -739,7 +739,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 300,
+      "receipt_checks": 301,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": null,
       "receipt_to_completion_return_ms": null,
@@ -783,7 +783,7 @@
       },
       "subprocess_total": 2,
       "timeout_count": 0,
-      "receipt_checks": 300,
+      "receipt_checks": 301,
       "diagnostic_probe_count": 1,
       "time_to_receipt_ms": null,
       "receipt_to_completion_return_ms": null,
@@ -952,8 +952,8 @@
         "p95": 2.0
       },
       "time_to_receipt_ms": {
-        "median": 1125.0,
-        "p95": 2100.0
+        "median": 400.0,
+        "p95": 650.0
       },
       "receipt_to_completion_return_ms": {
         "median": 0.0,
@@ -962,7 +962,7 @@
       "timeout_count": 12,
       "lifecycle_mismatches": 0,
       "max_elapsed_seconds": 32.0,
-      "receipt_case_max_elapsed_seconds": 2.1
+      "receipt_case_max_elapsed_seconds": 0.65
     },
     "candidate": {
       "subprocess_total": {

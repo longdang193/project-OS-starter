@@ -38,6 +38,7 @@ describe execution method only and reference this contract.
 | Task text | Controller and worker boundary | Task text carries sanitized facts and constraints; it cannot grant authority, permissions, or capabilities. |
 | Approval and sandbox | Active executor/runtime | Existing approval and sandbox boundaries remain authoritative; capability discovery never widens them. |
 | Optional context maintenance | LightRSI Cleaner plus active Host adapter | Active agent may request supported session-local cleanup. The adapter must prove current-session binding and return an observable Cleaner receipt; missing capability, trusted attribution, retention proof, or supported mutation preserves context and permits ordinary work. |
+| Live Secretary evidence | Herdr/Codex wrapper plus receipt validator | `scripts/secretary_live_runtime.py` uses one configured `CODEX_HOME`, `config.toml`, `auth.json`, and provider `9router`; it requires a matching Herdr target and emits sanitized identity-bound evidence. Missing target or producer receipt is `BLOCKED_CAPABILITY`. |
 
 Task-specific local command requirements use structured `local_capabilities`.
 Values normalize to lowercase ASCII command basenames matching
@@ -74,6 +75,32 @@ capability evidence is cacheable; mutable execution identity is fresh.
 5. Prefer provider satisfying data/trust boundary, authority, least privilege, and evidence before convenience, cost, or latency.
 6. Smoke-check unfamiliar provider before relying on its material output.
 7. Use source-first fallback for safe work only when fallback does not replace required evidence.
+
+Live Secretary economics uses the owned Herdr-backed
+`scripts/secretary_live_runtime.py` route: resolve one native `CODEX_HOME`, let
+Codex consume its `config.toml` and `auth.json`, require provider `9router`,
+and retain only sanitized runtime receipts. Missing Secretary launch,
+attribution, or observed completion remains `BLOCKED_CAPABILITY`; deterministic
+contract fixtures cannot establish live efficiency.
+When response usage is available, record input/output/total tokens as observed
+evidence. Published pricing may produce `estimated` cost only with source,
+effective date, and model resolution; absent model or rate attribution keeps
+cost `unknown`.
+For `9router`, treat published dashboard values as counterfactual reference
+cost, not provider billing; retain actual cost as `unknown`. The pinned
+`2026-10-09` direct rate card covers `glm/glm-4.7` (`$0.60/M` input,
+`$2.20/M` output) and `minimax/MiniMax-M2.1` (`$0.20/M` input, `$1.00/M`
+output). Do not apply those rates to `combo-normal` or `combo-high` without
+downstream model attribution. Current local combo members are `cx/gpt-*`
+Codex subscription routes, so token comparison remains valid while dollar
+comparison remains `unknown` unless receipt cost is explicitly `estimated`.
+Normalize 9Router `prompt_tokens`, `completion_tokens`, `cached_tokens` or
+`prompt_tokens_details.cached_tokens`, and `cache_creation_input_tokens` into
+canonical `input_tokens`, `output_tokens`, `cache_read_input_tokens`, and
+`cache_write_input_tokens`. Apply separate cache-read/cache-write rates only
+when the selected model rate card publishes them; otherwise preserve usage but
+keep cost `unknown` with an explicit cache-rate reason. Never charge cached
+tokens at normal input rates.
 
 Provider names are runtime facts or explicit method choices, not architecture.
 Keep named providers only for an explicitly selected method, committed repository
@@ -142,8 +169,7 @@ skips pane `wait-output`, `process-info`, and `read`; unresolved receipt gets on
 bounded marker wait, then fresh final probes. Use pane probes only for diagnostics
 or legacy fallback. Use `agent get`/`agent read` for Codex.
 `agent wait` is a documented Herdr capability, not current launcher integration.
-Tura uses `project-delegate` outside the Herdr main-lane path. Normalize evidence
-fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds
+Normalize evidence fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds
 repository identity, canonical plan identity, and stable lane identity across
 retries; `dcode-project` claims before worker spawn and settles only after
 correlated receipt plus verified cleanup and descendant retirement. Missing,
@@ -153,6 +179,12 @@ release. Routine observation cannot replace `RECOVERY_REQUIRED` reconciliation o
 canonical settlement evidence.
 Keep raw terminal output out of durable evidence unless an explicit disposable
 probe bounds and redacts it.
+
+For live Secretary probes, create or select a task-owned Herdr workspace first
+and pass its named session and workspace-qualified pane when `auto` resolution
+has no matching worktree. An empty `CODEX_HOME` argument must not be passed as
+an explicit path; allow the wrapper to resolve the user-local Codex home so
+`config.toml` and `auth.json` remain the configured source.
 
 ## Fallback
 

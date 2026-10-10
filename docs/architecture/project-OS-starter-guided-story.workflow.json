@@ -77,7 +77,7 @@
     { "id": "plan", "lane": "intent", "col": 2, "type": "backend", "label": "Git-Tracked Plan", "tag": "coordination SSOT", "width": 132 },
     { "id": "admission", "lane": "intent", "col": 3, "type": "security", "label": "Bounded Admission", "tag": "grant narrows work", "width": 132 },
     { "id": "lanes", "lane": "execution", "col": 3, "type": "backend", "label": "Implementation Lanes", "width": 132 },
-    { "id": "runtime", "lane": "execution", "col": 4, "type": "backend", "label": "Selected Runtime", "tag": "Codex / DeepAgents / Tura", "width": 160 },
+    { "id": "runtime", "lane": "execution", "col": 4, "type": "backend", "label": "Selected Runtime", "tag": "Codex / DeepAgents", "width": 160 },
     { "id": "evidence", "lane": "evidence", "col": 4, "type": "database", "label": "Runtime Evidence", "tag": "proof before verdict", "width": 132 },
     { "id": "verdict", "lane": "evidence", "col": 5, "type": "security", "label": "Acceptance Decision", "tag": "same task and output", "width": 160 },
     { "id": "blocked", "lane": "evidence", "col": 1, "type": "security", "label": "Blocked", "width": 132 },

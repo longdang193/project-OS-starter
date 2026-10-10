@@ -124,6 +124,25 @@ def test_release_session_is_distinct_from_lane_retirement() -> None:
     assert adapter.resolve(binding()).found is False
 
 
+def test_compaction_requires_explicit_release_and_keeps_activation_tombstone() -> None:
+    journal = InMemoryControllerSessionJournal()
+    adapter = InMemoryControllerSessionAdapter(journal)
+    controller = adapter.activate(binding(), "activation-1").controller
+    assert controller is not None
+
+    blocked = adapter.compact_released(controller)
+    assert blocked.compacted is False
+    assert blocked.recovery_required is True
+
+    assert adapter.deliver(controller, envelope()).delivered is True
+    assert adapter.release_session(controller).released is True
+    compacted = adapter.compact_released(controller)
+
+    assert compacted.compacted is True
+    assert journal.lookup_activation("activation-1") is not None
+    assert journal.lookup_activation("activation-1").released is True
+
+
 def test_release_unknown_session_requires_reconciliation() -> None:
     adapter = InMemoryControllerSessionAdapter()
     unknown = ControllerRef(binding(), "missing")

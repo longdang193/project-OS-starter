@@ -1,0 +1,37 @@
+{
+  "schema_version": "secretary-live-runtime-receipt-v1",
+  "identity_bindings": [
+    "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+    "repository_identity", "plan_identity", "git_revision", "worktree",
+    "workstream", "checkpoint"
+  ],
+  "runtime_identity": ["provider", "model", "controller_id", "session_id"],
+  "provider": "9router",
+  "timestamps": [
+    "run_started", "cos_entry", "secretary_entry", "worker_entry",
+    "publication", "settlement", "acceptance", "secretary_exit", "cos_exit",
+    "run_finished"
+  ],
+  "metrics": [
+    "cos_turns", "secretary_turns", "human_interventions", "publication_success",
+    "settlement_proven", "acceptance_decision", "token_usage", "cost"
+  ],
+  "unknown_allowed": ["token_usage", "cost", "cos_turns", "human_interventions"],
+  "source_producers": {
+    "launch": "herdr_main_launcher",
+    "secretary": "secretary_live_runtime",
+    "task_result": "dcode-project",
+    "settlement": "project_os_runtime.attempt",
+    "acceptance": "cos"
+  },
+  "source_binding_fields": [
+    "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+    "repository_identity", "plan_identity", "git_revision", "worktree",
+    "workstream", "checkpoint", "provider", "model", "controller_id",
+    "session_id", "source_ref", "source_digest"
+  ],
+  "redacted_fields": [
+    "credentials", "authorization_headers", "raw_prompts", "raw_responses",
+    "raw_transport_bodies"
+  ]
+}

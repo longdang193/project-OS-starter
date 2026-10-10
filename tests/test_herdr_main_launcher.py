@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 
@@ -53,6 +54,30 @@ def _confirmed_success_receipt() -> dict[str, object]:
 
 def _confirmed_task_result(status: str = "completed") -> dict[str, object]:
     return {"state": "confirmed", "status": status}
+
+
+def test_secretary_runtime_binding_requires_all_identity_fields() -> None:
+    binding = LAUNCHER._normalize_secretary_runtime_binding(
+        task_id="task-1",
+        plan_revision="plan-1",
+        attempt_id="attempt-1",
+        run_id="run-1",
+    )
+
+    assert binding == {
+        "task_id": "task-1",
+        "plan_revision": "plan-1",
+        "attempt_id": "attempt-1",
+        "run_id": "run-1",
+    }
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="all four"):
+        LAUNCHER._normalize_secretary_runtime_binding(
+            task_id="task-1",
+            plan_revision="plan-1",
+            attempt_id=None,
+            run_id="run-1",
+        )
 
 
 def test_deepagents_classification_ignores_pane_failure_after_structured_success() -> None:
@@ -1989,6 +2014,7 @@ def test_main_auto_codex_uses_resolved_target(
         },
     }
     commands: list[list[str]] = []
+    list_calls = 0
     monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
 
     def fake_run(command, **kwargs):
@@ -2286,6 +2312,7 @@ def test_target_selector_discovers_auto_pane_in_named_session(
     assert commands == [["herdr.exe", "--session", "project-os", "pane", "list"]]
     assert resolution["status"] == "selected"
     assert resolution["mode"] == "auto"
+    assert resolution["session_provenance"] == "pre-existing"
 
 
 def test_pane_ownership_lock_blocks_same_pane_and_releases_after_failure(
@@ -2336,6 +2363,7 @@ def test_target_selector_uses_default_session_for_workspace_qualified_pane(
     assert inspected_sessions == ["default"]
     assert resolution["status"] == "selected"
     assert resolution["mode"] == "auto"
+    assert resolution["session_provenance"] == "shared/default"
 
 
 def test_target_selector_selects_first_deterministic_auto_target(
@@ -2364,6 +2392,16 @@ def test_target_selector_selects_first_deterministic_auto_target(
     assert (session, pane) == ("default", "w1:p1")
     assert resolution["status"] == "selected"
     assert resolution["candidate_count"] == 2
+    assert resolution["session_provenance"] == "shared/default"
+
+
+def test_target_selector_marks_non_default_exact_session_pre_existing() -> None:
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "existing-session", "w1:p1", "herdr.exe",
+    )
+
+    assert (session, pane) == ("existing-session", "w1:p1")
+    assert resolution["session_provenance"] == "pre-existing"
 
 
 def test_target_selector_reuses_snapshot_and_keeps_rejection_reasons(
@@ -4438,6 +4476,31 @@ def test_confirm_codex_start_accepts_matching_process_identity(
     assert result["process_ids"] == [2]
 
 
+def test_confirm_codex_start_records_owned_descendants(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    responses = iter([
+        {"result": {"agent": {"agent_status": "working"}}},
+        {"result": {"process_info": {"foreground_processes": [{
+            "pid": 2,
+            "name": "codex.exe",
+            "argv0": "C:/bin/codex.exe",
+            "cwd": str(tmp_path),
+            "start_time": 1,
+            "children": [{"pid": 3, "name": "powershell.exe", "children": []}],
+        }]}}},
+    ])
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._confirm_codex_start(
+        "herdr.exe", "session", "p1", "agent", env={}, before_process_ids={1},
+        expected_codex_executable="C:/bin/codex.exe", expected_cwd=tmp_path,
+    )
+
+    assert result["process_ids"] == [2, 3]
+
+
 def test_deepagents_pane_requires_powershell_shell(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4613,10 +4676,11 @@ def test_terminate_codex_lane_blocks_empty_preclose_process_info(
         "session",
         "pane",
         env={},
+        ownership={"session": "session", "pane": "pane", "agent": "codex-main", "process_ids": [101]},
     )
 
     assert result["verified"] is False
-    assert "empty process information" in result["detail"]
+    assert "owned process identity unavailable" in result["detail"]
     assert len(calls) == 1
 
 
@@ -4630,6 +4694,7 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
                     {
                         "pid": 101,
                         "name": "codex.exe",
+                        "start_time": 1,
                         "children": [{"pid": 102, "name": "node.exe"}],
                     }
                 ]
@@ -4637,6 +4702,7 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
         }
     }
     commands: list[list[str]] = []
+    list_calls = 0
 
     def fake_run(command, **kwargs):
         commands.append(command)
@@ -4644,22 +4710,345 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
             return subprocess.CompletedProcess(command, 0, json.dumps(process_info), "")
         if "close" in command:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            nonlocal list_calls
+            list_calls += 1
+            if list_calls > 1:
+                return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+                "",
+            )
         return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102})
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
 
     result = LAUNCHER._terminate_codex_lane(
         "herdr.exe",
         "session",
         "pane",
         env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
     )
 
     assert result["verified"] is False
     assert result["state"] == "processes-remain"
     assert result["remaining_process_ids"] == [102]
-    assert len(commands) == 3
+    assert len(commands) == 4
+
+
+def test_terminate_codex_lane_tracks_owned_descendants_after_pane_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_infos = iter([
+        {"foreground_processes": [{
+            "pid": 101,
+            "name": "codex.exe",
+            "start_time": 1,
+            "children": [{"pid": 102, "name": "node.exe", "children": []}],
+        }]},
+    ])
+    list_calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal list_calls
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"result": {"process_info": next(process_infos)}}), "",
+            )
+        if "close" in command:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            list_calls += 1
+            panes = [] if list_calls > 1 else [{"pane_id": "pane", "agent": "codex-main"}]
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": panes}}), "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["remaining_process_ids"] == [102]
+
+
+def test_terminate_codex_lane_tracks_owned_shell_descendants_when_pane_disappears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_info = {
+        "result": {
+            "process_info": {
+                "foreground_processes": [{
+                    "pid": 101,
+                    "name": "codex.exe",
+                    "start_time": 1,
+                    "children": [{"pid": 102, "name": "powershell.exe", "children": []}],
+                }]
+            }
+        }
+    }
+    list_calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal list_calls
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps(process_info), "")
+        if "close" in command:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            list_calls += 1
+            panes = [] if list_calls > 1 else [{"pane_id": "pane", "agent": "codex-main"}]
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": panes}}), "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["remaining_process_ids"] == [102]
+
+
+def test_terminate_codex_lane_checks_observed_descendants_when_pane_remains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_infos = iter([
+        {"foreground_processes": [{
+            "pid": 101,
+            "name": "codex.exe",
+            "start_time": 1,
+            "children": [{"pid": 102, "name": "node.exe", "children": []}],
+        }]},
+        {"foreground_processes": [{"pid": 103, "name": "powershell.exe", "children": []}]},
+    ])
+    commands: list[list[str]] = []
+    list_calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal list_calls
+        commands.append(command)
+        if "process-info" in command:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"result": {"process_info": next(process_infos)}}), "",
+            )
+        if "close" in command:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            list_calls += 1
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["state"] == "shell-only"
+    assert result["remaining_owned_process_ids"] == [102]
+
+
+def test_process_ids_alive_tracks_live_and_reaped_processes() -> None:
+    process = subprocess.Popen([
+        LAUNCHER.sys.executable,
+        "-c",
+        "import time; time.sleep(30)",
+    ])
+    try:
+        assert process.pid in LAUNCHER._process_ids_alive({process.pid})
+        process.terminate()
+        process.wait(timeout=5)
+        for _ in range(50):
+            if process.pid not in LAUNCHER._process_ids_alive({process.pid}):
+                break
+            time.sleep(0.01)
+        assert process.pid not in LAUNCHER._process_ids_alive({process.pid})
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def test_process_ids_alive_rejects_exit_code_259_as_live() -> None:
+    process = subprocess.Popen([
+        LAUNCHER.sys.executable,
+        "-c",
+        "raise SystemExit(259)",
+    ])
+    try:
+        process.wait(timeout=5)
+        assert process.pid not in LAUNCHER._process_ids_alive({process.pid})
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def test_terminate_codex_lane_rejects_malformed_post_close_pane_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter([
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"process_info": {"foreground_processes": [
+                {"pid": 101, "name": "codex.exe", "start_time": 1, "children": []},
+            ]}}}),
+            "",
+        ),
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+            "",
+        ),
+        subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], 0, "not-json", ""),
+    ])
+
+    monkeypatch.setattr(LAUNCHER, "_run", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert "verification failed" in result["detail"]
+
+
+@pytest.mark.parametrize("malformed_panes", [[{}], [None], [{"pane_id": "   "}]])
+def test_terminate_codex_lane_rejects_malformed_pane_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    malformed_panes: list[object],
+) -> None:
+    responses = iter([
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"process_info": {"foreground_processes": [
+                {"pid": 101, "name": "codex.exe", "start_time": 1, "children": []},
+            ]}}}),
+            "",
+        ),
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+            "",
+        ),
+        subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], 0, json.dumps({"result": {"panes": malformed_panes}}), ""),
+    ])
+    monkeypatch.setattr(LAUNCHER, "_run", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert "invalid panes" in result["detail"]
+
+
+def test_terminate_codex_lane_blocks_empty_live_process_evidence_before_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter([
+        {"result": {"process_info": {"foreground_processes": []}}},
+        {"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}},
+    ])
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps(next(responses)), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert "identity mismatch" in result["detail"]
+    assert not any("close" in command for command in calls)
 
 
 def test_terminate_codex_lane_detects_new_nested_non_shell_process(
@@ -4667,7 +5056,7 @@ def test_terminate_codex_lane_detects_new_nested_non_shell_process(
 ) -> None:
     process_infos = iter([
         {"foreground_processes": [
-            {"pid": 101, "name": "codex.exe", "children": []},
+                {"pid": 101, "name": "codex.exe", "start_time": 1, "children": []},
         ]},
         {"foreground_processes": [
             {"pid": 201, "name": "powershell.exe", "children": [
@@ -4675,20 +5064,42 @@ def test_terminate_codex_lane_detects_new_nested_non_shell_process(
             ]},
         ]},
     ])
+    list_calls = 0
 
     def fake_run(command, **kwargs):
+        nonlocal list_calls
         if "process-info" in command:
             return subprocess.CompletedProcess(
                 command, 0, json.dumps({"result": {"process_info": next(process_infos)}}), "",
             )
         if "close" in command:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            list_calls += 1
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+                "",
+            )
         return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": [{"pane_id": "pane"}]}}), "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
     monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: set())
 
-    result = LAUNCHER._terminate_codex_lane("herdr.exe", "session", "pane", env={})
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
 
     assert result["verified"] is False
     assert result["state"] == "processes-remain"
@@ -5130,3 +5541,215 @@ def test_deepagents_completion_stops_observing_after_terminal_evidence(
     assert evidence["lifecycle_receipt"] == confirmed
     assert evidence["state"] == "completed"
     assert evidence["receipt_authoritative"] is True
+
+
+def test_retire_lane_is_idempotent_when_exact_pane_is_already_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda *args, **kwargs: {"result": {"panes": []}})
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(Path.cwd()),
+            "settled": True,
+            "recovery_required": False,
+            "process_retirement_proven": True,
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "removed"
+    assert result["idempotent"] is True
+    assert result["resources"]["session"]["state"] == "preserved"
+
+
+def test_retire_settled_lane_requires_no_continuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "retire_lane", lambda *args, **kwargs: pytest.fail("must not retire"))
+    result = LAUNCHER.retire_settled_lane(
+        {"settled": True, "no_continuation": False},
+        herdr="herdr",
+        env={},
+    )
+    assert result == {
+        "state": "preserved",
+        "recovery_required": False,
+        "reason": "continuation remains possible",
+    }
+
+
+def test_retire_settled_lane_requires_recorded_pane_process_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def json_command(args, **kwargs):
+        if "pane" in args and "list" in args:
+            return {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path)}]}}
+        return {"result": {"process_info": {"foreground_processes": [{"pid": 41, "name": "dcode.exe", "cwd": str(tmp_path)}]}}}
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", json_command)
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: pytest.fail("must not terminate unbound process"))
+    result = LAUNCHER.retire_settled_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+            "agent_name": "agent-1",
+            "settled": True,
+            "no_continuation": True,
+            "recovery_required": False,
+        },
+        herdr="herdr",
+        env={},
+    )
+    assert result["state"] == "unresolved"
+    assert result["reason"] == "process ownership identity is unavailable"
+
+
+def test_retire_settled_lane_accepts_proven_absent_worker_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def json_command(args, **kwargs):
+        if "pane" in args and "list" in args:
+            return {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path)}]}}
+        return {
+            "result": {
+                "process_info": {
+                    "foreground_processes": [
+                        {"pid": 41, "name": "powershell.exe", "cwd": str(tmp_path)}
+                    ]
+                }
+            }
+        }
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", json_command)
+    result = LAUNCHER.retire_settled_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+            "agent_name": "agent-1",
+            "settled": True,
+            "no_continuation": True,
+            "recovery_required": False,
+            "process_retirement_proven": True,
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "removed"
+    assert result["resources"]["process"]["reason"] == "already_absent"
+    assert result["resources"]["pane"]["state"] == "preserved"
+
+
+def test_retire_lane_preserves_on_worktree_binding_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda *args, **kwargs: {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path / "other")}]}} ,
+    )
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "unresolved"
+    assert result["recovery_required"] is True
+
+
+def test_retire_lane_preserves_when_attempt_requires_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda *args, **kwargs: {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path), "agent": "agent-1"}]}},
+    )
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+            "agent_name": "agent-1",
+            "settled": True,
+            "recovery_required": True,
+            "process_identity": {"pid": 41},
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "unresolved"
+    assert result["recovery_required"] is True
+    assert result["reason"] == "attempt requires recovery"
+
+
+def test_retire_lane_preserves_when_recorded_process_identity_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def json_command(args, **kwargs):
+        if "pane" in args and "list" in args:
+            return {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path), "agent": "agent-1"}]}}
+        return {"result": {"process_info": {"foreground_processes": [{"pid": 42, "name": "codex.exe", "cwd": str(tmp_path), "children": []}]}}}
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", json_command)
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: pytest.fail("must not terminate stale process"))
+
+    result = LAUNCHER.retire_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+            "agent_name": "agent-1",
+            "settled": True,
+            "recovery_required": False,
+            "process_identity": {"pid": 41, "name": "codex.exe", "cwd": str(tmp_path)},
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "unresolved"
+    assert result["recovery_required"] is True

@@ -3,6 +3,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$TargetRoot,
   [switch]$InstallStartup,
+  [switch]$SkipInstall,
   [switch]$VerifyOnly
 )
 
@@ -46,6 +47,25 @@ function Test-WindowsHookWrapper {
   return $content -match '(?s)\A@echo off\r?\nnode\.exe "%~dp0hooks-handler\.js" %\*\r?\n?\z'
 }
 
+function Test-CodexRuntime {
+  param(
+    [string]$Root,
+    [bool]$RequireCompactCompatibility
+  )
+
+  $cliPath = Join-Path $Root "dist\cli.js"
+  if (-not (Test-WindowsHookWrapper (Join-Path $Root "dist\tokenpilot-codex-hook.cmd")) -or
+      -not (Test-Path -LiteralPath (Join-Path $Root "dist\hooks-handler.js") -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $cliPath -PathType Leaf)) {
+    return $false
+  }
+  if (-not $RequireCompactCompatibility) { return $true }
+  $content = [IO.File]::ReadAllText($cliPath)
+  return $content -match 'endpointPath === "/responses/compact"' -and
+    $content -match 'fallbackPayload \? params\.fallbackPayload\(payload\)' -and
+    $content -match 'delete projected\.stream'
+}
+
 $targetPath = (Resolve-Path -LiteralPath $TargetRoot).Path
 $overlayBase = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "overlays\lightrsi-codex-hook-portable")).Path
 $scriptPath = (Resolve-Path -LiteralPath $MyInvocation.MyCommand.Path).Path
@@ -76,7 +96,13 @@ if ($null -eq $selected) {
   $appliedRecords = @($records | Where-Object {
     Test-NativeSuccess $git @("-C", $targetPath, "apply", "--reverse", "--check", "--", $_.PatchPath)
   })
-  if ($appliedRecords.Count -eq 1) {
+  $compactionRecords = @($appliedRecords | Where-Object {
+    [string]$_.Manifest.id -eq "lightrsi-codex-compaction-compatibility"
+  })
+  if ($compactionRecords.Count -eq 1) {
+    $selected = $compactionRecords[0]
+    $alreadyApplied = $true
+  } elseif ($appliedRecords.Count -eq 1) {
     $selected = $appliedRecords[0]
     $alreadyApplied = $true
   } else {
@@ -105,7 +131,12 @@ if ($canApply) {
 
 $adapterPath = Join-Path $targetPath "components\adapters\codex"
 $wrapperPath = Join-Path $adapterPath "dist\tokenpilot-codex-hook.cmd"
-$wrapperReady = Test-WindowsHookWrapper $wrapperPath
+$runtimeWrapperPath = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter\dist\tokenpilot-codex-hook.cmd"
+$requireCompactCompatibility = [string]$manifest.id -eq "lightrsi-codex-compaction-compatibility"
+$targetRuntimeReady = Test-CodexRuntime -Root $adapterPath -RequireCompactCompatibility:$requireCompactCompatibility
+$runtimeRoot = Join-Path $env:USERPROFILE ".local\share\lightrsi\codex-adapter"
+$installedRuntimeReady = Test-CodexRuntime -Root $runtimeRoot -RequireCompactCompatibility:$requireCompactCompatibility
+$wrapperReady = $targetRuntimeReady -and $installedRuntimeReady
 $needsInstall = $patchApplied -or -not $wrapperReady
 
 if ($VerifyOnly) {
@@ -113,6 +144,11 @@ if ($VerifyOnly) {
     throw "Overlay source is present, but generated Windows hook is stale or missing."
   }
   Write-Output "Verified LightMem2 Codex overlay $($manifest.version) at $targetHead."
+  exit 0
+}
+
+if ($SkipInstall) {
+  Write-Output "Applied LightMem2 Codex overlay source $($manifest.version) at $targetHead; generated install skipped."
   exit 0
 }
 

@@ -72,6 +72,13 @@ When workspace state is retained, record its reason in `Evidence` and its next
 dependency-ready action in `Next action`. Do not add a second lifecycle registry
 or mandatory disposition field for this purpose.
 
+Durable plan evidence records the PR number, candidate commit SHA, applicable
+policy source, and links or paths for the proof used at that checkpoint. Do not
+copy mutable prose such as "current PR", "latest check", or "approved review"
+into durable plan truth; record the immutable identifier and observed result
+instead. If remote evidence is unavailable, record the explicit unavailable or
+blocked outcome and preserve the local owner’s source of truth.
+
 `contract_version: 1` marks the modern plan contract. Completed plans without
 this marker remain historical compatibility artifacts. `Coordination schema: 1`
 marks compatible Git-tracked coordination. `Coordination schema: 2` additionally
@@ -103,7 +110,7 @@ base mutation, force push, retargeting, protection bypass, semantic conflict
 resolution, destructive recovery, discard, and unrelated cleanup still need
 explicit user authorization.
 
-Task ledger `Executor` values are `codex`, `deepagents`, or `tura`; pending or
+Task ledger `Executor` values are `codex` or `deepagents`; pending or
 blocked tasks may use `unresolved` until the lead controller resolves them.
 The task ledger is the sole durable executor choice for Git-tracked plans.
 Executor choice does not select profile; `Template Profile` and optional

@@ -70,6 +70,9 @@ another name and model.
 Select executor and validator profiles independently from their bounded task
 contracts. A validator may be lower, equal, or higher than its executor when
 reliable for the validation task.
+Native Codex delegated worker and DeepAgents task or internal worker are
+executor choices; profile selection remains a separate bounded capability
+decision.
 Sync renders Codex TOML into
 `generated_agents/codex/agents/`. User-local `dcode-project` generates ignored
 DeepAgents project views at launch. Keep provider endpoints, credentials, MCP
@@ -108,8 +111,7 @@ receipt first. A confirmed receipt is authoritative and skips `pane wait-output`
 `pane process-info`, and `pane read`; unresolved receipts use pane probes only
 for diagnostics or legacy fallback. For Codex, inspect `agent get` and
 `agent read`. `agent wait` remains a documented Herdr capability, not current
-launcher integration. Tura remains outside this Herdr launcher path and uses
-`project-delegate`. Record executor, session, pane, agent identity, task hash,
+launcher integration. Record executor, session, pane, agent identity, task hash,
 state, and evidence source; keep state `unknown` when evidence is missing or
 stale.
 Treat `pane read` and `agent read` output as disposable probe data: metadata-only
@@ -184,15 +186,13 @@ projects it to DeepAgents' native `use_responses_api` model parameter:
 `chat` maps to `false`, `responses` maps to `true`. Unsupported protocols fail
 before child launch. Agent profiles do not duplicate protocol compatibility;
 the active provider binding owns that fact, so every profile using that provider
-follows the same launch mapping while Tura and Native Codex remain independent
-paths.
+follows the same launch mapping.
 
 `dcode-project` loads Codex configuration once per invocation. `--print-config`
 does not read credentials, generate role views, acquire role ownership, or
 launch a worker. Execution evidence separates controller model from selected
-worker model and omits worker binding evidence when no role is selected. Tura
-keeps its existing provider configuration and credential behavior; only the
-DeepAgents path validates `wire_api` and derives `use_responses_api`.
+worker model and omits worker binding evidence when no role is selected.
+DeepAgents validates `wire_api` and derives `use_responses_api`.
 
 Launcher performance evidence records monotonic durations for preflight, target
 discovery, worker initialization, delivery, observation, and retirement,
@@ -207,23 +207,6 @@ cleanup. Ownership key uses canonical resolved worktree identity. Lock-file
 presence is not live-owner evidence, and user-owned `.deepagents` content is
 preserved. Crash cleanup is allowed only when worker process lifetime is
 proven; otherwise generated views remain and launcher reports recovery blocked.
-
-`project-delegate` is the one bounded Native Codex-to-Tura adapter. Its wrapper
-rejects `--executor` and forces `--executor tura`; `[delegation].default_executor`
-is only an internal launcher fallback. It reuses the same role and handoff
-sources and passes one bounded task with fixed Git root, native `--sandbox`, and
-fresh session id. Tura output remains opaque JSONL plus exit status.
-`dcode-project` remains an explicit DeepAgents launcher; no recursive or
-cross-runtime fallback exists. Tura routing uses
-`TURA_PROVIDER_CONFIG` and must remain `Tura -> LightRSI -> 9router -> provider`.
-
-For upgrade admission, run `project-delegate --role normal --print-config` and
-record the reported `tura_executable_sha256` when the executable exists. The
-receipt contains no credentials. Replacing the binary at the configured path
-needs no setup rerun; moving it needs one setup rerun. Run one bounded,
-read-only TL smoke after every binary replacement before reusing compatibility
-or performance evidence. A changed hash invalidates old performance evidence,
-not necessarily the adapter contract.
 
 Current `dcode-project` defaults DeepAgents to `--no-mcp`, fixes child CWD to selected
 Git root, and rejects direct runtime-authority flags. Direct `dcode-project` does
@@ -285,42 +268,8 @@ python "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root
 Run behavioral pytest separately. Contract validation does not orchestrate
 pytest.
 
-Switchyard auto runtime:
-
-```bash
-py scripts/manage_switchyard_runtime.py check --codex-config "$HOME/.codex/config.toml" --codex-home "$HOME/.codex" --switchyard-home "$HOME/.switchyard"
-py scripts/manage_switchyard_runtime.py deploy --codex-config "$HOME/.codex/config.toml" --codex-home "$HOME/.codex" --switchyard-home "$HOME/.switchyard"
-```
-
-`repo_config/switchyard-routing.toml` owns automatic policy. `agents/*.toml`
-own provider aliases and model IDs. Generated `$HOME/.switchyard/routes.toml`
-and `$CODEX_HOME/auto.config.toml` are runtime outputs; deploy refuses drift
-unless explicit migration uses `--replace-existing`. The generated upstream
-client names `SWITCHYARD_API_KEY` as its credential environment variable but
-never stores its value. `low` and `xhigh` remain fixed/manual. `normal` and
-`high` may be selected directly or serve as the endpoints underneath `auto`.
-
-`auto` is an opt-in runtime routing mode, not a capability or validator profile.
-Policy v1 routes only between `normal` and `high`; no cost-savings claim is
-established. The current runtime uses `capable_first` pending calibration, and
-the compatibility smoke—not the version field alone—is the compatibility gate.
-
-`auto` is eligible only for the Native Codex controller. It changes model
-endpoint selection inside that controller route; it never selects Codex,
-DeepAgents, or Tura and is not consumed by `dcode-project` or
-`project-delegate`. The generated `auto.config.toml` is a separate explicit
-Codex launch overlay; deploying it does not change fixed delegated-role
-bindings.
-
-| Executor or surface | Fixed profiles | `auto` |
-| --- | --- | --- |
-| Native Codex controller | discovered profile | yes |
-| Native Codex delegated worker | discovered profile | no |
-| DeepAgents task or internal worker | discovered profile | no |
-| Tura worker | discovered profile | no |
-
 Executor selection answers who executes. Profile selection answers the bounded
-capability contract. `auto` answers which eligible ranked model endpoint to use.
+capability contract.
 
 Factory CI-safe adapter check (skip home-directory check):
 

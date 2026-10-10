@@ -1,0 +1,27 @@
+{
+  "schema": "project-os.secretary-live-economics-status-probe.v1",
+  "observed_at": "2026-10-09T14:03:56.0737019Z",
+  "run_id": "run-economics-20261009-r2",
+  "attempt_id": "attempt-economics-20261009-r2",
+  "task_id": "secretary-live-economics-smoke",
+  "provider": "9router",
+  "model": "combo-normal",
+  "codex_session_id": "01a120f7-c529-7973-8863-635d0ae95849",
+  "herdr_workspace": "w56",
+  "herdr_pane": "w56:p1",
+  "source": "herdr-pane-status",
+  "attribution": "session-level-unbound",
+  "precision": "rounded-display-not-raw-response.usage",
+  "token_usage": {
+    "input_tokens_displayed": "52.7K",
+    "output_tokens_displayed": "1.85K",
+    "total_tokens_displayed": "54.6K",
+    "cache_read_input_tokens": "unknown",
+    "cache_write_input_tokens": "unknown"
+  },
+  "cost": {
+    "value": "unknown",
+    "reason": "model_route_unresolved_and_no_billing_receipt"
+  },
+  "claimable_for_paired_economics": false
+}

@@ -41,7 +41,7 @@ execution, evidence, and lane-local changes. The shared attempt contract owns
 admission and settlement semantics; the worker wrapper owns execution,
 deadlines, descendants, cleanup, and receipts; Herdr owns delivery and
 diagnostic observation. A MAIN
-AGENT may spawn Native Codex, DeepAgents, or Tura sub-agents when needed inside
+AGENT may spawn Native Codex or DeepAgents sub-agents when needed inside
 that lane when `delegation.child_agents: allow`. Sub-agents must not spawn peer
 MAIN AGENTS, activate CoS, or
 reactivate coordination. CoS implementation-lane eligibility follows the
@@ -52,9 +52,6 @@ After resolution:
 
 - `codex` uses a CoS-managed Herdr MAIN AGENT.
 - `deepagents` uses a CoS-managed `dcode-project` MAIN lane through Herdr.
-- `tura` is not a CoS MAIN lane; `skill-executing-plans` returns it to the
-  existing `project-delegate` path, then CoS resumes after plan and Git
-  reconciliation.
 
 Review and integration remain Codex-only. Other
 generated adapters may carry this skill, but their non-Codex lead must return
@@ -68,8 +65,8 @@ Apply the CoS Executor Eligibility contract from
 After successful assignment, a MAIN AGENT executes autonomously inside its
 assigned task contract. It may choose implementation details, inspect direct
 consumers, use applicable skills and tools, debug and retry, run task-local
-verification, modify lane-owned files, and spawn Native Codex, DeepAgents, or
-Tura sub-agents when needed when its Runtime Grant permits delegation.
+verification, modify lane-owned files, and spawn Native Codex or DeepAgents
+sub-agents when needed when its Runtime Grant permits delegation.
 Delegation inside lane scope does not need a separate CoS approval.
 
 A subordinate worker inherits a subset of its parent task's scope, authority,
@@ -139,7 +136,7 @@ wall-clock enforcement. Unsupported strict limits return `BLOCKED`.
 CoS may dispatch only top-level `codex` and `deepagents` MAIN AGENT lanes through
 Herdr. Codex lanes use top-level Codex main agents; DeepAgents lanes use the
 bounded `dcode-project` pane process. Every CoS-managed lane dispatch goes
-through Herdr; Tura remains outside this path, and CoS never invokes subagents
+through Herdr, and CoS never invokes subagents
 directly. Use the repository Herdr command
 `py -B scripts/herdr_main_launcher.py ...` for dispatch. Monitor only the
 top-level lane and wrapper through provider-resolved wait/read operations; do
@@ -377,7 +374,7 @@ or dispatch one dependency-ready wave only when the plan is
 resolving a blocker becomes a substantial independent detour, park the current
 lane, dispatch a fresh bounded Herdr lane for that blocker, and merge back only
 compact evidence or result. Do not supervise executor-local workers inside
-`deepagents` or `tura`.
+`deepagents`.
 
 For `auto`/`auto` Herdr fan-out, acquire targets sequentially: complete each
 lane's start and delivery claim before launching the next lane. Monitor all
@@ -424,7 +421,7 @@ lists alone.
 Request review through `skill-requesting-code-review`. CoS dispatches only an
 independent Herdr top-level Codex MAIN AGENT session. CoS never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
-Tura internal workers, or executor-local reviewers or helpers directly. MAIN
+executor-local reviewers or helpers directly. MAIN
 AGENTS may use those sub-agent paths when needed for assigned lane work. The
 reviewer receives the bounded contract, not the producer session history.
 Independent review and integration remain Codex-only.

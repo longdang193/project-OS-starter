@@ -208,7 +208,6 @@ def build_subprocess_steps(
     repo_config_script = str(script_path("validate_repo_config.py"))
     agent_metadata_schema_script = str(script_path("validate_agent_metadata_schema.py"))
     env_gitignore_contract_script = str(script_path("validate_env_gitignore_contract.py"))
-    switchyard_script = root / "scripts" / "manage_switchyard_runtime.py"
 
     mode = "preflight" if fast else (scope or "audit")
     bound_plan = str(plan) if plan is not None else None
@@ -248,16 +247,6 @@ def build_subprocess_steps(
             ]
         )
     steps.append([python_executable, repo_config_script, "--repo-root", str(root)])
-    if switchyard_script.is_file():
-        steps.append(
-            [
-                python_executable,
-                str(switchyard_script),
-                "validate",
-                "--manifest",
-                str(root / "repo_config" / "switchyard-routing.toml"),
-            ]
-        )
     return steps
 
 

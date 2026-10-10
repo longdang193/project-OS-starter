@@ -16,6 +16,7 @@ from .capabilities import (
     effective_local_capabilities,
     normalize_local_capabilities,
 )
+from .reconciliation import ReconciliationInput, reconcile
 
 WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = 1800
 NATIVE_WORKER_WALL_CLOCK_SECONDS = 420
@@ -320,7 +321,18 @@ def derive_lifecycle_state(
         cleanup_confirmed=cleanup_confirmed is True,
         descendants_retired=descendants_retired is True,
     )
-    if settled:
+    retirement = reconcile(
+        ReconciliationInput(
+            phase="retire",
+            facts={
+            "runtime_owned": True,
+            "no_continuation": settled,
+            "settled": settled,
+            "retirement_complete": settled,
+            },
+        )
+    )
+    if retirement.retirement_complete:
         return "SETTLED"
     return "ACTIVE" if claim["state"] == "active" else "RECOVERY_REQUIRED"
 

@@ -13,6 +13,22 @@ import pytest
 from scripts import herdr_parallel_dispatch as dispatcher
 
 
+def test_capture_cleanup_reports_deletion_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        dispatcher.shutil,
+        "rmtree",
+        lambda path: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    result = dispatcher._remove_capture_dir(tmp_path)
+
+    assert result["state"] == "unverified"
+    assert result["reason"] == "capture cleanup failed"
+
+
 def lane(
     lane_id: str,
     root: Path,

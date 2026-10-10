@@ -234,15 +234,16 @@ def test_executor_resolution_prefers_explicit_then_configured_default(tmp_path: 
     config = tura_config(tmp_path)
 
     assert LAUNCHER._resolve_executor(config, "deepagents") == "deepagents"
-    assert LAUNCHER._resolve_executor(config, None) == "tura"
+    with pytest.raises(RuntimeError, match="retired"):
+        LAUNCHER._resolve_executor(config, None)
 
 
 @pytest.mark.parametrize(
     ("config", "explicit", "message"),
     [
         ({}, None, "default_executor"),
-        ({"delegation": {"default_executor": "codex"}}, None, "executor"),
-        ({"delegation": {"default_executor": "tura"}}, "codex", "executor"),
+        ({"delegation": {"default_executor": "codex"}}, None, "retired"),
+        ({"delegation": {"default_executor": "tura"}}, "codex", "retired"),
     ],
 )
 def test_executor_resolution_rejects_missing_or_invalid_values(
@@ -555,6 +556,78 @@ def test_deepagents_main_demotes_missing_or_malformed_worker_task_result(
     assert payload["progress"]["publication_diagnostic"] == {"reason": "task result malformed"}
 
 
+def test_deepagents_main_republishes_recovery_receipt_when_task_result_publication_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    task_result_file.write_text("{malformed", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "publish_task_result",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("publication unavailable")),
+    )
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "repository_identity": "repo-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
+    }
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", binding["attempt_id"],
+        "--assignment-id", binding["assignment_id"],
+        "--repository-identity", binding["repository_identity"],
+        "--task-sha256", binding["task_sha256"], "--grant-digest", binding["grant_digest"],
+    ]) == 0
+
+    receipt = json.loads(result_file.read_text(encoding="utf-8"))
+    assert receipt["recovery_required"] is True
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id=binding["assignment_id"],
+        binding={**binding, "executor": "deepagents"},
+        repo_root=tmp_path,
+    )
+    assert reconciled["state"] != "SETTLED"
+
+
+def test_deepagents_main_publishes_task_result_before_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    task_result_file.write_text("{malformed", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+    events: list[str] = []
+    publish = LAUNCHER.publish_task_result
+
+    def publish_task_result_before_receipt(path: Path, payload: dict[str, object]) -> None:
+        assert not result_file.exists()
+        events.append("task-result")
+        publish(path, payload)
+
+    monkeypatch.setattr(LAUNCHER, "publish_task_result", publish_task_result_before_receipt)
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", "attempt-1",
+        "--assignment-id", "assignment-1", "--repository-identity", "repo-1",
+        "--task-sha256", "a" * 64, "--grant-digest", "b" * 64,
+    ]) == 0
+
+    assert events == ["task-result"]
+    assert result_file.exists()
+
+
 def test_deepagents_main_rejects_unauthorized_worker_producer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -620,95 +693,6 @@ def test_deepagents_main_publishes_receipt_after_cleanup(
     }
     assert payload["cleanup"]["state"] == "removed"
     assert not (tmp_path / ".deepagents" / "agents").exists()
-
-
-def test_tura_argv_contains_bounded_worker_contract(tmp_path: Path) -> None:
-    argv = LAUNCHER._tura_worker_argv(
-        Path("C:/tools/tura.exe"),
-        tmp_path,
-        "combo-normal",
-        "session-a",
-        "inspect files",
-    )
-
-    assert argv[:2] == [str(Path("C:/tools/tura.exe")), "--quiet"]
-    assert "--json" in argv
-    assert "--sandbox" in argv
-    assert "--session-id" in argv
-    assert argv[argv.index("--session-id") + 1] == "session-a"
-    assert argv[argv.index("--agent-id") + 1] == "balanced"
-    assert argv[argv.index("-C") + 1] == str(tmp_path)
-    assert argv[argv.index("-m") + 1] == "openai/combo-normal"
-    assert argv[-1] == "inspect files"
-
-
-def test_tura_task_labels_profile_guidance_and_handoff_once(tmp_path: Path) -> None:
-    argv = ["-n", "inspect files"]
-    payload = {
-        "schema": "codex.mcp.handoff.v1",
-        "sources": [{"server": "context7", "tool": "query_docs"}],
-        "facts": [{"source": 0, "value": "fact"}],
-        "constraints": ["no MCP"],
-    }
-
-    task = LAUNCHER._tura_worker_task(
-        argv,
-        tmp_path,
-        "normal",
-        "Return ROLE_OK.",
-        payload,
-    )
-
-    assert task.count("Return ROLE_OK.") == 1
-    assert task.count('"schema":"codex.mcp.handoff.v1"') == 1
-    assert "Bounded task guidance" in task
-    assert task.count("Project guidance:") == 1
-    assert "AGENTS.md" in task
-    assert ".agents/skills/<name>/SKILL.md" in task
-    assert "inspect files" in task
-    assert "handoff.json" not in task
-
-
-def test_tura_environment_owns_provider_and_workspace_values(tmp_path: Path) -> None:
-    os.environ["OPENAI_BASE_URL"] = "https://direct-provider.invalid/v1"
-    environment = LAUNCHER._tura_worker_environment(
-        "secret", tmp_path / "providers.toml", tmp_path
-    )
-
-    assert environment["OPENAI_API_KEY"] == "secret"
-    assert environment["TURA_PROVIDER_CONFIG"] == str(tmp_path / "providers.toml")
-    assert environment["TURA_PROJECT_ROOT"] == str(tmp_path)
-    assert "OPENAI_BASE_URL" not in environment
-    assert "secret" not in environment.get("TURA_PROVIDER_CONFIG", "")
-    os.environ.pop("OPENAI_BASE_URL", None)
-
-
-def test_tura_worker_propagates_opaque_child_status(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    class FakeProcess:
-        pid = 42
-
-        def wait(self, timeout: float | None = None) -> int:
-            assert timeout == 3
-            return 7
-
-    observed: dict[str, object] = {}
-
-    def fake_popen(argv: list[str], **kwargs: object) -> FakeProcess:
-        observed["argv"] = argv
-        observed.update(kwargs)
-        return FakeProcess()
-
-    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(LAUNCHER, "_create_windows_job", lambda process: "job")
-    monkeypatch.setattr(LAUNCHER, "_close_windows_job", lambda job: True)
-
-    assert LAUNCHER._run_tura_worker(
-        ["tura", "task"], {"TURA_PROVIDER_CONFIG": "providers.toml"}, tmp_path, 3
-    ) == 7
-    assert observed["cwd"] == tmp_path
 
 
 @pytest.mark.parametrize("handoff_stdin", [None, "handoff"])
@@ -820,7 +804,7 @@ def test_bounded_worker_reports_post_start_error_facts(
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
 
     with pytest.raises(LAUNCHER._WorkerLifecycleError, match="failed after process creation") as error:
-        LAUNCHER._run_tura_worker(["worker"], {}, tmp_path, 3)
+        LAUNCHER._run_deepagents_worker(["worker"], {}, tmp_path, None, 3)
 
     assert error.value.facts == LAUNCHER._WorkerLifecycleFacts(
         "failed", None, "unknown", False
@@ -1071,6 +1055,11 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     settled = LAUNCHER._settle_attempt(
         assignment_id="assignment-1", binding=binding, settlement_proven=True
     )
+    settled = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"candidate_sha": "candidate-1"},
+    )
     assert settled["state"] == "settled"
     assert settled["settlement_proven"] is True
 
@@ -1081,6 +1070,573 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     )
     assert replacement["replaced_settled"] is True
     assert replacement["state"] == "ACTIVE"
+    assert replacement["record"]["release_authorized"] is True
+    assert replacement["record"]["release_authorization"] == {"candidate_sha": "candidate-1"}
+    assert replacement["record"]["release_binding"] == binding
+
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=dict(binding, attempt_id="attempt-2"),
+        settlement_proven=True,
+    )
+
+    replacement_update = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=dict(binding, attempt_id="attempt-2"),
+        release_authorization={
+            "candidate_sha": "candidate-2",
+            "resources": {"replacement-result": {"state": "removed"}},
+        },
+    )
+    assert replacement_update["release_binding"] == binding
+    assert replacement_update["release_state"] == "pending"
+
+    updated = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "candidate_sha": "candidate-1",
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+    assert updated["release_state"] == "released"
+    assert updated["released_resources"] == {"task-result": {"state": "removed"}}
+
+
+def test_attempt_guard_synthesizes_legacy_release_binding_for_replay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    record = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1", binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    record.pop("release_binding", None)
+    LAUNCHER._write_attempt_guard(LAUNCHER._attempt_guard_path("assignment-1"), record)
+
+    replacement = LAUNCHER._claim_attempt(
+        **dict(binding, attempt_id="attempt-2", grant_digest="grant-2"),
+        repo_root=tmp_path,
+        result_file=None,
+    )
+
+    assert replacement["record"]["release_binding"] == binding
+
+
+def test_attempt_guard_migrates_legacy_resources_and_bounds_retired_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    base = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    resource = {
+        "state": "pending",
+        "attempt_id": "attempt-1",
+        "evidence_ref": "task-result",
+        "attempt_root": str(tmp_path),
+        "relative_path": "task-result.json",
+        "content_sha256": "digest-1",
+        "producer": "dcode-project",
+        "schema": "dcode-project.task-result.v1",
+    }
+    LAUNCHER._claim_attempt(**base, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=base, settlement_proven=True)
+    first = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=base,
+        release_authorization={"resources": {"task-result": resource}},
+    )
+    first.pop("release_binding", None)
+    LAUNCHER._write_attempt_guard(LAUNCHER._attempt_guard_path("assignment-1"), first)
+
+    replacement = LAUNCHER._claim_attempt(
+        **dict(base, attempt_id="attempt-2", grant_digest="grant-2"),
+        repo_root=tmp_path,
+        result_file=None,
+    )
+
+    assert replacement["record"]["released_resources_by_attempt"]["attempt-1"]["task-result"] == resource
+
+    second = dict(base, attempt_id="attempt-2", grant_digest="grant-2")
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=second,
+        settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+    for attempt_number in range(3, 70):
+        binding = dict(base, attempt_id=f"attempt-{attempt_number}", grant_digest=f"grant-{attempt_number}")
+        claim = LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+        if claim["admission"] == "RECONCILE":
+            assert len(claim["record"].get("retired_attempts", [])) == LAUNCHER._MAX_RETIRED_ATTEMPTS
+            break
+        LAUNCHER._settle_attempt(
+            assignment_id="assignment-1",
+            binding=binding,
+            settlement_proven=True,
+            settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+        )
+        LAUNCHER.record_release_authorization(
+            assignment_id="assignment-1",
+            binding=binding,
+            release_authorization={
+                "canonical_consequence": {"checkpoint_verified": True},
+                "resources": {"task-result": {"state": "removed"}},
+            },
+        )
+    else:
+        pytest.fail("retired attempt history did not reach its bounded admission limit")
+
+
+def test_attempt_guard_records_release_resources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    record = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "candidate_sha": "candidate-1",
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+    assert record["release_state"] == "released"
+    assert record["released_resources"] == {"task-result": {"state": "removed"}}
+
+
+def test_attempt_guard_does_not_downgrade_terminal_release_on_stale_pending_replay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    released = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "removed", "relative_path": "task-result.json"}}},
+    )
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    assert released["release_state"] == "released"
+    assert replay["release_state"] == "released"
+    assert replay["released_resources"]["task-result"]["state"] == "removed"
+
+
+def test_attempt_guard_does_not_inherit_terminal_resources_to_new_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    first = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**first, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=first, settlement_proven=True)
+    LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=first,
+        release_authorization={"resources": {"task-result": {"state": "removed"}}},
+    )
+    second = {**first, "attempt_id": "attempt-2", "grant_digest": "grant-2"}
+    LAUNCHER._claim_attempt(**second, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=second, settlement_proven=True)
+    record = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=second,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    assert record["release_state"] == "pending"
+    assert record["released_resources_by_attempt"]["attempt-1"]["task-result"]["state"] == "removed"
+    assert record["released_resources_by_attempt"]["attempt-2"]["task-result"]["state"] == "pending"
+
+
+def test_attempt_guard_keeps_pending_release_binding_immutable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    initial = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "pending",
+                    "attempt_root": str(tmp_path),
+                    "relative_path": "task-result.json",
+                    "content_sha256": "a" * 64,
+                    "producer": "dcode-project",
+                    "schema": "dcode-project.task-result.v1",
+                }
+            }
+        },
+    )
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "pending",
+                    "attempt_root": str(tmp_path),
+                    "relative_path": "replacement.json",
+                    "content_sha256": "b" * 64,
+                    "producer": "other-producer",
+                    "schema": "other-schema",
+                }
+            }
+        },
+    )
+    assert replay["released_resources"] == initial["released_resources"]
+
+
+def test_attempt_guard_keeps_unverified_release_binding_immutable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    initial = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "pending",
+                    "attempt_root": str(tmp_path),
+                    "relative_path": "task-result.json",
+                    "content_sha256": "a" * 64,
+                    "producer": "dcode-project",
+                    "schema": "dcode-project.task-result.v1",
+                }
+            }
+        },
+    )
+    failed = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "unverified",
+                    "reason": "replacement_detected",
+                }
+            }
+        },
+    )
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "pending",
+                    "attempt_root": str(tmp_path),
+                    "relative_path": "replacement.json",
+                    "content_sha256": "b" * 64,
+                    "producer": "other-producer",
+                    "schema": "other-schema",
+                }
+            }
+        },
+    )
+    assert failed["released_resources"]["task-result"]["state"] == "unverified"
+    replayed_resource = replay["released_resources"]["task-result"]
+    assert replayed_resource["state"] == "pending"
+    for field in ("attempt_id", "evidence_ref", "attempt_root", "relative_path", "content_sha256", "producer", "schema"):
+        assert replayed_resource[field] == failed["released_resources"]["task-result"][field]
+
+
+def test_attempt_guard_keeps_terminal_release_record_immutable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    initial = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "removed", "relative_path": "task-result.json"}}},
+    )
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "already_absent", "relative_path": "replacement.json"}}},
+    )
+    assert replay["released_resources"] == initial["released_resources"]
+
+
+def test_attempt_guard_compacts_verified_terminal_release_and_rejects_obsolete_replay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        settlement_proven=True,
+        settlement_evidence={
+            "cleanup_state": "removed",
+            "descendant_state": "terminated",
+        },
+    )
+    compacted = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "canonical_consequence": {"checkpoint_verified": True},
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+
+    assert compacted["release_compacted"] is True
+    assert compacted["generation"] == 1
+    assert compacted["retired_generation"] == 1
+    assert "released_resources_by_attempt" not in compacted
+    assert "release_authorization" not in compacted
+    assert "released_resources" not in compacted
+    assert "release_binding" not in compacted
+    assert compacted["terminal_release_tombstone"]["attempt_id"] == "attempt-1"
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    assert replay == compacted
+
+    replacement = LAUNCHER._claim_attempt(
+        **dict(binding, attempt_id="attempt-2", grant_digest="grant-2"),
+        repo_root=tmp_path,
+        result_file=None,
+    )
+    assert replacement["record"]["generation"] == 2
+    assert replacement["record"]["retired_generation"] == 1
+    with pytest.raises(RuntimeError, match="binding mismatch"):
+        LAUNCHER.record_release_authorization(
+            assignment_id="assignment-1",
+            binding=binding,
+            release_authorization={"resources": {"task-result": {"state": "pending"}}},
+        )
+
+
+def test_attempt_guard_rejects_obsolete_attempt_admission_after_replacement(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    first = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**first, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=first,
+        settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+    LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=first,
+        release_authorization={
+            "canonical_consequence": {"checkpoint_verified": True},
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+    second = {**first, "attempt_id": "attempt-2", "grant_digest": "grant-2"}
+    LAUNCHER._claim_attempt(**second, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=second,
+        settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+
+    obsolete = LAUNCHER._claim_attempt(**first, repo_root=tmp_path, result_file=None)
+
+    assert obsolete["admission"] == "BLOCKED"
+    assert obsolete["action"] == "BLOCKED"
+    assert obsolete["record"]["attempt_id"] == "attempt-2"
+
+
+def test_attempt_guard_rejects_obsolete_attempt_after_multiple_replacements(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    for attempt_number in range(1, 4):
+        current = {**binding, "attempt_id": f"attempt-{attempt_number}", "grant_digest": f"grant-{attempt_number}"}
+        LAUNCHER._claim_attempt(**current, repo_root=tmp_path, result_file=None)
+        LAUNCHER._settle_attempt(
+            assignment_id="assignment-1",
+            binding=current,
+            settlement_proven=True,
+            settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+        )
+        LAUNCHER.record_release_authorization(
+            assignment_id="assignment-1",
+            binding=current,
+            release_authorization={
+                "canonical_consequence": {"checkpoint_verified": True},
+                "resources": {"task-result": {"state": "removed"}},
+            },
+        )
+
+    obsolete = LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+
+    assert obsolete["admission"] == "BLOCKED"
+    assert obsolete["record"]["attempt_id"] == "attempt-3"
+
+
+def test_attempt_guard_does_not_compact_an_older_release_binding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    first = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    second = {**first, "attempt_id": "attempt-2", "grant_digest": "grant-2"}
+    LAUNCHER._claim_attempt(**first, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1", binding=first, settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+    LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1", binding=first,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    LAUNCHER._claim_attempt(**second, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1", binding=second, settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+
+    released_old = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1", binding=first,
+        release_authorization={
+            "canonical_consequence": {"checkpoint_verified": True},
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+
+    assert released_old.get("release_compacted") is not True
+    assert released_old["attempt_id"] == "attempt-2"
+
+
+def test_attempt_guard_normalizes_pending_release_binding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    record = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "candidate_sha": "candidate-1",
+            "resources": {"task-result": {"state": "pending"}},
+        },
+    )
+    resource = record["released_resources"]
+    assert resource["task-result"]["attempt_id"] == "attempt-1"
+    assert resource["task-result"]["evidence_ref"] == "task-result"
 
 
 def test_attempt_guard_retains_terminal_settlement_evidence(
@@ -1124,13 +1680,32 @@ def test_attempt_guard_reconciles_correlated_terminal_receipt(
         "attempt_id": "attempt-1",
         "executor": "deepagents",
         "repository_identity": "repo-1",
-        "task_sha256": "task-1",
-        "grant_digest": "grant-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
     }
     LAUNCHER._claim_attempt(
         **binding,
         repo_root=tmp_path,
         result_file=result_file,
+        task_result_file=tmp_path / "task-result.json",
+    )
+    publish_task_result(
+        tmp_path / "task-result.json",
+        {
+            "schema": "dcode-project.task-result.v1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "task_sha256": "a" * 64,
+            "grant_digest": "b" * 64,
+            "producer": "deepagents-worker",
+            "status": "completed",
+            "progress": {},
+            "checkpoint": {"revision": "deadbeef"},
+            "remaining_work": [],
+            "verification": {"references": ["tests/test_dcode_project.py"]},
+            "continuation": {"requested": False},
+            "accepted": None,
+        },
     )
     LAUNCHER._publish_result_receipt(
         result_file,
@@ -1152,6 +1727,47 @@ def test_attempt_guard_reconciles_correlated_terminal_receipt(
 
     assert reconciled["state"] == "SETTLED"
     assert reconciled["admission"] == "IDEMPOTENT"
+
+
+def test_attempt_guard_rejects_receipt_without_canonical_task_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
+    }
+    LAUNCHER._claim_attempt(
+        **binding,
+        repo_root=tmp_path,
+        result_file=result_file,
+        task_result_file=tmp_path / "task-result.json",
+    )
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="exited",
+        worker_exit_code=0,
+        descendant_state="terminated",
+        role_views_state="removed",
+        recovery_required=False,
+        shell_capabilities={"requested": [], "effective": []},
+        cleanup_details={"state": "removed", "remaining_paths": [], "marker_state": "removed"},
+    )
+
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        repo_root=tmp_path,
+    )
+
+    assert reconciled["state"] == "RECOVERY_REQUIRED"
+    assert reconciled["admission"] == "RECONCILE"
 
 
 def test_attempt_guard_reconciles_persisted_terminal_evidence_without_receipt(
@@ -1260,12 +1876,6 @@ def test_attempt_guard_blocks_relaunch_after_receipt_publication_or_deletion(
         assert repeated["admission"] == "IDEMPOTENT"
         assert repeated["state"] == "ACTIVE"
         result_file.unlink(missing_ok=True)
-
-
-def test_tura_worker_does_not_supply_adapter_cache_key() -> None:
-    assert "prompt_cache_key" not in LAUNCHER._tura_worker_argv(
-        Path("tura"), Path("repo"), "combo-low", "session-b", "task"
-    )
 
 
 def test_local_role_views_use_canonical_prompt_and_local_model_map(tmp_path: Path) -> None:
@@ -1548,16 +2158,12 @@ def test_bounded_task_value_may_start_with_dash(tmp_path: Path) -> None:
     deepagents_argv = list(argv)
     LAUNCHER._append_bounded_task_context(deepagents_argv, tmp_path)
     assert deepagents_argv[1].startswith("--- layer: change")
-    assert LAUNCHER._task_argument(argv) == "--- layer: change"
 
 
 def test_worker_timeout_defaults_are_executor_specific() -> None:
     assert LAUNCHER._worker_timeout(
         ["-n", "task"], default=420.0, worker_name="DeepAgents"
     ) == 420.0
-    assert LAUNCHER._worker_timeout(
-        ["-n", "task"], default=120.0, worker_name="Tura"
-    ) == 120.0
     assert LAUNCHER._worker_timeout(
         ["-n", "task", "--timeout=600"], default=None, worker_name="DeepAgents"
     ) == 600.0
@@ -1852,7 +2458,7 @@ def test_print_config_without_role_omits_worker_binding(
     assert "runtime_binding_digest" not in payload
 
 
-@pytest.mark.parametrize("executor", ["deepagents", "tura"])
+@pytest.mark.parametrize("executor", ["deepagents"])
 def test_runtime_binding_loads_codex_config_once_per_invocation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1868,16 +2474,11 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
         'base_url = "https://provider.example/v1"\nwire_api = "chat"\n',
         encoding="utf-8",
     )
-    executable = tmp_path / "tura.exe"
-    executable.write_bytes(b"tura")
-    provider_config = tmp_path / "providers.toml"
-    provider_config.write_text("provider = 'test'\n", encoding="utf-8")
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text(
         f"[delegation]\ndefault_executor = '{executor}'\n[paths]\n"
         f"codex_config = '{codex_path}'\nsecret_file = '{secret_file}'\n"
-        f"secret_key = 'API_KEY'\ntura_executable = '{executable}'\n"
-        f"tura_provider_config = '{provider_config}'\n",
+        "secret_key = 'API_KEY'\n",
         encoding="utf-8",
     )
     original_load = LAUNCHER._load_toml
@@ -1901,62 +2502,13 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
             "mcp_capability_digest": "digest",
         },
     )
-    if executor == "deepagents":
-        monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
-        monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
-        _stub_worker_shell_capabilities(monkeypatch)
-        monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
-    else:
-        monkeypatch.setattr(LAUNCHER, "_run_tura_worker", lambda *args: 0)
+    monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
+    monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
 
     assert LAUNCHER.main(["--role", "normal", "-n", "task"]) == 0
     assert loads == [codex_path]
-
-
-def test_print_config_reports_tura_executable_hash_without_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    write_role(tmp_path, "normal")
-    executable = tmp_path / "tura.exe"
-    executable.write_bytes(b"tura-test-binary")
-    provider_config = tmp_path / "providers.toml"
-    provider_config.write_text('api_key = "do-not-print"\n', encoding="utf-8")
-    config_path = tmp_path / "dcode-project.toml"
-    config_path.write_text(
-        "[delegation]\ndefault_executor = \"tura\"\n"
-        f"\n[paths]\ntura_executable = '{executable}'\n"
-        f"tura_provider_config = '{provider_config}'\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
-    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_runtime_binding",
-        lambda config: runtime_binding({}),
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_mcp_capabilities",
-        lambda config: {
-            "mcp_servers": [],
-            "mcp_tools": [],
-            "server_tools": {},
-            "mcp_capability_digest": "digest",
-        },
-    )
-
-    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
-
-    output = capsys.readouterr().out
-    payload = json.loads(output)
-    assert payload["tura_executable"] == str(executable)
-    assert payload["tura_executable_sha256"] == hashlib.sha256(
-        b"tura-test-binary"
-    ).hexdigest()
-    assert "do-not-print" not in output
 
 
 def test_role_model_comes_from_canonical_template(tmp_path: Path) -> None:
@@ -2417,38 +2969,6 @@ def test_direct_mcp_proceeds_without_mutating_project_configs(
     assert not (tmp_path / ".deepagents" / "agents").exists()
 
 
-def test_direct_mcp_janitor_removes_only_owned_stale_runtime(tmp_path: Path) -> None:
-    parent = tmp_path / "dcode-project-mcp"
-    parent.mkdir()
-    marker = parent / LAUNCHER._DIRECT_MCP_OWNER_MARKER
-    marker.write_text(LAUNCHER._DIRECT_MCP_OWNER_VALUE, encoding="utf-8")
-
-    stale = parent / "runtime-stale"
-    stale.mkdir()
-    (stale / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text(
-        LAUNCHER._DIRECT_MCP_OWNER_VALUE,
-        encoding="utf-8",
-    )
-    os.utime(stale, (0, 0))
-
-    foreign = parent / "runtime-foreign"
-    foreign.mkdir()
-    (foreign / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text("other\n", encoding="utf-8")
-
-    fresh = parent / "runtime-fresh"
-    fresh.mkdir()
-    (fresh / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text(
-        LAUNCHER._DIRECT_MCP_OWNER_VALUE,
-        encoding="utf-8",
-    )
-
-    LAUNCHER._cleanup_stale_direct_mcp_runtimes(parent)
-
-    assert not stale.exists()
-    assert foreign.exists()
-    assert fresh.exists()
-
-
 def test_direct_mcp_parent_initialization_tolerates_concurrent_creator(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2746,16 +3266,8 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"' in setup
     assert setup.index('$launcher = Join-Path $repoRoot "scripts\\dcode_project.py"') < setup.index('$launcher = Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"')
     assert 'dcode-project.ps1' in setup
-    assert 'project-delegate.ps1' in setup
-    assert 'TuraExecutable' in setup
-    assert 'TuraProviderConfig' in setup
-    assert 'default_executor' in setup
-    assert '--sandbox' in setup
-    assert 'Tura capability probe failed' in setup
     assert 'selects DeepAgents; do not pass --executor' in setup
-    assert 'project-delegate selects Tura; do not pass --executor' in setup
-    assert '& py -3 $launcher --executor tura @DelegateArgs' in setup
-    assert 'Tura migration:' in setup
+    assert 'project-delegate' not in setup
     assert '[string]$SecretFile = (Join-Path $HOME ".codex\\tokenpilot.env")' in setup
     assert '[string]$SecretKey = "OPENAI_API_KEY"' in setup
     assert 'Write-TextIfChanged -Path $configPath -Content $config' in setup
@@ -2784,43 +3296,9 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert "mcp_tools.py" in setup
 
 
-def test_generated_project_delegate_guard_returns_contract_exit_code(tmp_path: Path) -> None:
-    powershell = shutil.which("pwsh") or shutil.which("powershell")
-    if powershell is None:
-        pytest.skip("PowerShell is required to execute generated wrapper")
-
-    setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
-    setup = setup.replace("\r\n", "\n")
-    start_marker = "$delegateWrapper = @'\n"
-    end_marker = "\n'@\n"
-    start = setup.index(start_marker) + len(start_marker)
-    end = setup.index(end_marker, start)
-    wrapper_path = tmp_path / "project-delegate.ps1"
-    wrapper_path.write_text(setup[start:end] + "\n", encoding="utf-8")
-
-    result = subprocess.run(
-        [
-            powershell,
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(wrapper_path),
-            "--executor",
-            "deepagents",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 2
-    assert "project-delegate selects Tura; do not pass --executor" in result.stderr
-
-
 @pytest.mark.parametrize(
     ("wrapper_name", "executor"),
-    [("dcode-project", "deepagents"), ("project-delegate", "tura")],
+    [("dcode-project", "deepagents")],
 )
 def test_generated_wrappers_prefer_local_launcher_and_fallback_to_shared(
     tmp_path: Path,
@@ -2839,7 +3317,7 @@ def test_generated_wrappers_prefer_local_launcher_and_fallback_to_shared(
     shared = fake_home / ".agents" / "project-os" / "scripts"
     shared.mkdir(parents=True)
     setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8").replace("\r\n", "\n")
-    variable = "$wrapper" if wrapper_name == "dcode-project" else "$delegateWrapper"
+    variable = "$wrapper"
     start = setup.index(f"{variable} = @'\n") + len(f"{variable} = @'\n")
     end = setup.index("\n'@\n", start)
     wrapper_path = tmp_path / f"{wrapper_name}.ps1"

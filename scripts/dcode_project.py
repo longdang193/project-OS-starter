@@ -20,6 +20,7 @@ import tempfile
 import time
 import tomllib
 import uuid
+from collections.abc import Mapping
 try:
     import owned_process as _owned_process
 except ModuleNotFoundError:
@@ -116,10 +117,10 @@ _DIRECT_MCP_RUNTIME_PARENT = "dcode-project-mcp"
 _DIRECT_MCP_RUNTIME_PREFIX = "runtime-"
 _DIRECT_MCP_OWNER_MARKER = ".owner"
 _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
-_DIRECT_MCP_STALE_AGE = timedelta(hours=24)
 _ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
 _ATTEMPT_GUARD_PARENT = "attempts"
 _ATTEMPT_GUARD_SCHEMA = "dcode-project.attempt.v1"
+_MAX_RETIRED_ATTEMPTS = 16
 _ATTEMPT_GUARD_MAX_BYTES = 16 * 1024
 _RESULT_SCHEMA = RESULT_SCHEMA
 _RESULT_MAX_BYTES = RESULT_MAX_BYTES
@@ -666,6 +667,80 @@ def _write_attempt_guard(path: Path, payload: dict[str, object]) -> None:
             pass
 
 
+def _attempt_generation(record: Mapping[str, object] | None) -> int:
+    value = record.get("generation") if isinstance(record, Mapping) else None
+    return value if isinstance(value, int) and value > 0 else 1
+
+
+def _can_compact_terminal_record(
+    record: Mapping[str, object],
+    release_authorization: Mapping[str, object],
+    released_resources_by_attempt: Mapping[str, object],
+) -> bool:
+    if record.get("state") != "settled":
+        return False
+    settlement = record.get("settlement_evidence")
+    if not isinstance(settlement, Mapping):
+        return False
+    if settlement.get("cleanup_state") != "removed" or settlement.get("descendant_state") not in {"terminated", "not_started"}:
+        return False
+    consequence = release_authorization.get("canonical_consequence")
+    if not isinstance(consequence, Mapping) or consequence.get("checkpoint_verified") is not True:
+        return False
+    if not released_resources_by_attempt or any(
+        not isinstance(resources, Mapping)
+        or not resources
+        or any(
+            not isinstance(resource, Mapping)
+            or resource.get("state") not in {"removed", "already_absent"}
+            for resource in resources.values()
+        )
+        for resources in released_resources_by_attempt.values()
+    ):
+        return False
+    return True
+
+
+def _compact_terminal_record(
+    record: Mapping[str, object],
+    *,
+    binding: Mapping[str, object],
+    generation: int,
+) -> dict[str, object]:
+    compacted = dict(record)
+    tombstone = {
+        field: binding.get(field)
+        for field in (
+            "attempt_id",
+            "assignment_id",
+            "repository_identity",
+            "executor",
+            "task_sha256",
+            "grant_digest",
+        )
+    }
+    tombstone.update({"generation": generation, "release_state": "released"})
+    for field in (
+        "release_authorization",
+        "released_resources",
+        "release_authorizations",
+        "released_resources_by_attempt",
+        "release_binding",
+    ):
+        compacted.pop(field, None)
+    compacted.update(
+        {
+            "generation": generation,
+            "retired_generation": generation,
+            "terminal_release_tombstone": tombstone,
+            "release_compacted": True,
+            "release_authorized": True,
+            "release_state": "released",
+        }
+    )
+    return compacted
+
+
 def _claim_attempt(
     *,
     assignment_id: str,
@@ -722,6 +797,7 @@ def _claim_attempt_unlocked(
         "receipt_path": str(result_file) if result_file is not None else None,
         "task_result_path": str(task_result_file) if task_result_file is not None else None,
         "claimed_at": datetime.now(timezone.utc).isoformat(),
+        "generation": _attempt_generation(existing) + 1 if existing is not None else 1,
     }
     if existing is None:
         if prior_attempt_known:
@@ -739,8 +815,114 @@ def _claim_attempt_unlocked(
         if state not in {"ACTIVE", "SETTLED"}:
             return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE"}
         return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "admission": "IDEMPOTENT", "idempotent": True, "record": existing}
+    retired_attempts = existing.get("retired_attempts")
+    if isinstance(retired_attempts, list) and any(
+        isinstance(retired, Mapping) and same_attempt_binding(retired, candidate)
+        for retired in retired_attempts
+    ):
+        return {
+            "state": "RECOVERY_REQUIRED",
+            "action": "BLOCKED",
+            "admission": "BLOCKED",
+            "record": existing,
+        }
     existing_state = str(existing.get("state", "")).lower()
     if existing_state == "settled":
+        retired_attempts = [
+            dict(item)
+            for item in existing.get("retired_attempts", [])
+            if isinstance(item, Mapping)
+        ]
+        retired_attempt = {
+            field: existing.get(field)
+            for field in (
+                "attempt_id",
+                "assignment_id",
+                "repository_identity",
+                "executor",
+                "task_sha256",
+                "grant_digest",
+            )
+        }
+        retired_attempt["generation"] = _attempt_generation(existing)
+        if not any(same_attempt_binding(item, retired_attempt) for item in retired_attempts):
+            if len(retired_attempts) >= _MAX_RETIRED_ATTEMPTS:
+                return {
+                    "state": "RECOVERY_REQUIRED",
+                    "action": "RECONCILE",
+                    "admission": "RECONCILE",
+                    "record": existing,
+                }
+            retired_attempts.append(retired_attempt)
+        candidate["retired_attempts"] = retired_attempts
+        terminal_tombstone = existing.get("terminal_release_tombstone")
+        if (
+            isinstance(terminal_tombstone, Mapping)
+            and same_attempt_binding(terminal_tombstone, candidate)
+            and not same_attempt_binding(existing, candidate)
+        ):
+            return {
+                "state": "RECOVERY_REQUIRED",
+                "action": "BLOCKED",
+                "admission": "BLOCKED",
+                "record": existing,
+            }
+        if existing.get("release_compacted") is True:
+            candidate["terminal_release_tombstone"] = existing.get("terminal_release_tombstone")
+            candidate["retired_generation"] = existing.get("retired_generation", existing.get("generation", 1))
+        else:
+            candidate["generation"] = _attempt_generation(existing) + 1
+            candidate["terminal_release_tombstone"] = {
+                field: existing.get(field)
+                for field in (
+                    "attempt_id",
+                    "assignment_id",
+                    "repository_identity",
+                    "executor",
+                    "task_sha256",
+                    "grant_digest",
+                )
+            }
+            candidate["terminal_release_tombstone"].update(
+                {
+                    "generation": _attempt_generation(existing),
+                    "release_state": existing.get("release_state", "pending"),
+                }
+            )
+            candidate["retired_generation"] = _attempt_generation(existing)
+            for field in (
+                "release_authorization",
+                "release_authorized",
+                "release_authorizations",
+                "released_resources_by_attempt",
+                "release_binding",
+            ):
+                if field in existing:
+                    candidate[field] = existing[field]
+            if existing.get("release_authorized") is True and "release_binding" not in candidate:
+                candidate["release_binding"] = {
+                    field: existing[field]
+                    for field in (
+                        "attempt_id",
+                        "assignment_id",
+                        "repository_identity",
+                        "executor",
+                        "task_sha256",
+                        "grant_digest",
+                    )
+                    if field in existing
+                }
+            if isinstance(existing.get("released_resources"), Mapping):
+                release_binding = candidate.get("release_binding")
+                if isinstance(release_binding, Mapping) and isinstance(release_binding.get("attempt_id"), str):
+                    by_attempt = dict(candidate.get("released_resources_by_attempt", {}))
+                    by_attempt.setdefault(
+                        str(release_binding["attempt_id"]),
+                        dict(existing["released_resources"]),
+                    )
+                    candidate["released_resources_by_attempt"] = by_attempt
+        candidate["release_state"] = "pending"
+        candidate.pop("released_resources", None)
         _write_attempt_guard(path, candidate)
         return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "replaced_settled": True, "record": candidate}
     state = "ACTIVE" if existing_state == "active" else "RECOVERY_REQUIRED"
@@ -787,6 +969,26 @@ def _reconcile_attempt_unlocked(
     if evidence is not None:
         evidence = dict(evidence)
     settlement = receipt if receipt and receipt.get("state") == "confirmed" else evidence
+    if settlement is receipt:
+        task_result_path = existing.get("task_result_path")
+        task_result = (
+            parse_task_result(
+                Path(task_result_path),
+                assignment_id=str(existing["assignment_id"]),
+                attempt_id=str(existing["attempt_id"]),
+                task_sha256=str(existing["task_sha256"]),
+                grant_digest=str(existing["grant_digest"]),
+            )
+            if isinstance(task_result_path, str) and task_result_path
+            else {"state": "unknown"}
+        )
+        if task_result.get("state") != "confirmed":
+            return {
+                "state": "RECOVERY_REQUIRED",
+                "action": "RECONCILE",
+                "admission": "RECONCILE",
+                "record": existing,
+            }
     if settlement is evidence and settlement_decision(settlement)["reason"] == "settlement evidence incomplete":
         return {
             "state": "RECOVERY_REQUIRED",
@@ -859,6 +1061,135 @@ def _settle_attempt_unlocked(
         settled["settlement_evidence"] = dict(settlement_evidence)
     _write_attempt_guard(path, settled)
     return settled
+
+
+def record_release_authorization(
+    *,
+    assignment_id: str,
+    binding: dict[str, object],
+    release_authorization: dict[str, object],
+) -> dict[str, object]:
+    with _attempt_lock(assignment_id):
+        path = _attempt_guard_path(assignment_id)
+        existing = _read_attempt_guard(path)
+        release_binding = existing.get("release_binding") if isinstance(existing, dict) else None
+        binding_matches_attempt = existing is not None and same_attempt_binding(existing, binding)
+        binding_matches_release = (
+            isinstance(release_binding, dict)
+            and existing.get("release_authorized") is True
+            and same_attempt_binding(release_binding, binding)
+        )
+        if not binding_matches_attempt and not binding_matches_release:
+            raise RuntimeError("dcode-project attempt guard binding mismatch during release authorization.")
+        if existing.get("state") != "settled" and not binding_matches_release:
+            raise RuntimeError("dcode-project release authorization requires settled attempt.")
+        terminal_tombstone = existing.get("terminal_release_tombstone")
+        if (
+            existing.get("release_compacted") is True
+            and isinstance(terminal_tombstone, Mapping)
+            and same_attempt_binding(terminal_tombstone, binding)
+        ):
+            return existing
+        updated = dict(existing)
+        resources = release_authorization.get("resources")
+        released_resources: dict[str, dict[str, object]] = {}
+        attempt_key = str(binding.get("attempt_id"))
+        released_resources_by_attempt = dict(existing.get("released_resources_by_attempt", {})) if isinstance(existing.get("released_resources_by_attempt"), dict) else {}
+        previous_resources = released_resources_by_attempt.get(attempt_key)
+        legacy_binding = existing.get("release_binding")
+        legacy_matches_attempt = (
+            same_attempt_binding(legacy_binding, binding)
+            if isinstance(legacy_binding, Mapping)
+            else existing.get("attempt_id") == binding.get("attempt_id")
+        )
+        if (
+            not isinstance(previous_resources, dict)
+            and legacy_matches_attempt
+            and isinstance(existing.get("released_resources"), dict)
+        ):
+            previous_resources = existing.get("released_resources")
+        if isinstance(previous_resources, dict):
+            released_resources = {
+                str(evidence_ref): dict(resource)
+                for evidence_ref, resource in previous_resources.items()
+                if isinstance(evidence_ref, str) and isinstance(resource, dict)
+            }
+        if isinstance(resources, dict):
+            for evidence_ref, resource in resources.items():
+                if not isinstance(evidence_ref, str) or not isinstance(resource, dict):
+                    raise RuntimeError("dcode-project release resource record is invalid.")
+                normalized_resource = dict(resource)
+                if normalized_resource.get("state") == "pending":
+                    normalized_resource.setdefault("attempt_id", binding.get("attempt_id"))
+                    normalized_resource.setdefault("evidence_ref", evidence_ref)
+                if normalized_resource.get("attempt_id") not in {None, binding.get("attempt_id")}:
+                    raise RuntimeError("dcode-project release resource attempt binding mismatch.")
+                if normalized_resource.get("evidence_ref") not in {None, evidence_ref}:
+                    raise RuntimeError("dcode-project release resource evidence binding mismatch.")
+                previous_resource = released_resources.get(evidence_ref)
+                if isinstance(previous_resource, dict):
+                    if previous_resource.get("state") in {"removed", "already_absent"}:
+                        normalized_resource = previous_resource
+                    elif previous_resource.get("state") not in {"removed", "already_absent"}:
+                        for field in (
+                            "attempt_id",
+                            "evidence_ref",
+                            "attempt_root",
+                            "relative_path",
+                            "content_sha256",
+                            "artifact_digest",
+                            "producer",
+                            "schema",
+                        ):
+                            if field in previous_resource:
+                                normalized_resource[field] = previous_resource[field]
+                released_resources[evidence_ref] = normalized_resource
+        release_authorizations = dict(existing.get("release_authorizations", {})) if isinstance(existing.get("release_authorizations"), dict) else {}
+        if isinstance(existing.get("release_authorization"), dict):
+            previous_key = str(release_binding.get("attempt_id")) if isinstance(release_binding, dict) else str(existing.get("attempt_id"))
+            release_authorizations.setdefault(previous_key, dict(existing["release_authorization"]))
+            released_resources_by_attempt.setdefault(previous_key, dict(existing.get("released_resources", {})))
+        release_authorizations[attempt_key] = dict(release_authorization)
+        released_resources_by_attempt[attempt_key] = released_resources
+        release_state = (
+            "released"
+            if released_resources_by_attempt
+            and all(
+                isinstance(resource_set, dict)
+                and resource_set
+                and all(
+                    isinstance(resource, dict)
+                    and resource.get("state") in {"removed", "already_absent"}
+                    for resource in resource_set.values()
+                )
+                for resource_set in released_resources_by_attempt.values()
+            )
+            else "pending"
+        )
+        updated.update(
+            {
+                "release_authorized": True,
+                "release_authorizations": release_authorizations,
+                "released_resources_by_attempt": released_resources_by_attempt,
+                "release_state": release_state,
+            }
+        )
+        if (
+            binding_matches_attempt
+            and _can_compact_terminal_record(updated, release_authorization, released_resources_by_attempt)
+        ):
+            updated = _compact_terminal_record(
+                updated,
+                binding=binding,
+                generation=_attempt_generation(updated),
+            )
+        elif not isinstance(release_binding, dict) or same_attempt_binding(release_binding, binding):
+            updated["release_authorization"] = dict(release_authorization)
+            updated["released_resources"] = released_resources
+            if binding_matches_attempt and existing.get("state") == "settled":
+                updated["release_binding"] = dict(binding)
+        _write_attempt_guard(path, updated)
+        return updated
 
 
 def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
@@ -1215,33 +1546,6 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
     return parent
 
 
-def _cleanup_stale_direct_mcp_runtimes(parent: Path) -> None:
-    cutoff = datetime.now(timezone.utc).timestamp() - _DIRECT_MCP_STALE_AGE.total_seconds()
-    try:
-        entries = tuple(parent.iterdir())
-    except OSError:
-        return
-    for entry in entries:
-        if (
-            not entry.name.startswith(_DIRECT_MCP_RUNTIME_PREFIX)
-            or entry.is_symlink()
-            or not entry.is_dir()
-        ):
-            continue
-        marker = entry / _DIRECT_MCP_OWNER_MARKER
-        try:
-            if (
-                not marker.is_file()
-                or marker.is_symlink()
-                or marker.read_text(encoding="utf-8") != _DIRECT_MCP_OWNER_VALUE
-                or entry.stat().st_mtime > cutoff
-            ):
-                continue
-            shutil.rmtree(entry)
-        except OSError:
-            continue
-
-
 @contextmanager
 def _direct_mcp_runtime(
     repo_root: Path,
@@ -1285,7 +1589,14 @@ def _direct_mcp_runtime(
                 "DEEPAGENTS_CODE_DANGEROUSLY_ENABLE_PROJECT_MCP_SERVERS"
             ] = previous_project_allowlist
         if runtime_root is not None:
-            shutil.rmtree(runtime_root, ignore_errors=True)
+            try:
+                shutil.rmtree(runtime_root)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Direct MCP runtime cleanup failed: {runtime_root}"
+                ) from exc
 
 def _controller_options(
     argv: list[str],
@@ -1473,24 +1784,12 @@ def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
         if not isinstance(value, str) or not value.strip():
             raise RuntimeError("Missing `[delegation].default_executor` configuration.")
         selected = value.strip().lower()
-    if selected not in {"tura", "deepagents"}:
-        raise RuntimeError(f"Unsupported executor `{selected}`; use `tura` or `deepagents`.")
+    if selected != "deepagents":
+        raise RuntimeError(
+            f"Executor `{selected}` is retired; use `deepagents`."
+        )
     return selected
 
-
-def _tura_worker_paths(config: dict[str, object]) -> tuple[Path, Path]:
-    paths = config.get("paths")
-    if not isinstance(paths, dict):
-        raise RuntimeError("Missing local `[paths]` configuration.")
-    executable = Path(_required_string(paths, "tura_executable", "local paths")).expanduser()
-    provider_config = Path(
-        _required_string(paths, "tura_provider_config", "local paths")
-    ).expanduser()
-    if not executable.is_file():
-        raise RuntimeError(f"Tura executable is missing: {executable}")
-    if not provider_config.is_file():
-        raise RuntimeError(f"Tura provider config is missing: {provider_config}")
-    return executable.resolve(), provider_config.resolve()
 
 def _handoff_root() -> Path:
     return Path.home().joinpath(*_HANDOFF_ROOT_PARTS)
@@ -1735,91 +2034,6 @@ def _append_bounded_task_context(
                 return
 
 
-def _task_argument(argv: list[str]) -> str:
-    for index, argument in enumerate(argv):
-        if argument in {"-n", "--non-interactive"}:
-            if _option_value_missing(argv, index, argument):
-                raise RuntimeError("Tura task text is missing.")
-            return argv[index + 1]
-        for option in ("-n=", "--non-interactive="):
-            if argument.startswith(option):
-                task = argument[len(option) :]
-                if not task:
-                    raise RuntimeError("Tura task text is missing.")
-                return task
-    raise RuntimeError("Tura worker requires non-interactive task text via `-n`.")
-
-
-def _tura_worker_task(
-    argv: list[str],
-    repo_root: Path,
-    role_name: str,
-    developer_instructions: str,
-    payload: dict[str, object],
-) -> str:
-    canonical_payload = _canonicalize_handoff_for_prompt(payload)
-    delegated_payload = {
-        "schema": canonical_payload["schema"],
-        "sources": canonical_payload["sources"],
-        "facts": canonical_payload["facts"],
-        "constraints": canonical_payload.get("constraints", []),
-    }
-    return (
-        "Bounded task guidance for profile `"
-        + role_name
-        + "` (task guidance, not a Tura system/developer message):\n"
-        + developer_instructions.strip()
-        + "\n"
-        + _PROJECT_GUIDANCE_INSTRUCTION
-        + "\n"
-        + _bounded_task_context(repo_root)
-        + "\nCaller task:\n"
-        + _task_argument(argv)
-        + "\nValidated Codex MCP handoff facts (use only these facts; do not call MCP tools):\n"
-        + json.dumps(delegated_payload, separators=(",", ":"), sort_keys=True)
-    )
-
-
-def _tura_worker_argv(
-    executable: Path,
-    repo_root: Path,
-    model: str,
-    session_id: str,
-    task: str,
-) -> list[str]:
-    return [
-        str(executable),
-        "--quiet",
-        "--json",
-        "--sandbox",
-        "--session-id",
-        session_id,
-        "--agent-id",
-        "balanced",
-        "-C",
-        str(repo_root.resolve()),
-        "-m",
-        f"openai/{model}",
-        task,
-    ]
-
-
-def _tura_worker_environment(
-    api_key: str,
-    provider_config: Path,
-    repo_root: Path,
-) -> dict[str, str]:
-    environment = os.environ.copy()
-    for key in ("OPENAI_BASE_URL", "OPENAI_API_BASE", "TURA_PROVIDER_CONFIG", "TURA_PROJECT_ROOT"):
-        environment.pop(key, None)
-    environment["OPENAI_API_KEY"] = api_key
-    environment["TURA_PROVIDER_CONFIG"] = str(provider_config.resolve())
-    environment["TURA_PROJECT_ROOT"] = str(repo_root.resolve())
-    environment["PYTHONUTF8"] = "1"
-    environment["PYTHONIOENCODING"] = "utf-8"
-    return environment
-
-
 def _worker_timeout(
     argv: list[str],
     *,
@@ -1908,14 +2122,6 @@ def _run_bounded_worker(
         f"{worker_name} worker {result.status.replace('_', ' ')}; child process tree terminated.",
         facts,
     )
-
-def _run_tura_worker(
-    argv: list[str],
-    environment: dict[str, str],
-    repo_root: Path,
-    timeout: float,
-) -> int:
-    return _run_bounded_worker(argv, environment, repo_root, None, timeout, "Tura")
 
 def _run_deepagents_worker(
     argv: list[str],
@@ -2079,15 +2285,6 @@ def main(argv: list[str]) -> int:
             "mcp_capability_digest": capabilities["mcp_capability_digest"],
             "roles_path": str(repo_root / ".deepagents" / "agents"),
         }
-        paths = config.get("paths")
-        if isinstance(paths, dict):
-            for key in ("tura_executable", "tura_provider_config"):
-                value = paths.get(key)
-                if isinstance(value, str) and value.strip():
-                    path = Path(value).expanduser()
-                    payload[key] = str(path)
-                    if key == "tura_executable" and path.is_file():
-                        payload["tura_executable_sha256"] = _sha256_file(path)
         if selected_role is not None:
             payload["selected_role"] = selected_role["name"]
             payload["effective_model"] = f"openai:{selected_role['model']}"
@@ -2105,42 +2302,6 @@ def main(argv: list[str]) -> int:
     if selected_role is None:
         names = "|".join(sorted(role_by_name))
         raise RuntimeError(f"dcode-project requires `--role <{names}>` for task execution.")
-    if executor == "tura":
-        executable, provider_config = _tura_worker_paths(config)
-        if handoff_file is None:
-            handoff_payload: dict[str, object] = {
-                "schema": _HANDOFF_SCHEMA,
-                "sources": [],
-                "facts": [],
-                "constraints": [],
-            }
-        else:
-            _, handoff_payload = _validate_handoff(handoff_file, capabilities, selected)
-        task = _tura_worker_task(
-            child_argv,
-            repo_root,
-            str(selected_role["name"]),
-            str(selected_role["developer_instructions"]),
-            handoff_payload,
-        )
-        session_id = f"dcode-project-{uuid.uuid4().hex}"
-        tura_argv = _tura_worker_argv(
-            executable,
-            repo_root,
-            str(selected_role["model"]),
-            session_id,
-            task,
-        )
-        return _run_tura_worker(
-            tura_argv,
-            _tura_worker_environment(
-                binding.read_api_key(),
-                provider_config,
-                repo_root,
-            ),
-            repo_root,
-            _worker_timeout(child_argv, default=120.0, worker_name="Tura"),
-        )
     attempt_guard_binding = None
     if assignment_id_value is not None:
         attempt_guard_binding = {
@@ -2304,18 +2465,6 @@ def main(argv: list[str]) -> int:
                     ),
                     "marker_state": "retained",
                 }
-            if result_file is not None:
-                _publish_result_receipt(
-                    result_file,
-                    attempt_id=str(attempt_id),
-                    worker_state=worker_state,
-                    worker_exit_code=worker_exit_code,
-                    descendant_state=descendant_state,
-                    role_views_state=role_views_state,
-                    recovery_required=recovery_required,
-                    shell_capabilities=shell_capabilities,
-                    cleanup_details=cleanup_details,
-                )
             if task_result_file is not None and attempt_guard_binding is not None:
                 try:
                     publication_diagnostic = _worker_task_result_diagnostic(
@@ -2347,7 +2496,19 @@ def main(argv: list[str]) -> int:
                             },
                         )
                 except (OSError, RuntimeError, ValueError):
-                    task_result_file.unlink(missing_ok=True)
+                    recovery_required = True
+            if result_file is not None:
+                _publish_result_receipt(
+                    result_file,
+                    attempt_id=str(attempt_id),
+                    worker_state=worker_state,
+                    worker_exit_code=worker_exit_code,
+                    descendant_state=descendant_state,
+                    role_views_state=role_views_state,
+                    recovery_required=recovery_required,
+                    shell_capabilities=shell_capabilities,
+                    cleanup_details=cleanup_details,
+                )
             if attempt_guard_binding is not None:
                 settlement_evidence = {
                     "state": "confirmed",
