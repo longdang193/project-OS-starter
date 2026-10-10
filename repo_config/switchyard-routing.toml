@@ -1,8 +1,0 @@
-policy_version = 1
-efficient_profile = "normal"
-capable_profile = "high"
-route_id = "auto"
-high_control_route_id = "switchyard/high-control"
-picker = "capable_first"
-confidence_threshold = 0.5
-recent_turn_window = 3

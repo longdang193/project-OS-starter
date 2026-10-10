@@ -23,6 +23,11 @@ registry. Plans/specs, source/tests, Git/GitHub, and accepted workflow
 decisions remain canonical. Runtime sessions, notifications, and operational
 receipts are bounded evidence used to prove or reconcile actions.
 
+Discharged Docket entries are removed only by the sole Docket writer after
+canonical evidence exists. Promote durable human blockers to an existing
+GitHub Issues owner only when no maintained owner can reconstruct them; never
+create one issue per Plan task.
+
 ## Artifact Selection
 
 | Condition | Action |
@@ -81,9 +86,8 @@ lanes;
 Codex uses a main-agent session and DeepAgents uses a bounded `dcode-project`
 pane process. It never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
-Tura internal workers, or executor-local reviewers or helpers. `tura` retains
-its existing peer executor path. Each MAIN AGENT owns its assigned lane and may
-autonomously spawn subordinate Native Codex, DeepAgents, or Tura agents when
+executor-local reviewers or helpers. Each MAIN AGENT owns its assigned lane and may
+autonomously spawn subordinate Native Codex or DeepAgents agents when
 the current Runtime Grant sets `delegation.child_agents: allow`. Sub-agents
 remain subordinate and must not spawn peer MAIN AGENTS or activate CoS. Review
 and integration remain Codex-only.
@@ -201,7 +205,6 @@ lowest profile that can reliably complete that executor's bounded contract.
 | Condition | Eligible executor |
 | --- | --- |
 | Codex-owned MCP, connected tools, project coordination, cross-task judgment, or final acceptance is required | `codex` |
-| Task is bounded and runtime-managed batching, dependency execution, or compact execution state is likely to provide material benefit | `tura` |
 | Task is bounded but long-horizon, context-heavy, exploratory, or materially helped by isolated internal contexts | `deepagents` |
 | No delegated executor has clear task-specific benefit or executor fitness is unclear | `codex` |
 
@@ -235,13 +238,11 @@ means an executor session with a usable approval or user-input surface.
 | --- | --- | --- | --- |
 | `codex` | Controller MCP, connected tools, approvals, cross-task judgment, external writes, Git review, and final acceptance | Small local checks or bounded controller tasks with no pending user decision | Default authority for MCP, approval, Git, verification, and acceptance |
 | `deepagents` | Long-horizon work needing human steering, live MCP approval, or interactive TUI inspection | Bounded context-heavy implementation, exploration, debugging, or read-only approved MCP work through `dcode-project` | Never assume headless MCP writes; mutating MCP calls need interactive approval |
-| `tura` | Not an interactive-MCP executor; use Codex when live user input or approval is required | Compact bounded worker tasks, runtime-managed batching, and dependency execution through `project-delegate` | Receives fixed inputs and no controller MCP or approval authority |
 
 Choose `codex` when interaction itself is part of the task. Choose `deepagents`
 when context, horizon, or isolated internal decomposition is the benefit and
-human checkpoints can be bounded. Choose `tura` when compact headless execution
-is the benefit. The controller may own an interactive workflow regardless of
-which worker executes an individual step.
+human checkpoints can be bounded. The controller may own an interactive workflow
+regardless of which worker executes an individual step.
 
 ### CoS Executor Eligibility
 
@@ -252,12 +253,8 @@ selected executors CoS may dispatch through Herdr.
   cross-task judgment, or external mutation.
 - `deepagents`: bounded repo-local implementation lane needing substantial
   context, exploration, debugging, or internal decomposition.
-- `tura`: not a CoS Herdr lane; use its existing peer executor path.
 
-For mixed plans, CoS coordinates only eligible `codex` and `deepagents` lanes.
-When a dependency-ready task selects `tura`, CoS does not translate or reroute
-it; the existing Tura path owns execution. CoS resumes from plan and Git after
-reconciliation.
+CoS coordinates only eligible `codex` and `deepagents` lanes.
 
 ### Runtime Grant Boundary
 

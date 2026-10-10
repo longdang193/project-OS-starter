@@ -232,7 +232,7 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
             Finding(
                 "planning_execution_error",
                 rel,
-                "use `Validator Profile` instead of `Validator executor`; executors are codex, deepagents, or tura",
+                "use `Validator Profile` instead of `Validator executor`; executors are codex or deepagents",
             )
         )
     if current and not contract_version:

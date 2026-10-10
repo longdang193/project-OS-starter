@@ -2,7 +2,7 @@
 
 Use `native-personal-local` for ordinary work by one trusted local OS user.
 Git owns workspace identity and change evidence. Selected local executor is
-Codex, DeepAgents, or Tura; Codex is safe default when plan omits executor or
+Codex or DeepAgents; Codex is safe default when plan omits executor or
 delegated benefit is unclear. Follow
 `docs/operating_system/planning/planning-dispatch.md` for advisory executor
 selection. Executor choice does not change task paths, Git acceptance, or user
@@ -163,36 +163,6 @@ evidence source. Missing or unchanged output is `unknown` or
 store, event bus, or persistent runtime ledger. Raw terminal reads require an
 explicit disposable, bounded, redacted probe.
 
-## Bounded Tura Worker
-
-`project-delegate` is the explicit Native Codex adapter for one bounded Tura
-worker. It uses the same `agents/*.toml` profile registry and controller-validated
-handoff, but Native Codex retains MCP, approval, Git, verification, and
-acceptance. Tura receives fixed Git root, native `--sandbox`, fresh session id,
-and opaque JSONL; it cannot spawn another worker. `dcode-project` remains
-DeepAgents and does not silently switch runtimes.
-
-Tura-enabled setup requires one paired executable/provider-config path:
-
-```powershell
-$projectOsScripts = Join-Path $HOME ".agents\project-os\scripts"
-& (Join-Path $projectOsScripts "setup_deepagents_runtime.ps1") -SecretFile (Join-Path $HOME ".codex\tokenpilot.env") -SecretKey OPENAI_API_KEY `
-  -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>
-```
-
-Setup probes required public CLI flags once, writes one user-local config, and
-installs `project-delegate`. Restart needs no manual action. Production route
-follows the canonical runtime adapter procedure through `TURA_PROVIDER_CONFIG`;
-moving the executable requires setup rerun, replacing it at the same path does
-not.
-After replacing the executable, run
-`project-delegate --role normal --print-config` to capture its nonsecret
-`tura_executable_sha256`, then run one bounded read-only TL smoke. Treat prior
-performance evidence as stale when hash changes; do not add release-specific
-config or adapter code.
-
-Launch with `project-delegate --role <profile> -n "<task>"`.
-Use `dcode-project` when DeepAgents is required explicitly.
 
 DeepAgents controller may use built-in `task` for any discovered profile,
 including specialized profiles. Profiles are capability profiles, not fixed task roles.
@@ -270,9 +240,6 @@ are passed through the launcher; concrete selectors and the transient
 `grant_digest` and the projected child-agent authority belong to launch
 evidence and the bounded task brief, not tracked plan or runtime state.
 
-Tura remains a bounded worker and keeps its 120-second default when no explicit
-timeout is supplied.
-
 Launch a task without controller facts with:
 
 ```powershell
@@ -311,8 +278,7 @@ $projectOsScripts = Join-Path $HOME ".agents\project-os\scripts"
 
 Installer writes `%USERPROFILE%\.local\share\dcode-project\` runtime state
 and `%USERPROFILE%\.local\bin\dcode-project.{cmd,ps1}` plus
-`dcode-doctor.{cmd,ps1}`. When Tura is configured, it also writes
-`project-delegate.{cmd,ps1}`. The pinned DeepAgents
+`dcode-doctor.{cmd,ps1}`. The pinned DeepAgents
 tool stays isolated under the runtime root, so concurrent repositories do not
 replace one shared `dcode.exe`. Wrapper resolves current Git workspace and runs
 shared `~/.agents/project-os/scripts/dcode_project.py`. Run `dcode-project`

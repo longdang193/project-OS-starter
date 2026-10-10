@@ -1242,12 +1242,45 @@ def _cleanup_stale_direct_mcp_runtimes(parent: Path) -> None:
             continue
 
 
+def _remove_direct_mcp_runtime(runtime_root: Path) -> dict[str, object]:
+    if not runtime_root.exists():
+        return {"state": "removed", "reason": "already_absent"}
+    if runtime_root.is_symlink() or not runtime_root.is_dir():
+        return {"state": "preserved", "reason": "runtime path is not an owned directory"}
+    marker = runtime_root / _DIRECT_MCP_OWNER_MARKER
+    try:
+        owned = marker.is_file() and not marker.is_symlink() and marker.read_text(
+            encoding="utf-8"
+        ) == _DIRECT_MCP_OWNER_VALUE
+    except OSError as exc:
+        return {
+            "state": "unverified",
+            "reason": "runtime ownership could not be read",
+            "detail": str(exc),
+        }
+    if not owned:
+        return {"state": "preserved", "reason": "runtime ownership marker mismatch"}
+    try:
+        shutil.rmtree(runtime_root)
+    except OSError as exc:
+        return {
+            "state": "unverified",
+            "reason": "runtime deletion failed",
+            "detail": str(exc),
+            "remaining_paths": sorted(str(path) for path in runtime_root.rglob("*"))
+            if runtime_root.exists()
+            else [],
+        }
+    return {"state": "removed", "remaining_paths": []}
+
+
 @contextmanager
 def _direct_mcp_runtime(
     repo_root: Path,
     codex_config: dict[str, object],
     selected: list[str],
     environment: dict[str, str],
+    cleanup_report: dict[str, object] | None = None,
 ):
     previous_home = environment.get("DEEPAGENTS_HOME")
     previous_project_allowlist = environment.get(
@@ -1285,7 +1318,9 @@ def _direct_mcp_runtime(
                 "DEEPAGENTS_CODE_DANGEROUSLY_ENABLE_PROJECT_MCP_SERVERS"
             ] = previous_project_allowlist
         if runtime_root is not None:
-            shutil.rmtree(runtime_root, ignore_errors=True)
+            result = _remove_direct_mcp_runtime(runtime_root)
+            if cleanup_report is not None:
+                cleanup_report.update(result)
 
 def _controller_options(
     argv: list[str],
@@ -1473,24 +1508,9 @@ def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
         if not isinstance(value, str) or not value.strip():
             raise RuntimeError("Missing `[delegation].default_executor` configuration.")
         selected = value.strip().lower()
-    if selected not in {"tura", "deepagents"}:
-        raise RuntimeError(f"Unsupported executor `{selected}`; use `tura` or `deepagents`.")
+    if selected != "deepagents":
+        raise RuntimeError(f"Unsupported executor `{selected}`; use `deepagents`.")
     return selected
-
-
-def _tura_worker_paths(config: dict[str, object]) -> tuple[Path, Path]:
-    paths = config.get("paths")
-    if not isinstance(paths, dict):
-        raise RuntimeError("Missing local `[paths]` configuration.")
-    executable = Path(_required_string(paths, "tura_executable", "local paths")).expanduser()
-    provider_config = Path(
-        _required_string(paths, "tura_provider_config", "local paths")
-    ).expanduser()
-    if not executable.is_file():
-        raise RuntimeError(f"Tura executable is missing: {executable}")
-    if not provider_config.is_file():
-        raise RuntimeError(f"Tura provider config is missing: {provider_config}")
-    return executable.resolve(), provider_config.resolve()
 
 def _handoff_root() -> Path:
     return Path.home().joinpath(*_HANDOFF_ROOT_PARTS)
@@ -1739,85 +1759,15 @@ def _task_argument(argv: list[str]) -> str:
     for index, argument in enumerate(argv):
         if argument in {"-n", "--non-interactive"}:
             if _option_value_missing(argv, index, argument):
-                raise RuntimeError("Tura task text is missing.")
+                raise RuntimeError("DeepAgents task text is missing.")
             return argv[index + 1]
         for option in ("-n=", "--non-interactive="):
             if argument.startswith(option):
                 task = argument[len(option) :]
                 if not task:
-                    raise RuntimeError("Tura task text is missing.")
+                    raise RuntimeError("DeepAgents task text is missing.")
                 return task
-    raise RuntimeError("Tura worker requires non-interactive task text via `-n`.")
-
-
-def _tura_worker_task(
-    argv: list[str],
-    repo_root: Path,
-    role_name: str,
-    developer_instructions: str,
-    payload: dict[str, object],
-) -> str:
-    canonical_payload = _canonicalize_handoff_for_prompt(payload)
-    delegated_payload = {
-        "schema": canonical_payload["schema"],
-        "sources": canonical_payload["sources"],
-        "facts": canonical_payload["facts"],
-        "constraints": canonical_payload.get("constraints", []),
-    }
-    return (
-        "Bounded task guidance for profile `"
-        + role_name
-        + "` (task guidance, not a Tura system/developer message):\n"
-        + developer_instructions.strip()
-        + "\n"
-        + _PROJECT_GUIDANCE_INSTRUCTION
-        + "\n"
-        + _bounded_task_context(repo_root)
-        + "\nCaller task:\n"
-        + _task_argument(argv)
-        + "\nValidated Codex MCP handoff facts (use only these facts; do not call MCP tools):\n"
-        + json.dumps(delegated_payload, separators=(",", ":"), sort_keys=True)
-    )
-
-
-def _tura_worker_argv(
-    executable: Path,
-    repo_root: Path,
-    model: str,
-    session_id: str,
-    task: str,
-) -> list[str]:
-    return [
-        str(executable),
-        "--quiet",
-        "--json",
-        "--sandbox",
-        "--session-id",
-        session_id,
-        "--agent-id",
-        "balanced",
-        "-C",
-        str(repo_root.resolve()),
-        "-m",
-        f"openai/{model}",
-        task,
-    ]
-
-
-def _tura_worker_environment(
-    api_key: str,
-    provider_config: Path,
-    repo_root: Path,
-) -> dict[str, str]:
-    environment = os.environ.copy()
-    for key in ("OPENAI_BASE_URL", "OPENAI_API_BASE", "TURA_PROVIDER_CONFIG", "TURA_PROJECT_ROOT"):
-        environment.pop(key, None)
-    environment["OPENAI_API_KEY"] = api_key
-    environment["TURA_PROVIDER_CONFIG"] = str(provider_config.resolve())
-    environment["TURA_PROJECT_ROOT"] = str(repo_root.resolve())
-    environment["PYTHONUTF8"] = "1"
-    environment["PYTHONIOENCODING"] = "utf-8"
-    return environment
+    raise RuntimeError("DeepAgents worker requires non-interactive task text via `-n`.")
 
 
 def _worker_timeout(
@@ -1908,14 +1858,6 @@ def _run_bounded_worker(
         f"{worker_name} worker {result.status.replace('_', ' ')}; child process tree terminated.",
         facts,
     )
-
-def _run_tura_worker(
-    argv: list[str],
-    environment: dict[str, str],
-    repo_root: Path,
-    timeout: float,
-) -> int:
-    return _run_bounded_worker(argv, environment, repo_root, None, timeout, "Tura")
 
 def _run_deepagents_worker(
     argv: list[str],
@@ -2079,15 +2021,6 @@ def main(argv: list[str]) -> int:
             "mcp_capability_digest": capabilities["mcp_capability_digest"],
             "roles_path": str(repo_root / ".deepagents" / "agents"),
         }
-        paths = config.get("paths")
-        if isinstance(paths, dict):
-            for key in ("tura_executable", "tura_provider_config"):
-                value = paths.get(key)
-                if isinstance(value, str) and value.strip():
-                    path = Path(value).expanduser()
-                    payload[key] = str(path)
-                    if key == "tura_executable" and path.is_file():
-                        payload["tura_executable_sha256"] = _sha256_file(path)
         if selected_role is not None:
             payload["selected_role"] = selected_role["name"]
             payload["effective_model"] = f"openai:{selected_role['model']}"
@@ -2105,42 +2038,6 @@ def main(argv: list[str]) -> int:
     if selected_role is None:
         names = "|".join(sorted(role_by_name))
         raise RuntimeError(f"dcode-project requires `--role <{names}>` for task execution.")
-    if executor == "tura":
-        executable, provider_config = _tura_worker_paths(config)
-        if handoff_file is None:
-            handoff_payload: dict[str, object] = {
-                "schema": _HANDOFF_SCHEMA,
-                "sources": [],
-                "facts": [],
-                "constraints": [],
-            }
-        else:
-            _, handoff_payload = _validate_handoff(handoff_file, capabilities, selected)
-        task = _tura_worker_task(
-            child_argv,
-            repo_root,
-            str(selected_role["name"]),
-            str(selected_role["developer_instructions"]),
-            handoff_payload,
-        )
-        session_id = f"dcode-project-{uuid.uuid4().hex}"
-        tura_argv = _tura_worker_argv(
-            executable,
-            repo_root,
-            str(selected_role["model"]),
-            session_id,
-            task,
-        )
-        return _run_tura_worker(
-            tura_argv,
-            _tura_worker_environment(
-                binding.read_api_key(),
-                provider_config,
-                repo_root,
-            ),
-            repo_root,
-            _worker_timeout(child_argv, default=120.0, worker_name="Tura"),
-        )
     attempt_guard_binding = None
     if assignment_id_value is not None:
         attempt_guard_binding = {
@@ -2193,6 +2090,7 @@ def main(argv: list[str]) -> int:
         descendant_state = "not_started"
         role_views_state = "unknown"
         cleanup_details: dict[str, object] = {}
+        mcp_cleanup_details: dict[str, object] = {}
         recovery_required = False
         cleanup_error: Exception | None = None
         try:
@@ -2230,6 +2128,7 @@ def main(argv: list[str]) -> int:
                     codex_config,
                     selected,
                     environment,
+                    mcp_cleanup_details,
                 ) as mcp_config_path:
                     worker_exit_code = _run_deepagents_worker(
                         [*dcode_argv, "--mcp-config", str(mcp_config_path)],
@@ -2304,6 +2203,16 @@ def main(argv: list[str]) -> int:
                     ),
                     "marker_state": "retained",
                 }
+            if mcp_cleanup_details:
+                cleanup_details["mcp_runtime"] = dict(mcp_cleanup_details)
+                mcp_state = mcp_cleanup_details.get("state")
+                if mcp_state != "removed":
+                    recovery_required = True
+                    role_views_state = (
+                        str(mcp_state)
+                        if mcp_state in {"preserved", "unverified"}
+                        else "unverified"
+                    )
             if result_file is not None:
                 _publish_result_receipt(
                     result_file,

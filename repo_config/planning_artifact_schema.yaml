@@ -49,7 +49,6 @@ allowed_values:
     shared:
       - codex
       - deepagents
-      - tura
   layer:
     shared:
       - intent

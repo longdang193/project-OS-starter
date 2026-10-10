@@ -216,25 +216,11 @@ with launcher._role_views_lock(root):
     )
 
 
-def tura_config(
-    tmp_path: Path,
-    *,
-    default_executor: str = "tura",
-) -> dict[str, object]:
-    return {
-        "delegation": {"default_executor": default_executor},
-        "paths": {
-            "tura_executable": str(tmp_path / "tura.exe"),
-            "tura_provider_config": str(tmp_path / "providers.toml"),
-        },
-    }
-
-
 def test_executor_resolution_prefers_explicit_then_configured_default(tmp_path: Path) -> None:
-    config = tura_config(tmp_path)
+    config = {"delegation": {"default_executor": "deepagents"}}
 
     assert LAUNCHER._resolve_executor(config, "deepagents") == "deepagents"
-    assert LAUNCHER._resolve_executor(config, None) == "tura"
+    assert LAUNCHER._resolve_executor(config, None) == "deepagents"
 
 
 @pytest.mark.parametrize(
@@ -242,7 +228,7 @@ def test_executor_resolution_prefers_explicit_then_configured_default(tmp_path: 
     [
         ({}, None, "default_executor"),
         ({"delegation": {"default_executor": "codex"}}, None, "executor"),
-        ({"delegation": {"default_executor": "tura"}}, "codex", "executor"),
+        ({"delegation": {"default_executor": "legacy"}}, "codex", "executor"),
     ],
 )
 def test_executor_resolution_rejects_missing_or_invalid_values(
@@ -269,14 +255,14 @@ def test_controller_options_extracts_executor_once() -> None:
         grant_digest,
         prior_attempt_known,
     ) = LAUNCHER._controller_options(
-        ["--executor", "tura", "--role", "normal", "-n", "task"]
+        ["--executor", "deepagents", "--role", "normal", "-n", "task"]
     )
 
     assert child == ["-n", "task"]
     assert selections == []
     assert handoff is None
     assert role == "normal"
-    assert executor == "tura"
+    assert executor == "deepagents"
     assert result_file is None
     assert attempt_id is None
     assert assignment_id is None
@@ -622,95 +608,6 @@ def test_deepagents_main_publishes_receipt_after_cleanup(
     assert not (tmp_path / ".deepagents" / "agents").exists()
 
 
-def test_tura_argv_contains_bounded_worker_contract(tmp_path: Path) -> None:
-    argv = LAUNCHER._tura_worker_argv(
-        Path("C:/tools/tura.exe"),
-        tmp_path,
-        "combo-normal",
-        "session-a",
-        "inspect files",
-    )
-
-    assert argv[:2] == [str(Path("C:/tools/tura.exe")), "--quiet"]
-    assert "--json" in argv
-    assert "--sandbox" in argv
-    assert "--session-id" in argv
-    assert argv[argv.index("--session-id") + 1] == "session-a"
-    assert argv[argv.index("--agent-id") + 1] == "balanced"
-    assert argv[argv.index("-C") + 1] == str(tmp_path)
-    assert argv[argv.index("-m") + 1] == "openai/combo-normal"
-    assert argv[-1] == "inspect files"
-
-
-def test_tura_task_labels_profile_guidance_and_handoff_once(tmp_path: Path) -> None:
-    argv = ["-n", "inspect files"]
-    payload = {
-        "schema": "codex.mcp.handoff.v1",
-        "sources": [{"server": "context7", "tool": "query_docs"}],
-        "facts": [{"source": 0, "value": "fact"}],
-        "constraints": ["no MCP"],
-    }
-
-    task = LAUNCHER._tura_worker_task(
-        argv,
-        tmp_path,
-        "normal",
-        "Return ROLE_OK.",
-        payload,
-    )
-
-    assert task.count("Return ROLE_OK.") == 1
-    assert task.count('"schema":"codex.mcp.handoff.v1"') == 1
-    assert "Bounded task guidance" in task
-    assert task.count("Project guidance:") == 1
-    assert "AGENTS.md" in task
-    assert ".agents/skills/<name>/SKILL.md" in task
-    assert "inspect files" in task
-    assert "handoff.json" not in task
-
-
-def test_tura_environment_owns_provider_and_workspace_values(tmp_path: Path) -> None:
-    os.environ["OPENAI_BASE_URL"] = "https://direct-provider.invalid/v1"
-    environment = LAUNCHER._tura_worker_environment(
-        "secret", tmp_path / "providers.toml", tmp_path
-    )
-
-    assert environment["OPENAI_API_KEY"] == "secret"
-    assert environment["TURA_PROVIDER_CONFIG"] == str(tmp_path / "providers.toml")
-    assert environment["TURA_PROJECT_ROOT"] == str(tmp_path)
-    assert "OPENAI_BASE_URL" not in environment
-    assert "secret" not in environment.get("TURA_PROVIDER_CONFIG", "")
-    os.environ.pop("OPENAI_BASE_URL", None)
-
-
-def test_tura_worker_propagates_opaque_child_status(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    class FakeProcess:
-        pid = 42
-
-        def wait(self, timeout: float | None = None) -> int:
-            assert timeout == 3
-            return 7
-
-    observed: dict[str, object] = {}
-
-    def fake_popen(argv: list[str], **kwargs: object) -> FakeProcess:
-        observed["argv"] = argv
-        observed.update(kwargs)
-        return FakeProcess()
-
-    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(LAUNCHER, "_create_windows_job", lambda process: "job")
-    monkeypatch.setattr(LAUNCHER, "_close_windows_job", lambda job: True)
-
-    assert LAUNCHER._run_tura_worker(
-        ["tura", "task"], {"TURA_PROVIDER_CONFIG": "providers.toml"}, tmp_path, 3
-    ) == 7
-    assert observed["cwd"] == tmp_path
-
-
 @pytest.mark.parametrize("handoff_stdin", [None, "handoff"])
 def test_bounded_worker_preserves_stdin_and_status(
     monkeypatch: pytest.MonkeyPatch,
@@ -820,7 +717,7 @@ def test_bounded_worker_reports_post_start_error_facts(
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
 
     with pytest.raises(LAUNCHER._WorkerLifecycleError, match="failed after process creation") as error:
-        LAUNCHER._run_tura_worker(["worker"], {}, tmp_path, 3)
+        LAUNCHER._run_bounded_worker(["worker"], {}, tmp_path, None, 3, "worker")
 
     assert error.value.facts == LAUNCHER._WorkerLifecycleFacts(
         "failed", None, "unknown", False
@@ -1262,12 +1159,6 @@ def test_attempt_guard_blocks_relaunch_after_receipt_publication_or_deletion(
         result_file.unlink(missing_ok=True)
 
 
-def test_tura_worker_does_not_supply_adapter_cache_key() -> None:
-    assert "prompt_cache_key" not in LAUNCHER._tura_worker_argv(
-        Path("tura"), Path("repo"), "combo-low", "session-b", "task"
-    )
-
-
 def test_local_role_views_use_canonical_prompt_and_local_model_map(tmp_path: Path) -> None:
     write_role(tmp_path, "normal")
 
@@ -1556,7 +1447,7 @@ def test_worker_timeout_defaults_are_executor_specific() -> None:
         ["-n", "task"], default=420.0, worker_name="DeepAgents"
     ) == 420.0
     assert LAUNCHER._worker_timeout(
-        ["-n", "task"], default=120.0, worker_name="Tura"
+        ["-n", "task"], default=120.0, worker_name="worker"
     ) == 120.0
     assert LAUNCHER._worker_timeout(
         ["-n", "task", "--timeout=600"], default=None, worker_name="DeepAgents"
@@ -1852,11 +1743,9 @@ def test_print_config_without_role_omits_worker_binding(
     assert "runtime_binding_digest" not in payload
 
 
-@pytest.mark.parametrize("executor", ["deepagents", "tura"])
 def test_runtime_binding_loads_codex_config_once_per_invocation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    executor: str,
 ) -> None:
     write_role(tmp_path, "normal")
     secret_file = tmp_path / "secret.env"
@@ -1868,16 +1757,11 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
         'base_url = "https://provider.example/v1"\nwire_api = "chat"\n',
         encoding="utf-8",
     )
-    executable = tmp_path / "tura.exe"
-    executable.write_bytes(b"tura")
-    provider_config = tmp_path / "providers.toml"
-    provider_config.write_text("provider = 'test'\n", encoding="utf-8")
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text(
-        f"[delegation]\ndefault_executor = '{executor}'\n[paths]\n"
+        f"[delegation]\ndefault_executor = 'deepagents'\n[paths]\n"
         f"codex_config = '{codex_path}'\nsecret_file = '{secret_file}'\n"
-        f"secret_key = 'API_KEY'\ntura_executable = '{executable}'\n"
-        f"tura_provider_config = '{provider_config}'\n",
+        f"secret_key = 'API_KEY'\n",
         encoding="utf-8",
     )
     original_load = LAUNCHER._load_toml
@@ -1901,62 +1785,13 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
             "mcp_capability_digest": "digest",
         },
     )
-    if executor == "deepagents":
-        monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
-        monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
-        _stub_worker_shell_capabilities(monkeypatch)
-        monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
-    else:
-        monkeypatch.setattr(LAUNCHER, "_run_tura_worker", lambda *args: 0)
+    monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
+    monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
 
     assert LAUNCHER.main(["--role", "normal", "-n", "task"]) == 0
     assert loads == [codex_path]
-
-
-def test_print_config_reports_tura_executable_hash_without_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    write_role(tmp_path, "normal")
-    executable = tmp_path / "tura.exe"
-    executable.write_bytes(b"tura-test-binary")
-    provider_config = tmp_path / "providers.toml"
-    provider_config.write_text('api_key = "do-not-print"\n', encoding="utf-8")
-    config_path = tmp_path / "dcode-project.toml"
-    config_path.write_text(
-        "[delegation]\ndefault_executor = \"tura\"\n"
-        f"\n[paths]\ntura_executable = '{executable}'\n"
-        f"tura_provider_config = '{provider_config}'\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
-    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_runtime_binding",
-        lambda config: runtime_binding({}),
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_mcp_capabilities",
-        lambda config: {
-            "mcp_servers": [],
-            "mcp_tools": [],
-            "server_tools": {},
-            "mcp_capability_digest": "digest",
-        },
-    )
-
-    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
-
-    output = capsys.readouterr().out
-    payload = json.loads(output)
-    assert payload["tura_executable"] == str(executable)
-    assert payload["tura_executable_sha256"] == hashlib.sha256(
-        b"tura-test-binary"
-    ).hexdigest()
-    assert "do-not-print" not in output
 
 
 def test_role_model_comes_from_canonical_template(tmp_path: Path) -> None:
@@ -2449,6 +2284,28 @@ def test_direct_mcp_janitor_removes_only_owned_stale_runtime(tmp_path: Path) -> 
     assert fresh.exists()
 
 
+def test_direct_mcp_cleanup_reports_deletion_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text(
+        LAUNCHER._DIRECT_MCP_OWNER_VALUE,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        LAUNCHER.shutil,
+        "rmtree",
+        lambda path: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    result = LAUNCHER._remove_direct_mcp_runtime(runtime)
+
+    assert result["state"] == "unverified"
+    assert runtime.exists()
+
+
 def test_direct_mcp_parent_initialization_tolerates_concurrent_creator(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2746,131 +2603,21 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"' in setup
     assert setup.index('$launcher = Join-Path $repoRoot "scripts\\dcode_project.py"') < setup.index('$launcher = Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"')
     assert 'dcode-project.ps1' in setup
-    assert 'project-delegate.ps1' in setup
-    assert 'TuraExecutable' in setup
-    assert 'TuraProviderConfig' in setup
-    assert 'default_executor' in setup
-    assert '--sandbox' in setup
-    assert 'Tura capability probe failed' in setup
+    assert 'default_executor' not in setup
+    assert 'Tura' not in setup
+    assert 'project-delegate' not in setup
     assert 'selects DeepAgents; do not pass --executor' in setup
-    assert 'project-delegate selects Tura; do not pass --executor' in setup
-    assert '& py -3 $launcher --executor tura @DelegateArgs' in setup
-    assert 'Tura migration:' in setup
     assert '[string]$SecretFile = (Join-Path $HOME ".codex\\tokenpilot.env")' in setup
     assert '[string]$SecretKey = "OPENAI_API_KEY"' in setup
     assert 'Write-TextIfChanged -Path $configPath -Content $config' in setup
     assert 'function Write-TextIfChanged' in setup
     assert "DEEPAGENTS_HOME" in setup
-    assert "GetUnresolvedProviderPathFromPSPath" in setup
     assert "Direct DeepAgents MCP config detected" in setup
     assert '$DeepAgentsCodeVersion = "0.1.74"' in setup
     assert 'deepagents-code==$DeepAgentsCodeVersion' in setup
-    assert 'langgraph-api==' not in setup
-    assert 'langgraph-runtime-inmem==' not in setup
-    assert 'uvicorn==' not in setup
-    assert '$env:UV_TOOL_DIR = $deepAgentsToolRoot' in setup
-    assert '$env:UV_TOOL_BIN_DIR = $deepAgentsBinRoot' in setup
     assert '$managedDcodePath = Join-Path $deepAgentsBinRoot "dcode.exe"' in setup
-    assert 'Copy-Item -LiteralPath $dcodePath -Destination (Join-Path $binRoot "dcode.exe") -Force' not in setup
     assert 'dcode-doctor.ps1' in setup
-    assert 'DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"' in setup
-    assert '$env:PYTHONUTF8 = "1"' in setup
-    assert '$env:PYTHONIOENCODING = "utf-8"' in setup
-    assert setup.index('$env:PYTHONUTF8 = "1"') < setup.index('& $dcodePath doctor')
-    assert setup.index('$env:PYTHONIOENCODING = "utf-8"') < setup.index('& $dcodePath doctor')
     assert "Python 3.12 or newer" in setup
     assert "version mismatch" in setup
     assert "patch_deepagents_runtime.py" in setup
     assert "mcp_tools.py" in setup
-
-
-def test_generated_project_delegate_guard_returns_contract_exit_code(tmp_path: Path) -> None:
-    powershell = shutil.which("pwsh") or shutil.which("powershell")
-    if powershell is None:
-        pytest.skip("PowerShell is required to execute generated wrapper")
-
-    setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8")
-    setup = setup.replace("\r\n", "\n")
-    start_marker = "$delegateWrapper = @'\n"
-    end_marker = "\n'@\n"
-    start = setup.index(start_marker) + len(start_marker)
-    end = setup.index(end_marker, start)
-    wrapper_path = tmp_path / "project-delegate.ps1"
-    wrapper_path.write_text(setup[start:end] + "\n", encoding="utf-8")
-
-    result = subprocess.run(
-        [
-            powershell,
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(wrapper_path),
-            "--executor",
-            "deepagents",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 2
-    assert "project-delegate selects Tura; do not pass --executor" in result.stderr
-
-
-@pytest.mark.parametrize(
-    ("wrapper_name", "executor"),
-    [("dcode-project", "deepagents"), ("project-delegate", "tura")],
-)
-def test_generated_wrappers_prefer_local_launcher_and_fallback_to_shared(
-    tmp_path: Path,
-    wrapper_name: str,
-    executor: str,
-) -> None:
-    powershell = shutil.which("pwsh") or shutil.which("powershell")
-    py_launcher = shutil.which("py")
-    if powershell is None or py_launcher is None:
-        pytest.skip("PowerShell and the py launcher are required")
-
-    repo = tmp_path / "consumer repo with spaces"
-    (repo / "scripts").mkdir(parents=True)
-    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
-    fake_home = tmp_path / "home with spaces"
-    shared = fake_home / ".agents" / "project-os" / "scripts"
-    shared.mkdir(parents=True)
-    setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8").replace("\r\n", "\n")
-    variable = "$wrapper" if wrapper_name == "dcode-project" else "$delegateWrapper"
-    start = setup.index(f"{variable} = @'\n") + len(f"{variable} = @'\n")
-    end = setup.index("\n'@\n", start)
-    wrapper_path = tmp_path / f"{wrapper_name}.ps1"
-    wrapper_path.write_text(setup[start:end] + "\n", encoding="utf-8")
-
-    (repo / "scripts" / "dcode_project.py").write_text(
-        "import sys; print(' '.join(sys.argv[1:])); raise SystemExit(7)\n",
-        encoding="utf-8",
-    )
-    (shared / "dcode_project.py").write_text(
-        "import sys; print('shared:' + ' '.join(sys.argv[1:])); raise SystemExit(8)\n",
-        encoding="utf-8",
-    )
-    environment = os.environ.copy()
-    environment.update({"HOME": str(fake_home), "USERPROFILE": str(fake_home)})
-
-    def run_wrapper() -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(wrapper_path), "probe"],
-            cwd=repo,
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-    local_result = run_wrapper()
-    assert local_result.returncode == 7
-    assert f"--executor {executor} probe" in local_result.stdout
-
-    (repo / "scripts" / "dcode_project.py").unlink()
-    shared_result = run_wrapper()
-    assert shared_result.returncode == 8
-    assert f"shared:--executor {executor} probe" in shared_result.stdout

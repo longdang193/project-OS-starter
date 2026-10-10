@@ -70,6 +70,20 @@ def test_activation_mismatch_requires_recovery() -> None:
     assert adapter.activation_side_effects == 1
 
 
+def test_compaction_releases_session_but_keeps_replay_protection() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+    activation = adapter.activate(binding(), "activation-1")
+    controller = activation.controller
+    assert controller is not None
+
+    assert adapter.release_session(controller).released is True
+    assert adapter.compact_released(controller) is True
+    replay = adapter.activate(binding(), "activation-1")
+
+    assert replay.recovery_required is True
+    assert "compacted" in (replay.reason or "")
+
+
 def test_binding_mismatch_requires_recovery_for_each_lifecycle_operation() -> None:
     adapter = InMemoryControllerSessionAdapter()
     current = adapter.activate(binding(), "activation-1").controller
@@ -122,6 +136,27 @@ def test_release_session_is_distinct_from_lane_retirement() -> None:
 
     assert result.released is True
     assert adapter.resolve(binding()).found is False
+
+
+def test_compact_released_does_not_remove_active_controller() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+    controller = adapter.activate(binding(), "activation-1").controller
+    assert controller is not None
+
+    assert adapter.compact_released(controller) is False
+    assert adapter.resolve(binding()).found is True
+
+
+def test_compact_old_released_controller_preserves_replacement() -> None:
+    adapter = InMemoryControllerSessionAdapter()
+    old = adapter.activate(binding(), "activation-1").controller
+    assert old is not None
+    assert adapter.release_session(old).released is True
+    replacement = adapter.activate(binding(), "activation-2").controller
+    assert replacement is not None
+
+    assert adapter.compact_released(old) is True
+    assert adapter.resolve(binding()).controller == replacement
 
 
 def test_release_unknown_session_requires_reconciliation() -> None:

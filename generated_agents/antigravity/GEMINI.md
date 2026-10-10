@@ -66,7 +66,7 @@ When spawning a subagent:
 
 These generic subagent rules do not govern MAIN AGENT lane ownership. CoS
 assigns top-level MAIN AGENTS through the repository-owned Herdr launcher.
-MAIN AGENTS own assigned lanes and may spawn Native Codex, DeepAgents, or Tura
+MAIN AGENTS own assigned lanes and may spawn Native Codex or DeepAgents
 sub-agents when needed inside their assigned lane only when their Runtime Grant
 includes `delegation.child_agents: allow`. Sub-agents remain subordinate to
 their parent lane and must not spawn peer MAIN AGENTS or activate CoS.
@@ -80,7 +80,7 @@ profile. Function name alone never determines profile.
 
 Ordinary trusted one-user work follows `native-personal-local` in
 `docs/operating_system/procedures/personal-local-worktree-procedure.md`:
-native Git plus selected local executor: Codex, DeepAgents, or Tura. Executor and
+native Git plus selected local executor: Codex or DeepAgents. Executor and
 profile selection are independent. Codex is safe default when plan omits executor
 or delegated benefit is unclear. Follow
 `docs/operating_system/planning/planning-dispatch.md` for advisory selection.
