@@ -816,11 +816,41 @@ def _claim_attempt_unlocked(
         return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "admission": "IDEMPOTENT", "idempotent": True, "record": existing}
     existing_state = str(existing.get("state", "")).lower()
     if existing_state == "settled":
+        terminal_tombstone = existing.get("terminal_release_tombstone")
+        if (
+            isinstance(terminal_tombstone, Mapping)
+            and same_attempt_binding(terminal_tombstone, candidate)
+            and not same_attempt_binding(existing, candidate)
+        ):
+            return {
+                "state": "RECOVERY_REQUIRED",
+                "action": "BLOCKED",
+                "admission": "BLOCKED",
+                "record": existing,
+            }
         if existing.get("release_compacted") is True:
             candidate["terminal_release_tombstone"] = existing.get("terminal_release_tombstone")
             candidate["retired_generation"] = existing.get("retired_generation", existing.get("generation", 1))
         else:
             candidate["generation"] = _attempt_generation(existing) + 1
+            candidate["terminal_release_tombstone"] = {
+                field: existing.get(field)
+                for field in (
+                    "attempt_id",
+                    "assignment_id",
+                    "repository_identity",
+                    "executor",
+                    "task_sha256",
+                    "grant_digest",
+                )
+            }
+            candidate["terminal_release_tombstone"].update(
+                {
+                    "generation": _attempt_generation(existing),
+                    "release_state": existing.get("release_state", "pending"),
+                }
+            )
+            candidate["retired_generation"] = _attempt_generation(existing)
             for field in (
                 "release_authorization",
                 "release_authorized",

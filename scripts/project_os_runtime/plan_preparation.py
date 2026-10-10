@@ -508,21 +508,31 @@ def apply_accepted_plan_transitions(
                 binding=dict(attempt_guard["binding"]),
                 release_authorization=pending_authorization,
             )
-            by_attempt = persisted_guard.get("released_resources_by_attempt")
             attempt_key = str(attempt_guard["binding"].get("attempt_id"))
-            attempt_resources = by_attempt.get(attempt_key) if isinstance(by_attempt, Mapping) else None
-            if isinstance(attempt_resources, Mapping):
-                authoritative_resources = attempt_resources
+            terminal_tombstone = persisted_guard.get("terminal_release_tombstone")
+            if persisted_guard.get("release_compacted") is True and isinstance(terminal_tombstone, Mapping):
+                authoritative_resources = {
+                    evidence_ref: {
+                        "state": "already_absent",
+                        "attempt_id": attempt_key,
+                        "evidence_ref": evidence_ref,
+                    }
+                }
             else:
-                legacy_binding = persisted_guard.get("release_binding")
-                legacy_resources = persisted_guard.get("released_resources")
-                authoritative_resources = (
-                    legacy_resources
-                    if isinstance(legacy_resources, Mapping)
-                    and isinstance(legacy_binding, Mapping)
-                    and same_attempt_binding(legacy_binding, attempt_guard["binding"])
-                    else pending_authorization["resources"]
-                )
+                by_attempt = persisted_guard.get("released_resources_by_attempt")
+                attempt_resources = by_attempt.get(attempt_key) if isinstance(by_attempt, Mapping) else None
+                if isinstance(attempt_resources, Mapping):
+                    authoritative_resources = attempt_resources
+                else:
+                    legacy_binding = persisted_guard.get("release_binding")
+                    legacy_resources = persisted_guard.get("released_resources")
+                    authoritative_resources = (
+                        legacy_resources
+                        if isinstance(legacy_resources, Mapping)
+                        and isinstance(legacy_binding, Mapping)
+                        and same_attempt_binding(legacy_binding, attempt_guard["binding"])
+                        else pending_authorization["resources"]
+                    )
             persisted_release_record = {
                 "authorized": True,
                 "binding": release_binding,

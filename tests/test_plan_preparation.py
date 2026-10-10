@@ -681,13 +681,24 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     binding = {"plan_ref": "plan-1", "task_id": "Task 1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "candidate_sha": commit, "acceptance_checkpoint_sha": commit, "evidence_ref": "task-result"}
     resource = {"state": "pending", "attempt_id": "attempt-1", "evidence_ref": "task-result", "attempt_root": str(repo.resolve()), "relative_path": "task-result.json", "content_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(), "producer": "dcode-project", "schema": "dcode-project.task-result.v1"}
     persist_calls: list[tuple[str, dict[str, object]]] = []
+    release_records: list[dict[str, object]] = []
 
     def fake_persist(*, assignment_id, binding, release_authorization):
         persist_calls.append((hashlib.sha256(plan_path.read_text(encoding="utf-8").encode("utf-8")).hexdigest(), dict(release_authorization)))
         resources = release_authorization.get("resources", {"task-result": resource})
+        if len(persist_calls) > 1:
+            return {
+                "release_authorized": True,
+                "release_compacted": True,
+                "release_state": "released",
+                "terminal_release_tombstone": {"attempt_id": "attempt-1", "generation": 1},
+                "resources": {},
+                "attempt_guard": {"release_authorized": True, "release_state": "released"},
+            }
         return {"release_authorized": True, "release_state": "pending", "resources": resources, "attempt_guard": {"release_authorized": True, "release_state": "pending"}}
 
     def fake_release(decision, *, canonical_consequence, **kwargs):
+        release_records.append(dict(kwargs["release_record"]))
         if canonical_consequence.get("checkpoint_verified") is True:
             return {"authorized": True, "payload_released": True, "resources": {"task-result": {**resource, "state": "removed"}}}
         return {"authorized": False, "payload_released": False, "resources": {"task-result": resource}, "reasons": ["verified Git checkpoint"]}
@@ -734,6 +745,7 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     assert replay["replayed"] is True
     assert replay["evidence_release"]["payload_released"] is True
     assert persist_calls[0][1]["resources"]["task-result"]["state"] == "pending"
+    assert release_records[-1]["resources"]["task-result"]["state"] == "already_absent"
 
 
 def test_parse_plan_rejects_invalid_graph() -> None:
