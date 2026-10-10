@@ -1074,6 +1074,23 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     assert replacement["record"]["release_authorization"] == {"candidate_sha": "candidate-1"}
     assert replacement["record"]["release_binding"] == binding
 
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=dict(binding, attempt_id="attempt-2"),
+        settlement_proven=True,
+    )
+
+    replacement_update = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=dict(binding, attempt_id="attempt-2"),
+        release_authorization={
+            "candidate_sha": "candidate-2",
+            "resources": {"replacement-result": {"state": "removed"}},
+        },
+    )
+    assert replacement_update["release_binding"] == binding
+    assert replacement_update["release_state"] == "pending"
+
     updated = LAUNCHER.record_release_authorization(
         assignment_id="assignment-1",
         binding=binding,

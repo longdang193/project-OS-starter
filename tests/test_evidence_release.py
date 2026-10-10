@@ -70,6 +70,10 @@ def _retirement_proof() -> dict[str, object]:
     }
 
 
+def _attempt_guard(state: str = "pending") -> dict[str, object]:
+    return {"release_authorized": True, "release_state": state}
+
+
 def _release(
     tmp_path: Path,
     *,
@@ -96,6 +100,7 @@ def _release(
             "authorized": True,
             "binding": _binding(),
             "resources": {"task-result": {"state": "pending"}},
+            "attempt_guard": _attempt_guard(),
         },
     )
 
@@ -153,6 +158,7 @@ def test_release_replay_requires_durable_complete_record(tmp_path: Path):
         "authorized": True,
         "binding": _binding(),
         "resources": {"task-result": {"state": "removed"}},
+        "attempt_guard": _attempt_guard("released"),
     }
     result = release_authorized_evidence(
         _acceptance_decision(),
@@ -183,6 +189,7 @@ def test_release_replay_rejects_incomplete_durable_record(tmp_path: Path):
             "authorized": True,
             "binding": _binding(),
             "resources": {"task-result": {"state": "unverified"}},
+            "attempt_guard": _attempt_guard(),
         },
     )
     assert result["authorized"] is False
@@ -203,6 +210,7 @@ def test_release_replay_recovers_after_disposal_before_final_record(tmp_path: Pa
             "authorized": True,
             "binding": _binding(),
             "resources": {"task-result": {"state": "pending"}},
+            "attempt_guard": _attempt_guard(),
         },
     )
 

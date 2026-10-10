@@ -352,6 +352,7 @@ def release_authorized_evidence(
     evidence_ref = binding.get("evidence_ref")
     recorded_resources = release_record.get("resources") if isinstance(release_record, Mapping) else None
     recorded_resource = recorded_resources.get(evidence_ref) if isinstance(recorded_resources, Mapping) else None
+    attempt_guard = release_record.get("attempt_guard") if isinstance(release_record, Mapping) else None
     if (
         not isinstance(release_record, Mapping)
         or release_record.get("authorized") is not True
@@ -359,6 +360,9 @@ def release_authorized_evidence(
         or set(recorded_resources or ()) != {evidence_ref}
         or not isinstance(recorded_resource, Mapping)
         or recorded_resource.get("state") not in {"pending", "removed", "already_absent"}
+        or not isinstance(attempt_guard, Mapping)
+        or attempt_guard.get("release_authorized") is not True
+        or attempt_guard.get("release_state") not in {"pending", "released"}
     ):
         return {
             **result,

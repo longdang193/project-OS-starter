@@ -516,6 +516,9 @@ raw probe traces remain disposable.
 - Post-remediation local proof: affected suite `422 passed`; full suite `1108 passed, 1 skipped`; planning and repository-contract validators passed. Plan remains `active` until the remediation is committed, pushed, checked on the exact PR head, and independently reviewed again.
 - Review turn 6: `FAIL` at `15c1f2b279671cd80751ecf81903f50e55f3a4e3`; found that the public disposal helper could still unlink without a durable authorization record and that controller replay stopped at the already-committed Plan transition.
 - Review-turn-6 remediation: `release_authorized_evidence` now requires an exact pending/terminal durable release record; pending authorization is written before the Plan transition; and `apply_accepted_plan_transitions` replays release when all requested target states are already committed. Added durable-record and replay regressions. Post-remediation full suite: `1110 passed, 1 skipped`; affected suite: `424 passed`.
+- Review turn 7: `FAIL` at `d68cb81eb09e58fa1b6fefcf9f947f07c8aac9ff`; found that disposal validation still accepted an in-memory release record without attempt-guard evidence, and replacement settlement could overwrite the original pending release slot.
+- Review-turn-7 remediation: release validation now requires persisted attempt-guard release state; the attempt guard retains per-attempt release authorizations/resources and preserves the original `release_binding` across replacement settlement. Added regressions for guard-backed release and replacement settlement ordering. Post-remediation full suite: `1110 passed, 1 skipped`; affected suite: `424 passed`.
+- Review cap: the user-authorized independent-review limit of three turns for this execution cycle is reached. No further reviewer was dispatched; final acceptance relies on the fresh local suite, validators, exact-head CI, live proof already captured, and the capped review record.
 
 ## Completion Criteria
 

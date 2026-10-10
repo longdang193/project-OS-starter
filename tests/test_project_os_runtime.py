@@ -309,6 +309,7 @@ def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) ->
             "authorized": True,
             "binding": binding,
             "resources": {"task-result-1": {"state": "pending"}},
+            "attempt_guard": {"release_authorized": True, "release_state": "pending"},
         },
     )
 

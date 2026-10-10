@@ -745,6 +745,9 @@ def _claim_attempt_unlocked(
             "release_authorized",
             "released_resources",
             "release_state",
+            "release_authorizations",
+            "released_resources_by_attempt",
+            "release_binding",
         ):
             if field in existing:
                 candidate[field] = existing[field]
@@ -927,25 +930,43 @@ def record_release_authorization(
         updated = dict(existing)
         resources = release_authorization.get("resources")
         released_resources = dict(resources) if isinstance(resources, dict) else {}
+        release_authorizations = dict(existing.get("release_authorizations", {})) if isinstance(existing.get("release_authorizations"), dict) else {}
+        released_resources_by_attempt = dict(existing.get("released_resources_by_attempt", {})) if isinstance(existing.get("released_resources_by_attempt"), dict) else {}
+        if isinstance(existing.get("release_authorization"), dict):
+            previous_key = str(release_binding.get("attempt_id")) if isinstance(release_binding, dict) else str(existing.get("attempt_id"))
+            release_authorizations.setdefault(previous_key, dict(existing["release_authorization"]))
+            released_resources_by_attempt.setdefault(previous_key, dict(existing.get("released_resources", {})))
+        attempt_key = str(binding.get("attempt_id"))
+        release_authorizations[attempt_key] = dict(release_authorization)
+        released_resources_by_attempt[attempt_key] = released_resources
         release_state = (
             "released"
-            if released_resources
+            if released_resources_by_attempt
             and all(
-                isinstance(resource, dict)
-                and resource.get("state") in {"removed", "already_absent"}
-                for resource in released_resources.values()
+                isinstance(resource_set, dict)
+                and resource_set
+                and all(
+                    isinstance(resource, dict)
+                    and resource.get("state") in {"removed", "already_absent"}
+                    for resource in resource_set.values()
+                )
+                for resource_set in released_resources_by_attempt.values()
             )
             else "pending"
         )
         updated.update(
             {
                 "release_authorized": True,
-                "release_authorization": dict(release_authorization),
+                "release_authorizations": release_authorizations,
+                "released_resources_by_attempt": released_resources_by_attempt,
                 "release_state": release_state,
-                "released_resources": released_resources,
             }
         )
-        if binding_matches_attempt and existing.get("state") == "settled":
+        legacy_owner_matches = not isinstance(release_binding, dict) or same_attempt_binding(release_binding, binding)
+        if legacy_owner_matches:
+            updated["release_authorization"] = dict(release_authorization)
+            updated["released_resources"] = released_resources
+        if binding_matches_attempt and existing.get("state") == "settled" and not isinstance(release_binding, dict):
             updated["release_binding"] = dict(binding)
         _write_attempt_guard(path, updated)
         return updated
