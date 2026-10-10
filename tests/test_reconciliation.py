@@ -106,3 +106,27 @@ def test_reconcile_does_not_treat_terminal_worker_as_accepted():
     assert snapshot.eligible.acceptance is False
     assert snapshot.eligible.integration is False
     assert snapshot.next_action == "ACCEPT"
+
+
+def test_reconcile_requires_settlement_before_acceptance_or_integration():
+    snapshot = reconcile(
+        _local(task_state="completed"),
+        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
+        _runtime(settlement_proven=False, retirement_state="unresolved"),
+    )
+
+    assert snapshot.eligible.acceptance is False
+    assert snapshot.eligible.integration is False
+    assert snapshot.next_action == "ACCEPT"
+
+
+def test_reconcile_keeps_integration_blockers_actionable_after_retirement():
+    snapshot = reconcile(
+        _local(task_state="completed"),
+        RemotePrEvidence(available=True, head_sha="abc", checks_passed=False, review_valid=False, mergeable=False, source_ref="github"),
+        _runtime(),
+    )
+
+    assert snapshot.eligible.acceptance is True
+    assert snapshot.eligible.integration is False
+    assert snapshot.next_action == "INTEGRATE"

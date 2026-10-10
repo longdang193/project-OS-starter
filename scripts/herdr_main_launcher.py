@@ -280,6 +280,9 @@ def _discard_deepagents_receipt(
     attempt_id: str | None = None,
     accepted_checkpoint_sha: str | None = None,
     settlement_persisted: bool = False,
+    expected_plan_identity: str | None = None,
+    expected_task_id: str | None = None,
+    expected_repository_identity: str | None = None,
     acceptance_decision: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if path is None:
@@ -294,6 +297,14 @@ def _discard_deepagents_receipt(
             for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
         )
         or not isinstance(acceptance_decision, Mapping)
+        or not all(
+            isinstance(value, str) and value
+            for value in (
+                expected_plan_identity,
+                expected_task_id,
+                expected_repository_identity,
+            )
+        )
     ):
         return {"state": "preserved", "reason": "acceptance release binding unavailable"}
     return release_attempt_evidence(
@@ -301,6 +312,9 @@ def _discard_deepagents_receipt(
         assignment_id,
         attempt_id,
         accepted_checkpoint_sha,
+        expected_plan_identity=expected_plan_identity,
+        expected_task_id=expected_task_id,
+        expected_repository_identity=expected_repository_identity,
         acceptance_decision=acceptance_decision,
     )
 
@@ -2998,6 +3012,9 @@ def _main_body(args: argparse.Namespace) -> int:
                         attempt_id=assignment.get("attempt_id"),
                         accepted_checkpoint_sha=accepted_checkpoint_sha,
                         settlement_persisted=receipt.get("cleanup_state") == "removed",
+                        expected_plan_identity=args.plan_identity,
+                        expected_task_id=args.secretary_task_id,
+                        expected_repository_identity=args.repository_identity,
                         acceptance_decision=(
                             assignment.get("acceptance_decision")
                             or assignment.get("acceptance")

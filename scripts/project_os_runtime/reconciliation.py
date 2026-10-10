@@ -156,6 +156,7 @@ def reconcile(
     acceptance = (
         verification
         and runtime.acceptance_proven is True
+        and runtime.settlement_proven is True
         and local.checkpoint_sha is not None
     )
     integration = acceptance and remote_status == "CURRENT" and remote.checks_passed is True and remote.review_valid is True and remote.mergeable is True
@@ -167,9 +168,7 @@ def reconcile(
 
     if contradictions or missing:
         next_action = REMOTE_EVIDENCE_UNAVAILABLE if remote_status == REMOTE_EVIDENCE_UNAVAILABLE else "RECONCILE"
-    elif retirement and not acceptance:
-        next_action = "ACCEPT"
-    elif retirement:
+    elif integration and retirement:
         next_action = "NO_ACTION"
     elif integration:
         next_action = "RETIRE_RUNTIME"
@@ -177,6 +176,8 @@ def reconcile(
         next_action = "INTEGRATE"
     elif verification:
         next_action = "ACCEPT"
+    elif retirement:
+        next_action = "NO_ACTION"
     else:
         next_action = "EXECUTE"
 

@@ -309,6 +309,8 @@ def release_attempt_evidence(
     *,
     expected_plan_ref: str | None = None,
     expected_repository_identity: str | None = None,
+    expected_plan_identity: str | None = None,
+    expected_task_id: str | None = None,
     acceptance_decision: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Release task-owned evidence only after exact acceptance binding."""
@@ -332,6 +334,19 @@ def release_attempt_evidence(
         or not isinstance(controller, Mapping)
         or controller.get("authority") != "cos"
         or not isinstance(proof, Mapping)
+        or proof.get("attempt_id") != attempt_id
+        or (
+            expected_plan_identity is not None
+            and proof.get("plan_identity") != expected_plan_identity
+        )
+        or (
+            expected_task_id is not None
+            and proof.get("task_id") != expected_task_id
+        )
+        or (
+            expected_repository_identity is not None
+            and proof.get("repository_identity") != expected_repository_identity
+        )
         or proof.get("checkpoint_sha") != accepted_checkpoint_sha
         or not isinstance(proof.get("repository_identity"), str)
         or not proof.get("repository_identity")
@@ -343,6 +358,7 @@ def release_attempt_evidence(
         )
         or (
             expected_repository_identity is not None
+            and payload.get("repository_identity") is not None
             and payload.get("repository_identity") != expected_repository_identity
         )
     ):

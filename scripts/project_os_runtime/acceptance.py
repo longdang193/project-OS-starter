@@ -34,6 +34,7 @@ def evaluate_acceptance(
     git: Mapping[str, Any],
     verification: Mapping[str, Any],
     settlement: Mapping[str, Any],
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     reasons: list[str] = []
     for mapping, fields in (
@@ -116,6 +117,7 @@ def evaluate_acceptance(
         "task_id": task.get("task_id"),
         "plan_identity": task.get("plan_identity"),
         "task_state": current_state,
+        "attempt_id": attempt_id or task.get("attempt_id"),
         "checkpoint_sha": git.get("checkpoint_sha"),
         "repository_identity": git.get("repository_identity"),
         "required_conditions": dict(required_conditions) if isinstance(required_conditions, Mapping) else {},
