@@ -12,8 +12,10 @@ def _remote(*, pr_number: int = 7, head_sha: str = "H", reviewed_head_sha: str =
         head_sha=head_sha,
         checks=({"head_sha": head_sha, "conclusion": "success"},),
         review_identity="review-1",
+        review_pr_number=pr_number,
         reviewed_head_sha=reviewed_head_sha,
         mergeability="mergeable",
+        source_ref="github://org/repo/pulls/7",
     )
 
 

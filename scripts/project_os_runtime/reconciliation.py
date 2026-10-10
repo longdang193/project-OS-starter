@@ -19,6 +19,7 @@ class RemotePrEvidence:
     head_sha: str
     checks: tuple[Mapping[str, Any], ...] = ()
     review_identity: str | None = None
+    review_pr_number: int | None = None
     reviewed_head_sha: str | None = None
     mergeability: str | None = None
     merged: bool = False
@@ -36,6 +37,7 @@ class RemotePrEvidence:
     def review_valid(self) -> bool:
         return bool(
             self.review_identity
+            and self.review_pr_number == self.pr_number
             and self.reviewed_head_sha
             and self.reviewed_head_sha == self.head_sha
         )
@@ -182,6 +184,8 @@ def _integrate(facts: Mapping[str, Any], remote: RemotePrEvidence | None) -> Rec
             failures.append("checks_bound_to_head")
         if not remote.review_valid:
             failures.append("review_bound_to_head")
+        if not isinstance(remote.source_ref, str) or not remote.source_ref.strip():
+            failures.append("remote_source_ref")
         if remote.mergeability not in {"mergeable", "clean"}:
             failures.append("mergeability")
     eligible = not missing and not failures

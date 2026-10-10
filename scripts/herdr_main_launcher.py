@@ -2772,8 +2772,6 @@ def _main_body(args: argparse.Namespace) -> int:
                         "task_accepted": task_result.get("accepted"),
                     }
                 )
-                if receipt.get("state") == "confirmed" and not receipt.get("recovery_required"):
-                    _discard_deepagents_receipt(receipt_file)
             legacy = {
                 key: value
                 for key, value in assignment.items()

@@ -11,6 +11,15 @@ from .reconciliation import reconcile
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
 ACCEPTANCE_AUTHORITY = "cos"
 ELIGIBLE_TASK_STATE = "active"
+RELEASE_BINDING_FIELDS = (
+    "plan_ref",
+    "task_id",
+    "assignment_id",
+    "attempt_id",
+    "candidate_sha",
+    "acceptance_checkpoint_sha",
+    "evidence_ref",
+)
 
 
 def _missing_text(mapping: Mapping[str, Any], field: str, label: str) -> str | None:
@@ -138,6 +147,10 @@ def evaluate_acceptance(
         "git": {
             "repository_identity": git.get("repository_identity"),
             "plan_identity": git.get("plan_identity"),
+            "candidate_sha": git.get("lane_head_sha"),
+            "acceptance_checkpoint_sha": git.get("checkpoint_sha"),
+            "assignment_id": git.get("assignment_id"),
+            "attempt_id": git.get("attempt_id"),
         },
         "settlement": {
             "settlement_proven": settlement.get("settlement_proven"),
@@ -160,6 +173,83 @@ def evaluate_acceptance(
         "task_transition": task_transition,
         "acceptance_proof": acceptance_proof,
         "reconciliation": reconciliation.to_dict(),
+    }
+
+
+def authorize_evidence_release(
+    decision: Mapping[str, Any],
+    *,
+    binding: Mapping[str, Any],
+    canonical_consequence: Mapping[str, Any],
+    required_consumers: Sequence[str],
+    consumer_releases: Mapping[str, Mapping[str, Any]],
+    retention: Mapping[str, Mapping[str, Any]],
+    recovery_required: bool = False,
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    if decision.get("decision") != "PASS":
+        reasons.append("CoS acceptance")
+    controller = decision.get("controller")
+    if not isinstance(controller, Mapping) or controller.get("authority") != ACCEPTANCE_AUTHORITY:
+        reasons.append("CoS release authority")
+    proof = decision.get("acceptance_proof")
+    if not isinstance(proof, Mapping):
+        reasons.append("acceptance proof")
+    else:
+        git = proof.get("git")
+        if not isinstance(git, Mapping):
+            reasons.append("canonical Git proof")
+        else:
+            if git.get("plan_identity") != binding.get("plan_ref"):
+                reasons.append("plan binding")
+            if git.get("candidate_sha") != binding.get("candidate_sha"):
+                reasons.append("candidate binding")
+            if git.get("acceptance_checkpoint_sha") != binding.get("acceptance_checkpoint_sha"):
+                reasons.append("acceptance checkpoint binding")
+            if git.get("assignment_id") != binding.get("assignment_id"):
+                reasons.append("assignment binding")
+            if git.get("attempt_id") != binding.get("attempt_id"):
+                reasons.append("attempt binding")
+    for field in RELEASE_BINDING_FIELDS:
+        value = binding.get(field)
+        if not isinstance(value, str) or not value.strip():
+            reasons.append(f"missing {field}")
+    if not isinstance(canonical_consequence, Mapping):
+        reasons.append("canonical consequence")
+    else:
+        if canonical_consequence.get("authorized") is not True:
+            reasons.append("canonical consequence")
+        for field in RELEASE_BINDING_FIELDS[:-1]:
+            if canonical_consequence.get(field) != binding.get(field):
+                reasons.append(f"canonical {field} binding")
+    if recovery_required:
+        reasons.append("recovery required")
+    if not isinstance(required_consumers, Sequence) or isinstance(required_consumers, (str, bytes)):
+        reasons.append("required consumers")
+        required_consumers = ()
+    if not isinstance(consumer_releases, Mapping):
+        reasons.append("consumer release evidence")
+        consumer_releases = {}
+    if not isinstance(retention, Mapping):
+        reasons.append("retention evidence")
+        retention = {}
+    for consumer in required_consumers:
+        release = consumer_releases.get(consumer)
+        policy = retention.get(consumer)
+        if not isinstance(release, Mapping) or release.get("authorized") is not True:
+            reasons.append(f"consumer release: {consumer}")
+        elif release.get("consumer") != consumer or release.get("evidence_ref") != binding.get("evidence_ref"):
+            reasons.append(f"consumer binding: {consumer}")
+        if not isinstance(policy, Mapping) or not isinstance(policy.get("policy_ref"), str) or not policy.get("policy_ref"):
+            reasons.append(f"retention policy: {consumer}")
+        elif policy.get("expired") is not True:
+            reasons.append(f"retention active: {consumer}")
+    return {
+        "authorized": not reasons,
+        "reasons": reasons or ["evidence release authorized"],
+        "payload_released": False,
+        "tombstone_released": False,
+        "binding": dict(binding),
     }
 
 
@@ -298,6 +388,7 @@ def authorize_dependent_transition(
 __all__ = [
     "ACCEPTANCE_AUTHORITY",
     "ACCEPTANCE_DECISIONS",
+    "authorize_evidence_release",
     "authorize_dependent_transition",
     "evaluate_acceptance",
 ]

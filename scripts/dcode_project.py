@@ -2347,7 +2347,7 @@ def main(argv: list[str]) -> int:
                             },
                         )
                 except (OSError, RuntimeError, ValueError):
-                    task_result_file.unlink(missing_ok=True)
+                    recovery_required = True
             if attempt_guard_binding is not None:
                 settlement_evidence = {
                     "state": "confirmed",
