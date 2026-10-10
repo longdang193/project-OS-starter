@@ -23,11 +23,6 @@ registry. Plans/specs, source/tests, Git/GitHub, and accepted workflow
 decisions remain canonical. Runtime sessions, notifications, and operational
 receipts are bounded evidence used to prove or reconcile actions.
 
-Discharged Docket entries are removed only by the sole Docket writer after
-canonical evidence exists. Promote durable human blockers to an existing
-GitHub Issues owner only when no maintained owner can reconstruct them; never
-create one issue per Plan task.
-
 ## Artifact Selection
 
 | Condition | Action |
@@ -86,7 +81,7 @@ lanes;
 Codex uses a main-agent session and DeepAgents uses a bounded `dcode-project`
 pane process. It never calls
 `multi_agent_v1`, native Codex subagents, DeepAgents internal `task` workers,
-executor-local reviewers or helpers. Each MAIN AGENT owns its assigned lane and may
+or executor-local reviewers or helpers. Each MAIN AGENT owns its assigned lane and may
 autonomously spawn subordinate Native Codex or DeepAgents agents when
 the current Runtime Grant sets `delegation.child_agents: allow`. Sub-agents
 remain subordinate and must not spawn peer MAIN AGENTS or activate CoS. Review
@@ -253,8 +248,7 @@ selected executors CoS may dispatch through Herdr.
   cross-task judgment, or external mutation.
 - `deepagents`: bounded repo-local implementation lane needing substantial
   context, exploration, debugging, or internal decomposition.
-
-CoS coordinates only eligible `codex` and `deepagents` lanes.
+For mixed plans, CoS coordinates only eligible `codex` and `deepagents` lanes.
 
 ### Runtime Grant Boundary
 

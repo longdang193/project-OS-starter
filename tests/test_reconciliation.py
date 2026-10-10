@@ -3,7 +3,7 @@ from scripts.project_os_runtime.reconciliation import (
     LocalEvidence,
     RemotePrEvidence,
     RuntimeEvidence,
-    reconcile,
+    _reconcile_legacy,
 )
 
 
@@ -38,7 +38,7 @@ def _runtime(**overrides):
 
 
 def test_reconcile_rejects_changed_pr_head():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(),
         RemotePrEvidence(available=True, head_sha="def", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(),
@@ -50,7 +50,7 @@ def test_reconcile_rejects_changed_pr_head():
 
 
 def test_reconcile_fails_closed_when_github_is_unavailable():
-    snapshot = reconcile(_local(), RemotePrEvidence(), _runtime())
+    snapshot = _reconcile_legacy(_local(), RemotePrEvidence(), _runtime())
 
     assert snapshot.remote_status == REMOTE_EVIDENCE_UNAVAILABLE
     assert snapshot.next_action == REMOTE_EVIDENCE_UNAVAILABLE
@@ -58,7 +58,7 @@ def test_reconcile_fails_closed_when_github_is_unavailable():
 
 
 def test_reconcile_accepts_bound_current_evidence():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(task_state="completed"),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(),
@@ -71,7 +71,7 @@ def test_reconcile_accepts_bound_current_evidence():
 
 
 def test_reconcile_rejects_stale_checkpoint_and_unready_dependencies():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(checkpoint_sha="stale", dependencies_ready=False),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(),
@@ -85,7 +85,7 @@ def test_reconcile_rejects_stale_checkpoint_and_unready_dependencies():
 
 
 def test_reconcile_requires_dirty_worktree_digest_even_with_checkpoint():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(dirty=True, working_tree_digest=None),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(),
@@ -96,7 +96,7 @@ def test_reconcile_requires_dirty_worktree_digest_even_with_checkpoint():
 
 
 def test_reconcile_does_not_treat_terminal_worker_as_accepted():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(task_state="completed"),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(acceptance_proven=False),
@@ -109,7 +109,7 @@ def test_reconcile_does_not_treat_terminal_worker_as_accepted():
 
 
 def test_reconcile_requires_settlement_before_acceptance_or_integration():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(task_state="completed"),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(settlement_proven=False, retirement_state="unresolved"),
@@ -121,7 +121,7 @@ def test_reconcile_requires_settlement_before_acceptance_or_integration():
 
 
 def test_reconcile_keeps_integration_blockers_actionable_after_retirement():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(task_state="completed"),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=False, review_valid=False, mergeable=False, source_ref="github"),
         _runtime(),
@@ -133,7 +133,7 @@ def test_reconcile_keeps_integration_blockers_actionable_after_retirement():
 
 
 def test_reconcile_does_not_hide_missing_task_result_after_retirement():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(task_state="completed"),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(task_result_published=False),
@@ -146,7 +146,7 @@ def test_reconcile_does_not_hide_missing_task_result_after_retirement():
 
 
 def test_reconcile_keeps_completed_task_actionable_when_worker_state_unknown():
-    snapshot = reconcile(
+    snapshot = _reconcile_legacy(
         _local(task_state="completed"),
         RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
         _runtime(worker_terminal=None, task_result_published=False, retirement_state="removed"),

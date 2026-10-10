@@ -19,19 +19,6 @@ Production runtime dependency boundaries are enforced by `scripts/validate_repo_
 | `scripts/opendesign_profile_adapter.py` | Canonical projection from a selected profile to an OpenDesign MCP `start_run` request |
 | `scripts/ocr_delegate_adapter.py` | Canonical optional range-only OCR preparation adapter; native review remains authoritative |
 
-## Resource Retirement And Retention
-
-Plan, Git, accepted decisions, source, tests, and authoritative provider checks
-remain canonical. Runtime receipts, TaskResult files, temporary MCP configs,
-role views, panes, processes, and session observations are operational evidence.
-Their producer removes them only after exact identity, consumption, settlement,
-acceptance, and recovery gates pass. Unknown, mismatched, shared, or failed
-deletion stays `preserved` or `unverified`; no age-based sweep, global registry,
-cleanup daemon, or generic delete service may infer ownership.
-
-Historical plans and required fixtures remain readable. Raw observations without
-an owner or replay value are P2 candidates, not automatic deletion targets.
-
 ## Plan Dispatch
 
 Use existing dispatcher admission and execution paths with canonical plan input:
@@ -92,7 +79,7 @@ resources remain caller-owned through `runtime.json`.
 | Shared native skills | `~/.agents/skills` | Synced copy of repo-owned skills; repo remains authoring source. |
 | Shared Project OS runtime | `~/.agents/project-os` | Marker-owned sync of approved docs/scripts; one installation serves local projects. |
 | Codex | `~/.codex` | Local deploy skips duplicate repo-owned skills. |
-| DeepAgents | User-local `dcode-project` | setup-script-pinned `deepagents-code` version owns runtime version; launcher loads one Codex snapshot per invocation; DeepAgents alone derives `wire_api` to native `use_responses_api=false/true`; secrets load only for execution; selected worker model and effective parameters form worker evidence; same-worktree role views use exclusive attempt ownership. |
+| DeepAgents | User-local `dcode-project` | setup-script-pinned `deepagents-code` version owns runtime version; launcher loads one Codex snapshot per invocation; DeepAgents derives `wire_api` to native `use_responses_api=false/true`; secrets load only for execution; selected worker model and effective parameters form worker evidence; same-worktree role views use exclusive attempt ownership. |
 | Claude | `~/.claude` | Deploy includes generated native skills. |
 | Antigravity/Gemini | `~/.gemini/antigravity` | Deploy includes generated native skills. |
 

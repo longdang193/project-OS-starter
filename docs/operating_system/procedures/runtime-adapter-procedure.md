@@ -70,6 +70,9 @@ another name and model.
 Select executor and validator profiles independently from their bounded task
 contracts. A validator may be lower, equal, or higher than its executor when
 reliable for the validation task.
+Native Codex delegated worker and DeepAgents task or internal worker are
+executor choices; profile selection remains a separate bounded capability
+decision.
 Sync renders Codex TOML into
 `generated_agents/codex/agents/`. User-local `dcode-project` generates ignored
 DeepAgents project views at launch. Keep provider endpoints, credentials, MCP
@@ -183,13 +186,13 @@ projects it to DeepAgents' native `use_responses_api` model parameter:
 `chat` maps to `false`, `responses` maps to `true`. Unsupported protocols fail
 before child launch. Agent profiles do not duplicate protocol compatibility;
 the active provider binding owns that fact, so every profile using that provider
-follows the same launch mapping while Native Codex remains an independent path.
+follows the same launch mapping.
 
 `dcode-project` loads Codex configuration once per invocation. `--print-config`
 does not read credentials, generate role views, acquire role ownership, or
 launch a worker. Execution evidence separates controller model from selected
-worker model and omits worker binding evidence when no role is selected. Only the
-DeepAgents path validates `wire_api` and derives `use_responses_api`.
+worker model and omits worker binding evidence when no role is selected.
+DeepAgents validates `wire_api` and derives `use_responses_api`.
 
 Launcher performance evidence records monotonic durations for preflight, target
 discovery, worker initialization, delivery, observation, and retirement,
@@ -264,6 +267,15 @@ python "$HOME/.agents/project-os/scripts/validate_repo_contracts.py" --repo-root
 
 Run behavioral pytest separately. Contract validation does not orchestrate
 pytest.
+
+Executor selection answers who executes. Profile selection answers the bounded
+capability contract.
+
+Factory CI-safe adapter check (skip home-directory check):
+
+```bash
+python scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check
+```
 
 ## Agent Metadata Validation
 

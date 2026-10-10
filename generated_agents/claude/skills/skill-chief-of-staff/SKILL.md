@@ -73,8 +73,8 @@ Apply the CoS Executor Eligibility contract from
 After successful assignment, a MAIN AGENT executes autonomously inside its
 assigned task contract. It may choose implementation details, inspect direct
 consumers, use applicable skills and tools, debug and retry, run task-local
-verification, modify lane-owned files, and spawn Native Codex, DeepAgents, or
-executor-local sub-agents when needed when its Runtime Grant permits delegation.
+verification, modify lane-owned files, and spawn Native Codex or DeepAgents
+sub-agents when needed when its Runtime Grant permits delegation.
 Delegation inside lane scope does not need a separate CoS approval.
 
 A subordinate worker inherits a subset of its parent task's scope, authority,
@@ -144,7 +144,7 @@ wall-clock enforcement. Unsupported strict limits return `BLOCKED`.
 CoS may dispatch only top-level `codex` and `deepagents` MAIN AGENT lanes through
 Herdr. Codex lanes use top-level Codex main agents; DeepAgents lanes use the
 bounded `dcode-project` pane process. Every CoS-managed lane dispatch goes
-through Herdr; CoS never invokes subagents
+through Herdr, and CoS never invokes subagents
 directly. Use the repository Herdr command
 `py -B scripts/herdr_main_launcher.py ...` for dispatch. Monitor only the
 top-level lane and wrapper through provider-resolved wait/read operations; do

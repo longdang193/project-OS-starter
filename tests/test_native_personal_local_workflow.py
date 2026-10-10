@@ -141,7 +141,6 @@ def test_executor_selection_and_task_override_are_documented() -> None:
     assert "## Executor Selection" in dispatch
     assert "`codex`" in dispatch
     assert "`deepagents`" in dispatch
-    assert "`tura`" not in dispatch
     assert "These are advisory eligibility rules, not a classifier." in dispatch
     assert "Do not map profile rank" in dispatch
     assert "`Controller`" not in template
@@ -161,11 +160,9 @@ def test_git_tracked_coordination_uses_plan_ledger_not_session_ledger() -> None:
 
     assert "Git-tracked coordinated work requires" in procedure_text
     assert 'dcode-project --role <profile> -n "<task>"' in procedure_text
-    assert 'project-delegate --role <profile> -n "<task>"' not in procedure_text
     assert "Codex or DeepAgents" in procedure_text
     assert "Coordination State and task ledger" in executing_skill
     assert "active task ledger `Executor` and `Template Profile`\nvalues" in executing_skill
-    assert "project-delegate` for" not in executing_skill
     assert "profile is `none`" in executing_skill
     assert "active native Codex subagent capability" in executing_skill
     assert "Coordination State and task ledger" in subagent_skill
@@ -181,9 +178,8 @@ def test_runtime_adapter_contract_separates_executor_profile_and_auto() -> None:
         ROOT / "docs" / "operating_system" / "procedures" / "runtime-adapter-procedure.md"
     ).read_text(encoding="utf-8")
 
-    assert "project-delegate" not in procedure_text
-    assert "Tura" not in procedure_text
-    assert "DeepAgents" in procedure_text
+    assert "Native Codex delegated worker" in procedure_text
+    assert "DeepAgents task or internal worker" in procedure_text
 
 
 def test_cos_ssot_invariants_stay_symmetric() -> None:
@@ -215,7 +211,6 @@ def test_cos_ssot_invariants_stay_symmetric() -> None:
     assert "CoS implementation-lane eligibility follows the" in cos
     assert "implementation lanes;" not in cos
     assert "complete each lane's start and delivery claim before launching the next lane" in " ".join(cos.split())
-    assert "tura`" not in cos
     assert "Every CoS-managed lane dispatch goes through Herdr" in " ".join(cos.split())
     assert "Under plan-bound CoS, acquire and deliver Herdr MAIN" in parallel
     assert "Outside CoS, or inside an assigned MAIN AGENT lane" in parallel

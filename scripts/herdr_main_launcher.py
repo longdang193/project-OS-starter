@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
@@ -299,11 +299,7 @@ def _discard_deepagents_receipt(
         or not isinstance(acceptance_decision, Mapping)
         or not all(
             isinstance(value, str) and value
-            for value in (
-                expected_plan_identity,
-                expected_task_id,
-                expected_repository_identity,
-            )
+            for value in (expected_plan_identity, expected_task_id, expected_repository_identity)
         )
     ):
         return {"state": "preserved", "reason": "acceptance release binding unavailable"}
@@ -1293,22 +1289,34 @@ def _confirm_codex_start(
         process_info = _result(process_payload, "process_info")
         if not isinstance(process_info, dict):
             raise LaunchBlocked("Codex process information is invalid.")
-        processes = _process_records(process_info.get("foreground_processes"))
-        process_ids = _process_ids(processes, require_non_shell=True)
+        foreground_processes = process_info.get("foreground_processes")
+        processes = _process_records(foreground_processes)
+        _process_ids(processes, require_non_shell=True)
     except (CommandTransportTimeout, LaunchBlocked, json.JSONDecodeError) as exc:
         if isinstance(exc, LaunchBlocked) and str(exc).startswith("Codex "):
             raise
         raise LaunchBlocked("Codex process is not running before prompt delivery.") from exc
-    owned_process_ids = {
-        int(process["pid"])
-        for process in processes
-        if int(process["pid"]) not in before_process_ids
-        and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
-        and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+    owned_processes = _owned_process_records(
+        foreground_processes,
+        lambda process: (
+            int(process["pid"]) not in before_process_ids
+            and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+            and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+        ),
+    )
+    owned_process_ids = {int(process["pid"]) for process in owned_processes}
+    process_identities = {
+        identity
+        for process in owned_processes
+        if (identity := _process_identity(process)) is not None
     }
     if not owned_process_ids:
         raise LaunchBlocked("Codex process ownership is unconfirmed before prompt delivery.")
-    return {"agent_status": agent_status, "process_ids": sorted(owned_process_ids)}
+    return {
+        "agent_status": agent_status,
+        "process_ids": sorted(owned_process_ids),
+        "process_identities": sorted(process_identities),
+    }
 
 
 def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
@@ -1481,13 +1489,14 @@ def _reconcile_failed_codex_start(
                 "process_ids": sorted(process_ids),
                 "detail": "Codex identity evidence is unavailable",
             }
-        owned_processes = [
-            process
-            for process in processes
-            if int(process["pid"]) not in before_process_ids
-            and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
-            and _matches_codex_process(process, expected_codex_executable, expected_cwd)
-        ]
+        owned_processes = _owned_process_records(
+            foreground,
+            lambda process: (
+                int(process["pid"]) not in before_process_ids
+                and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+                and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+            ),
+        )
         if not owned_processes:
             return {
                 "state": "uncertain",
@@ -1502,7 +1511,25 @@ def _reconcile_failed_codex_start(
                 "process_ids": sorted(process_ids),
                 "detail": "process owner does not match failed attempt",
             }
-        cleanup = _terminate_codex_lane(herdr, session, pane, env=env)
+        cleanup = _terminate_codex_lane(
+            herdr,
+            session,
+            pane,
+            env=env,
+            ownership={
+                "session": session,
+                "pane": pane,
+                "agent": agent_name,
+                "worktree": str(expected_cwd),
+                "process_ids": sorted(int(process["pid"]) for process in owned_processes),
+                "process_identities": sorted(
+                    identity
+                    for process in owned_processes
+                    if (identity := _process_identity(process)) is not None
+                ),
+                "recovery_required": False,
+            },
+        )
         if cleanup.get("verified") is True:
             return {
                 "state": "retired",
@@ -1547,6 +1574,17 @@ def _shell_process_names(executor: str) -> set[str]:
     return _DEEPAGENTS_SHELL_PROCESS_NAMES if executor == "deepagents" else _SHELL_PROCESS_NAMES
 
 
+def _pane_records(panes: Any) -> list[dict[str, Any]]:
+    if not isinstance(panes, list) or any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("pane_id"), str)
+        or not item["pane_id"].strip()
+        for item in panes
+    ):
+        raise LaunchBlocked("termination verification returned invalid panes")
+    return panes
+
+
 def _process_records(processes: Any, *, require_pid: bool = True) -> list[dict[str, Any]]:
     if not isinstance(processes, list):
         raise LaunchBlocked("process information is not an array")
@@ -1570,6 +1608,31 @@ def _process_records(processes: Any, *, require_pid: bool = True) -> list[dict[s
     return records
 
 
+def _owned_process_records(
+    processes: Any,
+    owner_match: Callable[[Mapping[str, Any]], bool],
+) -> list[dict[str, Any]]:
+    if not isinstance(processes, list):
+        raise LaunchBlocked("process information is not an array")
+    owned: list[dict[str, Any]] = []
+
+    def collect(process: Any, inherited: bool = False) -> None:
+        if not isinstance(process, dict):
+            raise LaunchBlocked("process information contains invalid process data")
+        children = process.get("children", [])
+        if not isinstance(children, list):
+            raise LaunchBlocked("process information contains invalid child processes")
+        is_owned = inherited or owner_match(process)
+        if is_owned:
+            owned.append(process)
+        for child in children:
+            collect(child, is_owned)
+
+    for process in processes:
+        collect(process)
+    return owned
+
+
 def _process_ids(
     processes: Any,
     *,
@@ -1580,15 +1643,32 @@ def _process_ids(
     if not records:
         raise LaunchBlocked("termination verification returned empty process information")
     shell_names = shell_names or _SHELL_PROCESS_NAMES
-    process_ids: set[int] = set()
-    process_ids.update(
+    process_ids = {
         int(process["pid"])
         for process in records
-        if str(process.get("name", "")).lower() not in shell_names
-    )
+        if not require_non_shell or str(process.get("name", "")).lower() not in shell_names
+    }
     if require_non_shell and not process_ids:
         raise LaunchBlocked("termination verification found no launch-owned process")
     return process_ids
+
+
+def _process_identity(process: Mapping[str, Any]) -> str | None:
+    creation = next(
+        (
+            process.get(field)
+            for field in ("start_time_ns", "start_time", "creation_time", "create_time")
+            if isinstance(process.get(field), (int, float, str)) and str(process.get(field)).strip()
+        ),
+        None,
+    )
+    pid = process.get("pid")
+    if not isinstance(pid, int) or pid <= 0 or creation is None:
+        return None
+    return "|".join(
+        str(process.get(field, ""))
+        for field in ("pid", "name", "argv0", "cwd", "parent_pid")
+    ) + f"|creation={creation}"
 
 
 def _matches_codex_process(
@@ -1609,20 +1689,38 @@ def _matches_codex_process(
     )
 
 
-def _process_ids_alive(process_ids: set[int]) -> set[int]:
-    alive: set[int] = set()
-    for pid in process_ids:
+def _process_is_alive(pid: int) -> bool:
+    if os.name != "nt":
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
-            continue
-        except PermissionError:
-            alive.add(pid)
-        except OSError:
-            alive.add(pid)
-        else:
-            alive.add(pid)
-    return alive
+            return False
+        except (PermissionError, OSError):
+            return True
+        return True
+
+    try:
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(0x00100000 | 0x00001000, False, pid)
+        if not handle:
+            return ctypes.get_last_error() not in {87, 1168}
+        try:
+            wait_status = kernel32.WaitForSingleObject(handle, 0)
+            if wait_status == 0:
+                return False
+            if wait_status == 0x00000102:
+                return True
+            return True
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return True
+
+
+def _process_ids_alive(process_ids: set[int]) -> set[int]:
+    return {pid for pid in process_ids if _process_is_alive(pid)}
 
 
 def _deepagents_task_state(
@@ -2043,7 +2141,41 @@ def _terminate_codex_lane(
     pane: str,
     *,
     env: dict[str, str],
-    expected_process_identity: Mapping[str, Any] | None = None,
+    ownership: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(ownership, Mapping):
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "ownership record required",
+        }
+    if ownership.get("session") != session or ownership.get("pane") != pane:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "ownership binding mismatch",
+        }
+    if ownership.get("recovery_required") is True:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "ownership requires recovery",
+        }
+    lock_root = Path(str(ownership.get("worktree") or Path.cwd()))
+    with _pane_ownership_lock(lock_root, session, pane):
+        return _terminate_codex_lane_unlocked(herdr, session, pane, env=env, ownership=ownership)
+
+
+def _terminate_codex_lane_unlocked(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+    ownership: Mapping[str, Any],
 ) -> dict[str, Any]:
     before_result = _run(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -2064,35 +2196,75 @@ def _terminate_codex_lane(
             raise LaunchBlocked("termination verification returned invalid process information")
         before_processes = before_info.get("foreground_processes")
         before_records = _process_records(before_processes)
-        if expected_process_identity is not None:
-            expected_pid = expected_process_identity.get("pid")
-            expected_name = expected_process_identity.get("name")
-            expected_cwd = expected_process_identity.get("cwd")
-            current_process = next(
-                (process for process in before_records if process.get("pid") == expected_pid),
-                None,
-            )
-            if (
-                not isinstance(expected_pid, int)
-                or not isinstance(expected_name, str)
-                or not isinstance(expected_cwd, str)
-                or not isinstance(current_process, dict)
-                or current_process.get("name") != expected_name
-                or Path(str(current_process.get("cwd", ""))).resolve() != Path(expected_cwd).resolve()
-            ):
-                return {
-                    "requested": False,
-                    "action": "pane-close",
-                    "verified": False,
-                    "detail": "destructive process identity verification failed",
-                }
-        before_ids = _process_ids(before_processes, require_non_shell=True)
+        before_ids = _process_ids(before_records, require_non_shell=False) if before_records else set()
     except (LaunchBlocked, json.JSONDecodeError) as exc:
         return {
             "requested": False,
             "action": "pane-close",
             "verified": False,
             "detail": f"pre-close process verification failed: {exc}",
+        }
+
+    expected_process_identities = ownership.get("process_identities")
+    if not isinstance(expected_process_identities, list) or not expected_process_identities:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "owned process identity unavailable",
+        }
+    expected_process_identities = {
+        value for value in expected_process_identities if isinstance(value, str) and value
+    }
+    before_identities = {
+        identity
+        for process in before_records
+        if (identity := _process_identity(process)) is not None
+    }
+    pane_list_result = _run(
+        [herdr, "--session", session, "pane", "list"],
+        env=env,
+    )
+    if pane_list_result.returncode:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "pane ownership verification failed",
+        }
+    try:
+        panes = _pane_records(_result(json.loads(pane_list_result.stdout), "panes"))
+        selected = next((item for item in panes if item["pane_id"] == pane), None)
+    except (LaunchBlocked, json.JSONDecodeError, TypeError) as exc:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": f"pane ownership verification failed: {exc}",
+        }
+    if not isinstance(selected, dict):
+        owned_process_ids = set(ownership.get("process_ids", ())) | before_ids
+        remaining_ids = sorted(_process_ids_alive(owned_process_ids))
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": not remaining_ids,
+            "state": "pane-absent",
+            "remaining_process_ids": remaining_ids,
+        }
+    if not before_records or not expected_process_identities.issubset(before_identities):
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "owned process identity mismatch",
+        }
+    if selected.get("agent") != ownership.get("agent"):
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "pane owner mismatch",
         }
 
     close_result = _run(
@@ -2122,7 +2294,7 @@ def _terminate_codex_lane(
         }
     try:
         payload = json.loads(list_result.stdout)
-        panes = _result(payload, "panes")
+        panes = _pane_records(_result(payload, "panes"))
     except (LaunchBlocked, json.JSONDecodeError) as exc:
         return {
             "requested": True,
@@ -2130,16 +2302,10 @@ def _terminate_codex_lane(
             "verified": False,
             "detail": f"termination verification failed: {exc}",
         }
-    if not isinstance(panes, list):
-        return {
-            "requested": True,
-            "action": "pane-close",
-            "verified": False,
-            "detail": "termination verification returned invalid panes",
-        }
-    selected = next((item for item in panes if item.get("pane_id") == pane), None)
+    selected = next((item for item in panes if item["pane_id"] == pane), None)
     if not isinstance(selected, dict):
-        remaining_ids = sorted(_process_ids_alive(before_ids))
+        owned_process_ids = set(ownership.get("process_ids", ())) | before_ids
+        remaining_ids = sorted(_process_ids_alive(owned_process_ids))
         if remaining_ids:
             return {
                 "requested": True,
@@ -2184,6 +2350,11 @@ def _terminate_codex_lane(
     try:
         after_processes = _process_records(foreground)
         after_ids = _process_ids(after_processes, require_non_shell=False)
+        after_identities = {
+            identity
+            for process in after_processes
+            if (identity := _process_identity(process)) is not None
+        }
     except LaunchBlocked as exc:
         return {
             "requested": True,
@@ -2196,14 +2367,17 @@ def _terminate_codex_lane(
         for process in after_processes
         if str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
     ]
+    remaining_owned_ids = _process_ids_alive(set(ownership.get("process_ids", ())) | before_ids)
     return {
         "requested": True,
         "action": "pane-close",
-        "verified": not remaining and not (before_ids & after_ids),
+        "verified": not remaining and not (expected_process_identities & after_identities) and not remaining_owned_ids,
         "state": "shell-only" if not remaining else "processes-remain",
         "remaining_foreground_processes": remaining,
         "remaining_processes": remaining,
         "remaining_process_ids": sorted(before_ids & after_ids),
+        "remaining_owned_process_ids": sorted(remaining_owned_ids),
+        "remaining_process_identities": sorted(expected_process_identities & after_identities),
     }
 
 
@@ -2214,48 +2388,26 @@ def retire_lane(
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Retire only resources positively bound to one completed attempt."""
-
-    required = (
-        "repository_identity",
-        "assignment_id",
-        "attempt_id",
-        "session",
-        "pane",
-        "worktree",
-    )
-    missing = [name for name in required if not isinstance(bound_attempt.get(name), str) or not str(bound_attempt[name]).strip()]
+    required = ("repository_identity", "assignment_id", "attempt_id", "session", "pane", "worktree")
+    missing = [
+        name for name in required
+        if not isinstance(bound_attempt.get(name), str) or not str(bound_attempt[name]).strip()
+    ]
     if not isinstance(bound_attempt.get("plan_identity") or bound_attempt.get("lane_id"), str):
         missing.append("plan_identity_or_lane_id")
     if missing:
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "retirement binding incomplete",
-            "missing": missing,
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "retirement binding incomplete", "missing": missing}
 
     session = str(bound_attempt["session"])
     pane = str(bound_attempt["pane"])
     worktree = Path(str(bound_attempt["worktree"])).resolve()
     environment = env or _herdr_environment()
     try:
-        panes = _result(
-            _json_command([herdr, "--session", session, "pane", "list"], env=environment),
-            "panes",
-        )
+        panes = _result(_json_command([herdr, "--session", session, "pane", "list"], env=environment), "panes")
     except (LaunchBlocked, CommandTransportTimeout) as exc:
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "pane inventory unavailable",
-            "detail": str(exc),
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "pane inventory unavailable", "detail": str(exc)}
     if not isinstance(panes, list):
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "pane inventory invalid",
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "pane inventory invalid"}
     selected = next((item for item in panes if isinstance(item, dict) and item.get("pane_id") == pane), None)
     if selected is None:
         if (
@@ -2263,11 +2415,7 @@ def retire_lane(
             or bound_attempt.get("recovery_required") is True
             or bound_attempt.get("process_retirement_proven") is not True
         ):
-            return {
-                "state": "unresolved",
-                "recovery_required": True,
-                "reason": "absent pane lacks settled process-retirement proof",
-            }
+            return {"state": "unresolved", "recovery_required": True, "reason": "absent pane lacks settled process-retirement proof"}
         return {
             "state": "removed",
             "recovery_required": False,
@@ -2280,30 +2428,15 @@ def retire_lane(
         }
     selected_cwd = selected.get("cwd")
     if not isinstance(selected_cwd, str) or Path(selected_cwd).resolve() != worktree:
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "pane worktree binding mismatch",
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "pane worktree binding mismatch"}
     expected_agent = bound_attempt.get("agent_name")
     if not isinstance(expected_agent, str) or selected.get("agent") != expected_agent:
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "pane agent binding mismatch",
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "pane agent binding mismatch"}
     if bound_attempt.get("recovery_required") is True:
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "attempt requires recovery",
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "attempt requires recovery"}
     if bound_attempt.get("settled") is not True:
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "attempt settlement is not proven",
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "attempt settlement is not proven"}
+
     process_identity = bound_attempt.get("process_identity")
     expected_pid = process_identity.get("pid") if isinstance(process_identity, Mapping) else None
     expected_name = process_identity.get("name") if isinstance(process_identity, Mapping) else None
@@ -2317,61 +2450,37 @@ def retire_lane(
         or not isinstance(expected_cwd, str)
         or not expected_cwd.strip()
     ):
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "process ownership identity is unavailable",
-        }
+        return {"state": "unresolved", "recovery_required": True, "reason": "process ownership identity is unavailable"}
     try:
-        process_result = _json_command(
+        process_payload = _json_command(
             [herdr, "--session", session, "pane", "process-info", "--pane", pane],
             env=environment,
         )
-        process_info = process_result.get("result", {}).get("process_info") if isinstance(process_result, dict) else None
-        foreground = process_info.get("foreground_processes") if isinstance(process_info, dict) else None
-        current_processes = _process_records(foreground)
-        current_process_ids = _process_ids(current_processes, require_non_shell=True)
-    except (LaunchBlocked, CommandTransportTimeout) as exc:
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "process ownership evidence unavailable",
-            "detail": str(exc),
-        }
-    current_process = next(
-        (process for process in current_processes if int(process["pid"]) == expected_pid),
-        None,
-    )
+        process_info = _result(process_payload, "process_info")
+        current_processes = _process_records(process_info.get("foreground_processes")) if isinstance(process_info, dict) else []
+    except (LaunchBlocked, CommandTransportTimeout, json.JSONDecodeError) as exc:
+        return {"state": "unresolved", "recovery_required": True, "reason": "process ownership evidence unavailable", "detail": str(exc)}
+    current_process = next((process for process in current_processes if int(process["pid"]) == expected_pid), None)
     if (
         current_process is None
         or str(current_process.get("name", "")) != expected_name
         or Path(str(current_process.get("cwd", ""))).resolve() != Path(expected_cwd).resolve()
     ):
-        return {
-            "state": "unresolved",
-            "recovery_required": True,
-            "reason": "recorded process identity mismatch",
-        }
-    cleanup = _terminate_codex_lane(
-        herdr,
-        session,
-        pane,
-        env=environment,
-        expected_process_identity=process_identity,
-    )
+        return {"state": "unresolved", "recovery_required": True, "reason": "recorded process identity mismatch"}
+    ownership = dict(bound_attempt)
+    ownership.update({
+        "agent": expected_agent,
+        "process_ids": [expected_pid],
+        "process_identities": [_process_identity(current_process) or expected_name],
+    })
+    cleanup = _terminate_codex_lane(herdr, session, pane, env=environment, ownership=ownership)
     verified = cleanup.get("verified") is True
     return {
         "state": "removed" if verified else "unresolved",
         "recovery_required": not verified,
         "resources": {
-            "process": {
-                "state": "removed" if verified else "unresolved",
-                "detail": cleanup.get("detail"),
-            },
-            "pane": {
-                "state": "removed" if verified else "unresolved",
-                "detail": cleanup.get("detail"),
-            },
+            "process": {"state": "removed" if verified else "unresolved", "detail": cleanup.get("detail")},
+            "pane": {"state": "removed" if verified else "unresolved", "detail": cleanup.get("detail")},
             "session": {"state": "preserved", "reason": "session deletion not authorized"},
         },
         "termination": cleanup,
@@ -2999,27 +3108,6 @@ def _main_body(args: argparse.Namespace) -> int:
                         "task_accepted": task_result.get("accepted"),
                     }
                 )
-                if receipt.get("state") == "confirmed" and not receipt.get("recovery_required"):
-                    checkpoint = task_result.get("checkpoint")
-                    accepted_checkpoint_sha = (
-                        checkpoint.get("sha")
-                        if isinstance(checkpoint, Mapping)
-                        else None
-                    )
-                    cleanup["evidence_release"] = _discard_deepagents_receipt(
-                        receipt_file,
-                        assignment_id=assignment.get("assignment_id"),
-                        attempt_id=assignment.get("attempt_id"),
-                        accepted_checkpoint_sha=accepted_checkpoint_sha,
-                        settlement_persisted=receipt.get("cleanup_state") == "removed",
-                        expected_plan_identity=args.plan_identity,
-                        expected_task_id=args.secretary_task_id,
-                        expected_repository_identity=args.repository_identity,
-                        acceptance_decision=(
-                            assignment.get("acceptance_decision")
-                            or assignment.get("acceptance")
-                        ),
-                    )
             legacy = {
                 key: value
                 for key, value in assignment.items()
@@ -3307,7 +3395,7 @@ def _main_body(args: argparse.Namespace) -> int:
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
             if command[3:5] == ["agent", "start"]:
-                _confirm_codex_start(
+                start_identity = _confirm_codex_start(
                     herdr,
                     resolved_session,
                     resolved_pane,
@@ -3317,6 +3405,16 @@ def _main_body(args: argparse.Namespace) -> int:
                     expected_codex_executable=str(evidence["herdr"].get("codex_executable") or "codex"),
                     expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
                 )
+                evidence["herdr"].update(start_identity)
+                evidence["herdr"]["ownership"] = {
+                    "repository_identity": args.repository_identity,
+                    "plan_identity": args.plan_identity,
+                    "assignment_id": args.assignment_id,
+                    "attempt_id": attempt_id,
+                    "session": resolved_session,
+                    "pane": resolved_pane,
+                    "agent": agent_name,
+                }
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)

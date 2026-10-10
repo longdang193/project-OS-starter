@@ -1242,45 +1242,12 @@ def _cleanup_stale_direct_mcp_runtimes(parent: Path) -> None:
             continue
 
 
-def _remove_direct_mcp_runtime(runtime_root: Path) -> dict[str, object]:
-    if not runtime_root.exists():
-        return {"state": "removed", "reason": "already_absent"}
-    if runtime_root.is_symlink() or not runtime_root.is_dir():
-        return {"state": "preserved", "reason": "runtime path is not an owned directory"}
-    marker = runtime_root / _DIRECT_MCP_OWNER_MARKER
-    try:
-        owned = marker.is_file() and not marker.is_symlink() and marker.read_text(
-            encoding="utf-8"
-        ) == _DIRECT_MCP_OWNER_VALUE
-    except OSError as exc:
-        return {
-            "state": "unverified",
-            "reason": "runtime ownership could not be read",
-            "detail": str(exc),
-        }
-    if not owned:
-        return {"state": "preserved", "reason": "runtime ownership marker mismatch"}
-    try:
-        shutil.rmtree(runtime_root)
-    except OSError as exc:
-        return {
-            "state": "unverified",
-            "reason": "runtime deletion failed",
-            "detail": str(exc),
-            "remaining_paths": sorted(str(path) for path in runtime_root.rglob("*"))
-            if runtime_root.exists()
-            else [],
-        }
-    return {"state": "removed", "remaining_paths": []}
-
-
 @contextmanager
 def _direct_mcp_runtime(
     repo_root: Path,
     codex_config: dict[str, object],
     selected: list[str],
     environment: dict[str, str],
-    cleanup_report: dict[str, object] | None = None,
 ):
     previous_home = environment.get("DEEPAGENTS_HOME")
     previous_project_allowlist = environment.get(
@@ -1318,9 +1285,7 @@ def _direct_mcp_runtime(
                 "DEEPAGENTS_CODE_DANGEROUSLY_ENABLE_PROJECT_MCP_SERVERS"
             ] = previous_project_allowlist
         if runtime_root is not None:
-            result = _remove_direct_mcp_runtime(runtime_root)
-            if cleanup_report is not None:
-                cleanup_report.update(result)
+            shutil.rmtree(runtime_root, ignore_errors=True)
 
 def _controller_options(
     argv: list[str],
@@ -1509,8 +1474,11 @@ def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
             raise RuntimeError("Missing `[delegation].default_executor` configuration.")
         selected = value.strip().lower()
     if selected != "deepagents":
-        raise RuntimeError(f"Unsupported executor `{selected}`; use `deepagents`.")
+        raise RuntimeError(
+            f"Executor `{selected}` is retired; use `deepagents`."
+        )
     return selected
+
 
 def _handoff_root() -> Path:
     return Path.home().joinpath(*_HANDOFF_ROOT_PARTS)
@@ -1753,21 +1721,6 @@ def _append_bounded_task_context(
             if argument.startswith(option):
                 argv[index] += context
                 return
-
-
-def _task_argument(argv: list[str]) -> str:
-    for index, argument in enumerate(argv):
-        if argument in {"-n", "--non-interactive"}:
-            if _option_value_missing(argv, index, argument):
-                raise RuntimeError("DeepAgents task text is missing.")
-            return argv[index + 1]
-        for option in ("-n=", "--non-interactive="):
-            if argument.startswith(option):
-                task = argument[len(option) :]
-                if not task:
-                    raise RuntimeError("DeepAgents task text is missing.")
-                return task
-    raise RuntimeError("DeepAgents worker requires non-interactive task text via `-n`.")
 
 
 def _worker_timeout(
@@ -2090,7 +2043,6 @@ def main(argv: list[str]) -> int:
         descendant_state = "not_started"
         role_views_state = "unknown"
         cleanup_details: dict[str, object] = {}
-        mcp_cleanup_details: dict[str, object] = {}
         recovery_required = False
         cleanup_error: Exception | None = None
         try:
@@ -2128,7 +2080,6 @@ def main(argv: list[str]) -> int:
                     codex_config,
                     selected,
                     environment,
-                    mcp_cleanup_details,
                 ) as mcp_config_path:
                     worker_exit_code = _run_deepagents_worker(
                         [*dcode_argv, "--mcp-config", str(mcp_config_path)],
@@ -2203,16 +2154,6 @@ def main(argv: list[str]) -> int:
                     ),
                     "marker_state": "retained",
                 }
-            if mcp_cleanup_details:
-                cleanup_details["mcp_runtime"] = dict(mcp_cleanup_details)
-                mcp_state = mcp_cleanup_details.get("state")
-                if mcp_state != "removed":
-                    recovery_required = True
-                    role_views_state = (
-                        str(mcp_state)
-                        if mcp_state in {"preserved", "unverified"}
-                        else "unverified"
-                    )
             if result_file is not None:
                 _publish_result_receipt(
                     result_file,
@@ -2225,6 +2166,7 @@ def main(argv: list[str]) -> int:
                     shell_capabilities=shell_capabilities,
                     cleanup_details=cleanup_details,
                 )
+            task_result_publication_failed = False
             if task_result_file is not None and attempt_guard_binding is not None:
                 try:
                     publication_diagnostic = _worker_task_result_diagnostic(
@@ -2256,7 +2198,20 @@ def main(argv: list[str]) -> int:
                             },
                         )
                 except (OSError, RuntimeError, ValueError):
-                    task_result_file.unlink(missing_ok=True)
+                    recovery_required = True
+                    task_result_publication_failed = True
+            if task_result_publication_failed and result_file is not None:
+                _publish_result_receipt(
+                    result_file,
+                    attempt_id=str(attempt_id),
+                    worker_state=worker_state,
+                    worker_exit_code=worker_exit_code,
+                    descendant_state=descendant_state,
+                    role_views_state=role_views_state,
+                    recovery_required=True,
+                    shell_capabilities=shell_capabilities,
+                    cleanup_details=cleanup_details,
+                )
             if attempt_guard_binding is not None:
                 settlement_evidence = {
                     "state": "confirmed",

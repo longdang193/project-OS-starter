@@ -163,7 +163,6 @@ evidence source. Missing or unchanged output is `unknown` or
 store, event bus, or persistent runtime ledger. Raw terminal reads require an
 explicit disposable, bounded, redacted probe.
 
-
 DeepAgents controller may use built-in `task` for any discovered profile,
 including specialized profiles. Profiles are capability profiles, not fixed task roles.
 Controller defines open-ended task function through prompt and selects profile

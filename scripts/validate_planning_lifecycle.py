@@ -286,7 +286,9 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
         )
     elif len(executor_values) > 1:
         findings.append(Finding("planning_execution_error", rel, "`Default task executor` must appear at most once in `## Execution Approach`"))
-    elif executor_values and executor_values[0].lower() not in allowed_executors:
+    elif executor_values and executor_values[0].lower() not in allowed_executors and not (
+        status == "completed" and executor_values[0].lower() == "tura"
+    ):
         findings.append(
             Finding(
                 "planning_execution_error",
@@ -418,7 +420,7 @@ def validate_git_coordination(
 
     for row in rows:
         executor = row["executor"].strip().lower()
-        allowed_row_executors = allowed_executors | ({"unresolved"} if row["state"] in {"pending", "blocked"} else set())
+        allowed_row_executors = allowed_executors | ({"tura"} if row["state"] == "completed" else set()) | ({"unresolved"} if row["state"] in {"pending", "blocked"} else set())
         if executor not in allowed_row_executors:
             findings.append(
                 Finding(

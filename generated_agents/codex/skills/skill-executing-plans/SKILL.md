@@ -68,7 +68,6 @@ executor-neutral. `codex.mcp.handoff.v1` carries facts and provenance only, not
 tool access. Direct config is temporary launcher-owned state under isolated
 child `DEEPAGENTS_HOME`; project MCP config stays untouched and untrusted.
 
-When an active task selects `deepagents`, use the explicit `dcode-project` adapter.
 When it selects `deepagents`, use `dcode-project`. Executor selection does not
 transfer Git coordination, acceptance, or required Codex-owned capabilities.
 
@@ -142,8 +141,8 @@ supervised top-level Codex main agent or bounded DeepAgents pane process after
 plan, runtime parity, lane identity, and profile-binding gates pass; CoS must
 not fall back to native subagents.
 CoS must not call `multi_agent_v1`, native Codex subagents, DeepAgents internal
-`task` workers, or executor-local reviewers or helpers
-directly. Assigned MAIN AGENTS may spawn Native Codex or DeepAgents
+`task` workers, or executor-local reviewers or helpers directly. Assigned MAIN
+AGENTS may spawn Native Codex or DeepAgents
 sub-agents when needed within their lanes when `delegation.child_agents: allow`;
 those sub-agents must not spawn peer MAIN AGENTS or activate CoS.
 `Executor Selection` owns executor choice, while `Template Profile` and

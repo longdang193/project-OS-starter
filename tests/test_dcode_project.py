@@ -216,19 +216,34 @@ with launcher._role_views_lock(root):
     )
 
 
+def tura_config(
+    tmp_path: Path,
+    *,
+    default_executor: str = "tura",
+) -> dict[str, object]:
+    return {
+        "delegation": {"default_executor": default_executor},
+        "paths": {
+            "tura_executable": str(tmp_path / "tura.exe"),
+            "tura_provider_config": str(tmp_path / "providers.toml"),
+        },
+    }
+
+
 def test_executor_resolution_prefers_explicit_then_configured_default(tmp_path: Path) -> None:
-    config = {"delegation": {"default_executor": "deepagents"}}
+    config = tura_config(tmp_path)
 
     assert LAUNCHER._resolve_executor(config, "deepagents") == "deepagents"
-    assert LAUNCHER._resolve_executor(config, None) == "deepagents"
+    with pytest.raises(RuntimeError, match="retired"):
+        LAUNCHER._resolve_executor(config, None)
 
 
 @pytest.mark.parametrize(
     ("config", "explicit", "message"),
     [
         ({}, None, "default_executor"),
-        ({"delegation": {"default_executor": "codex"}}, None, "executor"),
-        ({"delegation": {"default_executor": "legacy"}}, "codex", "executor"),
+        ({"delegation": {"default_executor": "codex"}}, None, "retired"),
+        ({"delegation": {"default_executor": "tura"}}, "codex", "retired"),
     ],
 )
 def test_executor_resolution_rejects_missing_or_invalid_values(
@@ -255,14 +270,14 @@ def test_controller_options_extracts_executor_once() -> None:
         grant_digest,
         prior_attempt_known,
     ) = LAUNCHER._controller_options(
-        ["--executor", "deepagents", "--role", "normal", "-n", "task"]
+        ["--executor", "tura", "--role", "normal", "-n", "task"]
     )
 
     assert child == ["-n", "task"]
     assert selections == []
     assert handoff is None
     assert role == "normal"
-    assert executor == "deepagents"
+    assert executor == "tura"
     assert result_file is None
     assert attempt_id is None
     assert assignment_id is None
@@ -541,6 +556,47 @@ def test_deepagents_main_demotes_missing_or_malformed_worker_task_result(
     assert payload["progress"]["publication_diagnostic"] == {"reason": "task result malformed"}
 
 
+def test_deepagents_main_republishes_recovery_receipt_when_task_result_publication_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    task_result_file.write_text("{malformed", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "publish_task_result",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("publication unavailable")),
+    )
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "repository_identity": "repo-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
+    }
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", binding["attempt_id"],
+        "--assignment-id", binding["assignment_id"],
+        "--repository-identity", binding["repository_identity"],
+        "--task-sha256", binding["task_sha256"], "--grant-digest", binding["grant_digest"],
+    ]) == 0
+
+    receipt = json.loads(result_file.read_text(encoding="utf-8"))
+    assert receipt["recovery_required"] is True
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id=binding["assignment_id"],
+        binding={**binding, "executor": "deepagents"},
+        repo_root=tmp_path,
+    )
+    assert reconciled["state"] != "SETTLED"
+
+
 def test_deepagents_main_rejects_unauthorized_worker_producer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -717,7 +773,7 @@ def test_bounded_worker_reports_post_start_error_facts(
     monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
 
     with pytest.raises(LAUNCHER._WorkerLifecycleError, match="failed after process creation") as error:
-        LAUNCHER._run_bounded_worker(["worker"], {}, tmp_path, None, 3, "worker")
+        LAUNCHER._run_deepagents_worker(["worker"], {}, tmp_path, None, 3)
 
     assert error.value.facts == LAUNCHER._WorkerLifecycleFacts(
         "failed", None, "unknown", False
@@ -1439,16 +1495,12 @@ def test_bounded_task_value_may_start_with_dash(tmp_path: Path) -> None:
     deepagents_argv = list(argv)
     LAUNCHER._append_bounded_task_context(deepagents_argv, tmp_path)
     assert deepagents_argv[1].startswith("--- layer: change")
-    assert LAUNCHER._task_argument(argv) == "--- layer: change"
 
 
 def test_worker_timeout_defaults_are_executor_specific() -> None:
     assert LAUNCHER._worker_timeout(
         ["-n", "task"], default=420.0, worker_name="DeepAgents"
     ) == 420.0
-    assert LAUNCHER._worker_timeout(
-        ["-n", "task"], default=120.0, worker_name="worker"
-    ) == 120.0
     assert LAUNCHER._worker_timeout(
         ["-n", "task", "--timeout=600"], default=None, worker_name="DeepAgents"
     ) == 600.0
@@ -1743,9 +1795,11 @@ def test_print_config_without_role_omits_worker_binding(
     assert "runtime_binding_digest" not in payload
 
 
+@pytest.mark.parametrize("executor", ["deepagents"])
 def test_runtime_binding_loads_codex_config_once_per_invocation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    executor: str,
 ) -> None:
     write_role(tmp_path, "normal")
     secret_file = tmp_path / "secret.env"
@@ -1759,9 +1813,9 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
     )
     config_path = tmp_path / "dcode-project.toml"
     config_path.write_text(
-        f"[delegation]\ndefault_executor = 'deepagents'\n[paths]\n"
+        f"[delegation]\ndefault_executor = '{executor}'\n[paths]\n"
         f"codex_config = '{codex_path}'\nsecret_file = '{secret_file}'\n"
-        f"secret_key = 'API_KEY'\n",
+        "secret_key = 'API_KEY'\n",
         encoding="utf-8",
     )
     original_load = LAUNCHER._load_toml
@@ -2284,28 +2338,6 @@ def test_direct_mcp_janitor_removes_only_owned_stale_runtime(tmp_path: Path) -> 
     assert fresh.exists()
 
 
-def test_direct_mcp_cleanup_reports_deletion_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    runtime = tmp_path / "runtime"
-    runtime.mkdir()
-    (runtime / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text(
-        LAUNCHER._DIRECT_MCP_OWNER_VALUE,
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        LAUNCHER.shutil,
-        "rmtree",
-        lambda path: (_ for _ in ()).throw(PermissionError("locked")),
-    )
-
-    result = LAUNCHER._remove_direct_mcp_runtime(runtime)
-
-    assert result["state"] == "unverified"
-    assert runtime.exists()
-
-
 def test_direct_mcp_parent_initialization_tolerates_concurrent_creator(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2603,21 +2635,89 @@ def test_setup_launcher_uses_current_repository_source() -> None:
     assert 'Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"' in setup
     assert setup.index('$launcher = Join-Path $repoRoot "scripts\\dcode_project.py"') < setup.index('$launcher = Join-Path $HOME ".agents\\project-os\\scripts\\dcode_project.py"')
     assert 'dcode-project.ps1' in setup
-    assert 'default_executor' not in setup
-    assert 'Tura' not in setup
-    assert 'project-delegate' not in setup
     assert 'selects DeepAgents; do not pass --executor' in setup
+    assert 'project-delegate' not in setup
     assert '[string]$SecretFile = (Join-Path $HOME ".codex\\tokenpilot.env")' in setup
     assert '[string]$SecretKey = "OPENAI_API_KEY"' in setup
     assert 'Write-TextIfChanged -Path $configPath -Content $config' in setup
     assert 'function Write-TextIfChanged' in setup
     assert "DEEPAGENTS_HOME" in setup
+    assert "GetUnresolvedProviderPathFromPSPath" in setup
     assert "Direct DeepAgents MCP config detected" in setup
     assert '$DeepAgentsCodeVersion = "0.1.74"' in setup
     assert 'deepagents-code==$DeepAgentsCodeVersion' in setup
+    assert 'langgraph-api==' not in setup
+    assert 'langgraph-runtime-inmem==' not in setup
+    assert 'uvicorn==' not in setup
+    assert '$env:UV_TOOL_DIR = $deepAgentsToolRoot' in setup
+    assert '$env:UV_TOOL_BIN_DIR = $deepAgentsBinRoot' in setup
     assert '$managedDcodePath = Join-Path $deepAgentsBinRoot "dcode.exe"' in setup
+    assert 'Copy-Item -LiteralPath $dcodePath -Destination (Join-Path $binRoot "dcode.exe") -Force' not in setup
     assert 'dcode-doctor.ps1' in setup
+    assert 'DEEPAGENTS_CODE_UI_CHARSET_MODE = "ascii"' in setup
+    assert '$env:PYTHONUTF8 = "1"' in setup
+    assert '$env:PYTHONIOENCODING = "utf-8"' in setup
+    assert setup.index('$env:PYTHONUTF8 = "1"') < setup.index('& $dcodePath doctor')
+    assert setup.index('$env:PYTHONIOENCODING = "utf-8"') < setup.index('& $dcodePath doctor')
     assert "Python 3.12 or newer" in setup
     assert "version mismatch" in setup
     assert "patch_deepagents_runtime.py" in setup
     assert "mcp_tools.py" in setup
+
+
+@pytest.mark.parametrize(
+    ("wrapper_name", "executor"),
+    [("dcode-project", "deepagents")],
+)
+def test_generated_wrappers_prefer_local_launcher_and_fallback_to_shared(
+    tmp_path: Path,
+    wrapper_name: str,
+    executor: str,
+) -> None:
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    py_launcher = shutil.which("py")
+    if powershell is None or py_launcher is None:
+        pytest.skip("PowerShell and the py launcher are required")
+
+    repo = tmp_path / "consumer repo with spaces"
+    (repo / "scripts").mkdir(parents=True)
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    fake_home = tmp_path / "home with spaces"
+    shared = fake_home / ".agents" / "project-os" / "scripts"
+    shared.mkdir(parents=True)
+    setup = runtime_script("setup_deepagents_runtime.ps1").read_text(encoding="utf-8").replace("\r\n", "\n")
+    variable = "$wrapper"
+    start = setup.index(f"{variable} = @'\n") + len(f"{variable} = @'\n")
+    end = setup.index("\n'@\n", start)
+    wrapper_path = tmp_path / f"{wrapper_name}.ps1"
+    wrapper_path.write_text(setup[start:end] + "\n", encoding="utf-8")
+
+    (repo / "scripts" / "dcode_project.py").write_text(
+        "import sys; print(' '.join(sys.argv[1:])); raise SystemExit(7)\n",
+        encoding="utf-8",
+    )
+    (shared / "dcode_project.py").write_text(
+        "import sys; print('shared:' + ' '.join(sys.argv[1:])); raise SystemExit(8)\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment.update({"HOME": str(fake_home), "USERPROFILE": str(fake_home)})
+
+    def run_wrapper() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(wrapper_path), "probe"],
+            cwd=repo,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    local_result = run_wrapper()
+    assert local_result.returncode == 7
+    assert f"--executor {executor} probe" in local_result.stdout
+
+    (repo / "scripts" / "dcode_project.py").unlink()
+    shared_result = run_wrapper()
+    assert shared_result.returncode == 8
+    assert f"shared:--executor {executor} probe" in shared_result.stdout

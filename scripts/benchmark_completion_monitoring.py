@@ -256,8 +256,6 @@ def main(argv: list[str] | None = None) -> int:
         "fixed_budgets": harness_payload["budgets"],
         "cases": list(CASES),
         "repetitions_per_case_and_side": args.repetitions,
-        "rows": rows,
-        "pairs": pairs,
         "summary": summary,
         "correctness": {
             "lifecycle_mismatches": sum(not pair["lifecycle_match"] for pair in pairs),

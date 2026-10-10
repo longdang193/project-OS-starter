@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 import pytest
 
@@ -200,6 +201,253 @@ def test_cos_acceptance_rejects_false_artifact_and_keeps_dependent_pending() -> 
     assert decision["decision"] == "FAIL"
     assert transition["authorized"] is False
     assert transition["next_state"] == "pending"
+
+
+def test_evidence_release_requires_consumer_release_and_expired_retention() -> None:
+    from scripts.project_os_runtime.acceptance import authorize_evidence_release, evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["git"].update({
+        "lane_head_sha": "candidate-1",
+        "checkpoint_sha": "checkpoint-1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    })
+    decision = evaluate_acceptance(**inputs)
+    binding = {
+        "plan_ref": "plan-1",
+        "task_id": "Task 1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "candidate_sha": "candidate-1",
+        "acceptance_checkpoint_sha": "checkpoint-1",
+        "evidence_ref": "task-result-1",
+    }
+    canonical = {**binding, "authorized": True}
+    releases = {
+        "secretary": {
+            "consumer": "secretary",
+            "authorized": True,
+            "plan_ref": "plan-1",
+            "task_id": "Task 1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "candidate_sha": "candidate-1",
+            "acceptance_checkpoint_sha": "checkpoint-1",
+            "evidence_ref": "task-result-1",
+        }
+    }
+    retention = {"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}}
+
+    result = authorize_evidence_release(
+        decision,
+        binding=binding,
+        canonical_consequence=canonical,
+        required_consumers=["secretary"],
+        consumer_releases=releases,
+        retention=retention,
+    )
+
+    assert result["authorized"] is True
+    assert result["payload_released"] is False
+    assert result["tombstone_released"] is False
+
+
+def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance, release_authorized_evidence
+
+    inputs = _acceptance_inputs()
+    inputs["git"].update({
+        "lane_head_sha": "candidate-1",
+        "checkpoint_sha": "checkpoint-1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    })
+    decision = evaluate_acceptance(**inputs)
+    binding = {
+        "plan_ref": "plan-1",
+        "task_id": "Task 1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "candidate_sha": "candidate-1",
+        "acceptance_checkpoint_sha": "checkpoint-1",
+        "evidence_ref": "task-result-1",
+    }
+    evidence_path = tmp_path / "task-result.json"
+    evidence_path.write_text("evidence", encoding="utf-8")
+
+    result = release_authorized_evidence(
+        decision,
+        binding=binding,
+        canonical_consequence={**binding, "authorized": True},
+        required_consumers=["secretary"],
+        consumer_releases={
+            "secretary": {
+                "consumer": "secretary",
+                "authorized": True,
+                "plan_ref": "plan-1",
+                "task_id": "Task 1",
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "candidate_sha": "candidate-1",
+                "acceptance_checkpoint_sha": "checkpoint-1",
+                "evidence_ref": "task-result-1",
+            }
+        },
+        retention={"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}},
+        evidence_paths={"task-result-1": evidence_path},
+    )
+
+    assert result["authorized"] is True
+    assert result["payload_released"] is True
+    assert not evidence_path.exists()
+
+
+def test_evidence_release_rejects_stale_acceptance_proof(tmp_path: Path) -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance, release_authorized_evidence
+
+    inputs = _acceptance_inputs()
+    inputs["git"].update({
+        "lane_head_sha": "candidate-1",
+        "checkpoint_sha": "checkpoint-1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    })
+    decision = evaluate_acceptance(**inputs)
+    decision["acceptance_proof"]["freshness"]["head_matches"] = False
+    binding = {
+        "plan_ref": "plan-1",
+        "task_id": "Task 1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "candidate_sha": "candidate-1",
+        "acceptance_checkpoint_sha": "checkpoint-1",
+        "evidence_ref": "task-result-1",
+    }
+    evidence_path = tmp_path / "task-result.json"
+    evidence_path.write_text("evidence", encoding="utf-8")
+
+    result = release_authorized_evidence(
+        decision,
+        binding=binding,
+        canonical_consequence={**binding, "authorized": True},
+        required_consumers=["secretary"],
+        consumer_releases={"secretary": {**binding, "consumer": "secretary", "authorized": True}},
+        retention={"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}},
+        evidence_paths={"task-result-1": evidence_path},
+    )
+
+    assert result["authorized"] is False
+    assert evidence_path.exists()
+
+
+def test_evidence_release_rejects_empty_acceptance_conditions(tmp_path: Path) -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance, release_authorized_evidence
+
+    inputs = _acceptance_inputs()
+    inputs["git"].update({
+        "lane_head_sha": "candidate-1",
+        "checkpoint_sha": "checkpoint-1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    })
+    decision = evaluate_acceptance(**inputs)
+    decision["acceptance_proof"]["required_conditions"] = {}
+    decision["acceptance_proof"]["artifact_conditions"] = {}
+    binding = {
+        "plan_ref": "plan-1",
+        "task_id": "Task 1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "candidate_sha": "candidate-1",
+        "acceptance_checkpoint_sha": "checkpoint-1",
+        "evidence_ref": "task-result-1",
+    }
+    evidence_path = tmp_path / "task-result.json"
+    evidence_path.write_text("evidence", encoding="utf-8")
+
+    result = release_authorized_evidence(
+        decision,
+        binding=binding,
+        canonical_consequence={**binding, "authorized": True},
+        required_consumers=["secretary"],
+        consumer_releases={"secretary": {**binding, "consumer": "secretary", "authorized": True}},
+        retention={"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}},
+        evidence_paths={"task-result-1": evidence_path},
+    )
+
+    assert result["authorized"] is False
+    assert evidence_path.exists()
+
+
+def test_worker_acceptance_does_not_authorize_evidence_release() -> None:
+    from scripts.project_os_runtime.acceptance import authorize_evidence_release, evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["git"].update({
+        "lane_head_sha": "candidate-1",
+        "checkpoint_sha": "checkpoint-1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    })
+    inputs["evidence"]["accepted"] = True
+    decision = evaluate_acceptance(**inputs)
+    binding = {
+        "plan_ref": "plan-1",
+        "task_id": "Task 1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "candidate_sha": "candidate-1",
+        "acceptance_checkpoint_sha": "checkpoint-1",
+        "evidence_ref": "task-result-1",
+    }
+
+    result = authorize_evidence_release(
+        decision,
+        binding=binding,
+        canonical_consequence={**binding, "authorized": True},
+        required_consumers=["secretary"],
+        consumer_releases={},
+        retention={},
+    )
+
+    assert result["authorized"] is False
+    assert "consumer release: secretary" in result["reasons"]
+
+
+def test_evidence_release_rejects_wrong_task_and_empty_consumer_inventory() -> None:
+    from scripts.project_os_runtime.acceptance import authorize_evidence_release, evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["git"].update({
+        "lane_head_sha": "candidate-1",
+        "checkpoint_sha": "checkpoint-1",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    })
+    decision = evaluate_acceptance(**inputs)
+    binding = {
+        "plan_ref": "plan-1",
+        "task_id": "Task 2",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "candidate_sha": "candidate-1",
+        "acceptance_checkpoint_sha": "checkpoint-1",
+        "evidence_ref": "task-result-1",
+    }
+
+    result = authorize_evidence_release(
+        decision,
+        binding=binding,
+        canonical_consequence={**binding, "authorized": True},
+        required_consumers=[],
+        consumer_releases={},
+        retention={},
+    )
+
+    assert result["authorized"] is False
+    assert "task binding" in result["reasons"]
+    assert "required consumers" in result["reasons"]
 
 
 def test_cos_acceptance_passes_and_authorizes_only_ready_dependent() -> None:

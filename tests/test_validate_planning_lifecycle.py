@@ -352,7 +352,7 @@ def test_completed_git_tracked_plan_keeps_legacy_authority_wording() -> None:
         plan = git_tracked_plan(
             status="completed",
             coordination_schema=1,
-            ledger="| Task 1 | `completed` | current | codex | none | `test-one` | recorded proof |",
+            ledger="| Task 1 | `completed` | current | tura | none | `test-one` | recorded proof |",
         ).replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
         plan = plan.replace(
             "- Preauthorized local actions: local test actions",
@@ -697,11 +697,32 @@ def test_completed_plan_allows_historical_validator_executor_label() -> None:
             git_tracked_plan(
                 status="completed",
                 coordination_schema=1,
-                ledger="| Task 1 | `completed` | current | codex | none | `test-one` | recorded proof |",
+                ledger="| Task 1 | `completed` | current | tura | none | `test-one` | recorded proof |",
             ).replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
             .replace("- Next action: `Complete Task 1`", "- Next action: `none`")
             .replace("- Coordination: `git-tracked`", "- Coordination: `git-tracked`\n- Validator executor: `review`"),
         )
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
+def test_completed_plan_allows_historical_tura_default_executor() -> None:
+    root = make_test_root()
+    try:
+        plan = git_tracked_plan(
+            status="completed",
+            coordination_schema=1,
+            ledger="| Task 1 | `completed` | current | tura | none | `test-one` | recorded proof |",
+        ).replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
+        plan = plan.replace(
+            "- Coordination: `git-tracked`",
+            "- Coordination: `git-tracked`\n- Default task executor: `tura`",
+        )
+        write_text(root / "docs" / "superpowers" / "plans" / "demo-plan.md", plan)
 
         result = run_validator(root)
 
@@ -825,7 +846,7 @@ def test_modern_completed_plan_allows_post_verification_next_action() -> None:
             git_tracked_plan(
                 status="completed",
                 coordination_schema=1,
-                ledger="| Task 1 | `completed` | current | codex | none | `test-one` | recorded proof |",
+                ledger="| Task 1 | `completed` | current | tura | none | `test-one` | recorded proof |",
             )
             .replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
             .replace("- Next action: `Complete Task 1`", "- Next action: `await authorized branch disposition`")

@@ -18,7 +18,7 @@ def test_chief_of_staff_has_single_required_read_and_clear_ownership() -> None:
     assert "CoS has no direct Git or PR authority" in skill
     normalized = " ".join(skill.split())
     assert "`deepagents` uses a CoS-managed `dcode-project`" in normalized
-    assert "`tura`" not in skill
+    assert "tura" not in skill.lower()
     assert "top-level lane selection" in skill
 
 
@@ -297,7 +297,6 @@ def test_chief_of_staff_uses_herdr_for_top_level_lane_dispatch() -> None:
         "`multi_agent_v1`",
         "native Codex subagents",
         "DeepAgents internal `task` workers",
-        "executor-local workers",
         "executor-local reviewers or helpers",
     ):
         assert forbidden in skill
@@ -344,7 +343,7 @@ def test_planning_dispatch_selects_cos_for_sustained_implementation_coordination
     assert "Herdr is\nruntime transport and diagnostic observation, not lifecycle ownership" in dispatch
     assert "only independent Herdr top-level MAIN AGENT\nlanes" in dispatch
     assert "never calls\n`multi_agent_v1`, native Codex subagents" in dispatch
-    assert "`tura`" not in dispatch
+    assert "tura" not in dispatch.lower()
 
 
 def test_main_agents_can_delegate_without_granting_peer_authority() -> None:
@@ -388,11 +387,9 @@ def test_planning_dispatch_defines_cos_executor_eligibility_overlay() -> None:
         "CoS eligibility limits which selected executors CoS may dispatch through Herdr",
         "`codex`: implementation, review, integration, acceptance, MCP, connected tools",
         "`deepagents`: bounded repo-local implementation lane",
-        "CoS coordinates only eligible `codex` and `deepagents` lanes",
+                "CoS coordinates only eligible `codex` and `deepagents` lanes",
     ):
         assert text in normalized
-    assert "`tura`" not in normalized
-    assert "project-delegate" not in normalized
 
 
 def test_chief_of_staff_references_cos_executor_eligibility_contract() -> None:
