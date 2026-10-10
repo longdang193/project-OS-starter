@@ -1133,6 +1133,77 @@ def test_attempt_guard_synthesizes_legacy_release_binding_for_replay(
     assert replacement["record"]["release_binding"] == binding
 
 
+def test_attempt_guard_migrates_legacy_resources_and_bounds_retired_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    base = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    resource = {
+        "state": "pending",
+        "attempt_id": "attempt-1",
+        "evidence_ref": "task-result",
+        "attempt_root": str(tmp_path),
+        "relative_path": "task-result.json",
+        "content_sha256": "digest-1",
+        "producer": "dcode-project",
+        "schema": "dcode-project.task-result.v1",
+    }
+    LAUNCHER._claim_attempt(**base, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=base, settlement_proven=True)
+    first = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=base,
+        release_authorization={"resources": {"task-result": resource}},
+    )
+    first.pop("release_binding", None)
+    LAUNCHER._write_attempt_guard(LAUNCHER._attempt_guard_path("assignment-1"), first)
+
+    replacement = LAUNCHER._claim_attempt(
+        **dict(base, attempt_id="attempt-2", grant_digest="grant-2"),
+        repo_root=tmp_path,
+        result_file=None,
+    )
+
+    assert replacement["record"]["released_resources_by_attempt"]["attempt-1"]["task-result"] == resource
+
+    second = dict(base, attempt_id="attempt-2", grant_digest="grant-2")
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=second,
+        settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+    for attempt_number in range(3, 70):
+        binding = dict(base, attempt_id=f"attempt-{attempt_number}", grant_digest=f"grant-{attempt_number}")
+        claim = LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+        if claim["admission"] == "RECONCILE":
+            assert len(claim["record"].get("retired_attempts", [])) == LAUNCHER._MAX_RETIRED_ATTEMPTS
+            break
+        LAUNCHER._settle_attempt(
+            assignment_id="assignment-1",
+            binding=binding,
+            settlement_proven=True,
+            settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+        )
+        LAUNCHER.record_release_authorization(
+            assignment_id="assignment-1",
+            binding=binding,
+            release_authorization={
+                "canonical_consequence": {"checkpoint_verified": True},
+                "resources": {"task-result": {"state": "removed"}},
+            },
+        )
+    else:
+        pytest.fail("retired attempt history did not reach its bounded admission limit")
+
+
 def test_attempt_guard_records_release_resources(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

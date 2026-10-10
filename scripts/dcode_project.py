@@ -120,6 +120,7 @@ _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
 _ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
 _ATTEMPT_GUARD_PARENT = "attempts"
 _ATTEMPT_GUARD_SCHEMA = "dcode-project.attempt.v1"
+_MAX_RETIRED_ATTEMPTS = 16
 _ATTEMPT_GUARD_MAX_BYTES = 16 * 1024
 _RESULT_SCHEMA = RESULT_SCHEMA
 _RESULT_MAX_BYTES = RESULT_MAX_BYTES
@@ -845,6 +846,13 @@ def _claim_attempt_unlocked(
         }
         retired_attempt["generation"] = _attempt_generation(existing)
         if not any(same_attempt_binding(item, retired_attempt) for item in retired_attempts):
+            if len(retired_attempts) >= _MAX_RETIRED_ATTEMPTS:
+                return {
+                    "state": "RECOVERY_REQUIRED",
+                    "action": "RECONCILE",
+                    "admission": "RECONCILE",
+                    "record": existing,
+                }
             retired_attempts.append(retired_attempt)
         candidate["retired_attempts"] = retired_attempts
         terminal_tombstone = existing.get("terminal_release_tombstone")
@@ -904,6 +912,15 @@ def _claim_attempt_unlocked(
                     )
                     if field in existing
                 }
+            if isinstance(existing.get("released_resources"), Mapping):
+                release_binding = candidate.get("release_binding")
+                if isinstance(release_binding, Mapping) and isinstance(release_binding.get("attempt_id"), str):
+                    by_attempt = dict(candidate.get("released_resources_by_attempt", {}))
+                    by_attempt.setdefault(
+                        str(release_binding["attempt_id"]),
+                        dict(existing["released_resources"]),
+                    )
+                    candidate["released_resources_by_attempt"] = by_attempt
         candidate["release_state"] = "pending"
         candidate.pop("released_resources", None)
         _write_attempt_guard(path, candidate)
