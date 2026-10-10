@@ -343,15 +343,26 @@ def release_authorized_evidence(
     evidence_ref = binding.get("evidence_ref")
     path = evidence_paths.get(evidence_ref) if isinstance(evidence_ref, str) else None
     if not isinstance(path, Path) or not path.is_file() or path.is_symlink():
+        recorded_resources = release_record.get("resources") if isinstance(release_record, Mapping) else None
+        recorded_resource = recorded_resources.get(evidence_ref) if isinstance(recorded_resources, Mapping) else None
         if (
             isinstance(release_record, Mapping)
             and release_record.get("authorized") is True
             and release_record.get("binding") == dict(binding)
+            and set(recorded_resources or ()) == {evidence_ref}
+            and isinstance(recorded_resource, Mapping)
+            and recorded_resource.get("state") in {"removed", "already_absent"}
         ):
             return {
                 **result,
                 "payload_released": True,
-                "resources": dict(release_record.get("resources", {})),
+                "resources": {evidence_ref: dict(recorded_resource)},
+            }
+        if isinstance(release_record, Mapping) and release_record.get("authorized") is True:
+            return {
+                **result,
+                "authorized": False,
+                "reasons": ["durable release record incomplete"],
             }
         return {
             **result,
@@ -359,18 +370,14 @@ def release_authorized_evidence(
             "reasons": ["exact evidence path unavailable"],
         }
     resources: dict[str, dict[str, Any]] = {}
-    for resource_name, resource_path in evidence_paths.items():
-        if not isinstance(resource_path, Path) or resource_path.is_symlink():
-            resources[resource_name] = {"state": "unverified"}
-            continue
-        try:
-            resource_path.unlink()
-        except FileNotFoundError:
-            resources[resource_name] = {"state": "already_absent"}
-        except OSError as exc:
-            resources[resource_name] = {"state": "unverified", "detail": str(exc)}
-        else:
-            resources[resource_name] = {"state": "removed"}
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        resources[evidence_ref] = {"state": "already_absent"}
+    except OSError as exc:
+        resources[evidence_ref] = {"state": "unverified", "detail": str(exc)}
+    else:
+        resources[evidence_ref] = {"state": "removed"}
     failed = [name for name, state in resources.items() if state["state"] == "unverified"]
     if failed:
         return {

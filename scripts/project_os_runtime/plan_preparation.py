@@ -405,7 +405,28 @@ def apply_accepted_plan_transitions(
         retention=evidence_release.get("retention", {}),
         evidence_paths=evidence_release.get("evidence_paths", {}),
         recovery_required=evidence_release.get("recovery_required", False),
+        release_record=evidence_release.get("release_record"),
     )
+    attempt_guard = evidence_release.get("attempt_guard")
+    if release_result.get("payload_released") is True and isinstance(attempt_guard, Mapping):
+        try:
+            from scripts.dcode_project import record_release_authorization
+
+            record_release_authorization(
+                assignment_id=str(attempt_guard["assignment_id"]),
+                binding=dict(attempt_guard["binding"]),
+                release_authorization={
+                    **dict(attempt_guard.get("release_authorization", {})),
+                    "resources": release_result.get("resources", {}),
+                },
+            )
+        except (KeyError, RuntimeError, TypeError, ValueError) as exc:
+            release_result = {
+                **release_result,
+                "authorized": False,
+                "payload_released": False,
+                "reasons": [f"release record persistence failed: {exc}"],
+            }
     return {**result, "evidence_release": release_result}
 
 

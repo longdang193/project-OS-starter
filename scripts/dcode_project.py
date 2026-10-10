@@ -902,12 +902,24 @@ def record_release_authorization(
         if existing.get("state") != "settled":
             raise RuntimeError("dcode-project release authorization requires settled attempt.")
         updated = dict(existing)
+        resources = release_authorization.get("resources")
+        released_resources = dict(resources) if isinstance(resources, dict) else {}
+        release_state = (
+            "released"
+            if released_resources
+            and all(
+                isinstance(resource, dict)
+                and resource.get("state") in {"removed", "already_absent"}
+                for resource in released_resources.values()
+            )
+            else "pending"
+        )
         updated.update(
             {
                 "release_authorized": True,
                 "release_authorization": dict(release_authorization),
-                "release_state": "pending",
-                "released_resources": {},
+                "release_state": release_state,
+                "released_resources": released_resources,
             }
         )
         _write_attempt_guard(path, updated)

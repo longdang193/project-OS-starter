@@ -2386,7 +2386,9 @@ def retire_lane(
     if not isinstance(selected_cwd, str) or Path(selected_cwd).resolve() != worktree:
         return {"state": "unresolved", "recovery_required": True, "reason": "pane worktree binding mismatch"}
     expected_agent = bound_attempt.get("agent_name")
-    if not isinstance(expected_agent, str) or selected.get("agent") != expected_agent:
+    if not isinstance(expected_agent, str) or (
+        selected.get("agent") is not None and selected.get("agent") != expected_agent
+    ):
         return {"state": "unresolved", "recovery_required": True, "reason": "pane agent binding mismatch"}
     if bound_attempt.get("recovery_required") is True:
         return {"state": "unresolved", "recovery_required": True, "reason": "attempt requires recovery"}
@@ -2394,6 +2396,23 @@ def retire_lane(
         return {"state": "unresolved", "recovery_required": True, "reason": "attempt settlement is not proven"}
 
     process_identity = bound_attempt.get("process_identity")
+    if not isinstance(process_identity, Mapping):
+        try:
+            process_payload = _json_command(
+                [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+                env=environment,
+            )
+            process_info = _result(process_payload, "process_info")
+            candidates = [
+                process for process in _process_records(process_info.get("foreground_processes"))
+                if Path(str(process.get("cwd", ""))).resolve() == worktree
+                and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+            ] if isinstance(process_info, dict) else []
+        except (LaunchBlocked, CommandTransportTimeout, json.JSONDecodeError) as exc:
+            return {"state": "unresolved", "recovery_required": True, "reason": "process ownership evidence unavailable", "detail": str(exc)}
+        if len(candidates) != 1:
+            return {"state": "unresolved", "recovery_required": True, "reason": "process ownership identity is unavailable"}
+        process_identity = candidates[0]
     expected_pid = process_identity.get("pid") if isinstance(process_identity, Mapping) else None
     expected_name = process_identity.get("name") if isinstance(process_identity, Mapping) else None
     expected_cwd = process_identity.get("cwd") if isinstance(process_identity, Mapping) else None
@@ -3079,6 +3098,38 @@ def _main_body(args: argparse.Namespace) -> int:
                         "task_accepted": task_result.get("accepted"),
                     }
                 )
+                lifecycle_settled = (
+                    isinstance(receipt, Mapping)
+                    and receipt.get("state") == "confirmed"
+                    and terminal_settlement_proven(
+                        receipt,
+                        cleanup_confirmed=cleanup.get("state") == "removed",
+                        descendants_retired=receipt.get("descendant_state") in {"terminated", "not_started"},
+                    )
+                )
+                if lifecycle_settled and task_result.get("continuation_eligible") is False:
+                    retirement = retire_settled_lane(
+                        {
+                            "repository_identity": registry_evidence.get("repository_identity"),
+                            "plan_identity": registry_evidence.get("plan_identity"),
+                            "assignment_id": registry_evidence.get("assignment_id"),
+                            "attempt_id": assignment.get("attempt_id", attempt_id),
+                            "session": resolved_session,
+                            "pane": resolved_pane,
+                            "worktree": str(args.cwd),
+                            "agent_name": evidence["herdr"].get("agent_name"),
+                            "settled": True,
+                            "no_continuation": True,
+                            "recovery_required": cleanup.get("recovery_required") is True,
+                        },
+                        herdr=str(evidence["herdr"].get("executable", "herdr")),
+                        env=environment,
+                    )
+                    assignment["retirement"] = retirement
+                    if retirement.get("state") != "removed":
+                        assignment["exit_code"] = 2
+                        assignment["reconciliation_required"] = True
+                        assignment["failure_kind"] = "retirement_unresolved"
             legacy = {
                 key: value
                 for key, value in assignment.items()

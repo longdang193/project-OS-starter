@@ -88,6 +88,17 @@ def test_integrate_rejects_missing_required_check() -> None:
     assert "required_checks" in result.contradictions
 
 
+def test_accept_does_not_advance_until_cos_pass() -> None:
+    result = reconcile(ReconciliationInput("accept", {
+        "verification_current": True,
+        "candidate_unchanged": True,
+        "acceptance_criteria_evaluable": True,
+        "cos_pass": False,
+    }))
+    assert result.complete is False
+    assert result.next_action == "reconcile accept"
+
+
 def test_integrate_rejects_review_for_old_head() -> None:
     result = reconcile(ReconciliationInput("integrate", {
         "cos_pass": True,
@@ -139,3 +150,14 @@ def test_prune_requires_retirement_complete() -> None:
         "evidence_released": True,
     }))
     assert result.eligible is False
+
+
+def test_prune_does_not_advance_until_retirement_complete() -> None:
+    result = reconcile(ReconciliationInput("prune", {
+        "canonical_consequence": True,
+        "consumer_release": True,
+        "retention_expired": True,
+        "retirement_complete": False,
+    }))
+    assert result.complete is False
+    assert result.next_action == "reconcile prune"

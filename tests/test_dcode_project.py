@@ -1074,6 +1074,32 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     assert replacement["record"]["release_authorization"] == {"candidate_sha": "candidate-1"}
 
 
+def test_attempt_guard_records_release_resources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    record = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "candidate_sha": "candidate-1",
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+    assert record["release_state"] == "released"
+    assert record["released_resources"] == {"task-result": {"state": "removed"}}
+
+
 def test_attempt_guard_retains_terminal_settlement_evidence(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

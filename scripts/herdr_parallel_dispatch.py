@@ -994,6 +994,9 @@ def run_lane(
         settlement = settlement_decision(lifecycle_receipt)
         if not settlement["resource_settled"]:
             return "occupied", True, settlement["reason"], False
+        retirement = assignment.get("retirement")
+        if isinstance(retirement, Mapping) and retirement.get("state") != "removed":
+            return "occupied", True, "runtime retirement unresolved", False
         task_result = assignment.get("task_result")
         task_uncertain = not isinstance(task_result, Mapping) or (
             task_result.get("accepted") is None

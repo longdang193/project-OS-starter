@@ -92,6 +92,53 @@ def test_release_is_idempotent_after_exact_acceptance(tmp_path: Path):
     assert retry["authorized"] is False
 
 
+def test_release_deletes_only_bound_evidence_path(tmp_path: Path):
+    result = _release(tmp_path)
+    assert result["payload_released"] is True
+    assert not (tmp_path / "task-result.json").exists()
+    assert (tmp_path / "result.json").exists()
+
+
+def test_release_replay_requires_durable_complete_record(tmp_path: Path):
+    task_result = tmp_path / "task-result.json"
+    release_record = {
+        "authorized": True,
+        "binding": _binding(),
+        "resources": {"task-result": {"state": "removed"}},
+    }
+    result = release_authorized_evidence(
+        _acceptance_decision(),
+        binding=_binding(),
+        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        required_consumers=["controller"],
+        consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
+        retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
+        evidence_paths={"task-result": task_result, "foreign": tmp_path / "foreign.json"},
+        release_record=release_record,
+    )
+    assert result["payload_released"] is True
+    assert result["resources"] == release_record["resources"]
+
+
+def test_release_replay_rejects_incomplete_durable_record(tmp_path: Path):
+    result = release_authorized_evidence(
+        _acceptance_decision(),
+        binding=_binding(),
+        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        required_consumers=["controller"],
+        consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
+        retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
+        evidence_paths={"task-result": tmp_path / "task-result.json"},
+        release_record={
+            "authorized": True,
+            "binding": _binding(),
+            "resources": {"task-result": {"state": "unverified"}},
+        },
+    )
+    assert result["authorized"] is False
+    assert result["payload_released"] is False
+
+
 def test_release_preserves_worker_claim_without_canonical_acceptance(tmp_path: Path):
     result = _release(tmp_path, decision={})
     assert result["authorized"] is False

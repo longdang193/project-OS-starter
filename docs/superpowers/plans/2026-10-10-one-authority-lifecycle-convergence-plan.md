@@ -120,7 +120,7 @@ raw probe traces remain disposable.
 - Base commit: `b41d3f8` (`origin/main`, verified 2026-10-10)
 - Expected workspace: `fresh execution worktree; preserve current checkout changes and untracked .playwright-mcp/, db/, temp_evidence.json, and existing untracked plans`
 - Next action: `fresh local verification complete; user-authorized push/PR and exact-head remote checks remain`
-- Blockers: `remote exact-PR-head checks and independent review require user-authorized push/PR`
+- Blockers: `review turn 1 found four lifecycle defects; patch and rerun exact-head review before completion`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -496,6 +496,15 @@ raw probe traces remain disposable.
 - `git grep -n -E '_reconcile_legacy|_reconcile_snapshot|release_attempt_evidence|_discard_deepagents_receipt|_cleanup_stale_direct_mcp_runtimes' -- scripts tests`
 - Local-ready proof covers workflow commands; after user-authorized push/PR, GitHub must expose Repository Contracts, Runtime Contracts, and Benchmark on the exact PR head, with independent review before `active → completed`.
 - One bounded live lifecycle summary with raw evidence released after durable capture.
+
+## Review Remediation
+
+- Review turn 1: `FAIL` at PR head `86aadda71770f5f6dc76780a9c4d740b13ef6b6a`.
+- Fixed exact evidence scope: release deletes only bound `evidence_ref`; replay requires durable complete resource proof.
+- Fixed release persistence path: accepted plan transition passes `release_record`; controller may persist release resources through existing attempt guard.
+- Fixed retirement wiring: terminal settled DeepAgents assignments call `retire_settled_lane`; unresolved retirement keeps capacity occupied.
+- Fixed phase recommendation: incomplete eligible phases return `reconcile <phase>`, never downstream action.
+- Required rerun: focused lifecycle tests, full suite, repository/planning validators, exact-head CI, independent review.
 
 ## Completion Criteria
 

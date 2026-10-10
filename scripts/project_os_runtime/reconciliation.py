@@ -131,7 +131,7 @@ def _result(phase: str, facts: Mapping[str, Any], required: Sequence[str], *, co
         eligible and complete,
         tuple(missing),
         tuple(failures),
-        next_action if eligible else f"reconcile {phase}",
+        next_action if eligible and complete else f"reconcile {phase}",
     )
 
 
