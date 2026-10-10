@@ -11,8 +11,23 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
+import sqlite3
 import tomllib
 from typing import Any, Mapping
+
+try:
+    from scripts.herdr_main_launcher import (
+        CommandTransportTimeout,
+        _codex_completion_snapshot,
+        _run as _herdr_run,
+    )
+except ModuleNotFoundError:
+    from herdr_main_launcher import (
+        CommandTransportTimeout,
+        _codex_completion_snapshot,
+        _run as _herdr_run,
+    )
 
 try:
     from project_os_runtime.secretary_economics import normalize_response_usage
@@ -28,6 +43,11 @@ except ModuleNotFoundError:
         build_live_receipt,
         validate_live_receipt,
     )
+
+try:
+    from scripts.observe_9router_usage import observe_window_usage
+except ModuleNotFoundError:
+    from observe_9router_usage import observe_window_usage
 
 
 SECRETARY_PROVIDER = "9router"
@@ -57,6 +77,9 @@ _SOURCE_SAFE_FIELDS = {
     "repository_identity", "plan_identity", "git_revision", "worktree",
     "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
 }
+_CODEX_OBSERVATION_TIMEOUT_SECONDS = 120.0
+_CODEX_OBSERVATION_POLL_SECONDS = 0.5
+_PROVIDER_TELEMETRY_LOOKBACK_SECONDS = 0.0
 _SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
 _SAFE_SOURCE_VALUE = re.compile(
     r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))",
@@ -185,6 +208,166 @@ def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = F
     return command
 
 
+def _release_codex_agent(
+    herdr: str,
+    session: str,
+    agent_name: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    try:
+        result = _herdr_run(
+            [
+                herdr,
+                "--session",
+                session,
+                "agent",
+                "send-keys",
+                agent_name,
+                "ctrl+c",
+            ],
+            env=env,
+            timeout=5.0,
+        )
+    except CommandTransportTimeout:
+        return {"state": "unknown", "error": "release-agent transport timeout"}
+    if result.returncode:
+        return {"state": "unknown", "error": "agent interruption failed"}
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            get_result = _herdr_run(
+                [herdr, "--session", session, "agent", "get", agent_name],
+                env=env,
+                timeout=1.0,
+            )
+        except CommandTransportTimeout:
+            return {"state": "unknown", "error": "agent retirement observation timed out"}
+        if get_result.returncode:
+            error_code = None
+            for output in (get_result.stdout, get_result.stderr):
+                try:
+                    payload = json.loads(output)
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                error = payload.get("error") if isinstance(payload, Mapping) else None
+                if isinstance(error, Mapping) and isinstance(error.get("code"), str):
+                    error_code = error["code"]
+                    break
+            if error_code == "agent_not_found":
+                return {"state": "removed"}
+            return {"state": "unknown", "error": "agent retirement observation failed"}
+        time.sleep(0.1)
+    return {"state": "unknown", "error": "agent retirement not observed"}
+
+
+def _observe_submitted_codex(
+    request: SecretaryLaunchRequest,
+    payload: Mapping[str, Any],
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    herdr = payload.get("herdr")
+    if not isinstance(herdr, Mapping):
+        return {"state": "unknown", "error": "launcher Herdr evidence missing"}
+    executable = herdr.get("executable")
+    session = herdr.get("session")
+    pane = herdr.get("pane")
+    agent_name = herdr.get("agent_name")
+    if not all(isinstance(value, str) and value.strip() for value in (executable, session, pane, agent_name)):
+        return {"state": "unknown", "error": "launcher Codex identity incomplete"}
+
+    deadline = time.monotonic() + _CODEX_OBSERVATION_TIMEOUT_SECONDS
+    snapshot: dict[str, Any] = {
+        "state": "unknown",
+        "observation_error": "completion observation deadline expired",
+    }
+    while time.monotonic() < deadline:
+        remaining = max(0.01, deadline - time.monotonic())
+        snapshot = _codex_completion_snapshot(
+            executable,
+            session,
+            agent_name,
+            env=env,
+            timeout_seconds=min(5.0, remaining),
+        )
+        if snapshot.get("state") in {"idle", "failed", "stopped"}:
+            break
+        time.sleep(min(_CODEX_OBSERVATION_POLL_SECONDS, remaining))
+
+    observation = {
+        key: snapshot.get(key)
+        for key in ("state", "state_change_seq", "output_sha256", "output_chars", "observation_error")
+        if key in snapshot
+    }
+    cleanup: dict[str, Any] = {"state": "not_attempted"}
+    if snapshot.get("state") == "idle" and not snapshot.get("observation_error"):
+        cleanup = _release_codex_agent(
+            executable,
+            session,
+            agent_name,
+            pane,
+            env=env,
+        )
+    observation["cleanup"] = cleanup
+    return observation
+
+
+def _observe_provider_telemetry(start: str, end: str) -> dict[str, Any]:
+    candidates: list[Path] = []
+    configured = os.environ.get("NINEROUTER_DATABASE")
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.append(Path.home() / "AppData" / "Roaming" / "9router" / "db" / "data.sqlite")
+    database = next((path for path in candidates if path.is_file()), None)
+    if database is None:
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "inconclusive",
+            "source": "9router-local-read-only",
+            "attribution": "time-window",
+            "reason": "database_unavailable",
+        }
+    start_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
+    padded_start = start_at.isoformat()
+    try:
+        result = observe_window_usage(database, start=padded_start, end=end)
+        result["observation_window"] = {
+            "start": padded_start,
+            "end": end,
+            "lookback_seconds": _PROVIDER_TELEMETRY_LOOKBACK_SECONDS,
+        }
+        return result
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "inconclusive",
+            "source": "9router-local-read-only",
+            "attribution": "time-window",
+            "reason": type(exc).__name__,
+        }
+
+
+def _classify_capabilities(
+    disposition: str,
+    observation: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    transport_proven = (
+        isinstance(observation, Mapping)
+        and observation.get("state") == "idle"
+        and isinstance(observation.get("cleanup"), Mapping)
+        and observation["cleanup"].get("state") == "removed"
+    )
+    missing: list[str] = []
+    if not transport_proven:
+        missing.append("transport_completion_or_cleanup")
+    if disposition != "READY":
+        missing.append("secretary_runtime_receipt")
+    return {
+        "transport_evidence": "proven" if transport_proven else "unproven",
+        "missing_capabilities": missing,
+    }
 def _json_payloads(output: str) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     for line in output.splitlines():
@@ -526,6 +709,7 @@ def sanitize_launcher_result(
         },
         "disposition": "READY" if live_attributed else "BLOCKED_CAPABILITY",
         "failure_kind": None if live_attributed else "runtime_completion_evidence_missing",
+        **_classify_capabilities("READY" if live_attributed else "BLOCKED_CAPABILITY", None),
     }
 
 
@@ -630,6 +814,22 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         configured_model=configured_model,
         started_at=started,
         finished_at=datetime.now(timezone.utc).isoformat(),
+    )
+    if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
+        post_submit = _observe_submitted_codex(request, payload, env=environment)
+        result["post_submit_observation"] = post_submit
+        if post_submit.get("state") != "idle":
+            result["failure_kind"] = "runtime_completion_observation_missing"
+        elif post_submit.get("cleanup", {}).get("state") != "removed":
+            result["failure_kind"] = "runtime_cleanup_evidence_missing"
+        else:
+            result["failure_kind"] = "runtime_structured_receipt_missing"
+        result.update(_classify_capabilities(result["disposition"], post_submit))
+    else:
+        result.update(_classify_capabilities(result["disposition"], None))
+    result["provider_telemetry"] = _observe_provider_telemetry(
+        started,
+        datetime.now(timezone.utc).isoformat(),
     )
     result["receipt"] = _smoke_receipt(request, result)
     output.parent.mkdir(parents=True, exist_ok=True)

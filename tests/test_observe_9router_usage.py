@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from scripts.observe_9router_usage import observe_usage
+from scripts.observe_9router_usage import observe_usage, observe_window_usage
 
 
 def _database(path: Path, *, other_session: bool = False) -> None:
@@ -74,6 +74,49 @@ def test_observer_matches_session_and_aggregates_cost(tmp_path: Path) -> None:
     assert result["output_tokens"] == 22
     assert result["total_tokens"] == 242
     assert result["cost"] == 0.44
+    assert result["cache_read_input_tokens"] == 0
+
+
+def test_window_observer_reports_cached_tokens_and_provider_cost_without_attribution(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "update usageHistory set tokens = ? where id = 0",
+        (json.dumps({"cached_tokens": 80, "cache_creation_input_tokens": 5}),),
+    )
+    connection.commit()
+    connection.close()
+
+    result = observe_window_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+    )
+
+    assert result["disposition"] == "observed_window"
+    assert result["confidence"] == "unattributed"
+    assert result["input_tokens"] == 220
+    assert result["output_tokens"] == 22
+    assert result["cache_read_input_tokens"] == 80
+    assert result["cache_write_input_tokens"] == 5
+    assert result["cost"] == 0.44
+    assert result["cost_provenance"] == "provider-reported"
+    assert "secret" not in json.dumps(result)
+
+
+def test_window_observer_stays_inconclusive_without_rows(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+
+    result = observe_window_usage(
+        database,
+        start="2026-10-09T15:00:00Z",
+        end="2026-10-09T15:00:01Z",
+    )
+
+    assert result["disposition"] == "inconclusive"
+    assert result["reason"] == "no_usage_rows"
 
 
 def test_observer_normalizes_timestamp_formats_before_joining(tmp_path: Path) -> None:

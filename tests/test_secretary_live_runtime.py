@@ -10,8 +10,12 @@ from scripts.secretary_live_runtime import (
     SECRETARY_PROVIDER,
     SecretaryLaunchRequest,
     _safe_runtime_snapshot,
+    _observe_submitted_codex,
+    _observe_provider_telemetry,
+    _release_codex_agent,
     _smoke_receipt,
     build_launcher_command,
+    run_smoke,
     sanitize_launcher_result,
     select_launcher_payload,
 )
@@ -58,6 +62,146 @@ def test_launcher_command_binds_ids_and_configured_codex_home() -> None:
     ):
         assert command[command.index(option) + 1] == value
     assert "--assignment-id" not in command
+
+
+def test_observe_submitted_codex_waits_for_idle_and_releases_owned_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {"state": "working", "output_chars": 10, "observation_error": None},
+        {"state": "idle", "output_chars": 20, "observation_error": None},
+    ])
+    calls: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: calls.append(args[:3]) or {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="live-session", pane="w1:p1"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "live-session",
+                "pane": "w1:p1",
+                "agent_name": "normal-main-1234",
+            }
+        },
+        env={},
+    )
+
+    assert observation["state"] == "idle"
+    assert observation["cleanup"] == {"state": "removed"}
+    assert calls == [("herdr.exe", "live-session", "normal-main-1234")]
+
+
+def test_release_codex_agent_interrupts_process_and_verifies_removal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return type(
+            "Result",
+            (),
+            {
+                "returncode": 0 if len(calls) == 1 else 1,
+                "stdout": "" if len(calls) == 1 else '{"error":{"code":"agent_not_found"}}',
+                "stderr": "",
+            },
+        )()
+
+    monkeypatch.setattr("scripts.secretary_live_runtime._herdr_run", fake_run)
+
+    from scripts.secretary_live_runtime import _release_codex_agent
+
+    assert _release_codex_agent(
+        "herdr.exe",
+        "live-session",
+        "normal-main-1234",
+        "w1:p1",
+        env={},
+    ) == {"state": "removed"}
+    assert calls == [
+        [
+            "herdr.exe", "--session", "live-session", "agent", "send-keys",
+            "normal-main-1234", "ctrl+c",
+        ],
+        ["herdr.exe", "--session", "live-session", "agent", "get", "normal-main-1234"],
+    ]
+
+
+def test_release_codex_agent_does_not_treat_transport_failure_as_removal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        return type(
+            "Result",
+            (),
+            {
+                "returncode": 1,
+                "stdout": '{"error":{"code":"server_not_running"}}',
+                "stderr": "",
+            },
+        )()
+
+    monkeypatch.setattr("scripts.secretary_live_runtime._herdr_run", fake_run)
+
+    assert _release_codex_agent(
+        "herdr.exe",
+        "live-session",
+        "normal-main-1234",
+        "w1:p1",
+        env={},
+    )["state"] == "unknown"
+
+
+def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("scripts.secretary_live_runtime._configured_provider", lambda _: "9router")
+    monkeypatch.setattr("scripts.secretary_live_runtime._configured_model", lambda _: "gpt-test")
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime.subprocess.run",
+        lambda *args, **kwargs: type(
+            "Result",
+            (),
+            {"returncode": 0, "stdout": '{"herdr":{"session":"live-session"}}', "stderr": ""},
+        )(),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime.sanitize_launcher_result",
+        lambda *args, **kwargs: {"disposition": "READY", "evidence_provenance": "live-attributed"},
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._observe_submitted_codex",
+        lambda *args, **kwargs: pytest.fail("validated READY result must not be re-probed"),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._observe_provider_telemetry",
+        lambda *args, **kwargs: {"disposition": "inconclusive"},
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._smoke_receipt",
+        lambda *args, **kwargs: {"disposition": "READY"},
+    )
+
+    result = run_smoke(request(), output=tmp_path / "smoke.json")
+
+    assert result["disposition"] == "READY"
+    assert result["evidence_provenance"] == "live-attributed"
 
 
 def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
@@ -340,6 +484,25 @@ def test_sanitize_launcher_result_requires_authoritative_runtime_sources() -> No
     )
 
     assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["transport_evidence"] == "unproven"
+    assert result["missing_capabilities"] == [
+        "transport_completion_or_cleanup",
+        "secretary_runtime_receipt",
+    ]
+
+
+def test_completed_transport_names_only_remaining_secretary_blocker() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._classify_capabilities(
+        "BLOCKED_CAPABILITY",
+        {"state": "idle", "cleanup": {"state": "removed"}},
+    )
+
+    assert result == {
+        "transport_evidence": "proven",
+        "missing_capabilities": ["secretary_runtime_receipt"],
+    }
 
 
 def test_sanitize_launcher_result_drops_unapproved_observed_fields() -> None:
@@ -454,6 +617,47 @@ def test_smoke_receipt_preserves_required_source_bindings() -> None:
     )
 
     assert receipt["valid"] is True
+
+
+def test_provider_telemetry_uses_9router_window_without_promoting_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "data.sqlite"
+    database.write_bytes(b"")
+    observed: list[dict[str, str]] = []
+
+    def fake_observe(path: Path, *, start: str, end: str) -> dict[str, object]:
+        observed.append({"database": str(path), "start": start, "end": end})
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "observed_window",
+            "source": "9router-local-read-only",
+            "attribution": "time-window",
+            "confidence": "unattributed",
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "total_tokens": 110,
+            "cache_read_input_tokens": 80,
+            "cache_write_input_tokens": 0,
+            "cost": 0.01,
+            "cost_provenance": "provider-reported",
+        }
+
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "observe_window_usage", fake_observe)
+    monkeypatch.setenv("NINEROUTER_DATABASE", str(database))
+
+    result = _observe_provider_telemetry("2026-10-10T00:00:00+00:00", "2026-10-10T00:00:01+00:00")
+
+    assert result["disposition"] == "observed_window"
+    assert result["cache_read_input_tokens"] == 80
+    assert result["cost"] == 0.01
+    assert observed[0]["database"] == str(database)
+    assert result["observation_window"]["lookback_seconds"] == 0.0
+    assert observed[0]["start"] == "2026-10-10T00:00:00+00:00"
+    assert observed[0]["end"] == "2026-10-10T00:00:01+00:00"
 
 
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:

@@ -36,6 +36,132 @@ def _tables(connection: sqlite3.Connection) -> dict[str, set[str]]:
     return result
 
 
+def _token_details(value: object) -> tuple[int, int] | None:
+    if not isinstance(value, str) or not value:
+        return 0, 0
+    try:
+        details = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(details, dict):
+        return None
+    cached = details.get("cached_tokens", 0)
+    created = details.get("cache_creation_input_tokens", 0)
+    if any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in (cached, created)):
+        return None
+    return cached, created
+
+
+def _aggregate_usage(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not rows:
+        return None
+    for row in rows:
+        if row["status"] != "ok":
+            return None
+        if any(
+            isinstance(row[field], bool)
+            or not isinstance(row[field], int)
+            or row[field] < 0
+            for field in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_write_input_tokens")
+        ):
+            return None
+        if row["cache_read_input_tokens"] + row["cache_write_input_tokens"] > row["input_tokens"]:
+            return None
+        if (
+            not isinstance(row["cost"], (int, float))
+            or isinstance(row["cost"], bool)
+            or row["cost"] < 0
+            or (isinstance(row["cost"], float) and not math.isfinite(row["cost"]))
+        ):
+            return None
+    input_tokens = sum(row["input_tokens"] for row in rows)
+    output_tokens = sum(row["output_tokens"] for row in rows)
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "cache_read_input_tokens": sum(row["cache_read_input_tokens"] for row in rows),
+        "cache_write_input_tokens": sum(row["cache_write_input_tokens"] for row in rows),
+        "cost": sum(float(row["cost"]) for row in rows),
+        "currency": "USD",
+    }
+
+
+def observe_window_usage(
+    database: Path,
+    *,
+    start: str,
+    end: str,
+    model: str | None = None,
+    connection_id: str | None = None,
+) -> dict[str, Any]:
+    """Report provider rows in a bounded time window without claiming attribution."""
+    start_at = _timestamp(start)
+    end_at = _timestamp(end)
+    if end_at <= start_at:
+        raise ValueError("end must be after start")
+
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    try:
+        tables = _tables(connection)
+        required = {"timestamp", "provider", "model", "connectionId", "endpoint", "promptTokens", "completionTokens", "cost", "status", "tokens"}
+        if not required <= tables["usageHistory"]:
+            return _result("inconclusive", "schema_unavailable", attribution="time-window")
+        rows: list[dict[str, Any]] = []
+        for row in connection.execute(
+            """
+            select timestamp, provider, model, connectionId, endpoint,
+                   promptTokens, completionTokens, cost, status, tokens
+            from usageHistory
+            where provider = 'codex'
+              and (? is null or model = ?)
+              and (? is null or connectionId = ?)
+            order by timestamp
+            """,
+            (model, model, connection_id, connection_id),
+        ):
+            row_at = _timestamp(row[0])
+            if not start_at <= row_at <= end_at:
+                continue
+            details = _token_details(row[9])
+            if details is None:
+                return _result("inconclusive", "invalid_token_details", attribution="time-window")
+            rows.append(
+                {
+                    "timestamp": row_at.isoformat(),
+                    "provider": row[1],
+                    "model": row[2],
+                    "connection_id": row[3],
+                    "endpoint": row[4],
+                    "input_tokens": row[5],
+                    "output_tokens": row[6],
+                    "cost": row[7],
+                    "status": row[8],
+                    "cache_read_input_tokens": details[0],
+                    "cache_write_input_tokens": details[1],
+                }
+            )
+        if not rows:
+            return _result("inconclusive", "no_usage_rows", attribution="time-window", usage_count=0)
+        aggregate = _aggregate_usage(rows)
+        if aggregate is None:
+            return _result("inconclusive", "invalid_usage_row", attribution="time-window", usage_count=len(rows))
+        return _result(
+            "observed_window",
+            None,
+            attribution="time-window",
+            confidence="unattributed",
+            usage_count=len(rows),
+            models=sorted({row["model"] for row in rows}),
+            first_timestamp=rows[0]["timestamp"],
+            last_timestamp=rows[-1]["timestamp"],
+            cost_provenance="provider-reported",
+            **aggregate,
+        )
+    finally:
+        connection.close()
+
+
 def observe_usage(
     database: Path,
     *,
@@ -94,7 +220,7 @@ def observe_usage(
         usage_rows = connection.execute(
             """
             select timestamp, provider, model, connectionId, endpoint,
-                   promptTokens, completionTokens, cost, status
+                   promptTokens, completionTokens, cost, status, tokens
             from usageHistory
             where provider = 'codex'
               and (? is null or connectionId = ?)
@@ -107,6 +233,9 @@ def observe_usage(
             row_at = _timestamp(row[0])
             if not start_at <= row_at <= end_at:
                 continue
+            details = _token_details(row[9])
+            if details is None:
+                return _result("inconclusive", "invalid_token_details")
             usage.append(
                 {
                     "timestamp": row_at.isoformat(),
@@ -118,6 +247,8 @@ def observe_usage(
                     "output_tokens": row[6],
                     "cost": row[7],
                     "status": row[8],
+                    "cache_read_input_tokens": details[0],
+                    "cache_write_input_tokens": details[1],
                 }
             )
         if session_ids != {session_id}:
@@ -167,7 +298,12 @@ def observe_usage(
             row = candidates[0]
             if request["status"] != "success" or row["status"] != "ok":
                 return _result("inconclusive", "request_not_successful", request_count=len(requests), matched_count=len(matched))
-            if any(not isinstance(row[field], int) or isinstance(row[field], bool) or row[field] < 0 for field in ("input_tokens", "output_tokens")):
+            if any(
+                isinstance(row[field], bool)
+                or not isinstance(row[field], int)
+                or row[field] < 0
+                for field in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_write_input_tokens")
+            ) or row["cache_read_input_tokens"] + row["cache_write_input_tokens"] > row["input_tokens"]:
                 return _result("inconclusive", "invalid_token_counts", request_count=len(requests), matched_count=len(matched))
             if (
                 not isinstance(row["cost"], (int, float))
@@ -189,9 +325,9 @@ def observe_usage(
                 matched_count=len(matched),
             )
 
-        total_input = sum(row["input_tokens"] for row in matched)
-        total_output = sum(row["output_tokens"] for row in matched)
-        total_cost = sum(float(row["cost"]) for row in matched)
+        aggregate = _aggregate_usage(matched)
+        if aggregate is None:
+            return _result("inconclusive", "invalid_usage_row", request_count=len(requests), matched_count=len(matched))
         return _result(
             "matched",
             None,
@@ -199,11 +335,7 @@ def observe_usage(
             matched_count=len(matched),
             first_timestamp=matched[0]["timestamp"],
             last_timestamp=matched[-1]["timestamp"],
-            input_tokens=total_input,
-            output_tokens=total_output,
-            total_tokens=total_input + total_output,
-            cost=total_cost,
-            currency="USD",
+            **aggregate,
         )
     finally:
         connection.close()
