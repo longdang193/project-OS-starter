@@ -564,7 +564,7 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     evidence_release = {
         "binding": binding,
         "resources": {"task-result": resource},
-        "canonical_consequence": {"authorized": True, "owner": "git", "coordination_ref": "HEAD", "plan_path": "plan.md", "expected_plan_revision": expected_post_revision},
+        "canonical_consequence": {"authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": commit, "coordination_ref": "HEAD", "plan_path": "plan.md", "expected_plan_revision": expected_post_revision},
         "attempt_guard": {"assignment_id": "assignment-1", "binding": {"attempt_id": "attempt-1"}},
         "required_consumers": [],
         "consumer_releases": {},

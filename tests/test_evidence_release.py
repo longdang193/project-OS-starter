@@ -470,6 +470,40 @@ def test_pending_symlink_preserves_target(tmp_path: Path):
     assert target.exists()
 
 
+def test_pending_parent_link_preserves_external_artifact(tmp_path: Path):
+    root = tmp_path / "attempt"
+    external = tmp_path / "external"
+    root.mkdir()
+    external.mkdir()
+    target = external / "task-result.json"
+    publish_task_result(target, _payload(accepted=True, checkpoint_sha="c"))
+    nested = root / "nested"
+    try:
+        nested.symlink_to(external, target_is_directory=True)
+    except OSError:
+        import pytest
+
+        pytest.skip("directory symlink creation unavailable")
+    resource = _resource(
+        root,
+        filename="nested/task-result.json",
+        digest=hashlib.sha256(target.read_bytes()).hexdigest(),
+    )
+    result = _invoke_release(
+        root,
+        {
+            "authorized": True,
+            "binding": _binding(),
+            "resources": {"task-result": resource},
+            "attempt_guard": _attempt_guard(worktree=root),
+        },
+        evidence_path=nested / "task-result.json",
+    )
+    assert result["authorized"] is False
+    assert "link or reparse point" in result["reasons"][0]
+    assert target.exists()
+
+
 def test_pending_producer_identity_mismatch_preserves_artifact(tmp_path: Path):
     task_result = tmp_path / "task-result.json"
     publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))

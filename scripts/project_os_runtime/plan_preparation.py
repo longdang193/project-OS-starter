@@ -539,6 +539,13 @@ def apply_accepted_plan_transitions(
         checkpoint = _verify_git_checkpoint(source, canonical_consequence)
     if checkpoint.get("verified") is True:
         canonical_consequence = checkpoint
+    else:
+        canonical_consequence = {
+            "authorized": False,
+            "owner": "git",
+            "checkpoint_verified": False,
+            "reason": checkpoint.get("reason", "Git checkpoint verification failed"),
+        }
     release_result = release_authorized_evidence(
         decision,
         binding=evidence_release.get("binding", {}),

@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 import hashlib
 import json
+import os
 from pathlib import Path
+import stat
 from typing import Any
 
 from .reconciliation import ReconciliationInput, reconcile
@@ -360,20 +362,39 @@ def _release_resource_mismatch(
     relative = Path(relative_path)
     if not root.is_absolute() or relative.is_absolute() or ".." in relative.parts:
         return "physical release binding invalid"
-    if root.is_symlink() or not root.is_dir():
+    def has_link_or_reparse(value: Path) -> bool:
+        if value.is_symlink():
+            return True
+        try:
+            attributes = getattr(os.lstat(value), "st_file_attributes", 0)
+        except OSError:
+            return False
+        return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+    if has_link_or_reparse(root) or not root.is_dir():
         return "attempt root binding mismatch"
     guarded_root = attempt_guard.get("worktree")
     if isinstance(guarded_root, str) and guarded_root:
         if root.resolve(strict=True) != Path(guarded_root).resolve(strict=True):
             return "attempt root binding mismatch"
     expected_path = root / relative
-    if path.is_symlink():
+    parent = root
+    for component in relative.parts[:-1]:
+        parent = parent / component
+        if parent.exists() and has_link_or_reparse(parent):
+            return "evidence path traverses link or reparse point"
+    if has_link_or_reparse(path):
         return "evidence path is symlink"
     try:
-        if path.resolve(strict=False) != expected_path.resolve(strict=False):
+        resolved_root = root.resolve(strict=True)
+        resolved_path = path.resolve(strict=False)
+        if resolved_path != expected_path.resolve(strict=False):
             return "evidence path binding mismatch"
+        resolved_path.relative_to(resolved_root)
     except OSError:
         return "evidence path binding mismatch"
+    except ValueError:
+        return "evidence path outside attempt root"
     if not path.exists():
         return None
     if not path.is_file():
