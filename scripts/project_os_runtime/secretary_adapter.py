@@ -45,6 +45,13 @@ class CommunicationEnvelope:
     message_id: str
     canonical_anchor: str
     payload: AttentionDelta | CoordinationDelta
+    task_ref: str | None = None
+    canonical_consequence_ref: str | None = None
+    reconciled_result_ref: str | None = None
+    blocking_refs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "blocking_refs", tuple(sorted(set(self.blocking_refs))))
 
 
 @dataclass(frozen=True)
@@ -441,6 +448,10 @@ def _fingerprint(payload: object) -> str:
             "message_id": payload.message_id,
             "canonical_anchor": payload.canonical_anchor,
             "payload": payload.payload.__dict__,
+            "task_ref": payload.task_ref,
+            "canonical_consequence_ref": payload.canonical_consequence_ref,
+            "reconciled_result_ref": payload.reconciled_result_ref,
+            "blocking_refs": payload.blocking_refs,
         }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()

@@ -96,7 +96,6 @@ class ReconciliationResult:
     complete: bool
     missing: tuple[str, ...] = ()
     contradictions: tuple[str, ...] = ()
-    next_action: str = "reconcile"
 
     @property
     def integration_eligible(self) -> bool:
@@ -125,7 +124,6 @@ class ReconciliationResult:
             "retirement_complete": self.retirement_complete,
             "missing": list(self.missing),
             "contradictions": list(self.contradictions),
-            "next_action": self.next_action,
         }
 
 
@@ -137,7 +135,7 @@ def _required_true(facts: Mapping[str, Any], name: str, missing: list[str], fail
         failures.append(name)
 
 
-def _result(phase: str, facts: Mapping[str, Any], required: Sequence[str], *, complete: bool = False, next_action: str = "reconcile") -> ReconciliationResult:
+def _result(phase: str, facts: Mapping[str, Any], required: Sequence[str], *, complete: bool = False) -> ReconciliationResult:
     missing: list[str] = []
     failures: list[str] = []
     for name in required:
@@ -149,7 +147,6 @@ def _result(phase: str, facts: Mapping[str, Any], required: Sequence[str], *, co
         eligible and complete,
         tuple(missing),
         tuple(failures),
-        next_action if eligible and complete else f"reconcile {phase}",
     )
 
 
@@ -161,16 +158,16 @@ def _dispatch(facts: Mapping[str, Any]) -> ReconciliationResult:
     if facts.get("active_attempt_conflict") is True:
         failures.append("active_attempt_conflict")
     eligible = not missing and not failures
-    return ReconciliationResult("dispatch", eligible, False, tuple(missing), tuple(failures), "dispatch" if eligible else "reconcile dispatch")
+    return ReconciliationResult("dispatch", eligible, False, tuple(missing), tuple(failures))
 
 
 def _verify(facts: Mapping[str, Any]) -> ReconciliationResult:
-    result = _result("verify", facts, ("attempt_exists", "candidate_attributable", "worker_terminal", "task_result_published"), complete=facts.get("verification_complete") is True, next_action="accept")
+    result = _result("verify", facts, ("attempt_exists", "candidate_attributable", "worker_terminal", "task_result_published"), complete=facts.get("verification_complete") is True)
     return result
 
 
 def _accept(facts: Mapping[str, Any]) -> ReconciliationResult:
-    result = _result("accept", facts, ("verification_current", "candidate_unchanged", "acceptance_criteria_evaluable"), complete=facts.get("cos_pass") is True, next_action="integrate")
+    result = _result("accept", facts, ("verification_current", "candidate_unchanged", "acceptance_criteria_evaluable"), complete=facts.get("cos_pass") is True)
     return result
 
 
@@ -208,20 +205,20 @@ def _integrate(facts: Mapping[str, Any], remote: RemotePrEvidence | None) -> Rec
         if not isinstance(remote.source_ref, str) or not remote.source_ref.strip():
             failures.append("remote_source_ref")
     eligible = not missing and not failures
-    return ReconciliationResult("integrate", eligible, eligible and remote is not None and remote.merged, tuple(missing), tuple(failures), "integrate" if eligible else "reconcile integrate")
+    return ReconciliationResult("integrate", eligible, eligible and remote is not None and remote.merged, tuple(missing), tuple(failures))
 
 
 def _retire(facts: Mapping[str, Any]) -> ReconciliationResult:
-    result = _result("retire", facts, ("runtime_owned", "no_continuation", "settled"), complete=facts.get("retirement_complete") is True, next_action="prune")
+    result = _result("retire", facts, ("runtime_owned", "no_continuation", "settled"), complete=facts.get("retirement_complete") is True)
     if facts.get("recovery_required") is True:
-        return ReconciliationResult(result.phase, False, False, result.missing, (*result.contradictions, "recovery_required"), "reconcile retire")
+        return ReconciliationResult(result.phase, False, False, result.missing, (*result.contradictions, "recovery_required"))
     return result
 
 
 def _prune(facts: Mapping[str, Any]) -> ReconciliationResult:
-    result = _result("prune", facts, ("canonical_consequence", "consumer_release", "retention_expired", "retirement_complete"), complete=facts.get("evidence_released") is True, next_action="prune")
+    result = _result("prune", facts, ("canonical_consequence", "consumer_release", "retention_expired", "retirement_complete"), complete=facts.get("evidence_released") is True)
     if facts.get("recovery_required") is True:
-        return ReconciliationResult(result.phase, False, False, result.missing, (*result.contradictions, "recovery_required"), "retain evidence")
+        return ReconciliationResult(result.phase, False, False, result.missing, (*result.contradictions, "recovery_required"))
     return result
 
 

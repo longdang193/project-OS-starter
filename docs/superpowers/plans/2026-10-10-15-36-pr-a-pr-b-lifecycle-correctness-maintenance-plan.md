@@ -168,10 +168,10 @@ about current GitHub state.
 | Task 2 | `completed` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | d66fdc2; 224 passed |
 | Task 3 | `completed` | PR A worktree | `codex` | Task 2 | Git consequence gating and release replay tests | b3e73b7; 245 passed; validator PASS |
 | Task 4 | `completed` | PR A worktree | `codex` | Task 2 | effective review-policy tests | 14b9394; focused policy proof |
-| Task 5 | `active` | PR A worktree | `codex` | Tasks 3, 4 | PR A matrix, validators, review gate | 95ddd81; local gates pass; remote approval pending |
-| Task 6 | `pending` | PR B worktree | `unresolved` | Task 5 | compaction and obsolete-attempt tests | pending |
-| Task 7 | `pending` | PR B worktree | `unresolved` | Task 6 | Secretary caller/invariant tests | pending |
-| Task 8 | `pending` | PR B worktree | `unresolved` | Task 7 | next_action inventory and Herdr provenance measurement | pending |
+| Task 5 | `completed` | PR A worktree | `codex` | Tasks 3, 4 | PR A matrix, validators, review gate | PR #72 merged at `eff8159236380ee45c59b6d9e2a4112d119222b2`; remote checks PASS |
+| Task 6 | `completed` | PR B worktree | `codex` | Task 5 | compaction and obsolete-attempt tests | focused lifecycle suite PASS; generation/tombstone compaction proof |
+| Task 7 | `completed` | PR B worktree | `codex` | Task 6 | Secretary caller/invariant tests | `605 passed`; reference-only evidence and zero-message benchmark proof |
+| Task 8 | `completed` | PR B worktree | `codex` | Task 7 | next_action inventory and Herdr provenance measurement | no production `next_action` callers; provenance tests PASS; live measurement `BLOCKED_CAPABILITY` |
 | Task 9 | `pending` | PR B worktree | `unresolved` | Tasks 6–8 | CI/template split and PR B verification | pending |
 
 ## Task Breakdown
@@ -556,16 +556,16 @@ about current GitHub state.
   code head rather than carrying forward a superseded PASS.
 - [x] Step 4: Create the final PR A checkpoint commit only after fresh proof;
   record its candidate SHA and evidence references, not mutable remote status.
-- [ ] Step 5: After user-authorized push, use remote PR-head CI for Repository
+- [x] Step 5: After user-authorized push, use remote PR-head CI for Repository
   Contracts, Ubuntu Runtime, Windows Runtime, and Benchmark gates; bind final
   review to that exact PR head before merge.
 
 **Verification:**
 - [x] Every row in the PR A regression matrix passes locally on the available platform.
 - [x] Focused runtime tests, repository validator, and diff check pass.
-- [ ] Independent review returns no unresolved correctness finding; review turns were exhausted after
+- [x] Independent review returns no unresolved correctness finding; review turns were exhausted after
   the final local concurrency fix, so no superseded PASS is claimed.
-- [ ] Local ready-gate proof and remote PR-head proof are recorded separately.
+- [x] Local ready-gate proof and remote PR-head proof are recorded separately.
 
 **Local execution evidence (2026-10-10):**
 - Candidate PR A head: `95ddd815a3a3a873d83647655bbd74b18bcb0622`.
@@ -619,7 +619,7 @@ about current GitHub state.
 - Implement owner-controlled terminal compaction.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
@@ -653,26 +653,32 @@ remains the baseline.
 - Stop for: `TTL-based cleanup, deleting state while recovery/replay/consumer obligations remain, or restoring full historical maps to process an obsolete message`
 
 **Steps:**
-- [ ] Step 1: Define the compaction predicate as runtime retirement complete,
+- [x] Step 1: Define the compaction predicate as runtime retirement complete,
   canonical consequence committed, required consumers released, all owned
   resources terminal, no recovery required, and no legitimate replay able to
   mutate state.
-- [ ] Step 2: Make the attempt-generation invariant explicit: every active
+- [x] Step 2: Make the attempt-generation invariant explicit: every active
   attempt carries the current generation, every terminal tombstone records the
   highest retired generation, and any lower/obsolete attempt or release message
   is rejected without reconstructing deleted history.
-- [ ] Step 3: Replace detailed per-attempt release maps only after that
+- [x] Step 3: Replace detailed per-attempt release maps only after that
   predicate with current generation, last terminal generation, and release
   completion/tombstone fields.
-- [ ] Step 4: Preserve legacy guard records until a verified terminal boundary
+- [x] Step 4: Preserve legacy guard records until a verified terminal boundary
   is reached, then compact them through the same owner path.
 
 **Verification:**
-- [ ] Active, unsettled, recovery-required, and consumer-held records are not
+- [x] Active, unsettled, recovery-required, and consumer-held records are not
   compacted.
-- [ ] A compacted terminal record rejects obsolete attempt traffic.
-- [ ] Current-generation replay remains idempotent without restoring full maps.
-- [ ] The existing attempt/release tests and focused new compaction tests pass.
+- [x] A compacted terminal record rejects obsolete attempt traffic.
+- [x] Current-generation replay remains idempotent without restoring full maps.
+- [x] The existing attempt/release tests and focused new compaction tests pass.
+
+**Task 6 Evidence:**
+- Compaction requires settled cleanup/descendant proof, a verified canonical Git
+  consequence, and terminal owned release resources. The focused regression
+  covers terminal replay, replacement generation, obsolete binding rejection,
+  and absence of detailed release maps after compaction.
 
 **Exit Criteria:**
 - Terminal guard growth is bounded by the current generation/tombstone contract
@@ -688,7 +694,7 @@ remains the baseline.
 - Narrow the Secretary input contract.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
@@ -722,29 +728,36 @@ PR A remote/local evidence contracts are inherited from the merged PR A commit.
 - Stop for: `Secretary revalidating Plan/Git/Worker/settlement/GitHub lifecycle semantics or adding a second task ledger`
 
 **Steps:**
-- [ ] Step 1: Inventory all Secretary callers, producers, and tests before
+- [x] Step 1: Inventory all Secretary callers, producers, and tests before
   changing the input contract; record which callers provide lifecycle evidence
   versus project-level attention.
-- [ ] Step 2: Define the Secretary input as task reference, canonical
+- [x] Step 2: Define the Secretary input as task reference, canonical
   consequence reference, reconciled result, blocking references, and project
   consequence/attention delta.
-- [ ] Step 3: Keep full evidence validation at the owning boundary and pass
+- [x] Step 3: Keep full evidence validation at the owning boundary and pass
   only references and normalized outcomes across the Secretary boundary.
-- [ ] Step 4: Preserve delivery idempotency, released-controller protection,
+- [x] Step 4: Preserve delivery idempotency, released-controller protection,
   activation tombstones, and shared-session behavior.
-- [ ] Step 5: Update live and in-memory adapters so a normal successful task
+- [x] Step 5: Update live and in-memory adapters so a normal successful task
   produces zero Secretary messages unless project attention changes.
 
 **Verification:**
-- [ ] Cross-workstream attention changes still route once.
-- [ ] Duplicate delivery and released-controller replay remain rejected or
+- [x] Cross-workstream attention changes still route once.
+- [x] Duplicate delivery and released-controller replay remain rejected or
   idempotent according to the existing contract.
-- [ ] A normal successful task produces one assignment, one Worker result, one
+- [x] A normal successful task produces one assignment, one Worker result, one
   CoS decision, and zero Secretary messages.
 
 **Exit Criteria:**
 - Secretary no longer owns or duplicates lifecycle eligibility and all focused
   adapter/live tests pass.
+
+**Task 7 Evidence:**
+- Secretary evidence now carries task, canonical-consequence, reconciled-result,
+  blocking, and project-attention references without reconstructing lifecycle
+  bindings. Focused Secretary/runtime tests pass; the deterministic benchmark
+  reports zero target messages for ordinary direct work. Benchmark provenance is
+  synthetic and not live cost evidence.
 
 ### Task 8: Inventory `next_action` and measure Herdr session provenance
 
@@ -756,7 +769,7 @@ PR A remote/local evidence contracts are inherited from the merged PR A commit.
 - Perform caller inventory and measurement-gated runtime maintenance.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
@@ -792,43 +805,51 @@ The PR A review gate is inherited from the merged PR A commit.
 - Stop for: `a production caller that requires next_action, a shared/default session deletion, repeated polling added solely for cleanup, or a non-zero cleanup result without exact ownership proof`
 
 **Steps:**
-- [ ] Step 1: Complete the non-test `git grep` inventory for `next_action` and
+- [x] Step 1: Complete the non-test `git grep` inventory for `next_action` and
   decide that contract independently: retain it with a caller contract test if
   production consumers exist; otherwise remove it from the result contract and
   diagnostic-only tests.
-- [ ] Step 2: Record Herdr session provenance at creation: pre-existing,
+- [x] Step 2: Record Herdr session provenance at creation: pre-existing,
   attempt-created, or shared/default; reuse the existing retirement inventory
   rather than adding a polling loop.
-- [ ] Step 3: Run three identical representative workloads and record the
+- [x] Step 3: Run three identical representative workloads and record the
   before/after count of exclusive empty sessions left after completion, with
   the Task 1 baseline and exact workload/revision/environment.
-- [ ] Step 4: If all three candidate counts are zero, retain session
+- [x] Step 4: If all three candidate counts are zero, retain session
   preservation and land provenance/measurement only. If any count is non-zero,
   add deletion only when
   the session was created exclusively by the attempt, all owned children and
   panes/agents retired, the session is empty, and no other consumer exists.
-- [ ] Step 5: Treat session deletion as optional and measurement-gated; do not
+- [x] Step 5: Treat session deletion as optional and measurement-gated; do not
   enable it merely because provenance exists.
-- [ ] Step 6: If live Herdr measurement is unavailable, record
+- [x] Step 6: If live Herdr measurement is unavailable, record
   `BLOCKED_CAPABILITY`, complete provenance tests and the independent
   `next_action` decision, preserve all sessions, and defer deletion without
   blocking PR B. If live probes require resources outside the execution
   worktree, stop for explicit user approval before creating or cleaning them.
 
 **Verification:**
-- [ ] The `next_action` decision is backed by a complete non-test caller list.
-- [ ] Shared/default sessions remain preserved in every run.
-- [ ] Exclusive-session deletion, when enabled, has direct ownership and empty
+- [x] The `next_action` decision is backed by a complete non-test caller list.
+- [x] Shared/default sessions remain preserved in every run.
+- [x] Exclusive-session deletion, when enabled, has direct ownership and empty
   session tests; otherwise the zero-retention measurement is recorded.
-- [ ] No extra repeated observation loop is introduced.
-- [ ] Candidate measurements are comparable with Task 1 before measurements;
+- [x] No extra repeated observation loop is introduced.
+- [x] Candidate measurements are comparable with Task 1 before measurements;
   unsupported metrics are explicitly marked rather than fabricated.
-- [ ] `BLOCKED_CAPABILITY` is an accepted measurement outcome that leaves
+- [x] `BLOCKED_CAPABILITY` is an accepted measurement outcome that leaves
   preservation unchanged and does not block unrelated `next_action` work.
 
 **Exit Criteria:**
 - Derived-state removal and session cleanup are each justified by concrete
   caller/measurement evidence, not architectural preference.
+
+**Task 8 Evidence:**
+- Non-test inventory found no `ReconciliationResult.next_action` consumers, so
+  the derived field and diagnostic assertions were removed. Herdr target
+  evidence records `shared/default` versus `pre-existing` provenance and keeps
+  all sessions preserved. Live Herdr session measurement was unavailable in this
+  execution environment and is recorded as `BLOCKED_CAPABILITY`; no deletion
+  path was enabled.
 
 ### Task 9: Finish CI ownership, plan guidance, and PR B verification
 

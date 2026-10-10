@@ -589,6 +589,9 @@ def _resolve_target_selector(
             "candidate_count": 1,
             "session": session,
             "pane": pane,
+            "session_provenance": (
+                "shared/default" if session == _HERDR_DEFAULT_SESSION else "pre-existing"
+            ),
         }
 
     deadline = time.monotonic() + _TARGET_DISCOVERY_TIMEOUT
@@ -690,6 +693,11 @@ def _resolve_target_selector(
         ],
         "session": selected_session,
         "pane": selected_pane,
+        "session_provenance": (
+            "shared/default"
+            if selected_session == _HERDR_DEFAULT_SESSION
+            else "pre-existing"
+        ),
     }
 
 
