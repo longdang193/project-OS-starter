@@ -2312,6 +2312,7 @@ def test_target_selector_discovers_auto_pane_in_named_session(
     assert commands == [["herdr.exe", "--session", "project-os", "pane", "list"]]
     assert resolution["status"] == "selected"
     assert resolution["mode"] == "auto"
+    assert resolution["session_provenance"] == "pre-existing"
 
 
 def test_pane_ownership_lock_blocks_same_pane_and_releases_after_failure(
@@ -2362,6 +2363,7 @@ def test_target_selector_uses_default_session_for_workspace_qualified_pane(
     assert inspected_sessions == ["default"]
     assert resolution["status"] == "selected"
     assert resolution["mode"] == "auto"
+    assert resolution["session_provenance"] == "shared/default"
 
 
 def test_target_selector_selects_first_deterministic_auto_target(
@@ -2390,6 +2392,16 @@ def test_target_selector_selects_first_deterministic_auto_target(
     assert (session, pane) == ("default", "w1:p1")
     assert resolution["status"] == "selected"
     assert resolution["candidate_count"] == 2
+    assert resolution["session_provenance"] == "shared/default"
+
+
+def test_target_selector_marks_non_default_exact_session_pre_existing() -> None:
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "existing-session", "w1:p1", "herdr.exe",
+    )
+
+    assert (session, pane) == ("existing-session", "w1:p1")
+    assert resolution["session_provenance"] == "pre-existing"
 
 
 def test_target_selector_reuses_snapshot_and_keeps_rejection_reasons(

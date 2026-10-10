@@ -1,40 +1,30 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Literal, Mapping
-
-from .reconciliation import ReconciliationInput, RemotePrEvidence, reconcile
+from typing import Any, Mapping
 
 
 CURRENT = "CURRENT"
 MISSING = "MISSING"
 STALE = "STALE"
-EvidenceStatus = Literal["CURRENT", "MISSING", "STALE"]
 
 
 @dataclass(frozen=True)
 class EvidenceSnapshot:
-    status: EvidenceStatus
-    repository_identity: str | None
-    workstream: str | None
-    plan_identity: str | None
-    plan_revision: str | None
-    git_revision: str | None
-    task_id: str | None
-    task_state: str | None
-    accepted_prerequisite_refs: tuple[str, ...]
-    worker_result_ref: str | None
-    settlement_receipt_ref: str | None
-    acceptance_proof_ref: str | None
+    status: str
+    task_ref: str | None
+    canonical_consequence_ref: str | None
+    reconciled_result_ref: str | None
+    blocking_refs: tuple[str, ...]
     project_consequence: str | None
-    next_action: str | None
+    attention_delta: Mapping[str, Any] | None
     reasons: tuple[str, ...]
     sources: tuple[tuple[str, str], ...]
-    reconciliation: dict[str, Any] | None = None
+    reconciliation: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
-        value["accepted_prerequisite_refs"] = list(self.accepted_prerequisite_refs)
+        value["blocking_refs"] = list(self.blocking_refs)
         value["reasons"] = list(self.reasons)
         value["sources"] = dict(self.sources)
         return value
@@ -42,174 +32,55 @@ class EvidenceSnapshot:
 
 def build_evidence_snapshot(
     *,
-    plan: Mapping[str, Any],
-    git: Mapping[str, Any],
-    worker: Mapping[str, Any],
-    settlement: Mapping[str, Any],
-    acceptance: Mapping[str, Any],
-    next_action: Mapping[str, Any],
-    remote: Mapping[str, Any] | RemotePrEvidence | None = None,
+    task_ref: str | None,
+    canonical_consequence_ref: str | None,
+    reconciled_result_ref: str | None,
+    blocking_refs: tuple[str, ...] | list[str] = (),
+    project_consequence: str | None = None,
+    attention_delta: Mapping[str, Any] | None = None,
+    reconciled_result: Mapping[str, Any] | None = None,
 ) -> EvidenceSnapshot:
-    values = {
-        "repository_identity": plan.get("repository_identity"),
-        "workstream": plan.get("workstream"),
-        "plan_identity": plan.get("plan_identity"),
-        "plan_revision": plan.get("plan_revision"),
-        "git_revision": git.get("git_revision"),
-        "task_id": worker.get("task_id"),
-        "task_state": plan.get("task_state"),
-        "attempt_id": worker.get("attempt_id") or settlement.get("attempt_id"),
-        "checkpoint": plan.get("checkpoint"),
-        "worker_result_ref": worker.get("result_ref"),
-        "settlement_receipt_ref": settlement.get("receipt_ref"),
-        "acceptance_proof_ref": acceptance.get("proof_ref"),
-        "project_consequence": next_action.get("project_consequence"),
-        "next_action": next_action.get("action"),
+    references = {
+        "task": task_ref,
+        "canonical consequence": canonical_consequence_ref,
+        "reconciled result": reconciled_result_ref,
     }
-    reasons: list[str] = []
-    source_fields = {
-        "plan": plan.get("source_ref"),
-        "git": git.get("source_ref"),
-        "worker": worker.get("result_ref"),
-        "settlement": settlement.get("receipt_ref"),
-        "acceptance": acceptance.get("proof_ref"),
-        "policy": next_action.get("policy_ref"),
-    }
-    for name, value in values.items():
-        if not isinstance(value, str) or not value.strip():
-            reasons.append(f"missing {name}")
-    for name, value in source_fields.items():
-        if not isinstance(value, str) or not value.strip():
-            reasons.append(f"missing {name} source")
-
-    if git.get("repository_identity") != plan.get("repository_identity"):
-        reasons.append("repository identity mismatch")
-    if git.get("plan_identity") != plan.get("plan_identity"):
-        reasons.append("Plan identity mismatch")
-    if git.get("plan_revision") != plan.get("plan_revision"):
-        reasons.append("Plan revision mismatch")
-    if not isinstance(plan.get("git_revision"), str) or not plan.get("git_revision"):
-        reasons.append("missing plan git revision")
-    elif git.get("git_revision") != plan.get("git_revision"):
-        reasons.append("Git revision mismatch")
-    if worker.get("repository_identity") != plan.get("repository_identity"):
-        reasons.append("Worker repository binding mismatch")
-    if worker.get("plan_identity") != plan.get("plan_identity"):
-        reasons.append("Worker Plan binding mismatch")
-    if worker.get("plan_revision") != plan.get("plan_revision"):
-        reasons.append("Worker Plan revision mismatch")
-    if worker.get("task_id") != plan.get("task_id"):
-        reasons.append("Worker task binding mismatch")
-    authoritative_attempt_id = worker.get("attempt_id") or settlement.get("attempt_id")
-    for source_name, source in (("worker", worker), ("settlement", settlement), ("acceptance", acceptance)):
-        for field in (
-            "repository_identity",
-            "workstream",
-            "plan_identity",
-            "plan_revision",
-            "git_revision",
-            "task_id",
-            "attempt_id",
-            "checkpoint",
-        ):
-            expected = authoritative_attempt_id if field == "attempt_id" else plan.get(field)
-            if source.get(field) != expected:
-                reasons.append(f"{source_name} {field} binding mismatch")
-    if worker.get("publication_valid") is not True:
-        reasons.append("Worker publication unavailable")
-    if settlement.get("settled") is not True or settlement.get("settlement_proven") is not True or settlement.get("resource_settled") is not True:
-        reasons.append("settlement unavailable")
-    if acceptance.get("decision") != "PASS":
-        reasons.append("acceptance unavailable")
-    if acceptance.get("task_id") != plan.get("task_id"):
-        reasons.append("acceptance task binding mismatch")
-    if acceptance.get("plan_identity") != plan.get("plan_identity"):
-        reasons.append("acceptance Plan binding mismatch")
-    if next_action.get("authorized") is not True:
-        reasons.append("next action is not authorized")
-
-    unique_reasons = tuple(dict.fromkeys(reasons))
-    status = CURRENT
-    if unique_reasons:
-        missing_evidence = any(
-            reason.startswith("missing ") or reason.endswith("unavailable")
-            for reason in unique_reasons
+    reasons = [
+        f"missing {name} reference"
+        for name, value in references.items()
+        if not isinstance(value, str) or not value.strip()
+    ]
+    normalized_blocking_refs = tuple(sorted({ref for ref in blocking_refs if isinstance(ref, str) and ref.strip()}))
+    if normalized_blocking_refs:
+        reasons.append("blocking references present")
+    status = MISSING if any(reason.startswith("missing ") for reason in reasons) else STALE if normalized_blocking_refs else CURRENT
+    sources = tuple(
+        sorted(
+            (name, value)
+            for name, value in references.items()
+            if isinstance(value, str) and value.strip()
         )
-        stale_markers = (
-            "mismatch",
-            "revision",
-            "stale",
-        )
-        status = (
-            MISSING
-            if missing_evidence
-            else STALE
-            if any(any(marker in reason for marker in stale_markers) for reason in unique_reasons)
-            else MISSING
-        )
-    canonical = None
-    if remote is not None:
-        if isinstance(remote, RemotePrEvidence):
-            remote_evidence = remote
-        elif isinstance(remote, Mapping):
-            remote_fields = {
-                field: remote.get(field)
-                for field in RemotePrEvidence.__dataclass_fields__
-                if field in remote
-            }
-            remote_evidence = RemotePrEvidence(**remote_fields)
-        else:
-            remote_evidence = None
-        if remote_evidence is not None:
-            canonical = reconcile(
-                ReconciliationInput(
-                    phase="integrate",
-                    facts={
-                        "cos_pass": acceptance.get("decision") == "PASS",
-                        "repository_identity": plan.get("repository_identity"),
-                        "pr_number": plan.get("pr_number"),
-                        "base_ref": plan.get("base_ref"),
-                        "base_sha": plan.get("base_sha"),
-                        "candidate_sha": git.get("git_revision"),
-                    },
-                    remote=remote_evidence,
-                )
-            )
-        reasons.extend(
-            list(canonical.contradictions)
-            + [f"missing {item}" for item in canonical.missing]
-        )
-        if canonical.contradictions and status != MISSING:
-            status = STALE
-        elif canonical.missing and status != STALE:
-            status = MISSING
-        elif not unique_reasons:
-            status = CURRENT
-        unique_reasons = tuple(dict.fromkeys(reasons))
-
+    )
     return EvidenceSnapshot(
         status=status,
-        repository_identity=values["repository_identity"] if isinstance(values["repository_identity"], str) else None,
-        workstream=values["workstream"] if isinstance(values["workstream"], str) else None,
-        plan_identity=values["plan_identity"] if isinstance(values["plan_identity"], str) else None,
-        plan_revision=values["plan_revision"] if isinstance(values["plan_revision"], str) else None,
-        git_revision=values["git_revision"] if isinstance(values["git_revision"], str) else None,
-        task_id=values["task_id"] if isinstance(values["task_id"], str) else None,
-        task_state=values["task_state"] if isinstance(values["task_state"], str) else None,
-        accepted_prerequisite_refs=tuple(sorted(str(item) for item in plan.get("accepted_prerequisites", ()) if str(item).strip())),
-        worker_result_ref=values["worker_result_ref"] if isinstance(values["worker_result_ref"], str) else None,
-        settlement_receipt_ref=values["settlement_receipt_ref"] if isinstance(values["settlement_receipt_ref"], str) else None,
-        acceptance_proof_ref=values["acceptance_proof_ref"] if isinstance(values["acceptance_proof_ref"], str) else None,
-        project_consequence=values["project_consequence"] if isinstance(values["project_consequence"], str) else None,
-        next_action=values["next_action"] if isinstance(values["next_action"], str) else None,
-        reasons=unique_reasons,
-        sources=tuple(sorted((name, value) for name, value in source_fields.items() if isinstance(value, str) and value.strip())),
-        reconciliation=canonical.to_dict() if canonical is not None else None,
+        task_ref=task_ref if isinstance(task_ref, str) and task_ref.strip() else None,
+        canonical_consequence_ref=(
+            canonical_consequence_ref
+            if isinstance(canonical_consequence_ref, str) and canonical_consequence_ref.strip()
+            else None
+        ),
+        reconciled_result_ref=(
+            reconciled_result_ref
+            if isinstance(reconciled_result_ref, str) and reconciled_result_ref.strip()
+            else None
+        ),
+        blocking_refs=normalized_blocking_refs,
+        project_consequence=project_consequence if isinstance(project_consequence, str) and project_consequence.strip() else None,
+        attention_delta=dict(attention_delta) if isinstance(attention_delta, Mapping) else None,
+        reasons=tuple(dict.fromkeys(reasons)),
+        sources=sources,
+        reconciliation=dict(reconciled_result) if isinstance(reconciled_result, Mapping) else None,
     )
-
-
-def _text(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 __all__ = ["CURRENT", "MISSING", "STALE", "EvidenceSnapshot", "build_evidence_snapshot"]

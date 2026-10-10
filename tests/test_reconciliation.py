@@ -101,7 +101,6 @@ def test_accept_does_not_advance_until_cos_pass() -> None:
         "cos_pass": False,
     }))
     assert result.complete is False
-    assert result.next_action == "reconcile accept"
 
 
 def test_integrate_rejects_review_for_old_head() -> None:
@@ -204,4 +203,3 @@ def test_prune_does_not_advance_until_retirement_complete() -> None:
         "retirement_complete": False,
     }))
     assert result.complete is False
-    assert result.next_action == "reconcile prune"

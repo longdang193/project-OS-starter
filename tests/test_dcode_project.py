@@ -1331,6 +1331,67 @@ def test_attempt_guard_keeps_terminal_release_record_immutable(
     assert replay["released_resources"] == initial["released_resources"]
 
 
+def test_attempt_guard_compacts_verified_terminal_release_and_rejects_obsolete_replay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        settlement_proven=True,
+        settlement_evidence={
+            "cleanup_state": "removed",
+            "descendant_state": "terminated",
+        },
+    )
+    compacted = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "canonical_consequence": {"checkpoint_verified": True},
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+
+    assert compacted["release_compacted"] is True
+    assert compacted["generation"] == 1
+    assert compacted["retired_generation"] == 1
+    assert "released_resources_by_attempt" not in compacted
+    assert "release_authorization" not in compacted
+    assert "released_resources" not in compacted
+    assert "release_binding" not in compacted
+    assert compacted["terminal_release_tombstone"]["attempt_id"] == "attempt-1"
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    assert replay == compacted
+
+    replacement = LAUNCHER._claim_attempt(
+        **dict(binding, attempt_id="attempt-2", grant_digest="grant-2"),
+        repo_root=tmp_path,
+        result_file=None,
+    )
+    assert replacement["record"]["generation"] == 2
+    assert replacement["record"]["retired_generation"] == 1
+    with pytest.raises(RuntimeError, match="binding mismatch"):
+        LAUNCHER.record_release_authorization(
+            assignment_id="assignment-1",
+            binding=binding,
+            release_authorization={"resources": {"task-result": {"state": "pending"}}},
+        )
+
+
 def test_attempt_guard_normalizes_pending_release_binding(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

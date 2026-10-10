@@ -94,6 +94,7 @@ resources remain caller-owned through `runtime.json`.
 - `scripts/herdr_parallel_dispatch.py` owns bounded scheduling, invocation, and event delivery; `scripts/herdr_main_launcher.py` owns Herdr transport and observation.
 - Herdr CLI status is nonzero when any result has unresolved ownership or a non-null `failure_kind`; lifecycle facts such as `unresolved: false` and `capacity: retired` remain unchanged for safely settled failures.
 - `scripts/dcode_project.py` owns worker execution, deadlines, PATH availability, descendants, cleanup, receipts, and same-worktree attempt claims; the shared runtime core owns lifecycle classification and eligibility.
+- Terminal attempt guards compact only after settlement, cleanup, descendant retirement, the Git-recorded consequence, and every owned release resource are terminal. The compact record retains the active generation and a release tombstone; obsolete traffic is rejected without restoring detailed release maps. This is owner-controlled compaction, not TTL cleanup.
 - Herdr observation never proves retirement, authorizes retry, or accepts work.
 - Ordinary personal-local probes may invoke `dcode-project` directly. Coordinated Git-tracked work enters through `herdr_main_launcher.py` or `herdr_parallel_dispatch.py`, which supplies correlated identity and grant evidence.
 - `NEEDS_CONTEXT` requests information, not replay. Continuation requires settled ownership, explicit controller decision, remaining durable authority, and updated context.
@@ -128,6 +129,7 @@ resources remain caller-owned through `runtime.json`.
 - Runtime deployment stages marker-owned output, validates it, then swaps one complete target tree; failed activation restores prior target content.
 - Launcher evidence records monotonic `preflight`, `target_discovery`, `worker_initialization`, `delivery`, `observation`, and `retirement` durations plus launcher subprocess counts. Values use explicit measured/not-attempted/unavailable status, include total duration and retry attribution, and stay workload-specific; no optimization claim is valid without matching baseline evidence.
 - Native Codex CoS may pass `--session auto --pane auto`; the repository launcher discovers all eligible existing matching-`--cwd` panes from the default Herdr server. With a named session and `--pane auto`, it queries only that session's pane list. The launcher validates workspace-qualified pane IDs, filters shell-only foreground processes, sorts candidates deterministically, and selects the first. Workspace IDs are not Herdr session names. Candidate evidence records the full eligible set. Mixed exact/`auto` selectors fail closed; no eligible target returns `target_resolution:not_found`. `HERDR_ENV` is not a controller dispatch gate; launcher child environments remove it.
+- Herdr target evidence records session provenance as `shared/default` for the default session and `pre-existing` for other selected sessions. Existing sessions remain preserved; no deletion is enabled without direct exclusive-ownership and empty-session evidence.
 - Herdr observation is bounded and transient: DeepAgents reads the correlated lifecycle receipt first; confirmed receipts skip pane `wait-output`, `process-info`, and `read` commands. Unresolved receipts use pane waits and pull probes for diagnostics or legacy fallback only; Codex uses `agent get`/`agent read` using the assignment attempt identity. `agent wait` remains a documented Herdr capability, not current launcher integration. Initial or stale state is `unknown`, and silence may become `stuck_suspected` only as controller evidence. Observation never auto-kills, retries, advances, releases an assignment claim, or stores raw output. Replacement requires canonical `BLOCKED | RECONCILE | ELIGIBLE` settlement evidence.
 - Numeric Codex wall-clock grants fail closed until a named runtime owner can enforce interruption and cleanup. Native/default grants remain supported; no unsupported `outer-watchdog` claim is emitted.
 - Positive `rank` values order only ranked profiles. Ranked profiles are ordered
@@ -193,6 +195,9 @@ resources remain caller-owned through `runtime.json`.
 - Project Secretary, when explicitly active, is an attention surface over these
   runtime paths; it does not replace direct execution selection or CoS. Runtime
   sessions, notifications, and operational receipts remain bounded evidence.
+- Secretary consumes task, canonical-consequence, reconciled-result, blocking,
+  and project-attention references; lifecycle eligibility remains owned by
+  acceptance, reconciliation, Git, and runtime boundaries.
   Idle, timeout, missing notification, disconnect, and connection closure are
   hints requiring reconciliation, not proof of completion, cancellation,
   retirement, or failure.
