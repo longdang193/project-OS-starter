@@ -4464,6 +4464,31 @@ def test_confirm_codex_start_accepts_matching_process_identity(
     assert result["process_ids"] == [2]
 
 
+def test_confirm_codex_start_records_owned_descendants(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    responses = iter([
+        {"result": {"agent": {"agent_status": "working"}}},
+        {"result": {"process_info": {"foreground_processes": [{
+            "pid": 2,
+            "name": "codex.exe",
+            "argv0": "C:/bin/codex.exe",
+            "cwd": str(tmp_path),
+            "start_time": 1,
+            "children": [{"pid": 3, "name": "powershell.exe", "children": []}],
+        }]}}},
+    ])
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._confirm_codex_start(
+        "herdr.exe", "session", "p1", "agent", env={}, before_process_ids={1},
+        expected_codex_executable="C:/bin/codex.exe", expected_cwd=tmp_path,
+    )
+
+    assert result["process_ids"] == [2, 3]
+
+
 def test_deepagents_pane_requires_powershell_shell(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

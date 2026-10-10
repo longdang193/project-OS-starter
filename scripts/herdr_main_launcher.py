@@ -1261,19 +1261,21 @@ def _confirm_codex_start(
         process_info = _result(process_payload, "process_info")
         if not isinstance(process_info, dict):
             raise LaunchBlocked("Codex process information is invalid.")
-        processes = _process_records(process_info.get("foreground_processes"))
-        process_ids = _process_ids(processes, require_non_shell=True)
+        foreground_processes = process_info.get("foreground_processes")
+        processes = _process_records(foreground_processes)
+        _process_ids(processes, require_non_shell=True)
     except (CommandTransportTimeout, LaunchBlocked, json.JSONDecodeError) as exc:
         if isinstance(exc, LaunchBlocked) and str(exc).startswith("Codex "):
             raise
         raise LaunchBlocked("Codex process is not running before prompt delivery.") from exc
-    owned_processes = [
-        process
-        for process in processes
-        if int(process["pid"]) not in before_process_ids
-        and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
-        and _matches_codex_process(process, expected_codex_executable, expected_cwd)
-    ]
+    owned_processes = _owned_process_records(
+        foreground_processes,
+        lambda process: (
+            int(process["pid"]) not in before_process_ids
+            and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+            and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+        ),
+    )
     owned_process_ids = {int(process["pid"]) for process in owned_processes}
     process_identities = {
         identity

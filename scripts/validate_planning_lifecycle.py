@@ -286,7 +286,9 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
         )
     elif len(executor_values) > 1:
         findings.append(Finding("planning_execution_error", rel, "`Default task executor` must appear at most once in `## Execution Approach`"))
-    elif executor_values and executor_values[0].lower() not in allowed_executors:
+    elif executor_values and executor_values[0].lower() not in allowed_executors and not (
+        status == "completed" and executor_values[0].lower() == "tura"
+    ):
         findings.append(
             Finding(
                 "planning_execution_error",

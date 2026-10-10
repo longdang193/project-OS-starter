@@ -710,6 +710,27 @@ def test_completed_plan_allows_historical_validator_executor_label() -> None:
         rmtree(root, ignore_errors=True)
 
 
+def test_completed_plan_allows_historical_tura_default_executor() -> None:
+    root = make_test_root()
+    try:
+        plan = git_tracked_plan(
+            status="completed",
+            coordination_schema=1,
+            ledger="| Task 1 | `completed` | current | tura | none | `test-one` | recorded proof |",
+        ).replace("- Active task(s): `Task 1`", "- Active task(s): `none`")
+        plan = plan.replace(
+            "- Coordination: `git-tracked`",
+            "- Coordination: `git-tracked`\n- Default task executor: `tura`",
+        )
+        write_text(root / "docs" / "superpowers" / "plans" / "demo-plan.md", plan)
+
+        result = run_validator(root)
+
+        assert result.returncode == 0
+    finally:
+        rmtree(root, ignore_errors=True)
+
+
 def test_historical_completed_plan_preserves_legacy_coordination() -> None:
     root = make_test_root()
     try:
