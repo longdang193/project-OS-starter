@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: one-authority-lifecycle-convergence
 targets:
@@ -119,8 +119,8 @@ raw probe traces remain disposable.
 - Branch: `codex/one-authority-lifecycle-convergence`
 - Base commit: `b41d3f8` (`origin/main`, verified 2026-10-10)
 - Expected workspace: `fresh execution worktree; preserve current checkout changes and untracked .playwright-mcp/, db/, temp_evidence.json, and existing untracked plans`
-- Next action: `fresh local verification complete; user-authorized push/PR and exact-head remote checks remain`
-- Blockers: `review turn 1 found four lifecycle defects; patch and rerun exact-head review before completion`
+- Next action: `none; implementation, exact-head checks, and independent review complete`
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -505,6 +505,8 @@ raw probe traces remain disposable.
 - Fixed retirement wiring: terminal settled DeepAgents assignments call `retire_settled_lane`; unresolved retirement keeps capacity occupied.
 - Fixed phase recommendation: incomplete eligible phases return `reconcile <phase>`, never downstream action.
 - Required rerun: focused lifecycle tests, full suite, repository/planning validators, exact-head CI, independent review.
+- Review turn 2: `PASS` at PR head `7a476a30c8da6f60f66d204f0f164058ad2addbe`.
+- Completion proof: local suite `1105 passed, 1 skipped`; exact-head Repository Contracts, Runtime Contracts, and Benchmark passed; independent review found no blocking issue.
 
 ## Completion Criteria
 
