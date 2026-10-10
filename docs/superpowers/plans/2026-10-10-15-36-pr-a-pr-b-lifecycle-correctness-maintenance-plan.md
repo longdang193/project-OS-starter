@@ -165,7 +165,7 @@ about current GitHub state.
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | PR A worktree | `codex` | none | base/inventory/before-measurement proof | dc91924; baseline PASS |
-| Task 2 | `completed` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | pending checkpoint; 224 passed |
+| Task 2 | `completed` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | d66fdc2; 224 passed |
 | Task 3 | `active` | PR A worktree | `codex` | Task 2 | Git consequence gating and release replay tests | pending |
 | Task 4 | `pending` | PR A worktree | `unresolved` | Task 2 | effective review-policy tests | pending |
 | Task 5 | `pending` | PR A worktree | `unresolved` | Tasks 3, 4 | PR A matrix, validators, review gate | pending |
