@@ -589,6 +589,15 @@ about current GitHub state.
   now occurs inside the verifier's guarded path, with a regression covering invalid
   committed bytes. Focused follow-up proof: `58 passed, 1 skipped`; repository and
   plan validators PASS; `git diff --check` PASS.
+- Remote review turn 3 against `e6e27219837c43a147b7360f87d5e6a2e4d32a99` found two
+  justified correctness gaps: POSIX in-place writes could change content after the
+  first digest while preserving inode identity, and an `unverified` retry could
+  rebind the same attempt to a new path/digest/producer. The follow-up adds a shared
+  owner lock around task-result publication and disposal, rechecks content after
+  quarantine, preserves physical binding fields across all nonterminal states, and
+  adds regressions for both cases. Full proof: `1137 passed, 2 skipped`; focused
+  lifecycle/release proof `207 passed, 1 skipped`; repository and plan validators
+  PASS; `git diff --check` PASS.
 - Remote PR-head CI/review remains approval-gated; PR B has not started.
 
 **Exit Criteria:**

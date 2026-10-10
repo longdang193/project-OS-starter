@@ -1239,6 +1239,71 @@ def test_attempt_guard_keeps_pending_release_binding_immutable(
     assert replay["released_resources"] == initial["released_resources"]
 
 
+def test_attempt_guard_keeps_unverified_release_binding_immutable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    initial = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "pending",
+                    "attempt_root": str(tmp_path),
+                    "relative_path": "task-result.json",
+                    "content_sha256": "a" * 64,
+                    "producer": "dcode-project",
+                    "schema": "dcode-project.task-result.v1",
+                }
+            }
+        },
+    )
+    failed = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "unverified",
+                    "reason": "replacement_detected",
+                }
+            }
+        },
+    )
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "resources": {
+                "task-result": {
+                    "state": "pending",
+                    "attempt_root": str(tmp_path),
+                    "relative_path": "replacement.json",
+                    "content_sha256": "b" * 64,
+                    "producer": "other-producer",
+                    "schema": "other-schema",
+                }
+            }
+        },
+    )
+    assert failed["released_resources"]["task-result"]["state"] == "unverified"
+    replayed_resource = replay["released_resources"]["task-result"]
+    assert replayed_resource["state"] == "pending"
+    for field in ("attempt_id", "evidence_ref", "attempt_root", "relative_path", "content_sha256", "producer", "schema"):
+        assert replayed_resource[field] == failed["released_resources"]["task-result"][field]
+
+
 def test_attempt_guard_keeps_terminal_release_record_immutable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

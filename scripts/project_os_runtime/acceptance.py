@@ -12,6 +12,7 @@ import tempfile
 from typing import Any
 
 from .reconciliation import ReconciliationInput, reconcile
+from .results import evidence_path_lock
 
 
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
@@ -430,6 +431,11 @@ def _same_file_identity(first: os.stat_result, second: os.stat_result) -> bool:
 
 
 def _unlink_verified_file(path: Path, verified_stat: os.stat_result, expected_digest: str) -> str | None:
+    with evidence_path_lock(path):
+        return _unlink_verified_file_unlocked(path, verified_stat, expected_digest)
+
+
+def _unlink_verified_file_unlocked(path: Path, verified_stat: os.stat_result, expected_digest: str) -> str | None:
     if os.name == "nt":
         import ctypes
         import ctypes.wintypes
@@ -504,7 +510,10 @@ def _unlink_verified_file(path: Path, verified_stat: os.stat_result, expected_di
         quarantine_path.unlink()
         os.rename(path, quarantine_path)
         quarantined_unverified = True
-        if not _same_file_identity(os.stat(quarantine_path, follow_symlinks=False), verified_stat):
+        if (
+            not _same_file_identity(os.stat(quarantine_path, follow_symlinks=False), verified_stat)
+            or _digest_for_fd(fd) != expected_digest
+        ):
             try:
                 os.link(quarantine_path, path)
                 quarantine_path.unlink()

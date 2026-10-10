@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from collections.abc import Mapping
+from contextlib import contextmanager
 from pathlib import Path
 import time
 from typing import Any
@@ -21,6 +22,34 @@ TASK_RESULT_SCHEMA = "dcode-project.task-result.v1"
 TASK_RESULT_MAX_BYTES = 16 * 1024
 TASK_RESULT_STATUSES = frozenset({"in_progress", "completed", "failed", "blocked", "unknown"})
 _CAPABILITY_DIGEST_FIELDS = ("requested", "passed_to_worker", "validated_available")
+
+
+@contextmanager
+def evidence_path_lock(path: Path):
+    lock_path = path.with_name(f".{path.name}.release.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        handle.seek(0)
+        handle.write(b"0")
+        handle.flush()
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _capability_digest(values: list[str]) -> str:
@@ -240,15 +269,16 @@ def encode_task_result(payload: dict[str, Any]) -> bytes:
 def publish_task_result(path: Path, payload: dict[str, Any]) -> None:
     encoded = encode_task_result(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
-    try:
-        with temporary.open("xb") as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    with evidence_path_lock(path):
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
+        try:
+            with temporary.open("xb") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def parse_task_result(

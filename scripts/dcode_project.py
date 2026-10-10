@@ -968,7 +968,7 @@ def record_release_authorization(
                 if isinstance(previous_resource, dict):
                     if previous_resource.get("state") in {"removed", "already_absent"}:
                         normalized_resource = previous_resource
-                    elif previous_resource.get("state") == "pending":
+                    elif previous_resource.get("state") not in {"removed", "already_absent"}:
                         for field in (
                             "attempt_id",
                             "evidence_ref",
