@@ -20,6 +20,7 @@ import tempfile
 import time
 import tomllib
 import uuid
+from collections.abc import Mapping
 try:
     import owned_process as _owned_process
 except ModuleNotFoundError:
@@ -933,7 +934,17 @@ def record_release_authorization(
         attempt_key = str(binding.get("attempt_id"))
         released_resources_by_attempt = dict(existing.get("released_resources_by_attempt", {})) if isinstance(existing.get("released_resources_by_attempt"), dict) else {}
         previous_resources = released_resources_by_attempt.get(attempt_key)
-        if not isinstance(previous_resources, dict) and isinstance(existing.get("released_resources"), dict):
+        legacy_binding = existing.get("release_binding")
+        legacy_matches_attempt = (
+            same_attempt_binding(legacy_binding, binding)
+            if isinstance(legacy_binding, Mapping)
+            else existing.get("attempt_id") == binding.get("attempt_id")
+        )
+        if (
+            not isinstance(previous_resources, dict)
+            and legacy_matches_attempt
+            and isinstance(existing.get("released_resources"), dict)
+        ):
             previous_resources = existing.get("released_resources")
         if isinstance(previous_resources, dict):
             released_resources = {
