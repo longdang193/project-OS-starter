@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .reconciliation import reconcile
+from .reconciliation import _reconcile_legacy
 
 
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
@@ -46,6 +46,7 @@ def evaluate_acceptance(
     git: Mapping[str, Any],
     verification: Mapping[str, Any],
     settlement: Mapping[str, Any],
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     reasons: list[str] = []
     for mapping, fields in (
@@ -118,7 +119,7 @@ def evaluate_acceptance(
         reasons = false_checks
     else:
         decision = "PASS"
-    reconciliation = reconcile(
+    reconciliation = _reconcile_legacy(
         phase="accept",
         facts={
             "verification_current": verification.get("passed") is True,
@@ -139,6 +140,9 @@ def evaluate_acceptance(
         "task_id": task.get("task_id"),
         "plan_identity": task.get("plan_identity"),
         "task_state": current_state,
+        "attempt_id": attempt_id or task.get("attempt_id"),
+        "checkpoint_sha": git.get("checkpoint_sha"),
+        "repository_identity": git.get("repository_identity"),
         "required_conditions": dict(required_conditions) if isinstance(required_conditions, Mapping) else {},
         "artifact_conditions": dict(artifact_conditions) if isinstance(artifact_conditions, Mapping) else {},
         "freshness": {

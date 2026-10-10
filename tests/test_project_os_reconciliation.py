@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.project_os_runtime.reconciliation import RemotePrEvidence, reconcile
+from scripts.project_os_runtime.reconciliation import RemotePrEvidence, _reconcile_legacy
 
 
 def _remote(*, pr_number: int = 7, head_sha: str = "H", reviewed_head_sha: str = "H") -> RemotePrEvidence:
@@ -20,7 +20,7 @@ def _remote(*, pr_number: int = 7, head_sha: str = "H", reviewed_head_sha: str =
 
 
 def test_dispatch_does_not_require_github_or_attempt_id() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="dispatch",
         facts={
             "plan_valid": True,
@@ -35,7 +35,7 @@ def test_dispatch_does_not_require_github_or_attempt_id() -> None:
 
 
 def test_dispatch_blocks_unready_dependencies() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="dispatch",
         facts={
             "plan_valid": True,
@@ -49,7 +49,7 @@ def test_dispatch_blocks_unready_dependencies() -> None:
 
 
 def test_accept_does_not_compare_plan_checkpoint_to_candidate_sha() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="accept",
         facts={
             "verification_current": True,
@@ -65,7 +65,7 @@ def test_accept_does_not_compare_plan_checkpoint_to_candidate_sha() -> None:
 
 
 def test_integration_rejects_wrong_pr_even_when_head_matches() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="integrate",
         facts={
             "cos_pass": True,
@@ -83,7 +83,7 @@ def test_integration_rejects_wrong_pr_even_when_head_matches() -> None:
 
 
 def test_integration_requires_expected_bindings() -> None:
-    result = reconcile(phase="integrate", facts={"cos_pass": True}, remote=_remote())
+    result = _reconcile_legacy(phase="integrate", facts={"cos_pass": True}, remote=_remote())
 
     assert result.eligible is False
     assert set(result.missing) == {
@@ -96,7 +96,7 @@ def test_integration_requires_expected_bindings() -> None:
 
 
 def test_integration_rejects_review_bound_to_old_head() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="integrate",
         facts={
             "cos_pass": True,
@@ -114,7 +114,7 @@ def test_integration_rejects_review_bound_to_old_head() -> None:
 
 
 def test_green_remote_facts_without_cos_pass_cannot_integrate() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="integrate",
         facts={
             "cos_pass": False,
@@ -132,7 +132,7 @@ def test_green_remote_facts_without_cos_pass_cannot_integrate() -> None:
 
 
 def test_merge_eligibility_does_not_claim_merge_completion() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="integrate",
         facts={
             "cos_pass": True,
@@ -151,7 +151,7 @@ def test_merge_eligibility_does_not_claim_merge_completion() -> None:
 
 
 def test_incomplete_phases_do_not_advance() -> None:
-    verify = reconcile(
+    verify = _reconcile_legacy(
         phase="verify",
         facts={
             "attempt_exists": True,
@@ -161,7 +161,7 @@ def test_incomplete_phases_do_not_advance() -> None:
             "verification_complete": False,
         },
     )
-    retire = reconcile(
+    retire = _reconcile_legacy(
         phase="retire",
         facts={
             "runtime_owned": True,
@@ -176,7 +176,7 @@ def test_incomplete_phases_do_not_advance() -> None:
 
 
 def test_prune_requires_positive_release_facts() -> None:
-    result = reconcile(
+    result = _reconcile_legacy(
         phase="prune",
         facts={
             "canonical_consequence": True,

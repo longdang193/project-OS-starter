@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any
 
 
@@ -12,11 +12,12 @@ PHASES = frozenset({"dispatch", "verify", "accept", "integrate", "retire", "prun
 
 @dataclass(frozen=True, slots=True)
 class RemotePrEvidence:
-    repository_identity: str
-    pr_number: int
-    base_ref: str
-    base_sha: str
-    head_sha: str
+    repository_identity: str | None = None
+    pr_ref: str | None = None
+    pr_number: int | None = None
+    base_ref: str | None = None
+    base_sha: str | None = None
+    head_sha: str | None = None
     checks: tuple[Mapping[str, Any], ...] = ()
     review_identity: str | None = None
     review_pr_number: int | None = None
@@ -24,17 +25,24 @@ class RemotePrEvidence:
     mergeability: str | None = None
     merged: bool = False
     source_ref: str | None = None
+    available: bool = False
+    checks_passed: bool | None = None
+    review_valid: bool | None = None
+    mergeable: bool | None = None
 
     @property
     def checks_current(self) -> bool:
-        return bool(self.checks) and all(
-            check.get("head_sha") == self.head_sha
-            and check.get("conclusion") in {"success", "neutral", "skipped"}
-            for check in self.checks
-        )
+        if self.checks:
+            return bool(self.checks) and all(
+                check.get("head_sha") == self.head_sha
+                and check.get("conclusion") in {"success", "neutral", "skipped"}
+                for check in self.checks
+            )
+        return self.checks_passed is True
 
-    @property
-    def review_valid(self) -> bool:
+    def review_is_valid(self) -> bool:
+        if self.review_valid is not None:
+            return self.review_valid
         return bool(
             self.review_identity
             and self.review_pr_number == self.pr_number
@@ -182,7 +190,7 @@ def _integrate(facts: Mapping[str, Any], remote: RemotePrEvidence | None) -> Rec
             failures.append("head_sha")
         if not remote.checks_current:
             failures.append("checks_bound_to_head")
-        if not remote.review_valid:
+        if not remote.review_is_valid():
             failures.append("review_bound_to_head")
         if not isinstance(remote.source_ref, str) or not remote.source_ref.strip():
             failures.append("remote_source_ref")
@@ -236,8 +244,12 @@ def _prune(facts: Mapping[str, Any]) -> ReconciliationResult:
     )
 
 
-def reconcile(input: ReconciliationInput | None = None, *, phase: str | None = None, facts: Mapping[str, Any] | None = None, remote: RemotePrEvidence | None = None) -> ReconciliationResult:
+def _reconcile_legacy(*args: Any, input: ReconciliationInput | None = None, phase: str | None = None, facts: Mapping[str, Any] | None = None, remote: RemotePrEvidence | None = None) -> Any:
     """Recompute one lifecycle phase from owner facts without side effects."""
+    if len(args) == 3 and input is None and phase is None and facts is None and remote is None:
+        return _reconcile_snapshot(args[0], args[1], args[2])
+    if args:
+        raise TypeError("legacy reconciliation accepts either one input or three evidence inputs")
     if input is not None:
         if phase is not None or facts is not None or remote is not None:
             raise TypeError("reconcile accepts either input or keyword facts")
@@ -257,10 +269,217 @@ def reconcile(input: ReconciliationInput | None = None, *, phase: str | None = N
     }[phase](current_facts)
 
 
+REMOTE_EVIDENCE_UNAVAILABLE = "REMOTE_EVIDENCE_UNAVAILABLE"
+
+
+@dataclass(frozen=True)
+class LocalEvidence:
+    repository_identity: str | None = None
+    plan_ref: str | None = None
+    plan_revision: str | None = None
+    task_id: str | None = None
+    task_state: str | None = None
+    checkpoint_sha: str | None = None
+    lane_head_sha: str | None = None
+    dirty: bool = False
+    working_tree_digest: str | None = None
+    dependencies_ready: bool | None = None
+    source_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeEvidence:
+    attempt_id: str | None = None
+    worker_terminal: bool | None = None
+    task_result_published: bool | None = None
+    acceptance_proven: bool | None = None
+    settlement_proven: bool | None = None
+    runtime_owner: str | None = None
+    retirement_state: str | None = None
+    source_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class Contradiction:
+    code: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class MissingEvidence:
+    field: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class Eligibility:
+    execution: bool
+    verification: bool
+    acceptance: bool
+    integration: bool
+    retirement: bool
+
+
+@dataclass(frozen=True)
+class EvidenceSnapshot:
+    plan_ref: str | None
+    task_id: str | None
+    checkpoint_sha: str | None
+    lane_head_sha: str | None
+    attempt_id: str | None
+    phase: str
+    next_action: str
+    eligible: Eligibility
+    contradictions: tuple[Contradiction, ...]
+    missing_evidence: tuple[MissingEvidence, ...]
+    remote_status: str
+    sources: tuple[tuple[str, str], ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        value = {
+            "plan_ref": self.plan_ref,
+            "task_id": self.task_id,
+            "checkpoint_sha": self.checkpoint_sha,
+            "lane_head_sha": self.lane_head_sha,
+            "attempt_id": self.attempt_id,
+            "phase": self.phase,
+            "next_action": self.next_action,
+            "eligible": {
+                "execution": self.eligible.execution,
+                "verification": self.eligible.verification,
+                "acceptance": self.eligible.acceptance,
+                "integration": self.eligible.integration,
+                "retirement": self.eligible.retirement,
+            },
+            "contradictions": [{"code": item.code, "detail": item.detail} for item in self.contradictions],
+            "missing_evidence": [{"field": item.field, "reason": item.reason} for item in self.missing_evidence],
+            "remote_status": self.remote_status,
+            "sources": dict(self.sources),
+        }
+        return value
+
+
+def _coerce(value: object, cls: type[Any]) -> Any:
+    if isinstance(value, cls):
+        return value
+    if not isinstance(value, Mapping):
+        raise TypeError(f"expected {cls.__name__} or mapping")
+    allowed = {item.name for item in fields(cls)}
+    return cls(**{key: item for key, item in value.items() if key in allowed})
+
+
+def _reconcile_snapshot(
+    local: LocalEvidence | Mapping[str, Any],
+    remote: RemotePrEvidence | Mapping[str, Any],
+    runtime: RuntimeEvidence | Mapping[str, Any],
+) -> EvidenceSnapshot:
+    local = _coerce(local, LocalEvidence)
+    remote = _coerce(remote, RemotePrEvidence)
+    runtime = _coerce(runtime, RuntimeEvidence)
+    contradictions: list[Contradiction] = []
+    missing: list[MissingEvidence] = []
+    for name, value in (
+        ("plan_ref", local.plan_ref),
+        ("task_id", local.task_id),
+        ("checkpoint_sha", local.checkpoint_sha),
+        ("lane_head_sha", local.lane_head_sha),
+        ("attempt_id", runtime.attempt_id),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            missing.append(MissingEvidence(name, "stable action reference is absent"))
+    if local.task_state in {"completed", "accepted"} and runtime.task_result_published is not True:
+        missing.append(MissingEvidence("task_result", "terminal worker has no published TaskResult"))
+    if local.dirty and not local.working_tree_digest:
+        missing.append(MissingEvidence("working_tree_digest", "dirty candidate has no binding"))
+    if remote.available and remote.head_sha != local.lane_head_sha:
+        contradictions.append(Contradiction("PR_HEAD_MISMATCH", "remote PR head differs from local lane head"))
+    if local.checkpoint_sha and local.lane_head_sha and local.checkpoint_sha != local.lane_head_sha:
+        contradictions.append(Contradiction("CHECKPOINT_HEAD_MISMATCH", "checkpoint differs from local lane head"))
+    if local.dependencies_ready is not True:
+        missing.append(MissingEvidence("dependencies_ready", "task dependencies are not proven ready"))
+    if not remote.available:
+        remote_status = REMOTE_EVIDENCE_UNAVAILABLE
+    else:
+        remote_status = "CURRENT"
+        if remote.checks_passed is None:
+            missing.append(MissingEvidence("checks_passed", "remote checks were not observed"))
+        if remote.review_valid is None:
+            missing.append(MissingEvidence("review_valid", "remote review was not observed"))
+        if remote.mergeable is None:
+            missing.append(MissingEvidence("mergeable", "remote mergeability was not observed"))
+    if local.task_state in {"completed", "accepted"}:
+        phase = "Acceptance" if runtime.task_result_published else "Verification"
+    elif runtime.worker_terminal:
+        phase = "Verification"
+    else:
+        phase = "Execution"
+    identity_ok = not contradictions and not missing
+    execution = identity_ok and local.task_state in {"pending", "active"}
+    verification = identity_ok and runtime.worker_terminal is True and runtime.task_result_published is True
+    acceptance = verification and runtime.acceptance_proven is True and runtime.settlement_proven is True and local.checkpoint_sha is not None
+    integration = acceptance and remote_status == "CURRENT" and remote.checks_passed is True and remote.review_valid is True and remote.mergeable is True
+    retirement = runtime.settlement_proven is True and runtime.retirement_state in {"removed", "preserved"}
+    if remote_status == REMOTE_EVIDENCE_UNAVAILABLE:
+        integration = False
+        if "remote evidence unavailable" not in {item.reason for item in missing}:
+            missing.append(MissingEvidence("remote", "remote evidence unavailable"))
+    if contradictions or missing:
+        next_action = REMOTE_EVIDENCE_UNAVAILABLE if remote_status == REMOTE_EVIDENCE_UNAVAILABLE else "RECONCILE"
+    elif integration and retirement:
+        next_action = "NO_ACTION"
+    elif integration:
+        next_action = "RETIRE_RUNTIME"
+    elif acceptance:
+        next_action = "INTEGRATE"
+    elif verification:
+        next_action = "ACCEPT"
+    elif retirement:
+        next_action = "NO_ACTION"
+    else:
+        next_action = "EXECUTE"
+    return EvidenceSnapshot(
+        plan_ref=local.plan_ref,
+        task_id=local.task_id,
+        checkpoint_sha=local.checkpoint_sha,
+        lane_head_sha=local.lane_head_sha,
+        attempt_id=runtime.attempt_id,
+        phase=phase,
+        next_action=next_action,
+        eligible=Eligibility(execution, verification, acceptance, integration, retirement),
+        contradictions=tuple(contradictions),
+        missing_evidence=tuple(missing),
+        remote_status=remote_status,
+        sources=tuple(
+            item for item in (("local", local.source_ref), ("remote", remote.source_ref), ("runtime", runtime.source_ref))
+            if isinstance(item[1], str) and item[1]
+        ),
+    )
+
+
+def reconcile(*args: Any, input: ReconciliationInput | None = None, phase: str | None = None, facts: Mapping[str, Any] | None = None, remote: RemotePrEvidence | None = None, runtime: RuntimeEvidence | Mapping[str, Any] | None = None) -> Any:
+    if len(args) == 3 and input is None and phase is None and facts is None:
+        return _reconcile_snapshot(args[0], args[1], args[2])
+    if input is not None:
+        if phase is not None or facts is not None or remote is not None or runtime is not None:
+            raise TypeError("reconcile accepts either input or keyword facts")
+        return _reconcile_legacy(input)
+    if phase is not None:
+        return _reconcile_legacy(ReconciliationInput(phase=phase, facts=facts or {}, remote=remote))
+    raise TypeError("reconcile requires either three evidence inputs or a lifecycle phase")
+
+
 __all__ = [
+    "REMOTE_EVIDENCE_UNAVAILABLE",
     "PHASES",
+    "LocalEvidence",
     "RemotePrEvidence",
+    "RuntimeEvidence",
     "ReconciliationInput",
     "ReconciliationResult",
+    "Contradiction",
+    "MissingEvidence",
+    "Eligibility",
+    "EvidenceSnapshot",
     "reconcile",
+    "_reconcile_legacy",
 ]

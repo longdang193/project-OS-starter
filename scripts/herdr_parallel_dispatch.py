@@ -72,9 +72,9 @@ try:
 except ModuleNotFoundError:
     from scripts.project_os_runtime.plan_preparation import prepare_plan_lanes
 try:
-    from project_os_runtime.reconciliation import reconcile
+    from project_os_runtime.reconciliation import _reconcile_legacy
 except ModuleNotFoundError:
-    from scripts.project_os_runtime.reconciliation import reconcile
+    from scripts.project_os_runtime.reconciliation import _reconcile_legacy
 
 
 MAX_CONCURRENCY = 2
@@ -82,6 +82,21 @@ _LOCAL_CAPABILITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
 TIMEOUT_OWNER = "dcode-project"
 _REAPING_RESERVE_SECONDS = 30.0
 _DISPATCH_DEADLINE_SECONDS = 5.0
+
+
+def _remove_capture_dir(capture_dir: Path) -> dict[str, Any]:
+    try:
+        shutil.rmtree(capture_dir)
+    except FileNotFoundError:
+        return {"state": "removed", "reason": "already_absent"}
+    except OSError as exc:
+        return {
+            "state": "unverified",
+            "reason": "capture cleanup failed",
+            "detail": str(exc),
+            "path": str(capture_dir),
+        }
+    return {"state": "removed", "path": str(capture_dir)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,7 +273,7 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
                 continue
         prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "PASS"))
     checks.extend(prerequisite_checks or [LaunchCheck("prerequisites", "NOT_APPLICABLE", code="none")])
-    dispatch = reconcile(
+    dispatch = _reconcile_legacy(
         phase="dispatch",
         facts={
             "plan_valid": plan_source is None or isinstance(plan_revision, str) and bool(plan_revision.strip()),
@@ -861,6 +876,7 @@ def run_lane(
             "w+", encoding="utf-8"
         ) as stderr_file:
             if time.monotonic() >= dispatch_deadline:
+                capture_cleanup = _remove_capture_dir(capture_dir)
                 return {
                     "lane_id": lane_id,
                     "command": command,
@@ -870,6 +886,7 @@ def run_lane(
                     "unresolved": False,
                     "capacity": "retired",
                     "failure_kind": "dispatch_deadline_exceeded",
+                    "capture_cleanup": capture_cleanup,
                 }
             process = popen_factory(
                 command,
@@ -942,7 +959,7 @@ def run_lane(
                     "grant_verification": "unverified",
                 }
     except OSError as exc:
-        shutil.rmtree(capture_dir, ignore_errors=True)
+        capture_cleanup = _remove_capture_dir(capture_dir)
         return {
             "lane_id": lane_id,
             "command": command,
@@ -952,9 +969,10 @@ def run_lane(
             "unresolved": False,
             "capacity": "retired",
             "failure_kind": "launch_failed",
+            "capture_cleanup": capture_cleanup,
         }
 
-    shutil.rmtree(capture_dir, ignore_errors=True)
+    capture_cleanup = _remove_capture_dir(capture_dir)
     stdout = _text(stdout)
     stderr = _text(stderr)
     parsed = parse_launcher_records(stdout, lane_id=lane_id)
@@ -1014,6 +1032,7 @@ def run_lane(
         "grant_verification": "verified" if not grant_mismatch else "unverified",
         "verification_failure": "grant_mismatch" if grant_mismatch else None,
         "acceptance_pending": acceptance_pending,
+        "capture_cleanup": capture_cleanup,
     }
     if process.returncode:
         result["failure_kind"] = "command_exit"

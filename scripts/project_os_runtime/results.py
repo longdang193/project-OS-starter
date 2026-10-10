@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 import time
 from typing import Any
@@ -298,3 +299,88 @@ def parse_task_result(
         "continuation_eligible": False,
         "accepted": payload.get("accepted"),
     }
+
+
+def release_attempt_evidence(
+    attempt_dir: Path,
+    assignment_id: str,
+    attempt_id: str,
+    accepted_checkpoint_sha: str,
+    *,
+    expected_plan_ref: str | None = None,
+    expected_repository_identity: str,
+    expected_plan_identity: str,
+    expected_task_id: str,
+    acceptance_decision: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Release task-owned evidence only after exact acceptance binding."""
+
+    task_result_path = attempt_dir / "task-result.json"
+    try:
+        payload = validate_task_result(json.loads(task_result_path.read_text(encoding="utf-8")))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return {"state": "preserved", "reason": "task result unavailable", "detail": str(exc)}
+    checkpoint = payload.get("checkpoint")
+    checkpoint_sha = checkpoint.get("sha") if isinstance(checkpoint, dict) else None
+    if not isinstance(accepted_checkpoint_sha, str) or not accepted_checkpoint_sha.strip():
+        return {"state": "preserved", "reason": "canonical checkpoint binding unavailable"}
+    if not isinstance(checkpoint_sha, str) or not checkpoint_sha.strip():
+        return {"state": "preserved", "reason": "task result checkpoint unavailable"}
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (
+            expected_repository_identity,
+            expected_plan_identity,
+            expected_task_id,
+        )
+    ):
+        return {"state": "preserved", "reason": "canonical acceptance binding unavailable"}
+    controller = acceptance_decision.get("controller") if isinstance(acceptance_decision, Mapping) else None
+    proof = acceptance_decision.get("acceptance_proof") if isinstance(acceptance_decision, Mapping) else None
+    if (
+        payload.get("assignment_id") != assignment_id
+        or payload.get("attempt_id") != attempt_id
+        or payload.get("accepted") is not True
+        or checkpoint_sha != accepted_checkpoint_sha
+        or not isinstance(acceptance_decision, Mapping)
+        or acceptance_decision.get("decision") != "PASS"
+        or not isinstance(controller, Mapping)
+        or controller.get("authority") != "cos"
+        or not isinstance(proof, Mapping)
+        or proof.get("attempt_id") != attempt_id
+        or proof.get("plan_identity") != expected_plan_identity
+        or proof.get("task_id") != expected_task_id
+        or proof.get("repository_identity") != expected_repository_identity
+        or proof.get("checkpoint_sha") != accepted_checkpoint_sha
+        or not isinstance(proof.get("checkpoint_sha"), str)
+        or not proof.get("checkpoint_sha")
+        or not isinstance(proof.get("repository_identity"), str)
+        or not proof.get("repository_identity")
+        or not isinstance(proof.get("plan_identity"), str)
+        or not proof.get("plan_identity")
+        or (
+            expected_plan_ref is not None
+            and payload.get("plan_ref") != expected_plan_ref
+        )
+        or (
+            expected_repository_identity is not None
+            and payload.get("repository_identity") is not None
+            and payload.get("repository_identity") != expected_repository_identity
+        )
+    ):
+        return {"state": "preserved", "reason": "acceptance binding mismatch"}
+    removed: list[str] = []
+    for name in ("result.json", "task-result.json"):
+        path = attempt_dir / name
+        try:
+            path.unlink()
+            removed.append(name)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            return {"state": "unverified", "reason": "evidence deletion failed", "detail": str(exc), "removed": removed}
+    try:
+        attempt_dir.rmdir()
+    except OSError:
+        pass
+    return {"state": "removed", "removed": removed}

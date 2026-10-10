@@ -16,6 +16,8 @@ def _facts() -> dict[str, dict[str, object]]:
             "task_state": "active",
             "attempt_id": "attempt-1",
             "checkpoint": "checkpoint-1",
+            "checkpoint_sha": "abc123",
+            "dependencies_ready": True,
             "accepted_prerequisites": ["Task 2@rev-2"],
         },
         "git": {
@@ -141,7 +143,19 @@ def test_build_evidence_snapshot_rejects_current_git_revision_drift() -> None:
     snapshot = build_evidence_snapshot(**facts)
 
     assert snapshot.status == STALE
-    assert "Git revision mismatch" in snapshot.reasons
+
+
+def test_remote_reconciliation_does_not_clear_local_trust_failures() -> None:
+    facts = _facts()
+    facts["next_action"] = {**facts["next_action"], "authorized": False}
+    snapshot = build_evidence_snapshot(
+        **facts,
+        remote={"available": True, "head_sha": facts["git"]["git_revision"], "checks_passed": True, "review_valid": True, "mergeable": True},
+    )
+
+    assert snapshot.status == MISSING
+    assert "next action is not authorized" in snapshot.reasons
+    assert "checkpoint differs from local lane head" not in snapshot.reasons
 
 
 def test_build_evidence_snapshot_rejects_workstream_drift() -> None:

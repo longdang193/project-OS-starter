@@ -169,6 +169,11 @@ Clear when discharged by its canonical source, explicit
 user decision, or owning workflow evidence. Another agent message is not
 required when canonical evidence already proves discharge.
 
+The sole Docket writer may remove a discharged entry only after that canonical
+evidence is recorded. Promote durable human blockers to an existing GitHub
+Issues owner only when no maintained owner can reconstruct them; never create
+one issue per Plan task.
+
 ## Event Boundary
 
 Events are hints, not truth. Idle, timeout, missing notification, disconnect,

@@ -16,7 +16,7 @@ from .capabilities import (
     effective_local_capabilities,
     normalize_local_capabilities,
 )
-from .reconciliation import reconcile
+from .reconciliation import _reconcile_legacy
 
 WHOLE_ATTEMPT_WALL_CLOCK_SECONDS = 1800
 NATIVE_WORKER_WALL_CLOCK_SECONDS = 420
@@ -321,7 +321,7 @@ def derive_lifecycle_state(
         cleanup_confirmed=cleanup_confirmed is True,
         descendants_retired=descendants_retired is True,
     )
-    retirement = reconcile(
+    retirement = _reconcile_legacy(
         phase="retire",
         facts={
             "runtime_owned": True,

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: repo-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -32,6 +36,9 @@ jobs:
           tests/test_validate_planning_lifecycle.py
           tests/test_validate_repo_contracts.py
           tests/test_validate_agent_runtime_drift.py
+          tests/test_reconciliation.py
+          tests/test_evidence_release.py
+          tests/test_secretary_adapter.py
           tests/test_secretary_evidence.py
           tests/test_secretary_receipts.py
           tests/test_secretary_live_runtime.py
