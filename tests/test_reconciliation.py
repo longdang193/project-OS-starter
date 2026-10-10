@@ -1,158 +1,163 @@
+import pytest
+
 from scripts.project_os_runtime.reconciliation import (
-    REMOTE_EVIDENCE_UNAVAILABLE,
-    LocalEvidence,
+    ReconciliationInput,
     RemotePrEvidence,
-    RuntimeEvidence,
-    _reconcile_legacy,
+    reconcile,
 )
 
 
-def _local(**overrides):
-    values = dict(
-        repository_identity="repo",
-        plan_ref="plan.md",
-        plan_revision="plan-v1",
-        task_id="Task 1",
-        task_state="active",
-        checkpoint_sha="abc",
-        lane_head_sha="abc",
-        dependencies_ready=True,
-        source_ref="git",
-    )
-    values.update(overrides)
-    return LocalEvidence(**values)
-
-
-def _runtime(**overrides):
-    values = dict(
-        attempt_id="attempt-1",
-        worker_terminal=True,
-        task_result_published=True,
-        acceptance_proven=True,
-        settlement_proven=True,
-        retirement_state="preserved",
-        source_ref="receipt",
-    )
-    values.update(overrides)
-    return RuntimeEvidence(**values)
-
-
-def test_reconcile_rejects_changed_pr_head():
-    snapshot = _reconcile_legacy(
-        _local(),
-        RemotePrEvidence(available=True, head_sha="def", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(),
+def _remote(*, head_sha="H", merged=False, reviewed_head_sha="H", checks=None):
+    return RemotePrEvidence(
+        available=True,
+        repository_identity="org/repo",
+        pr_number=7,
+        base_ref="main",
+        base_sha="B",
+        head_sha=head_sha,
+        required_checks=("Repository contracts", "Runtime contracts (ubuntu-latest)"),
+        checks=checks or (
+            {"name": "Repository contracts", "head_sha": head_sha, "conclusion": "success"},
+            {"name": "Runtime contracts (ubuntu-latest)", "head_sha": head_sha, "conclusion": "success"},
+        ),
+        policy_source="github://ruleset/main",
+        review_identity="review-1",
+        review_pr_number=7,
+        reviewed_head_sha=reviewed_head_sha,
+        mergeability="mergeable",
+        merged=merged,
+        source_ref="github://org/repo/pulls/7",
     )
 
-    assert snapshot.next_action == "RECONCILE"
-    assert snapshot.contradictions[0].code == "PR_HEAD_MISMATCH"
-    assert snapshot.eligible.integration is False
+
+def test_reconcile_requires_canonical_input() -> None:
+    with pytest.raises(TypeError, match="ReconciliationInput"):
+        reconcile({"phase": "dispatch"})  # type: ignore[arg-type]
 
 
-def test_reconcile_fails_closed_when_github_is_unavailable():
-    snapshot = _reconcile_legacy(_local(), RemotePrEvidence(), _runtime())
-
-    assert snapshot.remote_status == REMOTE_EVIDENCE_UNAVAILABLE
-    assert snapshot.next_action == REMOTE_EVIDENCE_UNAVAILABLE
-    assert snapshot.eligible.integration is False
-
-
-def test_reconcile_accepts_bound_current_evidence():
-    snapshot = _reconcile_legacy(
-        _local(task_state="completed"),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(),
-    )
-
-    assert snapshot.eligible.verification is True
-    assert snapshot.eligible.acceptance is True
-    assert snapshot.eligible.integration is True
-    assert snapshot.next_action == "NO_ACTION"
+def test_dispatch_does_not_require_github_or_attempt_id() -> None:
+    result = reconcile(ReconciliationInput("dispatch", {
+        "plan_valid": True,
+        "dependencies_ready": True,
+        "workspace_valid": True,
+    }))
+    assert result.eligible is True
 
 
-def test_reconcile_rejects_stale_checkpoint_and_unready_dependencies():
-    snapshot = _reconcile_legacy(
-        _local(checkpoint_sha="stale", dependencies_ready=False),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(),
-    )
-
-    assert snapshot.eligible.acceptance is False
-    assert snapshot.eligible.integration is False
-    assert snapshot.next_action == "RECONCILE"
-    assert {item.code for item in snapshot.contradictions} == {"CHECKPOINT_HEAD_MISMATCH"}
-    assert any(item.field == "dependencies_ready" for item in snapshot.missing_evidence)
+def test_dispatch_blocks_unready_dependencies() -> None:
+    result = reconcile(ReconciliationInput("dispatch", {
+        "plan_valid": True,
+        "dependencies_ready": False,
+        "workspace_valid": True,
+    }))
+    assert result.eligible is False
+    assert result.contradictions == ("dependencies_ready",)
 
 
-def test_reconcile_requires_dirty_worktree_digest_even_with_checkpoint():
-    snapshot = _reconcile_legacy(
-        _local(dirty=True, working_tree_digest=None),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(),
-    )
-
-    assert snapshot.eligible.verification is False
-    assert any(item.field == "working_tree_digest" for item in snapshot.missing_evidence)
-
-
-def test_reconcile_does_not_treat_terminal_worker_as_accepted():
-    snapshot = _reconcile_legacy(
-        _local(task_state="completed"),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(acceptance_proven=False),
-    )
-
-    assert snapshot.eligible.verification is True
-    assert snapshot.eligible.acceptance is False
-    assert snapshot.eligible.integration is False
-    assert snapshot.next_action == "ACCEPT"
+def test_verify_requires_published_terminal_result() -> None:
+    result = reconcile(ReconciliationInput("verify", {
+        "attempt_exists": True,
+        "candidate_attributable": True,
+        "worker_terminal": True,
+        "task_result_published": False,
+    }))
+    assert result.eligible is False
 
 
-def test_reconcile_requires_settlement_before_acceptance_or_integration():
-    snapshot = _reconcile_legacy(
-        _local(task_state="completed"),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(settlement_proven=False, retirement_state="unresolved"),
-    )
-
-    assert snapshot.eligible.acceptance is False
-    assert snapshot.eligible.integration is False
-    assert snapshot.next_action == "ACCEPT"
+def test_accept_requires_current_candidate_and_cos_pass() -> None:
+    result = reconcile(ReconciliationInput("accept", {
+        "verification_current": True,
+        "candidate_unchanged": True,
+        "acceptance_criteria_evaluable": True,
+        "cos_pass": True,
+    }))
+    assert result.complete is True
 
 
-def test_reconcile_keeps_integration_blockers_actionable_after_retirement():
-    snapshot = _reconcile_legacy(
-        _local(task_state="completed"),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=False, review_valid=False, mergeable=False, source_ref="github"),
-        _runtime(),
-    )
-
-    assert snapshot.eligible.acceptance is True
-    assert snapshot.eligible.integration is False
-    assert snapshot.next_action == "INTEGRATE"
-
-
-def test_reconcile_does_not_hide_missing_task_result_after_retirement():
-    snapshot = _reconcile_legacy(
-        _local(task_state="completed"),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(task_result_published=False),
-    )
-
-    assert snapshot.eligible.acceptance is False
-    assert snapshot.eligible.integration is False
-    assert snapshot.next_action == "RECONCILE"
-    assert any(item.field == "task_result" for item in snapshot.missing_evidence)
+def test_integrate_rejects_missing_required_check() -> None:
+    remote = _remote(checks=({"name": "Repository contracts", "head_sha": "H", "conclusion": "success"},))
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, remote))
+    assert result.eligible is False
+    assert "required_checks" in result.contradictions
 
 
-def test_reconcile_keeps_completed_task_actionable_when_worker_state_unknown():
-    snapshot = _reconcile_legacy(
-        _local(task_state="completed"),
-        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
-        _runtime(worker_terminal=None, task_result_published=False, retirement_state="removed"),
-    )
+def test_accept_does_not_advance_until_cos_pass() -> None:
+    result = reconcile(ReconciliationInput("accept", {
+        "verification_current": True,
+        "candidate_unchanged": True,
+        "acceptance_criteria_evaluable": True,
+        "cos_pass": False,
+    }))
+    assert result.complete is False
+    assert result.next_action == "reconcile accept"
 
-    assert snapshot.eligible.acceptance is False
-    assert snapshot.eligible.integration is False
-    assert snapshot.next_action == "RECONCILE"
-    assert any(item.field == "task_result" for item in snapshot.missing_evidence)
+
+def test_integrate_rejects_review_for_old_head() -> None:
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, _remote(reviewed_head_sha="OLD")))
+    assert result.eligible is False
+    assert "review_bound_to_head" in result.contradictions
+
+
+def test_integrate_eligibility_does_not_claim_merge_completion() -> None:
+    facts = {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }
+    result = reconcile(ReconciliationInput("integrate", facts, _remote()))
+    assert result.integration_eligible is True
+    assert result.integration_complete is False
+
+
+def test_integrate_requires_remote_availability() -> None:
+    result = reconcile(ReconciliationInput("integrate", {"cos_pass": True}, RemotePrEvidence()))
+    assert result.eligible is False
+    assert "remote_unavailable" in result.contradictions
+
+
+def test_retire_requires_settlement_and_no_continuation() -> None:
+    result = reconcile(ReconciliationInput("retire", {
+        "runtime_owned": True,
+        "no_continuation": False,
+        "settled": True,
+    }))
+    assert result.eligible is False
+
+
+def test_prune_requires_retirement_complete() -> None:
+    result = reconcile(ReconciliationInput("prune", {
+        "canonical_consequence": True,
+        "consumer_release": True,
+        "retention_expired": True,
+        "retirement_complete": False,
+        "evidence_released": True,
+    }))
+    assert result.eligible is False
+
+
+def test_prune_does_not_advance_until_retirement_complete() -> None:
+    result = reconcile(ReconciliationInput("prune", {
+        "canonical_consequence": True,
+        "consumer_release": True,
+        "retention_expired": True,
+        "retirement_complete": False,
+    }))
+    assert result.complete is False
+    assert result.next_action == "reconcile prune"

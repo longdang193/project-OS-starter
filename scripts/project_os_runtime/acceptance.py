@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .reconciliation import _reconcile_legacy
+from .reconciliation import ReconciliationInput, reconcile
 
 
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
@@ -119,16 +119,18 @@ def evaluate_acceptance(
         reasons = false_checks
     else:
         decision = "PASS"
-    reconciliation = _reconcile_legacy(
-        phase="accept",
-        facts={
+    reconciliation = reconcile(
+        ReconciliationInput(
+            phase="accept",
+            facts={
             "verification_current": verification.get("passed") is True,
             "candidate_unchanged": git.get("head_matches") is True,
             "acceptance_criteria_evaluable": bool(artifact_conditions),
             "cos_pass": decision == "PASS",
             "checkpoint_sha": git.get("checkpoint_sha"),
             "lane_head_sha": git.get("lane_head_sha"),
-        },
+            },
+        )
     )
     current_state = task.get("state")
     task_transition = {
@@ -189,6 +191,7 @@ def authorize_evidence_release(
     required_consumers: Sequence[str],
     consumer_releases: Mapping[str, Mapping[str, Any]],
     retention: Mapping[str, Mapping[str, Any]],
+    retirement_proof: Mapping[str, Any] | None = None,
     recovery_required: bool = False,
 ) -> dict[str, Any]:
     reasons: list[str] = []
@@ -271,6 +274,12 @@ def authorize_evidence_release(
                 reasons.append(f"canonical {field} binding")
     if recovery_required:
         reasons.append("recovery required")
+    if not isinstance(retirement_proof, Mapping) or retirement_proof.get("retirement_complete") is not True:
+        reasons.append("retirement proof")
+    else:
+        for field in ("plan_ref", "task_id", "assignment_id", "attempt_id"):
+            if retirement_proof.get(field) != binding.get(field):
+                reasons.append(f"retirement {field} binding")
     if (
         not isinstance(required_consumers, Sequence)
         or isinstance(required_consumers, (str, bytes))
@@ -324,7 +333,9 @@ def release_authorized_evidence(
     consumer_releases: Mapping[str, Mapping[str, Any]],
     retention: Mapping[str, Mapping[str, Any]],
     evidence_paths: Mapping[str, Path],
+    retirement_proof: Mapping[str, Any] | None = None,
     recovery_required: bool = False,
+    release_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     result = authorize_evidence_release(
         decision,
@@ -333,29 +344,78 @@ def release_authorized_evidence(
         required_consumers=required_consumers,
         consumer_releases=consumer_releases,
         retention=retention,
+        retirement_proof=retirement_proof,
         recovery_required=recovery_required,
     )
     if not result["authorized"]:
         return result
     evidence_ref = binding.get("evidence_ref")
+    recorded_resources = release_record.get("resources") if isinstance(release_record, Mapping) else None
+    recorded_resource = recorded_resources.get(evidence_ref) if isinstance(recorded_resources, Mapping) else None
+    attempt_guard = release_record.get("attempt_guard") if isinstance(release_record, Mapping) else None
+    if (
+        not isinstance(release_record, Mapping)
+        or release_record.get("authorized") is not True
+        or release_record.get("binding") != dict(binding)
+        or set(recorded_resources or ()) != {evidence_ref}
+        or not isinstance(recorded_resource, Mapping)
+        or recorded_resource.get("state") not in {"pending", "removed", "already_absent"}
+        or not isinstance(attempt_guard, Mapping)
+        or attempt_guard.get("release_authorized") is not True
+        or attempt_guard.get("release_state") not in {"pending", "released"}
+    ):
+        return {
+            **result,
+            "authorized": False,
+            "reasons": ["durable release authorization required"],
+        }
     path = evidence_paths.get(evidence_ref) if isinstance(evidence_ref, str) else None
     if not isinstance(path, Path) or not path.is_file() or path.is_symlink():
+        if (
+            recorded_resource.get("state") in {"removed", "already_absent"}
+        ):
+            return {
+                **result,
+                "payload_released": True,
+                "resources": {evidence_ref: dict(recorded_resource)},
+            }
+        if (
+            isinstance(path, Path)
+            and not path.is_symlink()
+            and not path.exists()
+            and recorded_resource.get("state") == "pending"
+        ):
+            return {
+                **result,
+                "payload_released": True,
+                "resources": {evidence_ref: {"state": "already_absent"}},
+            }
         return {
             **result,
             "authorized": False,
             "reasons": ["exact evidence path unavailable"],
         }
+    resources: dict[str, dict[str, Any]] = {}
     try:
         path.unlink()
+    except FileNotFoundError:
+        resources[evidence_ref] = {"state": "already_absent"}
     except OSError as exc:
+        resources[evidence_ref] = {"state": "unverified", "detail": str(exc)}
+    else:
+        resources[evidence_ref] = {"state": "removed"}
+    failed = [name for name, state in resources.items() if state["state"] == "unverified"]
+    if failed:
         return {
             **result,
             "authorized": False,
-            "reasons": [f"evidence disposal failed: {exc}"],
+            "reasons": [f"evidence disposal failed: {name}" for name in failed],
+            "resources": resources,
         }
     return {
         **result,
         "payload_released": True,
+        "resources": resources,
     }
 
 

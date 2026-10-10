@@ -116,7 +116,6 @@ _DIRECT_MCP_RUNTIME_PARENT = "dcode-project-mcp"
 _DIRECT_MCP_RUNTIME_PREFIX = "runtime-"
 _DIRECT_MCP_OWNER_MARKER = ".owner"
 _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
-_DIRECT_MCP_STALE_AGE = timedelta(hours=24)
 _ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
 _ATTEMPT_GUARD_PARENT = "attempts"
 _ATTEMPT_GUARD_SCHEMA = "dcode-project.attempt.v1"
@@ -741,6 +740,33 @@ def _claim_attempt_unlocked(
         return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "admission": "IDEMPOTENT", "idempotent": True, "record": existing}
     existing_state = str(existing.get("state", "")).lower()
     if existing_state == "settled":
+        for field in (
+            "release_authorization",
+            "release_authorized",
+            "released_resources",
+            "release_state",
+            "release_authorizations",
+            "released_resources_by_attempt",
+            "release_binding",
+        ):
+            if field in existing:
+                candidate[field] = existing[field]
+        if existing.get("release_authorized") is True:
+            release_binding = existing.get("release_binding")
+            if not isinstance(release_binding, dict):
+                release_binding = {
+                    field: existing[field]
+                    for field in (
+                        "attempt_id",
+                        "assignment_id",
+                        "repository_identity",
+                        "executor",
+                        "task_sha256",
+                        "grant_digest",
+                    )
+                    if field in existing
+                }
+            candidate["release_binding"] = release_binding
         _write_attempt_guard(path, candidate)
         return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "replaced_settled": True, "record": candidate}
     state = "ACTIVE" if existing_state == "active" else "RECOVERY_REQUIRED"
@@ -879,6 +905,71 @@ def _settle_attempt_unlocked(
         settled["settlement_evidence"] = dict(settlement_evidence)
     _write_attempt_guard(path, settled)
     return settled
+
+
+def record_release_authorization(
+    *,
+    assignment_id: str,
+    binding: dict[str, object],
+    release_authorization: dict[str, object],
+) -> dict[str, object]:
+    with _attempt_lock(assignment_id):
+        path = _attempt_guard_path(assignment_id)
+        existing = _read_attempt_guard(path)
+        release_binding = existing.get("release_binding") if isinstance(existing, dict) else None
+        binding_matches_attempt = existing is not None and same_attempt_binding(existing, binding)
+        binding_matches_release = (
+            isinstance(release_binding, dict)
+            and existing.get("release_authorized") is True
+            and same_attempt_binding(release_binding, binding)
+        )
+        if not binding_matches_attempt and not binding_matches_release:
+            raise RuntimeError("dcode-project attempt guard binding mismatch during release authorization.")
+        if existing.get("state") != "settled" and not binding_matches_release:
+            raise RuntimeError("dcode-project release authorization requires settled attempt.")
+        updated = dict(existing)
+        resources = release_authorization.get("resources")
+        released_resources = dict(resources) if isinstance(resources, dict) else {}
+        release_authorizations = dict(existing.get("release_authorizations", {})) if isinstance(existing.get("release_authorizations"), dict) else {}
+        released_resources_by_attempt = dict(existing.get("released_resources_by_attempt", {})) if isinstance(existing.get("released_resources_by_attempt"), dict) else {}
+        if isinstance(existing.get("release_authorization"), dict):
+            previous_key = str(release_binding.get("attempt_id")) if isinstance(release_binding, dict) else str(existing.get("attempt_id"))
+            release_authorizations.setdefault(previous_key, dict(existing["release_authorization"]))
+            released_resources_by_attempt.setdefault(previous_key, dict(existing.get("released_resources", {})))
+        attempt_key = str(binding.get("attempt_id"))
+        release_authorizations[attempt_key] = dict(release_authorization)
+        released_resources_by_attempt[attempt_key] = released_resources
+        release_state = (
+            "released"
+            if released_resources_by_attempt
+            and all(
+                isinstance(resource_set, dict)
+                and resource_set
+                and all(
+                    isinstance(resource, dict)
+                    and resource.get("state") in {"removed", "already_absent"}
+                    for resource in resource_set.values()
+                )
+                for resource_set in released_resources_by_attempt.values()
+            )
+            else "pending"
+        )
+        updated.update(
+            {
+                "release_authorized": True,
+                "release_authorizations": release_authorizations,
+                "released_resources_by_attempt": released_resources_by_attempt,
+                "release_state": release_state,
+            }
+        )
+        legacy_owner_matches = not isinstance(release_binding, dict) or same_attempt_binding(release_binding, binding)
+        if legacy_owner_matches:
+            updated["release_authorization"] = dict(release_authorization)
+            updated["released_resources"] = released_resources
+        if binding_matches_attempt and existing.get("state") == "settled" and not isinstance(release_binding, dict):
+            updated["release_binding"] = dict(binding)
+        _write_attempt_guard(path, updated)
+        return updated
 
 
 def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
@@ -1235,33 +1326,6 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
     return parent
 
 
-def _cleanup_stale_direct_mcp_runtimes(parent: Path) -> None:
-    cutoff = datetime.now(timezone.utc).timestamp() - _DIRECT_MCP_STALE_AGE.total_seconds()
-    try:
-        entries = tuple(parent.iterdir())
-    except OSError:
-        return
-    for entry in entries:
-        if (
-            not entry.name.startswith(_DIRECT_MCP_RUNTIME_PREFIX)
-            or entry.is_symlink()
-            or not entry.is_dir()
-        ):
-            continue
-        marker = entry / _DIRECT_MCP_OWNER_MARKER
-        try:
-            if (
-                not marker.is_file()
-                or marker.is_symlink()
-                or marker.read_text(encoding="utf-8") != _DIRECT_MCP_OWNER_VALUE
-                or entry.stat().st_mtime > cutoff
-            ):
-                continue
-            shutil.rmtree(entry)
-        except OSError:
-            continue
-
-
 @contextmanager
 def _direct_mcp_runtime(
     repo_root: Path,
@@ -1305,7 +1369,14 @@ def _direct_mcp_runtime(
                 "DEEPAGENTS_CODE_DANGEROUSLY_ENABLE_PROJECT_MCP_SERVERS"
             ] = previous_project_allowlist
         if runtime_root is not None:
-            shutil.rmtree(runtime_root, ignore_errors=True)
+            try:
+                shutil.rmtree(runtime_root)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Direct MCP runtime cleanup failed: {runtime_root}"
+                ) from exc
 
 def _controller_options(
     argv: list[str],

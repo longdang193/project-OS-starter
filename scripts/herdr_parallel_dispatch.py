@@ -72,9 +72,9 @@ try:
 except ModuleNotFoundError:
     from scripts.project_os_runtime.plan_preparation import prepare_plan_lanes
 try:
-    from project_os_runtime.reconciliation import _reconcile_legacy
+    from project_os_runtime.reconciliation import ReconciliationInput, reconcile
 except ModuleNotFoundError:
-    from scripts.project_os_runtime.reconciliation import _reconcile_legacy
+    from scripts.project_os_runtime.reconciliation import ReconciliationInput, reconcile
 
 
 MAX_CONCURRENCY = 2
@@ -273,14 +273,16 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
                 continue
         prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "PASS"))
     checks.extend(prerequisite_checks or [LaunchCheck("prerequisites", "NOT_APPLICABLE", code="none")])
-    dispatch = _reconcile_legacy(
-        phase="dispatch",
-        facts={
+    dispatch = reconcile(
+        ReconciliationInput(
+            phase="dispatch",
+            facts={
             "plan_valid": plan_source is None or isinstance(plan_revision, str) and bool(plan_revision.strip()),
             "dependencies_ready": lane.get("dependency_ready") is True,
             "workspace_valid": worktree_available,
             "active_attempt_conflict": lane.get("active_attempt_conflict", False),
-        },
+            },
+        )
     )
     checks.append(
         LaunchCheck(
@@ -992,6 +994,9 @@ def run_lane(
         settlement = settlement_decision(lifecycle_receipt)
         if not settlement["resource_settled"]:
             return "occupied", True, settlement["reason"], False
+        retirement = assignment.get("retirement")
+        if isinstance(retirement, Mapping) and retirement.get("state") != "removed":
+            return "occupied", True, "runtime retirement unresolved", False
         task_result = assignment.get("task_result")
         task_uncertain = not isinstance(task_result, Mapping) or (
             task_result.get("accepted") is None

@@ -40,7 +40,6 @@ try:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
-        release_attempt_evidence,
     )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.results import (
@@ -49,7 +48,6 @@ except ModuleNotFoundError:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
-        release_attempt_evidence,
     )
 try:
     from project_os_runtime.attempt import (
@@ -270,48 +268,6 @@ def _read_deepagents_task_result(
         attempt_id=attempt_id,
         task_sha256=task_sha256,
         grant_digest=grant_digest_value,
-    )
-
-
-def _discard_deepagents_receipt(
-    path: Path | None,
-    *,
-    assignment_id: str | None = None,
-    attempt_id: str | None = None,
-    accepted_checkpoint_sha: str | None = None,
-    settlement_persisted: bool = False,
-    expected_plan_identity: str | None = None,
-    expected_task_id: str | None = None,
-    expected_repository_identity: str | None = None,
-    acceptance_decision: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    if path is None:
-        return {"state": "preserved", "reason": "receipt unavailable"}
-    task_result_path = path.with_name("task-result.json")
-    if not task_result_path.exists():
-        return {"state": "preserved", "reason": "canonical task result unavailable"}
-    if (
-        not settlement_persisted
-        or not all(
-            isinstance(value, str) and value
-            for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
-        )
-        or not isinstance(acceptance_decision, Mapping)
-        or not all(
-            isinstance(value, str) and value
-            for value in (expected_plan_identity, expected_task_id, expected_repository_identity)
-        )
-    ):
-        return {"state": "preserved", "reason": "acceptance release binding unavailable"}
-    return release_attempt_evidence(
-        path.parent,
-        assignment_id,
-        attempt_id,
-        accepted_checkpoint_sha,
-        expected_plan_identity=expected_plan_identity,
-        expected_task_id=expected_task_id,
-        expected_repository_identity=expected_repository_identity,
-        acceptance_decision=acceptance_decision,
     )
 
 
@@ -2430,7 +2386,9 @@ def retire_lane(
     if not isinstance(selected_cwd, str) or Path(selected_cwd).resolve() != worktree:
         return {"state": "unresolved", "recovery_required": True, "reason": "pane worktree binding mismatch"}
     expected_agent = bound_attempt.get("agent_name")
-    if not isinstance(expected_agent, str) or selected.get("agent") != expected_agent:
+    if not isinstance(expected_agent, str) or (
+        selected.get("agent") is not None and selected.get("agent") != expected_agent
+    ):
         return {"state": "unresolved", "recovery_required": True, "reason": "pane agent binding mismatch"}
     if bound_attempt.get("recovery_required") is True:
         return {"state": "unresolved", "recovery_required": True, "reason": "attempt requires recovery"}
@@ -2438,6 +2396,32 @@ def retire_lane(
         return {"state": "unresolved", "recovery_required": True, "reason": "attempt settlement is not proven"}
 
     process_identity = bound_attempt.get("process_identity")
+    if not isinstance(process_identity, Mapping):
+        try:
+            process_payload = _json_command(
+                [herdr, "--session", session, "pane", "process-info", "--pane", pane],
+                env=environment,
+            )
+            process_info = _result(process_payload, "process_info")
+            candidates = [
+                process for process in _process_records(process_info.get("foreground_processes"))
+                if Path(str(process.get("cwd", ""))).resolve() == worktree
+                and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+            ] if isinstance(process_info, dict) else []
+        except (LaunchBlocked, CommandTransportTimeout, json.JSONDecodeError) as exc:
+            return {"state": "unresolved", "recovery_required": True, "reason": "process ownership evidence unavailable", "detail": str(exc)}
+        if not candidates and bound_attempt.get("process_retirement_proven") is True:
+            return {
+                "state": "removed",
+                "recovery_required": False,
+                "resources": {
+                    "process": {"state": "removed", "reason": "already_absent"},
+                    "pane": {"state": "preserved", "reason": "no task-owned process remains"},
+                    "session": {"state": "preserved", "reason": "session deletion not authorized"},
+                },
+                "process_retirement_proven": True,
+            }
+        return {"state": "unresolved", "recovery_required": True, "reason": "process ownership identity is unavailable"}
     expected_pid = process_identity.get("pid") if isinstance(process_identity, Mapping) else None
     expected_name = process_identity.get("name") if isinstance(process_identity, Mapping) else None
     expected_cwd = process_identity.get("cwd") if isinstance(process_identity, Mapping) else None
@@ -2485,6 +2469,21 @@ def retire_lane(
         },
         "termination": cleanup,
     }
+
+
+def retire_settled_lane(
+    bound_attempt: Mapping[str, Any],
+    *,
+    herdr: str,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    if bound_attempt.get("settled") is not True:
+        return {"state": "unresolved", "recovery_required": True, "reason": "attempt settlement is not proven"}
+    if bound_attempt.get("no_continuation") is not True:
+        return {"state": "preserved", "recovery_required": False, "reason": "continuation remains possible"}
+    result = retire_lane(bound_attempt, herdr=herdr, env=env)
+    result["no_continuation"] = True
+    return result
 
 
 def resolve_launch(
@@ -3108,6 +3107,39 @@ def _main_body(args: argparse.Namespace) -> int:
                         "task_accepted": task_result.get("accepted"),
                     }
                 )
+                lifecycle_settled = (
+                    isinstance(receipt, Mapping)
+                    and receipt.get("state") == "confirmed"
+                    and terminal_settlement_proven(
+                        receipt,
+                        cleanup_confirmed=cleanup.get("state") == "removed",
+                        descendants_retired=receipt.get("descendant_state") in {"terminated", "not_started"},
+                    )
+                )
+                if lifecycle_settled and task_result.get("continuation_eligible") is False:
+                    retirement = retire_settled_lane(
+                        {
+                            "repository_identity": registry_evidence.get("repository_identity"),
+                            "plan_identity": registry_evidence.get("plan_identity"),
+                            "assignment_id": registry_evidence.get("assignment_id"),
+                            "attempt_id": assignment.get("attempt_id", attempt_id),
+                            "session": resolved_session,
+                            "pane": resolved_pane,
+                            "worktree": str(args.cwd),
+                            "agent_name": evidence["herdr"].get("agent_name"),
+                            "settled": True,
+                            "no_continuation": True,
+                            "recovery_required": cleanup.get("recovery_required") is True,
+                            "process_retirement_proven": lifecycle_settled,
+                        },
+                        herdr=str(evidence["herdr"].get("executable", "herdr")),
+                        env=environment,
+                    )
+                    assignment["retirement"] = retirement
+                    if retirement.get("state") != "removed":
+                        assignment["exit_code"] = 2
+                        assignment["reconciliation_required"] = True
+                        assignment["failure_kind"] = "retirement_unresolved"
             legacy = {
                 key: value
                 for key, value in assignment.items()

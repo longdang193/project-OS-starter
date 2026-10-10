@@ -1055,6 +1055,11 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     settled = LAUNCHER._settle_attempt(
         assignment_id="assignment-1", binding=binding, settlement_proven=True
     )
+    settled = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"candidate_sha": "candidate-1"},
+    )
     assert settled["state"] == "settled"
     assert settled["settlement_proven"] is True
 
@@ -1065,6 +1070,63 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     )
     assert replacement["replaced_settled"] is True
     assert replacement["state"] == "ACTIVE"
+    assert replacement["record"]["release_authorized"] is True
+    assert replacement["record"]["release_authorization"] == {"candidate_sha": "candidate-1"}
+    assert replacement["record"]["release_binding"] == binding
+
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1",
+        binding=dict(binding, attempt_id="attempt-2"),
+        settlement_proven=True,
+    )
+
+    replacement_update = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=dict(binding, attempt_id="attempt-2"),
+        release_authorization={
+            "candidate_sha": "candidate-2",
+            "resources": {"replacement-result": {"state": "removed"}},
+        },
+    )
+    assert replacement_update["release_binding"] == binding
+    assert replacement_update["release_state"] == "pending"
+
+    updated = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "candidate_sha": "candidate-1",
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+    assert updated["release_state"] == "released"
+    assert updated["released_resources"] == {"task-result": {"state": "removed"}}
+
+
+def test_attempt_guard_records_release_resources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    record = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "candidate_sha": "candidate-1",
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+    assert record["release_state"] == "released"
+    assert record["released_resources"] == {"task-result": {"state": "removed"}}
 
 
 def test_attempt_guard_retains_terminal_settlement_evidence(
@@ -2395,38 +2457,6 @@ def test_direct_mcp_proceeds_without_mutating_project_configs(
     assert "--mcp-config" in captured["argv"]
     assert "DEEPAGENTS_CODE_DANGEROUSLY_ENABLE_PROJECT_MCP_SERVERS" not in captured["environment"]
     assert not (tmp_path / ".deepagents" / "agents").exists()
-
-
-def test_direct_mcp_janitor_removes_only_owned_stale_runtime(tmp_path: Path) -> None:
-    parent = tmp_path / "dcode-project-mcp"
-    parent.mkdir()
-    marker = parent / LAUNCHER._DIRECT_MCP_OWNER_MARKER
-    marker.write_text(LAUNCHER._DIRECT_MCP_OWNER_VALUE, encoding="utf-8")
-
-    stale = parent / "runtime-stale"
-    stale.mkdir()
-    (stale / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text(
-        LAUNCHER._DIRECT_MCP_OWNER_VALUE,
-        encoding="utf-8",
-    )
-    os.utime(stale, (0, 0))
-
-    foreign = parent / "runtime-foreign"
-    foreign.mkdir()
-    (foreign / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text("other\n", encoding="utf-8")
-
-    fresh = parent / "runtime-fresh"
-    fresh.mkdir()
-    (fresh / LAUNCHER._DIRECT_MCP_OWNER_MARKER).write_text(
-        LAUNCHER._DIRECT_MCP_OWNER_VALUE,
-        encoding="utf-8",
-    )
-
-    LAUNCHER._cleanup_stale_direct_mcp_runtimes(parent)
-
-    assert not stale.exists()
-    assert foreign.exists()
-    assert fresh.exists()
 
 
 def test_direct_mcp_parent_initialization_tolerates_concurrent_creator(

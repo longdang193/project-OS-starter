@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-concurrency:
-  group: repo-contracts-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -44,7 +40,6 @@ jobs:
           tests/test_secretary_live_runtime.py
           tests/test_secretary_live_pilot.py
           tests/test_project_os_reconciliation.py
-          tests/test_secretary_adapter.py
           tests/test_herdr_main_launcher.py
       - name: Check guided story projections
         if: github.event_name == 'pull_request'
