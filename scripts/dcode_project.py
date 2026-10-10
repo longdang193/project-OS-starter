@@ -929,7 +929,20 @@ def record_release_authorization(
             raise RuntimeError("dcode-project release authorization requires settled attempt.")
         updated = dict(existing)
         resources = release_authorization.get("resources")
-        released_resources = dict(resources) if isinstance(resources, dict) else {}
+        released_resources: dict[str, dict[str, object]] = {}
+        if isinstance(resources, dict):
+            for evidence_ref, resource in resources.items():
+                if not isinstance(evidence_ref, str) or not isinstance(resource, dict):
+                    raise RuntimeError("dcode-project release resource record is invalid.")
+                normalized_resource = dict(resource)
+                if normalized_resource.get("state") == "pending":
+                    normalized_resource.setdefault("attempt_id", binding.get("attempt_id"))
+                    normalized_resource.setdefault("evidence_ref", evidence_ref)
+                if normalized_resource.get("attempt_id") not in {None, binding.get("attempt_id")}:
+                    raise RuntimeError("dcode-project release resource attempt binding mismatch.")
+                if normalized_resource.get("evidence_ref") not in {None, evidence_ref}:
+                    raise RuntimeError("dcode-project release resource evidence binding mismatch.")
+                released_resources[evidence_ref] = normalized_resource
         release_authorizations = dict(existing.get("release_authorizations", {})) if isinstance(existing.get("release_authorizations"), dict) else {}
         released_resources_by_attempt = dict(existing.get("released_resources_by_attempt", {})) if isinstance(existing.get("released_resources_by_attempt"), dict) else {}
         if isinstance(existing.get("release_authorization"), dict):

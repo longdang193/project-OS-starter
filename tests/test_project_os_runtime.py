@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -308,8 +309,21 @@ def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) ->
         release_record={
             "authorized": True,
             "binding": binding,
-            "resources": {"task-result-1": {"state": "pending"}},
-            "attempt_guard": {"release_authorized": True, "release_state": "pending"},
+            "resources": {
+                "task-result-1": {
+                    "state": "pending",
+                    "attempt_id": "attempt-1",
+                    "evidence_ref": "task-result-1",
+                    "attempt_root": str(tmp_path.resolve()),
+                    "relative_path": "task-result.json",
+                    "content_sha256": hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+                }
+            },
+            "attempt_guard": {
+                "release_authorized": True,
+                "release_state": "pending",
+                "worktree": str(tmp_path.resolve()),
+            },
         },
     )
 

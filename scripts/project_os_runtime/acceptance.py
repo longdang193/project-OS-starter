@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -324,6 +326,66 @@ def authorize_evidence_release(
     }
 
 
+def _release_resource_mismatch(
+    resource: Mapping[str, Any],
+    *,
+    binding: Mapping[str, Any],
+    evidence_ref: str,
+    attempt_guard: Mapping[str, Any],
+    path: Path,
+) -> str | None:
+    if resource.get("attempt_id") != binding.get("attempt_id"):
+        return "attempt binding mismatch"
+    if resource.get("evidence_ref") != evidence_ref:
+        return "evidence reference binding mismatch"
+    attempt_root = resource.get("attempt_root")
+    relative_path = resource.get("relative_path")
+    digest = resource.get("content_sha256") or resource.get("artifact_digest")
+    if not all(isinstance(value, str) and value.strip() for value in (attempt_root, relative_path, digest)):
+        return "physical release binding missing"
+    root = Path(attempt_root)
+    relative = Path(relative_path)
+    if not root.is_absolute() or relative.is_absolute() or ".." in relative.parts:
+        return "physical release binding invalid"
+    if root.is_symlink() or not root.is_dir():
+        return "attempt root binding mismatch"
+    guarded_root = attempt_guard.get("worktree")
+    if isinstance(guarded_root, str) and guarded_root:
+        if root.resolve(strict=True) != Path(guarded_root).resolve(strict=True):
+            return "attempt root binding mismatch"
+    expected_path = root / relative
+    if path.is_symlink():
+        return "evidence path is symlink"
+    try:
+        if path.resolve(strict=False) != expected_path.resolve(strict=False):
+            return "evidence path binding mismatch"
+    except OSError:
+        return "evidence path binding mismatch"
+    if not path.exists():
+        return None
+    if not path.is_file():
+        return "evidence artifact type mismatch"
+    try:
+        actual_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return "evidence artifact unreadable"
+    if actual_digest != digest:
+        return "evidence artifact digest mismatch"
+    for field in ("producer", "schema"):
+        expected = resource.get(field)
+        if expected is None:
+            continue
+        if not isinstance(expected, str) or not expected.strip():
+            return f"{field} identity invalid"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return "artifact identity unavailable"
+        if not isinstance(payload, Mapping) or payload.get(field) != expected:
+            return f"{field} identity mismatch"
+    return None
+
+
 def release_authorized_evidence(
     decision: Mapping[str, Any],
     *,
@@ -369,16 +431,43 @@ def release_authorized_evidence(
             "authorized": False,
             "reasons": ["durable release authorization required"],
         }
+    if recorded_resource.get("state") in {"removed", "already_absent"}:
+        return {
+            **result,
+            "payload_released": True,
+            "resources": {evidence_ref: dict(recorded_resource)},
+        }
     path = evidence_paths.get(evidence_ref) if isinstance(evidence_ref, str) else None
-    if not isinstance(path, Path) or not path.is_file() or path.is_symlink():
-        if (
-            recorded_resource.get("state") in {"removed", "already_absent"}
-        ):
-            return {
-                **result,
-                "payload_released": True,
-                "resources": {evidence_ref: dict(recorded_resource)},
-            }
+    if not isinstance(path, Path):
+        return {
+            **result,
+            "authorized": False,
+            "reasons": ["binding_mismatch: exact evidence path unavailable"],
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
+        }
+    mismatch = _release_resource_mismatch(
+        recorded_resource,
+        binding=binding,
+        evidence_ref=evidence_ref,
+        attempt_guard=attempt_guard,
+        path=path,
+    )
+    if mismatch is not None:
+        return {
+            **result,
+            "authorized": False,
+            "reasons": [f"binding_mismatch: {mismatch}"],
+            "resources": {
+                evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
+            },
+        }
+    if not path.exists():
+        return {
+            **result,
+            "payload_released": True,
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "already_absent"}},
+        }
+    if not path.is_file() or path.is_symlink():
         if (
             isinstance(path, Path)
             and not path.is_symlink()
@@ -393,7 +482,8 @@ def release_authorized_evidence(
         return {
             **result,
             "authorized": False,
-            "reasons": ["exact evidence path unavailable"],
+            "reasons": ["binding_mismatch: exact evidence path unavailable"],
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
         }
     resources: dict[str, dict[str, Any]] = {}
     try:

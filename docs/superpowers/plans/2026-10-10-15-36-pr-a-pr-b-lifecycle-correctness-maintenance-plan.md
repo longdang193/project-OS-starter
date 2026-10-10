@@ -159,14 +159,14 @@ about current GitHub state.
 - Branch: `codex/pr-a-lifecycle-correctness` from `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; PR B branch from the merged PR A commit; do not use local main a8a1fc5`
 - Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec`
 - Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\pr-a-lifecycle-correctness\project-OS-starter; PR B will use a new dedicated worktree; preserve the current main checkout's 9router overlay, untracked plans, db/, .playwright-mcp/, and temp_evidence.json`
-- Next action: `implement Task 2 terminal-safe, physically bound evidence release`
+- Next action: `implement Task 3 Git-recorded Plan consequence gating`
 - Blockers: `push, merge, remote CI, and worktree transitions remain approval-gated`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | PR A worktree | `codex` | none | base/inventory/before-measurement proof | dc91924; baseline PASS |
-| Task 2 | `active` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | pending |
-| Task 3 | `pending` | PR A worktree | `unresolved` | Task 2 | Git consequence gating and release replay tests | pending |
+| Task 2 | `completed` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | pending checkpoint; 224 passed |
+| Task 3 | `active` | PR A worktree | `codex` | Task 2 | Git consequence gating and release replay tests | pending |
 | Task 4 | `pending` | PR A worktree | `unresolved` | Task 2 | effective review-policy tests | pending |
 | Task 5 | `pending` | PR A worktree | `unresolved` | Tasks 3, 4 | PR A matrix, validators, review gate | pending |
 | Task 6 | `pending` | PR B worktree | `unresolved` | Task 5 | compaction and obsolete-attempt tests | pending |
@@ -323,29 +323,35 @@ about current GitHub state.
 - Stop for: `a second release owner, a new cleanup database, TTL cleanup, or a deletion path that cannot prove exact artifact identity`
 
 **Steps:**
-- [ ] Step 1: Normalize the release record so each resource stores
+- [x] Step 1: Normalize the release record so each resource stores
   `attempt_id`, `evidence_ref`, `attempt_root`, `relative_path`,
   `content_sha256` or artifact identity, and producer/schema identity.
-- [ ] Step 2: In `release_authorized_evidence`, return the recorded terminal
+- [x] Step 2: In `release_authorized_evidence`, return the recorded terminal
   result immediately for `removed` and `already_absent`; do not inspect,
   resolve, or unlink the current filesystem path on that branch.
-- [ ] Step 3: Permit filesystem mutation only for `pending`, after verifying
+- [x] Step 3: Permit filesystem mutation only for `pending`, after verifying
   the binding matches the current attempt, the resolved path remains inside the
   exact attempt root, the path is a regular non-symlink file, and its digest or
   artifact identity still matches.
-- [ ] Step 4: Return `replacement_detected` or `binding_mismatch` with the
+- [x] Step 4: Return `replacement_detected` or `binding_mismatch` with the
   resource preserved and unresolved; record `removed`, `already_absent`, or
   `unverified` exactly once for the authorized resource.
-- [ ] Step 5: Preserve compatibility for legacy records only through a bounded
+- [x] Step 5: Preserve compatibility for legacy records only through a bounded
   migration/read path; never infer a new physical binding from a replayed path.
 
 **Verification:**
-- [ ] Terminal `removed` plus replacement file leaves the replacement.
-- [ ] Terminal `already_absent` plus replacement file leaves the replacement.
-- [ ] Pending changed path, changed digest, wrong attempt, symlink, and
-  out-of-root path all preserve the artifact.
-- [ ] Valid pending exact artifact is removed once; a repeat is a terminal
+- [x] Terminal `removed` plus replacement file leaves the replacement.
+- [x] Terminal `already_absent` plus replacement file leaves the replacement.
+- [x] Pending changed path, changed digest, wrong attempt, symlink, non-file,
+  and out-of-root path all preserve the artifact.
+- [x] Valid pending exact artifact is removed once; a repeat is a terminal
   no-op and performs no filesystem mutation.
+- [x] `python -m pytest -q tests/test_evidence_release.py
+  tests/test_project_os_runtime.py tests/test_plan_preparation.py
+  tests/test_dcode_project.py`: `224 passed in 7.41s`.
+- [x] `python scripts/validate_repo_contracts.py --repo-root . --fast --plan
+  docs/superpowers/plans/2026-10-10-15-36-pr-a-pr-b-lifecycle-correctness-maintenance-plan.md`:
+  PASS; `git diff --check`: PASS.
 
 **Exit Criteria:**
 - Focused release and attempt-guard tests pass, and no production release path
@@ -361,8 +367,8 @@ about current GitHub state.
 - Separate accepted transition, checkpoint verification, and evidence disposal.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: `pending until Planning Dispatch resolves the executor profile`
+- Controller-selected: `none (lead controller)`
+- Selection basis: `controller-owned Git/release contract implementation and checkpoint work`
 
 **Validator Profile:**
 - Controller-selected: `none`
