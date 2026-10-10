@@ -2410,6 +2410,17 @@ def retire_lane(
             ] if isinstance(process_info, dict) else []
         except (LaunchBlocked, CommandTransportTimeout, json.JSONDecodeError) as exc:
             return {"state": "unresolved", "recovery_required": True, "reason": "process ownership evidence unavailable", "detail": str(exc)}
+        if not candidates and bound_attempt.get("process_retirement_proven") is True:
+            return {
+                "state": "removed",
+                "recovery_required": False,
+                "resources": {
+                    "process": {"state": "removed", "reason": "already_absent"},
+                    "pane": {"state": "preserved", "reason": "no task-owned process remains"},
+                    "session": {"state": "preserved", "reason": "session deletion not authorized"},
+                },
+                "process_retirement_proven": True,
+            }
         if len(candidates) != 1:
             return {"state": "unresolved", "recovery_required": True, "reason": "process ownership identity is unavailable"}
         process_identity = candidates[0]
@@ -3121,6 +3132,7 @@ def _main_body(args: argparse.Namespace) -> int:
                             "settled": True,
                             "no_continuation": True,
                             "recovery_required": cleanup.get("recovery_required") is True,
+                            "process_retirement_proven": lifecycle_settled,
                         },
                         herdr=str(evidence["herdr"].get("executable", "herdr")),
                         env=environment,

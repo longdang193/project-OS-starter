@@ -404,6 +404,7 @@ def apply_accepted_plan_transitions(
         consumer_releases=evidence_release.get("consumer_releases", {}),
         retention=evidence_release.get("retention", {}),
         evidence_paths=evidence_release.get("evidence_paths", {}),
+        retirement_proof=evidence_release.get("retirement_proof"),
         recovery_required=evidence_release.get("recovery_required", False),
         release_record=evidence_release.get("release_record"),
     )

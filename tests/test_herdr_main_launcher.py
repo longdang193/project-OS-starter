@@ -5605,6 +5605,48 @@ def test_retire_settled_lane_discovers_exact_pane_process_identity(
     assert result["state"] == "removed"
 
 
+def test_retire_settled_lane_accepts_proven_absent_worker_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def json_command(args, **kwargs):
+        if "pane" in args and "list" in args:
+            return {"result": {"panes": [{"pane_id": "pane-1", "cwd": str(tmp_path)}]}}
+        return {
+            "result": {
+                "process_info": {
+                    "foreground_processes": [
+                        {"pid": 41, "name": "powershell.exe", "cwd": str(tmp_path)}
+                    ]
+                }
+            }
+        }
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", json_command)
+    result = LAUNCHER.retire_settled_lane(
+        {
+            "repository_identity": "repo-1",
+            "plan_identity": "plan-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "session": "session-1",
+            "pane": "pane-1",
+            "worktree": str(tmp_path),
+            "agent_name": "agent-1",
+            "settled": True,
+            "no_continuation": True,
+            "recovery_required": False,
+            "process_retirement_proven": True,
+        },
+        herdr="herdr",
+        env={},
+    )
+
+    assert result["state"] == "removed"
+    assert result["resources"]["process"]["reason"] == "already_absent"
+    assert result["resources"]["pane"]["state"] == "preserved"
+
+
 def test_retire_lane_preserves_on_worktree_binding_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

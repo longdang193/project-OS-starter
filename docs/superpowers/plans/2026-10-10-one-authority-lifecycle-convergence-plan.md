@@ -119,8 +119,8 @@ raw probe traces remain disposable.
 - Branch: `codex/one-authority-lifecycle-convergence`
 - Base commit: `b41d3f8` (`origin/main`, verified 2026-10-10)
 - Expected workspace: `fresh execution worktree; preserve current checkout changes and untracked .playwright-mcp/, db/, temp_evidence.json, and existing untracked plans`
-- Next action: `run one bounded live lifecycle probe when managed runtime capability is available; then rerun current-head review`
-- Blockers: `live lifecycle capability unavailable; completion claim rejected by review turn 3`
+- Next action: `obtain post-fix independent review and user-authorized exact-PR-head checks after committing/pushing current fix`
+- Blockers: `post-fix code is uncommitted; remote checks and independent review do not bind current fix; plan remains active until those gates are authorized and pass`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -129,7 +129,7 @@ raw probe traces remain disposable.
 | Task 3 | `completed` | dedicated execution worktree | `codex` | Task 2 | structured remote evidence and CoS acceptance proof | exact-head checks policy bound to `github://` or `repo-contract://`; `487 passed` focused suites |
 | Task 4 | `completed` | dedicated execution worktree | `codex` | Task 2 | exact retirement path and runtime-owner proof | `retire_lane` plus `retire_settled_lane`; idempotency, mismatch, recovery tests passed |
 | Task 5 | `completed` | dedicated execution worktree | `codex` | Tasks 3–4 | restart-safe release and truthful cleanup proof | acceptance release path; attempt-guard authorization survives replacement; stale sweeper and legacy disposal removed |
-| Task 6 | `completed` | dedicated execution worktree | `codex` | Tasks 1–5 | CI, docs, live lifecycle, final verification | workflow duplicate removed; repo/planning validators passed; remote gate remains |
+| Task 6 | `active` | dedicated execution worktree | `codex` | Tasks 1–5 | CI, docs, live lifecycle, final verification | workflow duplicate removed; repo/planning validators passed; post-fix live lifecycle passed; review/remote gate remains |
 
 ## Task Breakdown
 
@@ -362,7 +362,7 @@ raw probe traces remain disposable.
 **Verification:**
 - [x] `python -m pytest -q tests/test_herdr_main_launcher.py tests/test_herdr_attempt_contract.py tests/test_dcode_project.py tests/test_project_os_runtime.py`
 - Expected: dcode cleanup proves settlement; exact Herdr agent/pane resources retire after settlement; failed terminal publication can release runtime capacity when recovery evidence is durable; uncertain ownership fails closed; shared session stays; repeated cleanup is idempotent; worktree and evidence remain available.
-- [x] Deterministic lifecycle regression records TaskResult → receipt → retirement; live managed probe is `BLOCKED_CAPABILITY` without approved runtime resources.
+- [x] Deterministic lifecycle regression records TaskResult → receipt → retirement.
 
 **Exit Criteria:**
 - Production terminal flow has one runtime-finalization contract with pre-settlement producer cleanup and post-settlement resource-specific retirement, publishing durable retirement proof before any prune decision; worktree disposition remains a later finishing workflow.
@@ -473,7 +473,7 @@ raw probe traces remain disposable.
 **Steps:**
 - [x] Step 1: Remove duplicate top-level `concurrency` from Repository Contracts and keep one cancellation policy; narrow overlapping tests by workflow responsibility, including duplicate `tests/test_secretary_adapter.py` entry.
 - [x] Step 2: Update runtime ownership docs and record no-new-infrastructure exclusions.
-- [x] Step 3: Run one managed happy-path probe: worker terminal → dcode cleanup/settlement proof → TaskResult → receipt → no continuation → Herdr agent/pane retirement → CoS acceptance → canonical consequence → evidence release. Live capability was unavailable; deterministic lifecycle coverage was used and no synthetic proof was recorded.
+- [x] Step 3: Run one managed happy-path probe: worker terminal → dcode cleanup/settlement proof → TaskResult → receipt → no continuation → Herdr retirement → CoS acceptance → canonical consequence → exact evidence release. Post-fix probe `b84fe5801ceb44c1a37044e21e60da6f` exited `0` with `TaskResult=reported_completed`, cleanup `removed`, retirement `removed` with `process_retirement_proven=true`, CoS decision `PASS`, plan transition `authorized=true`, and evidence release `payload_released=true`; pane/session stayed preserved.
 - [x] Step 4: Run final focused tests, repository contract validation, plan validation, and local workflow commands; record remote exact-PR-head checks as a separate user-authorized stage.
 
 **Verification:**
@@ -507,7 +507,10 @@ raw probe traces remain disposable.
 - Required rerun: focused lifecycle tests, full suite, repository/planning validators, exact-head CI, independent review.
 - Review turn 2: `PASS` at PR head `7a476a30c8da6f60f66d204f0f164058ad2addbe`.
 - Review turn 3: `FAIL` at PR head `a6636f9b1c7fdc5336fdf39565ef8ec94d978cc8`; code findings remain cleared, but completion proof is insufficient because live lifecycle capability is unavailable and review evidence must bind current head.
+- Current-head review turn 4: `FAIL` at `5831959deda28001b8e5367fa133d8c057ef82fb`; found terminal retirement false-failure when worker already exited and evidence release bypassing canonical retirement proof. Fixed in `scripts/herdr_main_launcher.py`, `scripts/project_os_runtime/acceptance.py`, and `scripts/project_os_runtime/plan_preparation.py`; focused regression proof passes. Review remains stale for post-fix changes.
+- Post-fix local proof: full suite `1107 passed, 1 skipped`; managed DeepAgents attempt `b84fe5801ceb44c1a37044e21e60da6f` plus local acceptance boundary probe produced `PASS`, authorized canonical transition, and exact evidence release. Probe-owned raw evidence was removed after capture; no shared session was removed.
 - Current proof: local suite `1105 passed, 1 skipped`; exact-head Repository Contracts, Runtime Contracts, and Benchmark passed; deterministic lifecycle coverage passed. Live lifecycle proof remains required by completion criterion 8.
+- Live probe update: managed `dcode-project` capability resolved on 2026-10-10. Probe attempt `5a62099b7eeb43daaf8d0a99e15f65e4` produced bound `TaskResult` with `status=completed`, confirmed settlement cleanup, and no continuation; `retire_settled_lane` returned `retirement_unresolved` with `process ownership identity is unavailable` because pane `w1:p1` retained only pre-existing `powershell.exe`. Do not mark plan complete from this partial proof.
 
 ## Completion Criteria
 

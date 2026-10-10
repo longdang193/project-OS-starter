@@ -191,6 +191,7 @@ def authorize_evidence_release(
     required_consumers: Sequence[str],
     consumer_releases: Mapping[str, Mapping[str, Any]],
     retention: Mapping[str, Mapping[str, Any]],
+    retirement_proof: Mapping[str, Any] | None = None,
     recovery_required: bool = False,
 ) -> dict[str, Any]:
     reasons: list[str] = []
@@ -273,6 +274,12 @@ def authorize_evidence_release(
                 reasons.append(f"canonical {field} binding")
     if recovery_required:
         reasons.append("recovery required")
+    if not isinstance(retirement_proof, Mapping) or retirement_proof.get("retirement_complete") is not True:
+        reasons.append("retirement proof")
+    else:
+        for field in ("plan_ref", "task_id", "assignment_id", "attempt_id"):
+            if retirement_proof.get(field) != binding.get(field):
+                reasons.append(f"retirement {field} binding")
     if (
         not isinstance(required_consumers, Sequence)
         or isinstance(required_consumers, (str, bytes))
@@ -326,6 +333,7 @@ def release_authorized_evidence(
     consumer_releases: Mapping[str, Mapping[str, Any]],
     retention: Mapping[str, Mapping[str, Any]],
     evidence_paths: Mapping[str, Path],
+    retirement_proof: Mapping[str, Any] | None = None,
     recovery_required: bool = False,
     release_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -336,6 +344,7 @@ def release_authorized_evidence(
         required_consumers=required_consumers,
         consumer_releases=consumer_releases,
         retention=retention,
+        retirement_proof=retirement_proof,
         recovery_required=recovery_required,
     )
     if not result["authorized"]:

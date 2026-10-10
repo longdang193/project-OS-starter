@@ -8,6 +8,13 @@ import pytest
 from scripts.project_os_runtime import PreparedLane, prepare_lane
 
 
+def _retirement_proof(binding: dict[str, str]) -> dict[str, object]:
+    return {
+        "retirement_complete": True,
+        **{field: binding[field] for field in ("plan_ref", "task_id", "assignment_id", "attempt_id")},
+    }
+
+
 def _descriptor() -> dict[str, object]:
     return {
         "lane_id": "lane-1",
@@ -246,6 +253,7 @@ def test_evidence_release_requires_consumer_release_and_expired_retention() -> N
         required_consumers=["secretary"],
         consumer_releases=releases,
         retention=retention,
+        retirement_proof=_retirement_proof(binding),
     )
 
     assert result["authorized"] is True
@@ -296,6 +304,7 @@ def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) ->
         },
         retention={"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}},
         evidence_paths={"task-result-1": evidence_path},
+        retirement_proof=_retirement_proof(binding),
     )
 
     assert result["authorized"] is True

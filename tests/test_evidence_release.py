@@ -62,7 +62,22 @@ def _acceptance_decision() -> dict:
     }
 
 
-def _release(tmp_path: Path, *, accepted: bool = True, decision: dict | None = None, create: bool = True):
+def _retirement_proof() -> dict[str, object]:
+    binding = _binding()
+    return {
+        "retirement_complete": True,
+        **{field: binding[field] for field in ("plan_ref", "task_id", "assignment_id", "attempt_id")},
+    }
+
+
+def _release(
+    tmp_path: Path,
+    *,
+    accepted: bool = True,
+    decision: dict | None = None,
+    create: bool = True,
+    retirement_proof: dict | None = None,
+):
     task_result = tmp_path / "task-result.json"
     result = tmp_path / "result.json"
     if create:
@@ -76,12 +91,20 @@ def _release(tmp_path: Path, *, accepted: bool = True, decision: dict | None = N
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": task_result, "result": result},
+        retirement_proof=_retirement_proof() if retirement_proof is None else retirement_proof,
     )
 
 
 def test_release_requires_exact_acceptance(tmp_path: Path):
     result = _release(tmp_path, decision={})
     assert result["authorized"] is False
+    assert (tmp_path / "task-result.json").exists()
+
+
+def test_release_requires_retirement_proof(tmp_path: Path):
+    result = _release(tmp_path, retirement_proof={})
+    assert result["authorized"] is False
+    assert "retirement proof" in result["reasons"]
     assert (tmp_path / "task-result.json").exists()
 
 
@@ -114,6 +137,7 @@ def test_release_replay_requires_durable_complete_record(tmp_path: Path):
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": task_result, "foreign": tmp_path / "foreign.json"},
+        retirement_proof=_retirement_proof(),
         release_record=release_record,
     )
     assert result["payload_released"] is True
@@ -129,6 +153,7 @@ def test_release_replay_rejects_incomplete_durable_record(tmp_path: Path):
         consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": tmp_path / "task-result.json"},
+        retirement_proof=_retirement_proof(),
         release_record={
             "authorized": True,
             "binding": _binding(),
