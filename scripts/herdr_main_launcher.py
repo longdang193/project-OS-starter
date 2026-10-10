@@ -1649,20 +1649,36 @@ def _matches_codex_process(
     )
 
 
-def _process_ids_alive(process_ids: set[int]) -> set[int]:
-    alive: set[int] = set()
-    for pid in process_ids:
+def _process_is_alive(pid: int) -> bool:
+    if os.name != "nt":
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
-            continue
-        except PermissionError:
-            alive.add(pid)
-        except OSError:
-            alive.add(pid)
-        else:
-            alive.add(pid)
-    return alive
+            return False
+        except (PermissionError, OSError):
+            return True
+        return True
+
+    try:
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return ctypes.get_last_error() not in {87, 1168}
+        exit_code = ctypes.c_ulong()
+        try:
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return True
+            return exit_code.value == 259
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return True
+
+
+def _process_ids_alive(process_ids: set[int]) -> set[int]:
+    return {pid for pid in process_ids if _process_is_alive(pid)}
 
 
 def _deepagents_task_state(

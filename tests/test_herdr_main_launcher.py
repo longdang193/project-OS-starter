@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 
@@ -4810,6 +4811,27 @@ def test_terminate_codex_lane_checks_observed_descendants_when_pane_remains(
     assert result["verified"] is False
     assert result["state"] == "shell-only"
     assert result["remaining_owned_process_ids"] == [102]
+
+
+def test_process_ids_alive_tracks_live_and_reaped_processes() -> None:
+    process = subprocess.Popen([
+        LAUNCHER.sys.executable,
+        "-c",
+        "import time; time.sleep(30)",
+    ])
+    try:
+        assert process.pid in LAUNCHER._process_ids_alive({process.pid})
+        process.terminate()
+        process.wait(timeout=5)
+        for _ in range(50):
+            if process.pid not in LAUNCHER._process_ids_alive({process.pid}):
+                break
+            time.sleep(0.01)
+        assert process.pid not in LAUNCHER._process_ids_alive({process.pid})
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
 
 
 def test_terminate_codex_lane_blocks_empty_live_process_evidence_before_close(
