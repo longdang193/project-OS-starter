@@ -594,6 +594,27 @@ def test_git_checkpoint_verifier_requires_reachable_exact_plan_revision(tmp_path
     assert "verification failed" in unreachable["reason"]
 
 
+def test_git_checkpoint_verifier_accepts_crlf_checkpoint_when_autocrlf_is_disabled(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True, text=True)
+    plan_path = repo / "plan.md"
+    plan_path.write_bytes(PLAN.replace("\n", "\r\n").encode("utf-8"))
+    subprocess.run(["git", "-C", str(repo), "config", "core.autocrlf", "false"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "plan checkpoint"], check=True, capture_output=True, text=True)
+    commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    consequence = {
+        "commit_sha": commit,
+        "coordination_ref": "HEAD",
+        "plan_path": "plan.md",
+        "expected_plan_revision": hashlib.sha256(PLAN.encode("utf-8")).hexdigest(),
+    }
+
+    verified = _verify_git_checkpoint(plan_path, consequence)
+
+    assert verified["checkpoint_verified"] is True
+
 def test_accepted_transition_keeps_pending_release_until_checkpoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

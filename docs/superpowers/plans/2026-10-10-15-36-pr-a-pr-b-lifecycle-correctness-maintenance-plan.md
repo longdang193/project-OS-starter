@@ -575,6 +575,15 @@ about current GitHub state.
 - Independent review completed for the allowed review turns; findings on cross-attempt
   release isolation, pending/terminal binding immutability, replacement races, and
   concurrent writers were patched in commits `c628002`, `5d2449b`, and `95ddd81`.
+- Remote review turn 1 against PR A head `84402a276e9389139eb57e7d104eb234bb67d479`
+  found two justified issues: POSIX disposal could unlink a replacement after the
+  final descriptor digest, and raw committed CRLF bytes could fail a valid Plan
+  checkpoint when `core.autocrlf=false`. The follow-up patch quarantines the POSIX
+  pathname before deletion, canonicalizes Plan revision hashing to normalized UTF-8
+  text, and adds regressions for both boundaries.
+- Follow-up proof: full repository suite `1135 passed, 2 skipped`; focused release and
+  Plan suite `57 passed, 1 skipped`; repository contract and plan validators PASS;
+  `git diff --check` PASS.
 - Remote PR-head CI/review remains approval-gated; PR B has not started.
 
 **Exit Criteria:**

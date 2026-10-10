@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import tempfile
 from typing import Any
 
 from .reconciliation import ReconciliationInput, reconcile
@@ -482,6 +483,8 @@ def _unlink_verified_file(path: Path, verified_stat: os.stat_result, expected_di
             return None
         finally:
             os.close(fd)
+    quarantine_path: Path | None = None
+    quarantined_unverified = False
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
     except OSError:
@@ -491,12 +494,36 @@ def _unlink_verified_file(path: Path, verified_stat: os.stat_result, expected_di
             return "evidence artifact changed"
         if _digest_for_fd(fd) != expected_digest:
             return "evidence artifact changed"
-        path.unlink()
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".release",
+            delete=False,
+        ) as quarantine:
+            quarantine_path = Path(quarantine.name)
+        quarantine_path.unlink()
+        os.rename(path, quarantine_path)
+        quarantined_unverified = True
+        if not _same_file_identity(os.stat(quarantine_path, follow_symlinks=False), verified_stat):
+            try:
+                os.link(quarantine_path, path)
+                quarantine_path.unlink()
+                quarantined_unverified = False
+            except FileExistsError:
+                pass
+            return "evidence artifact changed"
+        quarantine_path.unlink()
+        quarantined_unverified = False
     except FileNotFoundError:
         return "already absent"
     except OSError:
         return "evidence disposal failed"
     finally:
+        if quarantine_path and not quarantined_unverified and quarantine_path.exists():
+            try:
+                quarantine_path.unlink()
+            except OSError:
+                pass
         os.close(fd)
     return None
 

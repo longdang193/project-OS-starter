@@ -38,6 +38,14 @@ _SINGLE_DEPENDENCY = re.compile(r"^Task\s+(\d+)$", re.IGNORECASE)
 _NAMED_DEPENDENCIES = re.compile(r"^Task\s+\d+(?:\s*,\s*Task\s+\d+)+$", re.IGNORECASE)
 _NUMBERED_DEPENDENCIES = re.compile(r"^Tasks?\s+\d+(?:\s*,\s*\d+)+$", re.IGNORECASE)
 _RANGE_DEPENDENCY = re.compile(r"^Tasks?\s+(\d+)\s*-\s*(?:Task\s+)?(\d+)$", re.IGNORECASE)
+
+
+def _plan_revision(value: str | bytes) -> str:
+    text = value.decode("utf-8") if isinstance(value, bytes) else value
+    canonical = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 EXECUTION_ELIGIBLE_STATES = frozenset({"pending", "active"})
 _SHARED_CONSTRAINT_LABELS = (
     "Required skills",
@@ -255,7 +263,7 @@ def parse_plan(text: str) -> PlanGraph:
     tasks = {task_id: task for task_id, task in task_rows}
 
     return PlanGraph(
-        plan_identity=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        plan_identity=_plan_revision(text),
         goal=_section(text, "Goal"),
         shared_constraints=_shared_constraints(_section(text, "Execution Approach")),
         tasks=tasks,
@@ -353,9 +361,9 @@ def _verify_git_checkpoint(
             check=True,
             capture_output=True,
         ).stdout
-    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+    except (OSError, subprocess.CalledProcessError, UnicodeError, ValueError) as exc:
         return {"verified": False, "reason": f"Git checkpoint verification failed: {exc}"}
-    actual_revision = hashlib.sha256(committed_plan).hexdigest()
+    actual_revision = _plan_revision(committed_plan.decode("utf-8"))
     if actual_revision != expected_revision:
         return {
             "verified": False,
@@ -625,7 +633,7 @@ def _apply_plan_transitions_locked(
 
     path = Path(source)
     text = path.read_text(encoding="utf-8")
-    revision = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    revision = _plan_revision(text)
     if revision != expected_revision:
         return {
             "authorized": False,
@@ -693,11 +701,12 @@ def _apply_plan_transitions_locked(
 
     updated = "".join(lines)
     latest_text = path.read_text(encoding="utf-8")
-    if hashlib.sha256(latest_text.encode("utf-8")).hexdigest() != revision:
+    latest_revision = _plan_revision(latest_text)
+    if latest_revision != revision:
         return {
             "authorized": False,
             "reason": "plan revision changed",
-            "revision": hashlib.sha256(latest_text.encode("utf-8")).hexdigest(),
+            "revision": latest_revision,
         }
     temporary_path: str | None = None
     try:
@@ -720,7 +729,7 @@ def _apply_plan_transitions_locked(
     return {
         "authorized": True,
         "revision": revision,
-        "new_revision": hashlib.sha256(updated.encode("utf-8")).hexdigest(),
+        "new_revision": _plan_revision(updated),
         "transitions": [
             {"task_id": task_id, "next_state": next_state}
             for task_id, _, next_state in normalized
@@ -885,7 +894,7 @@ def _source_parts(source: str | os.PathLike[str] | PlanGraph) -> tuple[str | Non
     if isinstance(source, PlanGraph):
         return None, source, source.plan_identity, None
     if isinstance(source, str) and ("\n" in source or "\r" in source):
-        return source, parse_plan(source), hashlib.sha256(source.encode("utf-8")).hexdigest(), None
+        return source, parse_plan(source), _plan_revision(source), None
     path = Path(source)
     text = path.read_text(encoding="utf-8")
     return text, parse_plan(text), _frontmatter_value(text, "name") or path.stem, str(path.resolve())
@@ -924,7 +933,7 @@ def _prepare_plan_lanes(
     unknown = sorted(set(selected) - set(graph.tasks))
     if unknown:
         raise ValueError(f"unknown selected task: {unknown[0]}")
-    plan_revision = hashlib.sha256(text.encode("utf-8")).hexdigest() if text is not None else graph.plan_identity
+    plan_revision = _plan_revision(text) if text is not None else graph.plan_identity
     lanes: list[dict[str, Any]] = []
     for task_id in selected:
         task = graph.tasks[task_id]

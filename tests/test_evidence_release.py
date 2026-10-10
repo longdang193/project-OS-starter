@@ -1,6 +1,9 @@
 from pathlib import Path
 import hashlib
+import os
+import pytest
 
+from scripts.project_os_runtime import acceptance as acceptance_module
 from scripts.project_os_runtime.acceptance import release_authorized_evidence
 from scripts.project_os_runtime.results import publish_task_result
 
@@ -409,6 +412,43 @@ def test_pending_replacement_after_validation_preserves_artifact(
         return content
 
     monkeypatch.setattr(Path, "read_bytes", replace_after_first_read)
+    result = _invoke_release(
+        tmp_path,
+        {
+            "authorized": True,
+            "binding": _binding(),
+            "resources": {"task-result": resource},
+            "attempt_guard": _attempt_guard(worktree=tmp_path),
+        },
+    )
+    assert result["authorized"] is False
+    assert "replacement_detected" in result["reasons"][0]
+    assert task_result.read_text(encoding="utf-8").startswith('{"producer": "dcode-project"')
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows disposal holds an exclusive handle")
+def test_pending_replacement_after_final_digest_preserves_artifact(monkeypatch, tmp_path: Path):
+    task_result = tmp_path / "task-result.json"
+    publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))
+    original = task_result.read_bytes()
+    resource = _resource(tmp_path, digest=hashlib.sha256(original).hexdigest())
+    original_digest = acceptance_module._digest_for_fd
+    replaced = False
+
+    def replace_after_digest(fd: int) -> str:
+        nonlocal replaced
+        digest = original_digest(fd)
+        if not replaced:
+            replacement = task_result.with_name("replacement.json")
+            replacement.write_text(
+                '{"producer": "dcode-project", "schema": "dcode-project.task-result.v1"}',
+                encoding="utf-8",
+            )
+            replacement.replace(task_result)
+            replaced = True
+        return digest
+
+    monkeypatch.setattr(acceptance_module, "_digest_for_fd", replace_after_digest)
     result = _invoke_release(
         tmp_path,
         {
