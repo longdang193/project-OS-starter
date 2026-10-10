@@ -598,6 +598,11 @@ about current GitHub state.
   adds regressions for both cases. Full proof: `1137 passed, 2 skipped`; focused
   lifecycle/release proof `207 passed, 1 skipped`; repository and plan validators
   PASS; `git diff --check` PASS.
+- The first remote runtime rerun on `789c672` exposed a fixture-only CI failure:
+  the new Git checkpoint tests relied on the developer's global Git author config.
+  Both fixtures now configure a local test identity, preserving hermetic runner
+  behavior; no production logic changed. Local proof remains `207 passed, 1 skipped`,
+  with repository and plan validators PASS.
 - Remote PR-head CI/review remains approval-gated; PR B has not started.
 
 **Exit Criteria:**

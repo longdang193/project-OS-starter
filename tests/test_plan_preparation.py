@@ -598,6 +598,8 @@ def test_git_checkpoint_verifier_accepts_crlf_checkpoint_when_autocrlf_is_disabl
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True, text=True)
+    for args in (("config", "user.email", "tests@example.invalid"), ("config", "user.name", "Tests")):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
     plan_path = repo / "plan.md"
     plan_path.write_bytes(PLAN.replace("\n", "\r\n").encode("utf-8"))
     subprocess.run(["git", "-C", str(repo), "config", "core.autocrlf", "false"], check=True)
@@ -620,6 +622,8 @@ def test_git_checkpoint_verifier_rejects_non_utf8_checkpoint(tmp_path: Path) -> 
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True, text=True)
+    for args in (("config", "user.email", "tests@example.invalid"), ("config", "user.name", "Tests")):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
     plan_path = repo / "plan.md"
     plan_path.write_bytes(b"---\nname: plan-1\n---\n\xff\n")
     subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
