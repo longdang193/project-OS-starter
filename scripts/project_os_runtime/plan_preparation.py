@@ -529,7 +529,14 @@ def apply_accepted_plan_transitions(
     if evidence_release is None:
         return result
     canonical_consequence = dict(evidence_release.get("canonical_consequence", {}))
-    checkpoint = _verify_git_checkpoint(source, canonical_consequence)
+    transition_revision = result.get("new_revision") or result.get("revision")
+    if canonical_consequence.get("expected_plan_revision") != transition_revision:
+        checkpoint = {
+            "verified": False,
+            "reason": "Git checkpoint expected Plan revision does not match transition",
+        }
+    else:
+        checkpoint = _verify_git_checkpoint(source, canonical_consequence)
     if checkpoint.get("verified") is True:
         canonical_consequence = checkpoint
     release_result = release_authorized_evidence(

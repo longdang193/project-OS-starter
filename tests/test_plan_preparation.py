@@ -539,6 +539,10 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
         {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
         {"task_id": "Task 2", "expected_state": "pending", "next_state": "active"},
     ]
+    preview_path = tmp_path / "preview.md"
+    preview_path.write_text(plan, encoding="utf-8")
+    apply_plan_transitions(preview_path, transitions, expected_revision=revision)
+    expected_post_revision = hashlib.sha256(preview_path.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
     artifact = repo / "task-result.json"
     artifact.write_text('{"producer":"dcode-project","schema":"dcode-project.task-result.v1"}', encoding="utf-8")
     binding = {"plan_ref": "plan-1", "task_id": "Task 1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "candidate_sha": commit, "acceptance_checkpoint_sha": commit, "evidence_ref": "task-result"}
@@ -560,7 +564,7 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     evidence_release = {
         "binding": binding,
         "resources": {"task-result": resource},
-        "canonical_consequence": {"authorized": True, "owner": "git", "coordination_ref": "HEAD", "plan_path": "plan.md", "expected_plan_revision": revision},
+        "canonical_consequence": {"authorized": True, "owner": "git", "coordination_ref": "HEAD", "plan_path": "plan.md", "expected_plan_revision": expected_post_revision},
         "attempt_guard": {"assignment_id": "assignment-1", "binding": {"attempt_id": "attempt-1"}},
         "required_consumers": [],
         "consumer_releases": {},
@@ -574,6 +578,7 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     assert first["evidence_release"]["payload_released"] is False
     assert persist_calls[0][0] == revision
     post_transition_revision = first["new_revision"]
+    assert post_transition_revision == expected_post_revision
 
     subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "plan checkpoint"], check=True, capture_output=True, text=True)
