@@ -22,6 +22,10 @@ class RemotePrEvidence:
     required_checks: tuple[str, ...] = ()
     checks: tuple[Mapping[str, Any], ...] = ()
     policy_source: str | None = None
+    review_policy_source: str | None = None
+    review_policy_satisfied: bool | None = None
+    effective_review_state: str | None = None
+    review_required: bool | None = None
     review_identity: str | None = None
     review_pr_number: int | None = None
     reviewed_head_sha: str | None = None
@@ -52,11 +56,25 @@ class RemotePrEvidence:
 
     @property
     def checks_satisfy_policy(self) -> bool:
-        policy_bound = isinstance(self.policy_source, str) and self.policy_source.startswith(("github://", "repo-contract://"))
+        policy_source = self.policy_source or self.review_policy_source
+        policy_bound = isinstance(policy_source, str) and policy_source.startswith(("github://", "repo-contract://"))
         return policy_bound and self.checks_current and set(self.required_checks) <= set(self.successful_check_names)
 
     @property
+    def review_policy_is_satisfied(self) -> bool:
+        policy_source = self.review_policy_source or self.policy_source
+        if not isinstance(policy_source, str) or not policy_source.strip():
+            return False
+        if self.review_policy_satisfied is not True:
+            return False
+        if self.review_required is False:
+            return self.effective_review_state == "NONE"
+        return self.review_required is True and self.effective_review_state == "APPROVED"
+
+    @property
     def review_is_valid(self) -> bool:
+        if self.review_required is False:
+            return self.review_policy_is_satisfied
         return bool(
             self.review_identity
             and self.review_pr_number == self.pr_number
@@ -181,6 +199,8 @@ def _integrate(facts: Mapping[str, Any], remote: RemotePrEvidence | None) -> Rec
                 failures.append(remote_name)
         if not remote.checks_satisfy_policy:
             failures.append("required_checks")
+        if not remote.review_policy_is_satisfied:
+            failures.append("review_policy")
         if not remote.review_is_valid:
             failures.append("review_bound_to_head")
         if remote.mergeability not in {"mergeable", "clean"}:
