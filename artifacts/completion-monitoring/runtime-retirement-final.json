@@ -1,12 +1,12 @@
 {
   "schema": "completion-monitoring-evidence/v2",
-  "generated_at": "2026-10-10T01:42:01.467864+00:00",
+  "generated_at": "2026-10-10T02:57:59.534299+00:00",
   "python": "3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]",
   "os": "Windows-10-10.0.19045-SP0",
   "baseline_revision": "187f28e492ae1c4726cdd2f7b5a261a2b8b6c695",
-  "candidate_revision": "55410451d4ea9cddff0129c77c80a3f83ab9810b",
+  "candidate_revision": "0d956086f57c2a035befc898631342cdd1b625c8",
   "baseline_source_sha256": "81ce55796dfc7e42f506541340e443617d80b4b16c5affaad096c9fd7d18931c",
-  "candidate_source_sha256": "f5d49b201e3da29eb041c35a71c1ac6a2b65d88a0a8094737ae11ab605db062f",
+  "candidate_source_sha256": "59d10dfdc75492d9189faa543986b7191f574676fb9a0f375a0d5dc26ccf245a",
   "harness": "stdlib deterministic fake-Herdr command/receipt seam",
   "harness_digest": "f1741a14dbb0d63641ed983395644056ee8603648e9ea67cee53bc27687104ff",
   "fixed_budgets": {
@@ -22,7 +22,7 @@
     "normal_success",
     "terminal_process_without_receipt"
   ],
-  "repetitions_per_case_and_side": 1,
+  "repetitions_per_case_and_side": 3,
   "summary": {
     "baseline": {
       "subprocess_total": {
@@ -37,7 +37,7 @@
         "median": 0.0,
         "p95": 0.0
       },
-      "timeout_count": 4,
+      "timeout_count": 12,
       "lifecycle_mismatches": 0,
       "max_elapsed_seconds": 32.0,
       "receipt_case_max_elapsed_seconds": 0.65
@@ -55,7 +55,7 @@
         "median": 0.0,
         "p95": 0.0
       },
-      "timeout_count": 4,
+      "timeout_count": 12,
       "lifecycle_mismatches": 0,
       "max_elapsed_seconds": 32.0,
       "receipt_case_max_elapsed_seconds": 0.65
