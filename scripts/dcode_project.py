@@ -814,8 +814,39 @@ def _claim_attempt_unlocked(
         if state not in {"ACTIVE", "SETTLED"}:
             return {"state": "RECOVERY_REQUIRED", "action": "RECONCILE", "admission": "RECONCILE"}
         return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "admission": "IDEMPOTENT", "idempotent": True, "record": existing}
+    retired_attempts = existing.get("retired_attempts")
+    if isinstance(retired_attempts, list) and any(
+        isinstance(retired, Mapping) and same_attempt_binding(retired, candidate)
+        for retired in retired_attempts
+    ):
+        return {
+            "state": "RECOVERY_REQUIRED",
+            "action": "BLOCKED",
+            "admission": "BLOCKED",
+            "record": existing,
+        }
     existing_state = str(existing.get("state", "")).lower()
     if existing_state == "settled":
+        retired_attempts = [
+            dict(item)
+            for item in existing.get("retired_attempts", [])
+            if isinstance(item, Mapping)
+        ]
+        retired_attempt = {
+            field: existing.get(field)
+            for field in (
+                "attempt_id",
+                "assignment_id",
+                "repository_identity",
+                "executor",
+                "task_sha256",
+                "grant_digest",
+            )
+        }
+        retired_attempt["generation"] = _attempt_generation(existing)
+        if not any(same_attempt_binding(item, retired_attempt) for item in retired_attempts):
+            retired_attempts.append(retired_attempt)
+        candidate["retired_attempts"] = retired_attempts
         terminal_tombstone = existing.get("terminal_release_tombstone")
         if (
             isinstance(terminal_tombstone, Mapping)
@@ -854,30 +885,14 @@ def _claim_attempt_unlocked(
             for field in (
                 "release_authorization",
                 "release_authorized",
-                "released_resources",
-                "release_state",
                 "release_authorizations",
                 "released_resources_by_attempt",
                 "release_binding",
             ):
                 if field in existing:
                     candidate[field] = existing[field]
-            if existing.get("release_authorized") is True:
-                release_binding = existing.get("release_binding")
-                if not isinstance(release_binding, dict):
-                    release_binding = {
-                        field: existing[field]
-                        for field in (
-                            "attempt_id",
-                            "assignment_id",
-                            "repository_identity",
-                            "executor",
-                            "task_sha256",
-                            "grant_digest",
-                        )
-                        if field in existing
-                    }
-                candidate["release_binding"] = release_binding
+        candidate["release_state"] = "pending"
+        candidate.pop("released_resources", None)
         _write_attempt_guard(path, candidate)
         return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "replaced_settled": True, "record": candidate}
     state = "ACTIVE" if existing_state == "active" else "RECOVERY_REQUIRED"
@@ -1129,7 +1144,10 @@ def record_release_authorization(
                 "release_state": release_state,
             }
         )
-        if _can_compact_terminal_record(updated, release_authorization, released_resources_by_attempt):
+        if (
+            binding_matches_attempt
+            and _can_compact_terminal_record(updated, release_authorization, released_resources_by_attempt)
+        ):
             updated = _compact_terminal_record(
                 updated,
                 binding=binding,

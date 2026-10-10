@@ -510,7 +510,11 @@ def apply_accepted_plan_transitions(
             )
             attempt_key = str(attempt_guard["binding"].get("attempt_id"))
             terminal_tombstone = persisted_guard.get("terminal_release_tombstone")
-            if persisted_guard.get("release_compacted") is True and isinstance(terminal_tombstone, Mapping):
+            if (
+                persisted_guard.get("release_compacted") is True
+                and isinstance(terminal_tombstone, Mapping)
+                and same_attempt_binding(terminal_tombstone, attempt_guard["binding"])
+            ):
                 authoritative_resources = {
                     evidence_ref: {
                         "state": "already_absent",

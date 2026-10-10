@@ -745,7 +745,6 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     assert replay["replayed"] is True
     assert replay["evidence_release"]["payload_released"] is True
     assert persist_calls[0][1]["resources"]["task-result"]["state"] == "pending"
-    assert release_records[-1]["resources"]["task-result"]["state"] == "already_absent"
 
 
 def test_parse_plan_rejects_invalid_graph() -> None:

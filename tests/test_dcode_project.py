@@ -1435,6 +1435,82 @@ def test_attempt_guard_rejects_obsolete_attempt_admission_after_replacement(
     assert obsolete["record"]["attempt_id"] == "attempt-2"
 
 
+def test_attempt_guard_rejects_obsolete_attempt_after_multiple_replacements(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    for attempt_number in range(1, 4):
+        current = {**binding, "attempt_id": f"attempt-{attempt_number}", "grant_digest": f"grant-{attempt_number}"}
+        LAUNCHER._claim_attempt(**current, repo_root=tmp_path, result_file=None)
+        LAUNCHER._settle_attempt(
+            assignment_id="assignment-1",
+            binding=current,
+            settlement_proven=True,
+            settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+        )
+        LAUNCHER.record_release_authorization(
+            assignment_id="assignment-1",
+            binding=current,
+            release_authorization={
+                "canonical_consequence": {"checkpoint_verified": True},
+                "resources": {"task-result": {"state": "removed"}},
+            },
+        )
+
+    obsolete = LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+
+    assert obsolete["admission"] == "BLOCKED"
+    assert obsolete["record"]["attempt_id"] == "attempt-3"
+
+
+def test_attempt_guard_does_not_compact_an_older_release_binding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    first = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    second = {**first, "attempt_id": "attempt-2", "grant_digest": "grant-2"}
+    LAUNCHER._claim_attempt(**first, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1", binding=first, settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+    LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1", binding=first,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    LAUNCHER._claim_attempt(**second, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(
+        assignment_id="assignment-1", binding=second, settlement_proven=True,
+        settlement_evidence={"cleanup_state": "removed", "descendant_state": "terminated"},
+    )
+
+    released_old = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1", binding=first,
+        release_authorization={
+            "canonical_consequence": {"checkpoint_verified": True},
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+
+    assert released_old.get("release_compacted") is not True
+    assert released_old["attempt_id"] == "attempt-2"
+
+
 def test_attempt_guard_normalizes_pending_release_binding(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
