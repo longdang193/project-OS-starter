@@ -40,6 +40,7 @@ class RuntimeEvidence:
     attempt_id: str | None = None
     worker_terminal: bool | None = None
     task_result_published: bool | None = None
+    acceptance_proven: bool | None = None
     settlement_proven: bool | None = None
     runtime_owner: str | None = None
     retirement_state: str | None = None
@@ -152,7 +153,11 @@ def reconcile(
     identity_ok = not contradictions and not missing
     execution = identity_ok and local.task_state in {"pending", "active"}
     verification = identity_ok and runtime.worker_terminal is True and runtime.task_result_published is True
-    acceptance = verification and local.checkpoint_sha is not None
+    acceptance = (
+        verification
+        and runtime.acceptance_proven is True
+        and local.checkpoint_sha is not None
+    )
     integration = acceptance and remote_status == "CURRENT" and remote.checks_passed is True and remote.review_valid is True and remote.mergeable is True
     retirement = runtime.settlement_proven is True and runtime.retirement_state in {"removed", "preserved"}
     if remote_status == REMOTE_EVIDENCE_UNAVAILABLE:
@@ -162,6 +167,8 @@ def reconcile(
 
     if contradictions or missing:
         next_action = REMOTE_EVIDENCE_UNAVAILABLE if remote_status == REMOTE_EVIDENCE_UNAVAILABLE else "RECONCILE"
+    elif retirement and not acceptance:
+        next_action = "ACCEPT"
     elif retirement:
         next_action = "NO_ACTION"
     elif integration:

@@ -116,6 +116,8 @@ def evaluate_acceptance(
         "task_id": task.get("task_id"),
         "plan_identity": task.get("plan_identity"),
         "task_state": current_state,
+        "checkpoint_sha": git.get("checkpoint_sha"),
+        "repository_identity": git.get("repository_identity"),
         "required_conditions": dict(required_conditions) if isinstance(required_conditions, Mapping) else {},
         "artifact_conditions": dict(artifact_conditions) if isinstance(artifact_conditions, Mapping) else {},
         "freshness": {

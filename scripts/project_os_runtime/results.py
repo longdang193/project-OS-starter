@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 import time
 from typing import Any
@@ -308,6 +309,7 @@ def release_attempt_evidence(
     *,
     expected_plan_ref: str | None = None,
     expected_repository_identity: str | None = None,
+    acceptance_decision: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Release task-owned evidence only after exact acceptance binding."""
 
@@ -318,11 +320,23 @@ def release_attempt_evidence(
         return {"state": "preserved", "reason": "task result unavailable", "detail": str(exc)}
     checkpoint = payload.get("checkpoint")
     checkpoint_sha = checkpoint.get("sha") if isinstance(checkpoint, dict) else None
+    controller = acceptance_decision.get("controller") if isinstance(acceptance_decision, Mapping) else None
+    proof = acceptance_decision.get("acceptance_proof") if isinstance(acceptance_decision, Mapping) else None
     if (
         payload.get("assignment_id") != assignment_id
         or payload.get("attempt_id") != attempt_id
         or payload.get("accepted") is not True
         or checkpoint_sha != accepted_checkpoint_sha
+        or not isinstance(acceptance_decision, Mapping)
+        or acceptance_decision.get("decision") != "PASS"
+        or not isinstance(controller, Mapping)
+        or controller.get("authority") != "cos"
+        or not isinstance(proof, Mapping)
+        or proof.get("checkpoint_sha") != accepted_checkpoint_sha
+        or not isinstance(proof.get("repository_identity"), str)
+        or not proof.get("repository_identity")
+        or not isinstance(proof.get("plan_identity"), str)
+        or not proof.get("plan_identity")
         or (
             expected_plan_ref is not None
             and payload.get("plan_ref") != expected_plan_ref

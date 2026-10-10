@@ -28,6 +28,7 @@ def _runtime(**overrides):
         attempt_id="attempt-1",
         worker_terminal=True,
         task_result_published=True,
+        acceptance_proven=True,
         settlement_proven=True,
         retirement_state="preserved",
         source_ref="receipt",
@@ -92,3 +93,16 @@ def test_reconcile_requires_dirty_worktree_digest_even_with_checkpoint():
 
     assert snapshot.eligible.verification is False
     assert any(item.field == "working_tree_digest" for item in snapshot.missing_evidence)
+
+
+def test_reconcile_does_not_treat_terminal_worker_as_accepted():
+    snapshot = reconcile(
+        _local(task_state="completed"),
+        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
+        _runtime(acceptance_proven=False),
+    )
+
+    assert snapshot.eligible.verification is True
+    assert snapshot.eligible.acceptance is False
+    assert snapshot.eligible.integration is False
+    assert snapshot.next_action == "ACCEPT"

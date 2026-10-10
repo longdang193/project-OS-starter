@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: active
+status: completed
 template_id: implementation-plan
 contract_version: "1"
 name: runtime-retirement-tura-switchyard-canonical-retention
@@ -188,7 +188,7 @@ captured at baseline and final revisions; each metric is marked
 - Branch: `codex/runtime-retirement-migration` created at activation
 - Base commit: `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695` (`origin/main`, verified 2026-10-09)
 - Expected workspace: `fresh dedicated worktree from base; preserve unrelated untracked .playwright-mcp/, db/, temp_evidence.json, and this plan; do not reset or clean drafting workspace`
-- Next action: `Task 9 — re-run final verification after review fixes`
+- Next action: `No remaining plan tasks; PR review, CI, and merge are Git disposition`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -201,7 +201,7 @@ captured at baseline and final revisions; each metric is marked
 | Task 6 | `completed` | current | `codex` | Task 5 | direct Herdr retirement boundary tests | `owner-checked idempotent retire_lane; mismatch/absent-pane tests; full Herdr suite passed` |
 | Task 7 | `completed` | current | `codex` | Tasks 4, 6 | Secretary/Docket retention tests | `released-journal compaction with replay tombstones; Docket contract retained` |
 | Task 8 | `completed` | current | `codex` | Task 7 | copied-state removal and GitHub Actions concurrency | `canonical retention policy; PR concurrency; no active retired-runtime references` |
-| Task 9 | `active` | current | `codex` | Tasks 1-8 | full validator, generated drift, starter-kit, regression gates, and metrics | `review fixes applied; final verification pending` |
+| Task 9 | `completed` | current | `codex` | Tasks 1-8 | full validator, generated drift, starter-kit, regression gates, and metrics | `review fixes applied; full suite and final validators passed` |
 
 ## Task Breakdown
 
@@ -901,12 +901,13 @@ captured at baseline and final revisions; each metric is marked
 
 - Worktree: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\runtime-retirement-migration\project-OS-starter`
 - Branch: `codex/runtime-retirement-migration`; base: `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695`
-- Review: first independent `review-1` pass found four P1 trust-boundary defects;
-  retirement ownership, evidence preservation, release-only compaction, and
-  checkpoint/dependency gates were patched; corrected-head review pending.
-- Focused proof: `239 passed`; post-fix full suite: `1066 passed, 1 skipped`.
+- Review: independent `review-1` findings were patched; canonical acceptance
+  proof now gates evidence deletion, reconciliation requires explicit acceptance,
+  and MCP cleanup failures propagate to settlement.
+- Focused proof: `397 passed`; final full suite: `1068 passed, 1 skipped`.
 - Contract proof: adapter sync check, runtime drift validation, repository contracts,
-  planning lifecycle, starter-kit build/validation, and `git diff --check` passed.
+  planning lifecycle, starter-kit build/validation, and `git diff --check` passed
+  after review fixes.
 - Runtime proof: final deterministic benchmark outcomes match baseline across all
   cases after review fixes; production cleanup and receipt-publication metrics
   remain unavailable by design because benchmark harness is synthetic.

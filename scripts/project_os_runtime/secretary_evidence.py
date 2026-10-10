@@ -166,6 +166,11 @@ def build_evidence_snapshot(
                 attempt_id=_text(plan.get("attempt_id")),
                 worker_terminal=worker.get("publication_valid") is True,
                 task_result_published=worker.get("publication_valid") is True,
+                acceptance_proven=(
+                    acceptance.get("decision") == "PASS"
+                    and isinstance(acceptance.get("proof_ref"), str)
+                    and bool(acceptance.get("proof_ref"))
+                ),
                 settlement_proven=settlement.get("settlement_proven") is True,
                 retirement_state=settlement.get("cleanup_state"),
                 source_ref=_text(settlement.get("receipt_ref")),

@@ -280,15 +280,20 @@ def _discard_deepagents_receipt(
     attempt_id: str | None = None,
     accepted_checkpoint_sha: str | None = None,
     settlement_persisted: bool = False,
+    acceptance_decision: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if path is None:
         return {"state": "preserved", "reason": "receipt unavailable"}
     task_result_path = path.with_name("task-result.json")
     if not task_result_path.exists():
         return {"state": "preserved", "reason": "canonical task result unavailable"}
-    if not settlement_persisted or not all(
-        isinstance(value, str) and value
-        for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
+    if (
+        not settlement_persisted
+        or not all(
+            isinstance(value, str) and value
+            for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
+        )
+        or not isinstance(acceptance_decision, Mapping)
     ):
         return {"state": "preserved", "reason": "acceptance release binding unavailable"}
     return release_attempt_evidence(
@@ -296,6 +301,7 @@ def _discard_deepagents_receipt(
         assignment_id,
         attempt_id,
         accepted_checkpoint_sha,
+        acceptance_decision=acceptance_decision,
     )
 
 
@@ -2992,6 +2998,10 @@ def _main_body(args: argparse.Namespace) -> int:
                         attempt_id=assignment.get("attempt_id"),
                         accepted_checkpoint_sha=accepted_checkpoint_sha,
                         settlement_persisted=receipt.get("cleanup_state") == "removed",
+                        acceptance_decision=(
+                            assignment.get("acceptance_decision")
+                            or assignment.get("acceptance")
+                        ),
                     )
             legacy = {
                 key: value

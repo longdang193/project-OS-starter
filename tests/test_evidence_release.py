@@ -21,6 +21,18 @@ def _payload(*, accepted: bool, checkpoint_sha: str) -> dict:
     }
 
 
+def _acceptance_decision() -> dict:
+    return {
+        "decision": "PASS",
+        "controller": {"authority": "cos"},
+        "acceptance_proof": {
+            "plan_identity": "plan-1",
+            "checkpoint_sha": "c",
+            "repository_identity": "repo",
+        },
+    }
+
+
 def test_release_requires_exact_acceptance(tmp_path: Path):
     publish_task_result(tmp_path / "task-result.json", _payload(accepted=False, checkpoint_sha="c"))
 
@@ -34,8 +46,21 @@ def test_release_is_idempotent_after_exact_acceptance(tmp_path: Path):
     publish_task_result(tmp_path / "task-result.json", _payload(accepted=True, checkpoint_sha="c"))
     (tmp_path / "result.json").write_text("{}", encoding="utf-8")
 
-    result = release_attempt_evidence(tmp_path, "assignment-1", "attempt-1", "c")
-    retry = release_attempt_evidence(tmp_path, "assignment-1", "attempt-1", "c")
+    result = release_attempt_evidence(
+        tmp_path, "assignment-1", "attempt-1", "c", acceptance_decision=_acceptance_decision()
+    )
+    retry = release_attempt_evidence(
+        tmp_path, "assignment-1", "attempt-1", "c", acceptance_decision=_acceptance_decision()
+    )
 
     assert result["state"] == "removed"
     assert retry["state"] == "preserved"
+
+
+def test_release_preserves_worker_claim_without_canonical_acceptance(tmp_path: Path):
+    publish_task_result(tmp_path / "task-result.json", _payload(accepted=True, checkpoint_sha="c"))
+
+    result = release_attempt_evidence(tmp_path, "assignment-1", "attempt-1", "c")
+
+    assert result["state"] == "preserved"
+    assert (tmp_path / "task-result.json").exists()

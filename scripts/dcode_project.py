@@ -2205,6 +2205,14 @@ def main(argv: list[str]) -> int:
                 }
             if mcp_cleanup_details:
                 cleanup_details["mcp_runtime"] = dict(mcp_cleanup_details)
+                mcp_state = mcp_cleanup_details.get("state")
+                if mcp_state != "removed":
+                    recovery_required = True
+                    role_views_state = (
+                        str(mcp_state)
+                        if mcp_state in {"preserved", "unverified"}
+                        else "unverified"
+                    )
             if result_file is not None:
                 _publish_result_receipt(
                     result_file,
