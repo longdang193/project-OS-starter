@@ -52,9 +52,9 @@ def build_evidence_snapshot(
         "plan_identity": plan.get("plan_identity"),
         "plan_revision": plan.get("plan_revision"),
         "git_revision": git.get("git_revision"),
-        "task_id": plan.get("task_id"),
+        "task_id": worker.get("task_id"),
         "task_state": plan.get("task_state"),
-        "attempt_id": plan.get("attempt_id"),
+        "attempt_id": worker.get("attempt_id") or settlement.get("attempt_id"),
         "checkpoint": plan.get("checkpoint"),
         "worker_result_ref": worker.get("result_ref"),
         "settlement_receipt_ref": settlement.get("receipt_ref"),
@@ -96,6 +96,7 @@ def build_evidence_snapshot(
         reasons.append("Worker Plan revision mismatch")
     if worker.get("task_id") != plan.get("task_id"):
         reasons.append("Worker task binding mismatch")
+    authoritative_attempt_id = worker.get("attempt_id") or settlement.get("attempt_id")
     for source_name, source in (("worker", worker), ("settlement", settlement), ("acceptance", acceptance)):
         for field in (
             "repository_identity",
@@ -107,7 +108,8 @@ def build_evidence_snapshot(
             "attempt_id",
             "checkpoint",
         ):
-            if source.get(field) != plan.get(field):
+            expected = authoritative_attempt_id if field == "attempt_id" else plan.get(field)
+            if source.get(field) != expected:
                 reasons.append(f"{source_name} {field} binding mismatch")
     if worker.get("publication_valid") is not True:
         reasons.append("Worker publication unavailable")

@@ -4,8 +4,6 @@ param(
     [string]$SecretKey = "OPENAI_API_KEY",
     [string]$CodexConfigPath = (Join-Path $HOME ".codex\config.toml"),
     [string]$UvPath = (Join-Path $HOME ".local\bin\uv.exe"),
-    [string]$TuraExecutable,
-    [string]$TuraProviderConfig,
     [string]$DeepAgentsCodeVersion = "0.1.74",
     [switch]$SkipInstall,
     [switch]$ResetConfig,
@@ -46,18 +44,6 @@ if (-not (Test-Path $SecretFile -PathType Leaf)) {
 }
 if (Test-Path -LiteralPath $directMcpConfig -PathType Leaf) {
     throw "Direct DeepAgents MCP config detected: $directMcpConfig. Remove it before setup: Remove-Item -LiteralPath '$directMcpConfig' -Force"
-}
-if ([bool]$TuraExecutable -xor [bool]$TuraProviderConfig) {
-    throw "Pass both -TuraExecutable and -TuraProviderConfig, or neither."
-}
-if ($TuraExecutable -or $TuraProviderConfig) {
-    throw "Tura runtime is retired; install and use DeepAgents only."
-}
-if ($TuraExecutable -and -not (Test-Path -LiteralPath $TuraExecutable -PathType Leaf)) {
-    throw "Missing Tura executable: $TuraExecutable"
-}
-if ($TuraProviderConfig -and -not (Test-Path -LiteralPath $TuraProviderConfig -PathType Leaf)) {
-    throw "Missing Tura provider config: $TuraProviderConfig"
 }
 if ($ForceReinstall -and $SkipInstall) {
     throw "-ForceReinstall cannot be combined with -SkipInstall."
@@ -192,22 +178,6 @@ if ($MigrateConfig -and -not $ResetConfig) {
     Write-TextIfChanged -Path $configPath -Content $configText -Encoding ([Text.UTF8Encoding]::new($false))
 }
 
-if ($TuraExecutable) {
-    $helpText = (& $TuraExecutable --help 2>&1 | Out-String)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Tura capability probe failed: $TuraExecutable --help"
-    }
-    foreach ($capability in @("prompt", "--quiet", "--json", "--sandbox", "--session-id", "--agent-id", "-C", "-m")) {
-        if ($helpText -notmatch [regex]::Escape($capability)) {
-            throw "Tura CLI lacks required capability: $capability"
-        }
-    }
-    $configText = Get-Content -LiteralPath $configPath -Raw
-    $configText = Set-TomlSectionKey $configText "delegation" "default_executor" "tura"
-    $configText = Set-TomlSectionKey $configText "paths" "tura_executable" (Escape-TomlString ((Resolve-Path $TuraExecutable).Path))
-    $configText = Set-TomlSectionKey $configText "paths" "tura_provider_config" (Escape-TomlString ((Resolve-Path $TuraProviderConfig).Path))
-    Write-TextIfChanged -Path $configPath -Content $configText -Encoding ([Text.UTF8Encoding]::new($false))
-}
 Remove-Item -LiteralPath (Join-Path $runtimeRoot "dcode_project.py") -Force -ErrorAction SilentlyContinue
 
 $wrapper = @'
@@ -219,7 +189,7 @@ param(
 $ErrorActionPreference = "Stop"
 $executor = $DcodeArgs | Where-Object { $_ -eq "--executor" -or $_ -like "--executor=*" }
 if ($executor) {
-    [Console]::Error.WriteLine("dcode-project selects DeepAgents; do not pass --executor. Use project-delegate for Tura.")
+    [Console]::Error.WriteLine("dcode-project selects DeepAgents; do not pass --executor.")
     exit 2
 }
 $repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
@@ -246,44 +216,6 @@ $cmd = @'
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0dcode-project.ps1" %*
 '@
 Write-TextIfChanged -Path (Join-Path $binRoot "dcode-project.cmd") -Content $cmd -Encoding ([Text.ASCIIEncoding]::new())
-
-if ($TuraExecutable) {
-    $delegateWrapper = @'
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$DelegateArgs
-)
-
-$ErrorActionPreference = "Stop"
-$executor = $DelegateArgs | Where-Object { $_ -eq "--executor" -or $_ -like "--executor=*" }
-if ($executor) {
-    [Console]::Error.WriteLine("project-delegate selects Tura; do not pass --executor. Use dcode-project for DeepAgents.")
-    exit 2
-}
-$repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $repoRoot) {
-    [Console]::Error.WriteLine("project-delegate: run inside a Git repository.")
-    exit 2
-}
-$launcher = Join-Path $repoRoot "scripts\dcode_project.py"
-if (-not (Test-Path $launcher -PathType Leaf)) {
-    $launcher = Join-Path $HOME ".agents\project-os\scripts\dcode_project.py"
-}
-if (-not (Test-Path $launcher -PathType Leaf)) {
-    [Console]::Error.WriteLine("project-delegate: shared or repository-local dcode_project.py not found.")
-    exit 2
-}
-
-& py -3 $launcher --executor tura @DelegateArgs
-exit $LASTEXITCODE
-'@
-    Write-TextIfChanged -Path (Join-Path $binRoot "project-delegate.ps1") -Content $delegateWrapper -Encoding ([Text.UTF8Encoding]::new($false))
-    $delegateCmd = @'
-@echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0project-delegate.ps1" %*
-'@
-    Write-TextIfChanged -Path (Join-Path $binRoot "project-delegate.cmd") -Content $delegateCmd -Encoding ([Text.ASCIIEncoding]::new())
-}
 
 $doctorWrapper = @'
 param(
@@ -313,12 +245,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0dcode-doctor.ps1" 
 Write-TextIfChanged -Path (Join-Path $binRoot "dcode-doctor.cmd") -Content $doctorCmd -Encoding ([Text.ASCIIEncoding]::new())
 
 Write-Output "Installed dcode-project at $(Join-Path $binRoot 'dcode-project.cmd')"
-if ($TuraExecutable) {
-    Write-Output "Installed project-delegate at $(Join-Path $binRoot 'project-delegate.cmd')"
-    Write-Output "Default external executor: tura"
-} else {
-    Write-Output "Tura migration: ./scripts/setup_deepagents_runtime.ps1 -TuraExecutable <tura-executable> -TuraProviderConfig <tura-provider-config>"
-}
 Write-Output "Installed dcode-doctor at $(Join-Path $binRoot 'dcode-doctor.cmd')"
 if ($installRequired) {
     Write-Output "Installed managed dcode at $managedDcodePath"

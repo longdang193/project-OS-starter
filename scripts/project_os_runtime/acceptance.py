@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from .reconciliation import reconcile
@@ -192,6 +193,11 @@ def authorize_evidence_release(
     controller = decision.get("controller")
     if not isinstance(controller, Mapping) or controller.get("authority") != ACCEPTANCE_AUTHORITY:
         reasons.append("CoS release authority")
+    accepted_task = decision.get("task")
+    if not isinstance(accepted_task, Mapping):
+        reasons.append("accepted task")
+    elif accepted_task.get("task_id") != binding.get("task_id"):
+        reasons.append("task binding")
     proof = decision.get("acceptance_proof")
     if not isinstance(proof, Mapping):
         reasons.append("acceptance proof")
@@ -224,12 +230,20 @@ def authorize_evidence_release(
                 reasons.append(f"canonical {field} binding")
     if recovery_required:
         reasons.append("recovery required")
-    if not isinstance(required_consumers, Sequence) or isinstance(required_consumers, (str, bytes)):
+    if (
+        not isinstance(required_consumers, Sequence)
+        or isinstance(required_consumers, (str, bytes))
+        or not required_consumers
+        or any(not isinstance(consumer, str) or not consumer.strip() for consumer in required_consumers)
+        or len(set(required_consumers)) != len(required_consumers)
+    ):
         reasons.append("required consumers")
         required_consumers = ()
     if not isinstance(consumer_releases, Mapping):
         reasons.append("consumer release evidence")
         consumer_releases = {}
+    elif set(consumer_releases) != set(required_consumers):
+        reasons.append("consumer inventory binding")
     if not isinstance(retention, Mapping):
         reasons.append("retention evidence")
         retention = {}
@@ -238,11 +252,18 @@ def authorize_evidence_release(
         policy = retention.get(consumer)
         if not isinstance(release, Mapping) or release.get("authorized") is not True:
             reasons.append(f"consumer release: {consumer}")
-        elif release.get("consumer") != consumer or release.get("evidence_ref") != binding.get("evidence_ref"):
+        elif (
+            release.get("consumer") != consumer
+            or any(release.get(field) != binding.get(field) for field in RELEASE_BINDING_FIELDS)
+        ):
             reasons.append(f"consumer binding: {consumer}")
         if not isinstance(policy, Mapping) or not isinstance(policy.get("policy_ref"), str) or not policy.get("policy_ref"):
             reasons.append(f"retention policy: {consumer}")
-        elif policy.get("expired") is not True:
+        elif (
+            policy.get("expired") is not True
+            or policy.get("consumer") != consumer
+            or policy.get("evidence_ref") != binding.get("evidence_ref")
+        ):
             reasons.append(f"retention active: {consumer}")
     return {
         "authorized": not reasons,
@@ -250,6 +271,50 @@ def authorize_evidence_release(
         "payload_released": False,
         "tombstone_released": False,
         "binding": dict(binding),
+    }
+
+
+def release_authorized_evidence(
+    decision: Mapping[str, Any],
+    *,
+    binding: Mapping[str, Any],
+    canonical_consequence: Mapping[str, Any],
+    required_consumers: Sequence[str],
+    consumer_releases: Mapping[str, Mapping[str, Any]],
+    retention: Mapping[str, Mapping[str, Any]],
+    evidence_paths: Mapping[str, Path],
+    recovery_required: bool = False,
+) -> dict[str, Any]:
+    result = authorize_evidence_release(
+        decision,
+        binding=binding,
+        canonical_consequence=canonical_consequence,
+        required_consumers=required_consumers,
+        consumer_releases=consumer_releases,
+        retention=retention,
+        recovery_required=recovery_required,
+    )
+    if not result["authorized"]:
+        return result
+    evidence_ref = binding.get("evidence_ref")
+    path = evidence_paths.get(evidence_ref) if isinstance(evidence_ref, str) else None
+    if not isinstance(path, Path) or not path.is_file() or path.is_symlink():
+        return {
+            **result,
+            "authorized": False,
+            "reasons": ["exact evidence path unavailable"],
+        }
+    try:
+        path.unlink()
+    except OSError as exc:
+        return {
+            **result,
+            "authorized": False,
+            "reasons": [f"evidence disposal failed: {exc}"],
+        }
+    return {
+        **result,
+        "payload_released": True,
     }
 
 
@@ -389,6 +454,7 @@ __all__ = [
     "ACCEPTANCE_AUTHORITY",
     "ACCEPTANCE_DECISIONS",
     "authorize_evidence_release",
+    "release_authorized_evidence",
     "authorize_dependent_transition",
     "evaluate_acceptance",
 ]

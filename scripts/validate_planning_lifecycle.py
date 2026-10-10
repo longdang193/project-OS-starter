@@ -232,7 +232,7 @@ def validate_execution_contract(root: Path, path: Path, payload: dict[str, Any],
             Finding(
                 "planning_execution_error",
                 rel,
-                "use `Validator Profile` instead of `Validator executor`; executors are codex, deepagents, or tura",
+                "use `Validator Profile` instead of `Validator executor`; executors are codex or deepagents",
             )
         )
     if current and not contract_version:
@@ -418,7 +418,7 @@ def validate_git_coordination(
 
     for row in rows:
         executor = row["executor"].strip().lower()
-        allowed_row_executors = allowed_executors | ({"unresolved"} if row["state"] in {"pending", "blocked"} else set())
+        allowed_row_executors = allowed_executors | ({"tura"} if row["state"] == "completed" else set()) | ({"unresolved"} if row["state"] in {"pending", "blocked"} else set())
         if executor not in allowed_row_executors:
             findings.append(
                 Finding(

@@ -13,6 +13,7 @@ import tempfile
 from typing import Any
 
 from .attempt import execution_binding_digest, normalize_runtime_grant
+from .acceptance import release_authorized_evidence
 try:
     from ..planning_dependencies import (
         DependencyContractError,
@@ -302,6 +303,7 @@ def apply_accepted_plan_transitions(
     transitions: Sequence[Mapping[str, str]],
     *,
     dependent_transition: Mapping[str, Any] | None = None,
+    evidence_release: Mapping[str, Any] | None = None,
     expected_revision: str,
 ) -> dict[str, Any]:
     """Apply Plan transitions only from complete CoS acceptance proof."""
@@ -389,7 +391,22 @@ def apply_accepted_plan_transitions(
         )
     if not isinstance(accepted_task_id, str) or list(transitions) != expected_transitions:
         return {"authorized": False, "reason": "acceptance transition mismatch"}
-    return apply_plan_transitions(source, transitions, expected_revision=expected_revision)
+    result = apply_plan_transitions(source, transitions, expected_revision=expected_revision)
+    if result.get("authorized") is not True or evidence_release is None:
+        return result
+    if not isinstance(evidence_release, Mapping):
+        return {**result, "evidence_release": {"authorized": False, "reasons": ["invalid evidence release"]}}
+    release_result = release_authorized_evidence(
+        decision,
+        binding=evidence_release.get("binding", {}),
+        canonical_consequence=evidence_release.get("canonical_consequence", {}),
+        required_consumers=evidence_release.get("required_consumers", ()),
+        consumer_releases=evidence_release.get("consumer_releases", {}),
+        retention=evidence_release.get("retention", {}),
+        evidence_paths=evidence_release.get("evidence_paths", {}),
+        recovery_required=evidence_release.get("recovery_required", False),
+    )
+    return {**result, "evidence_release": release_result}
 
 
 def apply_plan_transitions(

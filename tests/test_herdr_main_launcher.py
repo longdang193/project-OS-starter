@@ -4642,7 +4642,7 @@ def test_terminate_codex_lane_blocks_empty_preclose_process_info(
     )
 
     assert result["verified"] is False
-    assert "empty process information" in result["detail"]
+    assert "owned process identity unavailable" in result["detail"]
     assert len(calls) == 1
 
 
@@ -4656,6 +4656,7 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
                     {
                         "pid": 101,
                         "name": "codex.exe",
+                        "start_time": 1,
                         "children": [{"pid": 102, "name": "node.exe"}],
                     }
                 ]
@@ -4692,7 +4693,13 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
         "session",
         "pane",
         env={},
-        ownership={"session": "session", "pane": "pane", "agent": "codex-main", "process_ids": [101]},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
     )
 
     assert result["verified"] is False
@@ -4706,7 +4713,7 @@ def test_terminate_codex_lane_detects_new_nested_non_shell_process(
 ) -> None:
     process_infos = iter([
         {"foreground_processes": [
-            {"pid": 101, "name": "codex.exe", "children": []},
+                {"pid": 101, "name": "codex.exe", "start_time": 1, "children": []},
         ]},
         {"foreground_processes": [
             {"pid": 201, "name": "powershell.exe", "children": [
@@ -4742,7 +4749,13 @@ def test_terminate_codex_lane_detects_new_nested_non_shell_process(
         "session",
         "pane",
         env={},
-        ownership={"session": "session", "pane": "pane", "agent": "codex-main", "process_ids": [101]},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
     )
 
     assert result["verified"] is False

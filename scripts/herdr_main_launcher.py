@@ -1267,16 +1267,26 @@ def _confirm_codex_start(
         if isinstance(exc, LaunchBlocked) and str(exc).startswith("Codex "):
             raise
         raise LaunchBlocked("Codex process is not running before prompt delivery.") from exc
-    owned_process_ids = {
-        int(process["pid"])
+    owned_processes = [
+        process
         for process in processes
         if int(process["pid"]) not in before_process_ids
         and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
         and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+    ]
+    owned_process_ids = {int(process["pid"]) for process in owned_processes}
+    process_identities = {
+        identity
+        for process in owned_processes
+        if (identity := _process_identity(process)) is not None
     }
     if not owned_process_ids:
         raise LaunchBlocked("Codex process ownership is unconfirmed before prompt delivery.")
-    return {"agent_status": agent_status, "process_ids": sorted(owned_process_ids)}
+    return {
+        "agent_status": agent_status,
+        "process_ids": sorted(owned_process_ids),
+        "process_identities": sorted(process_identities),
+    }
 
 
 def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
@@ -1481,6 +1491,11 @@ def _reconcile_failed_codex_start(
                 "agent": agent_name,
                 "worktree": str(expected_cwd),
                 "process_ids": sorted(int(process["pid"]) for process in owned_processes),
+                "process_identities": sorted(
+                    identity
+                    for process in owned_processes
+                    if (identity := _process_identity(process)) is not None
+                ),
                 "recovery_required": False,
             },
         )
@@ -1570,6 +1585,24 @@ def _process_ids(
     if require_non_shell and not process_ids:
         raise LaunchBlocked("termination verification found no launch-owned process")
     return process_ids
+
+
+def _process_identity(process: Mapping[str, Any]) -> str | None:
+    creation = next(
+        (
+            process.get(field)
+            for field in ("start_time_ns", "start_time", "creation_time", "create_time")
+            if isinstance(process.get(field), (int, float, str)) and str(process.get(field)).strip()
+        ),
+        None,
+    )
+    pid = process.get("pid")
+    if not isinstance(pid, int) or pid <= 0 or creation is None:
+        return None
+    return "|".join(
+        str(process.get(field, ""))
+        for field in ("pid", "name", "argv0", "cwd", "parent_pid")
+    ) + f"|creation={creation}"
 
 
 def _matches_codex_process(
@@ -2078,7 +2111,8 @@ def _terminate_codex_lane_unlocked(
         if not isinstance(before_info, dict):
             raise LaunchBlocked("termination verification returned invalid process information")
         before_processes = before_info.get("foreground_processes")
-        before_ids = _process_ids(before_processes, require_non_shell=True)
+        before_records = _process_records(before_processes)
+        before_ids = _process_ids(before_records, require_non_shell=False) if before_records else set()
     except (LaunchBlocked, json.JSONDecodeError) as exc:
         return {
             "requested": False,
@@ -2087,16 +2121,23 @@ def _terminate_codex_lane_unlocked(
             "detail": f"pre-close process verification failed: {exc}",
         }
 
-    expected_process_ids = ownership.get("process_ids")
-    if not isinstance(expected_process_ids, list) or not expected_process_ids:
+    expected_process_identities = ownership.get("process_identities")
+    if not isinstance(expected_process_identities, list) or not expected_process_identities:
         return {
             "requested": False,
             "action": "pane-close",
             "verified": False,
             "detail": "owned process identity unavailable",
         }
-    expected_process_ids = {int(value) for value in expected_process_ids if isinstance(value, int)}
-    if not expected_process_ids or not expected_process_ids.issubset(before_ids):
+    expected_process_identities = {
+        value for value in expected_process_identities if isinstance(value, str) and value
+    }
+    before_identities = {
+        identity
+        for process in before_records
+        if (identity := _process_identity(process)) is not None
+    }
+    if before_records and (not expected_process_identities or not expected_process_identities.issubset(before_identities)):
         return {
             "requested": False,
             "action": "pane-close",
@@ -2120,7 +2161,7 @@ def _terminate_codex_lane_unlocked(
     except (LaunchBlocked, json.JSONDecodeError, TypeError):
         selected = None
     if not isinstance(selected, dict):
-        remaining_ids = sorted(_process_ids_alive(expected_process_ids))
+        remaining_ids = sorted(_process_ids_alive(set(ownership.get("process_ids", before_ids))))
         return {
             "requested": False,
             "action": "pane-close",
@@ -2180,7 +2221,7 @@ def _terminate_codex_lane_unlocked(
         }
     selected = next((item for item in panes if item.get("pane_id") == pane), None)
     if not isinstance(selected, dict):
-        remaining_ids = sorted(_process_ids_alive(before_ids))
+        remaining_ids = sorted(_process_ids_alive(set(ownership.get("process_ids", before_ids))))
         if remaining_ids:
             return {
                 "requested": True,
@@ -2225,6 +2266,11 @@ def _terminate_codex_lane_unlocked(
     try:
         after_processes = _process_records(foreground)
         after_ids = _process_ids(after_processes, require_non_shell=False)
+        after_identities = {
+            identity
+            for process in after_processes
+            if (identity := _process_identity(process)) is not None
+        }
     except LaunchBlocked as exc:
         return {
             "requested": True,
@@ -2237,14 +2283,17 @@ def _terminate_codex_lane_unlocked(
         for process in after_processes
         if str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
     ]
+    remaining_owned_ids = _process_ids_alive(set(ownership.get("process_ids", before_ids)))
     return {
         "requested": True,
         "action": "pane-close",
-        "verified": not remaining and not (before_ids & after_ids),
+        "verified": not remaining and not (expected_process_identities & after_identities) and not remaining_owned_ids,
         "state": "shell-only" if not remaining else "processes-remain",
         "remaining_foreground_processes": remaining,
         "remaining_processes": remaining,
         "remaining_process_ids": sorted(before_ids & after_ids),
+        "remaining_owned_process_ids": sorted(remaining_owned_ids),
+        "remaining_process_identities": sorted(expected_process_identities & after_identities),
     }
 
 
@@ -3156,7 +3205,7 @@ def _main_body(args: argparse.Namespace) -> int:
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
             if command[3:5] == ["agent", "start"]:
-                _confirm_codex_start(
+                start_identity = _confirm_codex_start(
                     herdr,
                     resolved_session,
                     resolved_pane,
@@ -3166,6 +3215,16 @@ def _main_body(args: argparse.Namespace) -> int:
                     expected_codex_executable=str(evidence["herdr"].get("codex_executable") or "codex"),
                     expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
                 )
+                evidence["herdr"].update(start_identity)
+                evidence["herdr"]["ownership"] = {
+                    "repository_identity": args.repository_identity,
+                    "plan_identity": args.plan_identity,
+                    "assignment_id": args.assignment_id,
+                    "attempt_id": attempt_id,
+                    "session": resolved_session,
+                    "pane": resolved_pane,
+                    "agent": agent_name,
+                }
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)

@@ -776,7 +776,7 @@ def test_implementation_plan_template_documents_executor_and_coordination() -> N
     ).read_text(encoding="utf-8")
 
     assert "Default task executor:" not in template
-    assert "Task ledger `Executor` values are `codex`, `deepagents`, or `tura`" in template
+    assert "Task ledger `Executor` values are `codex` or `deepagents`" in template
     assert "Coordination: `git-tracked | none`" in template
     assert "Required when `Execution Approach > Coordination` is `git-tracked`" in template
     assert "## Coordination State" in template

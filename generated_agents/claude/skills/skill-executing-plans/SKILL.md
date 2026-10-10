@@ -53,7 +53,7 @@ Read only what the current task needs:
 - `skill-deepagents-executing-plans` when the plan selects DeepAgents and bounded
   delegated execution materially benefits the active Git-tracked task
 - `docs/operating_system/planning/planning-dispatch.md` when task executor
-  selection is unclear or the plan mixes `codex`, `deepagents`, and `tura`
+  selection is unclear or the plan mixes `codex` and `deepagents`
 - `skill-dispatching-parallel-agents` when two or more lanes have disjoint write ownership
 - `skill-systematic-debugging` after unexpected failures or unexplained behavior
 - `skill-test-driven-development` for non-trivial behavior changes or bug fixes
@@ -68,7 +68,6 @@ executor-neutral. `codex.mcp.handoff.v1` carries facts and provenance only, not
 tool access. Direct config is temporary launcher-owned state under isolated
 child `DEEPAGENTS_HOME`; project MCP config stays untouched and untrusted.
 
-When an active task selects `tura`, use the explicit `project-delegate` adapter.
 When it selects `deepagents`, use `dcode-project`. Executor selection does not
 transfer Git coordination, acceptance, or required Codex-owned capabilities.
 
@@ -142,13 +141,13 @@ supervised top-level Codex main agent or bounded DeepAgents pane process after
 plan, runtime parity, lane identity, and profile-binding gates pass; CoS must
 not fall back to native subagents.
 CoS must not call `multi_agent_v1`, native Codex subagents, DeepAgents internal
-`task` workers, Tura internal workers, or executor-local reviewers or helpers
-directly. Assigned MAIN AGENTS may spawn Native Codex, DeepAgents, or Tura
+`task` workers, or executor-local reviewers or helpers directly. Assigned MAIN
+AGENTS may spawn Native Codex or DeepAgents
 sub-agents when needed within their lanes when `delegation.child_agents: allow`;
 those sub-agents must not spawn peer MAIN AGENTS or activate CoS.
 `Executor Selection` owns executor choice, while `Template Profile` and
 `agents/*.toml` own profile/model capability; Herdr launch must prove the same
-resolved binding. Use `dcode-project` for `deepagents` and `project-delegate` for `tura`;
+resolved binding. Use `dcode-project` for `deepagents`;
 do not infer executor from profile rank or task-function name, and
 do not let a profile select an executor.
 

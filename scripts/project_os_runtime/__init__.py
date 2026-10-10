@@ -55,6 +55,7 @@ from .acceptance import (
     ACCEPTANCE_AUTHORITY,
     ACCEPTANCE_DECISIONS,
     authorize_evidence_release,
+    release_authorized_evidence,
     authorize_dependent_transition,
     evaluate_acceptance,
 )
@@ -108,6 +109,7 @@ __all__ = [
     "assignment_id",
     "authorize_dependent_transition",
     "authorize_evidence_release",
+    "release_authorized_evidence",
     "apply_accepted_plan_transitions",
     "apply_plan_transitions",
     "attempt_decision",
