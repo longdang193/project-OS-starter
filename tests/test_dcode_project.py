@@ -556,6 +556,47 @@ def test_deepagents_main_demotes_missing_or_malformed_worker_task_result(
     assert payload["progress"]["publication_diagnostic"] == {"reason": "task result malformed"}
 
 
+def test_deepagents_main_republishes_recovery_receipt_when_task_result_publication_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    task_result_file.write_text("{malformed", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "publish_task_result",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("publication unavailable")),
+    )
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "repository_identity": "repo-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
+    }
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", binding["attempt_id"],
+        "--assignment-id", binding["assignment_id"],
+        "--repository-identity", binding["repository_identity"],
+        "--task-sha256", binding["task_sha256"], "--grant-digest", binding["grant_digest"],
+    ]) == 0
+
+    receipt = json.loads(result_file.read_text(encoding="utf-8"))
+    assert receipt["recovery_required"] is True
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id=binding["assignment_id"],
+        binding={**binding, "executor": "deepagents"},
+        repo_root=tmp_path,
+    )
+    assert reconciled["state"] != "SETTLED"
+
+
 def test_deepagents_main_rejects_unauthorized_worker_producer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

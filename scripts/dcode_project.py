@@ -2166,6 +2166,7 @@ def main(argv: list[str]) -> int:
                     shell_capabilities=shell_capabilities,
                     cleanup_details=cleanup_details,
                 )
+            task_result_publication_failed = False
             if task_result_file is not None and attempt_guard_binding is not None:
                 try:
                     publication_diagnostic = _worker_task_result_diagnostic(
@@ -2198,6 +2199,19 @@ def main(argv: list[str]) -> int:
                         )
                 except (OSError, RuntimeError, ValueError):
                     recovery_required = True
+                    task_result_publication_failed = True
+            if task_result_publication_failed and result_file is not None:
+                _publish_result_receipt(
+                    result_file,
+                    attempt_id=str(attempt_id),
+                    worker_state=worker_state,
+                    worker_exit_code=worker_exit_code,
+                    descendant_state=descendant_state,
+                    role_views_state=role_views_state,
+                    recovery_required=True,
+                    shell_capabilities=shell_capabilities,
+                    cleanup_details=cleanup_details,
+                )
             if attempt_guard_binding is not None:
                 settlement_evidence = {
                     "state": "confirmed",
