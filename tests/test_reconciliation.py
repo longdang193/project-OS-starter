@@ -130,3 +130,16 @@ def test_reconcile_keeps_integration_blockers_actionable_after_retirement():
     assert snapshot.eligible.acceptance is True
     assert snapshot.eligible.integration is False
     assert snapshot.next_action == "INTEGRATE"
+
+
+def test_reconcile_does_not_hide_missing_task_result_after_retirement():
+    snapshot = reconcile(
+        _local(task_state="completed"),
+        RemotePrEvidence(available=True, head_sha="abc", checks_passed=True, review_valid=True, mergeable=True, source_ref="github"),
+        _runtime(task_result_published=False),
+    )
+
+    assert snapshot.eligible.acceptance is False
+    assert snapshot.eligible.integration is False
+    assert snapshot.next_action == "RECONCILE"
+    assert any(item.field == "task_result" for item in snapshot.missing_evidence)

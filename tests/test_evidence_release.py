@@ -38,7 +38,12 @@ def _acceptance_decision() -> dict:
 def test_release_requires_exact_acceptance(tmp_path: Path):
     publish_task_result(tmp_path / "task-result.json", _payload(accepted=False, checkpoint_sha="c"))
 
-    result = release_attempt_evidence(tmp_path, "assignment-1", "attempt-1", "c")
+    result = release_attempt_evidence(
+        tmp_path, "assignment-1", "attempt-1", "c",
+        expected_plan_identity="plan-1",
+        expected_task_id="Task 1",
+        expected_repository_identity="repo",
+    )
 
     assert result["state"] == "preserved"
     assert (tmp_path / "task-result.json").exists()
@@ -70,7 +75,12 @@ def test_release_is_idempotent_after_exact_acceptance(tmp_path: Path):
 def test_release_preserves_worker_claim_without_canonical_acceptance(tmp_path: Path):
     publish_task_result(tmp_path / "task-result.json", _payload(accepted=True, checkpoint_sha="c"))
 
-    result = release_attempt_evidence(tmp_path, "assignment-1", "attempt-1", "c")
+    result = release_attempt_evidence(
+        tmp_path, "assignment-1", "attempt-1", "c",
+        expected_plan_identity="plan-1",
+        expected_task_id="Task 1",
+        expected_repository_identity="repo",
+    )
 
     assert result["state"] == "preserved"
     assert (tmp_path / "task-result.json").exists()
@@ -108,3 +118,17 @@ def test_release_preserves_cross_task_and_repository_acceptance_proof(tmp_path: 
 
     assert result["state"] == "preserved"
     assert (tmp_path / "task-result.json").exists()
+
+
+def test_release_preserves_missing_canonical_bindings(tmp_path: Path):
+    publish_task_result(tmp_path / "task-result.json", _payload(accepted=True, checkpoint_sha="c"))
+
+    result = release_attempt_evidence(
+        tmp_path, "assignment-1", "attempt-1", "c",
+        expected_plan_identity="",
+        expected_task_id="Task 1",
+        expected_repository_identity="repo",
+        acceptance_decision=_acceptance_decision(),
+    )
+
+    assert result["state"] == "preserved"

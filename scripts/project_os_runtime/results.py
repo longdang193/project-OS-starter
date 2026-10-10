@@ -308,9 +308,9 @@ def release_attempt_evidence(
     accepted_checkpoint_sha: str,
     *,
     expected_plan_ref: str | None = None,
-    expected_repository_identity: str | None = None,
-    expected_plan_identity: str | None = None,
-    expected_task_id: str | None = None,
+    expected_repository_identity: str,
+    expected_plan_identity: str,
+    expected_task_id: str,
     acceptance_decision: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Release task-owned evidence only after exact acceptance binding."""
@@ -322,6 +322,15 @@ def release_attempt_evidence(
         return {"state": "preserved", "reason": "task result unavailable", "detail": str(exc)}
     checkpoint = payload.get("checkpoint")
     checkpoint_sha = checkpoint.get("sha") if isinstance(checkpoint, dict) else None
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (
+            expected_repository_identity,
+            expected_plan_identity,
+            expected_task_id,
+        )
+    ):
+        return {"state": "preserved", "reason": "canonical acceptance binding unavailable"}
     controller = acceptance_decision.get("controller") if isinstance(acceptance_decision, Mapping) else None
     proof = acceptance_decision.get("acceptance_proof") if isinstance(acceptance_decision, Mapping) else None
     if (
@@ -335,18 +344,9 @@ def release_attempt_evidence(
         or controller.get("authority") != "cos"
         or not isinstance(proof, Mapping)
         or proof.get("attempt_id") != attempt_id
-        or (
-            expected_plan_identity is not None
-            and proof.get("plan_identity") != expected_plan_identity
-        )
-        or (
-            expected_task_id is not None
-            and proof.get("task_id") != expected_task_id
-        )
-        or (
-            expected_repository_identity is not None
-            and proof.get("repository_identity") != expected_repository_identity
-        )
+        or proof.get("plan_identity") != expected_plan_identity
+        or proof.get("task_id") != expected_task_id
+        or proof.get("repository_identity") != expected_repository_identity
         or proof.get("checkpoint_sha") != accepted_checkpoint_sha
         or not isinstance(proof.get("repository_identity"), str)
         or not proof.get("repository_identity")

@@ -123,6 +123,8 @@ def reconcile(
     ):
         if not isinstance(value, str) or not value.strip():
             missing.append(MissingEvidence(name, "stable action reference is absent"))
+    if runtime.worker_terminal is True and runtime.task_result_published is not True:
+        missing.append(MissingEvidence("task_result", "terminal worker has no published TaskResult"))
 
     if local.dirty and not local.working_tree_digest:
         missing.append(MissingEvidence("working_tree_digest", "dirty candidate has no binding"))
