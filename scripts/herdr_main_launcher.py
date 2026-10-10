@@ -1544,6 +1544,17 @@ def _shell_process_names(executor: str) -> set[str]:
     return _DEEPAGENTS_SHELL_PROCESS_NAMES if executor == "deepagents" else _SHELL_PROCESS_NAMES
 
 
+def _pane_records(panes: Any) -> list[dict[str, Any]]:
+    if not isinstance(panes, list) or any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("pane_id"), str)
+        or not item["pane_id"].strip()
+        for item in panes
+    ):
+        raise LaunchBlocked("termination verification returned invalid panes")
+    return panes
+
+
 def _process_records(processes: Any, *, require_pid: bool = True) -> list[dict[str, Any]]:
     if not isinstance(processes, list):
         raise LaunchBlocked("process information is not an array")
@@ -2193,10 +2204,8 @@ def _terminate_codex_lane_unlocked(
             "detail": "pane ownership verification failed",
         }
     try:
-        panes = _result(json.loads(pane_list_result.stdout), "panes")
-        if not isinstance(panes, list) or any(not isinstance(item, dict) for item in panes):
-            raise LaunchBlocked("termination verification returned invalid panes")
-        selected = next((item for item in panes if item.get("pane_id") == pane), None)
+        panes = _pane_records(_result(json.loads(pane_list_result.stdout), "panes"))
+        selected = next((item for item in panes if item["pane_id"] == pane), None)
     except (LaunchBlocked, json.JSONDecodeError, TypeError) as exc:
         return {
             "requested": False,
@@ -2256,7 +2265,7 @@ def _terminate_codex_lane_unlocked(
         }
     try:
         payload = json.loads(list_result.stdout)
-        panes = _result(payload, "panes")
+        panes = _pane_records(_result(payload, "panes"))
     except (LaunchBlocked, json.JSONDecodeError) as exc:
         return {
             "requested": True,
@@ -2264,14 +2273,7 @@ def _terminate_codex_lane_unlocked(
             "verified": False,
             "detail": f"termination verification failed: {exc}",
         }
-    if not isinstance(panes, list):
-        return {
-            "requested": True,
-            "action": "pane-close",
-            "verified": False,
-            "detail": "termination verification returned invalid panes",
-        }
-    selected = next((item for item in panes if item.get("pane_id") == pane), None)
+    selected = next((item for item in panes if item["pane_id"] == pane), None)
     if not isinstance(selected, dict):
         owned_process_ids = set(ownership.get("process_ids", ())) | before_ids
         remaining_ids = sorted(_process_ids_alive(owned_process_ids))

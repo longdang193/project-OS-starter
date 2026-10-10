@@ -4889,6 +4889,47 @@ def test_terminate_codex_lane_rejects_malformed_post_close_pane_evidence(
     assert "verification failed" in result["detail"]
 
 
+@pytest.mark.parametrize("malformed_panes", [[{}], [None], [{"pane_id": "   "}]])
+def test_terminate_codex_lane_rejects_malformed_pane_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    malformed_panes: list[object],
+) -> None:
+    responses = iter([
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"process_info": {"foreground_processes": [
+                {"pid": 101, "name": "codex.exe", "start_time": 1, "children": []},
+            ]}}}),
+            "",
+        ),
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+            "",
+        ),
+        subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], 0, json.dumps({"result": {"panes": malformed_panes}}), ""),
+    ])
+    monkeypatch.setattr(LAUNCHER, "_run", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert "invalid panes" in result["detail"]
+
+
 def test_terminate_codex_lane_blocks_empty_live_process_evidence_before_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
