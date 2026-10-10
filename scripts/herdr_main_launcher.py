@@ -1613,12 +1613,11 @@ def _process_ids(
     if not records:
         raise LaunchBlocked("termination verification returned empty process information")
     shell_names = shell_names or _SHELL_PROCESS_NAMES
-    process_ids: set[int] = set()
-    process_ids.update(
+    process_ids = {
         int(process["pid"])
         for process in records
-        if str(process.get("name", "")).lower() not in shell_names
-    )
+        if not require_non_shell or str(process.get("name", "")).lower() not in shell_names
+    }
     if require_non_shell and not process_ids:
         raise LaunchBlocked("termination verification found no launch-owned process")
     return process_ids

@@ -4757,6 +4757,56 @@ def test_terminate_codex_lane_tracks_owned_descendants_after_pane_close(
     assert result["remaining_process_ids"] == [102]
 
 
+def test_terminate_codex_lane_tracks_owned_shell_descendants_when_pane_disappears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_info = {
+        "result": {
+            "process_info": {
+                "foreground_processes": [{
+                    "pid": 101,
+                    "name": "codex.exe",
+                    "start_time": 1,
+                    "children": [{"pid": 102, "name": "powershell.exe", "children": []}],
+                }]
+            }
+        }
+    }
+    list_calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal list_calls
+        if "process-info" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps(process_info), "")
+        if "close" in command:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            list_calls += 1
+            panes = [] if list_calls > 1 else [{"pane_id": "pane", "agent": "codex-main"}]
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": panes}}), "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+    monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: {102} & process_ids)
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["remaining_process_ids"] == [102]
+
+
 def test_terminate_codex_lane_checks_observed_descendants_when_pane_remains(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
