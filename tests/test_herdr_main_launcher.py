@@ -5531,22 +5531,6 @@ def test_deepagents_completion_stops_observing_after_terminal_evidence(
     assert evidence["receipt_authoritative"] is True
 
 
-def test_discard_receipt_preserves_when_canonical_task_result_is_missing(tmp_path: Path) -> None:
-    receipt = tmp_path / "result.json"
-    receipt.write_text("{}", encoding="utf-8")
-
-    result = LAUNCHER._discard_deepagents_receipt(
-        receipt,
-        assignment_id="assignment-1",
-        attempt_id="attempt-1",
-        accepted_checkpoint_sha="checkpoint-1",
-        settlement_persisted=True,
-    )
-
-    assert result["state"] == "preserved"
-    assert receipt.exists()
-
-
 def test_retire_lane_is_idempotent_when_exact_pane_is_already_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5572,6 +5556,22 @@ def test_retire_lane_is_idempotent_when_exact_pane_is_already_absent(
     assert result["state"] == "removed"
     assert result["idempotent"] is True
     assert result["resources"]["session"]["state"] == "preserved"
+
+
+def test_retire_settled_lane_requires_no_continuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "retire_lane", lambda *args, **kwargs: pytest.fail("must not retire"))
+    result = LAUNCHER.retire_settled_lane(
+        {"settled": True, "no_continuation": False},
+        herdr="herdr",
+        env={},
+    )
+    assert result == {
+        "state": "preserved",
+        "recovery_required": False,
+        "reason": "continuation remains possible",
+    }
 
 
 def test_retire_lane_preserves_on_worktree_binding_mismatch(

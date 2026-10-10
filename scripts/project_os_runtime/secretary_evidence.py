@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Mapping
 
-from .reconciliation import LocalEvidence, RemotePrEvidence, RuntimeEvidence, _reconcile_legacy
+from .reconciliation import ReconciliationInput, RemotePrEvidence, reconcile
 
 
 CURRENT = "CURRENT"
@@ -149,42 +149,39 @@ def build_evidence_snapshot(
         )
     canonical = None
     if remote is not None:
-        canonical = _reconcile_legacy(
-            LocalEvidence(
-                repository_identity=_text(plan.get("repository_identity")),
-                plan_ref=_text(plan.get("source_ref")) or _text(plan.get("plan_identity")),
-                plan_revision=_text(plan.get("plan_revision")),
-                task_id=_text(plan.get("task_id")),
-                task_state=_text(plan.get("task_state")),
-                checkpoint_sha=_text(plan.get("checkpoint_sha")),
-                lane_head_sha=_text(git.get("git_revision")),
-                dirty=git.get("dirty") is True,
-                working_tree_digest=_text(git.get("working_tree_digest")),
-                dependencies_ready=plan.get("dependencies_ready"),
-                source_ref=_text(plan.get("source_ref")),
-            ),
-            remote,
-            RuntimeEvidence(
-                attempt_id=_text(plan.get("attempt_id")),
-                worker_terminal=worker.get("publication_valid") is True,
-                task_result_published=worker.get("publication_valid") is True,
-                acceptance_proven=(
-                    acceptance.get("decision") == "PASS"
-                    and isinstance(acceptance.get("proof_ref"), str)
-                    and bool(acceptance.get("proof_ref"))
-                ),
-                settlement_proven=settlement.get("settlement_proven") is True,
-                retirement_state=settlement.get("cleanup_state"),
-                source_ref=_text(settlement.get("receipt_ref")),
-            ),
-        )
+        if isinstance(remote, RemotePrEvidence):
+            remote_evidence = remote
+        elif isinstance(remote, Mapping):
+            remote_fields = {
+                field: remote.get(field)
+                for field in RemotePrEvidence.__dataclass_fields__
+                if field in remote
+            }
+            remote_evidence = RemotePrEvidence(**remote_fields)
+        else:
+            remote_evidence = None
+        if remote_evidence is not None:
+            canonical = reconcile(
+                ReconciliationInput(
+                    phase="integrate",
+                    facts={
+                        "cos_pass": acceptance.get("decision") == "PASS",
+                        "repository_identity": plan.get("repository_identity"),
+                        "pr_number": plan.get("pr_number"),
+                        "base_ref": plan.get("base_ref"),
+                        "base_sha": plan.get("base_sha"),
+                        "candidate_sha": git.get("git_revision"),
+                    },
+                    remote=remote_evidence,
+                )
+            )
         reasons.extend(
-            [item.detail for item in canonical.contradictions]
-            + [f"missing {item.field}: {item.reason}" for item in canonical.missing_evidence]
+            list(canonical.contradictions)
+            + [f"missing {item}" for item in canonical.missing]
         )
-        if canonical.contradictions:
+        if canonical.contradictions and status != MISSING:
             status = STALE
-        elif canonical.missing_evidence:
+        elif canonical.missing and status != STALE:
             status = MISSING
         elif not unique_reasons:
             status = CURRENT

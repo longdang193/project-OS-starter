@@ -40,7 +40,6 @@ try:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
-        release_attempt_evidence,
     )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.results import (
@@ -49,7 +48,6 @@ except ModuleNotFoundError:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
-        release_attempt_evidence,
     )
 try:
     from project_os_runtime.attempt import (
@@ -270,48 +268,6 @@ def _read_deepagents_task_result(
         attempt_id=attempt_id,
         task_sha256=task_sha256,
         grant_digest=grant_digest_value,
-    )
-
-
-def _discard_deepagents_receipt(
-    path: Path | None,
-    *,
-    assignment_id: str | None = None,
-    attempt_id: str | None = None,
-    accepted_checkpoint_sha: str | None = None,
-    settlement_persisted: bool = False,
-    expected_plan_identity: str | None = None,
-    expected_task_id: str | None = None,
-    expected_repository_identity: str | None = None,
-    acceptance_decision: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    if path is None:
-        return {"state": "preserved", "reason": "receipt unavailable"}
-    task_result_path = path.with_name("task-result.json")
-    if not task_result_path.exists():
-        return {"state": "preserved", "reason": "canonical task result unavailable"}
-    if (
-        not settlement_persisted
-        or not all(
-            isinstance(value, str) and value
-            for value in (assignment_id, attempt_id, accepted_checkpoint_sha)
-        )
-        or not isinstance(acceptance_decision, Mapping)
-        or not all(
-            isinstance(value, str) and value
-            for value in (expected_plan_identity, expected_task_id, expected_repository_identity)
-        )
-    ):
-        return {"state": "preserved", "reason": "acceptance release binding unavailable"}
-    return release_attempt_evidence(
-        path.parent,
-        assignment_id,
-        attempt_id,
-        accepted_checkpoint_sha,
-        expected_plan_identity=expected_plan_identity,
-        expected_task_id=expected_task_id,
-        expected_repository_identity=expected_repository_identity,
-        acceptance_decision=acceptance_decision,
     )
 
 
@@ -2485,6 +2441,21 @@ def retire_lane(
         },
         "termination": cleanup,
     }
+
+
+def retire_settled_lane(
+    bound_attempt: Mapping[str, Any],
+    *,
+    herdr: str,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    if bound_attempt.get("settled") is not True:
+        return {"state": "unresolved", "recovery_required": True, "reason": "attempt settlement is not proven"}
+    if bound_attempt.get("no_continuation") is not True:
+        return {"state": "preserved", "recovery_required": False, "reason": "continuation remains possible"}
+    result = retire_lane(bound_attempt, herdr=herdr, env=env)
+    result["no_continuation"] = True
+    return result
 
 
 def resolve_launch(

@@ -116,7 +116,6 @@ _DIRECT_MCP_RUNTIME_PARENT = "dcode-project-mcp"
 _DIRECT_MCP_RUNTIME_PREFIX = "runtime-"
 _DIRECT_MCP_OWNER_MARKER = ".owner"
 _DIRECT_MCP_OWNER_VALUE = "dcode-project-mcp-runtime.v1\n"
-_DIRECT_MCP_STALE_AGE = timedelta(hours=24)
 _ROLE_VIEWS_LOCK_PARENT = "dcode-project-role-locks"
 _ATTEMPT_GUARD_PARENT = "attempts"
 _ATTEMPT_GUARD_SCHEMA = "dcode-project.attempt.v1"
@@ -741,6 +740,14 @@ def _claim_attempt_unlocked(
         return {"state": state, "action": "BLOCKED" if state == "ACTIVE" else "ELIGIBLE", "admission": "IDEMPOTENT", "idempotent": True, "record": existing}
     existing_state = str(existing.get("state", "")).lower()
     if existing_state == "settled":
+        for field in (
+            "release_authorization",
+            "release_authorized",
+            "released_resources",
+            "release_state",
+        ):
+            if field in existing:
+                candidate[field] = existing[field]
         _write_attempt_guard(path, candidate)
         return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "replaced_settled": True, "record": candidate}
     state = "ACTIVE" if existing_state == "active" else "RECOVERY_REQUIRED"
@@ -879,6 +886,32 @@ def _settle_attempt_unlocked(
         settled["settlement_evidence"] = dict(settlement_evidence)
     _write_attempt_guard(path, settled)
     return settled
+
+
+def record_release_authorization(
+    *,
+    assignment_id: str,
+    binding: dict[str, object],
+    release_authorization: dict[str, object],
+) -> dict[str, object]:
+    with _attempt_lock(assignment_id):
+        path = _attempt_guard_path(assignment_id)
+        existing = _read_attempt_guard(path)
+        if existing is None or not same_attempt_binding(existing, binding):
+            raise RuntimeError("dcode-project attempt guard binding mismatch during release authorization.")
+        if existing.get("state") != "settled":
+            raise RuntimeError("dcode-project release authorization requires settled attempt.")
+        updated = dict(existing)
+        updated.update(
+            {
+                "release_authorized": True,
+                "release_authorization": dict(release_authorization),
+                "release_state": "pending",
+                "released_resources": {},
+            }
+        )
+        _write_attempt_guard(path, updated)
+        return updated
 
 
 def _write_role_views(repo_root: Path, roles: list[dict[str, object]]) -> Path:
@@ -1235,33 +1268,6 @@ def _ensure_direct_mcp_runtime_parent() -> Path:
     return parent
 
 
-def _cleanup_stale_direct_mcp_runtimes(parent: Path) -> None:
-    cutoff = datetime.now(timezone.utc).timestamp() - _DIRECT_MCP_STALE_AGE.total_seconds()
-    try:
-        entries = tuple(parent.iterdir())
-    except OSError:
-        return
-    for entry in entries:
-        if (
-            not entry.name.startswith(_DIRECT_MCP_RUNTIME_PREFIX)
-            or entry.is_symlink()
-            or not entry.is_dir()
-        ):
-            continue
-        marker = entry / _DIRECT_MCP_OWNER_MARKER
-        try:
-            if (
-                not marker.is_file()
-                or marker.is_symlink()
-                or marker.read_text(encoding="utf-8") != _DIRECT_MCP_OWNER_VALUE
-                or entry.stat().st_mtime > cutoff
-            ):
-                continue
-            shutil.rmtree(entry)
-        except OSError:
-            continue
-
-
 @contextmanager
 def _direct_mcp_runtime(
     repo_root: Path,
@@ -1305,7 +1311,14 @@ def _direct_mcp_runtime(
                 "DEEPAGENTS_CODE_DANGEROUSLY_ENABLE_PROJECT_MCP_SERVERS"
             ] = previous_project_allowlist
         if runtime_root is not None:
-            shutil.rmtree(runtime_root, ignore_errors=True)
+            try:
+                shutil.rmtree(runtime_root)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Direct MCP runtime cleanup failed: {runtime_root}"
+                ) from exc
 
 def _controller_options(
     argv: list[str],

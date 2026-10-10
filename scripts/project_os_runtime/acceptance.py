@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .reconciliation import _reconcile_legacy
+from .reconciliation import ReconciliationInput, reconcile
 
 
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
@@ -119,16 +119,18 @@ def evaluate_acceptance(
         reasons = false_checks
     else:
         decision = "PASS"
-    reconciliation = _reconcile_legacy(
-        phase="accept",
-        facts={
+    reconciliation = reconcile(
+        ReconciliationInput(
+            phase="accept",
+            facts={
             "verification_current": verification.get("passed") is True,
             "candidate_unchanged": git.get("head_matches") is True,
             "acceptance_criteria_evaluable": bool(artifact_conditions),
             "cos_pass": decision == "PASS",
             "checkpoint_sha": git.get("checkpoint_sha"),
             "lane_head_sha": git.get("lane_head_sha"),
-        },
+            },
+        )
     )
     current_state = task.get("state")
     task_transition = {
@@ -325,6 +327,7 @@ def release_authorized_evidence(
     retention: Mapping[str, Mapping[str, Any]],
     evidence_paths: Mapping[str, Path],
     recovery_required: bool = False,
+    release_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     result = authorize_evidence_release(
         decision,
@@ -340,22 +343,46 @@ def release_authorized_evidence(
     evidence_ref = binding.get("evidence_ref")
     path = evidence_paths.get(evidence_ref) if isinstance(evidence_ref, str) else None
     if not isinstance(path, Path) or not path.is_file() or path.is_symlink():
+        if (
+            isinstance(release_record, Mapping)
+            and release_record.get("authorized") is True
+            and release_record.get("binding") == dict(binding)
+        ):
+            return {
+                **result,
+                "payload_released": True,
+                "resources": dict(release_record.get("resources", {})),
+            }
         return {
             **result,
             "authorized": False,
             "reasons": ["exact evidence path unavailable"],
         }
-    try:
-        path.unlink()
-    except OSError as exc:
+    resources: dict[str, dict[str, Any]] = {}
+    for resource_name, resource_path in evidence_paths.items():
+        if not isinstance(resource_path, Path) or resource_path.is_symlink():
+            resources[resource_name] = {"state": "unverified"}
+            continue
+        try:
+            resource_path.unlink()
+        except FileNotFoundError:
+            resources[resource_name] = {"state": "already_absent"}
+        except OSError as exc:
+            resources[resource_name] = {"state": "unverified", "detail": str(exc)}
+        else:
+            resources[resource_name] = {"state": "removed"}
+    failed = [name for name, state in resources.items() if state["state"] == "unverified"]
+    if failed:
         return {
             **result,
             "authorized": False,
-            "reasons": [f"evidence disposal failed: {exc}"],
+            "reasons": [f"evidence disposal failed: {name}" for name in failed],
+            "resources": resources,
         }
     return {
         **result,
         "payload_released": True,
+        "resources": resources,
     }
 
 
