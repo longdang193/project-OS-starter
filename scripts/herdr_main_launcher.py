@@ -1470,7 +1470,20 @@ def _reconcile_failed_codex_start(
                 "process_ids": sorted(process_ids),
                 "detail": "process owner does not match failed attempt",
             }
-        cleanup = _terminate_codex_lane(herdr, session, pane, env=env)
+        cleanup = _terminate_codex_lane(
+            herdr,
+            session,
+            pane,
+            env=env,
+            ownership={
+                "session": session,
+                "pane": pane,
+                "agent": agent_name,
+                "worktree": str(expected_cwd),
+                "process_ids": sorted(int(process["pid"]) for process in owned_processes),
+                "recovery_required": False,
+            },
+        )
         if cleanup.get("verified") is True:
             return {
                 "state": "retired",
@@ -2011,6 +2024,41 @@ def _terminate_codex_lane(
     pane: str,
     *,
     env: dict[str, str],
+    ownership: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(ownership, Mapping):
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "ownership record required",
+        }
+    if ownership.get("session") != session or ownership.get("pane") != pane:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "ownership binding mismatch",
+        }
+    if ownership.get("recovery_required") is True:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "ownership requires recovery",
+        }
+    lock_root = Path(str(ownership.get("worktree") or Path.cwd()))
+    with _pane_ownership_lock(lock_root, session, pane):
+        return _terminate_codex_lane_unlocked(herdr, session, pane, env=env, ownership=ownership)
+
+
+def _terminate_codex_lane_unlocked(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+    ownership: Mapping[str, Any],
 ) -> dict[str, Any]:
     before_result = _run(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -2037,6 +2085,55 @@ def _terminate_codex_lane(
             "action": "pane-close",
             "verified": False,
             "detail": f"pre-close process verification failed: {exc}",
+        }
+
+    expected_process_ids = ownership.get("process_ids")
+    if not isinstance(expected_process_ids, list) or not expected_process_ids:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "owned process identity unavailable",
+        }
+    expected_process_ids = {int(value) for value in expected_process_ids if isinstance(value, int)}
+    if not expected_process_ids or not expected_process_ids.issubset(before_ids):
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "owned process identity mismatch",
+        }
+    pane_list_result = _run(
+        [herdr, "--session", session, "pane", "list"],
+        env=env,
+    )
+    if pane_list_result.returncode:
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "pane ownership verification failed",
+        }
+    try:
+        panes = _result(json.loads(pane_list_result.stdout), "panes")
+        selected = next((item for item in panes if item.get("pane_id") == pane), None)
+    except (LaunchBlocked, json.JSONDecodeError, TypeError):
+        selected = None
+    if not isinstance(selected, dict):
+        remaining_ids = sorted(_process_ids_alive(expected_process_ids))
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": not remaining_ids,
+            "state": "pane-absent",
+            "remaining_process_ids": remaining_ids,
+        }
+    if selected.get("agent") != ownership.get("agent"):
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "pane owner mismatch",
         }
 
     close_result = _run(

@@ -2013,6 +2013,7 @@ def test_main_auto_codex_uses_resolved_target(
         },
     }
     commands: list[list[str]] = []
+    list_calls = 0
     monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
 
     def fake_run(command, **kwargs):
@@ -4637,6 +4638,7 @@ def test_terminate_codex_lane_blocks_empty_preclose_process_info(
         "session",
         "pane",
         env={},
+        ownership={"session": "session", "pane": "pane", "agent": "codex-main", "process_ids": [101]},
     )
 
     assert result["verified"] is False
@@ -4661,6 +4663,7 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
         }
     }
     commands: list[list[str]] = []
+    list_calls = 0
 
     def fake_run(command, **kwargs):
         commands.append(command)
@@ -4668,6 +4671,17 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
             return subprocess.CompletedProcess(command, 0, json.dumps(process_info), "")
         if "close" in command:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            nonlocal list_calls
+            list_calls += 1
+            if list_calls > 1:
+                return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+                "",
+            )
         return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": []}}), "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
@@ -4678,12 +4692,13 @@ def test_terminate_codex_lane_checks_recorded_processes_after_pane_close(
         "session",
         "pane",
         env={},
+        ownership={"session": "session", "pane": "pane", "agent": "codex-main", "process_ids": [101]},
     )
 
     assert result["verified"] is False
     assert result["state"] == "processes-remain"
     assert result["remaining_process_ids"] == [102]
-    assert len(commands) == 3
+    assert len(commands) == 4
 
 
 def test_terminate_codex_lane_detects_new_nested_non_shell_process(
@@ -4699,20 +4714,36 @@ def test_terminate_codex_lane_detects_new_nested_non_shell_process(
             ]},
         ]},
     ])
+    list_calls = 0
 
     def fake_run(command, **kwargs):
+        nonlocal list_calls
         if "process-info" in command:
             return subprocess.CompletedProcess(
                 command, 0, json.dumps({"result": {"process_info": next(process_infos)}}), "",
             )
         if "close" in command:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if "list" in command:
+            list_calls += 1
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+                "",
+            )
         return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"panes": [{"pane_id": "pane"}]}}), "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
     monkeypatch.setattr(LAUNCHER, "_process_ids_alive", lambda process_ids: set())
 
-    result = LAUNCHER._terminate_codex_lane("herdr.exe", "session", "pane", env={})
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={"session": "session", "pane": "pane", "agent": "codex-main", "process_ids": [101]},
+    )
 
     assert result["verified"] is False
     assert result["state"] == "processes-remain"

@@ -103,7 +103,7 @@ concurrency remains. New contract tests run in current repository workflows.
 - Branch: `codex/durable-facts-runtime-retirement`
 - Base commit: `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695` (`origin/main`, verified 2026-10-10)
 - Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` on branch `codex/durable-facts-runtime-retirement`, created from `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695`; drafting workspace and its untracked files remain untouched
-- Next action: `Task 4 — make Herdr and runtime retirement ownership-safe`
+- Next action: `Task 5 — restore Secretary as derived attention consumer`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -111,8 +111,8 @@ concurrency remains. New contract tests run in current repository workflows.
 | Task 1 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | none | inventory, baseline validators, preserved-untracked proof | `origin/main=187f28e492ae1c4726cdd2f7b5a261a2b8b6c695; validate_repo_contracts=0; validate_planning_lifecycle=0; focused tests=119 passed; unrelated drafting workspace preserved` |
 | Task 2 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 1 | phase contract and reconciliation tests | `reconciliation/dispatch/acceptance/attempt tests=192 passed; integration identity fail-closed; incomplete phases do not advance; git diff --check=0` |
 | Task 3 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | GitHub identity/freshness and acceptance-release tests | `remote identity/source/review binding; CoS release and consumer retention tests; receipt/task-result retention changes; focused tests=377 passed` |
-| Task 4 | `active` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | launcher binding, lock race, resource retirement tests | pending |
-| Task 5 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 3, 4 | Secretary ownership, compaction, replay tests | pending |
+| Task 4 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | launcher binding, lock race, resource retirement tests | `pane retirement requires immutable session/pane/agent/process binding and shared lock; absent pane with live identity remains unresolved; focused Herdr/dcode tests=421 passed` |
+| Task 5 | `active` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 3, 4 | Secretary ownership, compaction, replay tests | pending |
 | Task 6 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | Tura/Switchyard removal and historical compatibility tests | pending |
 | Task 7 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 3–6 | CI wiring, generated drift, retention checks | pending |
 | Task 8 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 1–7 | full verification, regression matrix, measurement summary | pending |
