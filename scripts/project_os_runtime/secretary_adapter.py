@@ -113,8 +113,19 @@ class SessionReleaseReceipt:
     reason: str | None = None
 
 
+@dataclass(frozen=True)
+class CompactionReceipt:
+    controller: ControllerRef
+    compacted: bool
+    recovery_required: bool = False
+    reason: str | None = None
+
+
 class ControllerSessionJournal(Protocol):
     def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
+        ...
+
+    def lookup_released_activation(self, controller: ControllerRef) -> ActivationReceipt | None:
         ...
 
     def record_activation(self, receipt: ActivationReceipt) -> None:
@@ -140,6 +151,9 @@ class ControllerSessionJournal(Protocol):
     ) -> None:
         ...
 
+    def compact_delivery_payload(self, controller: ControllerRef) -> bool:
+        ...
+
 
 class ControllerSessionAdapter(Protocol):
     def resolve(self, binding: ControllerBinding) -> ResolveReceipt:
@@ -160,6 +174,9 @@ class ControllerSessionAdapter(Protocol):
     def release_session(self, controller: ControllerRef) -> SessionReleaseReceipt:
         ...
 
+    def compact_released(self, controller: ControllerRef) -> CompactionReceipt:
+        ...
+
 
 class InMemoryControllerSessionJournal:
     def __init__(self) -> None:
@@ -170,6 +187,16 @@ class InMemoryControllerSessionJournal:
 
     def lookup_activation(self, activation_id: str) -> ActivationReceipt | None:
         return self._activations.get(activation_id)
+
+    def lookup_released_activation(self, controller: ControllerRef) -> ActivationReceipt | None:
+        return next(
+            (
+                receipt
+                for receipt in self._activations.values()
+                if receipt.controller == controller and receipt.released
+            ),
+            None,
+        )
 
     def record_activation(self, receipt: ActivationReceipt) -> None:
         current = self._activations.get(receipt.activation_id)
@@ -206,6 +233,16 @@ class InMemoryControllerSessionJournal:
         self, controller: ControllerRef, message_id: str, payload_fingerprint: str
     ) -> None:
         self._deliveries[(controller.controller_id, message_id)] = payload_fingerprint
+
+    def compact_delivery_payload(self, controller: ControllerRef) -> bool:
+        if any(key[0] == controller.controller_id for key in self._deliveries):
+            self._deliveries = {
+                key: value
+                for key, value in self._deliveries.items()
+                if key[0] != controller.controller_id
+            }
+            return True
+        return False
 
 
 class InMemoryControllerSessionAdapter:
@@ -359,6 +396,25 @@ class InMemoryControllerSessionAdapter:
         self.journal.release_controller(controller)
         return SessionReleaseReceipt(controller=controller, released=True)
 
+    def compact_released(self, controller: ControllerRef) -> CompactionReceipt:
+        if self.journal.lookup_controller(controller.binding) == controller:
+            return CompactionReceipt(
+                controller=controller,
+                compacted=False,
+                recovery_required=True,
+                reason="active controller has not been released",
+            )
+        activation = self.journal.lookup_released_activation(controller)
+        if activation is None or not activation.released:
+            return CompactionReceipt(
+                controller=controller,
+                compacted=False,
+                recovery_required=True,
+                reason="released activation tombstone unavailable",
+            )
+        compacted = self.journal.compact_delivery_payload(controller)
+        return CompactionReceipt(controller=controller, compacted=compacted)
+
     @staticmethod
     def _activation_recovery(
         binding: ControllerBinding, activation_id: str, reason: str
@@ -394,6 +450,7 @@ __all__ = [
     "ActivationReceipt",
     "AttentionDelta",
     "CommunicationEnvelope",
+    "CompactionReceipt",
     "ControllerBinding",
     "ControllerRef",
     "ControllerSessionAdapter",
