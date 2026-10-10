@@ -164,6 +164,27 @@ def test_release_replay_rejects_incomplete_durable_record(tmp_path: Path):
     assert result["payload_released"] is False
 
 
+def test_release_replay_recovers_after_disposal_before_final_record(tmp_path: Path):
+    result = release_authorized_evidence(
+        _acceptance_decision(),
+        binding=_binding(),
+        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        required_consumers=["controller"],
+        consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
+        retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
+        evidence_paths={"task-result": tmp_path / "task-result.json"},
+        retirement_proof=_retirement_proof(),
+        release_record={
+            "authorized": True,
+            "binding": _binding(),
+            "resources": {"task-result": {"state": "pending"}},
+        },
+    )
+
+    assert result["payload_released"] is True
+    assert result["resources"] == {"task-result": {"state": "already_absent"}}
+
+
 def test_release_preserves_worker_claim_without_canonical_acceptance(tmp_path: Path):
     result = _release(tmp_path, decision={})
     assert result["authorized"] is False

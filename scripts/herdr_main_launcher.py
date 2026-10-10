@@ -2421,9 +2421,7 @@ def retire_lane(
                 },
                 "process_retirement_proven": True,
             }
-        if len(candidates) != 1:
-            return {"state": "unresolved", "recovery_required": True, "reason": "process ownership identity is unavailable"}
-        process_identity = candidates[0]
+        return {"state": "unresolved", "recovery_required": True, "reason": "process ownership identity is unavailable"}
     expected_pid = process_identity.get("pid") if isinstance(process_identity, Mapping) else None
     expected_name = process_identity.get("name") if isinstance(process_identity, Mapping) else None
     expected_cwd = process_identity.get("cwd") if isinstance(process_identity, Mapping) else None

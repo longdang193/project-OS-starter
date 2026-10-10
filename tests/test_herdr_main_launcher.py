@@ -5574,7 +5574,7 @@ def test_retire_settled_lane_requires_no_continuation(
     }
 
 
-def test_retire_settled_lane_discovers_exact_pane_process_identity(
+def test_retire_settled_lane_requires_recorded_pane_process_identity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -5584,7 +5584,7 @@ def test_retire_settled_lane_discovers_exact_pane_process_identity(
         return {"result": {"process_info": {"foreground_processes": [{"pid": 41, "name": "dcode.exe", "cwd": str(tmp_path)}]}}}
 
     monkeypatch.setattr(LAUNCHER, "_json_command", json_command)
-    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: {"verified": True})
+    monkeypatch.setattr(LAUNCHER, "_terminate_codex_lane", lambda *args, **kwargs: pytest.fail("must not terminate unbound process"))
     result = LAUNCHER.retire_settled_lane(
         {
             "repository_identity": "repo-1",
@@ -5602,7 +5602,8 @@ def test_retire_settled_lane_discovers_exact_pane_process_identity(
         herdr="herdr",
         env={},
     )
-    assert result["state"] == "removed"
+    assert result["state"] == "unresolved"
+    assert result["reason"] == "process ownership identity is unavailable"
 
 
 def test_retire_settled_lane_accepts_proven_absent_worker_process(

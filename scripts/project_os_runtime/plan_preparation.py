@@ -396,6 +396,42 @@ def apply_accepted_plan_transitions(
         return result
     if not isinstance(evidence_release, Mapping):
         return {**result, "evidence_release": {"authorized": False, "reasons": ["invalid evidence release"]}}
+    attempt_guard = evidence_release.get("attempt_guard")
+    persisted_release_record = evidence_release.get("release_record")
+    record_release_authorization = None
+    if isinstance(attempt_guard, Mapping):
+        try:
+            from scripts.dcode_project import record_release_authorization as persist_release_authorization
+
+            release_binding = dict(evidence_release.get("binding", {}))
+            evidence_ref = release_binding.get("evidence_ref")
+            if not isinstance(evidence_ref, str) or not evidence_ref.strip():
+                raise ValueError("evidence release binding is missing evidence_ref")
+            pending_authorization = {
+                **dict(attempt_guard.get("release_authorization", {})),
+                "resources": {evidence_ref: {"state": "pending"}},
+            }
+            persisted_guard = persist_release_authorization(
+                assignment_id=str(attempt_guard["assignment_id"]),
+                binding=dict(attempt_guard["binding"]),
+                release_authorization=pending_authorization,
+            )
+            persisted_release_record = {
+                "authorized": True,
+                "binding": release_binding,
+                "resources": pending_authorization["resources"],
+                "attempt_guard": persisted_guard,
+            }
+            record_release_authorization = persist_release_authorization
+        except (KeyError, RuntimeError, TypeError, ValueError) as exc:
+            return {
+                **result,
+                "evidence_release": {
+                    "authorized": False,
+                    "payload_released": False,
+                    "reasons": [f"release authorization persistence failed: {exc}"],
+                },
+            }
     release_result = release_authorized_evidence(
         decision,
         binding=evidence_release.get("binding", {}),
@@ -406,12 +442,14 @@ def apply_accepted_plan_transitions(
         evidence_paths=evidence_release.get("evidence_paths", {}),
         retirement_proof=evidence_release.get("retirement_proof"),
         recovery_required=evidence_release.get("recovery_required", False),
-        release_record=evidence_release.get("release_record"),
+        release_record=persisted_release_record,
     )
-    attempt_guard = evidence_release.get("attempt_guard")
     if release_result.get("payload_released") is True and isinstance(attempt_guard, Mapping):
         try:
-            from scripts.dcode_project import record_release_authorization
+            if record_release_authorization is None:
+                from scripts.dcode_project import record_release_authorization as persist_release_authorization
+
+                record_release_authorization = persist_release_authorization
 
             record_release_authorization(
                 assignment_id=str(attempt_guard["assignment_id"]),

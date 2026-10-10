@@ -1072,6 +1072,18 @@ def test_attempt_guard_settlement_preserves_binding_and_allows_replacement(
     assert replacement["state"] == "ACTIVE"
     assert replacement["record"]["release_authorized"] is True
     assert replacement["record"]["release_authorization"] == {"candidate_sha": "candidate-1"}
+    assert replacement["record"]["release_binding"] == binding
+
+    updated = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={
+            "candidate_sha": "candidate-1",
+            "resources": {"task-result": {"state": "removed"}},
+        },
+    )
+    assert updated["release_state"] == "released"
+    assert updated["released_resources"] == {"task-result": {"state": "removed"}}
 
 
 def test_attempt_guard_records_release_resources(

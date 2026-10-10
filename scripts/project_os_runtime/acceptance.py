@@ -367,6 +367,22 @@ def release_authorized_evidence(
                 "payload_released": True,
                 "resources": {evidence_ref: dict(recorded_resource)},
             }
+        if (
+            isinstance(path, Path)
+            and not path.is_symlink()
+            and not path.exists()
+            and isinstance(release_record, Mapping)
+            and release_record.get("authorized") is True
+            and release_record.get("binding") == dict(binding)
+            and set(recorded_resources or ()) == {evidence_ref}
+            and isinstance(recorded_resource, Mapping)
+            and recorded_resource.get("state") == "pending"
+        ):
+            return {
+                **result,
+                "payload_released": True,
+                "resources": {evidence_ref: {"state": "already_absent"}},
+            }
         if isinstance(release_record, Mapping) and release_record.get("authorized") is True:
             return {
                 **result,

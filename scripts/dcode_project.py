@@ -748,6 +748,22 @@ def _claim_attempt_unlocked(
         ):
             if field in existing:
                 candidate[field] = existing[field]
+        if existing.get("release_authorized") is True:
+            release_binding = existing.get("release_binding")
+            if not isinstance(release_binding, dict):
+                release_binding = {
+                    field: existing[field]
+                    for field in (
+                        "attempt_id",
+                        "assignment_id",
+                        "repository_identity",
+                        "executor",
+                        "task_sha256",
+                        "grant_digest",
+                    )
+                    if field in existing
+                }
+            candidate["release_binding"] = release_binding
         _write_attempt_guard(path, candidate)
         return {"state": "ACTIVE", "action": "BLOCKED", "admission": "ADMITTED", "claimed": True, "replaced_settled": True, "record": candidate}
     state = "ACTIVE" if existing_state == "active" else "RECOVERY_REQUIRED"
@@ -897,9 +913,16 @@ def record_release_authorization(
     with _attempt_lock(assignment_id):
         path = _attempt_guard_path(assignment_id)
         existing = _read_attempt_guard(path)
-        if existing is None or not same_attempt_binding(existing, binding):
+        release_binding = existing.get("release_binding") if isinstance(existing, dict) else None
+        binding_matches_attempt = existing is not None and same_attempt_binding(existing, binding)
+        binding_matches_release = (
+            isinstance(release_binding, dict)
+            and existing.get("release_authorized") is True
+            and same_attempt_binding(release_binding, binding)
+        )
+        if not binding_matches_attempt and not binding_matches_release:
             raise RuntimeError("dcode-project attempt guard binding mismatch during release authorization.")
-        if existing.get("state") != "settled":
+        if existing.get("state") != "settled" and not binding_matches_release:
             raise RuntimeError("dcode-project release authorization requires settled attempt.")
         updated = dict(existing)
         resources = release_authorization.get("resources")
@@ -922,6 +945,8 @@ def record_release_authorization(
                 "released_resources": released_resources,
             }
         )
+        if binding_matches_attempt and existing.get("state") == "settled":
+            updated["release_binding"] = dict(binding)
         _write_attempt_guard(path, updated)
         return updated
 
