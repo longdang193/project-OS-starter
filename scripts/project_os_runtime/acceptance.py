@@ -457,7 +457,7 @@ def _unlink_verified_file(path: Path, verified_stat: os.stat_result, expected_di
         handle = kernel32.CreateFileW(
             str(path),
             0x80000000 | 0x00010000 | 0x00000080,
-            0x00000001 | 0x00000002 | 0x00000004,
+            0x00000001 | 0x00000004,
             None,
             3,
             0x00000080,
