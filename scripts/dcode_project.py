@@ -787,6 +787,26 @@ def _reconcile_attempt_unlocked(
     if evidence is not None:
         evidence = dict(evidence)
     settlement = receipt if receipt and receipt.get("state") == "confirmed" else evidence
+    if settlement is receipt:
+        task_result_path = existing.get("task_result_path")
+        task_result = (
+            parse_task_result(
+                Path(task_result_path),
+                assignment_id=str(existing["assignment_id"]),
+                attempt_id=str(existing["attempt_id"]),
+                task_sha256=str(existing["task_sha256"]),
+                grant_digest=str(existing["grant_digest"]),
+            )
+            if isinstance(task_result_path, str) and task_result_path
+            else {"state": "unknown"}
+        )
+        if task_result.get("state") != "confirmed":
+            return {
+                "state": "RECOVERY_REQUIRED",
+                "action": "RECONCILE",
+                "admission": "RECONCILE",
+                "record": existing,
+            }
     if settlement is evidence and settlement_decision(settlement)["reason"] == "settlement evidence incomplete":
         return {
             "state": "RECOVERY_REQUIRED",
@@ -2154,19 +2174,6 @@ def main(argv: list[str]) -> int:
                     ),
                     "marker_state": "retained",
                 }
-            if result_file is not None:
-                _publish_result_receipt(
-                    result_file,
-                    attempt_id=str(attempt_id),
-                    worker_state=worker_state,
-                    worker_exit_code=worker_exit_code,
-                    descendant_state=descendant_state,
-                    role_views_state=role_views_state,
-                    recovery_required=recovery_required,
-                    shell_capabilities=shell_capabilities,
-                    cleanup_details=cleanup_details,
-                )
-            task_result_publication_failed = False
             if task_result_file is not None and attempt_guard_binding is not None:
                 try:
                     publication_diagnostic = _worker_task_result_diagnostic(
@@ -2199,8 +2206,7 @@ def main(argv: list[str]) -> int:
                         )
                 except (OSError, RuntimeError, ValueError):
                     recovery_required = True
-                    task_result_publication_failed = True
-            if task_result_publication_failed and result_file is not None:
+            if result_file is not None:
                 _publish_result_receipt(
                     result_file,
                     attempt_id=str(attempt_id),
@@ -2208,7 +2214,7 @@ def main(argv: list[str]) -> int:
                     worker_exit_code=worker_exit_code,
                     descendant_state=descendant_state,
                     role_views_state=role_views_state,
-                    recovery_required=True,
+                    recovery_required=recovery_required,
                     shell_capabilities=shell_capabilities,
                     cleanup_details=cleanup_details,
                 )

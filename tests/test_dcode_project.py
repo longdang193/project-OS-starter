@@ -597,6 +597,37 @@ def test_deepagents_main_republishes_recovery_receipt_when_task_result_publicati
     assert reconciled["state"] != "SETTLED"
 
 
+def test_deepagents_main_publishes_task_result_before_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_deepagents_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    task_result_file = tmp_path / "task-result.json"
+    task_result_file.write_text("{malformed", encoding="utf-8")
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
+    events: list[str] = []
+    publish = LAUNCHER.publish_task_result
+
+    def publish_task_result_before_receipt(path: Path, payload: dict[str, object]) -> None:
+        assert not result_file.exists()
+        events.append("task-result")
+        publish(path, payload)
+
+    monkeypatch.setattr(LAUNCHER, "publish_task_result", publish_task_result_before_receipt)
+
+    assert LAUNCHER.main([
+        "--role", "normal", "--no-mcp", "-n", "task",
+        "--result-file", str(result_file), "--attempt-id", "attempt-1",
+        "--assignment-id", "assignment-1", "--repository-identity", "repo-1",
+        "--task-sha256", "a" * 64, "--grant-digest", "b" * 64,
+    ]) == 0
+
+    assert events == ["task-result"]
+    assert result_file.exists()
+
+
 def test_deepagents_main_rejects_unauthorized_worker_producer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1077,13 +1108,32 @@ def test_attempt_guard_reconciles_correlated_terminal_receipt(
         "attempt_id": "attempt-1",
         "executor": "deepagents",
         "repository_identity": "repo-1",
-        "task_sha256": "task-1",
-        "grant_digest": "grant-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
     }
     LAUNCHER._claim_attempt(
         **binding,
         repo_root=tmp_path,
         result_file=result_file,
+        task_result_file=tmp_path / "task-result.json",
+    )
+    publish_task_result(
+        tmp_path / "task-result.json",
+        {
+            "schema": "dcode-project.task-result.v1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "task_sha256": "a" * 64,
+            "grant_digest": "b" * 64,
+            "producer": "deepagents-worker",
+            "status": "completed",
+            "progress": {},
+            "checkpoint": {"revision": "deadbeef"},
+            "remaining_work": [],
+            "verification": {"references": ["tests/test_dcode_project.py"]},
+            "continuation": {"requested": False},
+            "accepted": None,
+        },
     )
     LAUNCHER._publish_result_receipt(
         result_file,
@@ -1105,6 +1155,47 @@ def test_attempt_guard_reconciles_correlated_terminal_receipt(
 
     assert reconciled["state"] == "SETTLED"
     assert reconciled["admission"] == "IDEMPOTENT"
+
+
+def test_attempt_guard_rejects_receipt_without_canonical_task_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    result_file = tmp_path / "receipt.json"
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "a" * 64,
+        "grant_digest": "b" * 64,
+    }
+    LAUNCHER._claim_attempt(
+        **binding,
+        repo_root=tmp_path,
+        result_file=result_file,
+        task_result_file=tmp_path / "task-result.json",
+    )
+    LAUNCHER._publish_result_receipt(
+        result_file,
+        attempt_id="attempt-1",
+        worker_state="exited",
+        worker_exit_code=0,
+        descendant_state="terminated",
+        role_views_state="removed",
+        recovery_required=False,
+        shell_capabilities={"requested": [], "effective": []},
+        cleanup_details={"state": "removed", "remaining_paths": [], "marker_state": "removed"},
+    )
+
+    reconciled = LAUNCHER._reconcile_attempt(
+        assignment_id="assignment-1",
+        binding=binding,
+        repo_root=tmp_path,
+    )
+
+    assert reconciled["state"] == "RECOVERY_REQUIRED"
+    assert reconciled["admission"] == "RECONCILE"
 
 
 def test_attempt_guard_reconciles_persisted_terminal_evidence_without_receipt(
