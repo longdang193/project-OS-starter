@@ -202,6 +202,41 @@ def authorize_evidence_release(
     if not isinstance(proof, Mapping):
         reasons.append("acceptance proof")
     else:
+        if proof.get("task_id") != binding.get("task_id"):
+            reasons.append("acceptance task binding")
+        if proof.get("plan_identity") != binding.get("plan_ref"):
+            reasons.append("acceptance plan binding")
+        task_transition = decision.get("task_transition")
+        if (
+            not isinstance(task_transition, Mapping)
+            or task_transition.get("authorized") is not True
+            or task_transition.get("current_state") != "active"
+            or task_transition.get("next_state") != "completed"
+        ):
+            reasons.append("task transition")
+        freshness = proof.get("freshness")
+        if (
+            not isinstance(freshness, Mapping)
+            or freshness.get("head_matches") is not True
+            or freshness.get("write_scope_matches") is not True
+        ):
+            reasons.append("acceptance freshness")
+        required_conditions = proof.get("required_conditions")
+        artifact_conditions = proof.get("artifact_conditions")
+        if (
+            not isinstance(required_conditions, Mapping)
+            or not isinstance(artifact_conditions, Mapping)
+            or set(required_conditions) != set(artifact_conditions)
+            or any(value is not True for value in artifact_conditions.values())
+        ):
+            reasons.append("acceptance condition coverage")
+        settlement = proof.get("settlement")
+        if (
+            not isinstance(settlement, Mapping)
+            or settlement.get("settlement_proven") is not True
+            or settlement.get("resource_settled") is not True
+        ):
+            reasons.append("acceptance settlement")
         git = proof.get("git")
         if not isinstance(git, Mapping):
             reasons.append("canonical Git proof")

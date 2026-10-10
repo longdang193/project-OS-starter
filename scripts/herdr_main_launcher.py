@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
@@ -1459,13 +1459,14 @@ def _reconcile_failed_codex_start(
                 "process_ids": sorted(process_ids),
                 "detail": "Codex identity evidence is unavailable",
             }
-        owned_processes = [
-            process
-            for process in processes
-            if int(process["pid"]) not in before_process_ids
-            and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
-            and _matches_codex_process(process, expected_codex_executable, expected_cwd)
-        ]
+        owned_processes = _owned_process_records(
+            foreground,
+            lambda process: (
+                int(process["pid"]) not in before_process_ids
+                and str(process.get("name", "")).lower() not in _SHELL_PROCESS_NAMES
+                and _matches_codex_process(process, expected_codex_executable, expected_cwd)
+            ),
+        )
         if not owned_processes:
             return {
                 "state": "uncertain",
@@ -1564,6 +1565,31 @@ def _process_records(processes: Any, *, require_pid: bool = True) -> list[dict[s
     for process in processes:
         collect(process)
     return records
+
+
+def _owned_process_records(
+    processes: Any,
+    owner_match: Callable[[Mapping[str, Any]], bool],
+) -> list[dict[str, Any]]:
+    if not isinstance(processes, list):
+        raise LaunchBlocked("process information is not an array")
+    owned: list[dict[str, Any]] = []
+
+    def collect(process: Any, inherited: bool = False) -> None:
+        if not isinstance(process, dict):
+            raise LaunchBlocked("process information contains invalid process data")
+        children = process.get("children", [])
+        if not isinstance(children, list):
+            raise LaunchBlocked("process information contains invalid child processes")
+        is_owned = inherited or owner_match(process)
+        if is_owned:
+            owned.append(process)
+        for child in children:
+            collect(child, is_owned)
+
+    for process in processes:
+        collect(process)
+    return owned
 
 
 def _process_ids(
@@ -2137,13 +2163,6 @@ def _terminate_codex_lane_unlocked(
         for process in before_records
         if (identity := _process_identity(process)) is not None
     }
-    if before_records and (not expected_process_identities or not expected_process_identities.issubset(before_identities)):
-        return {
-            "requested": False,
-            "action": "pane-close",
-            "verified": False,
-            "detail": "owned process identity mismatch",
-        }
     pane_list_result = _run(
         [herdr, "--session", session, "pane", "list"],
         env=env,
@@ -2168,6 +2187,13 @@ def _terminate_codex_lane_unlocked(
             "verified": not remaining_ids,
             "state": "pane-absent",
             "remaining_process_ids": remaining_ids,
+        }
+    if not before_records or not expected_process_identities.issubset(before_identities):
+        return {
+            "requested": False,
+            "action": "pane-close",
+            "verified": False,
+            "detail": "owned process identity mismatch",
         }
     if selected.get("agent") != ownership.get("agent"):
         return {
