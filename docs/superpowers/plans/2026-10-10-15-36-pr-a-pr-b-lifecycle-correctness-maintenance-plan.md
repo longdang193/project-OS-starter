@@ -159,7 +159,7 @@ about current GitHub state.
 - Branch: `codex/pr-a-lifecycle-correctness` from `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; PR B branch from the merged PR A commit; do not use local main a8a1fc5`
 - Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec`
 - Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\pr-a-lifecycle-correctness\project-OS-starter; PR B will use a new dedicated worktree; preserve the current main checkout's 9router overlay, untracked plans, db/, .playwright-mcp/, and temp_evidence.json`
-- Next action: `implement Task 4 effective review-policy evidence`
+- Next action: `user-authorized PR A push and remote-head CI/review; do not start PR B before PR A merge`
 - Blockers: `push, merge, remote CI, and worktree transitions remain approval-gated`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -167,8 +167,8 @@ about current GitHub state.
 | Task 1 | `completed` | PR A worktree | `codex` | none | base/inventory/before-measurement proof | dc91924; baseline PASS |
 | Task 2 | `completed` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | d66fdc2; 224 passed |
 | Task 3 | `completed` | PR A worktree | `codex` | Task 2 | Git consequence gating and release replay tests | b3e73b7; 245 passed; validator PASS |
-| Task 4 | `active` | PR A worktree | `codex` | Task 2 | effective review-policy tests | pending |
-| Task 5 | `pending` | PR A worktree | `unresolved` | Tasks 3, 4 | PR A matrix, validators, review gate | pending |
+| Task 4 | `completed` | PR A worktree | `codex` | Task 2 | effective review-policy tests | 14b9394; focused policy proof |
+| Task 5 | `active` | PR A worktree | `codex` | Tasks 3, 4 | PR A matrix, validators, review gate | 95ddd81; local gates pass; remote approval pending |
 | Task 6 | `pending` | PR B worktree | `unresolved` | Task 5 | compaction and obsolete-attempt tests | pending |
 | Task 7 | `pending` | PR B worktree | `unresolved` | Task 6 | Secretary caller/invariant tests | pending |
 | Task 8 | `pending` | PR B worktree | `unresolved` | Task 7 | next_action inventory and Herdr provenance measurement | pending |
@@ -478,28 +478,28 @@ about current GitHub state.
 - Stop for: `reconstructing GitHub review history inside the reconciler or making GitHub availability mandatory for local Plan acceptance`
 
 **Steps:**
-- [ ] Step 1: Add normalized fields for `review_policy_source`,
+- [x] Step 1: Add normalized fields for `review_policy_source`,
   `review_policy_satisfied`, `effective_review_state`, `review_required`,
   `review_identity`, and `reviewed_head_sha` while preserving the existing
   current-head/check identity fields.
-- [ ] Step 2: Make the GitHub evidence adapter produce one effective state from the current
+- [x] Step 2: Make the GitHub evidence adapter produce one effective state from the current
   review policy: `APPROVED`, `CHANGES_REQUESTED`, `DISMISSED`, `COMMENTED`, or
   `NONE`; when review is not required, set policy satisfaction true with a
   non-empty policy source explaining why.
-- [ ] Step 3: Make integration eligibility require remote availability, policy
+- [x] Step 3: Make integration eligibility require remote availability, policy
   satisfaction, expected repository/PR/base/head identity, current required
   checks, and mergeability. Do not treat comment-only, dismissed,
   changes-requested, or stale-head approval as satisfying policy.
-- [ ] Step 4: Preserve remote outage as an integration blocker only; local
+- [x] Step 4: Preserve remote outage as an integration blocker only; local
   acceptance, checkpoint verification, and retirement remain runnable.
 
 **Verification:**
-- [ ] Comment-only review fails policy.
-- [ ] Changes-requested review fails policy.
-- [ ] Dismissed review fails policy.
-- [ ] Approval bound to a stale head fails policy.
-- [ ] Current effective approval and required checks pass.
-- [ ] Review-not-required policy passes with its source; remote unavailable
+- [x] Comment-only review fails policy.
+- [x] Changes-requested review fails policy.
+- [x] Dismissed review fails policy.
+- [x] Approval bound to a stale head fails policy.
+- [x] Current effective approval and required checks pass.
+- [x] Review-not-required policy passes with its source; remote unavailable
   blocks integration without blocking local acceptance.
 
 **Exit Criteria:**
@@ -516,8 +516,8 @@ about current GitHub state.
 - Integrate and verify the correctness PR.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: `pending until Planning Dispatch resolves the executor profile`
+- Controller-selected: `normal`
+- Selection basis: `controller-owned PR A integration and verification`
 
 **Validator Profile:**
 - Controller-selected: `review-1`
@@ -543,28 +543,39 @@ about current GitHub state.
 - Stop for: `any failed safety regression, missing direct Git proof, changed lifecycle ownership, or unrelated CI/Secretary/session edits`
 
 **Steps:**
-- [ ] Step 1: Run only the PR A matrix: terminal replay, replacement files,
+- [x] Step 1: Run only the PR A matrix: terminal replay, replacement files,
   path/digest mismatch, uncommitted and wrong-checkpoint Plan consequences,
   current effective review states, review-not-required policy, remote outage,
   and obsolete replay rejection. PR B compaction, Secretary, `next_action`,
   session, and CI scenarios are reserved for PR B.
-- [ ] Step 2: Run the local ready gate: `python scripts/validate_repo_contracts.py`,
+- [x] Step 2: Run the local ready gate: `python scripts/validate_repo_contracts.py`,
   the affected runtime tests on the available local platform, `git diff --check`,
   and the focused diff/target review.
-- [ ] Step 3: Request independent review against the PR A acceptance criteria;
+- [x] Step 3: Request independent review against the PR A acceptance criteria;
   if review changes implementation, rerun affected proof and review the new
   code head rather than carrying forward a superseded PASS.
-- [ ] Step 4: Create the final PR A checkpoint commit only after fresh proof;
+- [x] Step 4: Create the final PR A checkpoint commit only after fresh proof;
   record its candidate SHA and evidence references, not mutable remote status.
 - [ ] Step 5: After user-authorized push, use remote PR-head CI for Repository
   Contracts, Ubuntu Runtime, Windows Runtime, and Benchmark gates; bind final
   review to that exact PR head before merge.
 
 **Verification:**
-- [ ] Every row in the PR A regression matrix passes.
-- [ ] Focused runtime tests, repository validator, and diff check pass.
-- [ ] Independent review returns no unresolved correctness finding.
+- [x] Every row in the PR A regression matrix passes locally on the available platform.
+- [x] Focused runtime tests, repository validator, and diff check pass.
+- [ ] Independent review returns no unresolved correctness finding; review turns were exhausted after
+  the final local concurrency fix, so no superseded PASS is claimed.
 - [ ] Local ready-gate proof and remote PR-head proof are recorded separately.
+
+**Local execution evidence (2026-10-10):**
+- Candidate PR A head: `95ddd815a3a3a873d83647655bbd74b18bcb0622`.
+- Full repository suite: `1134 passed, 1 skipped`.
+- Release/reconciliation focused suite: `57 passed`.
+- `python scripts/validate_repo_contracts.py`: PASS; `git diff --check`: PASS.
+- Independent review completed for the allowed review turns; findings on cross-attempt
+  release isolation, pending/terminal binding immutability, replacement races, and
+  concurrent writers were patched in commits `c628002`, `5d2449b`, and `95ddd81`.
+- Remote PR-head CI/review remains approval-gated; PR B has not started.
 
 **Exit Criteria:**
 - PR A is review-ready and its checkpoint proves terminal no-op behavior,
