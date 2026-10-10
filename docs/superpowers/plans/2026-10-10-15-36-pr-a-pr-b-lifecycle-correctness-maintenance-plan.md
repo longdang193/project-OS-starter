@@ -159,13 +159,13 @@ about current GitHub state.
 - Branch: `codex/pr-a-lifecycle-correctness` from `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; PR B branch from the merged PR A commit; do not use local main a8a1fc5`
 - Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec`
 - Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\pr-a-lifecycle-correctness\project-OS-starter; PR B will use a new dedicated worktree; preserve the current main checkout's 9router overlay, untracked plans, db/, .playwright-mcp/, and temp_evidence.json`
-- Next action: `run Task 1 inventory and baseline proof in the active PR A worktree`
+- Next action: `implement Task 2 terminal-safe, physically bound evidence release`
 - Blockers: `push, merge, remote CI, and worktree transitions remain approval-gated`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `active` | PR A worktree | `codex` | none | base/inventory/before-measurement proof | pending |
-| Task 2 | `pending` | PR A worktree | `unresolved` | Task 1 | PR A release replay and binding tests | pending |
+| Task 1 | `completed` | PR A worktree | `codex` | none | base/inventory/before-measurement proof | dc91924; baseline PASS |
+| Task 2 | `active` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | pending |
 | Task 3 | `pending` | PR A worktree | `unresolved` | Task 2 | Git consequence gating and release replay tests | pending |
 | Task 4 | `pending` | PR A worktree | `unresolved` | Task 2 | effective review-policy tests | pending |
 | Task 5 | `pending` | PR A worktree | `unresolved` | Tasks 3, 4 | PR A matrix, validators, review gate | pending |
@@ -219,37 +219,62 @@ about current GitHub state.
 - Stop for: `a base other than the merged PR #71 lifecycle result, a required source surface missing from that base, or any request to absorb the local overlay`
 
 **Steps:**
-- [ ] Step 1: Record the fixed merged PR #71 SHA
+- [x] Step 1: Record the fixed merged PR #71 SHA
   `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; record
   `07d9046627bb102ed77904af0d6c86df19e41dec` only as the PR #71 head
   reference; do not substitute local `main`.
-- [ ] Step 2: Verify the activated PR A worktree is clean and contains the
+- [x] Step 2: Verify the activated PR A worktree is clean and contains the
   coordination checkpoint; do not copy current untracked files.
-- [ ] Step 3: Inventory every production caller and test of
+- [x] Step 3: Inventory every production caller and test of
   `release_authorized_evidence`, `apply_accepted_plan_transitions`,
   `RemotePrEvidence`, `next_action`, and Herdr session retirement. Check
   `release_attempt_evidence` only to confirm whether it is historical/dead; if
   it has no production caller, remove it from the implementation target set
   and do not recreate compatibility code.
-- [ ] Step 4: Freeze a metric-to-command/workload/provenance table and capture
+- [x] Step 4: Freeze a metric-to-command/workload/provenance table and capture
   before measurements with the existing harness using reproducible workloads:
   coordination overhead, release/attempt records, retained temporary bytes,
   Secretary activations, Herdr subprocess calls, empty sessions, incorrect
   cleanup events, and fresh-controller recovery time. Mark unsupported metrics
   `UNAVAILABLE`, `NOT_APPLICABLE`, or `BLOCKED_CAPABILITY` rather than
   inventing telemetry, and record whether each result is live or synthetic.
-- [ ] Step 5: Run the baseline validator and focused runtime tests; save only
+- [x] Step 5: Run the baseline validator and focused runtime tests; save only
   command summaries, baseline outputs, and durable findings in task evidence.
 
 **Verification:**
-- [ ] `git status --short --untracked-files=all` is empty in the execution worktree.
-- [ ] `python scripts/validate_repo_contracts.py` and the focused baseline test
+- [x] `git status --short --untracked-files=all` is empty in the execution worktree.
+- [x] `python scripts/validate_repo_contracts.py` and the focused baseline test
   selection pass on the PR #71 base.
-- [ ] `git diff --check` reports no whitespace errors.
-- [ ] Before-measurement outputs include the exact command, workload, revision,
+- [x] `git diff --check` reports no whitespace errors.
+- [x] Before-measurement outputs include the exact command, workload, revision,
   and environment needed for the later candidate comparison.
-- [ ] The metric table covers every metric named by Tasks 8–9 and records the
+- [x] The metric table covers every metric named by Tasks 8–9 and records the
   evidence source and support status for each metric.
+
+**Task 1 Evidence:**
+- Base `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; activated baseline revision
+  `dc91924cecd43880c892477b1ef28e4415adb9fc`; branch
+  `codex/pr-a-lifecycle-correctness`; Windows `10.0.19045.0`; Python `3.13.5`.
+- Production inventory found no caller of
+  `scripts/project_os_runtime/results.py::release_attempt_evidence`; it is
+  removed from the implementation target set. Canonical release callers are
+  `acceptance.py::release_authorized_evidence` and
+  `plan_preparation.py::apply_accepted_plan_transitions`.
+- `python scripts/validate_repo_contracts.py`: PASS. Focused baseline command
+  covering the Task 1 runtime/release/reconciliation/Herdr/Secretary files:
+  `656 passed in 14.24s`.
+- `python scripts/benchmark_secretary_architecture.py 1`: deterministic-fake,
+  `live=false`, `latency_ms=null`, and `token_usage=null`; usable only for
+  synthetic coordination/Secretary comparison, not live resource or recovery
+  evidence.
+- `python scripts/benchmark_worker_contract.py offline --fixtures
+  tests/fixtures/worker_contract_benchmark/manifest.json --output
+  worker-baseline.jsonl` plus `report`: six tasks, median handoff reduction
+  `11.17%`, aggregate reduction `10.89%`; offline synthetic evidence only.
+- Retained temporary bytes, Herdr subprocess calls, empty sessions, and
+  fresh-controller recovery time are `BLOCKED_CAPABILITY`; incorrect cleanup
+  remains a direct lifecycle-regression metric rather than a live benchmark
+  claim.
 
 **Exit Criteria:**
 - The exact base, owned files, production callers, baseline commands, and
@@ -266,8 +291,8 @@ about current GitHub state.
 - Harden the canonical evidence-disposal boundary.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: `pending until Planning Dispatch resolves the executor profile`
+- Controller-selected: `none (lead controller)`
+- Selection basis: `controller-owned implementation and task-checkpoint work`
 
 **Validator Profile:**
 - Controller-selected: `none`
