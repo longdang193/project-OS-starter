@@ -891,6 +891,19 @@ def _claim_attempt_unlocked(
             ):
                 if field in existing:
                     candidate[field] = existing[field]
+            if existing.get("release_authorized") is True and "release_binding" not in candidate:
+                candidate["release_binding"] = {
+                    field: existing[field]
+                    for field in (
+                        "attempt_id",
+                        "assignment_id",
+                        "repository_identity",
+                        "executor",
+                        "task_sha256",
+                        "grant_digest",
+                    )
+                    if field in existing
+                }
         candidate["release_state"] = "pending"
         candidate.pop("released_resources", None)
         _write_attempt_guard(path, candidate)
