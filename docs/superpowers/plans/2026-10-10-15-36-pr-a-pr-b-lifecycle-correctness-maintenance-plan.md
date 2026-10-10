@@ -584,6 +584,11 @@ about current GitHub state.
 - Follow-up proof: full repository suite `1135 passed, 2 skipped`; focused release and
   Plan suite `57 passed, 1 skipped`; repository contract and plan validators PASS;
   `git diff --check` PASS.
+- Remote review turn 2 against `fc02b8e` found one justified fail-closed gap:
+  malformed UTF-8 from `git show` could escape checkpoint verification. The decode
+  now occurs inside the verifier's guarded path, with a regression covering invalid
+  committed bytes. Focused follow-up proof: `58 passed, 1 skipped`; repository and
+  plan validators PASS; `git diff --check` PASS.
 - Remote PR-head CI/review remains approval-gated; PR B has not started.
 
 **Exit Criteria:**

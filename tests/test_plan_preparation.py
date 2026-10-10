@@ -615,6 +615,28 @@ def test_git_checkpoint_verifier_accepts_crlf_checkpoint_when_autocrlf_is_disabl
 
     assert verified["checkpoint_verified"] is True
 
+
+def test_git_checkpoint_verifier_rejects_non_utf8_checkpoint(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True, text=True)
+    plan_path = repo / "plan.md"
+    plan_path.write_bytes(b"---\nname: plan-1\n---\n\xff\n")
+    subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "invalid plan checkpoint"], check=True, capture_output=True, text=True)
+    commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    consequence = {
+        "commit_sha": commit,
+        "coordination_ref": "HEAD",
+        "plan_path": "plan.md",
+        "expected_plan_revision": "0" * 64,
+    }
+
+    rejected = _verify_git_checkpoint(plan_path, consequence)
+
+    assert rejected["verified"] is False
+    assert "verification failed" in rejected["reason"]
+
 def test_accepted_transition_keeps_pending_release_until_checkpoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

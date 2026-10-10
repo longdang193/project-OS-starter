@@ -361,9 +361,9 @@ def _verify_git_checkpoint(
             check=True,
             capture_output=True,
         ).stdout
+        actual_revision = _plan_revision(committed_plan)
     except (OSError, subprocess.CalledProcessError, UnicodeError, ValueError) as exc:
         return {"verified": False, "reason": f"Git checkpoint verification failed: {exc}"}
-    actual_revision = _plan_revision(committed_plan.decode("utf-8"))
     if actual_revision != expected_revision:
         return {
             "verified": False,
