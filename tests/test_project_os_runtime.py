@@ -305,6 +305,11 @@ def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) ->
         retention={"secretary": {"policy_ref": "policy-1", "expired": True, "consumer": "secretary", "evidence_ref": "task-result-1"}},
         evidence_paths={"task-result-1": evidence_path},
         retirement_proof=_retirement_proof(binding),
+        release_record={
+            "authorized": True,
+            "binding": binding,
+            "resources": {"task-result-1": {"state": "pending"}},
+        },
     )
 
     assert result["authorized"] is True

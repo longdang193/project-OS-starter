@@ -268,6 +268,19 @@ def load_plan(source: str | os.PathLike[str]) -> PlanGraph:
     return parse_plan(path.read_text(encoding="utf-8"))
 
 
+def _transitions_are_applied(
+    source: str | os.PathLike[str],
+    transitions: Sequence[Mapping[str, str]],
+) -> bool:
+    graph = load_plan(source)
+    return bool(transitions) and all(
+        graph.tasks.get(_canonical_task_id(str(transition.get("task_id", "")))) is not None
+        and graph.tasks[_canonical_task_id(str(transition.get("task_id", "")))].state
+        == _cell(str(transition.get("next_state", ""))).casefold()
+        for transition in transitions
+    )
+
+
 @contextmanager
 def _plan_write_lock(path: Path):
     lock_root = Path(tempfile.gettempdir()) / "project-os-plan-locks"
@@ -391,13 +404,10 @@ def apply_accepted_plan_transitions(
         )
     if not isinstance(accepted_task_id, str) or list(transitions) != expected_transitions:
         return {"authorized": False, "reason": "acceptance transition mismatch"}
-    result = apply_plan_transitions(source, transitions, expected_revision=expected_revision)
-    if result.get("authorized") is not True or evidence_release is None:
-        return result
-    if not isinstance(evidence_release, Mapping):
-        return {**result, "evidence_release": {"authorized": False, "reasons": ["invalid evidence release"]}}
-    attempt_guard = evidence_release.get("attempt_guard")
-    persisted_release_record = evidence_release.get("release_record")
+    if evidence_release is not None and not isinstance(evidence_release, Mapping):
+        return {"authorized": False, "reason": "invalid evidence release"}
+    attempt_guard = evidence_release.get("attempt_guard") if isinstance(evidence_release, Mapping) else None
+    persisted_release_record = evidence_release.get("release_record") if isinstance(evidence_release, Mapping) else None
     record_release_authorization = None
     if isinstance(attempt_guard, Mapping):
         try:
@@ -425,13 +435,25 @@ def apply_accepted_plan_transitions(
             record_release_authorization = persist_release_authorization
         except (KeyError, RuntimeError, TypeError, ValueError) as exc:
             return {
-                **result,
+                "authorized": False,
+                "reason": "release authorization persistence failed",
                 "evidence_release": {
                     "authorized": False,
                     "payload_released": False,
                     "reasons": [f"release authorization persistence failed: {exc}"],
                 },
             }
+    result = apply_plan_transitions(source, transitions, expected_revision=expected_revision)
+    if result.get("authorized") is not True:
+        try:
+            replayable = _transitions_are_applied(source, transitions)
+        except (OSError, ValueError, KeyError):
+            replayable = False
+        if not replayable:
+            return result
+        result = {**result, "authorized": True, "replayed": True}
+    if evidence_release is None:
+        return result
     release_result = release_authorized_evidence(
         decision,
         binding=evidence_release.get("binding", {}),

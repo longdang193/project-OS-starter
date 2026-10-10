@@ -350,17 +350,25 @@ def release_authorized_evidence(
     if not result["authorized"]:
         return result
     evidence_ref = binding.get("evidence_ref")
+    recorded_resources = release_record.get("resources") if isinstance(release_record, Mapping) else None
+    recorded_resource = recorded_resources.get(evidence_ref) if isinstance(recorded_resources, Mapping) else None
+    if (
+        not isinstance(release_record, Mapping)
+        or release_record.get("authorized") is not True
+        or release_record.get("binding") != dict(binding)
+        or set(recorded_resources or ()) != {evidence_ref}
+        or not isinstance(recorded_resource, Mapping)
+        or recorded_resource.get("state") not in {"pending", "removed", "already_absent"}
+    ):
+        return {
+            **result,
+            "authorized": False,
+            "reasons": ["durable release authorization required"],
+        }
     path = evidence_paths.get(evidence_ref) if isinstance(evidence_ref, str) else None
     if not isinstance(path, Path) or not path.is_file() or path.is_symlink():
-        recorded_resources = release_record.get("resources") if isinstance(release_record, Mapping) else None
-        recorded_resource = recorded_resources.get(evidence_ref) if isinstance(recorded_resources, Mapping) else None
         if (
-            isinstance(release_record, Mapping)
-            and release_record.get("authorized") is True
-            and release_record.get("binding") == dict(binding)
-            and set(recorded_resources or ()) == {evidence_ref}
-            and isinstance(recorded_resource, Mapping)
-            and recorded_resource.get("state") in {"removed", "already_absent"}
+            recorded_resource.get("state") in {"removed", "already_absent"}
         ):
             return {
                 **result,
@@ -371,23 +379,12 @@ def release_authorized_evidence(
             isinstance(path, Path)
             and not path.is_symlink()
             and not path.exists()
-            and isinstance(release_record, Mapping)
-            and release_record.get("authorized") is True
-            and release_record.get("binding") == dict(binding)
-            and set(recorded_resources or ()) == {evidence_ref}
-            and isinstance(recorded_resource, Mapping)
             and recorded_resource.get("state") == "pending"
         ):
             return {
                 **result,
                 "payload_released": True,
                 "resources": {evidence_ref: {"state": "already_absent"}},
-            }
-        if isinstance(release_record, Mapping) and release_record.get("authorized") is True:
-            return {
-                **result,
-                "authorized": False,
-                "reasons": ["durable release record incomplete"],
             }
         return {
             **result,

@@ -514,6 +514,8 @@ raw probe traces remain disposable.
 - Review turn 5: `FAIL` at current head `6c38e34bce429b3bca19e071ba247319b361560a`; found three justified lifecycle gaps: retirement guessed an unbound worker process, disposal could precede durable release recording, and settled-attempt replacement did not preserve the original release binding.
 - Review-turn-5 remediation: retirement now fails closed without recorded process identity; release persists a pending resource record before unlink and treats a missing path as `already_absent` only after that authorization; replacement attempts retain the original release binding for delayed final resource recording. Added targeted regressions in `tests/test_herdr_main_launcher.py`, `tests/test_evidence_release.py`, and `tests/test_dcode_project.py`.
 - Post-remediation local proof: affected suite `422 passed`; full suite `1108 passed, 1 skipped`; planning and repository-contract validators passed. Plan remains `active` until the remediation is committed, pushed, checked on the exact PR head, and independently reviewed again.
+- Review turn 6: `FAIL` at `15c1f2b279671cd80751ecf81903f50e55f3a4e3`; found that the public disposal helper could still unlink without a durable authorization record and that controller replay stopped at the already-committed Plan transition.
+- Review-turn-6 remediation: `release_authorized_evidence` now requires an exact pending/terminal durable release record; pending authorization is written before the Plan transition; and `apply_accepted_plan_transitions` replays release when all requested target states are already committed. Added durable-record and replay regressions. Post-remediation full suite: `1110 passed, 1 skipped`; affected suite: `424 passed`.
 
 ## Completion Criteria
 

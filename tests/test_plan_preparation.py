@@ -401,6 +401,57 @@ def test_native_cos_negative_to_positive_plan_cycle(tmp_path: Path) -> None:
     assert replay["reason"] == "plan revision changed"
 
 
+def test_apply_accepted_plan_transitions_replays_release_after_transition_commit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan = plan.replace("| Task 2 | `completed` |", "| Task 2 | `pending` |")
+    plan_path.write_text(plan, encoding="utf-8")
+    inputs = {
+        "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"artifact": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    dependent = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 1"]},
+        dependency_states={"Task 1": "completed"},
+    )
+    transitions = [
+        {"task_id": "Task 1", "expected_state": "active", "next_state": "completed"},
+        {"task_id": "Task 2", "expected_state": "pending", "next_state": "active"},
+    ]
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+    committed = apply_plan_transitions(plan_path, transitions, expected_revision=revision)
+    assert committed["authorized"] is True
+    calls: list[str] = []
+
+    def fake_release(*args, **kwargs):
+        calls.append("release")
+        return {"authorized": True, "payload_released": True, "resources": {"task-result": {"state": "removed"}}}
+
+    monkeypatch.setattr(plan_preparation_module, "release_authorized_evidence", fake_release)
+    replay = apply_accepted_plan_transitions(
+        plan_path,
+        decision,
+        transitions,
+        dependent_transition=dependent,
+        evidence_release={"release_record": {"authorized": True}},
+        expected_revision=revision,
+    )
+
+    assert replay["authorized"] is True
+    assert replay["replayed"] is True
+    assert calls == ["release"]
+
+
 def test_parse_plan_rejects_invalid_graph() -> None:
     invalid_plans = [
         PLAN.replace("| Task 4 |", "| Task 3 |"),

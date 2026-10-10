@@ -92,6 +92,11 @@ def _release(
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": task_result, "result": result},
         retirement_proof=_retirement_proof() if retirement_proof is None else retirement_proof,
+        release_record={
+            "authorized": True,
+            "binding": _binding(),
+            "resources": {"task-result": {"state": "pending"}},
+        },
     )
 
 
@@ -108,11 +113,31 @@ def test_release_requires_retirement_proof(tmp_path: Path):
     assert (tmp_path / "task-result.json").exists()
 
 
+def test_release_requires_durable_authorization_record(tmp_path: Path):
+    task_result = tmp_path / "task-result.json"
+    publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))
+    result = release_authorized_evidence(
+        _acceptance_decision(),
+        binding=_binding(),
+        canonical_consequence={"authorized": True, **{key: value for key, value in _binding().items() if key != "evidence_ref"}},
+        required_consumers=["controller"],
+        consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
+        retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
+        evidence_paths={"task-result": task_result},
+        retirement_proof=_retirement_proof(),
+    )
+    assert result["authorized"] is False
+    assert result["reasons"] == ["durable release authorization required"]
+    assert task_result.exists()
+
+
 def test_release_is_idempotent_after_exact_acceptance(tmp_path: Path):
     result = _release(tmp_path)
     retry = _release(tmp_path, create=False)
     assert result["payload_released"] is True
-    assert retry["authorized"] is False
+    assert retry["authorized"] is True
+    assert retry["payload_released"] is True
+    assert retry["resources"] == {"task-result": {"state": "already_absent"}}
 
 
 def test_release_deletes_only_bound_evidence_path(tmp_path: Path):
