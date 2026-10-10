@@ -103,14 +103,14 @@ concurrency remains. New contract tests run in current repository workflows.
 - Branch: `codex/durable-facts-runtime-retirement`
 - Base commit: `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695` (`origin/main`, verified 2026-10-10)
 - Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` on branch `codex/durable-facts-runtime-retirement`, created from `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695`; drafting workspace and its untracked files remain untouched
-- Next action: `Task 1 — freeze active and historical references and baseline proof`
-- Blockers: `none for planning; execution waits for explicit plan approval`
+- Next action: `Task 3 — bind GitHub facts and move evidence release behind CoS`
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | none | inventory, baseline validators, preserved-untracked proof | `origin/main=187f28e492ae1c4726cdd2f7b5a261a2b8b6c695; validate_repo_contracts=0; validate_planning_lifecycle=0; focused tests=119 passed; unrelated drafting workspace preserved` |
-| Task 2 | `active` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 1 | phase contract and reconciliation tests | pending |
-| Task 3 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | GitHub identity/freshness and acceptance-release tests | pending |
+| Task 2 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 1 | phase contract and reconciliation tests | `reconciliation/dispatch/acceptance/attempt tests=192 passed; integration identity fail-closed; incomplete phases do not advance; git diff --check=0` |
+| Task 3 | `active` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | GitHub identity/freshness and acceptance-release tests | pending |
 | Task 4 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | launcher binding, lock race, resource retirement tests | pending |
 | Task 5 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 3, 4 | Secretary ownership, compaction, replay tests | pending |
 | Task 6 | `pending` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | Tura/Switchyard removal and historical compatibility tests | pending |
@@ -236,8 +236,9 @@ acceptance tests.
 4. Return separate `integration_eligible`, `integration_complete`,
    `retirement_eligible`, and `retirement_complete` fields with explicit next
    action and unresolved reasons.
-5. Wire the same pure reconciler at dispatch, acceptance, integration, and
-   runtime finalization boundaries; do not add orchestration.
+5. Wire the same pure reconciler at dispatch, acceptance, and runtime
+   finalization boundaries; Task 3 owns integration wiring because it binds
+   controller-supplied GitHub evidence; do not add orchestration.
 
 **Verification:** Tests prove dependency-ready local dispatch without GitHub,
 absent attempt readiness, dependency blocking, `C != H` acceptance, green
@@ -258,7 +259,7 @@ effect.
 - Acceptance and remote-evidence contract correction.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - PR identity, head-bound checks/reviews, Worker/CoS authority boundary,

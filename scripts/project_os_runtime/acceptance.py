@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .reconciliation import reconcile
+
 
 ACCEPTANCE_DECISIONS = frozenset({"PASS", "FAIL", "BLOCKED"})
 ACCEPTANCE_AUTHORITY = "cos"
@@ -106,6 +108,17 @@ def evaluate_acceptance(
         reasons = false_checks
     else:
         decision = "PASS"
+    reconciliation = reconcile(
+        phase="accept",
+        facts={
+            "verification_current": verification.get("passed") is True,
+            "candidate_unchanged": git.get("head_matches") is True,
+            "acceptance_criteria_evaluable": bool(artifact_conditions),
+            "cos_pass": decision == "PASS",
+            "checkpoint_sha": git.get("checkpoint_sha"),
+            "lane_head_sha": git.get("lane_head_sha"),
+        },
+    )
     current_state = task.get("state")
     task_transition = {
         "authorized": decision == "PASS",
@@ -146,6 +159,7 @@ def evaluate_acceptance(
         },
         "task_transition": task_transition,
         "acceptance_proof": acceptance_proof,
+        "reconciliation": reconciliation.to_dict(),
     }
 
 
