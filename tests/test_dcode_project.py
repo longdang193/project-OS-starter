@@ -1129,6 +1129,35 @@ def test_attempt_guard_records_release_resources(
     assert record["released_resources"] == {"task-result": {"state": "removed"}}
 
 
+def test_attempt_guard_does_not_downgrade_terminal_release_on_stale_pending_replay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(LAUNCHER, "_attempt_guard_root", lambda: tmp_path / "guards")
+    binding = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "executor": "deepagents",
+        "repository_identity": "repo-1",
+        "task_sha256": "task-1",
+        "grant_digest": "grant-1",
+    }
+    LAUNCHER._claim_attempt(**binding, repo_root=tmp_path, result_file=None)
+    LAUNCHER._settle_attempt(assignment_id="assignment-1", binding=binding, settlement_proven=True)
+    released = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "removed", "relative_path": "task-result.json"}}},
+    )
+    replay = LAUNCHER.record_release_authorization(
+        assignment_id="assignment-1",
+        binding=binding,
+        release_authorization={"resources": {"task-result": {"state": "pending"}}},
+    )
+    assert released["release_state"] == "released"
+    assert replay["release_state"] == "released"
+    assert replay["released_resources"]["task-result"]["state"] == "removed"
+
+
 def test_attempt_guard_normalizes_pending_release_binding(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

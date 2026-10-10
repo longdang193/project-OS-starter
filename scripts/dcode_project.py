@@ -930,6 +930,17 @@ def record_release_authorization(
         updated = dict(existing)
         resources = release_authorization.get("resources")
         released_resources: dict[str, dict[str, object]] = {}
+        attempt_key = str(binding.get("attempt_id"))
+        released_resources_by_attempt = dict(existing.get("released_resources_by_attempt", {})) if isinstance(existing.get("released_resources_by_attempt"), dict) else {}
+        previous_resources = released_resources_by_attempt.get(attempt_key)
+        if not isinstance(previous_resources, dict) and isinstance(existing.get("released_resources"), dict):
+            previous_resources = existing.get("released_resources")
+        if isinstance(previous_resources, dict):
+            released_resources = {
+                str(evidence_ref): dict(resource)
+                for evidence_ref, resource in previous_resources.items()
+                if isinstance(evidence_ref, str) and isinstance(resource, dict)
+            }
         if isinstance(resources, dict):
             for evidence_ref, resource in resources.items():
                 if not isinstance(evidence_ref, str) or not isinstance(resource, dict):
@@ -942,14 +953,19 @@ def record_release_authorization(
                     raise RuntimeError("dcode-project release resource attempt binding mismatch.")
                 if normalized_resource.get("evidence_ref") not in {None, evidence_ref}:
                     raise RuntimeError("dcode-project release resource evidence binding mismatch.")
+                previous_resource = released_resources.get(evidence_ref)
+                if (
+                    isinstance(previous_resource, dict)
+                    and previous_resource.get("state") in {"removed", "already_absent"}
+                    and normalized_resource.get("state") not in {"removed", "already_absent"}
+                ):
+                    normalized_resource = previous_resource
                 released_resources[evidence_ref] = normalized_resource
         release_authorizations = dict(existing.get("release_authorizations", {})) if isinstance(existing.get("release_authorizations"), dict) else {}
-        released_resources_by_attempt = dict(existing.get("released_resources_by_attempt", {})) if isinstance(existing.get("released_resources_by_attempt"), dict) else {}
         if isinstance(existing.get("release_authorization"), dict):
             previous_key = str(release_binding.get("attempt_id")) if isinstance(release_binding, dict) else str(existing.get("attempt_id"))
             release_authorizations.setdefault(previous_key, dict(existing["release_authorization"]))
             released_resources_by_attempt.setdefault(previous_key, dict(existing.get("released_resources", {})))
-        attempt_key = str(binding.get("attempt_id"))
         release_authorizations[attempt_key] = dict(release_authorization)
         released_resources_by_attempt[attempt_key] = released_resources
         release_state = (
