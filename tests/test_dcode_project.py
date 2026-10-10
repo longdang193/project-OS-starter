@@ -234,15 +234,16 @@ def test_executor_resolution_prefers_explicit_then_configured_default(tmp_path: 
     config = tura_config(tmp_path)
 
     assert LAUNCHER._resolve_executor(config, "deepagents") == "deepagents"
-    assert LAUNCHER._resolve_executor(config, None) == "tura"
+    with pytest.raises(RuntimeError, match="retired"):
+        LAUNCHER._resolve_executor(config, None)
 
 
 @pytest.mark.parametrize(
     ("config", "explicit", "message"),
     [
         ({}, None, "default_executor"),
-        ({"delegation": {"default_executor": "codex"}}, None, "executor"),
-        ({"delegation": {"default_executor": "tura"}}, "codex", "executor"),
+        ({"delegation": {"default_executor": "codex"}}, None, "retired"),
+        ({"delegation": {"default_executor": "tura"}}, "codex", "retired"),
     ],
 )
 def test_executor_resolution_rejects_missing_or_invalid_values(
@@ -1852,7 +1853,7 @@ def test_print_config_without_role_omits_worker_binding(
     assert "runtime_binding_digest" not in payload
 
 
-@pytest.mark.parametrize("executor", ["deepagents", "tura"])
+@pytest.mark.parametrize("executor", ["deepagents"])
 def test_runtime_binding_loads_codex_config_once_per_invocation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1901,13 +1902,10 @@ def test_runtime_binding_loads_codex_config_once_per_invocation(
             "mcp_capability_digest": "digest",
         },
     )
-    if executor == "deepagents":
-        monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
-        monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
-        _stub_worker_shell_capabilities(monkeypatch)
-        monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
-    else:
-        monkeypatch.setattr(LAUNCHER, "_run_tura_worker", lambda *args: 0)
+    monkeypatch.setattr(LAUNCHER, "_reject_conflicting_user_openai_base_url", lambda: None)
+    monkeypatch.setattr(LAUNCHER, "_find_dcode", lambda: "dcode")
+    _stub_worker_shell_capabilities(monkeypatch)
+    monkeypatch.setattr(LAUNCHER, "_run_deepagents_worker", lambda *args: 0)
 
     assert LAUNCHER.main(["--role", "normal", "-n", "task"]) == 0
     assert loads == [codex_path]
@@ -1948,15 +1946,8 @@ def test_print_config_reports_tura_executable_hash_without_credentials(
         },
     )
 
-    assert LAUNCHER.main(["--role", "normal", "--print-config"]) == 0
-
-    output = capsys.readouterr().out
-    payload = json.loads(output)
-    assert payload["tura_executable"] == str(executable)
-    assert payload["tura_executable_sha256"] == hashlib.sha256(
-        b"tura-test-binary"
-    ).hexdigest()
-    assert "do-not-print" not in output
+    with pytest.raises(RuntimeError, match="retired"):
+        LAUNCHER.main(["--role", "normal", "--print-config"])
 
 
 def test_role_model_comes_from_canonical_template(tmp_path: Path) -> None:

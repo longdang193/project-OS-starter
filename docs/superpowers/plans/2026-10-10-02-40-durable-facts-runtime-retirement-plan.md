@@ -336,7 +336,7 @@ evidence; remote mutable facts are never persisted by runtime code.
 - Runtime ownership and cleanup correctness.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - Immutable launcher binding, exclusive pane ownership, resource-specific
@@ -400,7 +400,7 @@ missing pane, or unverified cleanup.
 - Secretary ownership and replay/retention correction.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - Source ownership, sparse communication, replay protection, delivery payload
@@ -454,7 +454,7 @@ identity but no unnecessary delivery payload.
 - Runtime topology migration and compatibility cleanup.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - Canonical-only retention, active-path removal, historical readability,
@@ -525,7 +525,7 @@ surfaces have no drift.
 - CI and maintained-documentation integration.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - GitHub durable consequence, CI cancellation, retention, generated validation,
@@ -586,7 +586,7 @@ status owner.
 - Release-readiness verification.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:**
 - All outcomes and required merge gates.

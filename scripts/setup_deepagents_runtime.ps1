@@ -50,6 +50,9 @@ if (Test-Path -LiteralPath $directMcpConfig -PathType Leaf) {
 if ([bool]$TuraExecutable -xor [bool]$TuraProviderConfig) {
     throw "Pass both -TuraExecutable and -TuraProviderConfig, or neither."
 }
+if ($TuraExecutable -or $TuraProviderConfig) {
+    throw "Tura runtime is retired; install and use DeepAgents only."
+}
 if ($TuraExecutable -and -not (Test-Path -LiteralPath $TuraExecutable -PathType Leaf)) {
     throw "Missing Tura executable: $TuraExecutable"
 }

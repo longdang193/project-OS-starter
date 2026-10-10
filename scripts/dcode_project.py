@@ -1473,8 +1473,10 @@ def _resolve_executor(config: dict[str, object], explicit: str | None) -> str:
         if not isinstance(value, str) or not value.strip():
             raise RuntimeError("Missing `[delegation].default_executor` configuration.")
         selected = value.strip().lower()
-    if selected not in {"tura", "deepagents"}:
-        raise RuntimeError(f"Unsupported executor `{selected}`; use `tura` or `deepagents`.")
+    if selected != "deepagents":
+        raise RuntimeError(
+            f"Executor `{selected}` is retired; use `deepagents`."
+        )
     return selected
 
 
