@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: one-authority-lifecycle-convergence
 targets:
@@ -119,8 +119,8 @@ raw probe traces remain disposable.
 - Branch: `codex/one-authority-lifecycle-convergence`
 - Base commit: `b41d3f8` (`origin/main`, verified 2026-10-10)
 - Expected workspace: `fresh execution worktree; preserve current checkout changes and untracked .playwright-mcp/, db/, temp_evidence.json, and existing untracked plans`
-- Next action: `obtain post-fix independent review and user-authorized exact-PR-head checks after committing/pushing current fix`
-- Blockers: `post-fix code is uncommitted; remote checks and independent review do not bind current fix; plan remains active until those gates are authorized and pass`
+- Next action: `none in this plan; PR remains unmerged pending separate user authorization`
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -129,7 +129,7 @@ raw probe traces remain disposable.
 | Task 3 | `completed` | dedicated execution worktree | `codex` | Task 2 | structured remote evidence and CoS acceptance proof | exact-head checks policy bound to `github://` or `repo-contract://`; `487 passed` focused suites |
 | Task 4 | `completed` | dedicated execution worktree | `codex` | Task 2 | exact retirement path and runtime-owner proof | `retire_lane` plus `retire_settled_lane`; idempotency, mismatch, recovery tests passed |
 | Task 5 | `completed` | dedicated execution worktree | `codex` | Tasks 3–4 | restart-safe release and truthful cleanup proof | acceptance release path; attempt-guard authorization survives replacement; stale sweeper and legacy disposal removed |
-| Task 6 | `active` | dedicated execution worktree | `codex` | Tasks 1–5 | CI, docs, live lifecycle, final verification | workflow duplicate removed; repo/planning validators passed; post-fix live lifecycle passed; review/remote gate remains |
+| Task 6 | `completed` | dedicated execution worktree | `codex` | Tasks 1–5 | CI, docs, live lifecycle, final verification | workflow duplicate removed; validators, live lifecycle proof, capped review remediation, and exact-head PR checks passed |
 
 ## Task Breakdown
 
@@ -509,16 +509,17 @@ raw probe traces remain disposable.
 - Review turn 3: `FAIL` at PR head `a6636f9b1c7fdc5336fdf39565ef8ec94d978cc8`; code findings remain cleared, but completion proof is insufficient because live lifecycle capability is unavailable and review evidence must bind current head.
 - Current-head review turn 4: `FAIL` at `5831959deda28001b8e5367fa133d8c057ef82fb`; found terminal retirement false-failure when worker already exited and evidence release bypassing canonical retirement proof. Fixed in `scripts/herdr_main_launcher.py`, `scripts/project_os_runtime/acceptance.py`, and `scripts/project_os_runtime/plan_preparation.py`; focused regression proof passes. Review remains stale for post-fix changes.
 - Post-fix local proof: full suite `1107 passed, 1 skipped`; managed DeepAgents attempt `b84fe5801ceb44c1a37044e21e60da6f` plus local acceptance boundary probe produced `PASS`, authorized canonical transition, and exact evidence release. Probe-owned raw evidence was removed after capture; no shared session was removed.
-- Current proof: local suite `1105 passed, 1 skipped`; exact-head Repository Contracts, Runtime Contracts, and Benchmark passed; deterministic lifecycle coverage passed. Live lifecycle proof remains required by completion criterion 8.
-- Live probe update: managed `dcode-project` capability resolved on 2026-10-10. Probe attempt `5a62099b7eeb43daaf8d0a99e15f65e4` produced bound `TaskResult` with `status=completed`, confirmed settlement cleanup, and no continuation; `retire_settled_lane` returned `retirement_unresolved` with `process ownership identity is unavailable` because pane `w1:p1` retained only pre-existing `powershell.exe`. Do not mark plan complete from this partial proof.
+- Current proof: full suite `1110 passed, 1 skipped`; affected lifecycle suite `424 passed`; exact-head Repository Contracts, Runtime Contracts, and Benchmark passed on `b7171843`; planning and repository-contract validators passed.
+- Live probe evidence: partial attempt `5a62099b7eeb43daaf8d0a99e15f65e4` failed closed because pane `w1:p1` retained only pre-existing `powershell.exe` and no recorded process identity; no unrelated process or shared pane was retired. Successful attempt `b84fe5801ceb44c1a37044e21e60da6f` produced `TaskResult=reported_completed`, cleanup `removed`, retirement `removed` with `process_retirement_proven=true`, canonical acceptance `PASS`, authorized Plan transition, and exact evidence release while preserving the pane/session.
 - Review turn 5: `FAIL` at current head `6c38e34bce429b3bca19e071ba247319b361560a`; found three justified lifecycle gaps: retirement guessed an unbound worker process, disposal could precede durable release recording, and settled-attempt replacement did not preserve the original release binding.
 - Review-turn-5 remediation: retirement now fails closed without recorded process identity; release persists a pending resource record before unlink and treats a missing path as `already_absent` only after that authorization; replacement attempts retain the original release binding for delayed final resource recording. Added targeted regressions in `tests/test_herdr_main_launcher.py`, `tests/test_evidence_release.py`, and `tests/test_dcode_project.py`.
-- Post-remediation local proof: affected suite `422 passed`; full suite `1108 passed, 1 skipped`; planning and repository-contract validators passed. Plan remains `active` until the remediation is committed, pushed, checked on the exact PR head, and independently reviewed again.
+- Post-remediation local proof: affected suite `424 passed`; full suite `1110 passed, 1 skipped`; planning and repository-contract validators passed.
 - Review turn 6: `FAIL` at `15c1f2b279671cd80751ecf81903f50e55f3a4e3`; found that the public disposal helper could still unlink without a durable authorization record and that controller replay stopped at the already-committed Plan transition.
 - Review-turn-6 remediation: `release_authorized_evidence` now requires an exact pending/terminal durable release record; pending authorization is written before the Plan transition; and `apply_accepted_plan_transitions` replays release when all requested target states are already committed. Added durable-record and replay regressions. Post-remediation full suite: `1110 passed, 1 skipped`; affected suite: `424 passed`.
 - Review turn 7: `FAIL` at `d68cb81eb09e58fa1b6fefcf9f947f07c8aac9ff`; found that disposal validation still accepted an in-memory release record without attempt-guard evidence, and replacement settlement could overwrite the original pending release slot.
 - Review-turn-7 remediation: release validation now requires persisted attempt-guard release state; the attempt guard retains per-attempt release authorizations/resources and preserves the original `release_binding` across replacement settlement. Added regressions for guard-backed release and replacement settlement ordering. Post-remediation full suite: `1110 passed, 1 skipped`; affected suite: `424 passed`.
 - Review cap: the user-authorized independent-review limit of three turns for this execution cycle is reached. No further reviewer was dispatched; final acceptance relies on the fresh local suite, validators, exact-head CI, live proof already captured, and the capped review record.
+- Verification result: `verified` at HEAD `b7171843ab13e33600e68040e53ed9b5c2331c04` in the dedicated worktree. Full suite `1110 passed, 1 skipped`; affected suite `424 passed`; planning validation and Repository Contracts passed; exact-head PR checks passed for Repository Contracts, Runtime Contracts (Ubuntu and Windows), and Benchmark. The user-authorized three-review cap is the recorded deviation from obtaining a post-final-patch independent PASS review.
 
 ## Completion Criteria
 
@@ -536,7 +537,7 @@ The plan is ready for completion verification when:
 10. no new database, cache, daemon, event bus, TTL sweeper, acceptance ledger, or global registry was introduced
 11. local readiness is complete before remote verification; `active → completed` waits for user-authorized exact-PR-head checks and independent review
 
-The plan may be marked `completed` only after
-`skill-verification-before-completion` returns `verified` against fresh
-repository evidence. PR creation, push, merge, and external cleanup remain
-outside this proposed plan's authority.
+The plan is `completed` after `skill-verification-before-completion` returned
+`verified` against fresh repository evidence. PR creation and push were
+authorized and completed; merge and external cleanup remain outside this
+plan's authority.
