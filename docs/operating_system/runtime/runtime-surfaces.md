@@ -128,7 +128,7 @@ resources remain caller-owned through `runtime.json`.
 - Bound `TaskResult` records carry assignment/attempt identity, progress, checkpoint, remaining work, and verification references through atomic publication; valid task results report evidence only and never grant acceptance or continuation.
 - Runtime deployment stages marker-owned output, validates it, then swaps one complete target tree; failed activation restores prior target content.
 - Launcher evidence records monotonic `preflight`, `target_discovery`, `worker_initialization`, `delivery`, `observation`, and `retirement` durations plus launcher subprocess counts. Values use explicit measured/not-attempted/unavailable status, include total duration and retry attribution, and stay workload-specific; no optimization claim is valid without matching baseline evidence.
-- Native Codex CoS may pass `--session auto --pane auto`; `scripts/secretary_live_runtime.py` bootstraps a task-owned workspace before invoking the repository launcher when automatic selectors are used, then passes the default session and verified workspace-qualified pane. Exact selectors remain unchanged after the server check. Probe-owned workspace cleanup is required for a successful result; unresolved cleanup remains `BLOCKED_CAPABILITY`. The repository launcher discovers eligible matching-`--cwd` panes from the selected Herdr session, validates workspace-qualified pane IDs, filters shell-only foreground processes, sorts candidates deterministically, and selects the first. Workspace IDs are not Herdr session names. Candidate evidence records the full eligible set. Mixed exact/`auto` selectors fail closed; no eligible target returns `target_resolution:not_found`. `HERDR_ENV` is not a controller dispatch gate; launcher child environments remove it.
+- Native Codex CoS may pass `--session auto --pane auto`; `scripts/secretary_live_runtime.py` bootstraps a task-owned workspace before invoking the repository launcher when automatic selectors are used, then passes the default session and verified workspace-qualified pane. Exact selectors remain unchanged after the server check. Probe-owned workspace cleanup is required for a successful result; unresolved cleanup remains `BLOCKED_CAPABILITY`. The repository launcher discovers eligible matching-`--cwd` panes from the selected Herdr session, validates workspace-qualified pane IDs, filters shell-only foreground processes, sorts candidates deterministically, and selects the first. Workspace IDs are not Herdr session names. Candidate evidence records the full eligible set. An `auto` session with an exact pane fails closed; a named session with `pane=auto` resolves only within that session. No eligible target returns `target_resolution:not_found`. `HERDR_ENV` is not a controller dispatch gate; launcher child environments remove it.
 - Herdr target evidence records session provenance as `shared/default` for the default session and `pre-existing` for other selected sessions. Existing sessions remain preserved; no deletion is enabled without direct exclusive-ownership and empty-session evidence.
 - Herdr observation is bounded and transient: DeepAgents reads the correlated lifecycle receipt first; confirmed receipts skip pane `wait-output`, `process-info`, and `read` commands. Unresolved receipts use pane waits and pull probes for diagnostics or legacy fallback only; Codex uses `agent get`/`agent read` using the assignment attempt identity. `agent wait` remains a documented Herdr capability, not current launcher integration. Initial or stale state is `unknown`, and silence may become `stuck_suspected` only as controller evidence. Observation never auto-kills, retries, advances, releases an assignment claim, or stores raw output. Replacement requires canonical `BLOCKED | RECONCILE | ELIGIBLE` settlement evidence.
 - Numeric Codex wall-clock grants fail closed until a named runtime owner can enforce interruption and cleanup. Native/default grants remain supported; no unsupported `outer-watchdog` claim is emitted.
@@ -215,13 +215,20 @@ resources remain caller-owned through `runtime.json`.
   this contract fake. Released receipts never restore active ownership. Only a
   transport-owned durable journal may claim process-crash recovery.
 - The bounded live Secretary wrapper is `scripts/secretary_live_runtime.py`.
-  It launches through `scripts/herdr_main_launcher.py`, resolves one configured
+  The live wrapper launches through `scripts/herdr_main_launcher.py`, resolves one configured
   `CODEX_HOME` containing `config.toml` and `auth.json`, requires provider
   `9router`, and emits sanitized producer-bound receipts. Live launch requires
   an existing Herdr pane matching the requested worktree; missing target
   resolution is `BLOCKED_CAPABILITY`, not permission to use fallback transport.
   Receipt validity does not prove Worker publication, settlement, or CoS
   acceptance.
+- Repeated local evidence collection uses `scripts/secretary_evidence_adapter.py`.
+  It reads sanitized launcher/provider artifacts and a recorded reusable target;
+  it does not mutate Herdr, Codex, or the provider. Provider token/cache/cost
+  data remains diagnostic and `partial-unattributed` unless both an existing run
+  or attempt identifier proves the join and a validated live-attributed Secretary
+  receipt is present. Missing structured Secretary receipts keep readiness
+  `BLOCKED_CAPABILITY`.
 - Live receipts may carry measured token usage from `response.usage` and a
   separately marked published-rate-card cost estimate. Missing model/rate
   attribution keeps cost `unknown`; estimates never claim provider billing.

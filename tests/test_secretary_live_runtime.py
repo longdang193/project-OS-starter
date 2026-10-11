@@ -1205,6 +1205,37 @@ def test_prepare_herdr_target_preserves_exact_selector_without_workspace_creatio
     assert commands == [["herdr", "status", "server"]]
 
 
+def test_prepare_herdr_target_reuses_named_session_with_auto_pane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[1:] == ["status", "server"]:
+            return subprocess.CompletedProcess(command, 0, "status: running\n", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    original = request(session="default", pane="auto")
+    launch_request, preflight, workspace_id = runtime._prepare_herdr_target(
+        original,
+        herdr="herdr",
+        env={},
+    )
+
+    assert launch_request == original
+    assert preflight["selector_mode"] == "named-session-auto-pane"
+    assert preflight["session"] == "default"
+    assert preflight["pane"] == "auto"
+    assert preflight["workspace_created"] is False
+    assert workspace_id is None
+    assert commands == [["herdr", "status", "server"]]
+
+
 def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

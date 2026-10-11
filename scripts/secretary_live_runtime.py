@@ -348,14 +348,14 @@ def _prepare_herdr_target(
     herdr: str,
     env: dict[str, str],
 ) -> tuple[SecretaryLaunchRequest, dict[str, Any], str | None]:
-    if (request.session == "auto") != (request.pane == "auto"):
+    if request.session == "auto" and request.pane != "auto":
         raise LaunchBlocked("`--session auto` and `--pane auto` must be used together.")
     server = _ensure_herdr_server(herdr, env=env)
     if request.session != "auto":
         return request, {
             "server": server["state"],
             "server_started": server["started"],
-            "selector_mode": "exact",
+            "selector_mode": "named-session-auto-pane" if request.pane == "auto" else "exact",
             "session": request.session,
             "pane": request.pane,
             "pane_cwd_verified": False,

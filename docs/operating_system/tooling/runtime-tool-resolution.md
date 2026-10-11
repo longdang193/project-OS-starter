@@ -192,6 +192,17 @@ recorded; unresolved probe-workspace cleanup keeps the result
 allow the wrapper to resolve the user-local Codex home so `config.toml` and
 `auth.json` remain the configured source.
 
+For repeated diagnostics, use the local read-only
+`scripts/secretary_evidence_adapter.py` with a task-owned target file containing
+the recorded `workspace_id`, `pane_id`, `cwd`, named `session`, and `pane:
+auto`. Pass that named session to the existing launcher rather than creating a
+new workspace per run. The adapter keeps `launcher_evidence`, `provider_usage`,
+and `secretary_receipt` separate; it joins provider usage only when an existing
+`run_id` or `attempt_id` matches and a validated live-attributed Secretary receipt
+is present, otherwise labels token, cache, and cost data
+`partial-unattributed`. It never creates or closes Herdr workspaces and never
+promotes provider telemetry into a Secretary receipt or `READY` result.
+
 ## Fallback
 
 When optional capability is unavailable, continue with pinned documentation,
