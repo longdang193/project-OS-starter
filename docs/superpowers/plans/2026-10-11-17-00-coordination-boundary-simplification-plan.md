@@ -602,4 +602,3 @@ The plan is ready for completion verification when:
 11. scope deviations, blocked capabilities, and deferred work are recorded in the plan before status changes to `completed`.
 
 The plan was explicitly approved for execution; completion is recorded only after the required implementation and verification evidence above passed.
-
