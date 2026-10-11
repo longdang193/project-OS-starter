@@ -79,6 +79,7 @@ def test_measure_mode_uses_production_function_with_explicit_provenance() -> Non
     assert all(item.measurement_source for item in results)
     assert all(item.sample_count == 2 for item in results)
     assert all(item.latency_ms is not None for item in results)
+    assert all(item.correct is True for item in results)
 
 
 def test_contract_cli_mode_is_explicit_and_preserves_fixture_provenance() -> None:

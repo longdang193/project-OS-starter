@@ -594,6 +594,10 @@ def _observe_submitted_codex(
     }
     saw_activity = False
     initial_output_fingerprint: tuple[object, ...] | None = None
+    initial_state: object | None = None
+    initial_state_change_seq: object | None = None
+    state_changed = False
+    state_change_seq_changed = False
     output_changed = False
     completed = False
     while time.monotonic() < deadline:
@@ -607,6 +611,17 @@ def _observe_submitted_codex(
         )
         if snapshot.get("state") != "idle" or snapshot.get("observation_error"):
             saw_activity = True
+        if initial_state is None:
+            initial_state = snapshot.get("state")
+        elif snapshot.get("state") != initial_state:
+            state_changed = True
+        if initial_state_change_seq is None:
+            initial_state_change_seq = snapshot.get("state_change_seq")
+        elif (
+            snapshot.get("state_change_seq") is not None
+            and snapshot.get("state_change_seq") != initial_state_change_seq
+        ):
+            state_change_seq_changed = True
         fingerprint = (
             snapshot.get("content"),
             snapshot.get("output_sha256"),
@@ -623,6 +638,7 @@ def _observe_submitted_codex(
                     snapshot.get("state") == "idle"
                     and saw_activity
                     and output_changed
+                    and (state_changed or state_change_seq_changed)
                 )
             )
             and not snapshot.get("observation_error")
@@ -1369,6 +1385,7 @@ def _owned_resources(
     payload: Mapping[str, Any] | None,
     observation: Mapping[str, Any] | None,
     *,
+    cleanup_state: str | None = None,
     workspace_id: str | None = None,
     workspace_close: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
@@ -1376,6 +1393,7 @@ def _owned_resources(
     herdr = herdr if isinstance(herdr, Mapping) else {}
     observed = observation if isinstance(observation, Mapping) else {}
     cleanup = observed.get("cleanup") if isinstance(observed.get("cleanup"), Mapping) else {}
+    effective_cleanup_state = cleanup_state or cleanup.get("state")
     resources: list[dict[str, Any]] = []
     if workspace_id:
         resources.append({
@@ -1390,7 +1408,7 @@ def _owned_resources(
             resources.append({
                 "kind": kind,
                 "identity": identity,
-                "state": "settled" if cleanup.get("state") == "removed" else "quarantined",
+                "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
                 "authority": "secretary_live_runtime._release_codex_agent",
             })
     process_identity = herdr.get("process_identity") or observed.get("process_identity")
@@ -1404,7 +1422,7 @@ def _owned_resources(
             resources.append({
                 "kind": "process",
                 "identity": safe_identity,
-                "state": "settled" if cleanup.get("state") == "removed" else "quarantined",
+                "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
                 "authority": "herdr.process-retirement",
             })
     return resources
@@ -1532,12 +1550,12 @@ def _normalize_invocation_outcome(
     cleanup_state = cleanup.get("state")
     if isinstance(observed_cleanup, Mapping):
         observed_cleanup_state = observed_cleanup.get("state")
-        if observed_cleanup_state and cleanup_state in {None, "unknown", "not_attempted"}:
+        if observed_cleanup_state and cleanup_state in {None, "unknown", "not_attempted", "preserved"}:
             cleanup_state = observed_cleanup_state
     resource = _reduce_resource_evidence(
         {"state": cleanup_state, "verified": cleanup_state == "removed"},
     )
-    owned_resources = _owned_resources(payload, observed)
+    owned_resources = _owned_resources(payload, observed, cleanup_state=cleanup_state)
 
     observability_state = (
         "available" if observed and not observed.get("observation_error") else "unavailable"
@@ -1647,6 +1665,7 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             result["owned_resources"] = _owned_resources(
                 payload,
                 observation,
+                cleanup_state=cleanup_state,
                 workspace_id=workspace_id,
                 workspace_close=preflight["workspace_close"],
             )
@@ -1766,6 +1785,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                 result["owned_resources"] = _owned_resources(
                     payload,
                     post_submit if isinstance(post_submit, Mapping) else {},
+                    cleanup_state=cleanup_state,
                     workspace_id=workspace_id,
                     workspace_close=preflight["workspace_close"],
                 )

@@ -454,6 +454,77 @@ def test_observe_submitted_codex_retries_terminal_state_after_read_timeout(
     assert observation["cleanup"] == {"state": "removed"}
 
 
+def test_observe_submitted_codex_rejects_recovered_stale_output_without_state_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {
+            "state": "idle",
+            "state_change_seq": 1,
+            "content": None,
+            "output_sha256": "a" * 64,
+            "output_chars": 0,
+            "observation_error": "agent read transport timeout",
+        },
+        {
+            "state": "idle",
+            "state_change_seq": 1,
+            "content": "Previous invocation\n• stale answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 32,
+            "observation_error": None,
+        },
+        {
+            "state": "failed",
+            "state_change_seq": 2,
+            "content": "Previous invocation\n• stale answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 32,
+            "observation_error": None,
+        },
+    ])
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {"herdr": {"executable": "herdr.exe", "session": "session", "pane": "pane", "agent_name": "agent"}},
+        env={},
+    )
+
+    assert observation["state"] == "failed"
+    assert "semantic_content" not in observation
+
+
+def test_normal_outcome_uses_consistent_cleanup_evidence() -> None:
+    payload = {
+        "herdr": {"session": "session", "pane": "pane", "agent_name": "agent"},
+        "assignment": {
+            "execution": {"state": "completed"},
+            "cleanup": {"state": "preserved"},
+            "task_result": {"state": "reported_completed", "content": "answer"},
+        },
+    }
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload=payload,
+        observation={"state": "done", "cleanup": {"state": "removed"}},
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+    assert result["owned_resources"]
+    assert all(item["state"] == "settled" for item in result["owned_resources"])
+
+
 def test_observe_submitted_codex_waits_past_initial_idle_until_done(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
