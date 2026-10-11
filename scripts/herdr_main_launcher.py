@@ -2241,6 +2241,8 @@ def _terminate_codex_lane_unlocked(
             "requested": True,
             "action": "pane-close",
             "verified": False,
+            "state": "quarantined",
+            "recovery_required": True,
             "detail": detail or f"pane close failed ({close_result.returncode})",
         }
 

@@ -222,6 +222,26 @@ def test_chief_of_staff_defines_canonical_work_modes_and_advisory_boundaries() -
     assert "required_reads:\n  - docs/operating_system/rules/git-tracked-coordination-rule.md" not in skill
 
 
+def test_chief_of_staff_scopes_exact_binding_to_exact_audits() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    dispatch = read("docs/operating_system/planning/planning-dispatch.md")
+    normalized_skill = " ".join(skill.split())
+    normalized_dispatch = " ".join(dispatch.split())
+
+    for text in (
+        "Direct CoS reasoning is an in-session semantic role and does not require a plan, Herdr, native Codex qualification, or an exact-commit repository audit",
+        "PR, release, incident, specification, research, and cross-repository advisory analysis are not blanket exclusions",
+        "action determines its assurance needs",
+    ):
+        assert text in normalized_skill
+    for text in (
+        "Direct advisory CoS is an in-session semantic role and needs no plan, `Required skills` opt-in, native Codex qualification, Herdr, or exact-commit audit when the requested action is read-only reasoning",
+        "Bind an exact commit or use clean isolation when local inspection tools cannot enforce read-only behavior",
+        "action-specific assurance applies",
+    ):
+        assert text in normalized_dispatch
+
+
 def test_chief_of_staff_keeps_plan_execution_mode_specific() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
     normalized = " ".join(skill.split())

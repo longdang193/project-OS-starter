@@ -17,8 +17,11 @@ Secretary does not become a permanent controller above CoS. It does not own
 implementation, plan truth, Git truth, runtime lifecycle, worker execution, or
 acceptance.
 
-when Secretary is absent, existing execution-selection policy operates
-unchanged. Secretary does not add a mandatory Secretary-to-CoS hop.
+When Secretary is absent, existing execution-selection policy operates
+unchanged. Secretary does not add a mandatory Secretary-to-CoS hop. Optional
+runtime capabilities are routing aids, not semantic preconditions: if a managed
+Secretary path is unavailable, Secretary remains useful from canonical evidence
+and may select an independently safe direct path.
 
 ## Activation
 
