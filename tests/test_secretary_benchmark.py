@@ -82,6 +82,25 @@ def test_measure_mode_uses_production_function_with_explicit_provenance() -> Non
     assert all(item.correct is True for item in results)
 
 
+def test_measure_mode_marks_wrong_normalizer_output_incorrect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._normalize_invocation_outcome",
+        lambda **kwargs: {
+            "result": {"state": "reported"},
+            "resource": {"state": "settled"},
+        },
+    )
+
+    results = run_measure_benchmark()
+
+    ambiguous = next(item for item in results if item.scenario_id == "ambiguous_identity")
+    cleanup = next(item for item in results if item.scenario_id == "cleanup_quarantine")
+    assert ambiguous.correct is False
+    assert cleanup.correct is False
+
+
 def test_contract_cli_mode_is_explicit_and_preserves_fixture_provenance() -> None:
     from pathlib import Path
     import subprocess

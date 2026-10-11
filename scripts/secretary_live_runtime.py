@@ -609,7 +609,9 @@ def _observe_submitted_codex(
             env=env,
             timeout_seconds=min(5.0, remaining),
         )
-        if snapshot.get("state") != "idle" or snapshot.get("observation_error"):
+        if snapshot.get("state") == "working" or (
+            snapshot.get("state") == "idle" and snapshot.get("observation_error")
+        ):
             saw_activity = True
         if initial_state is None:
             initial_state = snapshot.get("state")

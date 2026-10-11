@@ -502,6 +502,54 @@ def test_observe_submitted_codex_rejects_recovered_stale_output_without_state_ch
     assert "semantic_content" not in observation
 
 
+def test_observe_submitted_codex_rejects_unknown_recovery_as_activity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {
+            "state": "unknown",
+            "state_change_seq": 1,
+            "content": None,
+            "output_sha256": "a" * 64,
+            "output_chars": 0,
+            "observation_error": "completion observation deadline expired",
+        },
+        {
+            "state": "idle",
+            "state_change_seq": 2,
+            "content": "Previous invocation\n• stale answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 32,
+            "observation_error": None,
+        },
+    ])
+    clock = iter([0.0, 0.0, 0.0, 0.0, 0.0, 2.0])
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS",
+        1.0,
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime.time.monotonic", lambda: next(clock))
+    monkeypatch.setattr("scripts.secretary_live_runtime.time.sleep", lambda _: None)
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {"herdr": {"executable": "herdr.exe", "session": "session", "pane": "pane", "agent_name": "agent"}},
+        env={},
+    )
+
+    assert observation["state"] == "idle"
+    assert observation["observation_error"] == "completion output not observed"
+    assert "semantic_content" not in observation
+
+
 def test_normal_outcome_uses_consistent_cleanup_evidence() -> None:
     payload = {
         "herdr": {"session": "session", "pane": "pane", "agent_name": "agent"},

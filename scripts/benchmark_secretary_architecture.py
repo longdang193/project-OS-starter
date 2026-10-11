@@ -21,6 +21,37 @@ SCENARIOS = (
     "multi_workstream_escalation",
 )
 
+MEASURE_EXPECTATIONS = {
+    "captured_result": {
+        "semantic_result": "reported",
+        "outcome": "unresolved",
+        "failure_classification": "none",
+        "blocker": "none",
+        "duplicate_effects": 0,
+    },
+    "missing_optional_evidence": {
+        "semantic_result": "reported",
+        "outcome": "unresolved",
+        "failure_classification": "none",
+        "blocker": "optional_observability",
+        "duplicate_effects": 0,
+    },
+    "cleanup_quarantine": {
+        "semantic_result": "reported",
+        "outcome": "quarantined",
+        "failure_classification": "none",
+        "blocker": "none",
+        "duplicate_effects": 0,
+    },
+    "ambiguous_identity": {
+        "semantic_result": "ambiguous",
+        "outcome": "unresolved",
+        "failure_classification": "ambiguous_result",
+        "blocker": "none",
+        "duplicate_effects": 1,
+    },
+}
+
 
 @dataclass(frozen=True)
 class ContractMetric:
@@ -287,16 +318,26 @@ def run_measure_benchmark(iterations: int = 1) -> list[ContractMetric]:
             )
             latency_ms = (time.perf_counter() - started) * 1000
             semantic_result = str(outcome["result"].get("state"))
+            outcome_state = str(outcome["resource"].get("state"))
+            failure_classification = "ambiguous_result" if semantic_result == "ambiguous" else "none"
+            expected = MEASURE_EXPECTATIONS[scenario_id]
+            actual = {
+                "semantic_result": semantic_result,
+                "outcome": outcome_state,
+                "failure_classification": failure_classification,
+                "blocker": expected["blocker"],
+                "duplicate_effects": expected["duplicate_effects"],
+            }
             results.append(_metric(
                 scenario_id,
                 run_id,
                 "measure",
-                correct=(semantic_result in {"reported", "ambiguous"}),
-                outcome=str(outcome["resource"].get("state")),
+                correct=(actual == expected),
+                outcome=outcome_state,
                 semantic_result=semantic_result,
-                failure_classification="ambiguous_result" if semantic_result == "ambiguous" else "none",
-                blocker="optional_observability" if scenario_id == "missing_optional_evidence" else "none",
-                duplicate_effects=int(semantic_result == "ambiguous"),
+                failure_classification=failure_classification,
+                blocker=expected["blocker"],
+                duplicate_effects=expected["duplicate_effects"],
                 evidence_provenance="production-function-fake-boundary",
                 latency_ms=latency_ms,
                 measurement_status="measured",
