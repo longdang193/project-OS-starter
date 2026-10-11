@@ -2,7 +2,7 @@
 layer: change
 artifact_type: plan
 contract_version: "1"
-status: proposed
+status: active
 template_id: implementation-plan
 name: semantic-acceptance-delivery-a
 distribution_tier: starter_kit
@@ -103,7 +103,7 @@ dependency is demonstrated.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | dedicated | `unresolved` | none | fresh base, plan checkpoint, and caller inventory | pending |
+| Task 1 | `active` | dedicated | `codex` | none | fresh base, plan checkpoint, and caller inventory | worktree and plan checkpoint verified |
 | Task 2 | `pending` | dedicated | `unresolved` | Task 1 | immutable-candidate acceptance contract | pending |
 | Task 3 | `pending` | dedicated | `unresolved` | Task 2 | settlement decoupled end-to-end | pending |
 | Task 4 | `pending` | dedicated | `unresolved` | Task 3 | Plan consequence and dependency binding | pending |
