@@ -72,6 +72,16 @@ def evaluate_acceptance(
         reasons.append("Git and task plan binding mismatch")
     if controller.get("task_id") != task.get("task_id"):
         reasons.append("controller and task identity mismatch")
+    task_attempt_id = task.get("attempt_id")
+    accepted_attempt_id = attempt_id if attempt_id is not None else task_attempt_id
+    if not isinstance(accepted_attempt_id, str) or not accepted_attempt_id.strip():
+        reasons.append("attempt binding")
+    elif isinstance(task_attempt_id, str) and task_attempt_id.strip() and task_attempt_id != accepted_attempt_id:
+        reasons.append("attempt binding")
+    elif git.get("attempt_id") != accepted_attempt_id:
+        reasons.append("attempt binding")
+    if not isinstance(git.get("lane_head_sha"), str) or not git.get("lane_head_sha").strip():
+        reasons.append("immutable candidate identity")
     required_conditions = task.get("required_conditions")
     required_condition_ids: set[str] = set()
     if not isinstance(required_conditions, Mapping) or not required_conditions:
@@ -107,10 +117,6 @@ def evaluate_acceptance(
                 reasons.append(missing)
             elif value is False:
                 false_checks.append(label)
-    for field, label in (("settlement_proven", "settlement proof"), ("resource_settled", "resource settlement")):
-        missing, value = _required_bool(settlement, field, label)
-        if missing or value is False:
-            reasons.append(missing or label)
     if isinstance(artifact_conditions, Mapping):
         false_checks.extend(
             f"artifact condition: {name}"
@@ -143,12 +149,13 @@ def evaluate_acceptance(
         "authorized": decision == "PASS",
         "current_state": current_state,
         "next_state": "completed" if decision == "PASS" else current_state,
+        "accepted_candidate_sha": git.get("lane_head_sha"),
     }
     acceptance_proof = {
         "task_id": task.get("task_id"),
         "plan_identity": task.get("plan_identity"),
         "task_state": current_state,
-        "attempt_id": attempt_id or task.get("attempt_id"),
+        "attempt_id": accepted_attempt_id,
         "checkpoint_sha": git.get("checkpoint_sha"),
         "repository_identity": git.get("repository_identity"),
         "required_conditions": dict(required_conditions) if isinstance(required_conditions, Mapping) else {},
@@ -199,6 +206,7 @@ def authorize_evidence_release(
     retention: Mapping[str, Mapping[str, Any]],
     retirement_proof: Mapping[str, Any] | None = None,
     recovery_required: bool = False,
+    runtime_settlement: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     reasons: list[str] = []
     if decision.get("decision") != "PASS":
@@ -245,11 +253,12 @@ def authorize_evidence_release(
             or any(value is not True for value in artifact_conditions.values())
         ):
             reasons.append("acceptance condition coverage")
-        settlement = proof.get("settlement")
+        settlement = runtime_settlement
         if (
             not isinstance(settlement, Mapping)
             or settlement.get("settlement_proven") is not True
             or settlement.get("resource_settled") is not True
+            or settlement.get("attempt_id") != binding.get("attempt_id")
         ):
             reasons.append("acceptance settlement")
         git = proof.get("git")
@@ -557,6 +566,7 @@ def release_authorized_evidence(
     retirement_proof: Mapping[str, Any] | None = None,
     recovery_required: bool = False,
     release_record: Mapping[str, Any] | None = None,
+    runtime_settlement: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     result = authorize_evidence_release(
         decision,
@@ -567,6 +577,7 @@ def release_authorized_evidence(
         retention=retention,
         retirement_proof=retirement_proof,
         recovery_required=recovery_required,
+        runtime_settlement=runtime_settlement,
     )
     if not result["authorized"]:
         return result
@@ -768,7 +779,7 @@ def authorize_dependent_transition(
     required_conditions = proof.get("required_conditions")
     artifact_conditions = proof.get("artifact_conditions")
     freshness = proof.get("freshness")
-    settlement = proof.get("settlement")
+    git_proof = proof.get("git")
     if (
         not isinstance(required_conditions, Mapping)
         or not required_conditions
@@ -778,9 +789,9 @@ def authorize_dependent_transition(
         or not isinstance(freshness, Mapping)
         or freshness.get("head_matches") is not True
         or freshness.get("write_scope_matches") is not True
-        or not isinstance(settlement, Mapping)
-        or settlement.get("settlement_proven") is not True
-        or settlement.get("resource_settled") is not True
+        or not isinstance(git_proof, Mapping)
+        or not isinstance(git_proof.get("candidate_sha"), str)
+        or not git_proof.get("candidate_sha").strip()
     ):
         return {
             "authorized": False,
@@ -815,6 +826,7 @@ def authorize_dependent_transition(
         "plan_identity": dependent_task.get("plan_identity"),
         "current_state": current_state,
         "next_state": "active",
+        "accepted_candidate_sha": git_proof["candidate_sha"],
         "reason": "accepted dependency permits advancement",
     }
 

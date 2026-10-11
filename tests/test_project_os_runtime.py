@@ -167,6 +167,7 @@ def _acceptance_inputs() -> dict[str, dict[str, object]]:
         "task": {
             "task_id": "Task 1",
             "plan_identity": "plan-1",
+            "attempt_id": "attempt-1",
             "required_proof": "artifact proof",
             "required_conditions": {"required artifact exists": "artifact proof"},
             "evidence": "docs/evidence.md",
@@ -181,6 +182,10 @@ def _acceptance_inputs() -> dict[str, dict[str, object]]:
         "git": {
             "repository_identity": "project-OS-starter",
             "plan_identity": "plan-1",
+            "lane_head_sha": "candidate-1",
+            "checkpoint_sha": "checkpoint-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
             "head_matches": True,
             "write_scope_matches": True,
         },
@@ -249,6 +254,7 @@ def test_evidence_release_requires_consumer_release_and_expired_retention() -> N
 
     result = authorize_evidence_release(
         decision,
+        runtime_settlement={"attempt_id": "attempt-1", "settlement_proven": True, "resource_settled": True},
         binding=binding,
         canonical_consequence=canonical,
         required_consumers=["secretary"],
@@ -287,6 +293,7 @@ def test_authorized_evidence_release_unlinks_exact_bound_path(tmp_path: Path) ->
 
     result = release_authorized_evidence(
         decision,
+        runtime_settlement={"attempt_id": "attempt-1", "settlement_proven": True, "resource_settled": True},
         binding=binding,
         canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=["secretary"],
@@ -358,6 +365,7 @@ def test_evidence_release_rejects_stale_acceptance_proof(tmp_path: Path) -> None
 
     result = release_authorized_evidence(
         decision,
+        runtime_settlement={"attempt_id": "attempt-1", "settlement_proven": True, "resource_settled": True},
         binding=binding,
         canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=["secretary"],
@@ -397,6 +405,7 @@ def test_evidence_release_rejects_empty_acceptance_conditions(tmp_path: Path) ->
 
     result = release_authorized_evidence(
         decision,
+        runtime_settlement={"attempt_id": "attempt-1", "settlement_proven": True, "resource_settled": True},
         binding=binding,
         canonical_consequence={**binding, "authorized": True, "owner": "git", "checkpoint_verified": True, "commit_sha": "commit-1", "coordination_ref": "coordination", "plan_path": "plan.md", "expected_plan_revision": "revision-1"},
         required_consumers=["secretary"],
@@ -486,6 +495,7 @@ def test_cos_acceptance_passes_and_authorizes_only_ready_dependent() -> None:
     )
 
     inputs = _acceptance_inputs()
+    inputs["settlement"] = {}
     decision = evaluate_acceptance(**inputs)
     transition = authorize_dependent_transition(
         decision,
@@ -498,6 +508,24 @@ def test_cos_acceptance_passes_and_authorizes_only_ready_dependent() -> None:
     assert decision["task_transition"]["next_state"] == "completed"
     assert transition["authorized"] is True
     assert transition["next_state"] == "active"
+    assert transition["accepted_candidate_sha"] == "candidate-1"
+
+
+def test_cos_acceptance_rejects_dependent_transition_without_candidate_identity() -> None:
+    from scripts.project_os_runtime.acceptance import authorize_dependent_transition, evaluate_acceptance
+
+    decision = evaluate_acceptance(**_acceptance_inputs())
+    decision["acceptance_proof"]["git"]["candidate_sha"] = ""
+
+    transition = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 1"]},
+        dependency_states={"Task 1": "completed"},
+    )
+
+    assert transition["authorized"] is False
+    assert transition["reason"] == "acceptance decision incomplete"
 
 
 def test_cos_acceptance_blocks_git_evidence_from_another_plan() -> None:
@@ -563,7 +591,7 @@ def test_cos_acceptance_blocks_missing_controller_binding() -> None:
     assert decision["task_transition"]["next_state"] == "active"
 
 
-def test_cos_acceptance_blocks_unsettled_resources() -> None:
+def test_cos_acceptance_ignores_unrelated_unsettled_resources() -> None:
     from scripts.project_os_runtime.acceptance import evaluate_acceptance
 
     inputs = _acceptance_inputs()
@@ -571,8 +599,57 @@ def test_cos_acceptance_blocks_unsettled_resources() -> None:
 
     decision = evaluate_acceptance(**inputs)
 
+    assert decision["decision"] == "PASS"
+
+
+def test_cos_acceptance_passes_immutable_candidate_without_settlement() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["settlement"] = {}
+
+    decision = evaluate_acceptance(**inputs, attempt_id="attempt-1")
+
+    assert decision["decision"] == "PASS"
+    assert decision["acceptance_proof"]["git"]["candidate_sha"] == "candidate-1"
+
+
+def test_cos_acceptance_blocks_mutable_workspace_without_candidate_identity() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["git"].pop("lane_head_sha")
+
+    decision = evaluate_acceptance(**inputs)
+
     assert decision["decision"] == "BLOCKED"
-    assert "resource settlement" in decision["reasons"]
+    assert "immutable candidate identity" in decision["reasons"]
+
+
+def test_cos_acceptance_blocks_missing_or_stale_attempt_binding() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    missing = evaluate_acceptance(**_acceptance_inputs(), attempt_id="")
+    stale_inputs = _acceptance_inputs()
+    stale_inputs["git"]["attempt_id"] = "attempt-2"
+    stale = evaluate_acceptance(**stale_inputs, attempt_id="attempt-1")
+
+    assert missing["decision"] == "BLOCKED"
+    assert "attempt binding" in missing["reasons"]
+    assert stale["decision"] == "BLOCKED"
+    assert "attempt binding" in stale["reasons"]
+
+
+def test_cos_acceptance_blocks_unresolved_required_condition() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["artifact_conditions"] = {"required artifact exists": None}
+
+    decision = evaluate_acceptance(**inputs)
+
+    assert decision["decision"] == "BLOCKED"
+    assert "artifact condition type" in decision["reasons"]
 
 
 @pytest.mark.parametrize("state", [None, "pending", "blocked", "completed"])

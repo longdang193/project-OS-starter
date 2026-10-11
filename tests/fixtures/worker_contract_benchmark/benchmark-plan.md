@@ -26,8 +26,8 @@ Complete bounded fixture tasks while preserving required proof and write scope.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | current | `deepagents` | none | fixture prerequisite proof | recorded |
-| Task 2 | `completed` | current | `deepagents` | none | second prerequisite proof | recorded |
+| Task 1 | `completed` | current | `deepagents` | none | fixture prerequisite proof | recorded; accepted_task_id=Task 1; accepted_candidate_sha=88cece2; accepted_plan_identity=worker-contract-benchmark-fixture |
+| Task 2 | `completed` | current | `deepagents` | none | second prerequisite proof | recorded; accepted_task_id=Task 2; accepted_candidate_sha=88cece2; accepted_plan_identity=worker-contract-benchmark-fixture |
 | Task 3 | `active` | current | `deepagents` | none | one-command proof | pending |
 | Task 4 | `active` | current | `deepagents` | Task 1 | one-prerequisite proof | pending |
 | Task 5 | `active` | current | `deepagents` | Tasks 1-2 | two-prerequisite proof | pending |

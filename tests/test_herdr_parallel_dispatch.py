@@ -1523,7 +1523,7 @@ def test_verify_launch_bindings_requires_accepted_revision_containment(tmp_path:
     raw.update({
         "worktree": str(tmp_path),
         "dependencies": ["Task 1"],
-        "accepted_prerequisites": {"Task 1": {"accepted_revision": "unrelated"}},
+        "accepted_prerequisites": {"Task 1": {"accepted_revision": "unrelated", "accepted_candidate_sha": "unrelated"}},
     })
     prepared = dispatcher.prepare_lane(raw)
     raw["execution_binding_digest"] = dispatcher._execution_binding_digest(prepared)
@@ -1549,7 +1549,7 @@ def test_verify_launch_bindings_accepts_contained_revision_without_artifact_ref(
         "worktree": str(root),
         "expected_base": head,
         "dependencies": ["Task 1"],
-        "accepted_prerequisites": {"Task 1": {"accepted_revision": head}},
+        "accepted_prerequisites": {"Task 1": {"accepted_revision": head, "accepted_candidate_sha": head}},
     })
     prepared = dispatcher.prepare_lane(raw)
     raw["execution_binding_digest"] = dispatcher._execution_binding_digest(prepared)
@@ -1592,7 +1592,7 @@ def test_verify_launch_bindings_preserves_ancestry_command_sequence(
             "expected_base": head,
             "dependencies": dependencies,
             "accepted_prerequisites": {
-                dependency: {"accepted_revision": head} for dependency in dependencies
+                dependency: {"accepted_revision": head, "accepted_candidate_sha": head} for dependency in dependencies
             },
         }
     )
@@ -1631,7 +1631,11 @@ def test_run_lane_rejects_stale_binding_before_launcher(tmp_path: Path, monkeypa
     assert result["capacity"] == "retired"
     assert called is False
 
-PLAN_FOR_DISPATCH = """# Plan
+PLAN_FOR_DISPATCH = """---
+name: dispatch-plan
+---
+
+# Plan
 
 ## Goal
 Prepare selected task.
@@ -1643,7 +1647,7 @@ Prepare selected task.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | current | `deepagents` | none | source proof | evidence |
+| Task 1 | `completed` | current | `deepagents` | none | source proof | evidence; accepted_task_id=Task 1; accepted_candidate_sha=c086339c08bb396d32be44a2b848b1ab473fa52c; accepted_plan_identity=dispatch-plan; accepted_assignment_id=assignment-1; accepted_attempt_id=attempt-1; accepted_checkpoint_sha=checkpoint-1 |
 | Task 2 | `active` | current | `deepagents` | Task 1 | dispatch proof | pending |
 
 ## Task Breakdown
@@ -1668,7 +1672,7 @@ def test_run_parallel_from_plan_reuses_existing_admission(tmp_path: Path, monkey
     }
     runtime["local_capabilities"] = {"requested": []}
     runtime["accepted_prerequisites"] = {
-        "Task 1": {"accepted_revision": "c086339c08bb396d32be44a2b848b1ab473fa52c"}
+        "Task 1": {"accepted_revision": "c086339c08bb396d32be44a2b848b1ab473fa52c", "accepted_candidate_sha": "c086339c08bb396d32be44a2b848b1ab473fa52c"}
     }
     for field in ("grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"):
         runtime.pop(field, None)

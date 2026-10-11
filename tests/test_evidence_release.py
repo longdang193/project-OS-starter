@@ -115,6 +115,14 @@ def _canonical_consequence(binding: dict[str, str] | None = None) -> dict[str, o
     }
 
 
+def _runtime_settlement() -> dict[str, object]:
+    return {
+        "attempt_id": "attempt-1",
+        "settlement_proven": True,
+        "resource_settled": True,
+    }
+
+
 def _release(
     tmp_path: Path,
     *,
@@ -122,6 +130,7 @@ def _release(
     decision: dict | None = None,
     create: bool = True,
     retirement_proof: dict | None = None,
+    runtime_settlement: dict | None = None,
 ):
     task_result = tmp_path / "task-result.json"
     result = tmp_path / "result.json"
@@ -141,6 +150,11 @@ def _release(
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": task_result, "result": result},
         retirement_proof=_retirement_proof() if retirement_proof is None else retirement_proof,
+        runtime_settlement=runtime_settlement or {
+            "attempt_id": "attempt-1",
+            "settlement_proven": True,
+            "resource_settled": True,
+        },
         release_record={
             "authorized": True,
             "binding": _binding(),
@@ -148,6 +162,23 @@ def _release(
             "attempt_guard": _attempt_guard(worktree=tmp_path),
         },
     )
+
+
+def test_release_uses_fresh_same_attempt_runtime_settlement(tmp_path: Path):
+    decision = _acceptance_decision()
+    decision["acceptance_proof"]["settlement"] = {}
+
+    result = _release(
+        tmp_path,
+        decision=decision,
+        runtime_settlement={
+            "attempt_id": "attempt-1",
+            "settlement_proven": True,
+            "resource_settled": True,
+        },
+    )
+
+    assert result["authorized"] is True
 
 
 def test_release_requires_exact_acceptance(tmp_path: Path):
@@ -175,6 +206,7 @@ def test_release_requires_verified_git_checkpoint(tmp_path: Path):
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": task_result},
         retirement_proof=_retirement_proof(),
+        runtime_settlement=_runtime_settlement(),
         release_record={
             "authorized": True,
             "binding": _binding(),
@@ -199,6 +231,7 @@ def test_release_requires_durable_authorization_record(tmp_path: Path):
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": task_result},
         retirement_proof=_retirement_proof(),
+        runtime_settlement=_runtime_settlement(),
     )
     assert result["authorized"] is False
     assert result["reasons"] == ["durable release authorization required"]
@@ -238,6 +271,7 @@ def test_release_replay_requires_durable_complete_record(tmp_path: Path):
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": task_result, "foreign": tmp_path / "foreign.json"},
         retirement_proof=_retirement_proof(),
+        runtime_settlement=_runtime_settlement(),
         release_record=release_record,
     )
     assert result["payload_released"] is True
@@ -254,6 +288,7 @@ def test_release_replay_rejects_incomplete_durable_record(tmp_path: Path):
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": tmp_path / "task-result.json"},
         retirement_proof=_retirement_proof(),
+        runtime_settlement=_runtime_settlement(),
         release_record={
             "authorized": True,
             "binding": _binding(),
@@ -275,6 +310,7 @@ def test_release_replay_recovers_after_disposal_before_final_record(tmp_path: Pa
         retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
         evidence_paths={"task-result": tmp_path / "task-result.json"},
         retirement_proof=_retirement_proof(),
+        runtime_settlement=_runtime_settlement(),
         release_record={
             "authorized": True,
             "binding": _binding(),
@@ -313,6 +349,7 @@ def _invoke_release(
         },
         evidence_paths={"task-result": evidence_path or tmp_path / "task-result.json"},
         retirement_proof=_retirement_proof(),
+        runtime_settlement=_runtime_settlement(),
         release_record=release_record,
     )
 
@@ -633,6 +670,7 @@ def test_release_preserves_missing_canonical_bindings(tmp_path: Path):
         consumer_releases={},
         retention={},
         evidence_paths={},
+        runtime_settlement=_runtime_settlement(),
     )
     assert result["authorized"] is False
 
