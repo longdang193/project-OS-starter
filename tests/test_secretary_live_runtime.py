@@ -566,7 +566,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime._close_herdr_workspace",
-        lambda herdr, workspace_id, **kwargs: events.append("workspace_close") or closed.append((herdr, workspace_id)) or {"state": "closed"},
+        lambda herdr, workspace_id, **kwargs: events.append("workspace_close") or closed.append((herdr, workspace_id)) or {"state": "closed", "verified": True},
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime.subprocess.run",
@@ -597,7 +597,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
 
     assert result["disposition"] == "READY"
     assert result["evidence_provenance"] == "live-attributed"
-    assert result["preflight"] == {"selector_mode": "test", "workspace_close": {"state": "closed"}}
+    assert result["preflight"] == {"selector_mode": "test", "workspace_close": {"state": "closed", "verified": True}}
     assert closed == [("herdr.exe", "w99")]
     assert events == ["workspace_close", "provider_observation"]
 
@@ -648,18 +648,100 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
     monkeypatch.setattr(
         runtime,
         "_observe_submitted_codex",
-        lambda *args, **kwargs: {"state": "idle", "cleanup": {"state": "unknown"}},
+        lambda *args, **kwargs: {"state": "idle", "cleanup": {"state": "removed"}},
     )
     monkeypatch.setattr(
         runtime,
         "_close_herdr_workspace",
-        lambda *args, **kwargs: {"state": "closed"},
+        lambda *args, **kwargs: {"state": "closed", "verified": True},
     )
 
     result = runtime.run_normal(request_value, output=tmp_path / "normal.json")
 
     assert result["result"]["state"] == "reported"
     assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+
+
+def test_close_workspace_requires_structured_retirement_proof(monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_herdr_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, '{"result":{"workspace_id":"w1","state":"closed"}}', ""
+        ),
+    )
+    assert runtime._close_herdr_workspace("herdr", "w1", env={}) == {
+        "state": "closed",
+        "verified": True,
+        "authority": "herdr.workspace.close",
+    }
+
+    monkeypatch.setattr(
+        runtime,
+        "_herdr_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+    assert runtime._close_herdr_workspace("herdr", "w1", env={}) == {
+        "state": "closed",
+        "verified": False,
+        "reason": "workspace_retirement_not_proven",
+    }
+
+
+def test_run_normal_exception_preserves_owned_resource_after_verified_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (
+            request_value,
+            {"selector_mode": "test"},
+            "workspace-1",
+        ),
+    )
+    monkeypatch.setattr(runtime.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(runtime, "_close_herdr_workspace", lambda *args, **kwargs: {"state": "closed", "verified": True})
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert result["execution"]["state"] == "failed"
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+    assert result["recovery_required"] is False
+    assert result["owned_resources"][0]["identity"] == "workspace-1"
+
+
+def test_run_normal_exception_quarantines_when_cleanup_is_unproven(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (request_value, {"selector_mode": "test"}, "workspace-1"),
+    )
+    monkeypatch.setattr(runtime.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(runtime, "_close_herdr_workspace", lambda *args, **kwargs: {"state": "unknown", "verified": False})
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert result["execution"]["state"] == "failed"
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["resource"] == {"state": "quarantined", "reuse_blocked": True}
+    assert result["recovery_required"] is True
+    assert result["owned_resources"][0]["identity"] == "workspace-1"
 
 
 def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(

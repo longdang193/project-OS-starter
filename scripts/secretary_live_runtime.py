@@ -447,10 +447,19 @@ def _close_herdr_workspace(herdr: str, workspace_id: str, *, env: dict[str, str]
             timeout=30.0,
         )
     except CommandTransportTimeout:
-        return {"state": "unknown", "reason": "transport_timeout"}
+        return {"state": "unknown", "verified": False, "reason": "transport_timeout"}
     if result.returncode:
-        return {"state": "unknown", "reason": "close_failed"}
-    return {"state": "closed"}
+        return {"state": "unknown", "verified": False, "reason": "close_failed"}
+    for output in (result.stdout, result.stderr):
+        try:
+            payload = json.loads(output)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        evidence = payload.get("result") if isinstance(payload, Mapping) else None
+        evidence = evidence if isinstance(evidence, Mapping) else payload
+        if evidence.get("workspace_id") == workspace_id and evidence.get("state") in {"closed", "removed", "absent"}:
+            return {"state": "closed", "verified": True, "authority": "herdr.workspace.close"}
+    return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
 
 
 def _release_codex_agent(
@@ -1279,6 +1288,71 @@ def _identity_conflict(*sources: Mapping[str, Any] | None) -> bool:
     return False
 
 
+def _reduce_resource_evidence(*evidence: Mapping[str, Any] | None) -> dict[str, Any]:
+    state = "unresolved"
+    reuse_blocked = True
+    recovery_required = True
+    for item in evidence:
+        if not isinstance(item, Mapping):
+            continue
+        candidate = item.get("state")
+        verified = item.get("verified") is True
+        if candidate in {"removed", "closed", "settled"} and verified:
+            state = "settled"
+            reuse_blocked = False
+            recovery_required = False
+        elif candidate in {"preserved", "unknown", "unverified", "quarantined", "unresolved"} and state != "settled":
+            state = "quarantined"
+            reuse_blocked = True
+            recovery_required = True
+    return {"state": state, "reuse_blocked": reuse_blocked, "recovery_required": recovery_required}
+
+
+def _owned_resources(
+    payload: Mapping[str, Any] | None,
+    observation: Mapping[str, Any] | None,
+    *,
+    workspace_id: str | None = None,
+    workspace_close: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
+    herdr = herdr if isinstance(herdr, Mapping) else {}
+    observed = observation if isinstance(observation, Mapping) else {}
+    cleanup = observed.get("cleanup") if isinstance(observed.get("cleanup"), Mapping) else {}
+    resources: list[dict[str, Any]] = []
+    if workspace_id:
+        resources.append({
+            "kind": "workspace",
+            "identity": workspace_id,
+            "state": "settled" if workspace_close and workspace_close.get("verified") is True else "quarantined",
+            "authority": "herdr.workspace.close",
+        })
+    for kind, key in (("session", "session"), ("pane", "pane"), ("agent", "agent_name")):
+        identity = _safe_text(herdr.get(key))
+        if identity:
+            resources.append({
+                "kind": kind,
+                "identity": identity,
+                "state": "settled" if cleanup.get("state") == "removed" else "quarantined",
+                "authority": "secretary_live_runtime._release_codex_agent",
+            })
+    process_identity = herdr.get("process_identity") or observed.get("process_identity")
+    if isinstance(process_identity, Mapping):
+        safe_identity = {
+            key: process_identity[key]
+            for key in ("pid", "name", "cwd")
+            if key in process_identity and _safe_text(str(process_identity[key])) is not None
+        }
+        if safe_identity:
+            resources.append({
+                "kind": "process",
+                "identity": safe_identity,
+                "state": "settled" if cleanup.get("state") == "removed" else "quarantined",
+                "authority": "herdr.process-retirement",
+            })
+    return resources
+
+
 def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None:
     text = _safe_text(value)
     if text is None or (not allow_long and len(text) > 4096):
@@ -1361,12 +1435,10 @@ def _normalize_invocation_outcome(
     observed_cleanup = observed.get("cleanup")
     if not cleanup_state and isinstance(observed_cleanup, Mapping):
         cleanup_state = observed_cleanup.get("state")
-    if cleanup_state == "removed":
-        resource = {"state": "settled", "reuse_blocked": False}
-    elif cleanup_state in {"preserved", "unknown", "unverified"}:
-        resource = {"state": "quarantined", "reuse_blocked": True}
-    else:
-        resource = {"state": "unresolved", "reuse_blocked": True}
+    resource = _reduce_resource_evidence(
+        {"state": cleanup_state, "verified": cleanup_state == "removed"},
+    )
+    owned_resources = _owned_resources(payload, observed)
 
     observability_state = (
         "available" if observed and not observed.get("observation_error") else "unavailable"
@@ -1388,7 +1460,9 @@ def _normalize_invocation_outcome(
         "invocation_id": invocation_id,
         "execution": execution,
         "result": result,
-        "resource": resource,
+        "resource": {key: resource[key] for key in ("state", "reuse_blocked")},
+        "owned_resources": owned_resources,
+        "recovery_required": resource["recovery_required"],
         "observability": observability,
         "timestamps": {"started": started_at, "finished": finished_at},
     }
@@ -1412,7 +1486,7 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     )
     payload: Mapping[str, Any] | None = None
     observation: Mapping[str, Any] = {}
-    result: dict[str, Any] = {}
+    result: dict[str, Any] | None = None
     try:
         completed = subprocess.run(
             build_normal_launcher_command(launch_request, expected_base=expected_base),
@@ -1434,17 +1508,51 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             started_at=started,
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
+    except Exception as exc:
+        result = _normalize_invocation_outcome(
+            invocation_id=invocation_id,
+            returncode=1,
+            payload=payload,
+            observation=observation,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+        result["execution"]["state"] = "failed"
+        result["execution"]["error"] = type(exc).__name__
+        result["result"] = {"state": "unavailable", "status": None}
     finally:
         if workspace_id is not None:
             preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
-            completion_state = result.get("observability", {}).get("completion_state")
-            if (
-                preflight["workspace_close"].get("state") == "closed"
-                and completion_state in {"idle", "failed", "stopped"}
-            ):
-                result["resource"] = {"state": "settled", "reuse_blocked": False}
-            elif result.get("resource", {}).get("state") == "settled":
-                result["resource"] = {"state": "quarantined", "reuse_blocked": True}
+            if result is None:
+                result = _normalize_invocation_outcome(
+                    invocation_id=invocation_id,
+                    returncode=1,
+                    payload=payload,
+                    observation=observation,
+                    started_at=started,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                result["execution"]["state"] = "failed"
+                result["result"] = {"state": "unavailable", "status": None}
+            cleanup_state = result.get("observability", {}).get("cleanup_state")
+            herdr_identity = payload.get("herdr") if isinstance(payload, Mapping) else None
+            cleanup_verified = cleanup_state == "removed" or not isinstance(herdr_identity, Mapping)
+            close_verified = preflight["workspace_close"].get("verified") is True
+            resource = (
+                {"state": "settled", "reuse_blocked": False, "recovery_required": False}
+                if cleanup_verified and close_verified
+                else _reduce_resource_evidence({"state": "unknown", "verified": False})
+            )
+            result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
+            result["owned_resources"] = _owned_resources(
+                payload,
+                observation,
+                workspace_id=workspace_id,
+                workspace_close=preflight["workspace_close"],
+            )
+            result["recovery_required"] = resource["recovery_required"]
+    if result is None:
+        raise RuntimeError("Secretary normal run did not produce a result")
     result["preflight"] = preflight
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -1531,14 +1639,40 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             result["disposition"] = "READY"
             result["failure_kind"] = None
             result.update(_classify_capabilities("READY", result.get("post_submit_observation")))
+    except Exception as exc:
+        result = {
+            "disposition": "BLOCKED_CAPABILITY",
+            "evidence_provenance": "capability-probe",
+            "failure_kind": type(exc).__name__,
+            "missing_capabilities": ["secretary_runtime_receipt"],
+        }
     finally:
         if workspace_id is not None:
             preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
             if result is not None:
                 result["preflight"] = preflight
+                post_submit = result.get("post_submit_observation")
+                cleanup = post_submit.get("cleanup") if isinstance(post_submit, Mapping) else None
+                cleanup_state = cleanup.get("state") if isinstance(cleanup, Mapping) else None
+                herdr_identity = payload.get("herdr") if isinstance(payload, Mapping) else None
+                cleanup_verified = cleanup_state == "removed" or not isinstance(herdr_identity, Mapping)
+                close_verified = preflight["workspace_close"].get("verified") is True
+                resource = (
+                    {"state": "settled", "reuse_blocked": False, "recovery_required": False}
+                    if cleanup_verified and close_verified
+                    else _reduce_resource_evidence({"state": "unknown", "verified": False})
+                )
+                result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
+                result["owned_resources"] = _owned_resources(
+                    payload,
+                    post_submit if isinstance(post_submit, Mapping) else {},
+                    workspace_id=workspace_id,
+                    workspace_close=preflight["workspace_close"],
+                )
+                result["recovery_required"] = resource["recovery_required"]
                 if (
                     result.get("disposition") == "READY"
-                    and preflight["workspace_close"].get("state") != "closed"
+                    and preflight["workspace_close"].get("verified") is not True
                 ):
                     result["disposition"] = "BLOCKED_CAPABILITY"
                     result["evidence_provenance"] = "capability-probe"

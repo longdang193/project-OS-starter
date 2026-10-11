@@ -136,15 +136,15 @@ sweeper, retry manager, or coordination authority is introduced.
 - Branch: `codex/normal-coordination-source-truth-convergence`
 - Base commit: `0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f` (`HEAD` = `origin/main`)
 - Expected workspace: `clean task-specific worktree created from the base commit; preserve unrelated files outside the worktree`
-- Next action: `implement Task 3 monotonic cleanup and exception-safe resource evidence`
+- Next action: `reconcile Task 4 canonical coordination policy and generated surfaces`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | task-specific | `lead controller` | none | exact revision, baseline tests, current-plan source-truth record | `HEAD=origin/main=0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f`; focused baseline `340 passed`; current generator returns `360` rows for `30` iterations (`6 scenarios × 2 architectures × 30`); no exact-shape readers for `secretary-invocation-v1` found outside the producer/tests; additive `owned_resources[]` and `recovery_required` are therefore consumer-compatible |
 | Task 2 | `completed` | task-specific | `lead controller` | Task 1 | semantic-result and field-aware identity matrix; local checkpoint | `86 passed` in `tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py`; synthetic Herdr references removed; long semantic content retained; same-field conflicts are ambiguous |
-| Task 3 | `active` | task-specific | `lead controller` | Task 2 | cleanup precedence, exception envelope, workspace-settlement matrix; local checkpoint | pending |
-| Task 4 | `pending` | task-specific | `unresolved` | Tasks 2–3 | canonical policy tests and generated-surface drift check | pending |
+| Task 3 | `completed` | task-specific | `lead controller` | Task 2 | cleanup precedence, exception envelope, workspace-settlement matrix; local checkpoint | `287 passed` in `tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`; verified workspace close required for settlement; exception paths retain `owned_resources` and `recovery_required` |
+| Task 4 | `active` | task-specific | `lead controller` | Tasks 2–3 | canonical policy tests and generated-surface drift check | pending |
 | Task 5 | `pending` | task-specific | `unresolved` | Tasks 2–4 | separate contract/measure modes, consolidated CI, final checkpoint | pending |
 
 ## Task Breakdown
@@ -295,16 +295,16 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `workspace closure cannot be proven without a new daemon/registry, ownership would cross into unrelated resources, or cleanup would require destructive recovery approval`
 
 **Steps:**
-- [ ] Step 1: Define the same-resource precedence as `verified removed > verified quarantined/preserved > provisional unknown > absent`, with explicit authoritative-conflict handling.
-- [ ] Step 2: Ensure later verified removal can upgrade earlier unknown evidence and cannot be downgraded by a weaker launcher observation.
-- [ ] Step 3: Treat `owned_resources[]` as additive invocation evidence, not a registry, durable ownership authority, or new lifecycle state machine. Retain `secretary-invocation-v1` when consumers tolerate additive fields; otherwise update exact-shape consumers explicitly before publication.
-- [ ] Step 4: Make every exception after workspace/agent acquisition retain owned resource identities, current state, and `recovery_required`; preserve `result` independently. Cover both `cleanup succeeds → settled/recovery_required=false` and `cleanup unproven → quarantined/recovery_required=true`.
-- [ ] Step 5: Reuse authoritative launcher/Herdr retirement evidence for pane/process/descendant proof. Secretary only reduces evidence; it does not become a second process-lifecycle owner.
-- [ ] Step 6: Prove workspace closure either from an existing Herdr guarantee or with one bounded post-close check for the captured workspace/pane/process identities; return quarantined/unresolved when proof is unavailable.
-- [ ] Step 7: Verify agent, pane, workspace, and process ownership remain local to the creating owner; do not add a global resource manager or retry permission after ambiguous delivery.
+- [x] Step 1: Define the same-resource precedence as `verified removed > verified quarantined/preserved > provisional unknown > absent`, with explicit authoritative-conflict handling.
+- [x] Step 2: Ensure later verified removal can upgrade earlier unknown evidence and cannot be downgraded by a weaker launcher observation.
+- [x] Step 3: Treat `owned_resources[]` as additive invocation evidence, not a registry, durable ownership authority, or new lifecycle state machine. Retain `secretary-invocation-v1` when consumers tolerate additive fields; otherwise update exact-shape consumers explicitly before publication.
+- [x] Step 4: Make every exception after workspace/agent acquisition retain owned resource identities, current state, and `recovery_required`; preserve `result` independently. Cover both `cleanup succeeds → settled/recovery_required=false` and `cleanup unproven → quarantined/recovery_required=true`.
+- [x] Step 5: Reuse authoritative launcher/Herdr retirement evidence for pane/process/descendant proof. Secretary only reduces evidence; it does not become a second process-lifecycle owner.
+- [x] Step 6: Prove workspace closure either from an existing Herdr guarantee or with one bounded post-close check for the captured workspace/pane/process identities; return quarantined/unresolved when proof is unavailable.
+- [x] Step 7: Verify agent, pane, workspace, and process ownership remain local to the creating owner; do not add a global resource manager or retry permission after ambiguous delivery.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
+- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
 - Expected: unknown→removed converges to settled, close failure is quarantined, exceptions preserve recovery identity, and result content remains available after cleanup.
 
 **Exit Criteria:**
