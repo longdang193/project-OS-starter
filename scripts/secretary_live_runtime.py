@@ -954,32 +954,6 @@ def _build_codex_runtime_snapshot(
         return None
 
     metrics = _safe_metrics(existing.get("metrics"))
-    if (
-        metrics["token_usage"] == "unknown"
-        and isinstance(provider_telemetry, Mapping)
-        and provider_telemetry.get("disposition") == "matched"
-    ):
-        metrics["token_usage"] = _safe_token_usage(
-            {
-                "input_tokens": provider_telemetry.get("input_tokens"),
-                "output_tokens": provider_telemetry.get("output_tokens"),
-                "total_tokens": provider_telemetry.get("total_tokens"),
-                "cache_read_input_tokens": provider_telemetry.get("cache_read_input_tokens", 0),
-                "cache_write_input_tokens": provider_telemetry.get("cache_write_input_tokens", 0),
-                "source": "response.usage",
-                "confidence": "observed",
-            }
-        )
-        request_count = provider_telemetry.get("request_count")
-        if (
-            metrics["token_usage"] != "unknown"
-            and metrics["secretary_turns"] == "unknown"
-            and isinstance(request_count, int)
-            and not isinstance(request_count, bool)
-            and request_count >= 0
-        ):
-            metrics["secretary_turns"] = request_count
-
     existing["metrics"] = metrics
     existing["session_id"] = session_id
     validated = _validated_runtime_receipt(request, existing)
@@ -1187,6 +1161,7 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     )
     result: dict[str, Any] | None = None
     payload: Mapping[str, Any] | None = None
+    provider_session_id: str | None = None
     try:
         completed = subprocess.run(
             build_launcher_command(launch_request),
@@ -1224,11 +1199,7 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             if isinstance(runtime_identity, Mapping)
             else None
         )
-        result["provider_telemetry"] = _observe_provider_telemetry(
-            started,
-            datetime.now(timezone.utc).isoformat(),
-            expected_session_id=expected_session_id,
-        )
+        provider_session_id = expected_session_id
         runtime_snapshot = _build_codex_runtime_snapshot(
             request,
             payload,
@@ -1236,7 +1207,6 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             configured_model=configured_model,
             started_at=started,
             finished_at=datetime.now(timezone.utc).isoformat(),
-            provider_telemetry=result.get("provider_telemetry"),
         )
         if runtime_snapshot is not None:
             previous_identity = result.get("runtime_identity")
@@ -1271,6 +1241,11 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     if result is None:
         raise RuntimeError("Secretary smoke did not produce a launcher result")
     result.setdefault("preflight", preflight)
+    result["provider_telemetry"] = _observe_provider_telemetry(
+        started,
+        datetime.now(timezone.utc).isoformat(),
+        expected_session_id=provider_session_id,
+    )
     result["receipt"] = _smoke_receipt(request, result)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

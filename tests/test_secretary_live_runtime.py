@@ -234,6 +234,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
 ) -> None:
     request_value = request()
     closed: list[tuple[str, str]] = []
+    events: list[str] = []
     monkeypatch.setattr("scripts.secretary_live_runtime._configured_provider", lambda _: "9router")
     monkeypatch.setattr("scripts.secretary_live_runtime._configured_model", lambda _: "gpt-test")
     monkeypatch.setattr("scripts.secretary_live_runtime.shutil.which", lambda _: "herdr.exe")
@@ -243,7 +244,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime._close_herdr_workspace",
-        lambda herdr, workspace_id, **kwargs: closed.append((herdr, workspace_id)) or {"state": "closed"},
+        lambda herdr, workspace_id, **kwargs: events.append("workspace_close") or closed.append((herdr, workspace_id)) or {"state": "closed"},
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime.subprocess.run",
@@ -263,7 +264,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime._observe_provider_telemetry",
-        lambda *args, **kwargs: {"disposition": "inconclusive"},
+        lambda *args, **kwargs: events.append("provider_observation") or {"disposition": "inconclusive"},
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime._smoke_receipt",
@@ -276,6 +277,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     assert result["evidence_provenance"] == "live-attributed"
     assert result["preflight"] == {"selector_mode": "test", "workspace_close": {"state": "closed"}}
     assert closed == [("herdr.exe", "w99")]
+    assert events == ["workspace_close", "provider_observation"]
 
 
 def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(
@@ -878,6 +880,7 @@ def test_completed_codex_transport_promotes_only_matched_9router_usage() -> None
             "model_provider": SECRETARY_PROVIDER,
             "model": "gpt-test",
         },
+        "secretary_runtime": structured_runtime(request_value, session_id="live-session", model="gpt-test"),
     }
     snapshot = _build_codex_runtime_snapshot(
         request_value,
@@ -897,7 +900,9 @@ def test_completed_codex_transport_promotes_only_matched_9router_usage() -> None
         },
     )
 
-    assert snapshot is None
+    assert snapshot is not None
+    assert snapshot["metrics"]["token_usage"] == "unknown"
+    assert snapshot["metrics"]["secretary_turns"] == 1
 
 
 def test_sanitize_launcher_result_drops_unapproved_observed_fields() -> None:
