@@ -26,7 +26,7 @@ index 465bf523..42561caa 100644
      }
      reqLogger.logError(new Error(message), finalBody || translatedBody);
 -    return createErrorResult(statusCode, errMsg, resetsAtMs, upstreamResponseHeaders(providerResponse.headers));
-+    return createErrorResult(statusCode, errMsg, resetsAtMs, diagnostics, upstreamResponseHeaders(providerResponse.headers));
++    return createErrorResult(statusCode, errMsg, resetsAtMs, upstreamResponseHeaders(providerResponse.headers), diagnostics);
    }
  
    const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log };
@@ -66,7 +66,7 @@ index 6992d4a4..a3133889 100644
   */
 -export function errorResponse(statusCode, message, extraHeaders = null) {
 -  return new Response(JSON.stringify(buildErrorBody(statusCode, message)), {
-+export function errorResponse(statusCode, message, diagnostics = {}, extraHeaders = null) {
++export function errorResponse(statusCode, message, extraHeaders = null, diagnostics = {}) {
 +  return new Response(JSON.stringify(buildErrorBody(statusCode, message, diagnostics)), {
      status: statusCode,
      headers: {
@@ -143,14 +143,14 @@ index 6992d4a4..a3133889 100644
   * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
   */
 -export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null) {
-+export function createErrorResult(statusCode, message, resetsAtMs, diagnostics = {}, extraHeaders = null) {
++export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null, diagnostics = {}) {
    return {
      success: false,
      status: statusCode,
      error: message,
      resetsAtMs,
 -    response: errorResponse(statusCode, message, extraHeaders)
-+    response: errorResponse(statusCode, message, diagnostics, extraHeaders)
++    response: errorResponse(statusCode, message, extraHeaders, diagnostics)
    };
  }
  
