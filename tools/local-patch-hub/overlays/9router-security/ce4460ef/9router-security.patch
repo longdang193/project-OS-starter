@@ -1,5 +1,5 @@
 diff --git a/open-sse/handlers/chatCore.js b/open-sse/handlers/chatCore.js
-index 465bf523..eef9dc3d 100644
+index 465bf523..42561caa 100644
 --- a/open-sse/handlers/chatCore.js
 +++ b/open-sse/handlers/chatCore.js
 @@ -64,7 +64,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
@@ -31,7 +31,7 @@ index 465bf523..eef9dc3d 100644
  
    const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log };
 diff --git a/open-sse/utils/error.js b/open-sse/utils/error.js
-index 6992d4a4..eba3ac9b 100644
+index 6992d4a4..a3133889 100644
 --- a/open-sse/utils/error.js
 +++ b/open-sse/utils/error.js
 @@ -6,19 +6,21 @@ import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";

@@ -5,14 +5,30 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import time
+import sqlite3
 import tomllib
 from typing import Any, Mapping
+
+try:
+    from scripts.herdr_main_launcher import (
+        CommandTransportTimeout,
+        _codex_completion_snapshot,
+        _run as _herdr_run,
+    )
+except ModuleNotFoundError:
+    from herdr_main_launcher import (
+        CommandTransportTimeout,
+        _codex_completion_snapshot,
+        _run as _herdr_run,
+    )
 
 try:
     from project_os_runtime.secretary_economics import normalize_response_usage
@@ -28,6 +44,11 @@ except ModuleNotFoundError:
         build_live_receipt,
         validate_live_receipt,
     )
+
+try:
+    from scripts.observe_9router_usage import observe_run_usage
+except ModuleNotFoundError:
+    from observe_9router_usage import observe_run_usage
 
 
 SECRETARY_PROVIDER = "9router"
@@ -57,6 +78,9 @@ _SOURCE_SAFE_FIELDS = {
     "repository_identity", "plan_identity", "git_revision", "worktree",
     "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
 }
+_CODEX_OBSERVATION_TIMEOUT_SECONDS = 120.0
+_CODEX_OBSERVATION_POLL_SECONDS = 0.5
+_PROVIDER_TELEMETRY_LOOKBACK_SECONDS = 0.0
 _SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
 _SAFE_SOURCE_VALUE = re.compile(
     r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))",
@@ -93,6 +117,22 @@ def _safe_assignment(assignment: Mapping[str, Any] | None) -> dict[str, Any]:
             if safe_value is not None:
                 safe[key] = safe_value
     return safe
+
+
+def _launcher_failure_kind(assignment: Mapping[str, Any]) -> str | None:
+    failure = assignment.get("failure_kind")
+    if not isinstance(failure, str):
+        return None
+    normalized = failure.casefold()
+    if "server_not_running" in normalized:
+        return "herdr_server_unavailable"
+    if "target_resolution=not_found" in normalized:
+        return "target_not_found"
+    if "target_resolution=blocked" in normalized:
+        return "target_resolution_blocked"
+    if "target_resolution=incomplete" in normalized or "transport_timeout" in normalized:
+        return "herdr_transport_incomplete"
+    return None
 
 
 @dataclass(frozen=True)
@@ -185,6 +225,175 @@ def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = F
     return command
 
 
+def _release_codex_agent(
+    herdr: str,
+    session: str,
+    agent_name: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    try:
+        result = _herdr_run(
+            [
+                herdr,
+                "--session",
+                session,
+                "agent",
+                "send-keys",
+                agent_name,
+                "ctrl+c",
+            ],
+            env=env,
+            timeout=5.0,
+        )
+    except CommandTransportTimeout:
+        return {"state": "unknown", "error": "release-agent transport timeout"}
+    if result.returncode:
+        return {"state": "unknown", "error": "agent interruption failed"}
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            get_result = _herdr_run(
+                [herdr, "--session", session, "agent", "get", agent_name],
+                env=env,
+                timeout=1.0,
+            )
+        except CommandTransportTimeout:
+            return {"state": "unknown", "error": "agent retirement observation timed out"}
+        if get_result.returncode:
+            error_code = None
+            for output in (get_result.stdout, get_result.stderr):
+                try:
+                    payload = json.loads(output)
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                error = payload.get("error") if isinstance(payload, Mapping) else None
+                if isinstance(error, Mapping) and isinstance(error.get("code"), str):
+                    error_code = error["code"]
+                    break
+            if error_code == "agent_not_found":
+                return {"state": "removed"}
+            return {"state": "unknown", "error": "agent retirement observation failed"}
+        time.sleep(0.1)
+    return {"state": "unknown", "error": "agent retirement not observed"}
+
+
+def _observe_submitted_codex(
+    request: SecretaryLaunchRequest,
+    payload: Mapping[str, Any],
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    herdr = payload.get("herdr")
+    if not isinstance(herdr, Mapping):
+        return {"state": "unknown", "error": "launcher Herdr evidence missing"}
+    executable = herdr.get("executable")
+    session = herdr.get("session")
+    pane = herdr.get("pane")
+    agent_name = herdr.get("agent_name")
+    if not all(isinstance(value, str) and value.strip() for value in (executable, session, pane, agent_name)):
+        return {"state": "unknown", "error": "launcher Codex identity incomplete"}
+
+    deadline = time.monotonic() + _CODEX_OBSERVATION_TIMEOUT_SECONDS
+    snapshot: dict[str, Any] = {
+        "state": "unknown",
+        "observation_error": "completion observation deadline expired",
+    }
+    while time.monotonic() < deadline:
+        remaining = max(0.01, deadline - time.monotonic())
+        snapshot = _codex_completion_snapshot(
+            executable,
+            session,
+            agent_name,
+            env=env,
+            timeout_seconds=min(5.0, remaining),
+        )
+        if snapshot.get("state") in {"idle", "failed", "stopped"}:
+            break
+        time.sleep(min(_CODEX_OBSERVATION_POLL_SECONDS, remaining))
+
+    observation = {
+        key: snapshot.get(key)
+        for key in ("state", "state_change_seq", "output_sha256", "output_chars", "observation_error")
+        if key in snapshot
+    }
+    cleanup: dict[str, Any] = {"state": "not_attempted"}
+    if snapshot.get("state") == "idle" and not snapshot.get("observation_error"):
+        cleanup = _release_codex_agent(
+            executable,
+            session,
+            agent_name,
+            pane,
+            env=env,
+        )
+    observation["cleanup"] = cleanup
+    observation["observed_at"] = datetime.now(timezone.utc).isoformat()
+    return observation
+
+
+def _observe_provider_telemetry(start: str, end: str, *, expected_session_id: str | None = None) -> dict[str, Any]:
+    candidates: list[Path] = []
+    configured = os.environ.get("NINEROUTER_DATABASE")
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.append(Path.home() / "AppData" / "Roaming" / "9router" / "db" / "data.sqlite")
+    database = next((path for path in candidates if path.is_file()), None)
+    if database is None:
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "inconclusive",
+            "source": "9router-local-read-only",
+            "attribution": "time-window",
+            "reason": "database_unavailable",
+        }
+    if not isinstance(expected_session_id, str) or not expected_session_id.strip():
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "inconclusive",
+            "source": "9router-local-read-only",
+            "attribution": "session",
+            "reason": "session_binding_missing",
+        }
+    start_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
+    padded_start = start_at.isoformat()
+    try:
+        result = observe_run_usage(database, start=padded_start, end=end, expected_session_id=expected_session_id)
+        result["observation_window"] = {
+            "start": padded_start,
+            "end": end,
+            "lookback_seconds": _PROVIDER_TELEMETRY_LOOKBACK_SECONDS,
+        }
+        return result
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "inconclusive",
+            "source": "9router-local-read-only",
+            "attribution": "time-window",
+            "reason": type(exc).__name__,
+        }
+
+
+def _classify_capabilities(
+    disposition: str,
+    observation: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    transport_proven = (
+        isinstance(observation, Mapping)
+        and observation.get("state") == "idle"
+        and isinstance(observation.get("cleanup"), Mapping)
+        and observation["cleanup"].get("state") == "removed"
+    )
+    missing: list[str] = []
+    if not transport_proven:
+        missing.append("transport_completion_or_cleanup")
+    if disposition != "READY":
+        missing.append("secretary_runtime_receipt")
+    return {
+        "transport_evidence": "proven" if transport_proven else "unproven",
+        "missing_capabilities": missing,
+    }
 def _json_payloads(output: str) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     for line in output.splitlines():
@@ -260,13 +469,7 @@ def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str
 
 
 def _launcher_identity_matches(runtime: Mapping[str, Any], herdr: Mapping[str, Any] | None) -> bool:
-    if not isinstance(herdr, Mapping):
-        return False
-    session = herdr.get("session")
-    if isinstance(session, str) and session.strip():
-        safe_session = _safe_text(session)
-        return safe_session is not None and runtime.get("session_id") == safe_session
-    return True
+    return _safe_text(runtime.get("session_id")) is not None
 
 
 def _launcher_facts_match(
@@ -443,6 +646,196 @@ def _safe_runtime_snapshot(
     return snapshot
 
 
+def _validated_runtime_receipt(
+    request: SecretaryLaunchRequest,
+    runtime: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(runtime, Mapping):
+        return None
+    binding = {
+        "pair_id": request.run_id,
+        "arm": "candidate",
+        "run_id": request.run_id,
+        "attempt_id": request.attempt_id,
+        "task_id": request.task_id,
+        "plan_revision": request.plan_revision,
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "git_revision": request.git_revision,
+        "worktree": str(request.worktree.resolve()),
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request.plan_revision}:{request.task_id}",
+    }
+    try:
+        return validate_live_receipt(
+            build_live_receipt(
+                binding=binding,
+                runtime={
+                    "provider": runtime.get("provider"),
+                    "model": runtime.get("model"),
+                    "controller_id": runtime.get("controller_id"),
+                    "session_id": runtime.get("session_id"),
+                },
+                timestamps=runtime.get("timestamps", {}),
+                metrics=runtime.get("metrics", {}),
+                sources=runtime.get("sources", {}),
+            )
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _sha256_json(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _build_codex_runtime_snapshot(
+    request: SecretaryLaunchRequest,
+    payload: Mapping[str, Any] | None,
+    observation: Mapping[str, Any],
+    *,
+    configured_model: str | None,
+    started_at: str,
+    finished_at: str,
+    provider_telemetry: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if observation.get("state") != "idle":
+        return None
+    cleanup = observation.get("cleanup")
+    if not isinstance(cleanup, Mapping) or cleanup.get("state") != "removed":
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+
+    raw_runtime = payload.get("secretary_runtime")
+    if not isinstance(raw_runtime, Mapping) or raw_runtime.get("observed") is not True:
+        return None
+    raw_timestamps = raw_runtime.get("timestamps")
+    raw_metrics = raw_runtime.get("metrics")
+    raw_sources = raw_runtime.get("sources")
+    if (
+        not isinstance(raw_timestamps, Mapping)
+        or set(raw_timestamps) != set(_OBSERVED_TIMESTAMP_KEYS)
+        or not isinstance(raw_metrics, Mapping)
+        or set(raw_metrics) != set(_OBSERVED_METRIC_KEYS)
+        or not isinstance(raw_sources, Mapping)
+        or set(raw_sources) != set(_SOURCE_KEYS)
+    ):
+        return None
+
+    herdr = payload.get("herdr")
+    git = payload.get("git")
+    registry = payload.get("registry_launcher")
+    if not all(isinstance(value, Mapping) for value in (herdr, git, registry)):
+        return None
+    session_id = _safe_text(raw_runtime.get("session_id"))
+    model = _safe_text(registry.get("model")) or configured_model
+    if session_id is None or model is None:
+        return None
+    if git.get("worktree") != str(request.worktree.resolve()) or git.get("repo_root") != str(request.worktree.resolve()):
+        return None
+    if git.get("expected_base") != request.expected_base or git.get("head") != request.git_revision:
+        return None
+    if registry.get("repository_identity") != request.repository_identity:
+        return None
+    if registry.get("plan_identity") != request.plan_identity:
+        return None
+    if registry.get("model_provider") != request.provider:
+        return None
+    if configured_model is not None and registry.get("model") != configured_model:
+        return None
+
+    expected_values = {
+        **{key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS},
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "git_revision": request.git_revision,
+        "worktree": str(request.worktree.resolve()),
+        "provider": request.provider,
+        "model": model,
+        "controller_id": SECRETARY_CONTROLLER,
+        "session_id": session_id,
+        "pair_id": request.run_id,
+        "arm": "candidate",
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request.plan_revision}:{request.task_id}",
+    }
+    identity_fields = _RUNTIME_BINDING_KEYS + (
+        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "provider", "model", "controller_id", "session_id",
+    )
+    if any(raw_runtime.get(key) != expected_values.get(key) for key in identity_fields):
+        return None
+    existing = (
+        _safe_runtime_snapshot(raw_runtime, expected_values)
+        if isinstance(raw_runtime, Mapping)
+        else {}
+    )
+    timestamps = existing.get("timestamps")
+    if not isinstance(timestamps, Mapping) or set(timestamps) != set(_OBSERVED_TIMESTAMP_KEYS):
+        return None
+    try:
+        parsed_timestamps = [
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            for value in timestamps.values()
+        ]
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if any(right < left for left, right in zip(parsed_timestamps, parsed_timestamps[1:])):
+        return None
+
+    metrics = _safe_metrics(existing.get("metrics"))
+    if (
+        metrics["token_usage"] == "unknown"
+        and isinstance(provider_telemetry, Mapping)
+        and provider_telemetry.get("disposition") == "matched"
+    ):
+        metrics["token_usage"] = _safe_token_usage(
+            {
+                "input_tokens": provider_telemetry.get("input_tokens"),
+                "output_tokens": provider_telemetry.get("output_tokens"),
+                "total_tokens": provider_telemetry.get("total_tokens"),
+                "cache_read_input_tokens": provider_telemetry.get("cache_read_input_tokens", 0),
+                "cache_write_input_tokens": provider_telemetry.get("cache_write_input_tokens", 0),
+                "source": "response.usage",
+                "confidence": "observed",
+            }
+        )
+        request_count = provider_telemetry.get("request_count")
+        if (
+            metrics["token_usage"] != "unknown"
+            and metrics["secretary_turns"] == "unknown"
+            and isinstance(request_count, int)
+            and not isinstance(request_count, bool)
+            and request_count >= 0
+        ):
+            metrics["secretary_turns"] = request_count
+
+    existing["metrics"] = metrics
+    existing["session_id"] = session_id
+    validated = _validated_runtime_receipt(request, existing)
+    if validated is None:
+        return None
+    runtime_identity = {
+        **{key: validated[key] for key in (
+            "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+            "repository_identity", "plan_identity", "git_revision", "worktree",
+            "workstream", "checkpoint",
+        )},
+        "provider": validated["provider"],
+        "model": validated["model"],
+        "controller_id": validated["controller_id"],
+        "session_id": validated["session_id"],
+    }
+    return {
+        **runtime_identity,
+        "observed": True,
+        "timestamps": validated["timestamps"],
+        "metrics": validated["metrics"],
+        "sources": validated["sources"],
+    }
+
 def sanitize_launcher_result(
     request: SecretaryLaunchRequest,
     *,
@@ -473,8 +866,8 @@ def sanitize_launcher_result(
     }
     if configured_model is not None:
         expected_values["model"] = configured_model
-    if isinstance(herdr, Mapping):
-        session_id = _safe_text(herdr.get("session"))
+    if isinstance(raw_runtime, Mapping):
+        session_id = _safe_text(raw_runtime.get("session_id"))
         if session_id is not None and session_id.strip():
             expected_values["session_id"] = session_id
     structured_binding = (
@@ -490,8 +883,10 @@ def sanitize_launcher_result(
         and _launcher_identity_matches(observed_runtime, herdr if isinstance(herdr, Mapping) else None)
         and _launcher_facts_match(request, payload, observed_runtime, configured_model)
         and _completion_observed(payload, observed_runtime)
+        and _validated_runtime_receipt(request, structured_binding) is not None
     )
     observed_metrics = structured_binding.get("metrics") if isinstance(structured_binding, Mapping) else None
+    failure_kind = _launcher_failure_kind(safe_assignment)
     return {
         "schema_version": "secretary-live-runtime-v1",
         "evidence_provenance": "live-attributed" if live_attributed else "capability-probe",
@@ -525,7 +920,8 @@ def sanitize_launcher_result(
             **_safe_metrics(observed_metrics if isinstance(observed_metrics, Mapping) else None)
         },
         "disposition": "READY" if live_attributed else "BLOCKED_CAPABILITY",
-        "failure_kind": None if live_attributed else "runtime_completion_evidence_missing",
+        "failure_kind": None if live_attributed else failure_kind or "runtime_completion_evidence_missing",
+        **_classify_capabilities("READY" if live_attributed else "BLOCKED_CAPABILITY", None),
     }
 
 
@@ -631,6 +1027,55 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         started_at=started,
         finished_at=datetime.now(timezone.utc).isoformat(),
     )
+    if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
+        post_submit = _observe_submitted_codex(request, payload, env=environment)
+        result["post_submit_observation"] = post_submit
+        if post_submit.get("state") != "idle":
+            result["failure_kind"] = "runtime_completion_observation_missing"
+        elif post_submit.get("cleanup", {}).get("state") != "removed":
+            result["failure_kind"] = "runtime_cleanup_evidence_missing"
+        else:
+            result["failure_kind"] = "runtime_structured_receipt_missing"
+        result.update(_classify_capabilities(result["disposition"], post_submit))
+    else:
+        result.update(_classify_capabilities(result["disposition"], None))
+    runtime_identity = result.get("runtime_identity")
+    expected_session_id = (
+        _safe_text(runtime_identity.get("session_id"))
+        if isinstance(runtime_identity, Mapping)
+        else None
+    )
+    result["provider_telemetry"] = _observe_provider_telemetry(
+        started,
+        datetime.now(timezone.utc).isoformat(),
+        expected_session_id=expected_session_id,
+    )
+    runtime_snapshot = _build_codex_runtime_snapshot(
+        request,
+        payload,
+        result.get("post_submit_observation", {}),
+        configured_model=configured_model,
+        started_at=started,
+        finished_at=datetime.now(timezone.utc).isoformat(),
+        provider_telemetry=result.get("provider_telemetry"),
+    )
+    if runtime_snapshot is not None:
+        previous_identity = result.get("runtime_identity")
+        previous_identity = previous_identity if isinstance(previous_identity, Mapping) else {}
+        result["evidence_provenance"] = "live-attributed"
+        result["runtime_identity"] = {
+            "agent_name": previous_identity.get("agent_name"),
+            "session": runtime_snapshot["session_id"],
+            "pane": previous_identity.get("pane"),
+            "codex_version": previous_identity.get("codex_version"),
+            **{key: runtime_snapshot[key] for key in ("provider", "model", "controller_id", "session_id")},
+            "secretary_runtime": runtime_snapshot,
+        }
+        result["timestamps"] = runtime_snapshot["timestamps"]
+        result["metrics"] = runtime_snapshot["metrics"]
+        result["disposition"] = "READY"
+        result["failure_kind"] = None
+        result.update(_classify_capabilities("READY", result.get("post_submit_observation")))
     result["receipt"] = _smoke_receipt(request, result)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -639,7 +639,7 @@ def _resolve_target_selector(
     if any(not isinstance(item.get("cwd"), str) or not item["cwd"] for item in panes):
         raise LaunchBlocked("Herdr snapshot contains pane entry without cwd.")
 
-    candidates: list[tuple[str, str]] = []
+    candidates: list[tuple[bool, str, str]] = []
     rejections: list[dict[str, str]] = []
     for item in panes:
         workspace_id = item.get("workspace_id")
@@ -666,9 +666,9 @@ def _resolve_target_selector(
         except TargetCandidateRejected as exc:
             rejections.append({"session": control_session, "pane": pane_id, "reason": str(exc)})
         else:
-            candidates.append((control_session, pane_id))
+            candidates.append((bool(item.get("focused")), control_session, pane_id))
 
-    candidates.sort()
+    candidates.sort(key=lambda candidate: (candidate[0], candidate[1], candidate[2]))
     if not candidates:
         status = "blocked" if rejections else "not_found"
         raise TargetResolutionBlocked(
@@ -681,7 +681,7 @@ def _resolve_target_selector(
                 "rejections": rejections,
             },
         )
-    selected_session, selected_pane = candidates[0]
+    _, selected_session, selected_pane = candidates[0]
     return selected_session, selected_pane, {
         "status": "selected",
         "mode": "auto",
@@ -689,7 +689,7 @@ def _resolve_target_selector(
         "rejections": rejections,
         "candidates": [
             {"session": candidate_session, "pane": candidate_pane}
-            for candidate_session, candidate_pane in candidates
+            for _, candidate_session, candidate_pane in candidates
         ],
         "session": selected_session,
         "pane": selected_pane,

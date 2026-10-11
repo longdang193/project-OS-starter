@@ -17,3 +17,12 @@ def test_9router_overlay_is_versioned_and_rebases() -> None:
     current_manifest = (OVERLAY / "overlays/9router-security/ce4460ef/manifest.json").read_text(encoding="utf-8")
     assert "ce4460ef79382bfddb4aa5fc0ff9f3cb0d5f95a8" in current_manifest
     assert (OVERLAY / "overlays/9router-security/ce4460ef/9router-security.patch").is_file()
+
+
+def test_9router_security_overlay_preserves_error_response_arguments() -> None:
+    patch = (OVERLAY / "overlays/9router-security/ce4460ef/9router-security.patch").read_text(encoding="utf-8")
+
+    assert "+export function errorResponse(statusCode, message, extraHeaders = null, diagnostics = {})" in patch
+    assert "+export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null, diagnostics = {})" in patch
+    assert "+    return createErrorResult(statusCode, errMsg, resetsAtMs, upstreamResponseHeaders(providerResponse.headers), diagnostics);" in patch
+    assert "+    response: errorResponse(statusCode, message, extraHeaders, diagnostics)" in patch

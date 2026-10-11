@@ -2366,6 +2366,46 @@ def test_target_selector_uses_default_session_for_workspace_qualified_pane(
     assert resolution["session_provenance"] == "shared/default"
 
 
+def test_target_selector_prefers_unfocused_auto_target_over_focused_control_pane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {
+            "result": {
+                "snapshot": {
+                    "panes": [
+                        {
+                            "workspace_id": "w1",
+                            "pane_id": "w1:p1",
+                            "cwd": str(ROOT),
+                            "focused": True,
+                        },
+                        {
+                            "workspace_id": "w1",
+                            "pane_id": "w1:p2",
+                            "cwd": str(ROOT),
+                            "focused": False,
+                        },
+                    ]
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", lambda *args, **kwargs: {"pane": {}})
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("default", "w1:p2")
+    assert resolution["candidates"] == [
+        {"session": "default", "pane": "w1:p2"},
+        {"session": "default", "pane": "w1:p1"},
+    ]
+
+
 def test_target_selector_selects_first_deterministic_auto_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
