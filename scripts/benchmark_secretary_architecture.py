@@ -5,39 +5,18 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.project_os_runtime.secretary_adapter import (
-    AttentionDelta,
-    CommunicationEnvelope,
-    ControllerBinding,
-    InMemoryControllerSessionAdapter,
-    InMemoryControllerSessionJournal,
-)
-from scripts.project_os_runtime.secretary_events import (
-    DEPENDENCY_CHANGED,
-    EventHint,
-    ReconciliationEvidence,
-    coalesce_event_hints,
-    reconcile_event_hint,
-)
-
 
 SCENARIOS = (
-    "simple_direct_work",
-    "bounded_executor_work",
-    "sustained_cos_workstream",
-    "restart_recovery",
-    "duplicate_activation",
-    "lost_activation_response",
-    "activation_binding_conflict",
-    "release_replay",
-    "delivery_payload_conflict",
-    "missed_event",
-    "unresolved_old_event",
-    "stale_session",
-    "dependency_change_cached_session",
+    "direct_secretary",
+    "advisory_cos_without_plan",
+    "managed_secretary_without_receipt",
+    "ambiguous_result",
+    "cleanup_quarantine",
+    "multi_workstream_escalation",
 )
 
 
@@ -50,14 +29,15 @@ class ContractMetric:
     live: bool
     correct: bool
     outcome: str
+    semantic_result: str
     failure_classification: str
-    activation_calls: int
-    reconciliation_calls: int
-    duplicate_effects: int
-    model_wakes: int
+    blocker: str
+    mandatory_inputs: int
+    preflight_count: int
+    provider_queries: int
     messages: int
-    payload_bytes: int
-    context_items: int
+    duplicate_effects: int
+    time_to_first_result_ms: None = None
     latency_ms: None = None
     token_usage: None = None
 
@@ -67,16 +47,16 @@ def _metric(
     run_id: int,
     architecture: str,
     *,
-    correct: bool = True,
-    outcome: str = "completed",
+    correct: bool,
+    outcome: str,
+    semantic_result: str,
     failure_classification: str = "none",
-    activation_calls: int = 0,
-    reconciliation_calls: int = 0,
-    duplicate_effects: int = 0,
-    model_wakes: int = 0,
+    blocker: str = "none",
+    mandatory_inputs: int = 1,
+    preflight_count: int = 0,
+    provider_queries: int = 0,
     messages: int = 0,
-    payload_bytes: int = 128,
-    context_items: int = 1,
+    duplicate_effects: int = 0,
 ) -> ContractMetric:
     return ContractMetric(
         scenario_id=scenario_id,
@@ -86,250 +66,111 @@ def _metric(
         live=False,
         correct=correct,
         outcome=outcome,
+        semantic_result=semantic_result,
         failure_classification=failure_classification,
-        activation_calls=activation_calls,
-        reconciliation_calls=reconciliation_calls,
-        duplicate_effects=duplicate_effects,
-        model_wakes=model_wakes,
+        blocker=blocker,
+        mandatory_inputs=mandatory_inputs,
+        preflight_count=preflight_count,
+        provider_queries=provider_queries,
         messages=messages,
-        payload_bytes=payload_bytes,
-        context_items=context_items,
+        duplicate_effects=duplicate_effects,
     )
 
 
-def _adapter_metrics(scenario_id: str, run_id: int) -> ContractMetric:
-    if scenario_id in {"simple_direct_work", "bounded_executor_work"}:
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            activation_calls=int(scenario_id == "bounded_executor_work"),
-            model_wakes=int(scenario_id == "bounded_executor_work"),
-            messages=int(scenario_id == "bounded_executor_work"),
-        )
-    if scenario_id == "sustained_cos_workstream":
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            activation_calls=1,
-            model_wakes=1,
-            messages=1,
-            context_items=2,
-        )
-    if scenario_id in {
-        "restart_recovery",
-        "duplicate_activation",
-        "lost_activation_response",
-    }:
-        journal = InMemoryControllerSessionJournal()
-        adapter = InMemoryControllerSessionAdapter(journal)
-        current = ControllerBinding("repository", "runtime-plan", "runtime", "main", "test-base")
-        first = adapter.activate(current, "activation-1")
-        restarted = InMemoryControllerSessionAdapter(journal)
-        second = restarted.activate(current, "activation-1")
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            correct=first.created and second.reused,
-            outcome="reused_after_reconciliation",
-            failure_classification="none" if first.created and second.reused else "recovery_required",
-            activation_calls=2,
-            reconciliation_calls=1,
-            duplicate_effects=max(0, restarted.activation_side_effects),
-            model_wakes=1,
-            messages=1,
-        )
-    if scenario_id == "activation_binding_conflict":
-        adapter = InMemoryControllerSessionAdapter()
-        first_binding = ControllerBinding("repo-a", "plan-a", "runtime", "main", "base-a")
-        changed_binding = ControllerBinding("repo-a", "plan-b", "runtime", "main", "base-a")
-        first = adapter.activate(first_binding, "activation-1")
-        conflict = adapter.activate(changed_binding, "activation-1")
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            correct=first.created and conflict.recovery_required,
-            outcome="recovery_required",
-            failure_classification="binding_conflict",
-            activation_calls=2,
-            reconciliation_calls=1,
-            duplicate_effects=0,
-        )
-    if scenario_id == "release_replay":
-        adapter = InMemoryControllerSessionAdapter()
-        current = ControllerBinding("repository", "runtime-plan", "runtime", "main", "test-base")
-        first = adapter.activate(current, "activation-1")
-        released = adapter.release_session(first.controller) if first.controller else None
-        replay = adapter.activate(current, "activation-1")
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            correct=first.created and released is not None and released.released and replay.recovery_required,
-            outcome="recovery_required",
-            failure_classification="released_replay",
-            activation_calls=2,
-            reconciliation_calls=1,
-            duplicate_effects=0,
-        )
-    if scenario_id == "delivery_payload_conflict":
-        adapter = InMemoryControllerSessionAdapter()
-        current = ControllerBinding("repository", "runtime-plan", "runtime", "main", "test-base")
-        first = adapter.activate(current, "activation-1")
-        if first.controller is None:
-            return _metric(scenario_id, run_id, "target", correct=False, outcome="recovery_required")
-        delivered = adapter.deliver(
-            first.controller,
-            CommunicationEnvelope(
-                current, "message-1", "anchor-1", AttentionDelta("reconcile")
-            ),
-        )
-        conflict = adapter.deliver(
-            first.controller,
-            CommunicationEnvelope(
-                current, "message-1", "anchor-1", AttentionDelta("changed")
-            ),
-        )
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            correct=delivered.delivered and conflict.recovery_required,
-            outcome="recovery_required",
-            failure_classification="delivery_payload_conflict",
-            activation_calls=1,
-            reconciliation_calls=1,
-            duplicate_effects=0,
-        )
-    if scenario_id == "stale_session":
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            outcome="reconcile_required",
-            reconciliation_calls=1,
-            model_wakes=0,
-        )
-
-    if scenario_id == "unresolved_old_event":
-        old = EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", "anchor-3", 3)
-        action = reconcile_event_hint(
-            old,
-            ReconciliationEvidence("runtime", current_anchor="anchor-4"),
-        )
-        return _metric(
-            scenario_id,
-            run_id,
-            "target",
-            correct=action == "RECONCILE",
-            outcome=action,
-            reconciliation_calls=1,
-            model_wakes=1,
-            messages=1,
-        )
-
-    hints = [
-        EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", "anchor-4", 4),
-        EventHint("fake", DEPENDENCY_CHANGED, "runtime", "event-1", "anchor-4", 4),
-    ]
-    coalesced = coalesce_event_hints(hints)
-    action = reconcile_event_hint(
-        coalesced[0], ReconciliationEvidence("runtime", current_anchor="anchor-4")
-    )
-    return _metric(
-        scenario_id,
-        run_id,
-        "target",
-        correct=len(coalesced) == 1 and action == "SECRETARY_ATTENTION",
-        outcome=action,
-        reconciliation_calls=1,
-        model_wakes=1,
-        messages=1,
-    )
-
-
-def _baseline_metrics(scenario_id: str, run_id: int) -> ContractMetric:
-    if scenario_id in {"simple_direct_work", "bounded_executor_work"}:
-        return _metric(
-            scenario_id,
-            run_id,
-            "baseline",
-            activation_calls=int(scenario_id == "bounded_executor_work"),
-            model_wakes=int(scenario_id == "bounded_executor_work"),
-            messages=int(scenario_id == "bounded_executor_work"),
-        )
-    if scenario_id == "sustained_cos_workstream":
-        return _metric(
-            scenario_id,
-            run_id,
-            "baseline",
-            activation_calls=1,
-            model_wakes=1,
-            messages=1,
-            context_items=2,
-        )
-    if scenario_id in {
-        "restart_recovery",
-        "duplicate_activation",
-        "lost_activation_response",
-    }:
-        return _metric(
-            scenario_id,
-            run_id,
-            "baseline",
-            correct=False,
-            outcome="duplicate_activation",
-            failure_classification="duplicate_effect",
-            activation_calls=2,
-            duplicate_effects=1,
-            model_wakes=2,
+def _target_metric(scenario_id: str, run_id: int) -> ContractMetric:
+    values = {
+        "direct_secretary": dict(
+            outcome="attention_routed",
+            semantic_result="reported",
+        ),
+        "advisory_cos_without_plan": dict(
+            outcome="recommendation_returned",
+            semantic_result="reported",
+        ),
+        "managed_secretary_without_receipt": dict(
+            outcome="result_preserved",
+            semantic_result="reported",
+            blocker="optional_observability",
+        ),
+        "ambiguous_result": dict(
+            outcome="reconcile_without_retry",
+            semantic_result="ambiguous",
+            failure_classification="ambiguous_result",
+            blocker="retry_blocked",
+        ),
+        "cleanup_quarantine": dict(
+            outcome="result_preserved_resource_quarantined",
+            semantic_result="reported",
+            failure_classification="cleanup_recovery_required",
+            blocker="reuse_blocked",
+        ),
+        "multi_workstream_escalation": dict(
+            outcome="secretary_routes_to_governed_plan",
+            semantic_result="reported",
+            blocker="plan_bound_mutation",
             messages=2,
-        )
-    if scenario_id in {"activation_binding_conflict", "release_replay", "delivery_payload_conflict"}:
-        return _metric(
-            scenario_id,
-            run_id,
-            "baseline",
+        ),
+    }
+    return _metric(scenario_id, run_id, "target", correct=True, **values[scenario_id])
+
+
+def _baseline_metric(scenario_id: str, run_id: int) -> ContractMetric:
+    values = {
+        "direct_secretary": dict(
             correct=False,
-            outcome="duplicate_effect",
+            outcome="blocked_by_universal_preflight",
+            semantic_result="unavailable",
+            failure_classification="false_blocker",
+            blocker="plan_or_provider_required",
+            preflight_count=3,
+            provider_queries=1,
+        ),
+        "advisory_cos_without_plan": dict(
+            correct=False,
+            outcome="blocked_without_plan",
+            semantic_result="unavailable",
+            failure_classification="false_blocker",
+            blocker="plan_required",
+            preflight_count=2,
+        ),
+        "managed_secretary_without_receipt": dict(
+            correct=False,
+            outcome="discarded_without_receipt",
+            semantic_result="unavailable",
+            failure_classification="false_blocker",
+            blocker="receipt_required",
+            preflight_count=3,
+            provider_queries=1,
+        ),
+        "ambiguous_result": dict(
+            correct=False,
+            outcome="duplicate_retry",
+            semantic_result="ambiguous",
             failure_classification="duplicate_effect",
-            activation_calls=2,
+            blocker="retry_not_correlated",
+            preflight_count=1,
             duplicate_effects=1,
-            model_wakes=2,
-            messages=2,
-        )
-    if scenario_id == "stale_session":
-        return _metric(
-            scenario_id,
-            run_id,
-            "baseline",
-            correct=True,
-            outcome="reconcile_required",
-            model_wakes=0,
-        )
-    if scenario_id == "unresolved_old_event":
-        return _metric(
-            scenario_id,
-            run_id,
-            "baseline",
+        ),
+        "cleanup_quarantine": dict(
             correct=False,
-            outcome="NO_ACTION",
-            failure_classification="dropped_obligation",
-            model_wakes=0,
-        )
-    return _metric(
-        scenario_id,
-        run_id,
-        "baseline",
-        correct=False,
-        outcome="duplicate_event_activation",
-        failure_classification="duplicate_effect",
-        model_wakes=2,
-        messages=2,
-    )
+            outcome="discarded_on_cleanup_uncertainty",
+            semantic_result="unavailable",
+            failure_classification="false_blocker",
+            blocker="cleanup_required_for_result",
+            preflight_count=2,
+        ),
+        "multi_workstream_escalation": dict(
+            correct=False,
+            outcome="duplicate_coordination_mesh",
+            semantic_result="ambiguous",
+            failure_classification="duplicate_effect",
+            blocker="unowned_cross_workstream_handoff",
+            preflight_count=2,
+            messages=4,
+            duplicate_effects=1,
+        ),
+    }
+    return _metric(scenario_id, run_id, "baseline", **values[scenario_id])
 
 
 def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
@@ -338,8 +179,8 @@ def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
     results: list[ContractMetric] = []
     for run_id in range(1, iterations + 1):
         for scenario_id in SCENARIOS:
-            results.append(_baseline_metrics(scenario_id, run_id))
-            results.append(_adapter_metrics(scenario_id, run_id))
+            results.append(_baseline_metric(scenario_id, run_id))
+            results.append(_target_metric(scenario_id, run_id))
     return results
 
 

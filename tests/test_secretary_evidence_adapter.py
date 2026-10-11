@@ -113,6 +113,7 @@ def test_adapter_keeps_unattributed_provider_usage_separate() -> None:
     )
 
     assert bundle["readiness"] == "BLOCKED_CAPABILITY"
+    assert bundle["probe_readiness"] == "BLOCKED_CAPABILITY"
     assert bundle["provider_usage"]["secretary_attributed"] is False
     assert bundle["provider_usage"]["economics"] == "partial-unattributed"
     assert bundle["secretary_receipt"]["state"] == "missing"
@@ -226,7 +227,7 @@ def test_adapter_does_not_promote_valid_receipt_without_session_bridge() -> None
     assert bundle["provider_usage"]["secretary_attributed"] is False
 
 
-def test_adapter_promotes_exact_session_bridge_with_complete_coverage() -> None:
+def test_adapter_keeps_session_bridge_at_session_attribution_without_run_or_attempt() -> None:
     bundle = build_evidence_bundle(
         launcher(
             disposition="READY",
@@ -243,9 +244,62 @@ def test_adapter_promotes_exact_session_bridge_with_complete_coverage() -> None:
     )
 
     assert bundle["provider_usage"]["session_bridge"] is True
+    assert bundle["provider_usage"]["secretary_attributed"] is False
+    assert bundle["provider_usage"]["attribution"] == "session"
+    assert bundle["provider_usage"]["economics"] == "partial-unattributed"
+
+
+def test_adapter_promotes_exact_run_join_with_complete_session_coverage() -> None:
+    bundle = build_evidence_bundle(
+        launcher(
+            disposition="READY",
+            evidence_provenance="live-attributed",
+            receipt=valid_receipt(session_id="session-1"),
+        ),
+        provider={
+            "provider": "9router",
+            "session_id": "session-1",
+            "run_id": "run-1",
+            "attribution": "run",
+            "coverage": "complete",
+            "input_tokens": 100,
+        },
+    )
+
     assert bundle["provider_usage"]["secretary_attributed"] is True
-    assert bundle["provider_usage"]["attribution"] == "run"
+    assert bundle["provider_usage"]["join"]["matching_key"] == "run_id"
     assert bundle["provider_usage"]["economics"] == "run-bound"
+
+
+@pytest.mark.parametrize(
+    "provider_identity",
+    [
+        {"run_id": "other-run", "attempt_id": "attempt-1"},
+        {"run_id": "run-1", "attempt_id": "other-attempt"},
+    ],
+)
+def test_adapter_does_not_promote_conflicting_provider_identifiers(
+    provider_identity: dict[str, str],
+) -> None:
+    bundle = build_evidence_bundle(
+        launcher(
+            disposition="READY",
+            evidence_provenance="live-attributed",
+            receipt=valid_receipt(session_id="session-1"),
+        ),
+        provider={
+            "provider": "9router",
+            "session_id": "session-1",
+            **provider_identity,
+            "attribution": "run",
+            "coverage": "complete",
+            "input_tokens": 100,
+        },
+    )
+
+    assert bundle["provider_usage"]["secretary_attributed"] is False
+    assert bundle["provider_usage"]["join"]["state"] == "mismatch"
+    assert bundle["provider_usage"]["economics"] == "partial-unattributed"
 
 
 def test_adapter_does_not_promote_partial_session_coverage() -> None:

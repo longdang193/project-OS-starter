@@ -16,6 +16,7 @@ import sys
 import time
 import sqlite3
 import tomllib
+import uuid
 from typing import Any, Mapping
 
 try:
@@ -185,6 +186,57 @@ class SecretaryLaunchRequest:
             raise ValueError(f"Secretary provider must be {SECRETARY_PROVIDER}")
 
 
+@dataclass(frozen=True)
+class SecretaryNormalRequest:
+    worktree: Path
+    task: str
+    codex_home: Path
+    profile: str = "normal"
+    session: str = "auto"
+    pane: str = "auto"
+
+    def __post_init__(self) -> None:
+        for field in ("task", "profile", "session", "pane"):
+            _required_text(getattr(self, field), field)
+
+
+def build_normal_launcher_command(
+    request: SecretaryNormalRequest,
+    *,
+    expected_base: str,
+    dry_run: bool = False,
+) -> list[str]:
+    launcher = Path(__file__).with_name("herdr_main_launcher.py")
+    command = [
+        sys.executable,
+        str(launcher),
+        "--profile",
+        request.profile,
+        "--session",
+        request.session,
+        "--pane",
+        request.pane,
+        "--cwd",
+        str(request.worktree),
+        "--expected-base",
+        expected_base,
+        "--executor",
+        "codex",
+        "--task",
+        (
+            f"{request.task}\n\n"
+            "Secretary normal-mode boundary: inspect, reason, prioritize, route, or summarize only. "
+            "Do not modify repository files. For implementation requests, recommend routing to CoS "
+            "and an authorized Worker or governed execution path."
+        ),
+        "--codex-home",
+        str(request.codex_home),
+    ]
+    if dry_run:
+        command.append("--dry-run")
+    return command
+
+
 def _bound_task(request: SecretaryLaunchRequest) -> str:
     return (
         f"{request.task}\n\n"
@@ -273,12 +325,14 @@ def _ensure_herdr_server(herdr: str, *, env: dict[str, str]) -> dict[str, Any]:
 
 
 def _create_herdr_workspace(
-    request: SecretaryLaunchRequest,
+    request: SecretaryLaunchRequest | SecretaryNormalRequest,
     herdr: str,
     *,
     env: dict[str, str],
+    invocation_id: str | None = None,
 ) -> tuple[str, str]:
-    label = f"secretary-{request.attempt_id[:12]}"
+    label_source = invocation_id or getattr(request, "attempt_id", "secretary")
+    label = f"secretary-{label_source[:12]}"
     result = _herdr_run(
         [
             herdr,
@@ -343,11 +397,12 @@ def _verify_herdr_pane(
 
 
 def _prepare_herdr_target(
-    request: SecretaryLaunchRequest,
+    request: SecretaryLaunchRequest | SecretaryNormalRequest,
     *,
     herdr: str,
     env: dict[str, str],
-) -> tuple[SecretaryLaunchRequest, dict[str, Any], str | None]:
+    invocation_id: str | None = None,
+) -> tuple[SecretaryLaunchRequest | SecretaryNormalRequest, dict[str, Any], str | None]:
     if request.session == "auto" and request.pane != "auto":
         raise LaunchBlocked("`--session auto` and `--pane auto` must be used together.")
     server = _ensure_herdr_server(herdr, env=env)
@@ -361,7 +416,12 @@ def _prepare_herdr_target(
             "pane_cwd_verified": False,
             "workspace_created": False,
         }, None
-    workspace_id, pane = _create_herdr_workspace(request, herdr, env=env)
+    workspace_id, pane = _create_herdr_workspace(
+        request,
+        herdr,
+        env=env,
+        invocation_id=invocation_id,
+    )
     try:
         _verify_herdr_pane(request, herdr, pane, env=env)
     except LaunchBlocked:
@@ -418,6 +478,23 @@ def _release_codex_agent(
     except CommandTransportTimeout:
         return {"state": "unknown", "error": "release-agent transport timeout"}
     if result.returncode:
+        try:
+            get_result = _herdr_run(
+                [herdr, "--session", session, "agent", "get", agent_name],
+                env=env,
+                timeout=1.0,
+            )
+        except CommandTransportTimeout:
+            return {"state": "unknown", "error": "agent interruption failed"}
+        if get_result.returncode:
+            for output in (get_result.stdout, get_result.stderr):
+                try:
+                    payload = json.loads(output)
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                error = payload.get("error") if isinstance(payload, Mapping) else None
+                if isinstance(error, Mapping) and error.get("code") == "agent_not_found":
+                    return {"state": "removed"}
         return {"state": "unknown", "error": "agent interruption failed"}
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
@@ -448,7 +525,7 @@ def _release_codex_agent(
 
 
 def _observe_submitted_codex(
-    request: SecretaryLaunchRequest,
+    request: SecretaryLaunchRequest | SecretaryNormalRequest,
     payload: Mapping[str, Any],
     *,
     env: dict[str, str],
@@ -477,7 +554,10 @@ def _observe_submitted_codex(
             env=env,
             timeout_seconds=min(5.0, remaining),
         )
-        if snapshot.get("state") in {"idle", "failed", "stopped"}:
+        if (
+            snapshot.get("state") in {"idle", "failed", "stopped"}
+            and not snapshot.get("observation_error")
+        ):
             break
         time.sleep(min(_CODEX_OBSERVATION_POLL_SECONDS, remaining))
 
@@ -486,6 +566,17 @@ def _observe_submitted_codex(
         for key in ("state", "state_change_seq", "output_sha256", "output_chars", "observation_error")
         if key in snapshot
     }
+    observation.update({"session": session, "pane": pane, "agent_name": agent_name})
+    if (
+        snapshot.get("state") == "idle"
+        and snapshot.get("observation_error") is None
+        and isinstance(snapshot.get("state_change_seq"), int)
+        and isinstance(snapshot.get("output_chars"), int)
+        and snapshot["output_chars"] > 0
+    ):
+        observation["result_reference"] = (
+            f"herdr://{session}/{agent_name}/{snapshot['state_change_seq']}"
+        )
     cleanup: dict[str, Any] = {"state": "not_attempted"}
     if snapshot.get("state") == "idle" and not snapshot.get("observation_error"):
         cleanup = _release_codex_agent(
@@ -1145,7 +1236,185 @@ def _smoke_receipt(
     )
 
 
-def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any]:
+def _read_only_git_anchor(worktree: Path) -> tuple[Path, str]:
+    completed = subprocess.run(
+        ["git", "-C", str(worktree), "rev-parse", "--show-toplevel", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or "git worktree anchor unavailable"
+        raise LaunchBlocked(detail)
+    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if len(lines) != 2:
+        raise LaunchBlocked("git worktree anchor returned incomplete identity")
+    return Path(lines[0]).resolve(), _required_text(lines[1], "git_revision")
+
+
+def _safe_result_value(value: object) -> str | None:
+    text = _safe_text(value)
+    if text is None or len(text) > 4096:
+        return None
+    return text
+
+
+def _normalize_invocation_outcome(
+    *,
+    invocation_id: str,
+    returncode: int,
+    payload: Mapping[str, Any] | None,
+    observation: Mapping[str, Any] | None,
+    started_at: str,
+    finished_at: str,
+) -> dict[str, Any]:
+    assignment = payload.get("assignment") if isinstance(payload, Mapping) else None
+    assignment = assignment if isinstance(assignment, Mapping) else {}
+    execution = assignment.get("execution")
+    execution = dict(execution) if isinstance(execution, Mapping) else {}
+    if not isinstance(execution.get("state"), str):
+        execution["state"] = "failed" if returncode else "unknown"
+    cleanup = assignment.get("cleanup")
+    cleanup = cleanup if isinstance(cleanup, Mapping) else {}
+    observed = observation if isinstance(observation, Mapping) else {}
+    task_result = assignment.get("task_result")
+    task_result = task_result if isinstance(task_result, Mapping) else {}
+    task_state = task_result.get("state")
+    result_status = {
+        "reported_completed": "completed",
+        "reported_failed": "failed",
+    }.get(task_state)
+
+    references: list[str] = []
+    content: str | None = None
+    for source in (task_result, assignment, observed):
+        for key in ("result_reference", "reference", "source_ref", "result_ref"):
+            value = _safe_result_value(source.get(key))
+            if value and value not in references:
+                references.append(value)
+        if content is None:
+            for key in ("content", "response", "message"):
+                content = _safe_result_value(source.get(key))
+                if content:
+                    break
+
+    identity_values = {
+        value
+        for source in (task_result, assignment)
+        for value in (
+            _safe_result_value(source.get("attempt_id")),
+            _safe_result_value(source.get("assignment_id")),
+        )
+        if value
+    }
+    ambiguous = bool(task_result.get("ambiguous")) or len(identity_values) > 1
+    if len(references) > 1:
+        ambiguous = True
+    if result_status is None and references and not ambiguous:
+        result_status = "failed" if observed.get("state") == "failed" else "completed"
+    if ambiguous:
+        result = {"state": "ambiguous", "status": None}
+    elif result_status is not None and (references or (content and identity_values)):
+        result = {"state": "reported", "status": result_status}
+        if references:
+            result["reference"] = references[0]
+        else:
+            result["content"] = content
+    else:
+        result = {"state": "unavailable", "status": None}
+
+    cleanup_state = cleanup.get("state")
+    observed_cleanup = observed.get("cleanup")
+    if not cleanup_state and isinstance(observed_cleanup, Mapping):
+        cleanup_state = observed_cleanup.get("state")
+    if cleanup_state == "removed":
+        resource = {"state": "settled", "reuse_blocked": False}
+    elif cleanup_state in {"preserved", "unknown", "unverified"}:
+        resource = {"state": "quarantined", "reuse_blocked": True}
+    else:
+        resource = {"state": "unresolved", "reuse_blocked": True}
+
+    observability_state = (
+        "available" if observed and not observed.get("observation_error") else "unavailable"
+    )
+    observed_cleanup_state = (
+        observed_cleanup.get("state") if isinstance(observed_cleanup, Mapping) else None
+    )
+    observability = {
+        "state": observability_state,
+        "reference": references[0] if references else None,
+        "completion_state": observed.get("state"),
+        "cleanup_state": cleanup_state or observed_cleanup_state,
+        "state_change_seq": observed.get("state_change_seq"),
+        "output_chars": observed.get("output_chars"),
+        "observation_error": observed.get("observation_error"),
+    }
+    return {
+        "schema_version": "secretary-invocation-v1",
+        "invocation_id": invocation_id,
+        "execution": execution,
+        "result": result,
+        "resource": resource,
+        "observability": observability,
+        "timestamps": {"started": started_at, "finished": finished_at},
+    }
+
+
+def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
+    invocation_id = uuid.uuid4().hex
+    worktree, expected_base = _read_only_git_anchor(request.worktree)
+    request = replace(request, worktree=worktree)
+    started = datetime.now(timezone.utc).isoformat()
+    environment = dict(os.environ)
+    environment["CODEX_HOME"] = str(request.codex_home.resolve())
+    herdr = shutil.which("herdr")
+    if not herdr:
+        raise LaunchBlocked("Required executable unavailable on PATH: herdr")
+    launch_request, preflight, workspace_id = _prepare_herdr_target(
+        request,
+        herdr=herdr,
+        env=environment,
+        invocation_id=invocation_id,
+    )
+    payload: Mapping[str, Any] | None = None
+    observation: Mapping[str, Any] = {}
+    result: dict[str, Any] = {}
+    try:
+        completed = subprocess.run(
+            build_normal_launcher_command(launch_request, expected_base=expected_base),
+            cwd=launch_request.worktree,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
+        payload = select_launcher_payload(payloads) if payloads else None
+        if completed.returncode == 0 and isinstance(payload, Mapping):
+            observation = _observe_submitted_codex(launch_request, payload, env=environment)
+        result = _normalize_invocation_outcome(
+            invocation_id=invocation_id,
+            returncode=completed.returncode,
+            payload=payload,
+            observation=observation,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+    finally:
+        if workspace_id is not None:
+            preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
+            if (
+                result.get("resource", {}).get("state") == "settled"
+                and preflight["workspace_close"].get("state") != "closed"
+            ):
+                result["resource"] = {"state": "quarantined", "reuse_blocked": True}
+    result["preflight"] = preflight
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return result
+
+
+def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any]:
     _configured_provider(request.codex_home)
     configured_model = _configured_model(request)
     started = datetime.now(timezone.utc).isoformat()
@@ -1252,27 +1521,57 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     return result
 
 
+run_smoke = run_probe
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    smoke = subparsers.add_parser("smoke")
-    smoke.add_argument("--output", type=Path, required=True)
-    smoke.add_argument("--task-id", required=True)
-    smoke.add_argument("--plan-revision", required=True)
-    smoke.add_argument("--attempt-id", required=True)
-    smoke.add_argument("--run-id", required=True)
-    smoke.add_argument("--repository-identity", required=True)
-    smoke.add_argument("--plan-identity", required=True)
-    smoke.add_argument("--git-revision", required=True)
-    smoke.add_argument("--cwd", type=Path, default=Path.cwd())
-    smoke.add_argument("--expected-base", required=True)
-    smoke.add_argument("--task", required=True)
-    smoke.add_argument("--codex-home", type=Path)
-    smoke.add_argument("--profile", default="normal")
-    smoke.add_argument("--session", default="auto")
-    smoke.add_argument("--pane", default="auto")
+    for command_name in ("probe", "smoke"):
+        probe = subparsers.add_parser(command_name)
+        probe.add_argument("--output", type=Path, required=True)
+        probe.add_argument("--task-id", required=True)
+        probe.add_argument("--plan-revision", required=True)
+        probe.add_argument("--attempt-id", required=True)
+        probe.add_argument("--run-id", required=True)
+        probe.add_argument("--repository-identity", required=True)
+        probe.add_argument("--plan-identity", required=True)
+        probe.add_argument("--git-revision", required=True)
+        probe.add_argument("--cwd", type=Path, default=Path.cwd())
+        probe.add_argument("--expected-base", required=True)
+        probe.add_argument("--task", required=True)
+        probe.add_argument("--codex-home", type=Path)
+        probe.add_argument("--profile", default="normal")
+        probe.add_argument("--session", default="auto")
+        probe.add_argument("--pane", default="auto")
+    run = subparsers.add_parser("run")
+    run.add_argument("--output", type=Path, required=True)
+    run.add_argument("--cwd", type=Path, default=Path.cwd())
+    run.add_argument("--task", required=True)
+    run.add_argument("--codex-home", type=Path)
+    run.add_argument("--profile", default="normal")
+    run.add_argument("--session", default="auto")
+    run.add_argument("--pane", default="auto")
     args = parser.parse_args(argv)
-    if args.command == "smoke":
+    if args.command == "run":
+        codex_home = (args.codex_home or Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")).expanduser()
+        request = SecretaryNormalRequest(
+            worktree=args.cwd,
+            task=args.task,
+            codex_home=codex_home,
+            profile=args.profile,
+            session=args.session,
+            pane=args.pane,
+        )
+        try:
+            result = run_normal(request, output=args.output)
+        except (OSError, RuntimeError, ValueError, LaunchBlocked) as exc:
+            result = {"schema_version": "secretary-invocation-v1", "result": {"state": "unavailable", "status": None}, "error": type(exc).__name__, "error_detail": str(exc)}
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["result"]["state"] == "reported" else 2
+    if args.command in {"probe", "smoke"}:
         codex_home = (args.codex_home or Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")).expanduser()
         request = SecretaryLaunchRequest(
             task_id=args.task_id,
@@ -1291,7 +1590,7 @@ def main(argv: list[str] | None = None) -> int:
             pane=args.pane,
         )
         try:
-            result = run_smoke(request, output=args.output)
+            result = run_probe(request, output=args.output)
         except (OSError, RuntimeError, ValueError) as exc:
             result = sanitize_launcher_result(request, returncode=2, payload=None)
             result["error"] = type(exc).__name__

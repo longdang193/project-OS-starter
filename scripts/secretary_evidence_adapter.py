@@ -115,10 +115,15 @@ def _provider_usage(launcher: Mapping[str, Any], provider: Mapping[str, Any] | N
     if provider_attribution not in {"request", "session", "attempt", "run", "window", "none"}:
         provider_attribution = "session" if provider_session else "none"
     session_bridge = bool(provider_session and receipt_session and provider_session == receipt_session)
-    secretary_attributed = receipt["state"] == "present" and session_bridge and coverage == "complete"
+    secretary_attributed = (
+        receipt["state"] == "present"
+        and join["state"] == "matched"
+        and session_bridge
+        and coverage == "complete"
+    )
     attribution = provider_attribution
     if secretary_attributed:
-        attribution = "run" if _text(receipt_data.get("run_id")) else "attempt"
+        attribution = "run" if join["matching_key"] == "run_id" else "attempt"
     return {
         "state": "observed",
         "secretary_attributed": secretary_attributed,
@@ -128,7 +133,13 @@ def _provider_usage(launcher: Mapping[str, Any], provider: Mapping[str, Any] | N
         "session_bridge": session_bridge,
         "join": join,
         "data": _copy_fields(provider, _PROVIDER_FIELDS),
-        "economics": "run-bound" if secretary_attributed else "partial-unattributed",
+        "economics": (
+            "run-bound"
+            if secretary_attributed and join["matching_key"] == "run_id"
+            else "attempt-bound"
+            if secretary_attributed
+            else "partial-unattributed"
+        ),
     }
 
 
@@ -156,6 +167,7 @@ def build_evidence_bundle(
         embedded_provider = _mapping(launcher.get("provider_telemetry"))
         if embedded_provider:
             provider_usage = _provider_usage(launcher, embedded_provider)
+    probe_readiness = "READY" if launch.get("disposition") == "READY" and receipt["state"] == "present" else "BLOCKED_CAPABILITY"
     return {
         "schema_version": SCHEMA_VERSION,
         "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -169,7 +181,8 @@ def build_evidence_bundle(
             "recorded_target": _copy_fields(target, ("pane_id", "workspace_id", "cwd")) if target else {},
         },
         "secretary_receipt": receipt,
-        "readiness": "READY" if launch.get("disposition") == "READY" and receipt["state"] == "present" else "BLOCKED_CAPABILITY",
+        "probe_readiness": probe_readiness,
+        "readiness": probe_readiness,
     }
 
 
