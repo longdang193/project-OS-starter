@@ -448,6 +448,34 @@ def test_release_codex_agent_treats_already_retired_agent_as_removed(
     assert len(calls) == 2
 
 
+def test_release_codex_agent_checks_for_delayed_retirement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    clock = iter([0.0, 0.0, 6.0, 6.0, 9.0])
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if "send-keys" in command:
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        if len(calls) in {2, 3}:
+            return type("Result", (), {"returncode": 0, "stdout": "{}", "stderr": ""})()
+        return type(
+            "Result",
+            (),
+            {"returncode": 1, "stdout": '{"error":{"code":"agent_not_found"}}', "stderr": ""},
+        )()
+
+    monkeypatch.setattr("scripts.secretary_live_runtime._herdr_run", fake_run)
+    monkeypatch.setattr("scripts.secretary_live_runtime.time.monotonic", lambda: next(clock))
+    monkeypatch.setattr("scripts.secretary_live_runtime.time.sleep", lambda _: None)
+
+    result = _release_codex_agent("herdr", "session", "agent", "pane", env={})
+
+    assert result == {"state": "removed"}
+    assert len(calls) == 4
+
+
 def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

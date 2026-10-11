@@ -521,6 +521,25 @@ def _release_codex_agent(
                 return {"state": "removed"}
             return {"state": "unknown", "error": "agent retirement observation failed"}
         time.sleep(0.1)
+    grace_deadline = deadline + 5.0
+    while time.monotonic() < grace_deadline:
+        try:
+            get_result = _herdr_run(
+                [herdr, "--session", session, "agent", "get", agent_name],
+                env=env,
+                timeout=1.0,
+            )
+        except CommandTransportTimeout:
+            return {"state": "unknown", "error": "agent retirement observation timed out"}
+        for output in (get_result.stdout, get_result.stderr):
+            try:
+                payload = json.loads(output)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            error = payload.get("error") if isinstance(payload, Mapping) else None
+            if isinstance(error, Mapping) and error.get("code") == "agent_not_found":
+                return {"state": "removed"}
+        time.sleep(0.1)
     return {"state": "unknown", "error": "agent retirement not observed"}
 
 
