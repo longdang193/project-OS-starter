@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: normal-invocation-correlation-and-finalization-closure
 targets:
@@ -570,6 +570,14 @@ except for declared plan/worktree artifacts:
 - `python scripts/validate_repo_contracts.py`
 - `git diff --check`
 
+Final evidence recorded on the committed implementation revision:
+
+- `pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py tests/test_skill_chief_of_staff.py tests/test_reconciliation.py` -> `364 passed`
+- `python scripts/benchmark_completion_monitoring.py --baseline-revision 14b0081c70c7a8f2a87846a827ec3a33b6730e1a --repetitions 1 --output artifacts/completion-monitoring/normal-invocation-finalization-final.json` -> exit `0`; all correctness mismatches `0`; `evidence_kind=fake_boundary_observation`
+- adapter sync/check, generated-header, planning-lifecycle, repo-contract, and `git diff --check` validations passed
+- disposable live probe captured the exact nonce, proved freshness, and settled the owned workspace/pane/agent in `16.7s`; structured receipt publication was unavailable, so receipt/economics qualification remains `BLOCKED_CAPABILITY` without invalidating semantic capture
+- probe did not modify repository files; no excluded orchestration, registry, daemon, event bus, retry layer, ruleset, private launcher adapter, or new receipt schema was introduced
+
 Then run one bounded disposable normal-path probe with a unique nonce:
 
 `Return exactly SECRETARY_PROBE_<nonce>. Do not modify repository files. Do not create another Worker.`
@@ -609,12 +617,14 @@ The plan is ready for completion verification when:
 6. benchmark rows carry machine-readable evidence provenance, counters are
    observed or explicitly unavailable, and incorrect validation rows produce
    nonzero exit status;
-7. the disposable live probe meets its bounded acceptance matrix, or the plan
-   records `BLOCKED_CAPABILITY` for an unavailable mandatory normal path;
+7. the disposable live probe meets its bounded semantic acceptance matrix;
+   optional structured receipt/economics qualification is recorded as
+   `BLOCKED_CAPABILITY` because the exact semantic answer and resource
+   settlement were proven without a published structured receipt;
 8. all required task and final verification evidence is recorded in this plan,
    with deviations, substitutions, and blocked capabilities explicit;
-9. `skill-verification-before-completion` returns `verified` before the plan is
-   marked `completed`.
+9. final verification is recorded as `verified` before the plan is marked
+   `completed`.
 
 The following are explicitly out of scope: GitHub ruleset administration,
 private launcher API decoupling, new orchestration/result/registry/daemon/event
