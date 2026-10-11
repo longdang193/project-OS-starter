@@ -149,6 +149,17 @@ fresh evidence that the original delivery did not succeed. The launcher keeps
 the original task hash, projected Runtime Grant digest, and delivery-task hash
 together so the observed lane can be matched to the exact task brief.
 
+Normal Secretary invocation uses the existing launcher task-result and cleanup
+facts but remains a read-only coordination path for repository implementation.
+Middleware may create an ephemeral `invocation_id` for direct-call correlation;
+it is not an attempt, plan-run, session, or workflow-authority identity. A
+normal result is `reported` only when a correlated final payload or retrievable
+reference is available with unambiguous identity. Launcher exit, pane idle,
+silence, cleanup, or transport acknowledgement alone never becomes a semantic
+result. Strict receipt/provider telemetry belongs to explicit probe or reporting
+paths and must not require a new runtime ledger, session registry, or retry
+manager.
+
 ## Generate
 
 ```bash

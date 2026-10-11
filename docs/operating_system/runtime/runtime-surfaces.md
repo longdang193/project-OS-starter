@@ -215,20 +215,24 @@ resources remain caller-owned through `runtime.json`.
   this contract fake. Released receipts never restore active ownership. Only a
   transport-owned durable journal may claim process-crash recovery.
 - The bounded live Secretary wrapper is `scripts/secretary_live_runtime.py`.
-  The live wrapper launches through `scripts/herdr_main_launcher.py`, resolves one configured
-  `CODEX_HOME` containing `config.toml` and `auth.json`, requires provider
-  `9router`, and emits sanitized producer-bound receipts. Live launch requires
-  an existing Herdr pane matching the requested worktree; missing target
-  resolution is `BLOCKED_CAPABILITY`, not permission to use fallback transport.
-  Receipt validity does not prove Worker publication, settlement, or CoS
-  acceptance.
+  Its normal `run` path is read-only coordination: it may inspect, reason,
+  prioritize, route, contact CoS, and summarize, but it does not edit repository
+  implementation. Normal `run` returns independent execution, result, resource,
+  and observability facts; it does not require a strict receipt, provider
+  telemetry, Herdr qualification, or 9router query. Its `invocation_id` is an
+  ephemeral middleware correlation identifier and grants no workflow authority.
+  The strict `probe` path retains the existing live launcher requirements and
+  `smoke` remains only a compatibility alias. Receipt validity does not prove
+  Worker publication, settlement, or CoS acceptance.
 - Repeated local evidence collection uses `scripts/secretary_evidence_adapter.py`.
   It reads sanitized launcher/provider artifacts and a recorded reusable target;
   it does not mutate Herdr, Codex, or the provider. Provider token/cache/cost
   data remains diagnostic and `partial-unattributed` unless both an existing run
   or attempt identifier proves the join and a validated live-attributed Secretary
-  receipt is present. Missing structured Secretary receipts keep readiness
-  `BLOCKED_CAPABILITY`.
+  receipt is present. Missing structured Secretary receipts keep probe
+  `probe_readiness` at `BLOCKED_CAPABILITY`; this probe-only state must not be
+  promoted into ordinary Secretary coordination state. A compatibility
+  `readiness` projection, if retained, is deprecated.
 - Live receipts may carry measured token usage from `response.usage` and a
   separately marked published-rate-card cost estimate. Missing model/rate
   attribution keeps cost `unknown`; estimates never claim provider billing.

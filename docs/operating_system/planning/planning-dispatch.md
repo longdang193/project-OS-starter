@@ -56,10 +56,19 @@ Do not use an arbitrary overlap threshold.
 
 ## Coordination Method Selection
 
-Select `skill-chief-of-staff` in `advisory` mode when a native Codex lead binds
-an exact repository commit and a bounded read-only audit materially benefits
-from independent inspection or synthesis. Advisory mode needs no plan or
-`Required skills` opt-in and has no mutation authority.
+Select `skill-chief-of-staff` in `advisory` mode when workstream analysis,
+recommendation, routing, continuation, escalation, or independent synthesis
+materially benefits from CoS. Direct advisory CoS is an in-session semantic
+role and needs no plan, `Required skills` opt-in, native Codex qualification,
+Herdr, or exact-commit audit when the requested action is read-only reasoning.
+Bind an exact commit or use clean isolation when local inspection tools cannot
+enforce read-only behavior. Advisory mode has no mutation authority.
+
+CoS reasoning/coordination is distinct from CoS-governed execution. PR, release,
+incident, specification, research, and cross-repository advisory analysis are
+not blanket exclusions; action-specific assurance applies. Governed mutation,
+parallel work, acceptance, retry, settlement, review, and integration still
+use the approved-plan, runtime, Git, and GitHub gates below.
 
 Select `skill-chief-of-staff` in `plan-bound-execution` as an optional
 coordination specialization of `skill-executing-plans` only when an approved
