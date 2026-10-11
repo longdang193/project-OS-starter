@@ -2,10 +2,9 @@
 layer: change
 artifact_type: plan
 contract_version: "1"
-status: active
+status: completed
 template_id: implementation-plan
 name: semantic-acceptance-delivery-a
-distribution_tier: starter_kit
 targets:
   - scripts/project_os_runtime/acceptance.py
   - scripts/project_os_runtime/plan_preparation.py
@@ -98,17 +97,17 @@ dependency is demonstrated.
 - Branch: `codex/semantic-acceptance-delivery-a`
 - Base commit: `332002e3e8674d957e7ba9df56472fc3c940fb37` (`origin/main` after activation revalidation; local `main` was stale and remains untouched)
 - Expected workspace: `new clean dedicated worktree; existing dirty checkout preserved and not used for implementation`
-- Next action: `create or attach the clean Delivery A worktree, transfer and checkpoint this reviewed plan, revalidate main, then complete Task 1`
-- Blockers: `none for planning; live Secretary capability is not a Delivery A prerequisite`
+- Next action: `Delivery A complete; keep Delivery B/C deferred until separately justified`
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `active` | dedicated | `codex` | none | fresh base, plan checkpoint, and caller inventory | worktree and plan checkpoint verified |
-| Task 2 | `pending` | dedicated | `unresolved` | Task 1 | immutable-candidate acceptance contract | pending |
-| Task 3 | `pending` | dedicated | `unresolved` | Task 2 | settlement decoupled end-to-end | pending |
-| Task 4 | `pending` | dedicated | `unresolved` | Task 3 | Plan consequence and dependency binding | pending |
-| Task 5 | `pending` | dedicated | `unresolved` | Task 3, Task 4 | runtime safety non-regression matrix | pending |
-| Task 6 | `pending` | dedicated | `unresolved` | Task 4, Task 5 | combined suite and independent review | pending |
+| Task 1 | `completed` | dedicated | `codex` | none | fresh base, plan checkpoint, and caller inventory | fresh base `332002e`, plan checkpoint `03282e4`, activation checkpoint `1b0aadd`, baseline `110 passed, 1 skipped`, acceptance-path inventory recorded |
+| Task 2 | `completed` | dedicated | `codex` | Task 1 | immutable-candidate acceptance contract | candidate/attempt cases added; semantic settlement case awaits Task 3 coupling removal |
+| Task 3 | `completed` | dedicated | `codex` | Task 2 | settlement decoupled end-to-end | semantic/Plan/dependent settlement coupling removed; release-time settlement regression passes |
+| Task 4 | `completed` | dedicated | `codex` | Task 3 | Plan consequence and dependency binding | accepted candidate is returned/passed through transitions; prerequisite substitution rejected; launch ancestry remains verifier-only |
+| Task 5 | `completed` | dedicated | `codex` | Task 3, Task 4 | runtime safety non-regression matrix | `200 passed, 1 skipped`; no runtime/dispatch source changes |
+| Task 6 | `completed` | dedicated | `codex` | Task 4, Task 5 | combined suite and independent review | `250 passed, 1 skipped`; repo-contract and planning validators passed; `git diff --check` passed; review-1 final verdict `PASS`; replay and logical-identity regressions fixed |
 
 ## Task Breakdown
 
@@ -153,19 +152,19 @@ dependency is demonstrated.
 - Stop for: stale or mismatched base, unapproved scope expansion, missing candidate-binding owner, or any safety invariant that cannot be preserved
 
 **Steps:**
-- [ ] Step 1: Verify `main` and `origin/main`; create the dedicated worktree from the chosen verified base and leave the dirty checkout untouched.
-- [ ] Step 2: Copy only this reviewed plan into the dedicated worktree, compare its SHA-256 with the source copy, stage only the plan, and create the initial coordination checkpoint before activating the first task.
-- [ ] Step 3: Run baseline acceptance, plan-preparation, evidence-release, and relevant reconciliation tests.
-- [ ] Step 4: Inventory the complete chain: `evaluate_acceptance()` → `apply_accepted_plan_transitions()` → accepted Plan consequence → `authorize_dependent_transition()` → accepted prerequisite preparation → dependent launch input.
-- [ ] Step 5: Inventory all uses of settlement in that chain and prove whether
+- [x] Step 1: Verify `main` and `origin/main`; create the dedicated worktree from the chosen verified base and leave the dirty checkout untouched.
+- [x] Step 2: Copy only this reviewed plan into the dedicated worktree, compare its SHA-256 with the source copy, stage only the plan, and create the initial coordination checkpoint before activating the first task.
+- [x] Step 3: Run baseline acceptance, plan-preparation, evidence-release, and relevant reconciliation tests.
+- [x] Step 4: Inventory the complete chain: `evaluate_acceptance()` → `apply_accepted_plan_transitions()` → accepted Plan consequence → `authorize_dependent_transition()` → accepted prerequisite preparation → dependent launch input.
+- [x] Step 5: Inventory all uses of settlement in that chain and prove whether
   `authorize_evidence_release()` is independently stricter.
-- [ ] Step 6: Confirm current integration already treats `cos_pass` as semantic
+- [x] Step 6: Confirm current integration already treats `cos_pass` as semantic
   input and does not need modification; record the result rather than changing it.
 
 **Verification:**
-- [ ] `git status --short --branch`
-- [ ] `python -m pytest tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py -q`
-- [ ] `python scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-11-semantic-acceptance-runtime-safety-integration-telemetry-separation-plan.md`
+- [x] `git status --short --branch`
+- [x] `python -m pytest tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py -q`
+- [x] `python scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-11-semantic-acceptance-runtime-safety-integration-telemetry-separation-plan.md`
 - Expected: clean dedicated worktree on verified base, baseline tests pass, and every acceptance-path caller is classified.
 
 **Exit Criteria:**
@@ -182,8 +181,8 @@ dependency is demonstrated.
 - Specify and encode the distinction between immutable artifact proof and external-effect proof.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: resolve the lowest reliable executor after Task 1 confirms the write set.
+- Controller-selected: `normal`
+- Selection basis: lowest reliable backend executor for the bounded acceptance change after Task 1 confirmed the write set.
 
 **Validator Profile (optional):**
 - Controller-selected: `none`
@@ -210,18 +209,18 @@ dependency is demonstrated.
 - Stop for: any change to worker result schema, runtime lifecycle ownership, evidence-release authority, or external-provider behavior
 
 **Steps:**
-- [ ] Step 1: Define the minimum semantic proof as task/attempt binding,
+- [x] Step 1: Define the minimum semantic proof as task/attempt binding,
   candidate identity, required criteria, publication, freshness, write scope,
   verification, and CoS authority.
-- [ ] Step 2: Ensure immutable candidate identity is explicit in the acceptance
+- [x] Step 2: Ensure immutable candidate identity is explicit in the acceptance
   proof and distinguish it from the mutable predecessor workspace.
-- [ ] Step 3: Ensure a required unresolved external side effect remains
+- [x] Step 3: Ensure a required unresolved external side effect remains
   `BLOCKED`, while missing pane/session observation alone has no semantic effect.
-- [ ] Step 4: Keep worker-reported status advisory; independently valid evidence
+- [x] Step 4: Keep worker-reported status advisory; independently valid evidence
   controls `PASS`, `FAIL`, or `BLOCKED`.
 
 **Verification:**
-- [ ] Focused tests cover immutable candidate, mutable workspace only, stale/wrong attempt, missing evidence, false criterion, and unresolved required external effect.
+- [x] Focused tests cover immutable candidate, mutable workspace only, stale/wrong attempt, missing evidence, false criterion, and unresolved required external effect.
 - Expected: no valid immutable candidate is blocked by unrelated runtime or telemetry facts, and no mutable workspace is accepted as an artifact.
 
 **Exit Criteria:**
@@ -239,8 +238,8 @@ dependency is demonstrated.
 - Remove the root coupling once and update all shared callers in the acceptance chain.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: shared backend behavior with direct acceptance authority.
+- Controller-selected: `normal`
+- Selection basis: lowest reliable backend executor for the shared acceptance-to-consequence behavior.
 
 **Validator Profile (optional):**
 - Controller-selected: `none`
@@ -269,21 +268,21 @@ dependency is demonstrated.
 - Stop for: removing stale-attempt, candidate, write-scope, publication, or evidence-release checks; changing runtime owner facts; or adding a new ledger/state machine
 
 **Steps:**
-- [ ] Step 1: Remove `settlement_proven` and `resource_settled` as universal
+- [x] Step 1: Remove `settlement_proven` and `resource_settled` as universal
   semantic prerequisites from `evaluate_acceptance()`.
-- [ ] Step 2: Remove the same prerequisites from Plan transition and dependent
+- [x] Step 2: Remove the same prerequisites from Plan transition and dependent
   transition authorization only where Task 1 proves they are incorrectly coupling
   semantic advancement; do not weaken evidence-release authorization.
-- [ ] Step 3: Keep any temporary settlement field compatibility-only, document
+- [x] Step 3: Keep any temporary settlement field compatibility-only, document
   its consumer, and ensure it cannot change semantic `PASS`.
-- [ ] Step 4: Make evidence release consume a fresh, authoritative, same-attempt
+- [x] Step 4: Make evidence release consume a fresh, authoritative, same-attempt
   settlement/retirement proof from the runtime owner rather than relying on the
   original acceptance-time settlement snapshot; keep retention, ownership,
   recovery, and consumer-release checks unchanged.
-- [ ] Step 5: Prove no external/provider calls are introduced into semantic evaluation.
+- [x] Step 5: Prove no external/provider calls are introduced into semantic evaluation.
 
 **Verification:**
-- [ ] `python -m pytest tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py -q`
+- [x] `python -m pytest tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py -q`
 - Expected: valid candidate with unsettled runtime can pass and advance its
   accepted consequence; a later same-attempt settlement permits safe release,
   while wrong-attempt or stale settlement remains rejected.
@@ -301,8 +300,8 @@ dependency is demonstrated.
 - Make the accepted Plan consequence carry the candidate reference used by dependents.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: Plan transition ownership is canonical and must remain single-writer.
+- Controller-selected: `normal`
+- Selection basis: lowest reliable backend executor for the canonical Plan transition owner.
 
 **Validator Profile (optional):**
 - Controller-selected: `none`
@@ -331,22 +330,22 @@ dependency is demonstrated.
 - Stop for: consuming mutable workspace state, creating a second Plan/task ledger, or releasing a dependency without candidate identity and plan binding
 
 **Steps:**
-- [ ] Step 1: Persist the accepted candidate SHA and its existing plan/task/attempt
+- [x] Step 1: Persist the accepted candidate SHA and its existing plan/task/attempt
   binding in the canonical Plan consequence.
-- [ ] Step 2: Update the existing accepted-prerequisite preparation boundary
+- [x] Step 2: Update the existing accepted-prerequisite preparation boundary
   (`_accepted_prerequisites`) to derive or validate each `accepted_revision`
   against the persisted plan/task/attempt-bound consequence, not an independently
   supplied commit merely contained by the dependent worktree.
-- [ ] Step 3: Reuse `verify_launch_bindings` as an ancestry/containment check,
+- [x] Step 3: Reuse `verify_launch_bindings` as an ancestry/containment check,
   not as the source of accepted-candidate identity.
-- [ ] Step 4: Ensure old Worker mutations after acceptance cannot modify the
+- [x] Step 4: Ensure old Worker mutations after acceptance cannot modify the
   accepted consequence and cannot make the workspace reusable while ownership is uncertain.
-- [ ] Step 5: Test idempotent repeated transition attempts, restart-and-prepare
+- [x] Step 5: Test idempotent repeated transition attempts, restart-and-prepare
   behavior, and mismatched/stale candidate rejection including substitution of
   an unrelated commit already contained by the dependent worktree.
 
 **Verification:**
-- [ ] `python -m pytest tests/test_plan_preparation.py tests/test_project_os_runtime.py -q`
+- [x] `python -m pytest tests/test_plan_preparation.py tests/test_project_os_runtime.py -q`
 - Expected: accepted candidate identity is persisted and dependent work cannot
   advance from an unrelated or later workspace mutation.
 
@@ -363,8 +362,8 @@ dependency is demonstrated.
 - Run non-regression proof and escalate any concrete shared runtime defect exposed by Tasks 1–4.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: use the lowest reliable executor for the bounded runtime proof.
+- Controller-selected: `normal`
+- Selection basis: lowest reliable executor for the bounded runtime proof.
 
 **Validator Profile (optional):**
 - Controller-selected: `none`
@@ -393,13 +392,13 @@ dependency is demonstrated.
 - Stop for: lifecycle renaming, native fallback after ambiguous delivery, unsafe reuse, destructive cleanup without ownership proof, or scope expansion into telemetry
 
 **Steps:**
-- [ ] Step 1: Prove accepted immutable candidate plus live Worker leaves reuse blocked/quarantined.
-- [ ] Step 2: Prove harmless cleanup failure yields reconciliation work without changing semantic `PASS`.
-- [ ] Step 3: Prove missing pane/session observation does not invalidate candidate acceptance but preserves resource quarantine when ownership is uncertain.
-- [ ] Step 4: Prove ambiguous Herdr delivery never causes duplicate native fallback; if this fails, stop and request a scope amendment rather than editing runtime/dispatch code under this plan.
+- [x] Step 1: Prove accepted immutable candidate plus live Worker leaves reuse blocked/quarantined.
+- [x] Step 2: Prove harmless cleanup failure yields reconciliation work without changing semantic `PASS`.
+- [x] Step 3: Prove missing pane/session observation does not invalidate candidate acceptance but preserves resource quarantine when ownership is uncertain.
+- [x] Step 4: Prove ambiguous Herdr delivery never causes duplicate native fallback; if this fails, stop and request a scope amendment rather than editing runtime/dispatch code under this plan.
 
 **Verification:**
-- [ ] `python -m pytest tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_herdr_parallel_dispatch.py -q`
+- [x] `python -m pytest tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_herdr_parallel_dispatch.py -q`
 - Expected: unsafe resource actions remain blocked or quarantined and existing lifecycle facts remain authoritative.
 
 **Exit Criteria:**
@@ -442,15 +441,16 @@ dependency is demonstrated.
 - Stop for: unresolved review finding, stale base, failed required proof, unapproved scope, or any request to merge/push without explicit authorization
 
 **Steps:**
-- [ ] Step 1: Run the compact Delivery A boundary matrix.
-- [ ] Step 2: Check the simplification gates: false acceptance `0`, stale/wrong-attempt acceptance `0`, unsafe reuse `0`, duplicate fallback `0`, identical semantic outcome with telemetry present/unavailable, zero external calls in semantic evaluation, zero wait for harmless cleanup, one authoritative writer per fact, and zero new ledgers/global readiness states.
-- [ ] Step 3: Request one independent review of the exact Delivery A diff; fix only justified findings and rerun affected proof.
-- [ ] Step 4: Run final verification and record deferred B/C work as deferred, not blocked Delivery A work.
+- [x] Step 1: Run the compact Delivery A boundary matrix.
+- [x] Step 2: Check the simplification gates: false acceptance `0`, stale/wrong-attempt acceptance `0`, unsafe reuse `0`, duplicate fallback `0`, identical semantic outcome with telemetry present/unavailable, zero external calls in semantic evaluation, zero wait for harmless cleanup, one authoritative writer per fact, and zero new ledgers/global readiness states.
+- [x] Step 3: Request one independent review of the exact Delivery A diff; fix only justified findings and rerun affected proof.
+- [x] Step 4: Run final verification and record deferred B/C work as deferred, not blocked Delivery A work.
 
 **Verification:**
-- [ ] `python -m pytest tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_herdr_parallel_dispatch.py -q`
-- [ ] `python scripts/validate_repo_contracts.py`
-- [ ] `git diff --check`
+- [x] `python -m pytest tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_herdr_parallel_dispatch.py -q` — `250 passed, 1 skipped`
+- [x] `python scripts/validate_repo_contracts.py`
+- [x] `python scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-11-semantic-acceptance-runtime-safety-integration-telemetry-separation-plan.md`
+- [x] `git diff --check`
 - Expected: the combined suite passes, the review is clean or justified fixes are applied, and Delivery A is independently verifiable.
 
 **Exit Criteria:**

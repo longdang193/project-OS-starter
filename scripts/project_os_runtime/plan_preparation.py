@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import os
 from pathlib import Path
@@ -91,6 +91,7 @@ class PlanTask:
 @dataclass(frozen=True, slots=True)
 class PlanGraph:
     plan_identity: str
+    plan_revision: str
     goal: str
     shared_constraints: tuple[tuple[str, str], ...]
     tasks: Mapping[str, PlanTask]
@@ -263,7 +264,8 @@ def parse_plan(text: str) -> PlanGraph:
     tasks = {task_id: task for task_id, task in task_rows}
 
     return PlanGraph(
-        plan_identity=_plan_revision(text),
+        plan_identity=_frontmatter_value(text, "name") or _plan_revision(text),
+        plan_revision=_plan_revision(text),
         goal=_section(text, "Goal"),
         shared_constraints=_shared_constraints(_section(text, "Execution Approach")),
         tasks=tasks,
@@ -274,19 +276,40 @@ def load_plan(source: str | os.PathLike[str]) -> PlanGraph:
     if isinstance(source, str) and ("\n" in source or "\r" in source):
         return parse_plan(source)
     path = Path(source)
-    return parse_plan(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    graph = parse_plan(text)
+    logical_identity = _frontmatter_value(text, "name") or path.stem
+    return replace(graph, plan_identity=logical_identity)
 
 
 def _transitions_are_applied(
     source: str | os.PathLike[str],
     transitions: Sequence[Mapping[str, str]],
+    *,
+    accepted_consequence: Mapping[str, Any] | None = None,
 ) -> bool:
     graph = load_plan(source)
-    return bool(transitions) and all(
+    applied = bool(transitions) and all(
         graph.tasks.get(_canonical_task_id(str(transition.get("task_id", "")))) is not None
         and graph.tasks[_canonical_task_id(str(transition.get("task_id", "")))].state
         == _cell(str(transition.get("next_state", ""))).casefold()
         for transition in transitions
+    )
+    if not applied or accepted_consequence is None:
+        return applied
+    task_id = accepted_consequence.get("task_id")
+    task = graph.tasks.get(task_id) if isinstance(task_id, str) else None
+    persisted = _accepted_consequence_from_evidence(task.evidence) if task else {}
+    return task is not None and all(
+        persisted.get(persisted_key) == accepted_consequence.get(consequence_key)
+        for persisted_key, consequence_key in (
+            ("accepted_task_id", "task_id"),
+            ("accepted_candidate_sha", "candidate_sha"),
+            ("accepted_plan_identity", "plan_identity"),
+            ("accepted_assignment_id", "assignment_id"),
+            ("accepted_attempt_id", "attempt_id"),
+            ("accepted_checkpoint_sha", "acceptance_checkpoint_sha"),
+        )
     )
 
 
@@ -422,7 +445,6 @@ def apply_accepted_plan_transitions(
     artifact_conditions = proof.get("artifact_conditions")
     freshness = proof.get("freshness")
     git_proof = proof.get("git")
-    settlement = proof.get("settlement")
     if (
         not isinstance(required_conditions, Mapping)
         or not required_conditions
@@ -438,12 +460,13 @@ def apply_accepted_plan_transitions(
         or not isinstance(git_proof, Mapping)
         or not isinstance(git_proof.get("repository_identity"), str)
         or not git_proof.get("repository_identity").strip()
+        or not isinstance(git_proof.get("candidate_sha"), str)
+        or not git_proof.get("candidate_sha").strip()
         or git_proof.get("plan_identity") != task.get("plan_identity")
-        or not isinstance(settlement, Mapping)
-        or settlement.get("settlement_proven") is not True
-        or settlement.get("resource_settled") is not True
     ):
         return {"authorized": False, "reason": "acceptance decision incomplete"}
+    if task_transition.get("accepted_candidate_sha") != git_proof.get("candidate_sha"):
+        return {"authorized": False, "reason": "acceptance candidate binding mismatch"}
     try:
         target_plan_identity = _source_parts(source)[2]
     except (OSError, ValueError):
@@ -462,6 +485,7 @@ def apply_accepted_plan_transitions(
             dependent_transition.get("authorized") is not True
             or dependent_transition.get("current_state") != "pending"
             or dependent_transition.get("next_state") != "active"
+            or dependent_transition.get("accepted_candidate_sha") != git_proof.get("candidate_sha")
             or not isinstance(dependent_transition.get("task_id"), str)
             or not dependent_transition.get("task_id").strip()
             or dependent_transition.get("plan_identity") != task.get("plan_identity")
@@ -554,17 +578,34 @@ def apply_accepted_plan_transitions(
                     "reasons": [f"release authorization persistence failed: {exc}"],
                 },
             }
-    result = apply_plan_transitions(source, transitions, expected_revision=expected_revision)
+    accepted_consequence = {
+        "task_id": accepted_task_id,
+        "plan_identity": task.get("plan_identity"),
+        "candidate_sha": git_proof["candidate_sha"],
+        "assignment_id": git_proof.get("assignment_id"),
+        "attempt_id": git_proof.get("attempt_id"),
+        "acceptance_checkpoint_sha": git_proof.get("acceptance_checkpoint_sha"),
+    }
+    result = apply_plan_transitions(
+        source,
+        transitions,
+        expected_revision=expected_revision,
+        accepted_consequence=accepted_consequence,
+    )
     if result.get("authorized") is not True:
         try:
-            replayable = _transitions_are_applied(source, transitions)
+            replayable = _transitions_are_applied(
+                source,
+                transitions,
+                accepted_consequence=accepted_consequence,
+            )
         except (OSError, ValueError, KeyError):
             replayable = False
         if not replayable:
             return result
         result = {**result, "authorized": True, "replayed": True}
     if evidence_release is None:
-        return result
+        return {**result, "accepted_candidate_sha": git_proof["candidate_sha"]}
     canonical_consequence = dict(evidence_release.get("canonical_consequence", {}))
     transition_revision = result.get("new_revision") or result.get("revision")
     if canonical_consequence.get("expected_plan_revision") != transition_revision:
@@ -593,6 +634,7 @@ def apply_accepted_plan_transitions(
         evidence_paths=evidence_release.get("evidence_paths", {}),
         retirement_proof=evidence_release.get("retirement_proof"),
         recovery_required=evidence_release.get("recovery_required", False),
+        runtime_settlement=evidence_release.get("runtime_settlement"),
         release_record=persisted_release_record,
     )
     if release_result.get("payload_released") is True and isinstance(attempt_guard, Mapping):
@@ -623,7 +665,11 @@ def apply_accepted_plan_transitions(
                 "payload_released": False,
                 "reasons": [f"release record persistence failed: {exc}"],
             }
-    return {**result, "evidence_release": release_result}
+    return {
+        **result,
+        "accepted_candidate_sha": git_proof["candidate_sha"],
+        "evidence_release": release_result,
+    }
 
 
 def apply_plan_transitions(
@@ -631,10 +677,16 @@ def apply_plan_transitions(
     transitions: Sequence[Mapping[str, str]],
     *,
     expected_revision: str,
+    accepted_consequence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     path = Path(source)
     with _plan_write_lock(path):
-        return _apply_plan_transitions_locked(path, transitions, expected_revision=expected_revision)
+        return _apply_plan_transitions_locked(
+            path,
+            transitions,
+            expected_revision=expected_revision,
+            accepted_consequence=accepted_consequence,
+        )
 
 
 def _apply_plan_transitions_locked(
@@ -642,6 +694,7 @@ def _apply_plan_transitions_locked(
     transitions: Sequence[Mapping[str, str]],
     *,
     expected_revision: str,
+    accepted_consequence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Apply one guarded lead-controller transition batch to a plan ledger."""
 
@@ -649,6 +702,12 @@ def _apply_plan_transitions_locked(
     text = path.read_text(encoding="utf-8")
     revision = _plan_revision(text)
     if revision != expected_revision:
+        if accepted_consequence is not None and _transitions_are_applied(
+            path,
+            transitions,
+            accepted_consequence=accepted_consequence,
+        ):
+            return {"authorized": True, "replayed": True, "revision": revision}
         return {
             "authorized": False,
             "reason": "plan revision changed",
@@ -656,6 +715,24 @@ def _apply_plan_transitions_locked(
         }
     if not transitions:
         return {"authorized": False, "reason": "no plan transitions", "revision": revision}
+    if accepted_consequence is not None:
+        required_consequence_fields = {
+            "task_id",
+            "plan_identity",
+            "candidate_sha",
+            "assignment_id",
+            "attempt_id",
+            "acceptance_checkpoint_sha",
+        }
+        if (
+            not required_consequence_fields.issubset(accepted_consequence)
+            or any(
+                not isinstance(accepted_consequence.get(field), str)
+                or not accepted_consequence[field].strip()
+                for field in required_consequence_fields
+            )
+        ):
+            return {"authorized": False, "reason": "accepted consequence incomplete", "revision": revision}
 
     graph = parse_plan(text)
     normalized: list[tuple[str, str, str]] = []
@@ -712,6 +789,19 @@ def _apply_plan_transitions_locked(
             lines[row_index],
             count=1,
         )
+        if accepted_consequence is not None and task_id == accepted_consequence.get("task_id"):
+            cells = _split_row(lines[row_index])
+            if cells is None or len(cells) != len(_TASK_ROW_HEADER):
+                return {"authorized": False, "reason": "plan task row unavailable", "revision": revision}
+            cells[-1] = (
+                f"{cells[-1]}; accepted_task_id={accepted_consequence['task_id']}"
+                f"; accepted_candidate_sha={accepted_consequence['candidate_sha']}"
+                f"; accepted_plan_identity={accepted_consequence['plan_identity']}"
+                f"; accepted_assignment_id={accepted_consequence['assignment_id']}"
+                f"; accepted_attempt_id={accepted_consequence['attempt_id']}"
+                f"; accepted_checkpoint_sha={accepted_consequence['acceptance_checkpoint_sha']}"
+            )
+            lines[row_index] = "| " + " | ".join(cells) + " |\n"
 
     updated = "".join(lines)
     latest_text = path.read_text(encoding="utf-8")
@@ -886,7 +976,20 @@ def _runtime_grant(value: object) -> dict[str, Any]:
     return normalize_runtime_grant(dict(value), executor="deepagents")
 
 
-def _accepted_prerequisites(task: PlanTask, value: object) -> dict[str, Any]:
+def _accepted_consequence_from_evidence(evidence: str) -> dict[str, str]:
+    consequence: dict[str, str] = {}
+    for key, value in re.findall(r"(?:^|;)\s*(accepted_[a-z_]+)=([^;]+)", evidence):
+        consequence[key] = value.strip()
+    return consequence
+
+
+def _accepted_prerequisites(
+    graph: PlanGraph,
+    task: PlanTask,
+    value: object,
+    *,
+    plan_identity: str,
+) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("accepted_prerequisites must be a mapping")
     accepted = {str(key): item for key, item in value.items()}
@@ -896,6 +999,23 @@ def _accepted_prerequisites(task: PlanTask, value: object) -> dict[str, Any]:
             raise ValueError(f"missing accepted prerequisite binding: {dependency}")
         if not isinstance(binding.get("accepted_revision"), str) or not binding["accepted_revision"].strip():
             raise ValueError(f"missing accepted revision: {dependency}")
+        candidate_sha = binding.get("accepted_candidate_sha")
+        if not isinstance(candidate_sha, str) or not candidate_sha.strip():
+            raise ValueError(f"missing accepted candidate: {dependency}")
+        if candidate_sha != binding["accepted_revision"]:
+            raise ValueError(f"accepted candidate and revision mismatch: {dependency}")
+        source_task = graph.tasks.get(dependency)
+        persisted = _accepted_consequence_from_evidence(source_task.evidence) if source_task else {}
+        if (
+            persisted.get("accepted_candidate_sha") != candidate_sha
+            or persisted.get("accepted_plan_identity") != plan_identity
+            or persisted.get("accepted_task_id") not in {None, dependency}
+        ):
+            raise ValueError(f"accepted consequence mismatch: {dependency}")
+        for field in ("accepted_assignment_id", "accepted_attempt_id", "accepted_checkpoint_sha"):
+            supplied = binding.get(field)
+            if supplied is not None and supplied != persisted.get(field):
+                raise ValueError(f"accepted consequence mismatch: {dependency}")
         artifact_ref = binding.get("artifact_ref")
         if artifact_ref is not None and (not isinstance(artifact_ref, str) or not artifact_ref.strip()):
             raise ValueError(f"invalid artifact reference: {dependency}")
@@ -908,10 +1028,12 @@ def _source_parts(source: str | os.PathLike[str] | PlanGraph) -> tuple[str | Non
     if isinstance(source, PlanGraph):
         return None, source, source.plan_identity, None
     if isinstance(source, str) and ("\n" in source or "\r" in source):
-        return source, parse_plan(source), _plan_revision(source), None
+        graph = parse_plan(source)
+        return source, graph, graph.plan_identity, None
     path = Path(source)
     text = path.read_text(encoding="utf-8")
-    return text, parse_plan(text), _frontmatter_value(text, "name") or path.stem, str(path.resolve())
+    graph = load_plan(path)
+    return text, graph, graph.plan_identity, str(path.resolve())
 
 
 def _canonical_runtime_binding(runtime: Mapping[str, Any]) -> dict[str, Any]:
@@ -947,7 +1069,7 @@ def _prepare_plan_lanes(
     unknown = sorted(set(selected) - set(graph.tasks))
     if unknown:
         raise ValueError(f"unknown selected task: {unknown[0]}")
-    plan_revision = _plan_revision(text) if text is not None else graph.plan_identity
+    plan_revision = _plan_revision(text) if text is not None else graph.plan_revision
     lanes: list[dict[str, Any]] = []
     for task_id in selected:
         task = graph.tasks[task_id]
@@ -964,7 +1086,12 @@ def _prepare_plan_lanes(
             raise ValueError(f"unsupported task executor: {task.executor}")
         if not task.profile or task.profile.casefold() in {"unresolved", "none", "none (lead controller)"}:
             raise ValueError(f"task profile unresolved: {task_id}")
-        accepted = _accepted_prerequisites(task, binding["accepted_prerequisites"])
+        accepted = _accepted_prerequisites(
+            graph,
+            task,
+            binding["accepted_prerequisites"],
+            plan_identity=plan_identity,
+        )
         grant = _runtime_grant(binding["runtime_grant"])
         prepared = prepare_task(graph, task_id)
         structurally_ready = prepared.structurally_ready
