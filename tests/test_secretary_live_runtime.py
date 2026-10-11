@@ -370,13 +370,14 @@ def test_run_smoke_blocks_when_probe_workspace_cleanup_fails(
         lambda *args, **kwargs: {"disposition": "READY", "evidence_provenance": "live-attributed"},
     )
     monkeypatch.setattr(runtime, "_observe_provider_telemetry", lambda *args, **kwargs: {"disposition": "inconclusive"})
-    monkeypatch.setattr(runtime, "_smoke_receipt", lambda request, result: {"disposition": result["disposition"]})
 
     result = runtime.run_smoke(request_value, output=tmp_path / "smoke.json")
 
     assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["evidence_provenance"] == "capability-probe"
     assert result["failure_kind"] == "runtime_workspace_cleanup_evidence_missing"
     assert result["receipt"]["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["receipt"]["evidence_provenance"] == "capability-probe"
 
 
 def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:

@@ -1120,7 +1120,7 @@ def _smoke_receipt(
     request: SecretaryLaunchRequest,
     result: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if result.get("evidence_provenance") != "live-attributed":
+    if result.get("disposition") not in (None, "READY") or result.get("evidence_provenance") != "live-attributed":
         return {
             "schema_version": "secretary-live-runtime-receipt-v1",
             "disposition": "BLOCKED_CAPABILITY",
@@ -1265,6 +1265,7 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                     and preflight["workspace_close"].get("state") != "closed"
                 ):
                     result["disposition"] = "BLOCKED_CAPABILITY"
+                    result["evidence_provenance"] = "capability-probe"
                     result["failure_kind"] = "runtime_workspace_cleanup_evidence_missing"
                     result.update(_classify_capabilities("BLOCKED_CAPABILITY", result.get("post_submit_observation")))
     if result is None:
