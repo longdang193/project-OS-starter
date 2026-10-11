@@ -107,6 +107,7 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
                     "state": "reported_failed",
                     "attempt_id": "attempt-1",
                     "result_reference": "task-result://invoke-1",
+                    "content": "failure details",
                 },
             }
         },
@@ -120,6 +121,7 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
         "state": "reported",
         "status": "failed",
         "reference": "task-result://invoke-1",
+        "content": "failure details",
     }
 
 
@@ -136,6 +138,7 @@ def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() 
                 "task_result": {
                     "state": "reported_completed",
                     "result_reference": "herdr://session/agent/12",
+                    "content": "completed response",
                 },
             }
         },
@@ -182,7 +185,6 @@ def test_run_normal_does_not_observe_provider_telemetry(
         "_observe_submitted_codex",
         lambda *args, **kwargs: {
             "state": "idle",
-            "result_reference": "herdr://session/agent/12",
             "cleanup": {"state": "removed"},
         },
     )
@@ -194,9 +196,81 @@ def test_run_normal_does_not_observe_provider_telemetry(
 
     result = run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
 
-    assert result["result"]["state"] == "reported"
-    assert result["result"]["reference"] == "herdr://session/agent/12"
+    assert result["result"]["state"] == "unavailable"
     assert "provider_telemetry" not in result
+
+
+def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "content": "answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "reported", "status": "completed", "content": "answer"}
+
+
+def test_normal_outcome_marks_same_field_identity_conflict_ambiguous() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-assignment",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "attempt_id": "attempt-result",
+                    "content": "answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "ambiguous", "status": None}
+
+
+def test_normal_outcome_preserves_long_semantic_content() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    content = "x" * 5000
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "task_result": {"state": "reported_completed", "content": content},
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "reported", "status": "completed", "content": content}
 
 
 def structured_runtime(request_value: SecretaryLaunchRequest, *, session_id: str, model: str) -> dict[str, object]:
@@ -354,7 +428,7 @@ def test_observe_submitted_codex_retries_terminal_state_after_read_timeout(
     )
 
     assert observation["state"] == "idle"
-    assert observation["result_reference"] == "herdr://session/agent/2"
+    assert "result_reference" not in observation
     assert observation["cleanup"] == {"state": "removed"}
 
 
@@ -562,6 +636,7 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
                             "task_result": {
                                 "state": "reported_completed",
                                 "result_reference": "herdr://default/normal-main-1234/1",
+                                "content": "normal response",
                             },
                         },
                     }

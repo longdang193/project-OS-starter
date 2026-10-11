@@ -586,16 +586,6 @@ def _observe_submitted_codex(
         if key in snapshot
     }
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
-    if (
-        snapshot.get("state") == "idle"
-        and snapshot.get("observation_error") is None
-        and isinstance(snapshot.get("state_change_seq"), int)
-        and isinstance(snapshot.get("output_chars"), int)
-        and snapshot["output_chars"] > 0
-    ):
-        observation["result_reference"] = (
-            f"herdr://{session}/{agent_name}/{snapshot['state_change_seq']}"
-        )
     cleanup: dict[str, Any] = {"state": "not_attempted"}
     if snapshot.get("state") == "idle" and not snapshot.get("observation_error"):
         cleanup = _release_codex_agent(
@@ -723,7 +713,11 @@ def _binding_matches(request: SecretaryLaunchRequest, runtime: Mapping[str, Any]
     for field in ("model", "session_id"):
         if not isinstance(runtime.get(field), str) or not runtime[field].strip():
             return False
-    return not isinstance(assignment, Mapping) or assignment.get("attempt_id") in (None, request.attempt_id)
+    if _identity_conflict(runtime, assignment):
+        return False
+    if isinstance(assignment, Mapping) and assignment.get("attempt_id") not in (None, request.attempt_id):
+        return False
+    return runtime.get("attempt_id") == request.attempt_id
 
 
 def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str, Any] | None) -> bool:
@@ -1271,11 +1265,45 @@ def _read_only_git_anchor(worktree: Path) -> tuple[Path, str]:
     return Path(lines[0]).resolve(), _required_text(lines[1], "git_revision")
 
 
-def _safe_result_value(value: object) -> str | None:
+def _identity_conflict(*sources: Mapping[str, Any] | None) -> bool:
+    for field in ("assignment_id", "attempt_id"):
+        values = {
+            value.strip()
+            for source in sources
+            if isinstance(source, Mapping)
+            for value in (source.get(field),)
+            if isinstance(value, str) and value.strip()
+        }
+        if len(values) > 1:
+            return True
+    return False
+
+
+def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None:
     text = _safe_text(value)
-    if text is None or len(text) > 4096:
+    if text is None or (not allow_long and len(text) > 4096):
         return None
     return text
+
+
+def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    reference = None
+    for key in ("result_reference", "reference", "source_ref", "result_ref"):
+        reference = _safe_result_value(source.get(key))
+        if reference:
+            break
+    content = None
+    for key in ("content", "response", "message", "result_content", "resolved_content"):
+        content = _safe_result_value(source.get(key), allow_long=True)
+        if content:
+            break
+    if content:
+        return reference, content
+    resolver = _safe_text(source.get("result_resolver") or source.get("resolver"))
+    retrieved = source.get("result_retrieved") is True or source.get("retrieved") is True
+    if reference and resolver and retrieved:
+        return reference, None
+    return None, None
 
 
 def _normalize_invocation_outcome(
@@ -1307,37 +1335,24 @@ def _normalize_invocation_outcome(
     references: list[str] = []
     content: str | None = None
     for source in (task_result, assignment, observed):
-        for key in ("result_reference", "reference", "source_ref", "result_ref"):
-            value = _safe_result_value(source.get(key))
-            if value and value not in references:
-                references.append(value)
-        if content is None:
-            for key in ("content", "response", "message"):
-                content = _safe_result_value(source.get(key))
-                if content:
-                    break
+        reference, source_content = _result_evidence(source)
+        if reference and reference not in references:
+            references.append(reference)
+        if content is None and source_content:
+            content = source_content
 
-    identity_values = {
-        value
-        for source in (task_result, assignment)
-        for value in (
-            _safe_result_value(source.get("attempt_id")),
-            _safe_result_value(source.get("assignment_id")),
-        )
-        if value
-    }
-    ambiguous = bool(task_result.get("ambiguous")) or len(identity_values) > 1
+    ambiguous = bool(task_result.get("ambiguous")) or _identity_conflict(task_result, assignment)
     if len(references) > 1:
         ambiguous = True
     if result_status is None and references and not ambiguous:
         result_status = "failed" if observed.get("state") == "failed" else "completed"
     if ambiguous:
         result = {"state": "ambiguous", "status": None}
-    elif result_status is not None and (references or (content and identity_values)):
+    elif result_status is not None and (references or content):
         result = {"state": "reported", "status": result_status}
         if references:
             result["reference"] = references[0]
-        else:
+        if content:
             result["content"] = content
     else:
         result = {"state": "unavailable", "status": None}
