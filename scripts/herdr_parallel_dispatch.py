@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterable, Mapping
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 import hashlib
 import json
@@ -1077,6 +1077,7 @@ def run_parallel(
     max_concurrency: int = MAX_CONCURRENCY,
     stop_event: Any | None = None,
     event_callback: Any | None = None,
+    enable_refill: bool = False,
     **run_kwargs: Any,
 ) -> dict[str, Any]:
     """Run admitted lanes concurrently; return derived evidence only."""
@@ -1129,6 +1130,7 @@ def run_parallel(
 
     results: dict[str, dict[str, Any]] = {}
     completion_order: list[str] = []
+    refilled: list[Mapping[str, Any]] = []
     interrupted = bool(stop_event is not None and stop_event.is_set())
     with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
         futures = {}
@@ -1138,23 +1140,36 @@ def run_parallel(
                     interrupted = True
                     break
                 futures[pool.submit(run_lane, lane, **run_kwargs)] = str(lane["lane_id"])
-        for future in as_completed(futures):
-            lane_id = futures[future]
-            try:
-                results[lane_id] = future.result()
-                completion_order.append(lane_id)
-            except BaseException as exc:  # preserve sibling evidence
-                results[lane_id] = {
-                    "lane_id": lane_id,
-                    "exit_code": None,
-                    "records": [],
-                    "stderr": str(exc),
-                    "unresolved": True,
-                    "capacity": "occupied",
-                    "failure_kind": "coordinator_error",
-                }
-                completion_order.append(lane_id)
-            emit({"tag": "lane_result", **results[lane_id]})
+        deferred = list(admission.get("deferred", [])) if enable_refill else []
+        while futures:
+            done, _ = wait(tuple(futures), return_when=FIRST_COMPLETED)
+            for future in done:
+                lane_id = futures.pop(future)
+                try:
+                    results[lane_id] = future.result()
+                    completion_order.append(lane_id)
+                except BaseException as exc:  # preserve sibling evidence
+                    results[lane_id] = {
+                        "lane_id": lane_id,
+                        "exit_code": None,
+                        "records": [],
+                        "stderr": str(exc),
+                        "unresolved": True,
+                        "capacity": "occupied",
+                        "failure_kind": "coordinator_error",
+                    }
+                    completion_order.append(lane_id)
+                emit({"tag": "lane_result", **results[lane_id]})
+                if deferred and not interrupted and not (stop_event is not None and stop_event.is_set()):
+                    lane = deferred.pop(0)
+                    futures[pool.submit(run_lane, lane, **run_kwargs)] = str(lane["lane_id"])
+                    refilled.append(lane)
+                    emit({
+                        "tag": "lane_admission",
+                        "category": "refill_admitted",
+                        "lane_id": str(lane["lane_id"]),
+                        "lane": lane,
+                    })
     return {
         "admitted": admission["admitted"],
         "deferred": admission.get("deferred", []),
@@ -1162,6 +1177,7 @@ def run_parallel(
         "rejected": admission["rejected"],
         "interrupted": interrupted,
         "callback_errors": callback_errors,
+        "refilled": refilled,
         "results": [
             results[lane_id]
             for lane_id in completion_order

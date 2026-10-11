@@ -93,6 +93,44 @@ def test_integrate_rejects_missing_required_check() -> None:
     assert "required_checks" in result.contradictions
 
 
+def test_integrate_ignores_optional_failed_check() -> None:
+    remote = _remote(
+        checks=(
+            {"name": "Repository contracts", "head_sha": "H", "conclusion": "success"},
+            {"name": "Runtime contracts (ubuntu-latest)", "head_sha": "H", "conclusion": "success"},
+            {"name": "advisory-scan", "head_sha": "H", "conclusion": "failure"},
+        )
+    )
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, remote))
+    assert result.eligible is True
+
+
+def test_integrate_rejects_conflicting_equal_time_required_rerun() -> None:
+    remote = _remote(
+        checks=(
+            {"name": "Repository contracts", "head_sha": "H", "conclusion": "success", "observed_at": "2026-10-11T10:00:00Z"},
+            {"name": "Repository contracts", "head_sha": "H", "conclusion": "failure", "observed_at": "2026-10-11T10:00:00Z"},
+            {"name": "Runtime contracts (ubuntu-latest)", "head_sha": "H", "conclusion": "success"},
+        )
+    )
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, remote))
+    assert result.eligible is False
+
+
 def test_accept_does_not_advance_until_cos_pass() -> None:
     result = reconcile(ReconciliationInput("accept", {
         "verification_current": True,

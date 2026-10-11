@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: completed
+status: proposed
 layer: change
 name: pr-a-pr-b-lifecycle-correctness-maintenance
 targets:
@@ -156,23 +156,23 @@ about current GitHub state.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `PR A = codex/pr-a-lifecycle-correctness; PR B = codex/pr-b-maintenance; merged remote main is the completed integration state`
-- Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec; PR B final head = 891440aebdaebf558ab89fbedb45a15150a72bbd; PR B merge = 15a01ac9fce8a06e05798ddcd2682b6a90cc91ee`
-- Expected workspace: `merged PR B state; preserve unrelated primary-checkout artifacts and retain BLOCKED_CAPABILITY for live Herdr measurement`
-- Next action: `none; implementation and verification are complete`
-- Blockers: `none`
+- Branch: `PR A branch from c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR B branch from the merged PR A commit; do not use local main a8a1fc5`
+- Base commit: `PR A = c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee; PR #71 head reference only = 07d9046627bb102ed77904af0d6c86df19e41dec`
+- Expected workspace: `PR A and PR B each use a dedicated clean worktree; preserve the current main checkout's 9router overlay, untracked plans, db/, .playwright-mcp/, and temp_evidence.json`
+- Next action: `after user approval, activate the plan and checkpoint the PR A worktree before Task 1`
+- Blockers: `none after user approval; push, merge, remote CI, and worktree transitions remain approval-gated`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | PR A worktree | `codex` | none | base/inventory/before-measurement proof | dc91924; baseline PASS |
-| Task 2 | `completed` | PR A worktree | `codex` | Task 1 | PR A release replay and binding tests | d66fdc2; 224 passed |
-| Task 3 | `completed` | PR A worktree | `codex` | Task 2 | Git consequence gating and release replay tests | b3e73b7; 245 passed; validator PASS |
-| Task 4 | `completed` | PR A worktree | `codex` | Task 2 | effective review-policy tests | 14b9394; focused policy proof |
-| Task 5 | `completed` | PR A worktree | `codex` | Tasks 3, 4 | PR A matrix, validators, review gate | PR #72 merged at `eff8159236380ee45c59b6d9e2a4112d119222b2`; remote checks PASS |
-| Task 6 | `completed` | PR B worktree | `codex` | Task 5 | compaction and obsolete-attempt tests | focused lifecycle suite PASS; generation/tombstone compaction proof |
-| Task 7 | `completed` | PR B worktree | `codex` | Task 6 | Secretary caller/invariant tests | `605 passed`; reference-only evidence and zero-message benchmark proof |
-| Task 8 | `completed` | PR B worktree | `codex` | Task 7 | next_action inventory and Herdr provenance measurement | no production `next_action` callers; provenance tests PASS; live measurement `BLOCKED_CAPABILITY` |
-| Task 9 | `completed` | PR B worktree | `codex` | Tasks 6–8 | CI/template split and PR B verification | PR #73 merged at `15a01ac9`; final reviewed head `891440a`; remote checks PASS |
+| Task 1 | `pending` | PR A worktree | `unresolved` | none | base/inventory/before-measurement proof | pending |
+| Task 2 | `pending` | PR A worktree | `unresolved` | Task 1 | PR A release replay and binding tests | pending |
+| Task 3 | `pending` | PR A worktree | `unresolved` | Task 2 | Git consequence gating and release replay tests | pending |
+| Task 4 | `pending` | PR A worktree | `unresolved` | Task 2 | effective review-policy tests | pending |
+| Task 5 | `pending` | PR A worktree | `unresolved` | Tasks 3, 4 | PR A matrix, validators, review gate | pending |
+| Task 6 | `pending` | PR B worktree | `unresolved` | Task 5 | compaction and obsolete-attempt tests | pending |
+| Task 7 | `pending` | PR B worktree | `unresolved` | Task 6 | Secretary caller/invariant tests | pending |
+| Task 8 | `pending` | PR B worktree | `unresolved` | Task 7 | next_action inventory and Herdr provenance measurement | pending |
+| Task 9 | `pending` | PR B worktree | `unresolved` | Tasks 6–8 | CI/template split and PR B verification | pending |
 
 ## Task Breakdown
 
@@ -186,8 +186,8 @@ about current GitHub state.
 - Establish baseline and change ownership.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
-- Selection basis: `controller-owned activation, baseline, and coordination task`
+- Controller-selected: `unresolved`
+- Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
 - Controller-selected: `none`
@@ -219,62 +219,37 @@ about current GitHub state.
 - Stop for: `a base other than the merged PR #71 lifecycle result, a required source surface missing from that base, or any request to absorb the local overlay`
 
 **Steps:**
-- [x] Step 1: Record the fixed merged PR #71 SHA
+- [ ] Step 1: Record the fixed merged PR #71 SHA
   `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; record
   `07d9046627bb102ed77904af0d6c86df19e41dec` only as the PR #71 head
   reference; do not substitute local `main`.
-- [x] Step 2: Verify the activated PR A worktree is clean and contains the
+- [ ] Step 2: Verify the activated PR A worktree is clean and contains the
   coordination checkpoint; do not copy current untracked files.
-- [x] Step 3: Inventory every production caller and test of
+- [ ] Step 3: Inventory every production caller and test of
   `release_authorized_evidence`, `apply_accepted_plan_transitions`,
   `RemotePrEvidence`, `next_action`, and Herdr session retirement. Check
   `release_attempt_evidence` only to confirm whether it is historical/dead; if
   it has no production caller, remove it from the implementation target set
   and do not recreate compatibility code.
-- [x] Step 4: Freeze a metric-to-command/workload/provenance table and capture
+- [ ] Step 4: Freeze a metric-to-command/workload/provenance table and capture
   before measurements with the existing harness using reproducible workloads:
   coordination overhead, release/attempt records, retained temporary bytes,
   Secretary activations, Herdr subprocess calls, empty sessions, incorrect
   cleanup events, and fresh-controller recovery time. Mark unsupported metrics
   `UNAVAILABLE`, `NOT_APPLICABLE`, or `BLOCKED_CAPABILITY` rather than
   inventing telemetry, and record whether each result is live or synthetic.
-- [x] Step 5: Run the baseline validator and focused runtime tests; save only
+- [ ] Step 5: Run the baseline validator and focused runtime tests; save only
   command summaries, baseline outputs, and durable findings in task evidence.
 
 **Verification:**
-- [x] `git status --short --untracked-files=all` is empty in the execution worktree.
-- [x] `python scripts/validate_repo_contracts.py` and the focused baseline test
+- [ ] `git status --short --untracked-files=all` is empty in the execution worktree.
+- [ ] `python scripts/validate_repo_contracts.py` and the focused baseline test
   selection pass on the PR #71 base.
-- [x] `git diff --check` reports no whitespace errors.
-- [x] Before-measurement outputs include the exact command, workload, revision,
+- [ ] `git diff --check` reports no whitespace errors.
+- [ ] Before-measurement outputs include the exact command, workload, revision,
   and environment needed for the later candidate comparison.
-- [x] The metric table covers every metric named by Tasks 8–9 and records the
+- [ ] The metric table covers every metric named by Tasks 8–9 and records the
   evidence source and support status for each metric.
-
-**Task 1 Evidence:**
-- Base `c6ce63cccb6b0c66eab57fb7a3c4ed508852e7ee`; activated baseline revision
-  `dc91924cecd43880c892477b1ef28e4415adb9fc`; branch
-  `codex/pr-a-lifecycle-correctness`; Windows `10.0.19045.0`; Python `3.13.5`.
-- Production inventory found no caller of
-  `scripts/project_os_runtime/results.py::release_attempt_evidence`; it is
-  removed from the implementation target set. Canonical release callers are
-  `acceptance.py::release_authorized_evidence` and
-  `plan_preparation.py::apply_accepted_plan_transitions`.
-- `python scripts/validate_repo_contracts.py`: PASS. Focused baseline command
-  covering the Task 1 runtime/release/reconciliation/Herdr/Secretary files:
-  `656 passed in 14.24s`.
-- `python scripts/benchmark_secretary_architecture.py 1`: deterministic-fake,
-  `live=false`, `latency_ms=null`, and `token_usage=null`; usable only for
-  synthetic coordination/Secretary comparison, not live resource or recovery
-  evidence.
-- `python scripts/benchmark_worker_contract.py offline --fixtures
-  tests/fixtures/worker_contract_benchmark/manifest.json --output
-  worker-baseline.jsonl` plus `report`: six tasks, median handoff reduction
-  `11.17%`, aggregate reduction `10.89%`; offline synthetic evidence only.
-- Retained temporary bytes, Herdr subprocess calls, empty sessions, and
-  fresh-controller recovery time are `BLOCKED_CAPABILITY`; incorrect cleanup
-  remains a direct lifecycle-regression metric rather than a live benchmark
-  claim.
 
 **Exit Criteria:**
 - The exact base, owned files, production callers, baseline commands, and
@@ -291,8 +266,8 @@ about current GitHub state.
 - Harden the canonical evidence-disposal boundary.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
-- Selection basis: `controller-owned implementation and task-checkpoint work`
+- Controller-selected: `unresolved`
+- Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
 - Controller-selected: `none`
@@ -323,35 +298,29 @@ about current GitHub state.
 - Stop for: `a second release owner, a new cleanup database, TTL cleanup, or a deletion path that cannot prove exact artifact identity`
 
 **Steps:**
-- [x] Step 1: Normalize the release record so each resource stores
+- [ ] Step 1: Normalize the release record so each resource stores
   `attempt_id`, `evidence_ref`, `attempt_root`, `relative_path`,
   `content_sha256` or artifact identity, and producer/schema identity.
-- [x] Step 2: In `release_authorized_evidence`, return the recorded terminal
+- [ ] Step 2: In `release_authorized_evidence`, return the recorded terminal
   result immediately for `removed` and `already_absent`; do not inspect,
   resolve, or unlink the current filesystem path on that branch.
-- [x] Step 3: Permit filesystem mutation only for `pending`, after verifying
+- [ ] Step 3: Permit filesystem mutation only for `pending`, after verifying
   the binding matches the current attempt, the resolved path remains inside the
   exact attempt root, the path is a regular non-symlink file, and its digest or
   artifact identity still matches.
-- [x] Step 4: Return `replacement_detected` or `binding_mismatch` with the
+- [ ] Step 4: Return `replacement_detected` or `binding_mismatch` with the
   resource preserved and unresolved; record `removed`, `already_absent`, or
   `unverified` exactly once for the authorized resource.
-- [x] Step 5: Preserve compatibility for legacy records only through a bounded
+- [ ] Step 5: Preserve compatibility for legacy records only through a bounded
   migration/read path; never infer a new physical binding from a replayed path.
 
 **Verification:**
-- [x] Terminal `removed` plus replacement file leaves the replacement.
-- [x] Terminal `already_absent` plus replacement file leaves the replacement.
-- [x] Pending changed path, changed digest, wrong attempt, symlink, non-file,
-  and out-of-root path all preserve the artifact.
-- [x] Valid pending exact artifact is removed once; a repeat is a terminal
+- [ ] Terminal `removed` plus replacement file leaves the replacement.
+- [ ] Terminal `already_absent` plus replacement file leaves the replacement.
+- [ ] Pending changed path, changed digest, wrong attempt, symlink, and
+  out-of-root path all preserve the artifact.
+- [ ] Valid pending exact artifact is removed once; a repeat is a terminal
   no-op and performs no filesystem mutation.
-- [x] `python -m pytest -q tests/test_evidence_release.py
-  tests/test_project_os_runtime.py tests/test_plan_preparation.py
-  tests/test_dcode_project.py`: `224 passed in 7.41s`.
-- [x] `python scripts/validate_repo_contracts.py --repo-root . --fast --plan
-  docs/superpowers/plans/2026-10-10-15-36-pr-a-pr-b-lifecycle-correctness-maintenance-plan.md`:
-  PASS; `git diff --check`: PASS.
 
 **Exit Criteria:**
 - Focused release and attempt-guard tests pass, and no production release path
@@ -367,8 +336,8 @@ about current GitHub state.
 - Separate accepted transition, checkpoint verification, and evidence disposal.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
-- Selection basis: `controller-owned Git/release contract implementation and checkpoint work`
+- Controller-selected: `unresolved`
+- Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
 - Controller-selected: `none`
@@ -399,36 +368,36 @@ about current GitHub state.
 - Stop for: `release after an uncommitted write, acceptance of a commit that does not contain the expected Plan revision, or a generic durability database`
 
 **Steps:**
-- [x] Step 1: Extend the canonical Git consequence with `owner: git`,
+- [ ] Step 1: Extend the canonical Git consequence with `owner: git`,
   `commit_sha`, `coordination_ref`, `plan_path`, and
   `expected_plan_revision`; leave `commit_sha` unset in the pre-commit record.
-- [x] Step 2: Persist the immutable pending release binding before the guarded
+- [ ] Step 2: Persist the immutable pending release binding before the guarded
   Plan transition, or atomically with the transition under the existing owner
   lock. The low-level Plan writer remains Git-agnostic and does not create
   commits or invoke Git.
-- [x] Step 3: Perform the accepted Plan transition without unlinking evidence;
+- [ ] Step 3: Perform the accepted Plan transition without unlinking evidence;
   add restart/failure proof for both the persisted-pending-before-transition
   boundary and the transition-before-checkpoint boundary. Then have the
   controller/lead create the task checkpoint commit and
   verify that the checkpoint contains the expected Plan revision and is
   reachable from `coordination_ref`.
-- [x] Step 4: Supply or derive the durable checkpoint SHA only after the commit
+- [ ] Step 4: Supply or derive the durable checkpoint SHA only after the commit
   exists, update the pending consequence with that SHA, and make release
   eligible only after the verifier succeeds. Never require a future SHA before
   commit creation.
-- [x] Step 5: Keep pending evidence when the Plan is modified but uncommitted,
+- [ ] Step 5: Keep pending evidence when the Plan is modified but uncommitted,
   the commit is unrelated, the revision differs, or the checkpoint is
   unreachable; complete the post-checkpoint replay idempotently without GitHub.
 
 **Verification:**
-- [x] CoS `PASS` plus an uncommitted Plan edit preserves evidence.
-- [x] A commit missing the expected Plan revision preserves evidence.
-- [x] The correct reachable checkpoint releases the exact artifact once.
-- [x] Replaying after a completed release is a no-op; a GitHub outage does not
+- [ ] CoS `PASS` plus an uncommitted Plan edit preserves evidence.
+- [ ] A commit missing the expected Plan revision preserves evidence.
+- [ ] The correct reachable checkpoint releases the exact artifact once.
+- [ ] Replaying after a completed release is a no-op; a GitHub outage does not
   block local Plan acceptance or local retirement.
-- [x] The Plan writer has no Git side effect; controller-owned checkpoint
+- [ ] The Plan writer has no Git side effect; controller-owned checkpoint
   orchestration is separately covered.
-- [x] A restart after pending-binding persistence and a restart after the Plan
+- [ ] A restart after pending-binding persistence and a restart after the Plan
   transition both recover the same pending release without evidence loss.
 
 **Exit Criteria:**
@@ -446,8 +415,8 @@ about current GitHub state.
 - Normalize and validate ephemeral remote integration evidence.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
-- Selection basis: `controller-owned remote evidence normalization and policy tests`
+- Controller-selected: `unresolved`
+- Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
 - Controller-selected: `none`
@@ -478,28 +447,28 @@ about current GitHub state.
 - Stop for: `reconstructing GitHub review history inside the reconciler or making GitHub availability mandatory for local Plan acceptance`
 
 **Steps:**
-- [x] Step 1: Add normalized fields for `review_policy_source`,
+- [ ] Step 1: Add normalized fields for `review_policy_source`,
   `review_policy_satisfied`, `effective_review_state`, `review_required`,
   `review_identity`, and `reviewed_head_sha` while preserving the existing
   current-head/check identity fields.
-- [x] Step 2: Make the GitHub evidence adapter produce one effective state from the current
+- [ ] Step 2: Make the GitHub evidence adapter produce one effective state from the current
   review policy: `APPROVED`, `CHANGES_REQUESTED`, `DISMISSED`, `COMMENTED`, or
   `NONE`; when review is not required, set policy satisfaction true with a
   non-empty policy source explaining why.
-- [x] Step 3: Make integration eligibility require remote availability, policy
+- [ ] Step 3: Make integration eligibility require remote availability, policy
   satisfaction, expected repository/PR/base/head identity, current required
   checks, and mergeability. Do not treat comment-only, dismissed,
   changes-requested, or stale-head approval as satisfying policy.
-- [x] Step 4: Preserve remote outage as an integration blocker only; local
+- [ ] Step 4: Preserve remote outage as an integration blocker only; local
   acceptance, checkpoint verification, and retirement remain runnable.
 
 **Verification:**
-- [x] Comment-only review fails policy.
-- [x] Changes-requested review fails policy.
-- [x] Dismissed review fails policy.
-- [x] Approval bound to a stale head fails policy.
-- [x] Current effective approval and required checks pass.
-- [x] Review-not-required policy passes with its source; remote unavailable
+- [ ] Comment-only review fails policy.
+- [ ] Changes-requested review fails policy.
+- [ ] Dismissed review fails policy.
+- [ ] Approval bound to a stale head fails policy.
+- [ ] Current effective approval and required checks pass.
+- [ ] Review-not-required policy passes with its source; remote unavailable
   blocks integration without blocking local acceptance.
 
 **Exit Criteria:**
@@ -516,8 +485,8 @@ about current GitHub state.
 - Integrate and verify the correctness PR.
 
 **Template Profile:**
-- Controller-selected: `normal`
-- Selection basis: `controller-owned PR A integration and verification`
+- Controller-selected: `unresolved`
+- Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
 - Controller-selected: `review-1`
@@ -543,67 +512,28 @@ about current GitHub state.
 - Stop for: `any failed safety regression, missing direct Git proof, changed lifecycle ownership, or unrelated CI/Secretary/session edits`
 
 **Steps:**
-- [x] Step 1: Run only the PR A matrix: terminal replay, replacement files,
+- [ ] Step 1: Run only the PR A matrix: terminal replay, replacement files,
   path/digest mismatch, uncommitted and wrong-checkpoint Plan consequences,
   current effective review states, review-not-required policy, remote outage,
   and obsolete replay rejection. PR B compaction, Secretary, `next_action`,
   session, and CI scenarios are reserved for PR B.
-- [x] Step 2: Run the local ready gate: `python scripts/validate_repo_contracts.py`,
+- [ ] Step 2: Run the local ready gate: `python scripts/validate_repo_contracts.py`,
   the affected runtime tests on the available local platform, `git diff --check`,
   and the focused diff/target review.
-- [x] Step 3: Request independent review against the PR A acceptance criteria;
+- [ ] Step 3: Request independent review against the PR A acceptance criteria;
   if review changes implementation, rerun affected proof and review the new
   code head rather than carrying forward a superseded PASS.
-- [x] Step 4: Create the final PR A checkpoint commit only after fresh proof;
+- [ ] Step 4: Create the final PR A checkpoint commit only after fresh proof;
   record its candidate SHA and evidence references, not mutable remote status.
-- [x] Step 5: After user-authorized push, use remote PR-head CI for Repository
+- [ ] Step 5: After user-authorized push, use remote PR-head CI for Repository
   Contracts, Ubuntu Runtime, Windows Runtime, and Benchmark gates; bind final
   review to that exact PR head before merge.
 
 **Verification:**
-- [x] Every row in the PR A regression matrix passes locally on the available platform.
-- [x] Focused runtime tests, repository validator, and diff check pass.
-- [x] Independent review returns no unresolved correctness finding; review turns were exhausted after
-  the final local concurrency fix, so no superseded PASS is claimed.
-- [x] Local ready-gate proof and remote PR-head proof are recorded separately.
-
-**Local execution evidence (2026-10-10):**
-- Candidate PR A head: `95ddd815a3a3a873d83647655bbd74b18bcb0622`.
-- Full repository suite: `1134 passed, 1 skipped`.
-- Release/reconciliation focused suite: `57 passed`.
-- `python scripts/validate_repo_contracts.py`: PASS; `git diff --check`: PASS.
-- Independent review completed for the allowed review turns; findings on cross-attempt
-  release isolation, pending/terminal binding immutability, replacement races, and
-  concurrent writers were patched in commits `c628002`, `5d2449b`, and `95ddd81`.
-- Remote review turn 1 against PR A head `84402a276e9389139eb57e7d104eb234bb67d479`
-  found two justified issues: POSIX disposal could unlink a replacement after the
-  final descriptor digest, and raw committed CRLF bytes could fail a valid Plan
-  checkpoint when `core.autocrlf=false`. The follow-up patch quarantines the POSIX
-  pathname before deletion, canonicalizes Plan revision hashing to normalized UTF-8
-  text, and adds regressions for both boundaries.
-- Follow-up proof: full repository suite `1135 passed, 2 skipped`; focused release and
-  Plan suite `57 passed, 1 skipped`; repository contract and plan validators PASS;
-  `git diff --check` PASS.
-- Remote review turn 2 against `fc02b8e` found one justified fail-closed gap:
-  malformed UTF-8 from `git show` could escape checkpoint verification. The decode
-  now occurs inside the verifier's guarded path, with a regression covering invalid
-  committed bytes. Focused follow-up proof: `58 passed, 1 skipped`; repository and
-  plan validators PASS; `git diff --check` PASS.
-- Remote review turn 3 against `e6e27219837c43a147b7360f87d5e6a2e4d32a99` found two
-  justified correctness gaps: POSIX in-place writes could change content after the
-  first digest while preserving inode identity, and an `unverified` retry could
-  rebind the same attempt to a new path/digest/producer. The follow-up adds a shared
-  owner lock around task-result publication and disposal, rechecks content after
-  quarantine, preserves physical binding fields across all nonterminal states, and
-  adds regressions for both cases. Full proof: `1137 passed, 2 skipped`; focused
-  lifecycle/release proof `207 passed, 1 skipped`; repository and plan validators
-  PASS; `git diff --check` PASS.
-- The first remote runtime rerun on `789c672` exposed a fixture-only CI failure:
-  the new Git checkpoint tests relied on the developer's global Git author config.
-  Both fixtures now configure a local test identity, preserving hermetic runner
-  behavior; no production logic changed. Local proof remains `207 passed, 1 skipped`,
-  with repository and plan validators PASS.
-- Remote PR-head CI/review remains approval-gated; PR B has not started.
+- [ ] Every row in the PR A regression matrix passes.
+- [ ] Focused runtime tests, repository validator, and diff check pass.
+- [ ] Independent review returns no unresolved correctness finding.
+- [ ] Local ready-gate proof and remote PR-head proof are recorded separately.
 
 **Exit Criteria:**
 - PR A is review-ready and its checkpoint proves terminal no-op behavior,
@@ -619,7 +549,7 @@ about current GitHub state.
 - Implement owner-controlled terminal compaction.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 - Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
@@ -653,32 +583,26 @@ remains the baseline.
 - Stop for: `TTL-based cleanup, deleting state while recovery/replay/consumer obligations remain, or restoring full historical maps to process an obsolete message`
 
 **Steps:**
-- [x] Step 1: Define the compaction predicate as runtime retirement complete,
+- [ ] Step 1: Define the compaction predicate as runtime retirement complete,
   canonical consequence committed, required consumers released, all owned
   resources terminal, no recovery required, and no legitimate replay able to
   mutate state.
-- [x] Step 2: Make the attempt-generation invariant explicit: every active
+- [ ] Step 2: Make the attempt-generation invariant explicit: every active
   attempt carries the current generation, every terminal tombstone records the
   highest retired generation, and any lower/obsolete attempt or release message
   is rejected without reconstructing deleted history.
-- [x] Step 3: Replace detailed per-attempt release maps only after that
+- [ ] Step 3: Replace detailed per-attempt release maps only after that
   predicate with current generation, last terminal generation, and release
   completion/tombstone fields.
-- [x] Step 4: Preserve legacy guard records until a verified terminal boundary
+- [ ] Step 4: Preserve legacy guard records until a verified terminal boundary
   is reached, then compact them through the same owner path.
 
 **Verification:**
-- [x] Active, unsettled, recovery-required, and consumer-held records are not
+- [ ] Active, unsettled, recovery-required, and consumer-held records are not
   compacted.
-- [x] A compacted terminal record rejects obsolete attempt traffic.
-- [x] Current-generation replay remains idempotent without restoring full maps.
-- [x] The existing attempt/release tests and focused new compaction tests pass.
-
-**Task 6 Evidence:**
-- Compaction requires settled cleanup/descendant proof, a verified canonical Git
-  consequence, and terminal owned release resources. The focused regression
-  covers terminal replay, replacement generation, obsolete binding rejection,
-  and absence of detailed release maps after compaction.
+- [ ] A compacted terminal record rejects obsolete attempt traffic.
+- [ ] Current-generation replay remains idempotent without restoring full maps.
+- [ ] The existing attempt/release tests and focused new compaction tests pass.
 
 **Exit Criteria:**
 - Terminal guard growth is bounded by the current generation/tombstone contract
@@ -694,7 +618,7 @@ remains the baseline.
 - Narrow the Secretary input contract.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 - Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
@@ -728,36 +652,29 @@ PR A remote/local evidence contracts are inherited from the merged PR A commit.
 - Stop for: `Secretary revalidating Plan/Git/Worker/settlement/GitHub lifecycle semantics or adding a second task ledger`
 
 **Steps:**
-- [x] Step 1: Inventory all Secretary callers, producers, and tests before
+- [ ] Step 1: Inventory all Secretary callers, producers, and tests before
   changing the input contract; record which callers provide lifecycle evidence
   versus project-level attention.
-- [x] Step 2: Define the Secretary input as task reference, canonical
+- [ ] Step 2: Define the Secretary input as task reference, canonical
   consequence reference, reconciled result, blocking references, and project
   consequence/attention delta.
-- [x] Step 3: Keep full evidence validation at the owning boundary and pass
+- [ ] Step 3: Keep full evidence validation at the owning boundary and pass
   only references and normalized outcomes across the Secretary boundary.
-- [x] Step 4: Preserve delivery idempotency, released-controller protection,
+- [ ] Step 4: Preserve delivery idempotency, released-controller protection,
   activation tombstones, and shared-session behavior.
-- [x] Step 5: Update live and in-memory adapters so a normal successful task
+- [ ] Step 5: Update live and in-memory adapters so a normal successful task
   produces zero Secretary messages unless project attention changes.
 
 **Verification:**
-- [x] Cross-workstream attention changes still route once.
-- [x] Duplicate delivery and released-controller replay remain rejected or
+- [ ] Cross-workstream attention changes still route once.
+- [ ] Duplicate delivery and released-controller replay remain rejected or
   idempotent according to the existing contract.
-- [x] A normal successful task produces one assignment, one Worker result, one
+- [ ] A normal successful task produces one assignment, one Worker result, one
   CoS decision, and zero Secretary messages.
 
 **Exit Criteria:**
 - Secretary no longer owns or duplicates lifecycle eligibility and all focused
   adapter/live tests pass.
-
-**Task 7 Evidence:**
-- Secretary evidence now carries task, canonical-consequence, reconciled-result,
-  blocking, and project-attention references without reconstructing lifecycle
-  bindings. Focused Secretary/runtime tests pass; the deterministic benchmark
-  reports zero target messages for ordinary direct work. Benchmark provenance is
-  synthetic and not live cost evidence.
 
 ### Task 8: Inventory `next_action` and measure Herdr session provenance
 
@@ -769,7 +686,7 @@ PR A remote/local evidence contracts are inherited from the merged PR A commit.
 - Perform caller inventory and measurement-gated runtime maintenance.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 - Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
@@ -805,51 +722,43 @@ The PR A review gate is inherited from the merged PR A commit.
 - Stop for: `a production caller that requires next_action, a shared/default session deletion, repeated polling added solely for cleanup, or a non-zero cleanup result without exact ownership proof`
 
 **Steps:**
-- [x] Step 1: Complete the non-test `git grep` inventory for `next_action` and
+- [ ] Step 1: Complete the non-test `git grep` inventory for `next_action` and
   decide that contract independently: retain it with a caller contract test if
   production consumers exist; otherwise remove it from the result contract and
   diagnostic-only tests.
-- [x] Step 2: Record Herdr session provenance at creation: pre-existing,
+- [ ] Step 2: Record Herdr session provenance at creation: pre-existing,
   attempt-created, or shared/default; reuse the existing retirement inventory
   rather than adding a polling loop.
-- [x] Step 3: Run three identical representative workloads and record the
+- [ ] Step 3: Run three identical representative workloads and record the
   before/after count of exclusive empty sessions left after completion, with
   the Task 1 baseline and exact workload/revision/environment.
-- [x] Step 4: If all three candidate counts are zero, retain session
+- [ ] Step 4: If all three candidate counts are zero, retain session
   preservation and land provenance/measurement only. If any count is non-zero,
   add deletion only when
   the session was created exclusively by the attempt, all owned children and
   panes/agents retired, the session is empty, and no other consumer exists.
-- [x] Step 5: Treat session deletion as optional and measurement-gated; do not
+- [ ] Step 5: Treat session deletion as optional and measurement-gated; do not
   enable it merely because provenance exists.
-- [x] Step 6: If live Herdr measurement is unavailable, record
+- [ ] Step 6: If live Herdr measurement is unavailable, record
   `BLOCKED_CAPABILITY`, complete provenance tests and the independent
   `next_action` decision, preserve all sessions, and defer deletion without
   blocking PR B. If live probes require resources outside the execution
   worktree, stop for explicit user approval before creating or cleaning them.
 
 **Verification:**
-- [x] The `next_action` decision is backed by a complete non-test caller list.
-- [x] Shared/default sessions remain preserved in every run.
-- [x] Exclusive-session deletion, when enabled, has direct ownership and empty
+- [ ] The `next_action` decision is backed by a complete non-test caller list.
+- [ ] Shared/default sessions remain preserved in every run.
+- [ ] Exclusive-session deletion, when enabled, has direct ownership and empty
   session tests; otherwise the zero-retention measurement is recorded.
-- [x] No extra repeated observation loop is introduced.
-- [x] Candidate measurements are comparable with Task 1 before measurements;
+- [ ] No extra repeated observation loop is introduced.
+- [ ] Candidate measurements are comparable with Task 1 before measurements;
   unsupported metrics are explicitly marked rather than fabricated.
-- [x] `BLOCKED_CAPABILITY` is an accepted measurement outcome that leaves
+- [ ] `BLOCKED_CAPABILITY` is an accepted measurement outcome that leaves
   preservation unchanged and does not block unrelated `next_action` work.
 
 **Exit Criteria:**
 - Derived-state removal and session cleanup are each justified by concrete
   caller/measurement evidence, not architectural preference.
-
-**Task 8 Evidence:**
-- Non-test inventory found no `ReconciliationResult.next_action` consumers, so
-  the derived field and diagnostic assertions were removed. Herdr target
-  evidence records `shared/default` versus `pre-existing` provenance and keeps
-  all sessions preserved. Live Herdr session measurement was unavailable in this
-  execution environment and is recorded as `BLOCKED_CAPABILITY`; no deletion
-  path was enabled.
 
 ### Task 9: Finish CI ownership, plan guidance, and PR B verification
 
@@ -861,8 +770,8 @@ The PR A review gate is inherited from the merged PR A commit.
 - Align maintained contracts and perform final cross-surface verification.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
-- Selection basis: `lead controller completed the bounded CI, documentation, and verification lane`
+- Controller-selected: `unresolved`
+- Selection basis: `pending until Planning Dispatch resolves the executor profile`
 
 **Validator Profile:**
 - Controller-selected: `review-2`
@@ -893,80 +802,65 @@ The PR A review gate is inherited from the merged PR A commit.
 - Stop for: `path-based CI filtering before ownership is clean, mutable current-status prose in plans/templates, generated-surface edits without canonical input changes, or unrelated workflow redesign`
 
 **Steps:**
-- [x] Step 1: Keep Repository Contracts limited to planning lifecycle,
+- [ ] Step 1: Keep Repository Contracts limited to planning lifecycle,
   repository schemas/config, generated drift, and static/invariant validators.
-- [x] Step 2: Keep Runtime Contracts limited to reconciliation,
+- [ ] Step 2: Keep Runtime Contracts limited to reconciliation,
   acceptance/release, Herdr, DeepAgents, Secretary, and OS behavior; keep
   Benchmark limited to performance contract tests.
-- [x] Step 3: Update plan/template guidance to record PR numbers, candidate
+- [ ] Step 3: Update plan/template guidance to record PR numbers, candidate
   SHAs, policy sources, and evidence references, while rejecting prose that
   claims a mutable current PR/check/review state as durable truth.
-- [x] Step 4: Run the local ready gate: full repository validator, the full
+- [ ] Step 4: Run the local ready gate: full repository validator, the full
   affected suite available on the local platform, diff check, and the existing
   Secretary/worker benchmark command. Compare only metrics marked supported in
   the Task 1 table; retain `UNAVAILABLE`, `NOT_APPLICABLE`, or
   `BLOCKED_CAPABILITY` outcomes for the rest. Use direct lifecycle regression
   tests for cleanup correctness, and do not present deterministic-fake
   benchmarks as live resource or operating-cost evidence.
-- [x] Step 5: Request independent review for PR B; if findings change code,
+- [ ] Step 5: Request independent review for PR B; if findings change code,
   rerun affected proof and bind the final review to the new code head.
-- [x] Step 6: Create the PR B checkpoint commit with durable candidate
+- [ ] Step 6: Create the PR B checkpoint commit with durable candidate
   evidence, then after user-authorized push record remote PR-head CI for
   Repository Contracts, Ubuntu Runtime, Windows Runtime, and Benchmark gates.
 
 **Verification:**
-- [x] `python scripts/validate_repo_contracts.py` passes.
-- [x] The local ready gate passes on the available platform; remote PR-head CI
+- [ ] `python scripts/validate_repo_contracts.py` passes.
+- [ ] The local ready gate passes on the available platform; remote PR-head CI
   supplies Ubuntu and Windows results after authorized push.
-- [x] `git diff --check` passes.
-- [x] Benchmark comparison uses identical workloads and keeps incorrect cleanup
+- [ ] `git diff --check` passes.
+- [ ] Benchmark comparison uses identical workloads and keeps incorrect cleanup
   events at zero where the direct lifecycle tests support that claim; unsupported
   live-resource metrics are explicitly deferred.
-- [x] CI workflow ownership has no duplicate Secretary/Herdr behavioral test
+- [ ] CI workflow ownership has no duplicate Secretary/Herdr behavioral test
   ownership without an explicit contract reason.
-- [x] Independent review returns no unresolved PR B finding.
-- [x] Final review and remote CI are bound to the same final PR B code head.
+- [ ] Independent review returns no unresolved PR B finding.
+- [ ] Final review and remote CI are bound to the same final PR B code head.
 
 **Exit Criteria:**
 - PR B is review-ready, CI ownership is explicit, plan guidance is durable,
   and the before/after measurement supports the maintenance change without a
   correctness regression.
 
-**Task 9 Evidence:**
-- Repository Contracts and Runtime Contracts ownership was split as planned;
-  Benchmark remains performance-only.
-- Plan/template guidance records durable PR, commit, policy, and evidence
-  references rather than mutable current GitHub status.
-- Local ready gate: `1134 passed, 2 skipped`; final independent review suite:
-  `829 passed, 1 skipped`; focused dcode/lifecycle suite: `155 passed`.
-- Repository validator and `git diff --check` passed. Deterministic Secretary
-  benchmark passed with synthetic-only provenance; live Herdr measurement is
-  explicitly `BLOCKED_CAPABILITY`.
-- PR #73 final reviewed head `891440aebdaebf558ab89fbedb45a15150a72bbd`,
-  independent review `PASS`, remote Repository Contracts, Ubuntu Runtime,
-  Windows Runtime, and Benchmark checks `PASS`; merged as
-  `15a01ac9fce8a06e05798ddcd2682b6a90cc91ee`.
-
 ## Verification
 
-- [x] PR A focused matrix passes before any PR B implementation begins.
-- [x] PR A independent review passes against terminal release, exact binding,
+- [ ] PR A focused matrix passes before any PR B implementation begins.
+- [ ] PR A independent review passes against terminal release, exact binding,
   Git checkpoint, local outage, and review-policy criteria.
-- [x] PR B compaction, Secretary, `next_action`, session-provenance, and CI
+- [ ] PR B compaction, Secretary, `next_action`, session-provenance, and CI
   ownership tests pass after the PR A checkpoint.
-- [x] `python scripts/validate_repo_contracts.py` passes from the execution
+- [ ] `python scripts/validate_repo_contracts.py` passes from the execution
   worktree.
-- [x] Local ready gates pass on the available platform for PR A and PR B;
+- [ ] Local ready gates pass on the available platform for PR A and PR B;
   remote PR-head CI supplies Ubuntu and Windows runtime results after each
   user-authorized push.
-- [x] `git diff --check` passes.
-- [x] Identical before/after measurements compare every metric marked supported
+- [ ] `git diff --check` passes.
+- [ ] Identical before/after measurements compare every metric marked supported
   in the Task 1 table, including coordination overhead per accepted change,
   retained attempt/release records, retained temporary bytes, Secretary
   activations, Herdr subprocess calls, empty sessions, incorrect cleanup
   events, and fresh-controller recovery time. Unsupported or blocked metrics
   retain their explicit status and are not used for cost claims.
-- [x] Final independent review for each PR is bound to that PR's final code
+- [ ] Final independent review for each PR is bound to that PR's final code
   head, and no review PASS from a superseded candidate is reused.
 
 ## Completion Criteria

@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import stat
-import tempfile
 from typing import Any
 
 from .reconciliation import ReconciliationInput, reconcile
@@ -439,6 +438,10 @@ def _same_file_identity(first: os.stat_result, second: os.stat_result) -> bool:
     return (first.st_dev, first.st_ino) == (second.st_dev, second.st_ino)
 
 
+def _quarantine_path(path: Path, expected_digest: str) -> Path:
+    return path.with_name(f".{path.name}.{expected_digest}.release")
+
+
 def _unlink_verified_file(path: Path, verified_stat: os.stat_result, expected_digest: str) -> str | None:
     with evidence_path_lock(path):
         return _unlink_verified_file_unlocked(path, verified_stat, expected_digest)
@@ -498,7 +501,7 @@ def _unlink_verified_file_unlocked(path: Path, verified_stat: os.stat_result, ex
             return None
         finally:
             os.close(fd)
-    quarantine_path: Path | None = None
+    quarantine_path = _quarantine_path(path, expected_digest)
     quarantined_unverified = False
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
@@ -509,14 +512,8 @@ def _unlink_verified_file_unlocked(path: Path, verified_stat: os.stat_result, ex
             return "evidence artifact changed"
         if _digest_for_fd(fd) != expected_digest:
             return "evidence artifact changed"
-        with tempfile.NamedTemporaryFile(
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".release",
-            delete=False,
-        ) as quarantine:
-            quarantine_path = Path(quarantine.name)
-        quarantine_path.unlink()
+        if quarantine_path.exists():
+            return "evidence disposal failed"
         os.rename(path, quarantine_path)
         quarantined_unverified = True
         if (
@@ -537,7 +534,7 @@ def _unlink_verified_file_unlocked(path: Path, verified_stat: os.stat_result, ex
     except OSError:
         return "evidence disposal failed"
     finally:
-        if quarantine_path and not quarantined_unverified and quarantine_path.exists():
+        if not quarantined_unverified and quarantine_path.exists():
             try:
                 quarantine_path.unlink()
             except OSError:
@@ -640,6 +637,43 @@ def release_authorized_evidence(
                 evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
             },
         }
+    expected_digest = recorded_resource.get("content_sha256") or recorded_resource.get("artifact_digest")
+    quarantine_path = _quarantine_path(path, str(expected_digest))
+    if not path.exists() and quarantine_path.exists():
+        quarantine_fd: int | None = None
+        try:
+            quarantine_stat = os.stat(quarantine_path, follow_symlinks=False)
+            quarantine_fd = os.open(quarantine_path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+            if (
+                quarantine_path.is_symlink()
+                or not quarantine_path.is_file()
+                or not _same_file_identity(os.fstat(quarantine_fd), quarantine_stat)
+                or _digest_for_fd(quarantine_fd) != str(expected_digest)
+            ):
+                raise OSError("quarantine identity mismatch")
+        except OSError:
+            return {
+                **result,
+                "authorized": False,
+                "reasons": ["binding_mismatch: quarantined evidence artifact unavailable"],
+                "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
+            }
+        finally:
+            if quarantine_fd is not None:
+                os.close(quarantine_fd)
+        unlink_error = _unlink_verified_file(quarantine_path, quarantine_stat, str(expected_digest))
+        if unlink_error is not None:
+            return {
+                **result,
+                "authorized": False,
+                "reasons": [f"{unlink_error}: {evidence_ref}"],
+                "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
+            }
+        return {
+            **result,
+            "payload_released": True,
+            "resources": {evidence_ref: {**dict(recorded_resource), "state": "removed"}},
+        }
     if not path.exists():
         return {
             **result,
@@ -672,7 +706,6 @@ def release_authorized_evidence(
             "resources": {evidence_ref: {**dict(recorded_resource), "state": "unverified"}},
         }
     resources: dict[str, dict[str, Any]] = {}
-    expected_digest = recorded_resource.get("content_sha256") or recorded_resource.get("artifact_digest")
     unlink_error = _unlink_verified_file(path, verified_stat, str(expected_digest))
     if unlink_error == "already absent":
         resources[evidence_ref] = {"state": "already_absent"}

@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: completed
+status: proposed
 template_id: implementation-plan
 contract_version: "1"
 name: durable-facts-runtime-retirement
@@ -102,20 +102,20 @@ concurrency remains. New contract tests run in current repository workflows.
 - Coordination schema: `2`
 - Branch: `codex/durable-facts-runtime-retirement`
 - Base commit: `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695` (`origin/main`, verified 2026-10-10)
-- Expected workspace: `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` on branch `codex/durable-facts-runtime-retirement`, created from `187f28e492ae1c4726cdd2f7b5a261a2b8b6c695`; drafting workspace and its untracked files remain untouched
-- Next action: `none`
-- Blockers: `none`
+- Expected workspace: `fresh worktree from base; preserve current workspace untracked .playwright-mcp/, db/, temp_evidence.json, and prior untracked plan`
+- Next action: `Task 1 — freeze active and historical references and baseline proof`
+- Blockers: `none for planning; execution waits for explicit plan approval`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | none | inventory, baseline validators, preserved-untracked proof | `origin/main=187f28e492ae1c4726cdd2f7b5a261a2b8b6c695; validate_repo_contracts=0; validate_planning_lifecycle=0; focused tests=119 passed; unrelated drafting workspace preserved` |
-| Task 2 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 1 | phase contract and reconciliation tests | `reconciliation/dispatch/acceptance/attempt tests=192 passed; integration identity fail-closed; incomplete phases do not advance; git diff --check=0` |
-| Task 3 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | GitHub identity/freshness and acceptance-release tests plus a production release caller | `release gate binds accepted task, canonical consequence, non-empty consumer inventory, consumer binding, and retention; release_authorized_evidence is production exact-path entry point; positive disposal and worker-self-acceptance tests pass` |
-| Task 4 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | launcher binding, lock race, resource retirement tests | `launcher emits immutable repository/Plan/assignment/attempt/process identity binding; retirement checks recorded identities and live owned PIDs under shared lock; absent pane with live identity remains unresolved; focused Herdr/dcode tests pass` |
-| Task 5 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 3, 4 | Secretary ownership, compaction, replay tests | `released controller required before delivery compaction; Secretary attempt identity comes from worker/settlement evidence rather than Plan copy; activation tombstone retained; Secretary focused tests pass` |
-| Task 6 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Task 2 | Tura/Switchyard removal and historical compatibility tests | `Tura dispatch/setup/provider surfaces, Switchyard manager/config/docs/tests, and raw benchmark artifacts removed; schema rejects new active Tura; historical Plan parsing retained; focused retirement tests pass` |
-| Task 7 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 3–6 | CI wiring, generated drift, retention checks | `CI concurrency and focused contract wiring present; adapter/runtime drift, repository/planning validators, starter-kit build/validation, 1,064-test regression, diff check, and three-repetition summary-only benchmark pass` |
-| Task 8 | `completed` | `C:\Users\HOANG PHI LONG DANG\.codex\worktrees\durable-facts-runtime-retirement\project-OS-starter` | `codex` | Tasks 1–7 | full verification, regression matrix, measurement summary | `full regression=1,064 passed/1 skipped; validators, generated drift, starter-kit, diff, and benchmark correctness pass; final candidate source_sha256=59d10dfdc75492d9189faa543986b7191f574676fb9a0f375a0d5dc26ccf245a; independent review findings patched and affected proof rerun` |
+| Task 1 | `pending` | dedicated execution worktree | `unresolved` | none | inventory, baseline validators, preserved-untracked proof | pending |
+| Task 2 | `pending` | dedicated execution worktree | `unresolved` | Task 1 | phase contract and reconciliation tests | pending |
+| Task 3 | `pending` | dedicated execution worktree | `unresolved` | Task 2 | GitHub identity/freshness and acceptance-release tests | pending |
+| Task 4 | `pending` | dedicated execution worktree | `unresolved` | Task 2 | launcher binding, lock race, resource retirement tests | pending |
+| Task 5 | `pending` | dedicated execution worktree | `unresolved` | Tasks 3, 4 | Secretary ownership, compaction, replay tests | pending |
+| Task 6 | `pending` | dedicated execution worktree | `unresolved` | Task 2 | Tura/Switchyard removal and historical compatibility tests | pending |
+| Task 7 | `pending` | dedicated execution worktree | `unresolved` | Tasks 3–6 | CI wiring, generated drift, retention checks | pending |
+| Task 8 | `pending` | dedicated execution worktree | `unresolved` | Tasks 1–7 | full verification, regression matrix, measurement summary | pending |
 
 ## Task Breakdown
 
@@ -130,7 +130,7 @@ concurrency remains. New contract tests run in current repository workflows.
 - Repository truth and migration-safety audit.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - Durable ownership, historical compatibility, rollback safety,
@@ -193,7 +193,7 @@ deletion target lacks a caller/test decision.
 - Runtime contract correction and boundary integration.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - Dispatch independence, dependency readiness, checkpoint/candidate separation,
@@ -236,9 +236,8 @@ acceptance tests.
 4. Return separate `integration_eligible`, `integration_complete`,
    `retirement_eligible`, and `retirement_complete` fields with explicit next
    action and unresolved reasons.
-5. Wire the same pure reconciler at dispatch, acceptance, and runtime
-   finalization boundaries; Task 3 owns integration wiring because it binds
-   controller-supplied GitHub evidence; do not add orchestration.
+5. Wire the same pure reconciler at dispatch, acceptance, integration, and
+   runtime finalization boundaries; do not add orchestration.
 
 **Verification:** Tests prove dependency-ready local dispatch without GitHub,
 absent attempt readiness, dependency blocking, `C != H` acceptance, green
@@ -259,7 +258,7 @@ effect.
 - Acceptance and remote-evidence contract correction.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - PR identity, head-bound checks/reviews, Worker/CoS authority boundary,
@@ -300,21 +299,17 @@ effect.
 5. Add `authorize_evidence_release` binding `plan_ref`, `task_id`,
    `assignment_id`, `attempt_id`, accepted candidate SHA, and canonical
    acceptance checkpoint SHA. Task 1 inventories each evidence consumer and
-   its authoritative release source. Require CoS PASS, the accepted task to
-   match the release binding, current Plan/Git proof, canonical-consequence
-   proof, a non-empty authoritative consumer inventory, and positive
-   artifact-bound release evidence from every required consumer, including
-   recovery consumers. Each consumer owns its retention-policy reference and
-   expiry proof; no implicit TTL or inferred consent is permitted. Missing
-   policy, unknown consumers, missing release evidence, or unresolved recovery
-   need blocks disposal and preserves evidence. Revalidate consumer releases
-   and retention proof immediately before unlinking exact-bound evidence; CoS
-   PASS alone never authorizes disposal. Keep replay tombstones until their
-   own consumer-owned release gate passes; payload release does not authorize
-   tombstone deletion.
-6. Add one production caller that revalidates the exact release binding and
-   consumer inventory immediately before unlinking only authorized evidence
-   paths. Keep terminal Worker cleanup separate: process/pane/role-view settlement may
+   its authoritative release source. Require CoS PASS, current Plan/Git proof,
+   canonical-consequence proof, and positive artifact-bound release evidence
+   from every required consumer, including recovery consumers. Each consumer
+   owns its retention-policy reference and expiry proof; no implicit TTL or
+   inferred consent is permitted. Missing policy, unknown consumers, missing
+   release evidence, or unresolved recovery need blocks disposal and preserves
+   evidence. Revalidate consumer releases and retention proof immediately
+   before unlinking exact-bound evidence; CoS PASS alone never authorizes
+   disposal. Keep replay tombstones until their own consumer-owned release gate
+   passes; payload release does not authorize tombstone deletion.
+6. Keep terminal Worker cleanup separate: process/pane/role-view settlement may
    complete before CoS review; TaskResult and receipt remain until release
    authorization succeeds. Use GitHub `expected_head_sha` at merge.
 
@@ -340,7 +335,7 @@ evidence; remote mutable facts are never persisted by runtime code.
 - Runtime ownership and cleanup correctness.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - Immutable launcher binding, exclusive pane ownership, resource-specific
@@ -404,7 +399,7 @@ missing pane, or unverified cleanup.
 - Secretary ownership and replay/retention correction.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - Source ownership, sparse communication, replay protection, delivery payload
@@ -458,7 +453,7 @@ identity but no unnecessary delivery payload.
 - Runtime topology migration and compatibility cleanup.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - Canonical-only retention, active-path removal, historical readability,
@@ -500,8 +495,7 @@ identity but no unnecessary delivery payload.
    and Tura installation guidance after caller inventory proves no supported
    active caller. Preserve DeepAgents setup and read compatibility for completed
    and superseded historical Plans.
-3. Remove obsolete Project OS-owned Switchyard manager, manifest, workflow,
-   and test surfaces;
+3. Remove obsolete Project OS-owned Switchyard manager/manifest/patch surfaces;
    retain only explicit historical references required for readability.
    Repository retirement does not authorize editing or deleting installed
    `$HOME/.local/bin/project-delegate.ps1`, `project-delegate.cmd`,
@@ -530,7 +524,7 @@ surfaces have no drift.
 - CI and maintained-documentation integration.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - GitHub durable consequence, CI cancellation, retention, generated validation,
@@ -591,7 +585,7 @@ status owner.
 - Release-readiness verification.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`
+- Controller-selected: `unresolved`
 
 **Specification Coverage:**
 - All outcomes and required merge gates.
@@ -629,9 +623,9 @@ status owner.
    retirement latency, orphan resources, retained bytes, superseded CI minutes,
    recovery time, and destructive cleanup errors. Mark unavailable metrics
    unavailable; never infer zero from no observation.
-6. Use the three-turn independent review budget. Patch every justified finding,
-   rerun affected proof, and record the final candidate source digest; do not
-   claim review pass until all findings are resolved.
+6. Request independent implementation review against the exact final candidate
+   SHA. A later candidate commit invalidates that review and requires a fresh
+   review plus rerun of affected proof.
 7. Apply `skill-verification-before-completion`; keep plan `active` until proof
    is `verified`, then transition to `completed` through the coordination rule.
 
@@ -666,7 +660,7 @@ Final completion requires all Task 1–8 proof plus:
 - Secretary compaction blocks replay and releases delivery payload;
 - no raw benchmark JSON rows or copied remote status owner remain;
 - GitHub Actions retain conservative cancellation and required checks;
-- independent implementation review findings are resolved against the final candidate source digest;
+- independent implementation review passes against exact final candidate SHA;
 - `skill-verification-before-completion` returns `verified`.
 
 ## Completion Criteria

@@ -158,6 +158,25 @@ def test_build_subprocess_steps_checks_all_adapter_platforms() -> None:
     assert not any("validate_agent_runtime_drift.py" in " ".join(step) for step in steps)
 
 
+def test_secretary_contract_suites_have_one_workflow_owner(tmp_path: Path) -> None:
+    write_text(
+        tmp_path / ".github" / "workflows" / "runtime.yml",
+        "run: python -m pytest tests/test_secretary_events.py tests/test_secretary_economics.py tests/test_secretary_benchmark.py\n",
+    )
+    issues = VALIDATOR.validate_workflow_test_ownership(tmp_path)
+    assert issues == []
+
+
+def test_secretary_contract_suites_reject_duplicate_workflow_owners(tmp_path: Path) -> None:
+    for name in ("runtime.yml", "repo.yml"):
+        write_text(
+            tmp_path / ".github" / "workflows" / name,
+            "run: python -m pytest tests/test_secretary_events.py\n",
+        )
+    issues = VALIDATOR.validate_workflow_test_ownership(tmp_path)
+    assert any("exactly one workflow owner" in issue.message for issue in issues)
+
+
 def test_preflight_is_bound_to_plan_and_document(tmp_path: Path) -> None:
     plan = tmp_path / "plan.md"
     steps = VALIDATOR.build_subprocess_steps(

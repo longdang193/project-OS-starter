@@ -44,6 +44,9 @@ jobs:
           tests/test_secretary_evidence.py
           tests/test_secretary_adapter.py
           tests/test_secretary_receipts.py
+          tests/test_secretary_events.py
+          tests/test_secretary_economics.py
+          tests/test_secretary_benchmark.py
           tests/test_secretary_live_runtime.py
           tests/test_secretary_live_pilot.py
           tests/test_secretary_reporting_benchmark.py

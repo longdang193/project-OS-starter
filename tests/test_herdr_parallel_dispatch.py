@@ -347,6 +347,26 @@ def test_run_parallel_starts_both_lanes_before_either_finishes(tmp_path: Path, m
     assert {item["lane_id"] for item in result["results"]} == {"a", "b"}
 
 
+def test_run_parallel_refills_capacity_deferred_lanes(tmp_path: Path, monkeypatch) -> None:
+    def fake_run_lane(item, **kwargs):
+        return {
+            "lane_id": item["lane_id"],
+            "exit_code": 0,
+            "records": [],
+            "stderr": "",
+            "unresolved": False,
+            "capacity": "retired",
+        }
+
+    monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
+    lanes = [lane("a", tmp_path), lane("b", tmp_path), lane("c", tmp_path)]
+
+    result = dispatcher.run_parallel(lanes, enable_refill=True)
+
+    assert len(result["results"]) == 3
+    assert [item["lane_id"] for item in result["refilled"]] == ["c"]
+
+
 def test_run_parallel_emits_admission_and_terminal_events_once(tmp_path: Path, monkeypatch) -> None:
     events: list[dict[str, object]] = []
 

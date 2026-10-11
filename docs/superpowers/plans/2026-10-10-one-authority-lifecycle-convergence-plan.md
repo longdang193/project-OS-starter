@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: completed
+status: proposed
 layer: change
 name: one-authority-lifecycle-convergence
 targets:
@@ -119,17 +119,17 @@ raw probe traces remain disposable.
 - Branch: `codex/one-authority-lifecycle-convergence`
 - Base commit: `b41d3f8` (`origin/main`, verified 2026-10-10)
 - Expected workspace: `fresh execution worktree; preserve current checkout changes and untracked .playwright-mcp/, db/, temp_evidence.json, and existing untracked plans`
-- Next action: `none in this plan; PR remains unmerged pending separate user authorization`
-- Blockers: `none`
+- Next action: `user approval → dedicated worktree → proposed → active → activation checkpoint → Task 1`
+- Blockers: `none for planning; execution waits for explicit plan approval and dedicated worktree creation`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | dedicated execution worktree | `codex` | none | baseline inventory, focused tests, CI defect proof | `origin/main` `b41d3f8`; activation `93e4a10`; baseline `376 passed` |
-| Task 2 | `completed` | dedicated execution worktree | `codex` | Task 1 | one reconciler and phase regression matrix | `reconcile(ReconciliationInput(...))`; focused lifecycle suites passed |
-| Task 3 | `completed` | dedicated execution worktree | `codex` | Task 2 | structured remote evidence and CoS acceptance proof | exact-head checks policy bound to `github://` or `repo-contract://`; `487 passed` focused suites |
-| Task 4 | `completed` | dedicated execution worktree | `codex` | Task 2 | exact retirement path and runtime-owner proof | `retire_lane` plus `retire_settled_lane`; idempotency, mismatch, recovery tests passed |
-| Task 5 | `completed` | dedicated execution worktree | `codex` | Tasks 3–4 | restart-safe release and truthful cleanup proof | acceptance release path; attempt-guard authorization survives replacement; stale sweeper and legacy disposal removed |
-| Task 6 | `completed` | dedicated execution worktree | `codex` | Tasks 1–5 | CI, docs, live lifecycle, final verification | workflow duplicate removed; validators, live lifecycle proof, capped review remediation, and exact-head PR checks passed |
+| Task 1 | `pending` | dedicated execution worktree | `unresolved` | none | baseline inventory, focused tests, CI defect proof | pending |
+| Task 2 | `pending` | dedicated execution worktree | `unresolved` | Task 1 | one reconciler and phase regression matrix | pending |
+| Task 3 | `pending` | dedicated execution worktree | `unresolved` | Task 2 | structured remote evidence and CoS acceptance proof | pending |
+| Task 4 | `pending` | dedicated execution worktree | `unresolved` | Task 2 | exact retirement path and runtime-owner proof | pending |
+| Task 5 | `pending` | dedicated execution worktree | `unresolved` | Tasks 3–4 | restart-safe release and truthful cleanup proof | pending |
+| Task 6 | `pending` | dedicated execution worktree | `unresolved` | Tasks 1–5 | CI, docs, live lifecycle, final verification | pending |
 
 ## Task Breakdown
 
@@ -173,15 +173,15 @@ raw probe traces remain disposable.
 - Stop for: `base SHA, source ownership, generated-file boundary, or required scope differs from this plan`
 
 **Steps:**
-- [x] Step 1: After user approval, create dedicated worktree from `origin/main` at `b41d3f8`, copy this Plan, change `status: proposed` to `status: active`, commit activation checkpoint, then begin Task 1.
-- [x] Step 2: Inventory all direct and indirect callers of legacy reconciliation, legacy evidence disposal, retirement, and stale MCP cleanup; classify each symbol as `keep`, `translate`, or `delete`.
-- [x] Step 3: Identify the existing attempt guard/settlement record that can own release authorization and the minimal retry tombstone; forbid any new release database or store.
-- [x] Step 4: Run baseline focused tests and `python scripts/validate_repo_contracts.py`; record failures without unrelated fixes.
+- [ ] Step 1: After user approval, create dedicated worktree from `origin/main` at `b41d3f8`, copy this Plan, change `status: proposed` to `status: active`, commit activation checkpoint, then begin Task 1.
+- [ ] Step 2: Inventory all direct and indirect callers of legacy reconciliation, legacy evidence disposal, retirement, and stale MCP cleanup; classify each symbol as `keep`, `translate`, or `delete`.
+- [ ] Step 3: Identify the existing attempt guard/settlement record that can own release authorization and the minimal retry tombstone; forbid any new release database or store.
+- [ ] Step 4: Run baseline focused tests and `python scripts/validate_repo_contracts.py`; record failures without unrelated fixes.
 
 **Verification:**
-- [x] `git grep -n -E '_reconcile_legacy|_reconcile_snapshot|release_attempt_evidence|_discard_deepagents_receipt|retire_lane|_cleanup_stale_direct_mcp_runtimes'`
+- [ ] `git grep -n -E '_reconcile_legacy|_reconcile_snapshot|release_attempt_evidence|_discard_deepagents_receipt|retire_lane|_cleanup_stale_direct_mcp_runtimes'`
 - Expected: every active caller is classified as keep, translate, delete, or test-only evidence; deletion table names production callers and compatibility need.
-- [x] `python -m pytest -q tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_evidence_release.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py`
+- [ ] `python -m pytest -q tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_evidence_release.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py`
 - Expected: baseline result recorded; failures attributable to pre-change state.
 
 **Exit Criteria:**
@@ -197,7 +197,7 @@ raw probe traces remain disposable.
 - Contract convergence and caller migration.
 
 **Template Profile:**
-- Controller-selected: `high`
+- Controller-selected: `unresolved`
 - Selection basis: `shared API has high blast radius; resolve profile after Task 1 inventory`
 
 **Validator Profile:**
@@ -232,15 +232,15 @@ raw probe traces remain disposable.
 - Stop for: `new lifecycle state store, new cache, changed acceptance owner, or unresolved caller outside listed surfaces`
 
 **Steps:**
-- [x] Step 1: Make `reconcile(ReconciliationInput(...))` the only canonical public form; temporary compatibility adapters may translate old inputs but contain zero decision logic.
-- [x] Step 2: Delete `_reconcile_snapshot`, `_reconcile_legacy`, `EvidenceSnapshot`, and every snapshot-only type (`LocalEvidence`, `RuntimeEvidence`, `Eligibility`, `Contradiction`, `MissingEvidence`, `REMOTE_EVIDENCE_UNAVAILABLE`) unless Task 1 proves a type still belongs to the canonical contract.
-- [x] Step 3: Encode and test dispatch, verify, accept, integrate, retire, and prune contracts, including integration eligibility versus merged completion.
-- [x] Step 4: Update exports/imports and remove obsolete tests only after replacement coverage passes.
+- [ ] Step 1: Make `reconcile(ReconciliationInput(...))` the only canonical public form; temporary compatibility adapters may translate old inputs but contain zero decision logic.
+- [ ] Step 2: Delete `_reconcile_snapshot`, `_reconcile_legacy`, `EvidenceSnapshot`, and every snapshot-only type (`LocalEvidence`, `RuntimeEvidence`, `Eligibility`, `Contradiction`, `MissingEvidence`, `REMOTE_EVIDENCE_UNAVAILABLE`) unless Task 1 proves a type still belongs to the canonical contract.
+- [ ] Step 3: Encode and test dispatch, verify, accept, integrate, retire, and prune contracts, including integration eligibility versus merged completion.
+- [ ] Step 4: Update exports/imports and remove obsolete tests only after replacement coverage passes.
 
 **Verification:**
-- [x] `python -m pytest -q tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_project_os_runtime.py tests/test_plan_preparation.py`
+- [ ] `python -m pytest -q tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_project_os_runtime.py tests/test_plan_preparation.py`
 - Expected: one `ReconciliationInput` API works; compatibility adapters, if retained, only translate; legacy positional and keyword decision paths are absent; regression matrix phase gates pass.
-- [x] `python -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_secretary_evidence.py`
+- [ ] `python -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_secretary_evidence.py`
 - Expected: dispatch and Secretary consume phase results without rebuilding lifecycle truth.
 
 **Exit Criteria:**
@@ -256,7 +256,7 @@ raw probe traces remain disposable.
 - Acceptance authority and remote-evidence hardening.
 
 **Template Profile:**
-- Controller-selected: `normal`
+- Controller-selected: `unresolved`
 - Selection basis: `structured evidence and acceptance are high-risk contract surfaces`
 
 **Validator Profile:**
@@ -292,16 +292,16 @@ raw probe traces remain disposable.
 - Stop for: `persisted GitHub mirror, copied status becoming authoritative, Worker self-acceptance, or merge execution without native expected-head protection`
 
 **Steps:**
-- [x] Step 1: Bind required-check and review policy from GitHub branch/ruleset requirements when available, otherwise from explicit repository/task contract; compare policy against exact current observations.
-- [x] Step 2: Require remote availability, repository identity, PR number, base identity, exact candidate head, required checks, valid review for that head, and current mergeability.
-- [x] Step 3: Keep `integration_eligible` distinct from merged/completed state; re-read mutable GitHub facts before consequential merge action.
-- [x] Step 4: Remove `checks_passed`, `review_valid`, and `mergeable` compatibility fields once production callers migrate; do not preserve precedence rules indefinitely.
-- [x] Step 5: Make Secretary consume phase result, task reference, blocking references, and consequence instead of reconstructing acceptance or GitHub state; update runtime ownership documentation.
+- [ ] Step 1: Bind required-check and review policy from GitHub branch/ruleset requirements when available, otherwise from explicit repository/task contract; compare policy against exact current observations.
+- [ ] Step 2: Require remote availability, repository identity, PR number, base identity, exact candidate head, required checks, valid review for that head, and current mergeability.
+- [ ] Step 3: Keep `integration_eligible` distinct from merged/completed state; re-read mutable GitHub facts before consequential merge action.
+- [ ] Step 4: Remove `checks_passed`, `review_valid`, and `mergeable` compatibility fields once production callers migrate; do not preserve precedence rules indefinitely.
+- [ ] Step 5: Make Secretary consume phase result, task reference, blocking references, and consequence instead of reconstructing acceptance or GitHub state; update runtime ownership documentation.
 
 **Verification:**
-- [x] `python -m pytest -q tests/test_project_os_reconciliation.py tests/test_reconciliation.py tests/test_plan_preparation.py tests/test_evidence_release.py`
+- [ ] `python -m pytest -q tests/test_project_os_reconciliation.py tests/test_reconciliation.py tests/test_plan_preparation.py tests/test_evidence_release.py`
 - Expected: unavailable remote, stale review, missing required check from policy, changed head, and unmerged-but-eligible cases fail or classify correctly; supplied subset of passing checks cannot bypass missing required checks.
-- [x] `python -m pytest -q tests/test_secretary_evidence.py tests/test_secretary_adapter.py tests/test_secretary_receipts.py`
+- [ ] `python -m pytest -q tests/test_secretary_evidence.py tests/test_secretary_adapter.py tests/test_secretary_receipts.py`
 - Expected: Secretary emits attention only from canonical decision consequences and cannot accept or release evidence.
 
 **Exit Criteria:**
@@ -318,7 +318,7 @@ raw probe traces remain disposable.
 - Runtime finalization and ownership proof.
 
 **Template Profile:**
-- Controller-selected: `normal`
+- Controller-selected: `unresolved`
 - Selection basis: `process/pane runtime cleanup has destructive ownership risk`
 
 **Validator Profile:**
@@ -354,15 +354,15 @@ raw probe traces remain disposable.
 - Stop for: `shared or pre-existing session/pane/process cleanup, worktree deletion, foreign temp directories, uncertain ownership, age-based cleanup, or runtime retirement coupled to semantic evidence deletion`
 
 **Steps:**
-- [x] Step 1: Preserve `dcode-project` pre-settlement cleanup and settlement proof; treat `status=failed` as terminal publication when recovery evidence is durable.
-- [x] Step 2: After TaskResult and settlement receipt publication, call Herdr agent/pane retirement only when no continuation is required; use `dcode-project` for its pre-settlement resources and controller for sequencing; never remove worktrees here.
-- [x] Step 3: Feed retirement proof into `retire` and `prune` phase facts; keep TaskResult and receipt retained until evidence release.
-- [x] Step 4: Test repeated retirement, wrong pane/process identity, missing ownership, restart recovery, and shared-session preservation.
+- [ ] Step 1: Preserve `dcode-project` pre-settlement cleanup and settlement proof; treat `status=failed` as terminal publication when recovery evidence is durable.
+- [ ] Step 2: After TaskResult and settlement receipt publication, call Herdr agent/pane retirement only when no continuation is required; use `dcode-project` for its pre-settlement resources and controller for sequencing; never remove worktrees here.
+- [ ] Step 3: Feed retirement proof into `retire` and `prune` phase facts; keep TaskResult and receipt retained until evidence release.
+- [ ] Step 4: Test repeated retirement, wrong pane/process identity, missing ownership, restart recovery, and shared-session preservation.
 
 **Verification:**
-- [x] `python -m pytest -q tests/test_herdr_main_launcher.py tests/test_herdr_attempt_contract.py tests/test_dcode_project.py tests/test_project_os_runtime.py`
+- [ ] `python -m pytest -q tests/test_herdr_main_launcher.py tests/test_herdr_attempt_contract.py tests/test_dcode_project.py tests/test_project_os_runtime.py`
 - Expected: dcode cleanup proves settlement; exact Herdr agent/pane resources retire after settlement; failed terminal publication can release runtime capacity when recovery evidence is durable; uncertain ownership fails closed; shared session stays; repeated cleanup is idempotent; worktree and evidence remain available.
-- [x] Deterministic lifecycle regression records TaskResult → receipt → retirement.
+- [ ] One representative managed lifecycle trace records TaskResult → receipt → retirement, with no continuation and no owned process/pane left.
 
 **Exit Criteria:**
 - Production terminal flow has one runtime-finalization contract with pre-settlement producer cleanup and post-settlement resource-specific retirement, publishing durable retirement proof before any prune decision; worktree disposition remains a later finishing workflow.
@@ -377,7 +377,7 @@ raw probe traces remain disposable.
 - Evidence-release convergence and failure truthfulness.
 
 **Template Profile:**
-- Controller-selected: `normal`
+- Controller-selected: `unresolved`
 - Selection basis: `deletion and retry semantics require exact binding review`
 
 **Validator Profile:**
@@ -413,18 +413,18 @@ raw probe traces remain disposable.
 - Stop for: `missing validated release decision treated as already absent, silent deletion failure, destructive cleanup outside exact ownership, or raw evidence deletion before durable summary`
 
 **Steps:**
-- [x] Step 1: Bind release authorization to the existing dcode-project attempt/settlement guard with `assignment_id`, `attempt_id`, `candidate_sha`, `acceptance_checkpoint_sha`, `release_authorized`, and released-resource results; preserve pending release state when settled-attempt replacement occurs and across restart; do not create a new store.
-- [x] Step 2: Return per-resource `removed`, `already_absent`, `unverified`, or unresolved results; each producer removes only resources it owns; retain minimal tombstone state only while recovery is possible.
-- [x] Step 3: Make repeated release with the same validated decision succeed idempotently; missing target without prior validated decision remains unresolved.
-- [x] Step 4: Replace direct MCP `ignore_errors=True` recursive deletion with exact-path structured outcome and settlement evidence.
-- [x] Step 5: Remove legacy receipt disposal and age-based MCP sweeper only after `git grep` proves no production caller remains.
+- [ ] Step 1: Bind release authorization to the existing dcode-project attempt/settlement guard with `assignment_id`, `attempt_id`, `candidate_sha`, `acceptance_checkpoint_sha`, `release_authorized`, and released-resource results; preserve pending release state when settled-attempt replacement occurs and across restart; do not create a new store.
+- [ ] Step 2: Return per-resource `removed`, `already_absent`, `unverified`, or unresolved results; each producer removes only resources it owns; retain minimal tombstone state only while recovery is possible.
+- [ ] Step 3: Make repeated release with the same validated decision succeed idempotently; missing target without prior validated decision remains unresolved.
+- [ ] Step 4: Replace direct MCP `ignore_errors=True` recursive deletion with exact-path structured outcome and settlement evidence.
+- [ ] Step 5: Remove legacy receipt disposal and age-based MCP sweeper only after `git grep` proves no production caller remains.
 
 **Verification:**
-- [x] `python -m pytest -q tests/test_evidence_release.py tests/test_deepagents_result_contract.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py`
+- [ ] `python -m pytest -q tests/test_evidence_release.py tests/test_deepagents_result_contract.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py`
 - Expected: release requires current CoS/Plan/retirement proof, retries are idempotent, partial failure is visible, and cleanup status is truthful.
-- [x] Replacement-plus-restart regression covering `_claim_attempt_unlocked`, `_settle_attempt`, pending release authorization, and delayed resource disposal.
+- [ ] Replacement-plus-restart regression covering `_claim_attempt_unlocked`, `_settle_attempt`, pending release authorization, and delayed resource disposal.
 - Expected: settled-attempt replacement cannot erase pending release state before all owned resources reach `removed` or validated `already_absent`.
-- [x] `git grep -n -E 'release_attempt_evidence|_discard_deepagents_receipt|_cleanup_stale_direct_mcp_runtimes' -- scripts tests`
+- [ ] `git grep -n -E 'release_attempt_evidence|_discard_deepagents_receipt|_cleanup_stale_direct_mcp_runtimes' -- scripts tests`
 - Expected: no production caller; remaining historical fixture references are explicitly classified or removed.
 
 **Exit Criteria:**
@@ -441,7 +441,7 @@ raw probe traces remain disposable.
 - Final integration, live proof, and release-readiness verification.
 
 **Template Profile:**
-- Controller-selected: `normal`
+- Controller-selected: `unresolved`
 - Selection basis: `final proof spans source, CI, runtime, and disposable evidence`
 
 **Validator Profile:**
@@ -471,19 +471,19 @@ raw probe traces remain disposable.
 - Stop for: `CI policy or required-check ownership changes outside repository files, external GitHub writes, unresolved live runtime ownership, or inability to prove publication ordering`
 
 **Steps:**
-- [x] Step 1: Remove duplicate top-level `concurrency` from Repository Contracts and keep one cancellation policy; narrow overlapping tests by workflow responsibility, including duplicate `tests/test_secretary_adapter.py` entry.
-- [x] Step 2: Update runtime ownership docs and record no-new-infrastructure exclusions.
-- [x] Step 3: Run one managed happy-path probe: worker terminal → dcode cleanup/settlement proof → TaskResult → receipt → no continuation → Herdr retirement → CoS acceptance → canonical consequence → exact evidence release. Post-fix probe `b84fe5801ceb44c1a37044e21e60da6f` exited `0` with `TaskResult=reported_completed`, cleanup `removed`, retirement `removed` with `process_retirement_proven=true`, CoS decision `PASS`, plan transition `authorized=true`, and evidence release `payload_released=true`; pane/session stayed preserved.
-- [x] Step 4: Run final focused tests, repository contract validation, plan validation, and local workflow commands; record remote exact-PR-head checks as a separate user-authorized stage.
+- [ ] Step 1: Remove duplicate top-level `concurrency` from Repository Contracts and keep one cancellation policy; narrow overlapping tests by workflow responsibility, including duplicate `tests/test_secretary_adapter.py` entry.
+- [ ] Step 2: Update runtime ownership docs and record no-new-infrastructure exclusions.
+- [ ] Step 3: Run one managed happy-path probe: worker terminal → dcode cleanup/settlement proof → TaskResult → receipt → no continuation → Herdr agent/pane retirement → CoS acceptance → canonical consequence → evidence release. Use deterministic tests for worker failure, publication failure, restart/reconciliation, partial deletion, stale review, and GitHub outage; record `BLOCKED_CAPABILITY` if live capability is unavailable, never synthetic proof.
+- [ ] Step 4: Run final focused tests, repository contract validation, plan validation, and local workflow commands; record remote exact-PR-head checks as a separate user-authorized stage.
 
 **Verification:**
-- [x] `python scripts/validate_repo_contracts.py`
+- [ ] `python scripts/validate_repo_contracts.py`
 - Expected: repository contracts, generated surfaces, plan metadata, and workflow invariants pass.
-- [x] `python scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-10-one-authority-lifecycle-convergence-plan.md`
+- [ ] `python scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-10-one-authority-lifecycle-convergence-plan.md`
 - Expected: proposed draft validates now; status is `active` during Tasks 1–6; status becomes `completed` only after final fresh verification.
-- [x] `python -m pytest -q tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_project_os_runtime.py tests/test_evidence_release.py tests/test_plan_preparation.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_secretary_evidence.py tests/test_secretary_adapter.py tests/test_secretary_receipts.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
+- [ ] `python -m pytest -q tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_project_os_runtime.py tests/test_evidence_release.py tests/test_plan_preparation.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_secretary_evidence.py tests/test_secretary_adapter.py tests/test_secretary_receipts.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
 - Expected: all required regression cases pass on fresh execution worktree.
-- [x] Local-ready summary proves TaskResult before receipt, receipt validation, no continuation, runtime retirement, CoS acceptance, canonical Plan consequence, evidence release, and no probe-owned resources remain. Remote completion separately requires user-authorized push/PR plus exact-head Repository Contracts, Runtime Contracts, Benchmark, and independent review evidence.
+- [ ] Local-ready summary proves TaskResult before receipt, receipt validation, no continuation, runtime retirement, CoS acceptance, canonical Plan consequence, evidence release, and no probe-owned resources remain. Remote completion separately requires user-authorized push/PR plus exact-head Repository Contracts, Runtime Contracts, Benchmark, and independent review evidence.
 
 **Exit Criteria:**
 - CI, docs, source, tests, and generated surfaces agree; local verification is fresh; raw probe artifacts are removed after durable summary; no required scope deviation remains. Remote checks remain pending until user authorizes push/PR.
@@ -496,30 +496,6 @@ raw probe traces remain disposable.
 - `git grep -n -E '_reconcile_legacy|_reconcile_snapshot|release_attempt_evidence|_discard_deepagents_receipt|_cleanup_stale_direct_mcp_runtimes' -- scripts tests`
 - Local-ready proof covers workflow commands; after user-authorized push/PR, GitHub must expose Repository Contracts, Runtime Contracts, and Benchmark on the exact PR head, with independent review before `active → completed`.
 - One bounded live lifecycle summary with raw evidence released after durable capture.
-
-## Review Remediation
-
-- Review turn 1: `FAIL` at PR head `86aadda71770f5f6dc76780a9c4d740b13ef6b6a`.
-- Fixed exact evidence scope: release deletes only bound `evidence_ref`; replay requires durable complete resource proof.
-- Fixed release persistence path: accepted plan transition passes `release_record`; controller may persist release resources through existing attempt guard.
-- Fixed retirement wiring: terminal settled DeepAgents assignments call `retire_settled_lane`; unresolved retirement keeps capacity occupied.
-- Fixed phase recommendation: incomplete eligible phases return `reconcile <phase>`, never downstream action.
-- Required rerun: focused lifecycle tests, full suite, repository/planning validators, exact-head CI, independent review.
-- Review turn 2: `PASS` at PR head `7a476a30c8da6f60f66d204f0f164058ad2addbe`.
-- Review turn 3: `FAIL` at PR head `a6636f9b1c7fdc5336fdf39565ef8ec94d978cc8`; code findings remain cleared, but completion proof is insufficient because live lifecycle capability is unavailable and review evidence must bind current head.
-- Current-head review turn 4: `FAIL` at `5831959deda28001b8e5367fa133d8c057ef82fb`; found terminal retirement false-failure when worker already exited and evidence release bypassing canonical retirement proof. Fixed in `scripts/herdr_main_launcher.py`, `scripts/project_os_runtime/acceptance.py`, and `scripts/project_os_runtime/plan_preparation.py`; focused regression proof passes. Review remains stale for post-fix changes.
-- Post-fix local proof: full suite `1107 passed, 1 skipped`; managed DeepAgents attempt `b84fe5801ceb44c1a37044e21e60da6f` plus local acceptance boundary probe produced `PASS`, authorized canonical transition, and exact evidence release. Probe-owned raw evidence was removed after capture; no shared session was removed.
-- Current proof: full suite `1110 passed, 1 skipped`; affected lifecycle suite `424 passed`; exact-head Repository Contracts, Runtime Contracts, and Benchmark passed on `b7171843`; planning and repository-contract validators passed.
-- Live probe evidence: partial attempt `5a62099b7eeb43daaf8d0a99e15f65e4` failed closed because pane `w1:p1` retained only pre-existing `powershell.exe` and no recorded process identity; no unrelated process or shared pane was retired. Successful attempt `b84fe5801ceb44c1a37044e21e60da6f` produced `TaskResult=reported_completed`, cleanup `removed`, retirement `removed` with `process_retirement_proven=true`, canonical acceptance `PASS`, authorized Plan transition, and exact evidence release while preserving the pane/session.
-- Review turn 5: `FAIL` at current head `6c38e34bce429b3bca19e071ba247319b361560a`; found three justified lifecycle gaps: retirement guessed an unbound worker process, disposal could precede durable release recording, and settled-attempt replacement did not preserve the original release binding.
-- Review-turn-5 remediation: retirement now fails closed without recorded process identity; release persists a pending resource record before unlink and treats a missing path as `already_absent` only after that authorization; replacement attempts retain the original release binding for delayed final resource recording. Added targeted regressions in `tests/test_herdr_main_launcher.py`, `tests/test_evidence_release.py`, and `tests/test_dcode_project.py`.
-- Post-remediation local proof: affected suite `424 passed`; full suite `1110 passed, 1 skipped`; planning and repository-contract validators passed.
-- Review turn 6: `FAIL` at `15c1f2b279671cd80751ecf81903f50e55f3a4e3`; found that the public disposal helper could still unlink without a durable authorization record and that controller replay stopped at the already-committed Plan transition.
-- Review-turn-6 remediation: `release_authorized_evidence` now requires an exact pending/terminal durable release record; pending authorization is written before the Plan transition; and `apply_accepted_plan_transitions` replays release when all requested target states are already committed. Added durable-record and replay regressions. Post-remediation full suite: `1110 passed, 1 skipped`; affected suite: `424 passed`.
-- Review turn 7: `FAIL` at `d68cb81eb09e58fa1b6fefcf9f947f07c8aac9ff`; found that disposal validation still accepted an in-memory release record without attempt-guard evidence, and replacement settlement could overwrite the original pending release slot.
-- Review-turn-7 remediation: release validation now requires persisted attempt-guard release state; the attempt guard retains per-attempt release authorizations/resources and preserves the original `release_binding` across replacement settlement. Added regressions for guard-backed release and replacement settlement ordering. Post-remediation full suite: `1110 passed, 1 skipped`; affected suite: `424 passed`.
-- Review cap: the user-authorized independent-review limit of three turns for this execution cycle is reached. No further reviewer was dispatched; final acceptance relies on the fresh local suite, validators, exact-head CI, live proof already captured, and the capped review record.
-- Verification result: `verified` at HEAD `b7171843ab13e33600e68040e53ed9b5c2331c04` in the dedicated worktree. Full suite `1110 passed, 1 skipped`; affected suite `424 passed`; planning validation and Repository Contracts passed; exact-head PR checks passed for Repository Contracts, Runtime Contracts (Ubuntu and Windows), and Benchmark. The user-authorized three-review cap is the recorded deviation from obtaining a post-final-patch independent PASS review.
 
 ## Completion Criteria
 
@@ -537,7 +513,7 @@ The plan is ready for completion verification when:
 10. no new database, cache, daemon, event bus, TTL sweeper, acceptance ledger, or global registry was introduced
 11. local readiness is complete before remote verification; `active → completed` waits for user-authorized exact-PR-head checks and independent review
 
-The plan is `completed` after `skill-verification-before-completion` returned
-`verified` against fresh repository evidence. PR creation and push were
-authorized and completed; merge and external cleanup remain outside this
-plan's authority.
+The plan may be marked `completed` only after
+`skill-verification-before-completion` returns `verified` against fresh
+repository evidence. PR creation, push, merge, and external cleanup remain
+outside this proposed plan's authority.

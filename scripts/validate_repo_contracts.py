@@ -266,6 +266,32 @@ def validate_agent_profile_registry(root: Path) -> list[ValidationIssue]:
     return []
 
 
+def validate_workflow_test_ownership(root: Path) -> list[ValidationIssue]:
+    workflow_root = root / ".github" / "workflows"
+    suites = (
+        "tests/test_secretary_events.py",
+        "tests/test_secretary_economics.py",
+        "tests/test_secretary_benchmark.py",
+    )
+    issues: list[ValidationIssue] = []
+    workflows = sorted((*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml")))
+    for suite in suites:
+        owners = [
+            path
+            for path in workflows
+            if re.search(rf"(?m)(?<![A-Za-z0-9_]){re.escape(suite)}(?![A-Za-z0-9_])", path.read_text(encoding="utf-8", errors="ignore"))
+        ]
+        if len(owners) != 1:
+            issues.append(
+                ValidationIssue(
+                    "workflow_test_ownership",
+                    suite,
+                    f"requires exactly one workflow owner; found {len(owners)}",
+                )
+            )
+    return issues
+
+
 def validate_ssot_contracts(root: Path) -> list[ValidationIssue]:
     paths = {
         "runtime": root / "docs" / "operating_system" / "runtime" / "runtime-surfaces.md",
@@ -681,6 +707,9 @@ def main(argv: list[str] | None = None) -> int:
         ssot_issues = validate_ssot_contracts(root)
         if ssot_issues:
             return report_issues(ssot_issues)
+        workflow_ownership_issues = validate_workflow_test_ownership(root)
+        if workflow_ownership_issues:
+            return report_issues(workflow_ownership_issues)
 
     spec_issues = validate_parallel_dispatch_spec(root)
     if spec_issues:

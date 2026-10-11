@@ -34,23 +34,46 @@ class RemotePrEvidence:
     source_ref: str | None = None
     available: bool = False
 
+    def _latest_checks(self) -> tuple[dict[str, Mapping[str, Any]], frozenset[str]]:
+        latest: dict[str, tuple[tuple[int, str | int], Mapping[str, Any]]] = {}
+        ambiguous: set[str] = set()
+        for index, check in enumerate(self.checks):
+            name = check.get("name") or check.get("context")
+            if name is None:
+                continue
+            name = str(name)
+            observed_at = check.get("observed_at") or check.get("completed_at") or check.get("updated_at")
+            key: tuple[int, str | int] = (1, str(observed_at)) if observed_at is not None else (0, index)
+            previous = latest.get(name)
+            if previous is not None:
+                previous_key, previous_check = previous
+                if observed_at is not None and previous_key == key and dict(previous_check) != dict(check):
+                    ambiguous.add(name)
+                if key >= previous_key:
+                    latest[name] = (key, check)
+            else:
+                latest[name] = (key, check)
+        return {name: check for name, (_, check) in latest.items()}, frozenset(ambiguous)
+
     @property
     def checks_current(self) -> bool:
-        return bool(self.checks) and all(
-            check.get("head_sha") == self.head_sha
-            and check.get("conclusion") in _SUCCESSFUL_CHECKS
-            for check in self.checks
+        latest, ambiguous = self._latest_checks()
+        required = set(self.required_checks)
+        return bool(latest) and not ambiguous.intersection(required) and all(
+            latest.get(name, {}).get("head_sha") == self.head_sha
+            and latest.get(name, {}).get("conclusion") in _SUCCESSFUL_CHECKS
+            for name in required
         )
 
     @property
     def successful_check_names(self) -> frozenset[str]:
+        latest, _ = self._latest_checks()
         return frozenset(
-            str(check.get("name") or check.get("context"))
-            for check in self.checks
+            name
+            for name, check in latest.items()
             if (
                 check.get("head_sha") == self.head_sha
                 and check.get("conclusion") in _SUCCESSFUL_CHECKS
-                and (check.get("name") is not None or check.get("context") is not None)
             )
         )
 

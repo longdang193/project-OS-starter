@@ -323,6 +323,45 @@ def test_release_replay_recovers_after_disposal_before_final_record(tmp_path: Pa
     assert result["resources"]["task-result"]["state"] == "already_absent"
 
 
+def test_release_replay_removes_deterministic_quarantine_after_rename_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task_result = tmp_path / "task-result.json"
+    publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))
+    resource = _resource(
+        tmp_path,
+        digest=hashlib.sha256(task_result.read_bytes()).hexdigest(),
+    )
+    quarantine_path = task_result.with_name(f".{task_result.name}.{resource['content_sha256']}.release")
+    task_result.rename(quarantine_path)
+
+    def release() -> dict:
+        return release_authorized_evidence(
+            _acceptance_decision(),
+            binding=_binding(),
+            canonical_consequence=_canonical_consequence(),
+            required_consumers=["controller"],
+            consumer_releases={"controller": {"authorized": True, "consumer": "controller", **_binding()}},
+            retention={"controller": {"policy_ref": "retention-1", "expired": True, "consumer": "controller", "evidence_ref": "task-result"}},
+            evidence_paths={"task-result": task_result},
+            retirement_proof=_retirement_proof(),
+        runtime_settlement=_runtime_settlement(),
+            release_record={
+                "authorized": True,
+                "binding": _binding(),
+                "resources": {"task-result": resource},
+                "attempt_guard": _attempt_guard(worktree=tmp_path),
+            },
+        )
+
+    assert not (tmp_path / "task-result.json").exists()
+    second = release()
+
+    assert second["payload_released"] is True
+    assert second["resources"]["task-result"]["state"] == "removed"
+    assert not quarantine_path.exists()
+
+
 def _invoke_release(
     tmp_path: Path,
     release_record: dict[str, object],
