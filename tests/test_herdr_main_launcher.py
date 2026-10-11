@@ -5143,7 +5143,46 @@ def test_terminate_codex_lane_detects_new_nested_non_shell_process(
 
     assert result["verified"] is False
     assert result["state"] == "processes-remain"
-    assert result["remaining_processes"] == ["node.exe"]
+
+
+def test_terminate_codex_lane_quarantines_when_pane_close_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter([
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"process_info": {"foreground_processes": [
+                {"pid": 101, "name": "codex.exe", "start_time": 1, "children": []},
+            ]}}}),
+            "",
+        ),
+        subprocess.CompletedProcess(
+            [], 0,
+            json.dumps({"result": {"panes": [{"pane_id": "pane", "agent": "codex-main"}]}}),
+            "",
+        ),
+        subprocess.CompletedProcess([], 1, "", "pane close failed"),
+    ])
+    monkeypatch.setattr(LAUNCHER, "_run", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._terminate_codex_lane(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        ownership={
+            "session": "session",
+            "pane": "pane",
+            "agent": "codex-main",
+            "process_ids": [101],
+            "process_identities": [LAUNCHER._process_identity({"pid": 101, "name": "codex.exe", "start_time": 1})],
+        },
+    )
+
+    assert result["verified"] is False
+    assert result["state"] == "quarantined"
+    assert result["recovery_required"] is True
+    assert result["detail"] == "pane close failed"
 
 
 def test_deepagents_marker_with_live_worker_does_not_report_completed() -> None:

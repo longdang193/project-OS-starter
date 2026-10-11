@@ -161,6 +161,36 @@ def test_observe_submitted_codex_waits_for_idle_and_releases_owned_agent(
     assert calls == [("herdr.exe", "live-session", "normal-main-1234")]
 
 
+def test_observe_submitted_codex_serializes_resource_state_after_observation_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_snapshot(*args, **kwargs):
+        raise RuntimeError("observation exploded")
+
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        fail_snapshot,
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="live-session", pane="w1:p1"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "live-session",
+                "pane": "w1:p1",
+                "agent_name": "normal-main-1234",
+            }
+        },
+        env={},
+    )
+
+    assert observation["state"] == "unknown"
+    assert observation["cleanup"]["state"] == "unknown"
+    assert observation["cleanup"]["recovery_required"] is True
+    assert "observation exploded" in observation["observation_error"]
+
+
 def test_release_codex_agent_interrupts_process_and_verifies_removal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -632,6 +662,61 @@ def test_sanitize_launcher_result_requires_authoritative_runtime_sources() -> No
         "transport_completion_or_cleanup",
         "secretary_runtime_receipt",
     ]
+
+
+def test_sanitize_launcher_result_reports_semantic_task_without_structured_receipt() -> None:
+    request_value = request()
+    result = sanitize_launcher_result(
+        request_value,
+        returncode=0,
+        payload={
+            "assignment": {
+                "status": "completed",
+                "attempt_id": request_value.attempt_id,
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "verification": {"references": ["task-result.json"]},
+                },
+            },
+            "registry_launcher": {
+                "repository_identity": request_value.repository_identity,
+                "plan_identity": request_value.plan_identity,
+                "model_provider": SECRETARY_PROVIDER,
+                "model": "gpt-test",
+            },
+        },
+        configured_model="gpt-test",
+    )
+
+    assert result["result"] == "reported"
+    assert result["result_reference"] == "task-result.json"
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+
+
+def test_sanitize_launcher_result_rejects_conflicting_same_type_attempt_ids() -> None:
+    request_value = request()
+    result = sanitize_launcher_result(
+        request_value,
+        returncode=0,
+        payload={
+            "assignment": {
+                "status": "completed",
+                "attempt_id": request_value.attempt_id,
+                "execution": {"state": "completed"},
+                "task_result": {"state": "reported_completed"},
+            },
+            "registry_launcher": {
+                "repository_identity": request_value.repository_identity,
+                "plan_identity": request_value.plan_identity,
+                "attempt_id": "attempt-conflict",
+                "model_provider": SECRETARY_PROVIDER,
+            },
+        },
+    )
+
+    assert result["result"] == "unavailable"
+    assert result["failure_kind"] == "runtime_identity_correlation_failed"
 
 
 def test_completed_transport_names_only_remaining_secretary_blocker() -> None:

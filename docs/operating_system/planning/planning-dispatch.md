@@ -56,10 +56,13 @@ Do not use an arbitrary overlap threshold.
 
 ## Coordination Method Selection
 
-Select `skill-chief-of-staff` in `advisory` mode when a native Codex lead binds
-an exact repository commit and a bounded read-only audit materially benefits
-from independent inspection or synthesis. Advisory mode needs no plan or
-`Required skills` opt-in and has no mutation authority.
+Select `skill-chief-of-staff` in `advisory` mode when a native Codex lead needs
+bounded read-only inspection, synthesis, challenge, or recommendation. Advisory
+reasoning may proceed without exact commit binding when exact repository claims
+are not requested, but it must state uncertainty and has no mutation authority.
+An exact repository audit requires exact repository commit binding, a scoped
+target, and evidence authority. Advisory mode needs no plan or `Required skills`
+opt-in.
 
 Select `skill-chief-of-staff` in `plan-bound-execution` as an optional
 coordination specialization of `skill-executing-plans` only when an approved

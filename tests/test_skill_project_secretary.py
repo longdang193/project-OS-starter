@@ -26,6 +26,19 @@ def test_project_secretary_is_optional_attention_surface() -> None:
     assert "events are hints" in normalized
 
 
+def test_project_secretary_optional_runtime_does_not_block_semantic_routing() -> None:
+    skill = read(".agents/skills/skill-project-secretary/SKILL.md")
+    normalized = " ".join(skill.split())
+
+    for text in (
+        "Optional runtime capabilities are routing aids, not semantic preconditions",
+        "Secretary remains useful",
+        "managed Secretary path is unavailable",
+        "independently safe direct path",
+    ):
+        assert text in normalized
+
+
 def test_project_secretary_owns_routing_not_worker_execution() -> None:
     skill = read(".agents/skills/skill-project-secretary/SKILL.md")
     normalized = " ".join(skill.split())

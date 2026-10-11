@@ -1,9 +1,13 @@
 from collections import defaultdict
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
 from scripts.benchmark_secretary_architecture import (
     SCENARIOS,
+    _metric,
     run_contract_benchmark,
 )
 
@@ -17,6 +21,11 @@ def test_contract_benchmark_runs_paired_deterministic_scenarios() -> None:
     assert all(item.live is False for item in results)
     assert all(item.latency_ms is None for item in results)
     assert all(item.token_usage is None for item in results)
+    assert all(item.measurement_status == "not_attempted" for item in results)
+    assert all(item.measurement_source is None for item in results)
+    assert all(item.sample_count == 0 for item in results)
+    assert all(item.percentile_status == "unavailable" for item in results)
+    assert all(item.percentile_reason == "not_attempted" for item in results)
 
     paired = defaultdict(dict)
     for item in results:
@@ -26,6 +35,25 @@ def test_contract_benchmark_runs_paired_deterministic_scenarios() -> None:
         assert set(pair) == {"baseline", "target"}
         assert pair["target"].payload_bytes == pair["baseline"].payload_bytes
         assert pair["target"].context_items == pair["baseline"].context_items
+
+
+def test_measurement_states_require_provenance_and_sample_support() -> None:
+    unavailable = _metric("case", 1, "target", measurement_status="unavailable")
+    measured = _metric(
+        "case",
+        1,
+        "target",
+        measurement_status="measured",
+        measurement_source="secretary_live_runtime",
+        sample_count=20,
+    )
+
+    assert unavailable.percentile_reason == "unavailable"
+    assert measured.percentile_status == "available"
+    assert measured.percentile_reason is None
+
+    with pytest.raises(ValueError, match="source and positive sample_count"):
+        _metric("case", 1, "target", measurement_status="measured")
 
 
 @pytest.mark.parametrize(
@@ -74,3 +102,16 @@ def test_target_keeps_unresolved_old_event_actionable() -> None:
     assert target.correct is True
     assert target.outcome == "RECONCILE"
     assert baseline.correct is False
+
+
+def test_architecture_benchmark_help_works_when_run_as_a_script() -> None:
+    script = Path(__file__).parents[1] / "scripts" / "benchmark_secretary_architecture.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "iterations" in result.stdout

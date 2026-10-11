@@ -222,6 +222,28 @@ def test_chief_of_staff_defines_canonical_work_modes_and_advisory_boundaries() -
     assert "required_reads:\n  - docs/operating_system/rules/git-tracked-coordination-rule.md" not in skill
 
 
+def test_chief_of_staff_scopes_exact_binding_to_exact_audits() -> None:
+    skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
+    dispatch = read("docs/operating_system/planning/planning-dispatch.md")
+    normalized_skill = " ".join(skill.split())
+    normalized_dispatch = " ".join(dispatch.split())
+
+    for text in (
+        "Advisory reasoning may proceed without an exact commit",
+        "explicit uncertainty",
+        "An exact repository audit requires",
+        "Missing Herdr does not prevent direct advisory reasoning",
+        "blocks only a managed Herdr lane when that lane is required",
+    ):
+        assert text in normalized_skill
+    for text in (
+        "Advisory reasoning may proceed without exact commit binding",
+        "must state uncertainty",
+        "An exact repository audit requires exact repository commit",
+    ):
+        assert text in normalized_dispatch
+
+
 def test_chief_of_staff_keeps_plan_execution_mode_specific() -> None:
     skill = read(".agents/skills/skill-chief-of-staff/SKILL.md")
     normalized = " ".join(skill.split())

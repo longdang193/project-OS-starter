@@ -302,13 +302,20 @@ def _observe_submitted_codex(
     }
     while time.monotonic() < deadline:
         remaining = max(0.01, deadline - time.monotonic())
-        snapshot = _codex_completion_snapshot(
-            executable,
-            session,
-            agent_name,
-            env=env,
-            timeout_seconds=min(5.0, remaining),
-        )
+        try:
+            snapshot = _codex_completion_snapshot(
+                executable,
+                session,
+                agent_name,
+                env=env,
+                timeout_seconds=min(5.0, remaining),
+            )
+        except Exception as exc:
+            snapshot = {
+                "state": "unknown",
+                "observation_error": f"completion observation failed: {type(exc).__name__}: {exc}",
+            }
+            break
         if snapshot.get("state") in {"idle", "failed", "stopped"}:
             break
         time.sleep(min(_CODEX_OBSERVATION_POLL_SECONDS, remaining))
@@ -319,6 +326,8 @@ def _observe_submitted_codex(
         if key in snapshot
     }
     cleanup: dict[str, Any] = {"state": "not_attempted"}
+    if snapshot.get("state") == "unknown":
+        cleanup = {"state": "unknown", "recovery_required": True}
     if snapshot.get("state") == "idle" and not snapshot.get("observation_error"):
         cleanup = _release_codex_agent(
             executable,
@@ -466,6 +475,70 @@ def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str
         and isinstance(runtime.get("sources"), Mapping)
         and set(runtime["sources"]) == set(_SOURCE_KEYS)
     )
+
+
+def _normal_result_observed(
+    request: SecretaryLaunchRequest,
+    payload: Mapping[str, Any] | None,
+) -> tuple[bool, str | None, bool]:
+    if not isinstance(payload, Mapping):
+        return False, None, False
+    assignment = payload.get("assignment")
+    if not isinstance(assignment, Mapping):
+        return False, None, False
+    execution = assignment.get("execution")
+    task_result = assignment.get("task_result")
+    if (
+        assignment.get("status") != "completed"
+        or not isinstance(execution, Mapping)
+        or execution.get("state") != "completed"
+        or not isinstance(task_result, Mapping)
+        or task_result.get("state") != "reported_completed"
+    ):
+        return False, None, False
+
+    sources = [
+        payload,
+        assignment,
+        payload.get("registry_launcher"),
+        payload.get("secretary_runtime"),
+    ]
+    expected = {
+        "attempt_id": request.attempt_id,
+        "run_id": request.run_id,
+        "task_id": request.task_id,
+        "plan_revision": request.plan_revision,
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "provider": request.provider,
+        "git_revision": request.git_revision,
+    }
+    aliases = {
+        "provider": ("provider", "model_provider"),
+        "git_revision": ("git_revision", "head"),
+    }
+    for field, expected_value in expected.items():
+        values: set[str] = set()
+        for source in sources:
+            if not isinstance(source, Mapping):
+                continue
+            for alias in aliases.get(field, (field,)):
+                value = source.get(alias)
+                if isinstance(value, str) and value.strip():
+                    values.add(value.strip())
+        if len(values) > 1 or (values and expected_value not in values):
+            return False, None, True
+
+    reference: str | None = None
+    verification = task_result.get("verification")
+    references = verification.get("references") if isinstance(verification, Mapping) else None
+    if isinstance(references, list):
+        for candidate in references:
+            safe_candidate = _safe_text(candidate)
+            if safe_candidate is not None and safe_candidate.strip():
+                reference = safe_candidate.strip()
+                break
+    return True, reference, False
 
 
 def _launcher_identity_matches(runtime: Mapping[str, Any], herdr: Mapping[str, Any] | None) -> bool:
@@ -875,6 +948,7 @@ def sanitize_launcher_result(
         if isinstance(raw_runtime, Mapping)
         else None
     )
+    normal_result, result_reference, identity_conflict = _normal_result_observed(request, payload)
     live_attributed = (
         returncode == 0
         and observed_runtime is not None
@@ -919,8 +993,16 @@ def sanitize_launcher_result(
         "metrics": {
             **_safe_metrics(observed_metrics if isinstance(observed_metrics, Mapping) else None)
         },
+        "result": "reported" if normal_result else "unavailable",
+        "result_reference": result_reference,
         "disposition": "READY" if live_attributed else "BLOCKED_CAPABILITY",
-        "failure_kind": None if live_attributed else failure_kind or "runtime_completion_evidence_missing",
+        "failure_kind": (
+            None
+            if live_attributed
+            else "runtime_identity_correlation_failed"
+            if identity_conflict
+            else failure_kind or "runtime_completion_evidence_missing"
+        ),
         **_classify_capabilities("READY" if live_attributed else "BLOCKED_CAPABILITY", None),
     }
 

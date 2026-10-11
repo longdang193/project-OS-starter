@@ -26,10 +26,12 @@ needs coordination. Use ordinary execution for single-lane work or simple
 parallel aggregation. CoS activates only under a native Codex lead controller.
 Use coordination mode `advisory` or `plan-bound-execution`.
 
-Advisory CoS may inspect, synthesize, challenge, and recommend. Advisory CoS has
-no mutation authority. Advisory scope supports only an exact-commit repository
-audit; PR, release, incident, specification, research, and cross-repository
-work remain out of scope. Plan-bound execution requires an approved plan that
+Advisory CoS may inspect, synthesize, challenge, and recommend with available
+canonical evidence. Advisory reasoning may proceed without an exact commit when
+the request does not require exact repository claims, but it must state explicit
+uncertainty. Advisory CoS has no mutation authority. An exact repository audit requires an
+exact commit-bound repository target. PR, release, incident, specification,
+research, and cross-repository work remain out of scope. Plan-bound execution requires an approved plan that
 lists `skill-chief-of-staff` in `Required skills` and needs sustained handoffs,
 independent write-capable lanes, or cross-task coordination.
 CoS must not activate for PR, release, incident, specification, research, or
@@ -190,8 +192,10 @@ reports recommendations; the resolved external owner accepts them.
 
 ### Repository Snapshot Advisory Binding
 
-For advisory work, bind repository identity, exact commit SHA, scoped target,
-and evidence authority before inspection. Commit-bound Git evidence remains
+For an exact advisory repository audit, bind repository identity, exact commit
+SHA, scoped target, and evidence authority before inspection. Advisory reasoning
+may proceed without an exact commit for non-audit questions when it labels
+uncertainty and avoids exact repository claims. Commit-bound Git evidence remains
 valid while its anchor is unchanged. Runtime evidence uses
 `fresh-this-turn`; external mutable evidence follows its own freshness boundary.
 Do not reuse runtime evidence across explicit turns unless its anchor is
@@ -245,7 +249,9 @@ Audit result: `NO_ACTION | INSPECT | BLOCKED`.
 Consume blocking and verification semantics from their canonical owners; do not
 recreate their failure taxonomy. Herdr absence alone is not a blocker. Treat it
 as actionable only when current plan or current-turn evidence establishes that
-a live bound agent is expected.
+a live bound agent is expected. Missing Herdr does not prevent direct advisory
+reasoning or selecting an independently safe path; it blocks only a managed
+Herdr lane when that lane is required.
 
 Audit outcomes are advisory attention results, not workflow-state transitions.
 The audit does not mutate plan, Git, PR state, Herdr, authority, or durable

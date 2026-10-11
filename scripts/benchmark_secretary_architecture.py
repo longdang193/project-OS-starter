@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass
@@ -58,8 +59,40 @@ class ContractMetric:
     messages: int
     payload_bytes: int
     context_items: int
-    latency_ms: None = None
-    token_usage: None = None
+    latency_ms: float | None = None
+    token_usage: int | None = None
+    measurement_status: str = "not_attempted"
+    measurement_source: str | None = None
+    sample_count: int = 0
+    percentile_status: str = "unavailable"
+    percentile_reason: str = "not_attempted"
+
+
+def _measurement_fields(
+    *,
+    status: str = "not_attempted",
+    source: str | None = None,
+    sample_count: int = 0,
+) -> dict[str, object]:
+    if status not in {"measured", "unavailable", "not_attempted"}:
+        raise ValueError("measurement status must be measured, unavailable, or not_attempted")
+    if sample_count < 0:
+        raise ValueError("sample_count must be non-negative")
+    if status == "measured" and (not source or sample_count < 1):
+        raise ValueError("measured metrics require a source and positive sample_count")
+    if status != "measured" and source is not None:
+        raise ValueError("unmeasured metrics cannot claim a measurement source")
+    percentile_status = "available" if status == "measured" and sample_count >= 20 else "unavailable"
+    percentile_reason = None if percentile_status == "available" else (
+        "insufficient_sample" if status == "measured" else status
+    )
+    return {
+        "measurement_status": status,
+        "measurement_source": source,
+        "sample_count": sample_count,
+        "percentile_status": percentile_status,
+        "percentile_reason": percentile_reason,
+    }
 
 
 def _metric(
@@ -77,7 +110,15 @@ def _metric(
     messages: int = 0,
     payload_bytes: int = 128,
     context_items: int = 1,
+    measurement_status: str = "not_attempted",
+    measurement_source: str | None = None,
+    sample_count: int = 0,
 ) -> ContractMetric:
+    measurement = _measurement_fields(
+        status=measurement_status,
+        source=measurement_source,
+        sample_count=sample_count,
+    )
     return ContractMetric(
         scenario_id=scenario_id,
         run_id=run_id,
@@ -94,6 +135,7 @@ def _metric(
         messages=messages,
         payload_bytes=payload_bytes,
         context_items=context_items,
+        **measurement,
     )
 
 
@@ -343,8 +385,16 @@ def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
     return results
 
 
-def main() -> int:
-    iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("iterations", nargs="?", type=int, default=1)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    iterations = build_parser().parse_args(argv).iterations
+    if iterations < 1:
+        raise SystemExit("iterations must be positive")
     print(json.dumps([asdict(item) for item in run_contract_benchmark(iterations)], sort_keys=True))
     return 0
 
