@@ -686,7 +686,7 @@ def test_close_workspace_requires_structured_retirement_proof(monkeypatch: pytes
     assert runtime._close_herdr_workspace("herdr", "w1", env={}) == {
         "state": "closed",
         "verified": False,
-        "reason": "workspace_retirement_not_proven",
+        "reason": "workspace_still_present",
     }
 
 
@@ -1733,6 +1733,13 @@ def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(
         if command[1:3] == ["workspace", "close"]:
             closed.append(command)
             return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                json.dumps({"error": {"code": "workspace_not_found"}}),
+                "",
+            )
         raise AssertionError(command)
 
     monkeypatch.setattr(runtime, "_herdr_run", fake_run)

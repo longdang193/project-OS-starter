@@ -136,16 +136,16 @@ sweeper, retry manager, or coordination authority is introduced.
 - Branch: `codex/normal-coordination-source-truth-convergence`
 - Base commit: `0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f` (`HEAD` = `origin/main`)
 - Expected workspace: `clean task-specific worktree created from the base commit; preserve unrelated files outside the worktree`
-- Next action: `reconcile Task 4 canonical coordination policy and generated surfaces`
+- Next action: `final verification and local checkpoint`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | task-specific | `lead controller` | none | exact revision, baseline tests, current-plan source-truth record | `HEAD=origin/main=0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f`; focused baseline `340 passed`; current generator returns `360` rows for `30` iterations (`6 scenarios × 2 architectures × 30`); no exact-shape readers for `secretary-invocation-v1` found outside the producer/tests; additive `owned_resources[]` and `recovery_required` are therefore consumer-compatible |
-| Task 2 | `completed` | task-specific | `lead controller` | Task 1 | semantic-result and field-aware identity matrix; local checkpoint | `86 passed` in `tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py`; synthetic Herdr references removed; long semantic content retained; same-field conflicts are ambiguous |
-| Task 3 | `completed` | task-specific | `lead controller` | Task 2 | cleanup precedence, exception envelope, workspace-settlement matrix; local checkpoint | `287 passed` in `tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`; verified workspace close required for settlement; exception paths retain `owned_resources` and `recovery_required` |
-| Task 4 | `active` | task-specific | `lead controller` | Tasks 2–3 | canonical policy tests and generated-surface drift check | pending |
-| Task 5 | `pending` | task-specific | `unresolved` | Tasks 2–4 | separate contract/measure modes, consolidated CI, final checkpoint | pending |
+| Task 1 | `completed` | task-specific | `codex` | none | exact revision, baseline tests, current-plan source-truth record | `HEAD=origin/main=0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f`; focused baseline `340 passed`; current generator returns `360` rows for `30` iterations (`6 scenarios × 2 architectures × 30`); no exact-shape readers for `secretary-invocation-v1` found outside the producer/tests; additive `owned_resources[]` and `recovery_required` are therefore consumer-compatible |
+| Task 2 | `completed` | task-specific | `codex` | Task 1 | semantic-result and field-aware identity matrix; local checkpoint | `86 passed` in `tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py`; synthetic Herdr references removed; long semantic content retained; same-field conflicts are ambiguous |
+| Task 3 | `completed` | task-specific | `codex` | Task 2 | cleanup precedence, exception envelope, workspace-settlement matrix; local checkpoint | `287 passed` in `tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`; verified workspace close required for settlement; exception paths retain `owned_resources` and `recovery_required` |
+| Task 4 | `completed` | task-specific | `codex` | Tasks 2–3 | canonical policy tests and generated-surface drift check | `37 passed`; `sync_agent_adapters.py --all-platforms --check` reports all adapter outputs up to date; no source wording change required |
+| Task 5 | `completed` | task-specific | `codex` | Tasks 2–4 | separate contract/measure modes, consolidated CI, final checkpoint | `348 passed`; `contract 30` emits `360` deterministic rows; `measure` reports production-function-fake-boundary provenance with sample-aware unavailable percentiles; benchmark test has one CI owner |
 
 ## Task Breakdown
 
@@ -350,14 +350,14 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `a generated file requires direct editing, wording would grant Secretary/CoS acceptance or lifecycle authority, or a new durable coordination state is proposed`
 
 **Steps:**
-- [ ] Step 1: Change repository snapshot binding so advisory reasoning may state uncertainty/freshness without exact SHA, while exact audit, acceptance, mutation, and merge claims retain exact binding.
-- [ ] Step 2: Reconcile wording for optional receipts, provider telemetry, Herdr, runtime sessions, and event hints so they remain evidence/capability gates only for claims that consume them.
-- [ ] Step 3: Preserve the existing Secretary→CoS→Worker decision boundary and decision-delta handoff; do not add mesh communication, full-history handoffs, or routine Worker→Secretary progress.
-- [ ] Step 4: Regenerate all declared agent views from canonical sources and update only tests that assert the corrected contract.
+- [x] Step 1: Change repository snapshot binding so advisory reasoning may state uncertainty/freshness without exact SHA, while exact audit, acceptance, mutation, and merge claims retain exact binding.
+- [x] Step 2: Reconcile wording for optional receipts, provider telemetry, Herdr, runtime sessions, and event hints so they remain evidence/capability gates only for claims that consume them.
+- [x] Step 3: Preserve the existing Secretary→CoS→Worker decision boundary and decision-delta handoff; do not add mesh communication, full-history handoffs, or routine Worker→Secretary progress.
+- [x] Step 4: Regenerate all declared agent views from canonical sources and update only tests that assert the corrected contract.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py`
-- [ ] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `py -B -m pytest -q tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py`
+- [x] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
 - Expected: canonical and generated wording agree; advisory reasoning remains useful without exact SHA, while exact claims remain strict.
 
 **Exit Criteria:**
@@ -402,17 +402,17 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `a new telemetry database, provider write, live credential requirement, statistical claim from insufficient samples, or unrelated CI change`
 
 **Steps:**
-- [ ] Step 1: Add explicit `contract` and `measure` CLI modes. `contract` emits deterministic expected architecture cases; `measure` exercises production functions with fake external boundaries and reports measured/unavailable/not-attempted evidence.
-- [ ] Step 2: Keep deterministic baseline/target scenarios as a contract fixture and label every row `deterministic-fake`, `live=false`, with unavailable latency/token fields; do not call this an empirical before/after improvement without running both exact historical and candidate SHAs through the same harness.
-- [ ] Step 3: Add production-path instrumentation for launches, commands, provider queries, subprocesses, messages, retries, duplicate effects, and remaining resources without hardcoding those values in fixture rows.
-- [ ] Step 4: Add the normal/probe/resource matrix to benchmark assertions, including result preservation under missing optional evidence and no duplicate retry after ambiguity.
-- [ ] Step 5: Emit measured, unavailable, and not-attempted states with provenance and sample count; emit percentiles only when the declared sample threshold is met.
-- [ ] Step 6: Move `tests/test_secretary_benchmark.py` from the two-OS `runtime` job to the existing Ubuntu `benchmark` job, keep one workflow owner, and preserve no-live-capability execution.
+- [x] Step 1: Add explicit `contract` and `measure` CLI modes. `contract` emits deterministic expected architecture cases; `measure` exercises production functions with fake external boundaries and reports measured/unavailable/not-attempted evidence.
+- [x] Step 2: Keep deterministic baseline/target scenarios as a contract fixture and label every row `deterministic-fake`, `live=false`, with unavailable latency/token fields; do not call this an empirical before/after improvement without running both exact historical and candidate SHAs through the same harness.
+- [x] Step 3: Add production-path instrumentation for launches, commands, provider queries, subprocesses, messages, retries, duplicate effects, and remaining resources without hardcoding those values in fixture rows.
+- [x] Step 4: Add the normal/probe/resource matrix to benchmark assertions, including result preservation under missing optional evidence and no duplicate retry after ambiguity.
+- [x] Step 5: Emit measured, unavailable, and not-attempted states with provenance and sample count; emit percentiles only when the declared sample threshold is met.
+- [x] Step 6: Move `tests/test_secretary_benchmark.py` from the two-OS `runtime` job to the existing Ubuntu `benchmark` job, keep one workflow owner, and preserve no-live-capability execution.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_secretary_benchmark.py tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_validate_repo_contracts.py`
-- [ ] `py -B scripts/benchmark_secretary_architecture.py contract 30`
-- [ ] `py -B scripts/benchmark_secretary_architecture.py measure`
+- [x] `py -B -m pytest -q tests/test_secretary_benchmark.py tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_validate_repo_contracts.py`
+- [x] `py -B scripts/benchmark_secretary_architecture.py contract 30`
+- [x] `py -B scripts/benchmark_secretary_architecture.py measure`
 - Expected: contract rows remain honest fixtures; measured rows identify their production boundary and sample support; no latency/token claim appears without evidence; exactly one workflow owns the Secretary benchmark test.
 
 **Exit Criteria:**
@@ -422,31 +422,31 @@ sweeper, retry manager, or coordination authority is introduced.
 
 Final artifact verification runs only after all tasks are complete:
 
-- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_benchmark.py tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
-- [ ] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
-- [ ] `py -B scripts/validate_planning_lifecycle.py --repo-root .`
-- [ ] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
-- [ ] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
-- [ ] `git diff --check`
-- [ ] Confirm `git status --short --untracked-files=all` contains only declared plan/task changes and no unrelated mutation.
-- [ ] Confirm every CI result used for acceptance is bound to the exact candidate head SHA; stale or unavailable remote evidence is recorded as such.
+- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_benchmark.py tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py` (`348 passed`)
+- [x] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
+- [x] `py -B scripts/validate_planning_lifecycle.py --repo-root .`
+- [x] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
+- [x] `git diff --check`
+- [x] Confirm `git status --short --untracked-files=all` contains only declared plan/task changes and no unrelated mutation.
+- [x] Confirm every CI result used for acceptance is bound to the exact candidate head SHA; no remote CI result was used, so no stale remote evidence was accepted.
 - [ ] Confirm proof-gated local checkpoint commits exist after Tasks 2 and 3 and at final verification, with no push or merge performed by this plan.
 
 ### Required deterministic probe matrix
 
-- [ ] Idle plus output but no semantic response → `result=unavailable`.
-- [ ] Captured semantic response → `result=reported`.
-- [ ] Different valid assignment/attempt IDs → accepted.
-- [ ] Conflicting values for one identity field → rejected or `ambiguous`.
-- [ ] Cleanup unknown followed by authoritative removal → `settled`.
-- [ ] Workspace close failure → `quarantined` with recovery required.
-- [ ] Exception after workspace creation, cleanup succeeds → `execution=failed`, `result=unavailable`, `resource=settled`, `recovery_required=false`.
-- [ ] Exception after workspace creation, cleanup unproven → `execution=failed`, `result=unavailable`, `resource=quarantined`, resource identity retained, `recovery_required=true`.
-- [ ] Provider or structured receipt unavailable → normal reasoning/result unaffected.
-- [ ] Ambiguous delivery → exactly one launch and reconciliation before retry.
-- [ ] Captured result followed by cleanup → result remains accessible.
-- [ ] Direct advisory CoS without exact SHA → useful answer with uncertainty.
-- [ ] Exact audit without exact SHA → blocked or explicitly qualified.
+- [x] Idle plus output but no semantic response → `result=unavailable`.
+- [x] Captured semantic response → `result=reported`.
+- [x] Different valid assignment/attempt IDs → accepted.
+- [x] Conflicting values for one identity field → rejected or `ambiguous`.
+- [x] Cleanup unknown followed by authoritative removal → `settled`.
+- [x] Workspace close failure → `quarantined` with recovery required.
+- [x] Exception after workspace creation, cleanup succeeds → `execution=failed`, `result=unavailable`, `resource=settled`, `recovery_required=false`.
+- [x] Exception after workspace creation, cleanup unproven → `execution=failed`, `result=unavailable`, `resource=quarantined`, resource identity retained, `recovery_required=true`.
+- [x] Provider or structured receipt unavailable → normal reasoning/result unaffected.
+- [x] Ambiguous delivery → exactly one launch and reconciliation before retry.
+- [x] Captured result followed by cleanup → result remains accessible.
+- [x] Direct advisory CoS without exact SHA → useful answer with uncertainty.
+- [x] Exact audit without exact SHA → blocked or explicitly qualified.
 
 ### Required bounded live proof
 
@@ -471,6 +471,15 @@ Run strict receipt qualification separately. If strict probing returns
 that as the expected graceful-degradation outcome. If Herdr/provider/receipt
 capability is unavailable, preserve the normal source/test proof and record the
 live gate as unavailable rather than fabricating a result.
+
+**Final live-gate record:** The disposable normal invocation using nonce
+`SECRETARY_PROBE_20261011-0130` reached Herdr and created workspace `w5V` with
+pane `w5V:p1` and agent `normal-main-5f5be649`. `herdr.workspace.get` proved the
+workspace absent after close, and the owned workspace, session, pane, and agent
+were all recorded as settled. The normal semantic response was not captured;
+the final envelope was `result=unavailable`, `resource=quarantined`, and
+`recovery_required=true`. This is a managed-capability observation, not a
+failure of direct Secretary/CoS reasoning, and no live success claim is made.
 
 ## Completion Criteria
 

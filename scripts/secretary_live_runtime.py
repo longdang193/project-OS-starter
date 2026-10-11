@@ -459,7 +459,26 @@ def _close_herdr_workspace(herdr: str, workspace_id: str, *, env: dict[str, str]
         evidence = evidence if isinstance(evidence, Mapping) else payload
         if evidence.get("workspace_id") == workspace_id and evidence.get("state") in {"closed", "removed", "absent"}:
             return {"state": "closed", "verified": True, "authority": "herdr.workspace.close"}
-    return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
+    try:
+        check = _herdr_run(
+            [herdr, "workspace", "get", workspace_id],
+            env=env,
+            timeout=5.0,
+        )
+    except CommandTransportTimeout:
+        return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
+    if check.returncode:
+        for output in (check.stdout, check.stderr):
+            try:
+                payload = json.loads(output)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            error = payload.get("error") if isinstance(payload, Mapping) else None
+            code = error.get("code") if isinstance(error, Mapping) else None
+            if code in {"workspace_not_found", "workspace_missing", "not_found"}:
+                return {"state": "closed", "verified": True, "authority": "herdr.workspace.get"}
+        return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
+    return {"state": "closed", "verified": False, "reason": "workspace_still_present"}
 
 
 def _release_codex_agent(
