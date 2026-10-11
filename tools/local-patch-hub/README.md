@@ -143,7 +143,9 @@ Verify update safety without changing files:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterAttributionOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
 ```
 
-The current attribution overlay targets `0.5.69` (`eb712ca8`). It preserves
+The attribution overlays target `0.5.69` (`eb712ca8`) and `0.5.99`
+(`ce4460ef`). The current `0.5.99` overlay is rebased over the newer
+`toolNameMap` and schema layout while preserving
 `x-lightrsi-request-id`, `x-lightrsi-provider-attempt-id`, and the router-owned
 immutable `routerRecordId` through usage history and request details, including
 streaming, forced-SSE, success, and failure paths. The reconciler accepts the

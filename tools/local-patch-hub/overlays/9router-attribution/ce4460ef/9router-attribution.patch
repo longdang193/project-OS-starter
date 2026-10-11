@@ -1,0 +1,514 @@
+diff --git a/open-sse/handlers/chatCore.js b/open-sse/handlers/chatCore.js
+index 465bf523..c410f88b 100644
+--- a/open-sse/handlers/chatCore.js
++++ b/open-sse/handlers/chatCore.js
+@@ -32,6 +32,7 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
+ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+ import { defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
+ import { resolveSessionId } from "../utils/sessionManager.js";
++import { createRequestAttribution } from "./chatCore/attribution.js";
+ 
+ /**
+  * Core chat handler - shared between SSE and Worker
+@@ -63,6 +64,7 @@ export function stripContinuityFields(body) {
+ export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerOverrides }) {
+   const { provider, model } = modelInfo;
+   const requestStartTime = Date.now();
++  const attribution = createRequestAttribution(clientRawRequest?.headers);
+   // Stable per-session color so all lines of one CLI conversation share a tag
+   const sessionSeed = (() => {
+     try {
+@@ -408,6 +410,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
+     trackPendingRequest(model, provider, connectionId, false, true);
+     appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
+     saveRequestDetail(buildRequestDetail({
++      ...attribution,
+       provider, model, connectionId,
+       latency: { ttft: 0, total: Date.now() - requestStartTime },
+       tokens: { prompt_tokens: 0, completion_tokens: 0 },
+@@ -483,6 +486,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
+     const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
+     appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
+     saveRequestDetail(buildRequestDetail({
++      ...attribution,
+       provider, model, connectionId,
+       latency: { ttft: 0, total: Date.now() - requestStartTime },
+       tokens: { prompt_tokens: 0, completion_tokens: 0 },
+@@ -502,7 +506,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
+     return createErrorResult(statusCode, errMsg, resetsAtMs, upstreamResponseHeaders(providerResponse.headers));
+   }
+ 
+-  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log };
++  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log, ...attribution };
+   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
+   const trackDone = () => trackPendingRequest(model, provider, connectionId, false);
+ 
+diff --git a/open-sse/handlers/chatCore/attribution.js b/open-sse/handlers/chatCore/attribution.js
+new file mode 100644
+index 00000000..32712bc5
+--- /dev/null
++++ b/open-sse/handlers/chatCore/attribution.js
+@@ -0,0 +1,16 @@
++import { randomUUID } from "node:crypto";
++
++function readHeader(headers, name) {
++  if (!headers || typeof headers !== "object") return null;
++  const value = headers[name] ?? headers[name.toLowerCase()];
++  const first = Array.isArray(value) ? value[0] : value;
++  return typeof first === "string" && first.trim() ? first.trim() : null;
++}
++
++export function createRequestAttribution(headers) {
++  return {
++    routerRecordId: randomUUID(),
++    experimentRequestId: readHeader(headers, "x-lightrsi-request-id"),
++    providerAttemptId: readHeader(headers, "x-lightrsi-provider-attempt-id"),
++  };
++}
+diff --git a/open-sse/handlers/chatCore/nonStreamingHandler.js b/open-sse/handlers/chatCore/nonStreamingHandler.js
+index 514a24b2..c4599e8a 100644
+--- a/open-sse/handlers/chatCore/nonStreamingHandler.js
++++ b/open-sse/handlers/chatCore/nonStreamingHandler.js
+@@ -284,7 +284,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
+ /**
+  * Handle non-streaming response from provider.
+  */
+-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log }) {
++export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, routerRecordId, experimentRequestId, providerAttemptId }) {
+   trackDone();
+   const contentType = providerResponse.headers.get("content-type") || "";
+   let responseBody;
+@@ -326,7 +326,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
+ 
+   const usage = extractUsageFromResponse(responseBody);
+   appendLog({ tokens: usage, status: "200 OK" });
+-  saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
++  saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, routerRecordId, experimentRequestId, providerAttemptId, silent: true });
+   if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+ 
+   const translatedResponse = needsTranslation(targetFormat, sourceFormat)
+@@ -380,6 +380,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
+ 
+   const totalLatency = Date.now() - requestStartTime;
+   saveRequestDetail(buildRequestDetail({
++    routerRecordId, experimentRequestId, providerAttemptId,
+     provider, model, connectionId,
+     latency: { ttft: totalLatency, total: totalLatency },
+     tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
+diff --git a/open-sse/handlers/chatCore/requestDetail.js b/open-sse/handlers/chatCore/requestDetail.js
+index e30b2778..4e89a929 100644
+--- a/open-sse/handlers/chatCore/requestDetail.js
++++ b/open-sse/handlers/chatCore/requestDetail.js
+@@ -93,6 +93,9 @@ export function buildRequestDetail(base, overrides = {}) {
+     response: base.response || {},
+     pxpipe: base.pxpipe || undefined,
+     status: base.status || "success",
++    routerRecordId: base.routerRecordId || null,
++    experimentRequestId: base.experimentRequestId || null,
++    providerAttemptId: base.providerAttemptId || null,
+     ...overrides
+   };
+ }
+@@ -115,7 +118,7 @@ export function formatDoneLine({ usage, latency }) {
+   return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+ }
+ 
+-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false }) {
++export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, routerRecordId, experimentRequestId, providerAttemptId, label = "USAGE", silent = false }) {
+   if (!tokens || typeof tokens !== "object") return;
+ 
+   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
+@@ -143,6 +146,9 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey,
+     timestamp: new Date().toISOString(),
+     connectionId: connectionId || undefined,
+     apiKey: apiKey || undefined,
+-    endpoint: endpoint || null
++     endpoint: endpoint || null,
++     routerRecordId: routerRecordId || null,
++     experimentRequestId: experimentRequestId || null,
++     providerAttemptId: providerAttemptId || null,
+   }).catch(() => {});
+ }
+diff --git a/open-sse/handlers/chatCore/sseToJsonHandler.js b/open-sse/handlers/chatCore/sseToJsonHandler.js
+index 800c92a7..bc10677a 100644
+--- a/open-sse/handlers/chatCore/sseToJsonHandler.js
++++ b/open-sse/handlers/chatCore/sseToJsonHandler.js
+@@ -180,7 +180,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
+  * Handle case: provider forced streaming but client wants JSON.
+  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
+  */
+-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, customToolNames, toolNameMap, trackDone, appendLog, reqTag, log }) {
++export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, customToolNames, toolNameMap, trackDone, appendLog, reqTag, log, routerRecordId, experimentRequestId, providerAttemptId }) {
+   const contentType = providerResponse.headers.get("content-type") || "";
+   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
+   if (!isSSE) return null; // not handled here
+@@ -189,6 +189,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
+ 
+   const ctx = {
+     provider, model, connectionId,
++    routerRecordId, experimentRequestId, providerAttemptId,
+     request: extractRequestConfig(body, stream),
+     providerRequest: finalBody || translatedBody || null
+   };
+@@ -205,7 +206,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
+ 
+       const usage = jsonResponse.usage || {};
+       appendLog({ tokens: usage, status: "200 OK" });
+-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
++      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, routerRecordId, experimentRequestId, providerAttemptId, silent: true });
+       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+ 
+       // Same cache-inclusive total for the recorded detail, so the DB and the
+@@ -313,7 +314,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
+ 
+     const usage = parsed.usage || {};
+     appendLog({ tokens: usage, status: "200 OK" });
+-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
++    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, routerRecordId, experimentRequestId, providerAttemptId, silent: true });
+     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
+ 
+     const totalLatency = Date.now() - requestStartTime;
+diff --git a/open-sse/handlers/chatCore/streamingHandler.js b/open-sse/handlers/chatCore/streamingHandler.js
+index 55106fd5..d0abedb0 100644
+--- a/open-sse/handlers/chatCore/streamingHandler.js
++++ b/open-sse/handlers/chatCore/streamingHandler.js
+@@ -45,7 +45,7 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
+ /**
+  * Handle streaming response — pipe provider SSE through transform stream to client.
+  */
+-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, credentials }) {
++export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, credentials, routerRecordId, experimentRequestId, providerAttemptId }) {
+   if (onRequestSuccess) {
+     Promise.resolve()
+       .then(onRequestSuccess)
+@@ -95,6 +95,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
+   const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs);
+ 
+   saveRequestDetail(buildRequestDetail({
++    routerRecordId, experimentRequestId, providerAttemptId,
+     provider, model, connectionId,
+     latency: { ttft: 0, total: Date.now() - requestStartTime },
+     tokens: { prompt_tokens: 0, completion_tokens: 0 },
+@@ -117,7 +118,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
+ /**
+  * Build onStreamComplete callback for streaming usage tracking.
+  */
+-export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log }) {
++export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, routerRecordId, experimentRequestId, providerAttemptId }) {
+   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+ 
+   const onStreamComplete = (contentObj, usage, ttftAt) => {
+@@ -129,6 +130,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
+     const safeThinking = contentObj?.thinking || null;
+ 
+     saveRequestDetail(buildRequestDetail({
++      routerRecordId, experimentRequestId, providerAttemptId,
+       provider, model, connectionId,
+       latency,
+       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
+@@ -143,7 +145,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
+     });
+ 
+     // Persist stream usage to DB (no console line; the "📊 done" line below is authoritative)
+-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", silent: true });
++    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, routerRecordId, experimentRequestId, providerAttemptId, label: "STREAM USAGE", silent: true });
+     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency }));
+   };
+ 
+diff --git a/src/lib/db/repos/requestDetailsRepo.js b/src/lib/db/repos/requestDetailsRepo.js
+index f7273831..bff64a01 100644
+--- a/src/lib/db/repos/requestDetailsRepo.js
++++ b/src/lib/db/repos/requestDetailsRepo.js
+@@ -116,11 +116,14 @@ async function flushToDatabase() {
+             providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
+             response: truncateField(item.response, config.maxJsonSize),
+             pxpipe: item.pxpipe || undefined,
++             routerRecordId: item.routerRecordId || null,
++             experimentRequestId: item.experimentRequestId || null,
++             providerAttemptId: item.providerAttemptId || null,
+           };
+ 
+           db.run(
+-            `INSERT INTO requestDetails(id, timestamp, provider, model, connectionId, status, data) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET timestamp = excluded.timestamp, provider = excluded.provider, model = excluded.model, connectionId = excluded.connectionId, status = excluded.status, data = excluded.data`,
+-            [record.id, record.timestamp, record.provider, record.model, record.connectionId, record.status, stringifyJson(record)]
++            `INSERT INTO requestDetails(id, timestamp, provider, model, connectionId, status, data, routerRecordId, experimentRequestId, providerAttemptId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET timestamp = excluded.timestamp, provider = excluded.provider, model = excluded.model, connectionId = excluded.connectionId, status = excluded.status, data = excluded.data, routerRecordId = excluded.routerRecordId, experimentRequestId = excluded.experimentRequestId, providerAttemptId = excluded.providerAttemptId`,
++            [record.id, record.timestamp, record.provider, record.model, record.connectionId, record.status, stringifyJson(record), record.routerRecordId, record.experimentRequestId, record.providerAttemptId]
+           );
+         }
+ 
+diff --git a/src/lib/db/repos/usageRepo.js b/src/lib/db/repos/usageRepo.js
+index 4ea3b8bd..8f2cb2b0 100644
+--- a/src/lib/db/repos/usageRepo.js
++++ b/src/lib/db/repos/usageRepo.js
+@@ -262,12 +262,13 @@ export async function saveRequestUsage(entry) {
+            AND COALESCE(model, '') = COALESCE(?, '')
+            AND COALESCE(connectionId, '') = COALESCE(?, '')
+            AND COALESCE(apiKey, '') = COALESCE(?, '')
++           AND COALESCE(routerRecordId, '') = COALESCE(?, '')
+            AND promptTokens = ?
+            AND completionTokens = ?
+          ORDER BY id DESC LIMIT 1`,
+         [
+           entry.timestamp, entry.provider || null, entry.model || null,
+-          entry.connectionId || null, entry.apiKey || null,
++           entry.connectionId || null, entry.apiKey || null, entry.routerRecordId || null,
+           promptTokens, completionTokens,
+         ]
+       );
+@@ -280,12 +281,13 @@ export async function saveRequestUsage(entry) {
+       }
+ 
+       db.run(
+-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, routerRecordId, experimentRequestId, providerAttemptId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         [
+           entry.timestamp, entry.provider || null, entry.model || null,
+           entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
+-          stringifyJson(tokens), stringifyJson({}),
++           stringifyJson(tokens), stringifyJson({}), entry.routerRecordId || null,
++           entry.experimentRequestId || null, entry.providerAttemptId || null,
+         ]
+       );
+ 
+@@ -325,12 +327,13 @@ export async function getUsageHistory(filter = {}) {
+   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
+ 
+   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+-  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC`, params);
++  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, routerRecordId, experimentRequestId, providerAttemptId FROM usageHistory ${where} ORDER BY id ASC`, params);
+ 
+   return rows.map((r) => ({
+     timestamp: r.timestamp, provider: r.provider, model: r.model,
+     connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
+     cost: r.cost, status: r.status, tokens: parseJson(r.tokens, {}),
++    routerRecordId: r.routerRecordId, experimentRequestId: r.experimentRequestId, providerAttemptId: r.providerAttemptId,
+   }));
+ }
+ 
+diff --git a/src/lib/db/schema.js b/src/lib/db/schema.js
+index 91238327..7b480e18 100644
+--- a/src/lib/db/schema.js
++++ b/src/lib/db/schema.js
+@@ -125,12 +125,16 @@ export const TABLES = {
+       status: "TEXT",
+       tokens: "TEXT",
+       meta: "TEXT",
++      routerRecordId: "TEXT",
++      experimentRequestId: "TEXT",
++      providerAttemptId: "TEXT",
+     },
+     indexes: [
+       "CREATE INDEX IF NOT EXISTS idx_uh_ts ON usageHistory(timestamp DESC)",
+       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
+       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
+       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
++      "CREATE INDEX IF NOT EXISTS idx_uh_router_record ON usageHistory(routerRecordId)",
+     ],
+   },
+   usageDaily: {
+@@ -148,12 +152,16 @@ export const TABLES = {
+       connectionId: "TEXT",
+       status: "TEXT",
+       data: "TEXT NOT NULL",
++      routerRecordId: "TEXT",
++      experimentRequestId: "TEXT",
++      providerAttemptId: "TEXT",
+     },
+     indexes: [
+       "CREATE INDEX IF NOT EXISTS idx_rd_ts ON requestDetails(timestamp DESC)",
+       "CREATE INDEX IF NOT EXISTS idx_rd_provider ON requestDetails(provider)",
+       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
+       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
++      "CREATE INDEX IF NOT EXISTS idx_rd_router_record ON requestDetails(routerRecordId)",
+     ],
+   },
+ };
+diff --git a/tests/unit/attribution-persistence.test.js b/tests/unit/attribution-persistence.test.js
+new file mode 100644
+index 00000000..ed1a7aff
+--- /dev/null
++++ b/tests/unit/attribution-persistence.test.js
+@@ -0,0 +1,115 @@
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
++import { createRequestAttribution } from "../../open-sse/handlers/chatCore/attribution.js";
++
++const originalDataDir = process.env.DATA_DIR;
++let tempDir;
++let db;
++let adapter;
++
++beforeAll(async () => {
++  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-attribution-"));
++  process.env.DATA_DIR = tempDir;
++  vi.resetModules();
++  db = await import("../../src/lib/db/index.js");
++  await db.initDb();
++  await db.updateSettings({ enableObservability: true, observabilityBatchSize: 1 });
++  const { getAdapter } = await import("../../src/lib/db/driver.js");
++  adapter = await getAdapter();
++});
++
++afterAll(async () => {
++  if (adapter?.close) adapter.close();
++  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
++  if (originalDataDir === undefined) delete process.env.DATA_DIR;
++  else process.env.DATA_DIR = originalDataDir;
++});
++
++describe("request attribution persistence", () => {
++  it("preserves LightRSI headers while assigning a router-owned record ID", () => {
++    const attribution = createRequestAttribution({
++      "x-lightrsi-request-id": "experiment-request-header",
++      "x-lightrsi-provider-attempt-id": "experiment-request-header:attempt-1",
++    });
++
++    expect(attribution).toMatchObject({
++      experimentRequestId: "experiment-request-header",
++      providerAttemptId: "experiment-request-header:attempt-1",
++    });
++    expect(attribution.routerRecordId).toMatch(/^[0-9a-f-]{36}$/u);
++  });
++
++  it("keeps one immutable router record ID in both authoritative tables", async () => {
++    const attribution = {
++      routerRecordId: "router-record-1",
++      experimentRequestId: "experiment-request-1",
++      providerAttemptId: "experiment-request-1:attempt-1",
++    };
++    const timestamp = "2026-10-11T18:00:00.000Z";
++
++    await db.saveRequestUsage({
++      ...attribution,
++      timestamp,
++      provider: "codex",
++      model: "gpt-fixture",
++      tokens: { prompt_tokens: 10, completion_tokens: 5 },
++    });
++    await db.saveRequestDetail({
++      id: "detail-1",
++      ...attribution,
++      timestamp,
++      provider: "codex",
++      model: "gpt-fixture",
++      status: "success",
++      tokens: { prompt_tokens: 10, completion_tokens: 5 },
++      request: { headers: { "x-lightrsi-request-id": attribution.experimentRequestId } },
++    });
++    await new Promise((resolve) => setTimeout(resolve, 120));
++
++    const usage = adapter.get(
++      "SELECT routerRecordId, experimentRequestId, providerAttemptId FROM usageHistory WHERE routerRecordId = ?",
++      [attribution.routerRecordId],
++    );
++    const detail = adapter.get(
++      "SELECT routerRecordId, experimentRequestId, providerAttemptId FROM requestDetails WHERE routerRecordId = ?",
++      [attribution.routerRecordId],
++    );
++
++    expect(usage).toEqual(attribution);
++    expect(detail).toEqual(attribution);
++    expect((await db.getRequestDetails({ pageSize: 10 })).details[0].routerRecordId).toBe(attribution.routerRecordId);
++  });
++
++  it("does not deduplicate distinct provider attempts with identical measurements", async () => {
++    const base = {
++      timestamp: "2026-10-11T18:01:00.000Z",
++      provider: "codex",
++      model: "gpt-fixture",
++      tokens: { prompt_tokens: 10, completion_tokens: 5 },
++    };
++
++    await db.saveRequestUsage({
++      ...base,
++      routerRecordId: "router-record-2",
++      experimentRequestId: "experiment-request-1",
++      providerAttemptId: "experiment-request-1:attempt-2",
++    });
++    await db.saveRequestUsage({
++      ...base,
++      routerRecordId: "router-record-3",
++      experimentRequestId: "experiment-request-1",
++      providerAttemptId: "experiment-request-1:attempt-3",
++    });
++
++    const rows = adapter.all(
++      "SELECT routerRecordId FROM usageHistory WHERE timestamp = ? ORDER BY id",
++      [base.timestamp],
++    );
++    expect(rows.map((row) => row.routerRecordId)).toEqual([
++      "router-record-2",
++      "router-record-3",
++    ]);
++  });
++});
+diff --git a/tests/unit/request-details-tab.test.js b/tests/unit/request-details-tab.test.js
+index 6b056503..0f803672 100644
+--- a/tests/unit/request-details-tab.test.js
++++ b/tests/unit/request-details-tab.test.js
+@@ -16,19 +16,42 @@ async function saveDetail(detail) {
+   await new Promise((r) => setTimeout(r, 120));
+ }
+ 
++async function openSqliteFile(filePath) {
++  if (adapter.driver === "better-sqlite3") {
++    const Database = (await import("better-sqlite3")).default;
++    const database = new Database(filePath);
++    return {
++      get(sql) { return database.prepare(sql).get(); },
++      close() { database.close(); },
++    };
++  }
++
++  if (adapter.driver === "node:sqlite") {
++    const { DatabaseSync } = await import("node:sqlite");
++    const database = new DatabaseSync(filePath);
++    return {
++      get(sql) { return database.prepare(sql).get(); },
++      close() { database.close(); },
++    };
++  }
++
++  throw new Error(`Unsupported test SQLite driver: ${adapter.driver}`);
++}
++
+ beforeAll(async () => {
+   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-details-tab-"));
+   process.env.DATA_DIR = tempDir;
+   vi.resetModules();
+   db = await import("@/lib/db/index.js");
+   await db.initDb();
+-  await db.updateSettings({ enableObservability2: true, observabilityBatchSize: 1 });
++  await db.updateSettings({ enableObservability: true, observabilityBatchSize: 1 });
+ 
+   const { getAdapter } = await import("@/lib/db/driver.js");
+   adapter = await getAdapter();
+ });
+ 
+-afterAll(() => {
++afterAll(async () => {
++  if (adapter?.close) adapter.close();
+   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+   if (originalDataDir === undefined) delete process.env.DATA_DIR;
+   else process.env.DATA_DIR = originalDataDir;
+@@ -133,14 +156,13 @@ describe("backupDbLite — excludes requestDetails, keeps critical data", () =>
+     expect(fs.existsSync(dest)).toBe(true);
+ 
+     // Open backup and assert requestDetails is empty, settings present
+-    const Database = (await import("better-sqlite3")).default;
+-    const bak = new Database(dest);
++    const bak = await openSqliteFile(dest);
+     try {
+       // requestDetails is fully excluded — table must not exist in the backup
+-      const rdTable = bak.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='requestDetails'").get();
++      const rdTable = bak.get("SELECT name FROM sqlite_master WHERE type='table' AND name='requestDetails'");
+       expect(rdTable).toBeUndefined();
+       // Critical data preserved
+-      const st = bak.prepare("SELECT COUNT(*) c FROM settings").get();
++      const st = bak.get("SELECT COUNT(*) c FROM settings");
+       expect(st.c).toBeGreaterThanOrEqual(1);
+     } finally {
+       bak.close();
