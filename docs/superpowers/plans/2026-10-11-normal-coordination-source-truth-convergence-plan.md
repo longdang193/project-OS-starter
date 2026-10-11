@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: normal-coordination-source-truth-convergence
 targets:
@@ -58,6 +58,7 @@ The verdict is narrowed before execution in four ways:
 | --- | --- |
 | Historical predecessor | `docs/superpowers/plans/2026-10-11-19-46-normal-coordination-result-and-resource-convergence-plan.md` completed at `88a46f25ba8d9ffe80c5f60823911ef3a6c41158` |
 | Current source baseline | `HEAD = origin/main = 0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f` |
+| Candidate implementation checkpoint | `72f2583e2d14b8b33fd8caf9bc6a05509ff44c9a` |
 | Inconsistent claims | `_observe_submitted_codex` can synthesize a `herdr://` reference from idle/output metadata; `_normalize_invocation_outcome` pools assignment and attempt identities; `_close_herdr_workspace` treats close success as settled without an absence proof; `run_contract_benchmark` emits deterministic six-scenario pairs rather than live measurements |
 | Current correction | This plan is the corrective source for the discrepancies; the completed predecessor remains unchanged historical evidence |
 
@@ -136,7 +137,7 @@ sweeper, retry manager, or coordination authority is introduced.
 - Branch: `codex/normal-coordination-source-truth-convergence`
 - Base commit: `0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f` (`HEAD` = `origin/main`)
 - Expected workspace: `clean task-specific worktree created from the base commit; preserve unrelated files outside the worktree`
-- Next action: `final verification and local checkpoint`
+- Next action: `final plan checkpoint`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -430,7 +431,7 @@ Final artifact verification runs only after all tasks are complete:
 - [x] `git diff --check`
 - [x] Confirm `git status --short --untracked-files=all` contains only declared plan/task changes and no unrelated mutation.
 - [x] Confirm every CI result used for acceptance is bound to the exact candidate head SHA; no remote CI result was used, so no stale remote evidence was accepted.
-- [ ] Confirm proof-gated local checkpoint commits exist after Tasks 2 and 3 and at final verification, with no push or merge performed by this plan.
+- [x] Confirm proof-gated local checkpoint commits exist after Tasks 2 and 3 and at final verification, with no push or merge performed by this plan; implementation checkpoint is `72f2583e2d14b8b33fd8caf9bc6a05509ff44c9a`, and the final plan checkpoint follows this verification.
 
 ### Required deterministic probe matrix
 
