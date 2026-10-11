@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -19,13 +20,21 @@ from typing import Any, Mapping
 
 try:
     from scripts.herdr_main_launcher import (
+        _HERDR_DEFAULT_SESSION,
+        _herdr_pane,
         CommandTransportTimeout,
+        LaunchBlocked,
+        TargetCandidateRejected,
         _codex_completion_snapshot,
         _run as _herdr_run,
     )
 except ModuleNotFoundError:
     from herdr_main_launcher import (
+        _HERDR_DEFAULT_SESSION,
+        _herdr_pane,
         CommandTransportTimeout,
+        LaunchBlocked,
+        TargetCandidateRejected,
         _codex_completion_snapshot,
         _run as _herdr_run,
     )
@@ -81,6 +90,8 @@ _SOURCE_SAFE_FIELDS = {
 _CODEX_OBSERVATION_TIMEOUT_SECONDS = 120.0
 _CODEX_OBSERVATION_POLL_SECONDS = 0.5
 _PROVIDER_TELEMETRY_LOOKBACK_SECONDS = 0.0
+_HERDR_SERVER_START_TIMEOUT_SECONDS = 10.0
+_HERDR_PREFLIGHT_RECHECK_SECONDS = 0.25
 _SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
 _SAFE_SOURCE_VALUE = re.compile(
     r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))",
@@ -223,6 +234,157 @@ def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = F
     if dry_run:
         command.append("--dry-run")
     return command
+
+
+def _herdr_server_running(herdr: str, *, env: dict[str, str]) -> bool:
+    try:
+        result = _herdr_run([herdr, "status", "server"], env=env, timeout=5.0)
+    except CommandTransportTimeout:
+        return False
+    output = f"{result.stdout}\n{result.stderr}".casefold()
+    return result.returncode == 0 and "status: running" in output
+
+
+def _start_herdr_server(herdr: str, *, env: dict[str, str]) -> None:
+    kwargs: dict[str, Any] = {
+        "env": env,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        startup_info = subprocess.STARTUPINFO()
+        startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        kwargs["startupinfo"] = startup_info
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+    subprocess.Popen([herdr, "server"], **kwargs)
+
+
+def _ensure_herdr_server(herdr: str, *, env: dict[str, str]) -> dict[str, Any]:
+    if _herdr_server_running(herdr, env=env):
+        return {"state": "ready", "started": False}
+    _start_herdr_server(herdr, env=env)
+    deadline = time.monotonic() + _HERDR_SERVER_START_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if _herdr_server_running(herdr, env=env):
+            return {"state": "ready", "started": True}
+        time.sleep(_HERDR_PREFLIGHT_RECHECK_SECONDS)
+    raise LaunchBlocked("herdr_server_unavailable: server did not become ready")
+
+
+def _create_herdr_workspace(
+    request: SecretaryLaunchRequest,
+    herdr: str,
+    *,
+    env: dict[str, str],
+) -> tuple[str, str]:
+    label = f"secretary-{request.attempt_id[:12]}"
+    result = _herdr_run(
+        [
+            herdr,
+            "workspace",
+            "create",
+            "--cwd",
+            str(request.worktree),
+            "--label",
+            label,
+            "--no-focus",
+        ],
+        env=env,
+        timeout=30.0,
+    )
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise LaunchBlocked(f"Herdr workspace bootstrap failed: {detail}")
+    try:
+        payload = json.loads(result.stdout)
+        root_pane = payload["result"]["root_pane"]
+        workspace_id = root_pane["workspace_id"]
+        pane_id = root_pane["pane_id"]
+        pane_cwd = Path(root_pane["cwd"]).resolve()
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise LaunchBlocked("Herdr workspace bootstrap returned invalid root pane data") from exc
+    if not all(isinstance(value, str) and value.strip() for value in (workspace_id, pane_id)):
+        raise LaunchBlocked("Herdr workspace bootstrap returned incomplete root pane data")
+    if pane_cwd != request.worktree.resolve():
+        raise LaunchBlocked(f"Herdr workspace cwd mismatch: expected {request.worktree}, got {pane_cwd}")
+    return workspace_id, pane_id
+
+
+def _verify_herdr_pane(
+    request: SecretaryLaunchRequest,
+    herdr: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+) -> None:
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            _herdr_pane(
+                request.worktree,
+                _HERDR_DEFAULT_SESSION,
+                pane,
+                herdr,
+                env=env,
+            )
+            return
+        except (CommandTransportTimeout, TargetCandidateRejected) as exc:
+            last_error = exc
+            if attempt == 0:
+                time.sleep(_HERDR_PREFLIGHT_RECHECK_SECONDS)
+    raise LaunchBlocked(f"Herdr pane preflight failed: {last_error}")
+
+
+def _prepare_herdr_target(
+    request: SecretaryLaunchRequest,
+    *,
+    herdr: str,
+    env: dict[str, str],
+) -> tuple[SecretaryLaunchRequest, dict[str, Any], str | None]:
+    if (request.session == "auto") != (request.pane == "auto"):
+        raise LaunchBlocked("`--session auto` and `--pane auto` must be used together.")
+    server = _ensure_herdr_server(herdr, env=env)
+    if request.session != "auto":
+        return request, {
+            "server": server["state"],
+            "server_started": server["started"],
+            "selector_mode": "exact",
+            "session": request.session,
+            "pane": request.pane,
+            "pane_cwd_verified": False,
+            "workspace_created": False,
+        }, None
+    workspace_id, pane = _create_herdr_workspace(request, herdr, env=env)
+    try:
+        _verify_herdr_pane(request, herdr, pane, env=env)
+    except LaunchBlocked:
+        _close_herdr_workspace(herdr, workspace_id, env=env)
+        raise
+    return replace(request, session=_HERDR_DEFAULT_SESSION, pane=pane), {
+        "server": server["state"],
+        "server_started": server["started"],
+        "selector_mode": "bootstrapped",
+        "session": _HERDR_DEFAULT_SESSION,
+        "pane": pane,
+        "pane_cwd_verified": True,
+        "workspace_created": True,
+        "workspace_id": workspace_id,
+    }, workspace_id
+
+
+def _close_herdr_workspace(herdr: str, workspace_id: str, *, env: dict[str, str]) -> dict[str, Any]:
+    try:
+        result = _herdr_run(
+            [herdr, "workspace", "close", workspace_id],
+            env=env,
+            timeout=30.0,
+        )
+    except CommandTransportTimeout:
+        return {"state": "unknown", "reason": "transport_timeout"}
+    if result.returncode:
+        return {"state": "unknown", "reason": "close_failed"}
+    return {"state": "closed"}
 
 
 def _release_codex_agent(
@@ -1009,73 +1171,92 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     started = datetime.now(timezone.utc).isoformat()
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(request.codex_home.resolve())
-    completed = subprocess.run(
-        build_launcher_command(request),
-        cwd=request.worktree,
+    herdr = shutil.which("herdr")
+    if not herdr:
+        raise LaunchBlocked("Required executable unavailable on PATH: herdr")
+    launch_request, preflight, workspace_id = _prepare_herdr_target(
+        request,
+        herdr=herdr,
         env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
     )
-    payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
-    payload = select_launcher_payload(payloads) if payloads else None
-    result = sanitize_launcher_result(
-        request,
-        returncode=completed.returncode,
-        payload=payload,
-        configured_model=configured_model,
-        started_at=started,
-        finished_at=datetime.now(timezone.utc).isoformat(),
-    )
-    if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
-        post_submit = _observe_submitted_codex(request, payload, env=environment)
-        result["post_submit_observation"] = post_submit
-        if post_submit.get("state") != "idle":
-            result["failure_kind"] = "runtime_completion_observation_missing"
-        elif post_submit.get("cleanup", {}).get("state") != "removed":
-            result["failure_kind"] = "runtime_cleanup_evidence_missing"
+    result: dict[str, Any] | None = None
+    payload: Mapping[str, Any] | None = None
+    try:
+        completed = subprocess.run(
+            build_launcher_command(launch_request),
+            cwd=request.worktree,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
+        payload = select_launcher_payload(payloads) if payloads else None
+        result = sanitize_launcher_result(
+            request,
+            returncode=completed.returncode,
+            payload=payload,
+            configured_model=configured_model,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+        if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
+            post_submit = _observe_submitted_codex(request, payload, env=environment)
+            result["post_submit_observation"] = post_submit
+            if post_submit.get("state") != "idle":
+                result["failure_kind"] = "runtime_completion_observation_missing"
+            elif post_submit.get("cleanup", {}).get("state") != "removed":
+                result["failure_kind"] = "runtime_cleanup_evidence_missing"
+            else:
+                result["failure_kind"] = "runtime_structured_receipt_missing"
+            result.update(_classify_capabilities(result["disposition"], post_submit))
         else:
-            result["failure_kind"] = "runtime_structured_receipt_missing"
-        result.update(_classify_capabilities(result["disposition"], post_submit))
-    else:
-        result.update(_classify_capabilities(result["disposition"], None))
-    runtime_identity = result.get("runtime_identity")
-    expected_session_id = (
-        _safe_text(runtime_identity.get("session_id"))
-        if isinstance(runtime_identity, Mapping)
-        else None
-    )
-    result["provider_telemetry"] = _observe_provider_telemetry(
-        started,
-        datetime.now(timezone.utc).isoformat(),
-        expected_session_id=expected_session_id,
-    )
-    runtime_snapshot = _build_codex_runtime_snapshot(
-        request,
-        payload,
-        result.get("post_submit_observation", {}),
-        configured_model=configured_model,
-        started_at=started,
-        finished_at=datetime.now(timezone.utc).isoformat(),
-        provider_telemetry=result.get("provider_telemetry"),
-    )
-    if runtime_snapshot is not None:
-        previous_identity = result.get("runtime_identity")
-        previous_identity = previous_identity if isinstance(previous_identity, Mapping) else {}
-        result["evidence_provenance"] = "live-attributed"
-        result["runtime_identity"] = {
-            "agent_name": previous_identity.get("agent_name"),
-            "session": runtime_snapshot["session_id"],
-            "pane": previous_identity.get("pane"),
-            "codex_version": previous_identity.get("codex_version"),
-            **{key: runtime_snapshot[key] for key in ("provider", "model", "controller_id", "session_id")},
-            "secretary_runtime": runtime_snapshot,
-        }
-        result["timestamps"] = runtime_snapshot["timestamps"]
-        result["metrics"] = runtime_snapshot["metrics"]
-        result["disposition"] = "READY"
-        result["failure_kind"] = None
-        result.update(_classify_capabilities("READY", result.get("post_submit_observation")))
+            result.update(_classify_capabilities(result["disposition"], None))
+        runtime_identity = result.get("runtime_identity")
+        expected_session_id = (
+            _safe_text(runtime_identity.get("session_id"))
+            if isinstance(runtime_identity, Mapping)
+            else None
+        )
+        result["provider_telemetry"] = _observe_provider_telemetry(
+            started,
+            datetime.now(timezone.utc).isoformat(),
+            expected_session_id=expected_session_id,
+        )
+        runtime_snapshot = _build_codex_runtime_snapshot(
+            request,
+            payload,
+            result.get("post_submit_observation", {}),
+            configured_model=configured_model,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            provider_telemetry=result.get("provider_telemetry"),
+        )
+        if runtime_snapshot is not None:
+            previous_identity = result.get("runtime_identity")
+            previous_identity = previous_identity if isinstance(previous_identity, Mapping) else {}
+            result["evidence_provenance"] = "live-attributed"
+            result["runtime_identity"] = {
+                "agent_name": previous_identity.get("agent_name"),
+                "session": runtime_snapshot["session_id"],
+                "pane": previous_identity.get("pane"),
+                "codex_version": previous_identity.get("codex_version"),
+                **{key: runtime_snapshot[key] for key in ("provider", "model", "controller_id", "session_id")},
+                "secretary_runtime": runtime_snapshot,
+            }
+            result["timestamps"] = runtime_snapshot["timestamps"]
+            result["metrics"] = runtime_snapshot["metrics"]
+            result["disposition"] = "READY"
+            result["failure_kind"] = None
+            result.update(_classify_capabilities("READY", result.get("post_submit_observation")))
+    finally:
+        if workspace_id is not None:
+            preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
+            if result is not None:
+                result["preflight"] = preflight
+    if result is None:
+        raise RuntimeError("Secretary smoke did not produce a launcher result")
+    result.setdefault("preflight", preflight)
     result["receipt"] = _smoke_receipt(request, result)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
