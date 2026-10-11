@@ -113,6 +113,7 @@ def test_adapter_keeps_unattributed_provider_usage_separate() -> None:
     )
 
     assert bundle["readiness"] == "BLOCKED_CAPABILITY"
+    assert bundle["probe_readiness"] == "BLOCKED_CAPABILITY"
     assert bundle["provider_usage"]["secretary_attributed"] is False
     assert bundle["provider_usage"]["economics"] == "partial-unattributed"
     assert bundle["secretary_receipt"]["state"] == "missing"

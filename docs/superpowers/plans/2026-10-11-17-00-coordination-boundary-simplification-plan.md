@@ -2,7 +2,7 @@
 layer: change
 artifact_type: plan
 contract_version: "1"
-status: active
+status: completed
 template_id: implementation-plan
 name: coordination-boundary-simplification
 targets:
@@ -191,17 +191,23 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 - Branch: `codex/coordination-boundary-simplification`
 - Base commit: `874924c5a21952e200d3a4ed9a70738584da3813`
 - Expected workspace: `clean isolated worktree from the PR #80 merge commit`; the current `main` checkout contains unrelated preserved changes and is not an execution workspace
-- Next action: create the clean isolated worktree and begin Task 1 after accepting this proposed plan
-- Blockers: `none`; activation must not reuse the dirty current checkout
+- Next action: none; implementation and final proof complete
+- Blockers: none
+
+## Execution Evidence
+
+- Normal live invocation returned `result.state=reported` with a correlated Herdr reference and no provider telemetry field; cleanup remained uncertain, so `resource.state=quarantined` and reuse stayed blocked.
+- The bounded strict probe completed transport and workspace cleanup but remained `BLOCKED_CAPABILITY` because `secretary_runtime_receipt` was unavailable; provider observation was inconclusive with no usage rows. This is optional probe evidence, not a normal coordination blocker.
+- A transient final-read timeout was reproduced and fixed by retrying terminal observations with errors; an interruption race was fixed by treating an already-retired Herdr agent as removed after verification.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | isolated | `codex` | none | focused contract tests and source review | `51 passed` in `tests/test_skill_project_secretary.py`, `tests/test_skill_chief_of_staff.py`, and `tests/test_native_personal_local_workflow.py`; checkpoint commit |
-| Task 2 | `completed` | isolated | `codex` | Task 1 | `12 passed` in `tests/test_secretary_evidence_adapter.py`; conflicting run/attempt identifiers remain unpromoted; checkpoint commit |
-| Task 3 | `pending` | isolated | `unresolved` | Task 1 | normal invocation result and safety tests | pending |
-| Task 4 | `pending` | isolated | `unresolved` | Tasks 2–3 | run/probe separation and zero normal-path provider queries | pending |
-| Task 5 | `pending` | isolated | `unresolved` | Tasks 1–4 | variability benchmark and scenario tests | pending |
-| Task 6 | `pending` | isolated | `unresolved` | Tasks 1–5 | generated-surface drift and full repository proof | pending |
+| Task 2 | `completed` | isolated | `codex` | Task 1 | `12 passed` in `tests/test_secretary_evidence_adapter.py` | conflicting run/attempt identifiers remain unpromoted; checkpoint commit |
+| Task 3 | `completed` | isolated | `codex` | Task 1 | normal invocation result and safety tests | `46 passed` runtime tests; normal result normalization covers unavailable, reported failure, ambiguity, and cleanup quarantine |
+| Task 4 | `completed` | isolated | `codex` | Tasks 2-3 | run/probe separation and zero normal-path provider queries | `69 passed` runtime, adapter, and benchmark tests; `run` has no provider observer; `probe_readiness` is probe-only |
+| Task 5 | `completed` | isolated | `codex` | Tasks 1-4 | variability benchmark and scenario tests | six paired deterministic scenarios; `py -B scripts/benchmark_secretary_architecture.py 1` emits no live/latency claims |
+| Task 6 | `completed` | isolated | `codex` | Tasks 1-5 | generated-surface drift and full repository proof | `352 passed` focused; `1210 passed, 2 skipped` full suite; planning, repo-contract, adapter-drift, and diff checks passed |
 
 ## Task Breakdown
 
@@ -252,13 +258,13 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 - Stop for: any request to change acceptance, reconciliation, Git/Plan state, generated output ownership, or runtime lifecycle semantics beyond the stated progressive-assurance rules.
 
 **Steps:**
-- [ ] Step 1: Replace universal Secretary/CoS preflight language with explicit direct/advisory versus plan-bound execution modes.
-- [ ] Step 2: Add the progressive-assurance matrix and the symmetric Secretary/CoS semantic input/output contracts.
-- [ ] Step 3: State that receipts, telemetry, idle state, and provider evidence are supporting facts, not ordinary coordination admission or acceptance authority; state that normal Secretary `run` is read-only for repository implementation and routes implementation requests to CoS and an authorized execution path.
-- [ ] Step 4: Add focused assertions for direct Secretary use, direct/advisory CoS use without a plan or Herdr, the removal of blanket advisory exclusions, and preservation of plan-bound safety rules.
+- [x] Step 1: Replace universal Secretary/CoS preflight language with explicit direct/advisory versus plan-bound execution modes.
+- [x] Step 2: Add the progressive-assurance matrix and the symmetric Secretary/CoS semantic input/output contracts.
+- [x] Step 3: State that receipts, telemetry, idle state, and provider evidence are supporting facts, not ordinary coordination admission or acceptance authority; state that normal Secretary `run` is read-only for repository implementation and routes implementation requests to CoS and an authorized execution path.
+- [x] Step 4: Add focused assertions for direct Secretary use, direct/advisory CoS use without a plan or Herdr, the removal of blanket advisory exclusions, and preservation of plan-bound safety rules.
 
 **Verification:**
-- [ ] `py -B -m pytest tests/test_skill_project_secretary.py tests/test_skill_chief_of_staff.py tests/test_native_personal_local_workflow.py -q`
+- [x] `py -B -m pytest tests/test_skill_project_secretary.py tests/test_skill_chief_of_staff.py tests/test_native_personal_local_workflow.py -q`
 - Expected: existing safety assertions remain green and new direct/advisory contract assertions pass.
 
 **Exit Criteria:**
@@ -302,13 +308,13 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 - Stop for: any change to provider storage, provider schema, acceptance inputs, retry policy, or runtime execution behavior.
 
 **Steps:**
-- [ ] Step 1: Add failing cases for conflicting `run_id`, conflicting `attempt_id`, and matching session with no authoritative run/attempt relationship.
-- [ ] Step 2: Require `join.state == "matched"` and a conflict-free identifier relationship before setting `secretary_attributed`.
-- [ ] Step 3: Preserve lower proven attribution and `partial-unattributed` economics when the stronger join fails; when the receipt and provider share only session `S` and the provider has no authoritative run/attempt identifier, retain session attribution only unless an independent mapping proves membership in `R`.
-- [ ] Step 4: Verify that adapter output remains sanitized and non-blocking.
+- [x] Step 1: Add failing cases for conflicting `run_id`, conflicting `attempt_id`, and matching session with no authoritative run/attempt relationship.
+- [x] Step 2: Require `join.state == "matched"` and a conflict-free identifier relationship before setting `secretary_attributed`.
+- [x] Step 3: Preserve lower proven attribution and `partial-unattributed` economics when the stronger join fails; when the receipt and provider share only session `S` and the provider has no authoritative run/attempt identifier, retain session attribution only unless an independent mapping proves membership in `R`.
+- [x] Step 4: Verify that adapter output remains sanitized and non-blocking.
 
 **Verification:**
-- [ ] `py -B -m pytest tests/test_secretary_evidence_adapter.py -q`
+- [x] `py -B -m pytest tests/test_secretary_evidence_adapter.py -q`
 - Expected: contradictory identifiers never produce `secretary_attributed == True`; session/request evidence remains available.
 
 **Exit Criteria:**
@@ -362,17 +368,17 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 - Stop for: inability to obtain a correlated final result from existing launcher evidence without inferring from pane text, or any need to weaken cancellation, cleanup, settlement, or worktree checks.
 
 **Steps:**
-- [ ] Step 1: Add a normal `run` entry path with only task, cwd, and runtime selection; derive the exact Git worktree root and current `HEAD` with `git rev-parse`, use current `HEAD` as the read-only `expected_base` anchor when no plan-bound mutation is requested, and require an explicit accepted base for plan-bound or mutating work.
-- [ ] Step 2: Use a separate lightweight invocation request for normal `run` and preserve the strict `SecretaryLaunchRequest` shape for capability probing; do not synthesize plan, attempt, run, session, model, or controller facts in normal mode.
-- [ ] Step 3: Implement `run_normal` and keep strict probing in `run_probe`; keep `run_smoke` as a compatibility alias rather than adding behavior flags to the strict path.
-- [ ] Step 4: Normalize existing launcher evidence into independent `execution`, `result`, `resource`, `observability`, timestamps, evidence references, and optional reporting.
-- [ ] Step 5: Map `reported_completed` and `reported_failed` task results to `result: reported` only when the correlated payload or retrievable reference exists and identity is unambiguous; map missing or conflicting final results to `unavailable` or `ambiguous`.
-- [ ] Step 6: Prove that `execution: failed` can coexist with `result: reported` when a failure result is received, without turning result availability into execution success.
-- [ ] Step 7: Prove that `idle`, launcher exit `0`, and cleanup alone cannot produce `result: reported`.
-- [ ] Step 8: Prove that a reported result survives a missing receipt or quarantined resource, while retry/reuse remains blocked by unresolved resource ownership.
+- [x] Step 1: Add a normal `run` entry path with only task, cwd, and runtime selection; derive the exact Git worktree root and current `HEAD` with `git rev-parse`, use current `HEAD` as the read-only `expected_base` anchor when no plan-bound mutation is requested, and require an explicit accepted base for plan-bound or mutating work.
+- [x] Step 2: Use a separate lightweight invocation request for normal `run` and preserve the strict `SecretaryLaunchRequest` shape for capability probing; do not synthesize plan, attempt, run, session, model, or controller facts in normal mode.
+- [x] Step 3: Implement `run_normal` and keep strict probing in `run_probe`; keep `run_smoke` as a compatibility alias rather than adding behavior flags to the strict path.
+- [x] Step 4: Normalize existing launcher evidence into independent `execution`, `result`, `resource`, `observability`, timestamps, evidence references, and optional reporting.
+- [x] Step 5: Map `reported_completed` and `reported_failed` task results to `result: reported` only when the correlated payload or retrievable reference exists and identity is unambiguous; map missing or conflicting final results to `unavailable` or `ambiguous`.
+- [x] Step 6: Prove that `execution: failed` can coexist with `result: reported` when a failure result is received, without turning result availability into execution success.
+- [x] Step 7: Prove that `idle`, launcher exit `0`, and cleanup alone cannot produce `result: reported`.
+- [x] Step 8: Prove that a reported result survives a missing receipt or quarantined resource, while retry/reuse remains blocked by unresolved resource ownership.
 
 **Verification:**
-- [ ] `py -B -m pytest tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py -q`
+- [x] `py -B -m pytest tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py -q`
 - Expected: correlated results are returned without strict receipts; absent or ambiguous results are not reported as completed; safety failures remain blocking for the affected action.
 
 **Exit Criteria:**
@@ -423,15 +429,15 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 - Stop for: any provider database write, normal-path provider query, removal of strict probe coverage, promotion of optional telemetry into result/acceptance state, or a requirement for a new session registry, durable invocation ledger, controller lifecycle, retry manager, dispatcher, or generic `ExecutionOutcome` persistence subsystem.
 
 **Steps:**
-- [ ] Step 1: Add `run` and `probe` command semantics; retain `smoke` as an alias for the strict probe.
-- [ ] Step 2: Ensure normal `run` does not call `_observe_provider_telemetry` or require `validate_live_receipt`.
-- [ ] Step 3: Keep provider observation in the explicit reporting/probe path with independent availability, attribution, and coverage; expose `probe_readiness` as the principal probe field where compatible and retain `readiness` only as a deprecated projection.
-- [ ] Step 4: Add a test that counts provider observer calls and asserts zero on normal `run`.
-- [ ] Step 5: Run one bounded live probe and preserve its sanitized artifact as capability evidence only; do not make probe success a normal invocation gate.
+- [x] Step 1: Add `run` and `probe` command semantics; retain `smoke` as an alias for the strict probe.
+- [x] Step 2: Ensure normal `run` does not call `_observe_provider_telemetry` or require `validate_live_receipt`.
+- [x] Step 3: Keep provider observation in the explicit reporting/probe path with independent availability, attribution, and coverage; expose `probe_readiness` as the principal probe field where compatible and retain `readiness` only as a deprecated projection.
+- [x] Step 4: Add a test that counts provider observer calls and asserts zero on normal `run`.
+- [x] Step 5: Run one bounded live probe and preserve its sanitized artifact as capability evidence only; do not make probe success a normal invocation gate.
 
 **Verification:**
-- [ ] `py -B -m pytest tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py -q`
-- [ ] `py -B scripts/secretary_live_runtime.py probe --help`
+- [x] `py -B -m pytest tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py -q`
+- [x] `py -B scripts/secretary_live_runtime.py probe --help`
 - Expected: normal run has zero provider queries; strict probe remains available; provider failure changes only reporting evidence.
 
 **Exit Criteria:**
@@ -480,15 +486,15 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 - Stop for: any live provider dependency, new persistence, new orchestration service, or benchmark that claims live economics without attribution evidence.
 
 **Steps:**
-- [ ] Step 1: Add six deterministic architectural scenarios: direct Secretary; advisory CoS without a plan; managed Secretary without receipt/provider; ambiguous result; cleanup quarantine; and multi-workstream escalation.
-- [ ] Step 2: Leave attribution conflict to `tests/test_secretary_evidence_adapter.py`, retry/settlement to existing attempt/reconciliation tests, and parallel-writer requirements to existing plan/dispatcher tests; do not create another lifecycle test framework.
-- [ ] Step 3: Record mandatory inputs, preflight count, provider query count, messages, duplicate effects, blocker classification, and semantic outcome. Treat any time-to-first-result value as optional measurement only, not CI evidence for p50/p95 latency improvement.
-- [ ] Step 4: Assert that normal coordination has zero provider queries and that optional evidence failures do not become global blockers.
-- [ ] Step 5: Preserve the existing `ControllerSessionAdapter` as a deterministic contract fixture only; do not make it a middleware dependency.
+- [x] Step 1: Add six deterministic architectural scenarios: direct Secretary; advisory CoS without a plan; managed Secretary without receipt/provider; ambiguous result; cleanup quarantine; and multi-workstream escalation.
+- [x] Step 2: Leave attribution conflict to `tests/test_secretary_evidence_adapter.py`, retry/settlement to existing attempt/reconciliation tests, and parallel-writer requirements to existing plan/dispatcher tests; do not create another lifecycle test framework.
+- [x] Step 3: Record mandatory inputs, preflight count, provider query count, messages, duplicate effects, blocker classification, and semantic outcome. Treat any time-to-first-result value as optional measurement only, not CI evidence for p50/p95 latency improvement.
+- [x] Step 4: Assert that normal coordination has zero provider queries and that optional evidence failures do not become global blockers.
+- [x] Step 5: Preserve the existing `ControllerSessionAdapter` as a deterministic contract fixture only; do not make it a middleware dependency.
 
 **Verification:**
-- [ ] `py -B scripts/benchmark_secretary_architecture.py 1`
-- [ ] `py -B -m pytest tests/test_secretary_benchmark.py -q`
+- [x] `py -B scripts/benchmark_secretary_architecture.py 1`
+- [x] `py -B -m pytest tests/test_secretary_benchmark.py -q`
 - Expected: all scenarios produce deterministic paired results, safety invariants remain true, and degraded outcomes retain the strongest proven fact.
 
 **Exit Criteria:**
@@ -539,21 +545,21 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 - Stop for: generated drift caused by an unrelated source, failed contract validation, changed acceptance/reconciliation semantics, or unrecorded scope expansion.
 
 **Steps:**
-- [ ] Step 1: Run `py -B scripts/sync_agent_adapters.py --all-platforms`.
-- [ ] Step 2: Run `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`.
-- [ ] Step 3: Run `py -B scripts/validate_repo_contracts.py --repo-root . --fast`.
-- [ ] Step 4: Run `py -B scripts/validate_planning_lifecycle.py`.
-- [ ] Step 5: Run the focused contract, runtime, benchmark, and acceptance/reconciliation tests.
-- [ ] Step 6: Run the full test suite and `git diff --check`.
-- [ ] Step 7: Record any unavailable live probe capability as reporting evidence, never as normal coordination failure.
+- [x] Step 1: Run `py -B scripts/sync_agent_adapters.py --all-platforms`.
+- [x] Step 2: Run `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`.
+- [x] Step 3: Run `py -B scripts/validate_repo_contracts.py --repo-root . --fast`.
+- [x] Step 4: Run `py -B scripts/validate_planning_lifecycle.py`.
+- [x] Step 5: Run the focused contract, runtime, benchmark, and acceptance/reconciliation tests.
+- [x] Step 6: Run the full test suite and `git diff --check`.
+- [x] Step 7: Record any unavailable live probe capability as reporting evidence, never as normal coordination failure.
 
 **Verification:**
-- [ ] `py -B -m pytest tests/test_skill_project_secretary.py tests/test_skill_chief_of_staff.py tests/test_native_personal_local_workflow.py tests/test_secretary_evidence_adapter.py tests/test_secretary_live_runtime.py tests/test_secretary_benchmark.py tests/test_herdr_main_launcher.py tests/test_project_os_reconciliation.py tests/test_reconciliation.py -q`
-- [ ] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
-- [ ] `py -B scripts/validate_planning_lifecycle.py`
-- [ ] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
-- [ ] `py -B -m pytest -q`
-- [ ] `git diff --check`
+- [x] `py -B -m pytest tests/test_skill_project_secretary.py tests/test_skill_chief_of_staff.py tests/test_native_personal_local_workflow.py tests/test_secretary_evidence_adapter.py tests/test_secretary_live_runtime.py tests/test_secretary_benchmark.py tests/test_herdr_main_launcher.py tests/test_project_os_reconciliation.py tests/test_reconciliation.py -q` (`352 passed`)
+- [x] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
+- [x] `py -B scripts/validate_planning_lifecycle.py`
+- [x] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
+- [x] `py -B -m pytest -q` (`1210 passed, 2 skipped`)
+- [x] `git diff --check`
 - Expected: all required checks pass; no generated drift; no provider query on normal invocation; acceptance and lifecycle safety remain unchanged.
 
 **Exit Criteria:**
@@ -595,5 +601,5 @@ The plan is ready for completion verification when:
 10. any live capability limitation is recorded as optional observability evidence rather than promoted into a coordination failure;
 11. scope deviations, blocked capabilities, and deferred work are recorded in the plan before status changes to `completed`.
 
-The plan must remain `proposed` until the user explicitly approves execution.
+The plan was explicitly approved for execution; completion is recorded only after the required implementation and verification evidence above passed.
 

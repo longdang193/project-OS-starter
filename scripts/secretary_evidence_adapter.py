@@ -167,6 +167,7 @@ def build_evidence_bundle(
         embedded_provider = _mapping(launcher.get("provider_telemetry"))
         if embedded_provider:
             provider_usage = _provider_usage(launcher, embedded_provider)
+    probe_readiness = "READY" if launch.get("disposition") == "READY" and receipt["state"] == "present" else "BLOCKED_CAPABILITY"
     return {
         "schema_version": SCHEMA_VERSION,
         "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -180,7 +181,8 @@ def build_evidence_bundle(
             "recorded_target": _copy_fields(target, ("pane_id", "workspace_id", "cwd")) if target else {},
         },
         "secretary_receipt": receipt,
-        "readiness": "READY" if launch.get("disposition") == "READY" and receipt["state"] == "present" else "BLOCKED_CAPABILITY",
+        "probe_readiness": probe_readiness,
+        "readiness": probe_readiness,
     }
 
 
