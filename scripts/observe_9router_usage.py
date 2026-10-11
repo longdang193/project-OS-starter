@@ -181,7 +181,7 @@ def observe_usage(
     try:
         tables = _tables(connection)
         required = {
-            "usageHistory": {"timestamp", "provider", "model", "connectionId", "endpoint", "promptTokens", "completionTokens", "cost", "status"},
+            "usageHistory": {"timestamp", "provider", "model", "connectionId", "endpoint", "promptTokens", "completionTokens", "cost", "status", "meta"},
             "requestDetails": {"timestamp", "provider", "model", "connectionId", "status", "data"},
         }
         if any(not required[name] <= columns for name, columns in tables.items()):
@@ -189,7 +189,7 @@ def observe_usage(
 
         request_rows = connection.execute(
             """
-            select timestamp, provider, model, connectionId, status,
+            select id, timestamp, provider, model, connectionId, status,
                    coalesce(json_extract(data, '$.clientMetadata.session_id'), json_extract(data, '$.providerRequest.client_metadata.session_id'))
             from requestDetails
             where provider = 'codex'
@@ -200,7 +200,7 @@ def observe_usage(
         ).fetchall()
         requests: list[dict[str, Any]] = []
         session_ids: set[str] = set()
-        for timestamp, provider, model, row_connection, status, row_session in request_rows:
+        for detail_id, timestamp, provider, model, row_connection, status, row_session in request_rows:
             row_at = _timestamp(timestamp)
             if not start_at <= row_at <= end_at:
                 continue
@@ -209,6 +209,7 @@ def observe_usage(
                 continue
             requests.append(
                 {
+                    "detail_id": detail_id,
                     "timestamp": row_at.isoformat(),
                     "provider": provider,
                     "model": model,
@@ -220,7 +221,7 @@ def observe_usage(
         usage_rows = connection.execute(
             """
             select timestamp, provider, model, connectionId, endpoint,
-                   promptTokens, completionTokens, cost, status, tokens
+                   promptTokens, completionTokens, cost, status, tokens, meta
             from usageHistory
             where provider = 'codex'
               and (? is null or connectionId = ?)
@@ -236,8 +237,14 @@ def observe_usage(
             details = _token_details(row[9])
             if details is None:
                 return _result("inconclusive", "invalid_token_details")
+            try:
+                metadata = json.loads(row[10]) if isinstance(row[10], str) else {}
+            except json.JSONDecodeError:
+                return _result("inconclusive", "invalid_usage_metadata")
+            detail_id = metadata.get("request_detail_id") if isinstance(metadata, dict) else None
             usage.append(
                 {
+                    "detail_id": detail_id,
                     "timestamp": row_at.isoformat(),
                     "provider": row[1],
                     "model": row[2],
@@ -266,17 +273,6 @@ def observe_usage(
                 usage_count=len(usage),
                 observed_session_count=len(session_ids),
             )
-        request_keys = [
-            (request["timestamp"], request["provider"], request["model"], request["connection_id"])
-            for request in requests
-        ]
-        if len(request_keys) != len(set(request_keys)):
-            return _result(
-                "inconclusive",
-                "usage_join_ambiguous",
-                request_count=len(requests),
-            )
-
         if len(usage) != len(requests):
             return _result(
                 "inconclusive",
@@ -284,18 +280,20 @@ def observe_usage(
                 request_count=len(requests),
                 usage_count=len(usage),
             )
-        by_key: dict[tuple[str, str, str, str | None], list[dict[str, Any]]] = {}
+        by_key: dict[str, list[dict[str, Any]]] = {}
         for row in usage:
-            key = (row["timestamp"], row["provider"], row["model"], row["connection_id"])
-            by_key.setdefault(key, []).append(row)
+            if not isinstance(row["detail_id"], str) or not row["detail_id"].strip():
+                return _result("inconclusive", "usage_join_incomplete", request_count=len(requests), usage_count=len(usage))
+            by_key.setdefault(row["detail_id"], []).append(row)
 
         matched: list[dict[str, Any]] = []
         for request in requests:
-            key = (request["timestamp"], request["provider"], request["model"], request["connection_id"])
-            candidates = by_key.get(key, [])
+            candidates = by_key.get(request["detail_id"], [])
             if len(candidates) != 1:
-                return _result("inconclusive", "usage_join_incomplete", request_count=len(requests), matched_count=len(matched))
+                return _result("inconclusive", "usage_join_ambiguous" if len(candidates) > 1 else "usage_join_incomplete", request_count=len(requests), matched_count=len(matched))
             row = candidates[0]
+            if (row["provider"], row["model"], row["connection_id"]) != (request["provider"], request["model"], request["connection_id"]):
+                return _result("inconclusive", "usage_join_incomplete", request_count=len(requests), matched_count=len(matched))
             if request["status"] != "success" or row["status"] != "ok":
                 return _result("inconclusive", "request_not_successful", request_count=len(requests), matched_count=len(matched))
             if any(
@@ -346,13 +344,16 @@ def observe_run_usage(
     *,
     start: str,
     end: str,
+    expected_session_id: str | None = None,
     connection_id: str | None = None,
 ) -> dict[str, Any]:
-    """Discover one session in a bounded run window, then enforce the strict join."""
+    """Attribute a bounded run only to the caller-provided provider session."""
     start_at = _timestamp(start)
     end_at = _timestamp(end)
     if end_at <= start_at:
         raise ValueError("end must be after start")
+    if not isinstance(expected_session_id, str) or not expected_session_id.strip():
+        return _result("inconclusive", "session_binding_missing")
 
     connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
     try:
@@ -383,6 +384,8 @@ def observe_run_usage(
             "no_session_rows" if not sessions else "session_attribution_missing",
             observed_session_count=len(sessions),
         )
+    if expected_session_id not in sessions:
+        return _result("inconclusive", "session_attribution_mismatch", observed_session_count=len(sessions))
     if len(sessions) != 1:
         return _result(
             "inconclusive",
@@ -390,7 +393,7 @@ def observe_run_usage(
             observed_session_count=len(sessions),
         )
 
-    session_id = next(iter(sessions))
+    session_id = expected_session_id
     result = observe_usage(
         database,
         start=start,

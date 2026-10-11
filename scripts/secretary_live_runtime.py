@@ -332,7 +332,7 @@ def _observe_submitted_codex(
     return observation
 
 
-def _observe_provider_telemetry(start: str, end: str) -> dict[str, Any]:
+def _observe_provider_telemetry(start: str, end: str, *, expected_session_id: str | None = None) -> dict[str, Any]:
     candidates: list[Path] = []
     configured = os.environ.get("NINEROUTER_DATABASE")
     if configured:
@@ -347,10 +347,18 @@ def _observe_provider_telemetry(start: str, end: str) -> dict[str, Any]:
             "attribution": "time-window",
             "reason": "database_unavailable",
         }
+    if not isinstance(expected_session_id, str) or not expected_session_id.strip():
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "inconclusive",
+            "source": "9router-local-read-only",
+            "attribution": "session",
+            "reason": "session_binding_missing",
+        }
     start_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
     padded_start = start_at.isoformat()
     try:
-        result = observe_run_usage(database, start=padded_start, end=end)
+        result = observe_run_usage(database, start=padded_start, end=end, expected_session_id=expected_session_id)
         result["observation_window"] = {
             "start": padded_start,
             "end": end,
@@ -667,6 +675,22 @@ def _build_codex_runtime_snapshot(
     if not isinstance(payload, Mapping):
         return None
 
+    raw_runtime = payload.get("secretary_runtime")
+    if not isinstance(raw_runtime, Mapping) or raw_runtime.get("observed") is not True:
+        return None
+    raw_timestamps = raw_runtime.get("timestamps")
+    raw_metrics = raw_runtime.get("metrics")
+    raw_sources = raw_runtime.get("sources")
+    if (
+        not isinstance(raw_timestamps, Mapping)
+        or set(raw_timestamps) != set(_OBSERVED_TIMESTAMP_KEYS)
+        or not isinstance(raw_metrics, Mapping)
+        or set(raw_metrics) != set(_OBSERVED_METRIC_KEYS)
+        or not isinstance(raw_sources, Mapping)
+        or set(raw_sources) != set(_SOURCE_KEYS)
+    ):
+        return None
+
     herdr = payload.get("herdr")
     git = payload.get("git")
     registry = payload.get("registry_launcher")
@@ -689,8 +713,6 @@ def _build_codex_runtime_snapshot(
     if configured_model is not None and registry.get("model") != configured_model:
         return None
 
-    observed_at = _safe_text(observation.get("observed_at")) or finished_at
-    raw_runtime = payload.get("secretary_runtime")
     expected_values = {
         **{key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS},
         "repository_identity": request.repository_identity,
@@ -711,22 +733,9 @@ def _build_codex_runtime_snapshot(
         if isinstance(raw_runtime, Mapping)
         else {}
     )
-    fallback_timestamps = {
-        "run_started": started_at,
-        "cos_entry": started_at,
-        "secretary_entry": started_at,
-        "worker_entry": started_at,
-        "publication": observed_at,
-        "settlement": observed_at,
-        "acceptance": observed_at,
-        "secretary_exit": finished_at,
-        "cos_exit": finished_at,
-        "run_finished": finished_at,
-    }
-    timestamps = {
-        key: existing.get("timestamps", {}).get(key, fallback)
-        for key, fallback in fallback_timestamps.items()
-    }
+    timestamps = existing.get("timestamps")
+    if not isinstance(timestamps, Mapping) or set(timestamps) != set(_OBSERVED_TIMESTAMP_KEYS):
+        return None
     try:
         parsed_timestamps = [
             datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -1012,9 +1021,12 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         result.update(_classify_capabilities(result["disposition"], post_submit))
     else:
         result.update(_classify_capabilities(result["disposition"], None))
+    herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
+    expected_session_id = _safe_text(herdr.get("session")) if isinstance(herdr, Mapping) else None
     result["provider_telemetry"] = _observe_provider_telemetry(
         started,
         datetime.now(timezone.utc).isoformat(),
+        expected_session_id=expected_session_id,
     )
     runtime_snapshot = _build_codex_runtime_snapshot(
         request,

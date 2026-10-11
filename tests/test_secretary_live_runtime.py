@@ -41,6 +41,65 @@ def request(**overrides: object) -> SecretaryLaunchRequest:
     return SecretaryLaunchRequest(**values)
 
 
+def structured_runtime(request_value: SecretaryLaunchRequest, *, session_id: str, model: str) -> dict[str, object]:
+    binding = {
+        "pair_id": request_value.run_id,
+        "arm": "candidate",
+        "run_id": request_value.run_id,
+        "attempt_id": request_value.attempt_id,
+        "task_id": request_value.task_id,
+        "plan_revision": request_value.plan_revision,
+        "repository_identity": request_value.repository_identity,
+        "plan_identity": request_value.plan_identity,
+        "git_revision": request_value.git_revision,
+        "worktree": str(request_value.worktree.resolve()),
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request_value.plan_revision}:{request_value.task_id}",
+        "provider": SECRETARY_PROVIDER,
+        "model": model,
+        "controller_id": "cos-supervised",
+        "session_id": session_id,
+    }
+    producers = {
+        "launch": "herdr_main_launcher",
+        "secretary": "secretary_live_runtime",
+        "task_result": "dcode-project",
+        "settlement": "project_os_runtime.attempt",
+        "acceptance": "cos",
+    }
+    sources = {
+        name: {"producer": producer, "source_ref": f"runtime://{name}/{request_value.run_id}", "source_digest": "a" * 64, **binding}
+        for name, producer in producers.items()
+    }
+    return {
+        **binding,
+        "observed": True,
+        "timestamps": {
+            "run_started": "2026-10-10T10:00:00+00:00",
+            "cos_entry": "2026-10-10T10:00:01+00:00",
+            "secretary_entry": "2026-10-10T10:00:02+00:00",
+            "worker_entry": "2026-10-10T10:00:03+00:00",
+            "publication": "2026-10-10T10:00:40+00:00",
+            "settlement": "2026-10-10T10:00:50+00:00",
+            "acceptance": "2026-10-10T10:01:00+00:00",
+            "secretary_exit": "2026-10-10T10:01:05+00:00",
+            "cos_exit": "2026-10-10T10:01:08+00:00",
+            "run_finished": "2026-10-10T10:01:10+00:00",
+        },
+        "metrics": {
+            "cos_turns": 0,
+            "secretary_turns": 1,
+            "human_interventions": 0,
+            "publication_success": True,
+            "settlement_proven": True,
+            "acceptance_decision": "PASS",
+            "token_usage": "unknown",
+            "cost": "unknown",
+        },
+        "sources": sources,
+    }
+
+
 def test_launch_request_requires_secretary_provider() -> None:
     with pytest.raises(ValueError, match="9router"):
         request(provider="other-provider")
@@ -206,7 +265,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     assert result["evidence_provenance"] == "live-attributed"
 
 
-def test_run_smoke_emits_codex_runtime_receipt_after_cleanup(
+def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -257,11 +316,9 @@ def test_run_smoke_emits_codex_runtime_receipt_after_cleanup(
 
     result = run_smoke(request_value, output=tmp_path / "smoke.json")
 
-    assert result["disposition"] == "READY"
-    assert result["missing_capabilities"] == []
-    assert result["receipt"]["valid"] is True
-    assert result["receipt"]["metrics"]["settlement_proven"] == "unknown"
-    assert result["receipt"]["metrics"]["acceptance_decision"] == "unknown"
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["missing_capabilities"] == ["secretary_runtime_receipt"]
+    assert result["receipt"]["disposition"] == "BLOCKED_CAPABILITY"
 
 
 def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
@@ -593,29 +650,31 @@ def test_completed_transport_names_only_remaining_secretary_blocker() -> None:
 
 def test_completed_codex_transport_produces_bound_runtime_snapshot() -> None:
     request_value = request(session="live-session", pane="w1:p1")
+    payload = {
+        "herdr": {
+            "session": "live-session",
+            "pane": "w1:p1",
+            "agent_name": "normal-main-1234",
+            "version": "herdr-test",
+        },
+        "codex": {"version": "codex-test"},
+        "git": {
+            "worktree": str(request_value.worktree.resolve()),
+            "repo_root": str(request_value.worktree.resolve()),
+            "expected_base": request_value.expected_base,
+            "head": request_value.git_revision,
+        },
+        "registry_launcher": {
+            "repository_identity": request_value.repository_identity,
+            "plan_identity": request_value.plan_identity,
+            "model_provider": SECRETARY_PROVIDER,
+            "model": "gpt-test",
+        },
+        "secretary_runtime": structured_runtime(request_value, session_id="live-session", model="gpt-test"),
+    }
     snapshot = _build_codex_runtime_snapshot(
         request_value,
-        {
-            "herdr": {
-                "session": "live-session",
-                "pane": "w1:p1",
-                "agent_name": "normal-main-1234",
-                "version": "herdr-test",
-            },
-            "codex": {"version": "codex-test"},
-            "git": {
-                "worktree": str(request_value.worktree.resolve()),
-                "repo_root": str(request_value.worktree.resolve()),
-                "expected_base": request_value.expected_base,
-                "head": request_value.git_revision,
-            },
-            "registry_launcher": {
-                "repository_identity": request_value.repository_identity,
-                "plan_identity": request_value.plan_identity,
-                "model_provider": SECRETARY_PROVIDER,
-                "model": "gpt-test",
-            },
-        },
+        payload,
         {
             "state": "idle",
             "cleanup": {"state": "removed"},
@@ -679,17 +738,7 @@ def test_completed_codex_transport_promotes_only_matched_9router_usage() -> None
         },
     )
 
-    assert snapshot is not None
-    assert snapshot["metrics"]["secretary_turns"] == 1
-    assert snapshot["metrics"]["token_usage"] == {
-        "input_tokens": 100,
-        "output_tokens": 10,
-        "total_tokens": 110,
-        "cache_read_input_tokens": 80,
-        "cache_write_input_tokens": 5,
-        "source": "response.usage",
-        "confidence": "observed",
-    }
+    assert snapshot is None
 
 
 def test_sanitize_launcher_result_drops_unapproved_observed_fields() -> None:
@@ -814,8 +863,8 @@ def test_provider_telemetry_uses_attributed_9router_run_usage(
     database.write_bytes(b"")
     observed: list[dict[str, str]] = []
 
-    def fake_observe(path: Path, *, start: str, end: str) -> dict[str, object]:
-        observed.append({"database": str(path), "start": start, "end": end})
+    def fake_observe(path: Path, *, start: str, end: str, expected_session_id: str) -> dict[str, object]:
+        observed.append({"database": str(path), "start": start, "end": end, "expected_session_id": expected_session_id})
         return {
             "schema_version": "9router-usage-observation-v1",
             "disposition": "matched",
@@ -836,7 +885,11 @@ def test_provider_telemetry_uses_attributed_9router_run_usage(
     monkeypatch.setattr(runtime, "observe_run_usage", fake_observe)
     monkeypatch.setenv("NINEROUTER_DATABASE", str(database))
 
-    result = _observe_provider_telemetry("2026-10-10T00:00:00+00:00", "2026-10-10T00:00:01+00:00")
+    result = _observe_provider_telemetry(
+        "2026-10-10T00:00:00+00:00",
+        "2026-10-10T00:00:01+00:00",
+        expected_session_id="session-1",
+    )
 
     assert result["disposition"] == "matched"
     assert result["cache_read_input_tokens"] == 80
@@ -845,6 +898,7 @@ def test_provider_telemetry_uses_attributed_9router_run_usage(
     assert result["observation_window"]["lookback_seconds"] == 0.0
     assert observed[0]["start"] == "2026-10-10T00:00:00+00:00"
     assert observed[0]["end"] == "2026-10-10T00:00:01+00:00"
+    assert observed[0]["expected_session_id"] == "session-1"
 
 
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:

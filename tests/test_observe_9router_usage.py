@@ -50,8 +50,8 @@ def _database(path: Path, *, other_session: bool = False) -> None:
             (f"request-{index}", timestamp, model, data),
         )
         connection.execute(
-            "insert into usageHistory values (?, ?, 'codex', ?, 'connection-1', 'secret', '/v1/responses', ?, ?, ?, 'ok', '{}', '{}')",
-            (index, timestamp, model, input_tokens, output_tokens, cost),
+            "insert into usageHistory values (?, ?, 'codex', ?, 'connection-1', 'secret', '/v1/responses', ?, ?, ?, 'ok', '{}', ?)",
+            (index, timestamp, model, input_tokens, output_tokens, cost, json.dumps({"request_detail_id": f"request-{index}"})),
         )
     connection.commit()
     connection.close()
@@ -108,6 +108,7 @@ def test_run_observer_discovers_one_session_and_attributes_usage(tmp_path: Path)
         database,
         start="2026-10-09T14:24:49Z",
         end="2026-10-09T14:24:56Z",
+        expected_session_id="session-1",
         connection_id="connection-1",
     )
 
@@ -124,6 +125,7 @@ def test_run_observer_rejects_overlapping_sessions(tmp_path: Path) -> None:
         database,
         start="2026-10-09T14:24:49Z",
         end="2026-10-09T14:24:56Z",
+        expected_session_id="session-1",
         connection_id="connection-1",
     )
 
@@ -146,11 +148,43 @@ def test_run_observer_reports_missing_session_attribution(tmp_path: Path) -> Non
         database,
         start="2026-10-09T14:24:49Z",
         end="2026-10-09T14:24:56Z",
+        expected_session_id="session-1",
         connection_id="connection-1",
     )
 
     assert result["disposition"] == "inconclusive"
     assert result["reason"] == "session_attribution_missing"
+
+
+def test_run_observer_rejects_unique_unrelated_session(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+
+    result = observe_run_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        expected_session_id="secretary-session",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "inconclusive"
+    assert result["reason"] == "session_attribution_mismatch"
+
+
+def test_run_observer_requires_expected_session_binding(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+
+    result = observe_run_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "inconclusive"
+    assert result["reason"] == "session_binding_missing"
 
 
 def test_window_observer_reports_cached_tokens_and_provider_cost_without_attribution(tmp_path: Path) -> None:
@@ -270,7 +304,7 @@ def test_observer_rejects_session_rows_outside_window(tmp_path: Path) -> None:
     assert result["reason"] == "timestamp_boundary_unproven"
 
 
-def test_observer_rejects_duplicate_request_join_keys(tmp_path: Path) -> None:
+def test_observer_rejects_unmatched_request_detail_id(tmp_path: Path) -> None:
     database = tmp_path / "data.sqlite"
     _database(database)
     connection = sqlite3.connect(database)
@@ -291,7 +325,7 @@ def test_observer_rejects_duplicate_request_join_keys(tmp_path: Path) -> None:
     )
 
     assert result["disposition"] == "inconclusive"
-    assert result["reason"] == "usage_join_ambiguous"
+    assert result["reason"] == "usage_join_incomplete"
 
 
 def test_observer_rejects_unattributed_request_rows(tmp_path: Path) -> None:
