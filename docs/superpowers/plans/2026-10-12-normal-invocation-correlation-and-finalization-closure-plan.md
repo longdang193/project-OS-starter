@@ -89,7 +89,8 @@ telemetry dependencies.
 - Base commit: `14b0081c70c7a8f2a87846a827ec3a33b6730e1a` (`origin/main` at plan review)
 - Expected workspace: fresh managed worktree at the recorded base, clean before the plan checkpoint; primary-checkout changes and `docs/superpowers/plans/2026-10-11-normal-coordination-source-truth-convergence-plan.md` remain preserved outside the implementation lane
 - Next action: complete final verification, commit the implementation, and hand off for authorized publication/review
-- Blockers: mandatory normal semantic path passed; optional structured receipt/economics qualification is `BLOCKED_CAPABILITY` because the live probe captured the exact semantic answer but no structured runtime receipt was published
+- Blockers: `none`
+- Qualification: optional structured receipt/economics remains `BLOCKED_CAPABILITY` because the live probe captured the exact semantic answer but no structured runtime receipt was published
 
 Preflight admission requires all of the following before Task 1:
 
