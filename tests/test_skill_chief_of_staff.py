@@ -95,7 +95,7 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "`CODEX_HOME`",
         "required MCP/tool surface",
         "launched process cwd",
-        "native Codex lead controller",
+        "Only governed execution activates native Codex and Herdr lane requirements.",
         "Template Profile` selects the\nprofile contract",
         "agents/*.toml` owns its profile identity",
         "selected profile, resolved model, and Herdr launch binding",
@@ -104,7 +104,7 @@ def test_chief_of_staff_has_deterministic_binding_runtime_and_status_contract() 
         "verifies target lane readiness, Git/cwd identity,\nruntime/profile binding, and task delivery",
         "does not attest CoS controller\nidentity or own lane authority",
         "Top-level MAIN AGENTS are CoS execution lanes; sub-agents are subordinate lane\nworkers.",
-        "CoS assigns top-level\nMAIN AGENTS through Herdr.",
+        "CoS assigns top-level MAIN AGENTS through Herdr.",
         "MAIN\nAGENT may spawn Native Codex or DeepAgents sub-agents when needed",
         "Before consumer local dispatch, run\n`py -B \"$HOME/.agents/project-os/scripts/validate_repo_contracts.py\" --repo-root . --fast --plan \"$PLAN\"`",
         "Factory maintainers additionally run\n`py -B scripts/validate_agent_runtime_drift.py --all-platforms`",
@@ -206,15 +206,15 @@ def test_chief_of_staff_defines_canonical_work_modes_and_advisory_boundaries() -
         "exact commit SHA",
         "repository identity",
         "scoped target",
-        "Advisory CoS may inspect, synthesize, challenge, and recommend",
-        "Advisory CoS has no mutation authority",
+        "Direct CoS reasoning is an in-session semantic role",
+        "but has no mutation authority",
         "explicit current-work owner",
         "canonical work owner",
         "existing repository or workflow authority",
         "source-relative freshness",
         "Remote or immutable inspection needs no worktree",
         "local tools can mutate",
-        "CoS must not activate for PR, release, incident, specification, research, or cross-repository work",
+        "PR, release, incident, specification, research, and cross-repository advisory analysis are not blanket exclusions",
         "CoS coordinates work; it does not own work execution or canonical work truth",
     ):
         assert text in normalized
@@ -229,17 +229,15 @@ def test_chief_of_staff_scopes_exact_binding_to_exact_audits() -> None:
     normalized_dispatch = " ".join(dispatch.split())
 
     for text in (
-        "Advisory reasoning may proceed without an exact commit",
-        "explicit uncertainty",
-        "An exact repository audit requires",
-        "Missing Herdr does not prevent direct advisory reasoning",
-        "blocks only a managed Herdr lane when that lane is required",
+        "Direct CoS reasoning is an in-session semantic role and does not require a plan, Herdr, native Codex qualification, or an exact-commit repository audit",
+        "PR, release, incident, specification, research, and cross-repository advisory analysis are not blanket exclusions",
+        "action determines its assurance needs",
     ):
         assert text in normalized_skill
     for text in (
-        "Advisory reasoning may proceed without exact commit binding",
-        "must state uncertainty",
-        "An exact repository audit requires exact repository commit",
+        "Direct advisory CoS is an in-session semantic role and needs no plan, `Required skills` opt-in, native Codex qualification, Herdr, or exact-commit audit when the requested action is read-only reasoning",
+        "Bind an exact commit or use clean isolation when local inspection tools cannot enforce read-only behavior",
+        "action-specific assurance applies",
     ):
         assert text in normalized_dispatch
 
@@ -360,7 +358,8 @@ def test_planning_dispatch_selects_cos_for_sustained_implementation_coordination
     normalized = " ".join(dispatch.split())
     assert "sustained handoffs, independent top-level lanes" in normalized
     assert "Select `skill-chief-of-staff` in `advisory` mode" in dispatch
-    assert "Advisory mode needs no plan or" in dispatch
+    assert "Direct advisory CoS is an in-session semantic" in dispatch
+    assert "needs no plan, `Required skills` opt-in, native Codex qualification" in dispatch
     assert "does not add an executor, profile, plan field, or durable state artifact" in " ".join(dispatch.split())
     assert "Herdr is\nruntime transport and diagnostic observation, not lifecycle ownership" in dispatch
     assert "only independent Herdr top-level MAIN AGENT\nlanes" in dispatch

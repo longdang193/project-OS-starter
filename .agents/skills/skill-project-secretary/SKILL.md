@@ -38,6 +38,14 @@ one bounded task when the existing direct path already contains the work.
 Secretary may operate on an explicit-turn. Unattended event handling is not
 required for Secretary activation.
 
+Normal live `run` is a coordination and read-only repository invocation. It may
+inspect, reason, prioritize, route, contact CoS, and summarize, but it does not
+edit repository implementation. A request such as “fix this” becomes a
+Secretary attention result followed by CoS action selection and an authorized
+Worker or governed execution path. Normal `run` does not require a strict
+receipt, provider telemetry, Herdr qualification, or plan binding unless the
+selected next action consumes that evidence.
+
 ## Routing Contract
 
 When active, Secretary invokes existing Project OS execution-selection policy.

@@ -69,6 +69,16 @@ def test_project_secretary_defines_right_sized_routing() -> None:
         assert text in normalized
 
 
+def test_project_secretary_normal_run_is_read_only_and_progressively_assured() -> None:
+    skill = " ".join(read(".agents/skills/skill-project-secretary/SKILL.md").split()).casefold()
+
+    assert "normal live `run` is a coordination and read-only repository invocation" in skill
+    assert "does not edit repository implementation" in skill
+    assert "a request such as “fix this” becomes a secretary attention result" in skill
+    assert "cos action selection and an authorized worker or governed execution path" in skill
+    assert "does not require a strict receipt, provider telemetry, herdr qualification, or plan binding" in skill
+
+
 def test_secretary_docket_requires_only_minimal_attention_fields() -> None:
     docket = yaml.safe_load(
         (ROOT / "docs/operating_system/templates/secretary-docket.yaml").read_text(

@@ -1,6 +1,6 @@
 ---
 name: skill-chief-of-staff
-description: "Codex lead only: use when canonical work needs advisory audit or sustained top-level coordination across independent lanes."
+description: "Use when canonical work needs workstream analysis, recommendation, routing, or sustained top-level coordination across independent lanes."
 required_reads: []
 distribution_tier: starter_kit
 ---
@@ -20,25 +20,24 @@ workers.
 
 ## Activation
 
-Use CoS only when canonical work is deterministically bindable, two or more
-materially independent lanes need synthesis, or a substantial isolated detour
-needs coordination. Use ordinary execution for single-lane work or simple
-parallel aggregation. CoS activates only under a native Codex lead controller.
-Use coordination mode `advisory` or `plan-bound-execution`.
+Use CoS when canonical work needs workstream analysis, recommendation, routing,
+continuation, escalation, or coordination across materially independent lanes.
+Direct CoS reasoning is an in-session semantic role and does not require a plan,
+Herdr, native Codex qualification, or an exact-commit repository audit. It may
+inspect, synthesize, challenge, recommend, route, and escalate, but has no
+mutation authority. PR, release, incident, specification, research, and
+cross-repository advisory analysis are not blanket exclusions; the requested
+action determines its assurance needs.
 
-Advisory CoS may inspect, synthesize, challenge, and recommend with available
-canonical evidence. Advisory reasoning may proceed without an exact commit when
-the request does not require exact repository claims, but it must state explicit
-uncertainty. Advisory CoS has no mutation authority. An exact repository audit requires an
-exact commit-bound repository target. PR, release, incident, specification,
-research, and cross-repository work remain out of scope. Plan-bound execution requires an approved plan that
-lists `skill-chief-of-staff` in `Required skills` and needs sustained handoffs,
-independent write-capable lanes, or cross-task coordination.
-CoS must not activate for PR, release, incident, specification, research, or
-cross-repository work.
+Use coordination mode `advisory` or `plan-bound-execution`. Plan-bound
+execution requires an approved plan that lists `skill-chief-of-staff` in
+`Required skills` and needs sustained handoffs, independent write-capable
+lanes, or cross-task coordination. Governed execution, mutation, acceptance,
+review, integration, retry, and settlement retain their existing runtime and
+plan gates.
 
-CoS activates only under a native Codex lead controller. CoS assigns top-level
-MAIN AGENTS through Herdr. Each MAIN AGENT receives a bounded task and owns
+Only governed execution activates native Codex and Herdr lane requirements.
+Under that mode, CoS assigns top-level MAIN AGENTS through Herdr. Each MAIN AGENT receives a bounded task and owns
 execution, evidence, and lane-local changes. The shared attempt contract owns
 admission and settlement semantics; the worker wrapper owns execution,
 deadlines, descendants, cleanup, and receipts; Herdr owns delivery and
@@ -55,9 +54,9 @@ After resolution:
 - `codex` uses a CoS-managed Herdr MAIN AGENT.
 - `deepagents` uses a CoS-managed `dcode-project` MAIN lane through Herdr.
 
-Review and integration remain Codex-only. Other
-generated adapters may carry this skill, but their non-Codex lead must return
-`BLOCKED` rather than activate it.
+Review and integration remain Codex-only for governed execution. Other
+generated adapters may carry this skill for direct reasoning and recommendation;
+they must not claim governed execution capabilities they do not provide.
 
 Apply the CoS Executor Eligibility contract from
 `docs/operating_system/planning/planning-dispatch.md`.
@@ -192,10 +191,8 @@ reports recommendations; the resolved external owner accepts them.
 
 ### Repository Snapshot Advisory Binding
 
-For an exact advisory repository audit, bind repository identity, exact commit
-SHA, scoped target, and evidence authority before inspection. Advisory reasoning
-may proceed without an exact commit for non-audit questions when it labels
-uncertainty and avoids exact repository claims. Commit-bound Git evidence remains
+For advisory work, bind repository identity, exact commit SHA, scoped target,
+and evidence authority before inspection. Commit-bound Git evidence remains
 valid while its anchor is unchanged. Runtime evidence uses
 `fresh-this-turn`; external mutable evidence follows its own freshness boundary.
 Do not reuse runtime evidence across explicit turns unless its anchor is
@@ -249,9 +246,7 @@ Audit result: `NO_ACTION | INSPECT | BLOCKED`.
 Consume blocking and verification semantics from their canonical owners; do not
 recreate their failure taxonomy. Herdr absence alone is not a blocker. Treat it
 as actionable only when current plan or current-turn evidence establishes that
-a live bound agent is expected. Missing Herdr does not prevent direct advisory
-reasoning or selecting an independently safe path; it blocks only a managed
-Herdr lane when that lane is required.
+a live bound agent is expected.
 
 Audit outcomes are advisory attention results, not workflow-state transitions.
 The audit does not mutate plan, Git, PR state, Herdr, authority, or durable

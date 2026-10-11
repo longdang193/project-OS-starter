@@ -46,8 +46,8 @@ Reduce repeated coordination.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | current | `deepagents` | none | parser proof | evidence-1 |
-| Task 2 | `completed` | current | `deepagents` | Task 1 | projection proof | evidence-2 |
+| Task 1 | `completed` | current | `deepagents` | none | parser proof | evidence-1; accepted_task_id=Task 1; accepted_candidate_sha=revision-1; accepted_plan_identity=plan-1 |
+| Task 2 | `completed` | current | `deepagents` | Task 1 | projection proof | evidence-2; accepted_task_id=Task 2; accepted_candidate_sha=revision-2; accepted_plan_identity=plan-1 |
 | Task 3 | `pending` | current | `deepagents` | Tasks 1, 2 | dispatch proof | pending |
 | Task 4 | `pending` | current | `deepagents` | Tasks 1-3 | final proof | pending |
 
@@ -203,6 +203,7 @@ def test_apply_accepted_plan_transitions_rejects_tampered_proof(tmp_path: Path) 
         "task": {
             "task_id": "Task 1",
             "plan_identity": "plan-1",
+            "attempt_id": "attempt-1",
             "required_proof": "artifact proof",
             "required_conditions": {"required artifact exists": "artifact proof"},
             "evidence": "evidence-1",
@@ -213,6 +214,10 @@ def test_apply_accepted_plan_transitions_rejects_tampered_proof(tmp_path: Path) 
         "git": {
             "repository_identity": "repo",
             "plan_identity": "plan-1",
+            "lane_head_sha": "candidate-1",
+            "checkpoint_sha": "checkpoint-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
             "head_matches": True,
             "write_scope_matches": True,
         },
@@ -246,6 +251,7 @@ def test_apply_accepted_plan_transitions_rejects_unapproved_batch_task(tmp_path:
         "task": {
             "task_id": "Task 1",
             "plan_identity": "plan-1",
+            "attempt_id": "attempt-1",
             "required_proof": "artifact proof",
             "required_conditions": {"required artifact exists": "artifact proof"},
             "evidence": "evidence-1",
@@ -253,7 +259,7 @@ def test_apply_accepted_plan_transitions_rejects_unapproved_batch_task(tmp_path:
         },
         "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
         "artifact_conditions": {"required artifact exists": True},
-        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
         "settlement": {"settlement_proven": True, "resource_settled": True},
     }
@@ -285,6 +291,7 @@ def test_apply_accepted_plan_transitions_rejects_cross_plan_replay(tmp_path: Pat
         "task": {
             "task_id": "Task 1",
             "plan_identity": "plan-a",
+            "attempt_id": "attempt-1",
             "required_proof": "artifact proof",
             "required_conditions": {"required artifact exists": "artifact proof"},
             "evidence": "evidence-1",
@@ -292,7 +299,7 @@ def test_apply_accepted_plan_transitions_rejects_cross_plan_replay(tmp_path: Pat
         },
         "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
         "artifact_conditions": {"required artifact exists": True},
-        "git": {"repository_identity": "repo", "plan_identity": "plan-a", "head_matches": True, "write_scope_matches": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-a", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
         "settlement": {"settlement_proven": True, "resource_settled": True},
     }
@@ -356,6 +363,7 @@ def test_native_cos_negative_to_positive_plan_cycle(tmp_path: Path) -> None:
         "task": {
             "task_id": "Task 1",
             "plan_identity": "plan-1",
+            "attempt_id": "attempt-1",
             "required_proof": "artifact proof",
             "required_conditions": {"required artifact exists": "artifact proof"},
             "evidence": "evidence-1",
@@ -370,6 +378,10 @@ def test_native_cos_negative_to_positive_plan_cycle(tmp_path: Path) -> None:
         "git": {
             "repository_identity": "repo",
             "plan_identity": "plan-1",
+            "lane_head_sha": "candidate-1",
+            "checkpoint_sha": "checkpoint-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
             "head_matches": True,
             "write_scope_matches": True,
         },
@@ -408,6 +420,7 @@ def test_native_cos_negative_to_positive_plan_cycle(tmp_path: Path) -> None:
         expected_revision=revision,
     )
     assert applied["authorized"] is True
+    assert applied["accepted_candidate_sha"] == "candidate-1"
     assert load_plan(plan_path).tasks["Task 1"].state == "completed"
     assert load_plan(plan_path).tasks["Task 2"].state == "active"
 
@@ -420,6 +433,55 @@ def test_native_cos_negative_to_positive_plan_cycle(tmp_path: Path) -> None:
     assert replay["reason"] == "plan revision changed"
 
 
+def test_apply_accepted_plan_transitions_rejects_replay_for_different_candidate(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan_path.write_text(plan, encoding="utf-8")
+    inputs = {
+        "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "attempt_id": "attempt-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"artifact": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
+        "verification": {"passed": True},
+        "settlement": {"settlement_proven": True, "resource_settled": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+    transitions = [{"task_id": "Task 1", "expected_state": "active", "next_state": "completed"}]
+    assert apply_accepted_plan_transitions(plan_path, decision, transitions, expected_revision=revision)["authorized"] is True
+
+    replay = {
+        **decision,
+        "task_transition": {**decision["task_transition"], "accepted_candidate_sha": "candidate-2"},
+        "acceptance_proof": {
+            **decision["acceptance_proof"],
+            "git": {**decision["acceptance_proof"]["git"], "candidate_sha": "candidate-2", "attempt_id": "attempt-2"},
+        },
+    }
+    rejected = apply_accepted_plan_transitions(plan_path, replay, transitions, expected_revision=revision)
+    assert rejected["authorized"] is False
+
+
+def test_prepare_plan_lanes_uses_logical_identity_for_parsed_graph(tmp_path: Path) -> None:
+    graph = parse_plan(_active_plan())
+
+    lane = prepare_plan_lanes(graph, ["Task 2"], {"Task 2": _binding(tmp_path)})[0]
+
+    assert lane["plan_identity"] == "demo-plan"
+
+
+def test_unnamed_file_plan_keeps_stable_stem_identity(tmp_path: Path) -> None:
+    plan_path = tmp_path / "unnamed-plan.md"
+    plan_path.write_text(_active_plan().replace("name: demo-plan\n", ""), encoding="utf-8")
+
+    graph = load_plan(plan_path)
+
+    assert graph.plan_identity == "unnamed-plan"
+    normalized = plan_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert graph.plan_revision == hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def test_apply_accepted_plan_transitions_replays_release_after_transition_commit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -429,10 +491,10 @@ def test_apply_accepted_plan_transitions_replays_release_after_transition_commit
     plan_path.write_text(plan, encoding="utf-8")
     inputs = {
         "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
-        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "attempt_id": "attempt-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
         "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
         "artifact_conditions": {"artifact": True},
-        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
         "settlement": {"settlement_proven": True, "resource_settled": True},
     }
@@ -448,7 +510,19 @@ def test_apply_accepted_plan_transitions_replays_release_after_transition_commit
         {"task_id": "Task 2", "expected_state": "pending", "next_state": "active"},
     ]
     revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
-    committed = apply_plan_transitions(plan_path, transitions, expected_revision=revision)
+    committed = apply_plan_transitions(
+        plan_path,
+        transitions,
+        expected_revision=revision,
+        accepted_consequence={
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "candidate_sha": "candidate-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "acceptance_checkpoint_sha": "checkpoint-1",
+        },
+    )
     assert committed["authorized"] is True
     calls: list[str] = []
 
@@ -480,10 +554,10 @@ def test_apply_accepted_plan_transitions_prefers_current_attempt_resources(
     plan_path.write_text(plan, encoding="utf-8")
     inputs = {
         "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
-        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "attempt_id": "attempt-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
         "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
         "artifact_conditions": {"artifact": True},
-        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
         "settlement": {"settlement_proven": True, "resource_settled": True},
     }
@@ -499,7 +573,19 @@ def test_apply_accepted_plan_transitions_prefers_current_attempt_resources(
         {"task_id": "Task 2", "expected_state": "pending", "next_state": "active"},
     ]
     revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
-    assert apply_plan_transitions(plan_path, transitions, expected_revision=revision)["authorized"] is True
+    assert apply_plan_transitions(
+        plan_path,
+        transitions,
+        expected_revision=revision,
+        accepted_consequence={
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "candidate_sha": "candidate-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "acceptance_checkpoint_sha": "checkpoint-1",
+        },
+    )["authorized"] is True
     current_binding = {
         "assignment_id": "assignment-1",
         "attempt_id": "attempt-2",
@@ -654,10 +740,10 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
     inputs = {
         "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
-        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "attempt_id": "attempt-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
         "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
         "artifact_conditions": {"artifact": True},
-        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "head_matches": True, "write_scope_matches": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
         "settlement": {"settlement_proven": True, "resource_settled": True},
     }
@@ -674,7 +760,19 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     ]
     preview_path = tmp_path / "preview.md"
     preview_path.write_text(plan, encoding="utf-8")
-    apply_plan_transitions(preview_path, transitions, expected_revision=revision)
+    apply_plan_transitions(
+        preview_path,
+        transitions,
+        expected_revision=revision,
+        accepted_consequence={
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "candidate_sha": "candidate-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "acceptance_checkpoint_sha": "checkpoint-1",
+        },
+    )
     expected_post_revision = hashlib.sha256(preview_path.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
     artifact = repo / "task-result.json"
     artifact.write_text('{"producer":"dcode-project","schema":"dcode-project.task-result.v1"}', encoding="utf-8")
@@ -713,6 +811,7 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
         "required_consumers": [],
         "consumer_releases": {},
         "retention": {},
+        "runtime_settlement": {"attempt_id": "attempt-1", "settlement_proven": True, "resource_settled": True},
         "evidence_paths": {"task-result": artifact},
         "retirement_proof": {"retirement_complete": True, "plan_ref": "plan-1", "task_id": "Task 1", "assignment_id": "assignment-1", "attempt_id": "attempt-1"},
     }
@@ -723,6 +822,7 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
     assert persist_calls[0][0] == revision
     post_transition_revision = first["new_revision"]
     assert post_transition_revision == expected_post_revision
+    assert "accepted_task_id=Task 1" in plan_path.read_text(encoding="utf-8")
 
     subprocess.run(["git", "-C", str(repo), "add", "plan.md"], check=True, capture_output=True, text=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "plan checkpoint"], check=True, capture_output=True, text=True)
@@ -807,8 +907,8 @@ def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
         "attempt_deadline": 100.0,
         "local_capabilities": {"requested": ["py"]},
         "accepted_prerequisites": {
-            "Task 1": {"accepted_revision": "revision-1"},
-            "Task 2": {"accepted_revision": "revision-2"},
+            "Task 1": {"accepted_revision": "revision-1", "accepted_candidate_sha": "revision-1"},
+            "Task 2": {"accepted_revision": "revision-2", "accepted_candidate_sha": "revision-2"},
         },
     }
 
@@ -836,6 +936,19 @@ def test_prepare_lane_inputs_rejects_conflicting_runtime_task() -> None:
         )
 
 
+def test_prepare_lane_inputs_rejects_candidate_revision_substitution() -> None:
+    runtime = _binding(Path("."))
+    runtime["accepted_prerequisites"] = {
+        "Task 1": {
+            "accepted_revision": runtime["expected_base"],
+            "accepted_candidate_sha": "unrelated-candidate",
+        }
+    }
+
+    with pytest.raises(ValueError, match="accepted candidate and revision mismatch"):
+        prepare_plan_lanes(_active_plan(), ["Task 2"], {"Task 2": runtime})
+
+
 
 
 def test_prepare_lane_inputs_rejects_stale_plan_identity() -> None:
@@ -848,7 +961,7 @@ def test_prepare_lane_inputs_rejects_stale_plan_identity() -> None:
 
 
 def _active_plan() -> str:
-    return textwrap.dedent(
+    plan = textwrap.dedent(
         """
         ---
         artifact_type: plan
@@ -883,7 +996,7 @@ def _active_plan() -> str:
 
         | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
         | --- | --- | --- | --- | --- | --- | --- |
-        | Task 1 | `completed` | current | `deepagents` | none | proof | recorded |
+        | Task 1 | `completed` | current | `deepagents` | none | proof | recorded; accepted_candidate_sha=revision-1; accepted_plan_identity=demo-plan; accepted_assignment_id=assignment-1; accepted_attempt_id=attempt-1; accepted_checkpoint_sha=checkpoint-1 |
         | Task 2 | `active` | current | `deepagents` | Task 1 | required dispatch proof | pending |
 
         ## Task Breakdown
@@ -917,6 +1030,8 @@ def _active_plan() -> str:
         This section must not enter worker task text.
         """
     ).strip() + "\n"
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    return plan.replace("accepted_candidate_sha=revision-1", f"accepted_candidate_sha={head}")
 
 
 def _binding(tmp_path: Path) -> dict[str, object]:
@@ -940,7 +1055,7 @@ def _binding(tmp_path: Path) -> dict[str, object]:
         "remaining_authorized_task_allowance": 10,
         "attempt_deadline": 100.0,
         "accepted_prerequisites": {
-            "Task 1": {"accepted_revision": head}
+            "Task 1": {"accepted_revision": head, "accepted_candidate_sha": head}
         },
     }
 
