@@ -815,6 +815,39 @@ def test_normal_outcome_reports_captured_observation_content() -> None:
     }
 
 
+def test_normal_outcome_scopes_launcher_observation_error_without_downgrading_result() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {
+                    "state": "completed",
+                    "observation_error": "not_observed",
+                },
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={
+            "state": "done",
+            "semantic_content": "SECRETARY_PROBE_test",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "content": "SECRETARY_PROBE_test",
+    }
+    assert result["execution"]["observation_error"] == "not_observed"
+    assert result["execution"]["observation_error_scope"] == "launcher"
+    assert result["observability"]["launcher_observation_error"] == "not_observed"
+    assert result["observability"]["observation_error"] is None
+
+
 def test_normal_outcome_does_not_report_terminal_screen_as_semantic_content() -> None:
     result = _normalize_invocation_outcome(
         invocation_id="invoke-1",

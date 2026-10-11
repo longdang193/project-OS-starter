@@ -1471,6 +1471,10 @@ def _normalize_invocation_outcome(
     assignment = assignment if isinstance(assignment, Mapping) else {}
     execution = assignment.get("execution")
     execution = dict(execution) if isinstance(execution, Mapping) else {}
+    launcher_observation_error = _safe_text(execution.get("observation_error"))
+    if launcher_observation_error:
+        execution["observation_error_scope"] = "launcher"
+        execution["launcher_observation_error"] = launcher_observation_error
     if not isinstance(execution.get("state"), str):
         execution["state"] = "failed" if returncode else "unknown"
     cleanup = assignment.get("cleanup")
@@ -1537,6 +1541,7 @@ def _normalize_invocation_outcome(
         "state_change_seq": observed.get("state_change_seq"),
         "output_chars": observed.get("output_chars"),
         "observation_error": observed.get("observation_error"),
+        "launcher_observation_error": launcher_observation_error,
     }
     return {
         "schema_version": "secretary-invocation-v1",
