@@ -1422,10 +1422,13 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     finally:
         if workspace_id is not None:
             preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
+            completion_state = result.get("observability", {}).get("completion_state")
             if (
-                result.get("resource", {}).get("state") == "settled"
-                and preflight["workspace_close"].get("state") != "closed"
+                preflight["workspace_close"].get("state") == "closed"
+                and completion_state in {"idle", "failed", "stopped"}
             ):
+                result["resource"] = {"state": "settled", "reuse_blocked": False}
+            elif result.get("resource", {}).get("state") == "settled":
                 result["resource"] = {"state": "quarantined", "reuse_blocked": True}
     result["preflight"] = preflight
     output.parent.mkdir(parents=True, exist_ok=True)

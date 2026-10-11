@@ -528,6 +528,65 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     assert events == ["workspace_close", "provider_observation"]
 
 
+def test_run_normal_settles_resource_when_owned_workspace_closes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    request_value = normal_request(worktree=tmp_path)
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (request_value, {"selector_mode": "test"}, "w99"),
+    )
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: type(
+            "Result",
+            (),
+            {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "herdr": {
+                            "session": "default",
+                            "pane": "w99:p1",
+                            "agent_name": "normal-main-1234",
+                        },
+                        "assignment": {
+                            "execution": {"state": "completed"},
+                            "task_result": {
+                                "state": "reported_completed",
+                                "result_reference": "herdr://default/normal-main-1234/1",
+                            },
+                        },
+                    }
+                ),
+                "stderr": "",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_observe_submitted_codex",
+        lambda *args, **kwargs: {"state": "idle", "cleanup": {"state": "unknown"}},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_close_herdr_workspace",
+        lambda *args, **kwargs: {"state": "closed"},
+    )
+
+    result = runtime.run_normal(request_value, output=tmp_path / "normal.json")
+
+    assert result["result"]["state"] == "reported"
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+
+
 def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
