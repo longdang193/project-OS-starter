@@ -761,6 +761,12 @@ def _build_codex_runtime_snapshot(
         "workstream": "secretary-live-runtime",
         "checkpoint": f"{request.plan_revision}:{request.task_id}",
     }
+    identity_fields = _RUNTIME_BINDING_KEYS + (
+        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "provider", "model", "controller_id", "session_id",
+    )
+    if any(raw_runtime.get(key) != expected_values.get(key) for key in identity_fields):
+        return None
     existing = (
         _safe_runtime_snapshot(raw_runtime, expected_values)
         if isinstance(raw_runtime, Mapping)

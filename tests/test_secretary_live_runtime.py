@@ -735,6 +735,37 @@ def test_runtime_snapshot_uses_provider_session_not_herdr_control_session() -> N
     assert snapshot["session_id"] == "provider-session"
 
 
+def test_runtime_snapshot_rejects_mismatched_top_level_identity() -> None:
+    request_value = request(session="live-session", pane="w1:p1")
+    runtime = structured_runtime(request_value, session_id="provider-session", model="gpt-test")
+    runtime["attempt_id"] = "attempt-other"
+    payload = {
+        "herdr": {"session": "live-session"},
+        "git": {
+            "worktree": str(request_value.worktree.resolve()),
+            "repo_root": str(request_value.worktree.resolve()),
+            "expected_base": request_value.expected_base,
+            "head": request_value.git_revision,
+        },
+        "registry_launcher": {
+            "repository_identity": request_value.repository_identity,
+            "plan_identity": request_value.plan_identity,
+            "model_provider": SECRETARY_PROVIDER,
+            "model": "gpt-test",
+        },
+        "secretary_runtime": runtime,
+    }
+
+    assert _build_codex_runtime_snapshot(
+        request_value,
+        payload,
+        {"state": "idle", "cleanup": {"state": "removed"}},
+        configured_model="gpt-test",
+        started_at="2026-10-10T10:00:00+00:00",
+        finished_at="2026-10-10T10:00:06+00:00",
+    ) is None
+
+
 @pytest.mark.parametrize("mutation", ["empty_sources", "wrong_attempt", "wrong_session"])
 def test_runtime_snapshot_rejects_untrusted_source_records(mutation: str) -> None:
     request_value = request(session="live-session", pane="w1:p1")
