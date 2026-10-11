@@ -703,6 +703,75 @@ def test_completed_codex_transport_produces_bound_runtime_snapshot() -> None:
     assert all(source["attempt_id"] == request_value.attempt_id for source in snapshot["sources"].values())
 
 
+def test_runtime_snapshot_uses_provider_session_not_herdr_control_session() -> None:
+    request_value = request(session="herdr-session", pane="w1:p1")
+    payload = {
+        "herdr": {"session": "herdr-control-session"},
+        "git": {
+            "worktree": str(request_value.worktree.resolve()),
+            "repo_root": str(request_value.worktree.resolve()),
+            "expected_base": request_value.expected_base,
+            "head": request_value.git_revision,
+        },
+        "registry_launcher": {
+            "repository_identity": request_value.repository_identity,
+            "plan_identity": request_value.plan_identity,
+            "model_provider": SECRETARY_PROVIDER,
+            "model": "gpt-test",
+        },
+        "secretary_runtime": structured_runtime(request_value, session_id="provider-session", model="gpt-test"),
+    }
+
+    snapshot = _build_codex_runtime_snapshot(
+        request_value,
+        payload,
+        {"state": "idle", "cleanup": {"state": "removed"}},
+        configured_model="gpt-test",
+        started_at="2026-10-10T10:00:00+00:00",
+        finished_at="2026-10-10T10:00:06+00:00",
+    )
+
+    assert snapshot is not None
+    assert snapshot["session_id"] == "provider-session"
+
+
+@pytest.mark.parametrize("mutation", ["empty_sources", "wrong_attempt", "wrong_session"])
+def test_runtime_snapshot_rejects_untrusted_source_records(mutation: str) -> None:
+    request_value = request(session="live-session", pane="w1:p1")
+    runtime = structured_runtime(request_value, session_id="provider-session", model="gpt-test")
+    if mutation == "empty_sources":
+        runtime["sources"] = {name: {} for name in runtime["sources"]}
+    elif mutation == "wrong_attempt":
+        runtime["sources"]["settlement"]["attempt_id"] = "attempt-other"
+    else:
+        runtime["sources"]["secretary"]["session_id"] = "provider-other"
+    payload = {
+        "herdr": {"session": "live-session"},
+        "git": {
+            "worktree": str(request_value.worktree.resolve()),
+            "repo_root": str(request_value.worktree.resolve()),
+            "expected_base": request_value.expected_base,
+            "head": request_value.git_revision,
+        },
+        "registry_launcher": {
+            "repository_identity": request_value.repository_identity,
+            "plan_identity": request_value.plan_identity,
+            "model_provider": SECRETARY_PROVIDER,
+            "model": "gpt-test",
+        },
+        "secretary_runtime": runtime,
+    }
+
+    assert _build_codex_runtime_snapshot(
+        request_value,
+        payload,
+        {"state": "idle", "cleanup": {"state": "removed"}},
+        configured_model="gpt-test",
+        started_at="2026-10-10T10:00:00+00:00",
+        finished_at="2026-10-10T10:00:06+00:00",
+    ) is None
+
+
 def test_completed_codex_transport_promotes_only_matched_9router_usage() -> None:
     request_value = request(session="live-session", pane="w1:p1")
     payload = {

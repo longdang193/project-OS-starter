@@ -469,13 +469,7 @@ def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str
 
 
 def _launcher_identity_matches(runtime: Mapping[str, Any], herdr: Mapping[str, Any] | None) -> bool:
-    if not isinstance(herdr, Mapping):
-        return False
-    session = herdr.get("session")
-    if isinstance(session, str) and session.strip():
-        safe_session = _safe_text(session)
-        return safe_session is not None and runtime.get("session_id") == safe_session
-    return True
+    return _safe_text(runtime.get("session_id")) is not None
 
 
 def _launcher_facts_match(
@@ -652,6 +646,45 @@ def _safe_runtime_snapshot(
     return snapshot
 
 
+def _validated_runtime_receipt(
+    request: SecretaryLaunchRequest,
+    runtime: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(runtime, Mapping):
+        return None
+    binding = {
+        "pair_id": request.run_id,
+        "arm": "candidate",
+        "run_id": request.run_id,
+        "attempt_id": request.attempt_id,
+        "task_id": request.task_id,
+        "plan_revision": request.plan_revision,
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "git_revision": request.git_revision,
+        "worktree": str(request.worktree.resolve()),
+        "workstream": "secretary-live-runtime",
+        "checkpoint": f"{request.plan_revision}:{request.task_id}",
+    }
+    try:
+        return validate_live_receipt(
+            build_live_receipt(
+                binding=binding,
+                runtime={
+                    "provider": runtime.get("provider"),
+                    "model": runtime.get("model"),
+                    "controller_id": runtime.get("controller_id"),
+                    "session_id": runtime.get("session_id"),
+                },
+                timestamps=runtime.get("timestamps", {}),
+                metrics=runtime.get("metrics", {}),
+                sources=runtime.get("sources", {}),
+            )
+        )
+    except (TypeError, ValueError):
+        return None
+
+
 def _sha256_json(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -696,7 +729,7 @@ def _build_codex_runtime_snapshot(
     registry = payload.get("registry_launcher")
     if not all(isinstance(value, Mapping) for value in (herdr, git, registry)):
         return None
-    session_id = _safe_text(herdr.get("session"))
+    session_id = _safe_text(raw_runtime.get("session_id"))
     model = _safe_text(registry.get("model")) or configured_model
     if session_id is None or model is None:
         return None
@@ -773,51 +806,29 @@ def _build_codex_runtime_snapshot(
         ):
             metrics["secretary_turns"] = request_count
 
-    binding = {
-        "pair_id": request.run_id,
-        "arm": "candidate",
-        "run_id": request.run_id,
-        "attempt_id": request.attempt_id,
-        "task_id": request.task_id,
-        "plan_revision": request.plan_revision,
-        "repository_identity": request.repository_identity,
-        "plan_identity": request.plan_identity,
-        "git_revision": request.git_revision,
-        "worktree": str(request.worktree.resolve()),
-        "workstream": "secretary-live-runtime",
-        "checkpoint": f"{request.plan_revision}:{request.task_id}",
-    }
+    existing["metrics"] = metrics
+    existing["session_id"] = session_id
+    validated = _validated_runtime_receipt(request, existing)
+    if validated is None:
+        return None
     runtime_identity = {
-        **binding,
-        "provider": request.provider,
-        "model": model,
-        "controller_id": SECRETARY_CONTROLLER,
-        "session_id": session_id,
-    }
-    source_evidence = {
-        "launch": {key: payload.get(key) for key in ("herdr", "codex", "git", "registry_launcher")},
-        "secretary": {"timestamps": timestamps, "metrics": metrics},
-        "task_result": {"observation": dict(observation)},
-        "settlement": {"state": "unobserved"},
-        "acceptance": {"decision": "unknown"},
-    }
-    sources = {
-        name: {
-            "producer": producer,
-            "source_ref": f"runtime://{name}/{request.run_id}",
-            "source_digest": _sha256_json(source_evidence[name]),
-            **runtime_identity,
-        }
-        for name, producer in SOURCE_PRODUCERS.items()
+        **{key: validated[key] for key in (
+            "pair_id", "arm", "run_id", "attempt_id", "task_id", "plan_revision",
+            "repository_identity", "plan_identity", "git_revision", "worktree",
+            "workstream", "checkpoint",
+        )},
+        "provider": validated["provider"],
+        "model": validated["model"],
+        "controller_id": validated["controller_id"],
+        "session_id": validated["session_id"],
     }
     return {
         **runtime_identity,
         "observed": True,
-        "timestamps": timestamps,
-        "metrics": metrics,
-        "sources": sources,
+        "timestamps": validated["timestamps"],
+        "metrics": validated["metrics"],
+        "sources": validated["sources"],
     }
-
 
 def sanitize_launcher_result(
     request: SecretaryLaunchRequest,
@@ -849,8 +860,8 @@ def sanitize_launcher_result(
     }
     if configured_model is not None:
         expected_values["model"] = configured_model
-    if isinstance(herdr, Mapping):
-        session_id = _safe_text(herdr.get("session"))
+    if isinstance(raw_runtime, Mapping):
+        session_id = _safe_text(raw_runtime.get("session_id"))
         if session_id is not None and session_id.strip():
             expected_values["session_id"] = session_id
     structured_binding = (
@@ -866,6 +877,7 @@ def sanitize_launcher_result(
         and _launcher_identity_matches(observed_runtime, herdr if isinstance(herdr, Mapping) else None)
         and _launcher_facts_match(request, payload, observed_runtime, configured_model)
         and _completion_observed(payload, observed_runtime)
+        and _validated_runtime_receipt(request, structured_binding) is not None
     )
     observed_metrics = structured_binding.get("metrics") if isinstance(structured_binding, Mapping) else None
     failure_kind = _launcher_failure_kind(safe_assignment)
@@ -1021,8 +1033,12 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         result.update(_classify_capabilities(result["disposition"], post_submit))
     else:
         result.update(_classify_capabilities(result["disposition"], None))
-    herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
-    expected_session_id = _safe_text(herdr.get("session")) if isinstance(herdr, Mapping) else None
+    runtime_identity = result.get("runtime_identity")
+    expected_session_id = (
+        _safe_text(runtime_identity.get("session_id"))
+        if isinstance(runtime_identity, Mapping)
+        else None
+    )
     result["provider_telemetry"] = _observe_provider_telemetry(
         started,
         datetime.now(timezone.utc).isoformat(),
