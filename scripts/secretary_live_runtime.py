@@ -646,7 +646,9 @@ def _observe_submitted_codex(
         )
         if key in snapshot
     }
-    semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+    semantic_content = None
+    if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
+        semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
     if semantic_content:
         observation["semantic_content"] = semantic_content
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
@@ -713,7 +715,7 @@ def _classify_capabilities(
 ) -> dict[str, Any]:
     transport_proven = (
         isinstance(observation, Mapping)
-        and observation.get("state") == "idle"
+        and observation.get("state") in {"idle", "done"}
         and isinstance(observation.get("cleanup"), Mapping)
         and observation["cleanup"].get("state") == "removed"
     )
@@ -1036,7 +1038,7 @@ def _build_codex_runtime_snapshot(
     finished_at: str,
     provider_telemetry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    if observation.get("state") != "idle":
+    if observation.get("state") not in {"idle", "done"}:
         return None
     cleanup = observation.get("cleanup")
     if not isinstance(cleanup, Mapping) or cleanup.get("state") != "removed":
@@ -1419,23 +1421,27 @@ def _extract_codex_semantic_content(value: object) -> str | None:
     text = _safe_text(value)
     if text is None:
         return None
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith("• "):
-            continue
-        content_lines = [stripped[2:].strip()]
-        for continuation in lines[index + 1:]:
-            continuation = continuation.strip()
-            if not continuation:
+    segments = re.split(r"(?m)^\s*Worked for\b.*$", text)
+    candidates: list[str] = []
+    for segment in segments:
+        lines = segment.splitlines()
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith("• "):
                 continue
-            if continuation.startswith(("› ", "Ask Codex", "combo-", "Worked for")):
+            content_lines = [stripped[2:].strip()]
+            for continuation in lines[index + 1:]:
+                continuation = continuation.strip()
+                if not continuation:
+                    continue
+                if continuation.startswith(("› ", "Ask Codex", "combo-")):
+                    break
+                content_lines.append(continuation)
+            content = "\n".join(line for line in content_lines if line)
+            if content:
+                candidates.append(content)
                 break
-            content_lines.append(continuation)
-        content = "\n".join(line for line in content_lines if line)
-        if content:
-            return content
-    return None
+    return candidates[-1] if candidates else None
 
 
 def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]:
@@ -1490,9 +1496,15 @@ def _normalize_invocation_outcome(
 
     references: list[str] = []
     content: str | None = None
-    observed_evidence: Mapping[str, Any] = {
-        key: value for key, value in observed.items() if key != "content"
-    }
+    observation_reportable = (
+        observed.get("state") in {"idle", "done"}
+        and not observed.get("observation_error")
+    )
+    observed_evidence: Mapping[str, Any] = (
+        {key: value for key, value in observed.items() if key != "content"}
+        if observation_reportable
+        else {}
+    )
     for source in (task_result, assignment, observed_evidence):
         reference, source_content = _result_evidence(source)
         if reference and reference not in references:
@@ -1686,7 +1698,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
             post_submit = _observe_submitted_codex(request, payload, env=environment)
             result["post_submit_observation"] = post_submit
-            if post_submit.get("state") != "idle":
+            if post_submit.get("state") not in {"idle", "done"}:
                 result["failure_kind"] = "runtime_completion_observation_missing"
             elif post_submit.get("cleanup", {}).get("state") != "removed":
                 result["failure_kind"] = "runtime_cleanup_evidence_missing"

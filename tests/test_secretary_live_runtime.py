@@ -502,6 +502,44 @@ def test_observe_submitted_codex_waits_past_initial_idle_until_done(
     assert observation["cleanup"] == {"state": "removed"}
 
 
+def test_observe_submitted_codex_does_not_capture_unconfirmed_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {
+            "state": "stopped",
+            "state_change_seq": 2,
+            "content": "Codex screen\n• partial answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 30,
+            "observation_error": None,
+        },
+    ])
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "not_attempted"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {"herdr": {"executable": "herdr.exe", "session": "session", "pane": "pane", "agent_name": "agent"}},
+        env={},
+    )
+
+    assert observation["state"] == "stopped"
+    assert "semantic_content" not in observation
+
+
+def test_extract_codex_semantic_content_selects_latest_answer() -> None:
+    assert _extract_codex_semantic_content(
+        "• I will inspect the code first.\nWorked for 9s\n• FAIL: tests failed.\n› Ask Codex to do anything"
+    ) == "FAIL: tests failed."
+
+
 def test_release_codex_agent_interrupts_process_and_verifies_removal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -846,6 +884,31 @@ def test_normal_outcome_scopes_launcher_observation_error_without_downgrading_re
     assert result["execution"]["observation_error_scope"] == "launcher"
     assert result["observability"]["launcher_observation_error"] == "not_observed"
     assert result["observability"]["observation_error"] is None
+
+
+@pytest.mark.parametrize(
+    ("state", "observation_error"),
+    [("working", None), ("stopped", None), ("idle", "completion output not observed")],
+)
+def test_normal_outcome_rejects_unconfirmed_observation_content(
+    state: str,
+    observation_error: str | None,
+) -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={
+            "state": state,
+            "observation_error": observation_error,
+            "semantic_content": "partial answer",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
 
 
 def test_normal_outcome_does_not_report_terminal_screen_as_semantic_content() -> None:
@@ -1311,6 +1374,20 @@ def test_completed_transport_names_only_remaining_secretary_blocker() -> None:
     result = runtime._classify_capabilities(
         "BLOCKED_CAPABILITY",
         {"state": "idle", "cleanup": {"state": "removed"}},
+    )
+
+    assert result == {
+        "transport_evidence": "proven",
+        "missing_capabilities": ["secretary_runtime_receipt"],
+    }
+
+
+def test_done_transport_names_only_remaining_secretary_blocker() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._classify_capabilities(
+        "BLOCKED_CAPABILITY",
+        {"state": "done", "cleanup": {"state": "removed"}},
     )
 
     assert result == {
