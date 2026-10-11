@@ -339,6 +339,46 @@ def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(
     assert result["receipt"]["disposition"] == "BLOCKED_CAPABILITY"
 
 
+def test_run_smoke_blocks_when_probe_workspace_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    request_value = request()
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: SECRETARY_PROVIDER)
+    monkeypatch.setattr(runtime, "_configured_model", lambda _: "gpt-test")
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (request_value, {"selector_mode": "bootstrapped"}, "w99"),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_close_herdr_workspace",
+        lambda *args, **kwargs: {"state": "unknown", "reason": "close_failed"},
+    )
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: type("Result", (), {"returncode": 0, "stdout": "{}", "stderr": ""})(),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "sanitize_launcher_result",
+        lambda *args, **kwargs: {"disposition": "READY", "evidence_provenance": "live-attributed"},
+    )
+    monkeypatch.setattr(runtime, "_observe_provider_telemetry", lambda *args, **kwargs: {"disposition": "inconclusive"})
+    monkeypatch.setattr(runtime, "_smoke_receipt", lambda request, result: {"disposition": result["disposition"]})
+
+    result = runtime.run_smoke(request_value, output=tmp_path / "smoke.json")
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["failure_kind"] == "runtime_workspace_cleanup_evidence_missing"
+    assert result["receipt"]["disposition"] == "BLOCKED_CAPABILITY"
+
+
 def test_sanitize_launcher_result_excludes_raw_transport_output() -> None:
     result = sanitize_launcher_result(
         request(),
@@ -1162,6 +1202,44 @@ def test_prepare_herdr_target_preserves_exact_selector_without_workspace_creatio
     assert preflight["selector_mode"] == "exact"
     assert workspace_id is None
     assert commands == [["herdr", "status", "server"]]
+
+
+def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    closed: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "result": {
+                            "root_pane": {
+                                "cwd": "C:/wrong-worktree/",
+                                "pane_id": "w99:p1",
+                                "workspace_id": "w99",
+                            }
+                        }
+                    }
+                ),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            closed.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    with pytest.raises(runtime.LaunchBlocked, match="cwd mismatch"):
+        runtime._create_herdr_workspace(request(worktree=Path("C:/worktree")), "herdr", env={})
+
+    assert closed == [["herdr", "workspace", "close", "w99"]]
 
 
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:

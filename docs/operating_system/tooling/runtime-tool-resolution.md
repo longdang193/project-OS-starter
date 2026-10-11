@@ -187,7 +187,8 @@ the root pane cwd with one initialization recheck, and launches with the
 resolved `default` session plus workspace-qualified pane. Exact selectors are
 preserved after the server check; mixed exact/`auto` selectors fail closed.
 Only workspaces created by the probe are closed, and cleanup evidence is
-recorded. An empty `CODEX_HOME` argument must not be passed as an explicit path;
+recorded; unresolved probe-workspace cleanup keeps the result
+`BLOCKED_CAPABILITY`. An empty `CODEX_HOME` argument must not be passed as an explicit path;
 allow the wrapper to resolve the user-local Codex home so `config.toml` and
 `auth.json` remain the configured source.
 

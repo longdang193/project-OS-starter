@@ -296,6 +296,7 @@ def _create_herdr_workspace(
     if result.returncode:
         detail = result.stderr.strip() or result.stdout.strip()
         raise LaunchBlocked(f"Herdr workspace bootstrap failed: {detail}")
+    workspace_id: str | None = None
     try:
         payload = json.loads(result.stdout)
         root_pane = payload["result"]["root_pane"]
@@ -303,10 +304,15 @@ def _create_herdr_workspace(
         pane_id = root_pane["pane_id"]
         pane_cwd = Path(root_pane["cwd"]).resolve()
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        if workspace_id:
+            _close_herdr_workspace(herdr, workspace_id, env=env)
         raise LaunchBlocked("Herdr workspace bootstrap returned invalid root pane data") from exc
     if not all(isinstance(value, str) and value.strip() for value in (workspace_id, pane_id)):
+        if isinstance(workspace_id, str) and workspace_id.strip():
+            _close_herdr_workspace(herdr, workspace_id, env=env)
         raise LaunchBlocked("Herdr workspace bootstrap returned incomplete root pane data")
     if pane_cwd != request.worktree.resolve():
+        _close_herdr_workspace(herdr, workspace_id, env=env)
         raise LaunchBlocked(f"Herdr workspace cwd mismatch: expected {request.worktree}, got {pane_cwd}")
     return workspace_id, pane_id
 
@@ -1254,6 +1260,13 @@ def run_smoke(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
             if result is not None:
                 result["preflight"] = preflight
+                if (
+                    result.get("disposition") == "READY"
+                    and preflight["workspace_close"].get("state") != "closed"
+                ):
+                    result["disposition"] = "BLOCKED_CAPABILITY"
+                    result["failure_kind"] = "runtime_workspace_cleanup_evidence_missing"
+                    result.update(_classify_capabilities("BLOCKED_CAPABILITY", result.get("post_submit_observation")))
     if result is None:
         raise RuntimeError("Secretary smoke did not produce a launcher result")
     result.setdefault("preflight", preflight)
