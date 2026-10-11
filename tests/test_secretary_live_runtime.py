@@ -806,7 +806,7 @@ def test_smoke_receipt_preserves_required_source_bindings() -> None:
     assert receipt["valid"] is True
 
 
-def test_provider_telemetry_uses_9router_window_without_promoting_metrics(
+def test_provider_telemetry_uses_attributed_9router_run_usage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -818,10 +818,10 @@ def test_provider_telemetry_uses_9router_window_without_promoting_metrics(
         observed.append({"database": str(path), "start": start, "end": end})
         return {
             "schema_version": "9router-usage-observation-v1",
-            "disposition": "observed_window",
+            "disposition": "matched",
             "source": "9router-local-read-only",
-            "attribution": "time-window",
-            "confidence": "unattributed",
+            "attribution": "session",
+            "session_id": "session-1",
             "input_tokens": 100,
             "output_tokens": 10,
             "total_tokens": 110,
@@ -833,12 +833,12 @@ def test_provider_telemetry_uses_9router_window_without_promoting_metrics(
 
     import scripts.secretary_live_runtime as runtime
 
-    monkeypatch.setattr(runtime, "observe_window_usage", fake_observe)
+    monkeypatch.setattr(runtime, "observe_run_usage", fake_observe)
     monkeypatch.setenv("NINEROUTER_DATABASE", str(database))
 
     result = _observe_provider_telemetry("2026-10-10T00:00:00+00:00", "2026-10-10T00:00:01+00:00")
 
-    assert result["disposition"] == "observed_window"
+    assert result["disposition"] == "matched"
     assert result["cache_read_input_tokens"] == 80
     assert result["cost"] == 0.01
     assert observed[0]["database"] == str(database)

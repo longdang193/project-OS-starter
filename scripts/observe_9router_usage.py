@@ -21,7 +21,7 @@ def _timestamp(value: str) -> datetime:
 def _session_timestamps(connection: sqlite3.Connection, session_id: str) -> list[str]:
     timestamps: list[str] = []
     for (timestamp, row_session) in connection.execute(
-        "select timestamp, json_extract(data, '$.providerRequest.client_metadata.session_id') from requestDetails"
+        "select timestamp, coalesce(json_extract(data, '$.clientMetadata.session_id'), json_extract(data, '$.providerRequest.client_metadata.session_id')) from requestDetails"
     ):
         if row_session == session_id:
             timestamps.append(timestamp)
@@ -190,7 +190,7 @@ def observe_usage(
         request_rows = connection.execute(
             """
             select timestamp, provider, model, connectionId, status,
-                   json_extract(data, '$.providerRequest.client_metadata.session_id')
+                   coalesce(json_extract(data, '$.clientMetadata.session_id'), json_extract(data, '$.providerRequest.client_metadata.session_id'))
             from requestDetails
             where provider = 'codex'
               and (? is null or connectionId = ?)
@@ -339,6 +339,69 @@ def observe_usage(
         )
     finally:
         connection.close()
+
+
+def observe_run_usage(
+    database: Path,
+    *,
+    start: str,
+    end: str,
+    connection_id: str | None = None,
+) -> dict[str, Any]:
+    """Discover one session in a bounded run window, then enforce the strict join."""
+    start_at = _timestamp(start)
+    end_at = _timestamp(end)
+    if end_at <= start_at:
+        raise ValueError("end must be after start")
+
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    try:
+        tables = _tables(connection)
+        required = {"timestamp", "provider", "connectionId", "data"}
+        if not required <= tables["requestDetails"]:
+            return _result("inconclusive", "schema_unavailable")
+        sessions: set[str] = set()
+        for timestamp, row_session in connection.execute(
+            """
+            select timestamp,
+                   coalesce(json_extract(data, '$.clientMetadata.session_id'), json_extract(data, '$.providerRequest.client_metadata.session_id'))
+            from requestDetails
+            where provider = 'codex'
+              and (? is null or connectionId = ?)
+            """,
+            (connection_id, connection_id),
+        ):
+            row_at = _timestamp(timestamp)
+            if start_at <= row_at <= end_at:
+                sessions.add(row_session or "<unattributed>")
+    finally:
+        connection.close()
+
+    if not sessions or "<unattributed>" in sessions:
+        return _result(
+            "inconclusive",
+            "no_session_rows" if not sessions else "session_attribution_missing",
+            observed_session_count=len(sessions),
+        )
+    if len(sessions) != 1:
+        return _result(
+            "inconclusive",
+            "overlapping_sessions",
+            observed_session_count=len(sessions),
+        )
+
+    session_id = next(iter(sessions))
+    result = observe_usage(
+        database,
+        start=start,
+        end=end,
+        session_id=session_id,
+        connection_id=connection_id,
+    )
+    if result["disposition"] == "matched":
+        result["session_id"] = session_id
+        result["attribution"] = "session"
+    return result
 
 
 def _result(disposition: str, reason: str | None, **fields: Any) -> dict[str, Any]:

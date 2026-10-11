@@ -46,9 +46,9 @@ except ModuleNotFoundError:
     )
 
 try:
-    from scripts.observe_9router_usage import observe_window_usage
+    from scripts.observe_9router_usage import observe_run_usage
 except ModuleNotFoundError:
-    from observe_9router_usage import observe_window_usage
+    from observe_9router_usage import observe_run_usage
 
 
 SECRETARY_PROVIDER = "9router"
@@ -350,7 +350,7 @@ def _observe_provider_telemetry(start: str, end: str) -> dict[str, Any]:
     start_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
     padded_start = start_at.isoformat()
     try:
-        result = observe_window_usage(database, start=padded_start, end=end)
+        result = observe_run_usage(database, start=padded_start, end=end)
         result["observation_window"] = {
             "start": padded_start,
             "end": end,

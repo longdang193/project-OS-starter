@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from scripts.observe_9router_usage import observe_usage, observe_window_usage
+from scripts.observe_9router_usage import observe_run_usage, observe_usage, observe_window_usage
 
 
 def _database(path: Path, *, other_session: bool = False) -> None:
@@ -75,6 +75,82 @@ def test_observer_matches_session_and_aggregates_cost(tmp_path: Path) -> None:
     assert result["total_tokens"] == 242
     assert result["cost"] == 0.44
     assert result["cache_read_input_tokens"] == 0
+
+
+def test_observer_reads_persisted_client_metadata_session(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "update requestDetails set data = ?",
+        (json.dumps({"clientMetadata": {"session_id": "session-1"}}),),
+    )
+    connection.commit()
+    connection.close()
+
+    result = observe_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        session_id="session-1",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "matched"
+    assert result["request_count"] == 2
+
+
+def test_run_observer_discovers_one_session_and_attributes_usage(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+
+    result = observe_run_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "matched"
+    assert result["session_id"] == "session-1"
+    assert result["cost"] == 0.44
+
+
+def test_run_observer_rejects_overlapping_sessions(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database, other_session=True)
+
+    result = observe_run_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "inconclusive"
+    assert result["reason"] == "overlapping_sessions"
+
+
+def test_run_observer_reports_missing_session_attribution(tmp_path: Path) -> None:
+    database = tmp_path / "data.sqlite"
+    _database(database)
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "update requestDetails set data = ?",
+        (json.dumps({"clientMetadata": {}}),),
+    )
+    connection.commit()
+    connection.close()
+
+    result = observe_run_usage(
+        database,
+        start="2026-10-09T14:24:49Z",
+        end="2026-10-09T14:24:56Z",
+        connection_id="connection-1",
+    )
+
+    assert result["disposition"] == "inconclusive"
+    assert result["reason"] == "session_attribution_missing"
 
 
 def test_window_observer_reports_cached_tokens_and_provider_cost_without_attribution(tmp_path: Path) -> None:
