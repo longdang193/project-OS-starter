@@ -130,3 +130,26 @@ linked global packages, then verifies global `cli.js`, standalone app files,
 intentional older-version installs. When upstream changes a patched file, add a
 new exact-base directory under `overlays/9router-responses/` and rebase the patch
 there. Keep old overlays for existing checkouts.
+
+Apply the attribution persistence overlay separately:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterAttributionOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -InstallGlobal
+```
+
+Verify update safety without changing files:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterAttributionOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
+```
+
+The current attribution overlay targets `0.5.69` (`eb712ca8`). It preserves
+`x-lightrsi-request-id`, `x-lightrsi-provider-attempt-id`, and the router-owned
+immutable `routerRecordId` through usage history and request details, including
+streaming, forced-SSE, success, and failure paths. The reconciler accepts the
+exact base, an already-applied overlay, and a clean Git 3-way rebase; it stops
+on conflicts or unrelated tracked changes instead of leaving a partial patch.
+When upstream changes a patched file, add a new exact-base directory under
+`overlays/9router-attribution/` and rebase the patch there. Keep old overlays
+for existing checkouts. Live economics remain blocked until deployed,
+authenticated ID-join proof passes.
