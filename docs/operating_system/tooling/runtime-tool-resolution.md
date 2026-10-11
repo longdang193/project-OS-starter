@@ -180,11 +180,17 @@ canonical settlement evidence.
 Keep raw terminal output out of durable evidence unless an explicit disposable
 probe bounds and redacts it.
 
-For live Secretary probes, create or select a task-owned Herdr workspace first
-and pass its named session and workspace-qualified pane when `auto` resolution
-has no matching worktree. An empty `CODEX_HOME` argument must not be passed as
-an explicit path; allow the wrapper to resolve the user-local Codex home so
-`config.toml` and `auth.json` remain the configured source.
+For live Secretary probes, `scripts/secretary_live_runtime.py` performs bounded
+Herdr preflight before invoking the launcher: it checks or starts the shared
+server, creates a task-owned workspace for paired `auto` selectors, verifies
+the root pane cwd with one initialization recheck, and launches with the
+resolved `default` session plus workspace-qualified pane. Exact selectors are
+preserved after the server check; mixed exact/`auto` selectors fail closed.
+Only workspaces created by the probe are closed, and cleanup evidence is
+recorded; unresolved probe-workspace cleanup keeps the result
+`BLOCKED_CAPABILITY`. An empty `CODEX_HOME` argument must not be passed as an explicit path;
+allow the wrapper to resolve the user-local Codex home so `config.toml` and
+`auth.json` remain the configured source.
 
 ## Fallback
 

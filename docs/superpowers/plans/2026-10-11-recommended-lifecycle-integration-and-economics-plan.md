@@ -653,9 +653,17 @@ source-owned proof.
 - [x] Establish a run-bound receipt containing attempt identity, provider,
   model, timestamps, input/output/cached token fields, cost fields, and source
   provenance before comparing arms.
-- [x] Run the existing Herdr auto-pane path from a task-owned workspace and
-  verify a structured `READY` receipt plus pane cleanup; retain the receipt at
+- [x] Run the Herdr auto-pane path from a task-owned workspace and verify a
+  structured `READY` receipt plus pane cleanup; retain the receipt at
   `C:\tmp\project-os-secretary-auto-probe-task9.json`.
+- [x] Make live Secretary preflight executable: check or start Herdr, bootstrap
+  and cwd-verify an automatic workspace target with one bounded recheck, keep
+  exact selectors unchanged, and close only probe-owned workspaces.
+- [x] Fresh automatic-selector probe on 2026-10-11 verified Herdr server
+  readiness, workspace `w58`/pane `w58:p1` cwd binding, and workspace cleanup.
+  The run remained `BLOCKED_CAPABILITY` only for the missing structured
+  Secretary receipt; 9router retained unattributed window usage and cost for
+  diagnostics, not economics claims.
 - [ ] Run matched baseline and Secretary-enabled arms through the existing
   runtime/pilot surfaces, preserving blocked and interrupted attempts.
 - [ ] Compute valid-pair deltas separately from failure-inclusive totals and
@@ -669,6 +677,8 @@ source-owned proof.
 - Expected: receipts reject mismatched or aggregate-only metrics, cached-token
   and cost fields are not promoted without producer binding, and reports keep
   blocked/inconclusive states explicit.
+- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_observe_9router_usage.py`
+  — passed with preflight bootstrap and cleanup regression coverage.
 
 **Exit Criteria:**
 - Economics are either backed by authoritative run-bound evidence or explicitly
