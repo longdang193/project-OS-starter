@@ -46,6 +46,7 @@ jobs:
           tests/test_secretary_receipts.py
           tests/test_secretary_live_runtime.py
           tests/test_secretary_live_pilot.py
+          tests/test_secretary_reporting_benchmark.py
 
   benchmark:
     runs-on: ubuntu-latest

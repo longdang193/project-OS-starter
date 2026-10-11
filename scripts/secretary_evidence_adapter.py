@@ -24,7 +24,8 @@ _PROVIDER_FIELDS = (
     "session_id", "provider", "model", "models", "input_tokens", "output_tokens",
     "total_tokens", "cache_read_input_tokens", "cache_write_input_tokens", "cost",
     "currency", "cost_provenance", "usage_count", "matched_count", "first_timestamp",
-    "last_timestamp", "observation_window",
+    "last_timestamp", "observation_window", "availability", "coverage", "selected_count",
+    "measured_count", "excluded_count", "excluded_row_reasons", "metrics",
 )
 _TARGET_FIELDS = ("session", "pane", "pane_id", "workspace_id", "cwd")
 _LAUNCH_FIELDS = (
@@ -104,10 +105,27 @@ def _provider_usage(launcher: Mapping[str, Any], provider: Mapping[str, Any] | N
         }
     join = _join_provider_usage(launcher, provider)
     receipt = _secretary_receipt(launcher)
-    secretary_attributed = receipt["state"] == "present" and join["identifier_matched"]
+    receipt_data = _mapping(receipt.get("data")) if receipt["state"] == "present" else None
+    provider_session = _text(provider.get("session_id"))
+    receipt_session = _text(receipt_data.get("session_id")) if receipt_data else None
+    coverage = provider.get("coverage") if provider.get("coverage") in {"complete", "partial", "unknown"} else "unknown"
+    provider_attribution = provider.get("attribution")
+    if provider_attribution == "time-window":
+        provider_attribution = "window"
+    if provider_attribution not in {"request", "session", "attempt", "run", "window", "none"}:
+        provider_attribution = "session" if provider_session else "none"
+    session_bridge = bool(provider_session and receipt_session and provider_session == receipt_session)
+    secretary_attributed = receipt["state"] == "present" and session_bridge and coverage == "complete"
+    attribution = provider_attribution
+    if secretary_attributed:
+        attribution = "run" if _text(receipt_data.get("run_id")) else "attempt"
     return {
         "state": "observed",
         "secretary_attributed": secretary_attributed,
+        "availability": provider.get("availability", "inconclusive"),
+        "attribution": attribution,
+        "coverage": coverage,
+        "session_bridge": session_bridge,
         "join": join,
         "data": _copy_fields(provider, _PROVIDER_FIELDS),
         "economics": "run-bound" if secretary_attributed else "partial-unattributed",

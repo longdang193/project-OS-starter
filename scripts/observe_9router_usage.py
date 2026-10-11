@@ -8,7 +8,12 @@ import json
 import math
 from pathlib import Path
 import sqlite3
+import time
 from typing import Any
+
+
+OBSERVATION_BUDGET_MS = 1_000
+_PROGRESS_INTERVAL = 1_000
 
 
 def _timestamp(value: str) -> datetime:
@@ -18,14 +23,17 @@ def _timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def _session_timestamps(connection: sqlite3.Connection, session_id: str) -> list[str]:
-    timestamps: list[str] = []
-    for (timestamp, row_session) in connection.execute(
-        "select timestamp, coalesce(json_extract(data, '$.clientMetadata.session_id'), json_extract(data, '$.providerRequest.client_metadata.session_id')) from requestDetails"
-    ):
-        if row_session == session_id:
-            timestamps.append(timestamp)
-    return timestamps
+def _sql_timestamp(value: datetime) -> str:
+    return value.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _timestamp_index(connection: sqlite3.Connection, table: str) -> str | None:
+    for row in connection.execute(f"pragma index_list({table})"):
+        index_name = row[1]
+        columns = [item[2] for item in connection.execute(f"pragma index_info({index_name})")]
+        if columns == ["timestamp"]:
+            return index_name
+    return None
 
 
 def _tables(connection: sqlite3.Connection) -> dict[str, set[str]]:
@@ -38,7 +46,7 @@ def _tables(connection: sqlite3.Connection) -> dict[str, set[str]]:
 
 def _token_details(value: object) -> tuple[int, int] | None:
     if not isinstance(value, str) or not value:
-        return 0, 0
+        return None
     try:
         details = json.loads(value)
     except json.JSONDecodeError:
@@ -56,35 +64,292 @@ def _aggregate_usage(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not rows:
         return None
     for row in rows:
-        if row["status"] != "ok":
-            return None
         if any(
             isinstance(row[field], bool)
             or not isinstance(row[field], int)
             or row[field] < 0
-            for field in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_write_input_tokens")
+            for field in ("input_tokens", "output_tokens")
         ):
             return None
-        if row["cache_read_input_tokens"] + row["cache_write_input_tokens"] > row["input_tokens"]:
-            return None
         if (
-            not isinstance(row["cost"], (int, float))
-            or isinstance(row["cost"], bool)
-            or row["cost"] < 0
-            or (isinstance(row["cost"], float) and not math.isfinite(row["cost"]))
+            row["cache_read_input_tokens"] is not None
+            and row["cache_write_input_tokens"] is not None
+            and row["cache_read_input_tokens"] + row["cache_write_input_tokens"] > row["input_tokens"]
         ):
             return None
     input_tokens = sum(row["input_tokens"] for row in rows)
     output_tokens = sum(row["output_tokens"] for row in rows)
+    costs = [row["cost"] for row in rows]
+    cache_read = [row["cache_read_input_tokens"] for row in rows]
+    cache_write = [row["cache_write_input_tokens"] for row in rows]
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,
-        "cache_read_input_tokens": sum(row["cache_read_input_tokens"] for row in rows),
-        "cache_write_input_tokens": sum(row["cache_write_input_tokens"] for row in rows),
-        "cost": sum(float(row["cost"]) for row in rows),
+        "cache_read_input_tokens": sum(cache_read) if all(value is not None for value in cache_read) else None,
+        "cache_write_input_tokens": sum(cache_write) if all(value is not None for value in cache_write) else None,
+        "cost": sum(float(value) for value in costs) if all(value is not None for value in costs) else None,
         "currency": "USD",
     }
+
+
+def _connect(database: Path, *, budget_ms: int) -> tuple[sqlite3.Connection, float, dict[str, int]]:
+    if budget_ms <= 0:
+        raise ValueError("observation budget must be positive")
+    budget_seconds = budget_ms / 1_000
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=budget_seconds)
+    connection.execute(f"pragma busy_timeout={budget_ms}")
+    metrics = {"query_count": 0, "progress_calls": 0}
+    deadline = time.monotonic() + budget_seconds
+
+    def progress() -> int:
+        metrics["progress_calls"] += 1
+        return int(time.monotonic() >= deadline)
+
+    connection.set_progress_handler(progress, _PROGRESS_INTERVAL)
+    connection.execute("begin")
+    return connection, deadline, metrics
+
+
+def _canonical_read(
+    database: Path,
+    *,
+    start: str,
+    end: str,
+    model: str | None = None,
+    connection_id: str | None = None,
+    observation_budget_ms: int = OBSERVATION_BUDGET_MS,
+) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, Any] | None]:
+    start_at = _timestamp(start)
+    end_at = _timestamp(end)
+    if end_at <= start_at:
+        raise ValueError("end must be after start")
+
+    connection: sqlite3.Connection | None = None
+    metrics: dict[str, int] = {"query_count": 0, "progress_calls": 0}
+    try:
+        connection, deadline, metrics = _connect(database, budget_ms=observation_budget_ms)
+        tables = _tables(connection)
+        metrics["query_count"] += 2
+        required = {
+            "usageHistory": {"timestamp", "provider", "model", "connectionId", "endpoint", "promptTokens", "completionTokens", "cost", "status", "tokens", "meta"},
+            "requestDetails": {"id", "timestamp", "provider", "model", "connectionId", "status", "data"},
+        }
+        if any(not required[name] <= columns for name, columns in tables.items()):
+            return [], metrics, _result("inconclusive", "schema_unavailable", metrics=metrics)
+        usage_source = "usageHistory"
+        usage_timestamp_index = _timestamp_index(connection, "usageHistory")
+        if usage_timestamp_index:
+            usage_source += f" indexed by {usage_timestamp_index}"
+        start_sql = _sql_timestamp(start_at)
+        end_sql = _sql_timestamp(end_at)
+        rows = connection.execute(
+            f"""
+            with request_rows as (
+                select id as detail_id, timestamp as request_timestamp, provider as request_provider,
+                       model as request_model, connectionId as request_connection, status as request_status,
+                       case when json_valid(data) then coalesce(
+                           json_extract(data, '$.clientMetadata.session_id'),
+                           json_extract(data, '$.providerRequest.client_metadata.session_id')
+                       ) end as session_id
+                 from requestDetails
+                where provider = 'codex'
+                   and datetime(timestamp) between datetime(?) and datetime(?)
+                  and (? is null or connectionId = ?)
+                  and (? is null or model = ?)
+            ), usage_rows as (
+                select timestamp as usage_timestamp, provider as usage_provider,
+                       model as usage_model, connectionId as usage_connection, endpoint,
+                       promptTokens, completionTokens, cost, status as usage_status, tokens,
+                       case when json_valid(meta) then json_extract(meta, '$.request_detail_id') end as detail_id
+                 from {usage_source}
+                where provider = 'codex'
+                   and timestamp >= ? and timestamp <= ?
+                  and (? is null or connectionId = ?)
+                  and (? is null or model = ?)
+            )
+            select 'joined', r.detail_id, r.request_timestamp, r.request_provider,
+                   r.request_model, r.request_connection, r.request_status, r.session_id,
+                   u.usage_timestamp, u.usage_provider, u.usage_model, u.usage_connection,
+                   u.endpoint, u.promptTokens, u.completionTokens, u.cost, u.usage_status, u.tokens
+            from request_rows r
+            left join usage_rows u on u.detail_id = r.detail_id
+            union all
+            select 'unjoined', null, null, null, null, null, null, null,
+                   u.usage_timestamp, u.usage_provider, u.usage_model, u.usage_connection,
+                   u.endpoint, u.promptTokens, u.completionTokens, u.cost, u.usage_status, u.tokens
+            from usage_rows u
+            left join request_rows r on r.detail_id = u.detail_id
+            where r.detail_id is null
+            """,
+            (
+                start, end, connection_id, connection_id, model, model,
+                start_sql, end_sql, connection_id, connection_id, model, model,
+            ),
+        ).fetchall()
+        metrics["query_count"] += 1
+        if time.monotonic() > deadline:
+            return [], metrics, _result("inconclusive", "observation_deadline", metrics=metrics)
+        normalized: list[dict[str, Any]] = []
+        for row in rows:
+            request_timestamp = row[2]
+            usage_timestamp = row[8]
+            normalized.append(
+                {
+                    "detail_id": row[1],
+                    "request_timestamp": _timestamp(request_timestamp).isoformat() if request_timestamp else None,
+                    "request_provider": row[3],
+                    "request_model": row[4],
+                    "request_connection": row[5],
+                    "request_status": row[6],
+                    "session_id": row[7] or "<unattributed>",
+                    "usage_timestamp": _timestamp(usage_timestamp).isoformat() if usage_timestamp else None,
+                    "usage_provider": row[9],
+                    "usage_model": row[10],
+                    "usage_connection": row[11],
+                    "endpoint": row[12],
+                    "input_tokens": row[13],
+                    "output_tokens": row[14],
+                    "cost": row[15],
+                    "usage_status": row[16],
+                    "token_details": _token_details(row[17]),
+                }
+            )
+        normalized = [
+            row
+            for row in normalized
+            if all(
+                value is None or _timestamp(value) >= start_at and _timestamp(value) <= end_at
+                for value in (row["request_timestamp"], row["usage_timestamp"])
+            )
+        ]
+        return normalized, metrics, None
+    except sqlite3.OperationalError as exc:
+        reason = "observation_deadline" if "interrupt" in str(exc).casefold() else "database_locked" if "locked" in str(exc).casefold() else type(exc).__name__
+        return [], metrics, _result("inconclusive", reason, metrics=metrics)
+    except (OSError, sqlite3.Error) as exc:
+        return [], metrics, _result("inconclusive", type(exc).__name__, metrics=metrics)
+    finally:
+        if connection is not None:
+            connection.set_progress_handler(None, 0)
+            connection.close()
+
+
+def _validate_rows(rows: list[dict[str, Any]], *, session_id: str | None = None) -> tuple[list[dict[str, Any]], dict[str, int], set[str], int]:
+    excluded: dict[str, int] = {}
+    valid: list[dict[str, Any]] = []
+    session_ids = {row["session_id"] for row in rows if row["request_timestamp"] is not None}
+    selected_count = sum(1 for row in rows if row["usage_timestamp"] is not None)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if session_id is not None and row["session_id"] != session_id:
+            if row["request_timestamp"] is not None or row["usage_timestamp"] is not None:
+                excluded["other_session"] = excluded.get("other_session", 0) + 1
+            continue
+        if row["usage_timestamp"] is None:
+            excluded["missing_usage"] = excluded.get("missing_usage", 0) + 1
+            continue
+        if not row["detail_id"]:
+            excluded["unattributed_request"] = excluded.get("unattributed_request", 0) + 1
+            continue
+        grouped.setdefault(row["detail_id"], []).append(row)
+    for detail_id, candidates in grouped.items():
+        if len(candidates) != 1:
+            excluded["ambiguous_join"] = excluded.get("ambiguous_join", 0) + len(candidates)
+            continue
+        row = candidates[0]
+        if (row["usage_provider"], row["usage_model"], row["usage_connection"]) != (
+            row["request_provider"], row["request_model"], row["request_connection"]
+        ):
+            excluded["identity_mismatch"] = excluded.get("identity_mismatch", 0) + 1
+            continue
+        token_fields = ("input_tokens", "output_tokens")
+        if any(isinstance(row[field], bool) or not isinstance(row[field], int) or row[field] < 0 for field in token_fields):
+            excluded["invalid_token_counts"] = excluded.get("invalid_token_counts", 0) + 1
+            continue
+        cache_read, cache_write = row["token_details"] if row["token_details"] is not None else (None, None)
+        if cache_read is not None and cache_write is not None and cache_read + cache_write > row["input_tokens"]:
+            excluded["invalid_token_counts"] = excluded.get("invalid_token_counts", 0) + 1
+            continue
+        cost = row["cost"]
+        if cost is not None and (
+            not isinstance(cost, (int, float))
+            or isinstance(cost, bool)
+            or cost < 0
+            or (isinstance(cost, float) and not math.isfinite(cost))
+        ):
+            excluded["invalid_cost"] = excluded.get("invalid_cost", 0) + 1
+            continue
+        valid.append(
+            {
+                "timestamp": row["usage_timestamp"],
+                "status": row["usage_status"],
+                "input_tokens": row["input_tokens"],
+                "output_tokens": row["output_tokens"],
+                "cost": cost,
+                "cache_read_input_tokens": cache_read,
+                "cache_write_input_tokens": cache_write,
+            }
+        )
+        if row["request_status"] != "success" or row["usage_status"] != "ok":
+            excluded["failed_request_with_usage"] = excluded.get("failed_request_with_usage", 0)
+    return valid, excluded, session_ids, selected_count
+
+
+def _project(
+    rows: list[dict[str, Any]],
+    *,
+    attribution: str,
+    session_id: str | None = None,
+    metrics: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    valid, excluded, session_ids, selected_count = _validate_rows(rows, session_id=session_id)
+    if not valid:
+        reason = "no_usage_rows" if not selected_count else next(iter(excluded), "no_verified_rows")
+        return _result(
+            "inconclusive",
+            reason,
+            attribution=attribution,
+            observed_session_count=len(session_ids),
+            selected_count=selected_count,
+            measured_count=0,
+            excluded_count=sum(excluded.values()),
+            excluded_row_reasons=excluded,
+            metrics=metrics or {},
+        )
+    aggregate = _aggregate_usage(valid)
+    timestamps = [row["timestamp"] for row in valid]
+    cache_unknown = any(
+        row["cache_read_input_tokens"] is None or row["cache_write_input_tokens"] is None
+        for row in valid
+    )
+    result = _result(
+        "observed_window" if attribution == "window" else "matched",
+        None,
+        attribution=attribution,
+        confidence="unattributed" if attribution == "window" else "identity-bound",
+        session_id=session_id,
+        request_count=len({row["detail_id"] for row in rows if row["detail_id"] and (session_id is None or row["session_id"] == session_id)}),
+        usage_count=selected_count,
+        selected_count=selected_count,
+        measured_count=len(valid),
+        excluded_count=sum(excluded.values()),
+        excluded_row_reasons=excluded,
+        observed_session_count=len(session_ids),
+        availability="partial" if excluded or cache_unknown else "available",
+        coverage="partial" if excluded or cache_unknown else "complete",
+        cache_coverage="partial" if cache_unknown else "complete",
+        first_timestamp=min(timestamps),
+        last_timestamp=max(timestamps),
+        cost_provenance="provider-reported" if aggregate and aggregate.get("cost") is not None else "unavailable",
+        metrics=metrics or {},
+        **(aggregate or {}),
+    )
+    if session_id is not None and len(session_ids - {session_id}) > 0:
+        result["reason"] = "overlapping_sessions"
+    elif excluded:
+        result["reason"] = next(iter(excluded))
+    return result
 
 
 def observe_window_usage(
@@ -94,72 +359,21 @@ def observe_window_usage(
     end: str,
     model: str | None = None,
     connection_id: str | None = None,
+    observation_budget_ms: int = OBSERVATION_BUDGET_MS,
 ) -> dict[str, Any]:
-    """Report provider rows in a bounded time window without claiming attribution."""
-    start_at = _timestamp(start)
-    end_at = _timestamp(end)
-    if end_at <= start_at:
-        raise ValueError("end must be after start")
-
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    try:
-        tables = _tables(connection)
-        required = {"timestamp", "provider", "model", "connectionId", "endpoint", "promptTokens", "completionTokens", "cost", "status", "tokens"}
-        if not required <= tables["usageHistory"]:
-            return _result("inconclusive", "schema_unavailable", attribution="time-window")
-        rows: list[dict[str, Any]] = []
-        for row in connection.execute(
-            """
-            select timestamp, provider, model, connectionId, endpoint,
-                   promptTokens, completionTokens, cost, status, tokens
-            from usageHistory
-            where provider = 'codex'
-              and (? is null or model = ?)
-              and (? is null or connectionId = ?)
-            order by timestamp
-            """,
-            (model, model, connection_id, connection_id),
-        ):
-            row_at = _timestamp(row[0])
-            if not start_at <= row_at <= end_at:
-                continue
-            details = _token_details(row[9])
-            if details is None:
-                return _result("inconclusive", "invalid_token_details", attribution="time-window")
-            rows.append(
-                {
-                    "timestamp": row_at.isoformat(),
-                    "provider": row[1],
-                    "model": row[2],
-                    "connection_id": row[3],
-                    "endpoint": row[4],
-                    "input_tokens": row[5],
-                    "output_tokens": row[6],
-                    "cost": row[7],
-                    "status": row[8],
-                    "cache_read_input_tokens": details[0],
-                    "cache_write_input_tokens": details[1],
-                }
-            )
-        if not rows:
-            return _result("inconclusive", "no_usage_rows", attribution="time-window", usage_count=0)
-        aggregate = _aggregate_usage(rows)
-        if aggregate is None:
-            return _result("inconclusive", "invalid_usage_row", attribution="time-window", usage_count=len(rows))
-        return _result(
-            "observed_window",
-            None,
-            attribution="time-window",
-            confidence="unattributed",
-            usage_count=len(rows),
-            models=sorted({row["model"] for row in rows}),
-            first_timestamp=rows[0]["timestamp"],
-            last_timestamp=rows[-1]["timestamp"],
-            cost_provenance="provider-reported",
-            **aggregate,
-        )
-    finally:
-        connection.close()
+    """Report verified provider rows in a bounded time window."""
+    rows, metrics, failure = _canonical_read(
+        database,
+        start=start,
+        end=end,
+        model=model,
+        connection_id=connection_id,
+        observation_budget_ms=observation_budget_ms,
+    )
+    if failure:
+        failure["attribution"] = "window"
+        return failure
+    return _project(rows, attribution="window", metrics=metrics)
 
 
 def observe_usage(
@@ -169,174 +383,20 @@ def observe_usage(
     end: str,
     session_id: str,
     connection_id: str | None = None,
+    observation_budget_ms: int = OBSERVATION_BUDGET_MS,
 ) -> dict[str, Any]:
-    start_at = _timestamp(start)
-    end_at = _timestamp(end)
-    if end_at <= start_at:
-        raise ValueError("end must be after start")
     if not session_id.strip():
         raise ValueError("session_id is required")
-
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    try:
-        tables = _tables(connection)
-        required = {
-            "usageHistory": {"timestamp", "provider", "model", "connectionId", "endpoint", "promptTokens", "completionTokens", "cost", "status", "meta"},
-            "requestDetails": {"timestamp", "provider", "model", "connectionId", "status", "data"},
-        }
-        if any(not required[name] <= columns for name, columns in tables.items()):
-            return _result("inconclusive", "schema_unavailable")
-
-        request_rows = connection.execute(
-            """
-            select id, timestamp, provider, model, connectionId, status,
-                   coalesce(json_extract(data, '$.clientMetadata.session_id'), json_extract(data, '$.providerRequest.client_metadata.session_id'))
-            from requestDetails
-            where provider = 'codex'
-              and (? is null or connectionId = ?)
-            order by timestamp
-            """,
-            (connection_id, connection_id),
-        ).fetchall()
-        requests: list[dict[str, Any]] = []
-        session_ids: set[str] = set()
-        for detail_id, timestamp, provider, model, row_connection, status, row_session in request_rows:
-            row_at = _timestamp(timestamp)
-            if not start_at <= row_at <= end_at:
-                continue
-            session_ids.add(row_session or "<unattributed>")
-            if row_session != session_id:
-                continue
-            requests.append(
-                {
-                    "detail_id": detail_id,
-                    "timestamp": row_at.isoformat(),
-                    "provider": provider,
-                    "model": model,
-                    "connection_id": row_connection,
-                    "status": status,
-                }
-            )
-
-        usage_rows = connection.execute(
-            """
-            select timestamp, provider, model, connectionId, endpoint,
-                   promptTokens, completionTokens, cost, status, tokens, meta
-            from usageHistory
-            where provider = 'codex'
-              and (? is null or connectionId = ?)
-            order by timestamp
-            """,
-            (connection_id, connection_id),
-        ).fetchall()
-        usage = []
-        for row in usage_rows:
-            row_at = _timestamp(row[0])
-            if not start_at <= row_at <= end_at:
-                continue
-            details = _token_details(row[9])
-            if details is None:
-                return _result("inconclusive", "invalid_token_details")
-            try:
-                metadata = json.loads(row[10]) if isinstance(row[10], str) else {}
-            except json.JSONDecodeError:
-                return _result("inconclusive", "invalid_usage_metadata")
-            detail_id = metadata.get("request_detail_id") if isinstance(metadata, dict) else None
-            usage.append(
-                {
-                    "detail_id": detail_id,
-                    "timestamp": row_at.isoformat(),
-                    "provider": row[1],
-                    "model": row[2],
-                    "connection_id": row[3],
-                    "endpoint": row[4],
-                    "input_tokens": row[5],
-                    "output_tokens": row[6],
-                    "cost": row[7],
-                    "status": row[8],
-                    "cache_read_input_tokens": details[0],
-                    "cache_write_input_tokens": details[1],
-                }
-            )
-        if session_ids != {session_id}:
-            if not requests:
-                return _result(
-                    "inconclusive",
-                    "no_session_rows",
-                    observed_session_count=len(session_ids),
-                    usage_count=len(usage),
-                )
-            return _result(
-                "inconclusive",
-                "overlapping_sessions",
-                request_count=len(requests),
-                usage_count=len(usage),
-                observed_session_count=len(session_ids),
-            )
-        if len(usage) != len(requests):
-            return _result(
-                "inconclusive",
-                "usage_join_incomplete",
-                request_count=len(requests),
-                usage_count=len(usage),
-            )
-        by_key: dict[str, list[dict[str, Any]]] = {}
-        for row in usage:
-            if not isinstance(row["detail_id"], str) or not row["detail_id"].strip():
-                return _result("inconclusive", "usage_join_incomplete", request_count=len(requests), usage_count=len(usage))
-            by_key.setdefault(row["detail_id"], []).append(row)
-
-        matched: list[dict[str, Any]] = []
-        for request in requests:
-            candidates = by_key.get(request["detail_id"], [])
-            if len(candidates) != 1:
-                return _result("inconclusive", "usage_join_ambiguous" if len(candidates) > 1 else "usage_join_incomplete", request_count=len(requests), matched_count=len(matched))
-            row = candidates[0]
-            if (row["provider"], row["model"], row["connection_id"]) != (request["provider"], request["model"], request["connection_id"]):
-                return _result("inconclusive", "usage_join_incomplete", request_count=len(requests), matched_count=len(matched))
-            if request["status"] != "success" or row["status"] != "ok":
-                return _result("inconclusive", "request_not_successful", request_count=len(requests), matched_count=len(matched))
-            if any(
-                isinstance(row[field], bool)
-                or not isinstance(row[field], int)
-                or row[field] < 0
-                for field in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_write_input_tokens")
-            ) or row["cache_read_input_tokens"] + row["cache_write_input_tokens"] > row["input_tokens"]:
-                return _result("inconclusive", "invalid_token_counts", request_count=len(requests), matched_count=len(matched))
-            if (
-                not isinstance(row["cost"], (int, float))
-                or isinstance(row["cost"], bool)
-                or row["cost"] < 0
-                or (isinstance(row["cost"], float) and not math.isfinite(row["cost"]))
-            ):
-                return _result("inconclusive", "invalid_cost", request_count=len(requests), matched_count=len(matched))
-            matched.append(row)
-
-        if not matched:
-            return _result("inconclusive", "no_session_rows", observed_session_count=len(session_ids))
-        session_timestamps = [_timestamp(value) for value in _session_timestamps(connection, session_id)]
-        if not session_timestamps or min(session_timestamps) < start_at or max(session_timestamps) > end_at:
-            return _result(
-                "inconclusive",
-                "timestamp_boundary_unproven",
-                request_count=len(requests),
-                matched_count=len(matched),
-            )
-
-        aggregate = _aggregate_usage(matched)
-        if aggregate is None:
-            return _result("inconclusive", "invalid_usage_row", request_count=len(requests), matched_count=len(matched))
-        return _result(
-            "matched",
-            None,
-            request_count=len(requests),
-            matched_count=len(matched),
-            first_timestamp=matched[0]["timestamp"],
-            last_timestamp=matched[-1]["timestamp"],
-            **aggregate,
-        )
-    finally:
-        connection.close()
+    rows, metrics, failure = _canonical_read(
+        database,
+        start=start,
+        end=end,
+        connection_id=connection_id,
+        observation_budget_ms=observation_budget_ms,
+    )
+    if failure:
+        return failure
+    return _project(rows, attribution="session", session_id=session_id, metrics=metrics)
 
 
 def observe_run_usage(
@@ -346,6 +406,7 @@ def observe_run_usage(
     end: str,
     expected_session_id: str | None = None,
     connection_id: str | None = None,
+    observation_budget_ms: int = OBSERVATION_BUDGET_MS,
 ) -> dict[str, Any]:
     """Attribute a bounded run only to the caller-provided provider session."""
     start_at = _timestamp(start)
@@ -355,56 +416,22 @@ def observe_run_usage(
     if not isinstance(expected_session_id, str) or not expected_session_id.strip():
         return _result("inconclusive", "session_binding_missing")
 
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    try:
-        tables = _tables(connection)
-        required = {"timestamp", "provider", "connectionId", "data"}
-        if not required <= tables["requestDetails"]:
-            return _result("inconclusive", "schema_unavailable")
-        sessions: set[str] = set()
-        for timestamp, row_session in connection.execute(
-            """
-            select timestamp,
-                   coalesce(json_extract(data, '$.clientMetadata.session_id'), json_extract(data, '$.providerRequest.client_metadata.session_id'))
-            from requestDetails
-            where provider = 'codex'
-              and (? is null or connectionId = ?)
-            """,
-            (connection_id, connection_id),
-        ):
-            row_at = _timestamp(timestamp)
-            if start_at <= row_at <= end_at:
-                sessions.add(row_session or "<unattributed>")
-    finally:
-        connection.close()
-
-    if not sessions or "<unattributed>" in sessions:
-        return _result(
-            "inconclusive",
-            "no_session_rows" if not sessions else "session_attribution_missing",
-            observed_session_count=len(sessions),
-        )
-    if expected_session_id not in sessions:
-        return _result("inconclusive", "session_attribution_mismatch", observed_session_count=len(sessions))
-    if len(sessions) != 1:
-        return _result(
-            "inconclusive",
-            "overlapping_sessions",
-            observed_session_count=len(sessions),
-        )
-
-    session_id = expected_session_id
-    result = observe_usage(
+    rows, metrics, failure = _canonical_read(
         database,
         start=start,
         end=end,
-        session_id=session_id,
         connection_id=connection_id,
+        observation_budget_ms=observation_budget_ms,
     )
-    if result["disposition"] == "matched":
-        result["session_id"] = session_id
-        result["attribution"] = "session"
-    return result
+    if failure:
+        return failure
+    sessions = {row["session_id"] for row in rows if row["request_timestamp"] is not None}
+    if not sessions or expected_session_id not in sessions:
+        reason = "no_session_rows"
+        if sessions:
+            reason = "session_attribution_missing" if "<unattributed>" in sessions else "session_attribution_mismatch"
+        return _result("inconclusive", reason, observed_session_count=len(sessions))
+    return _project(rows, attribution="session", session_id=expected_session_id, metrics=metrics)
 
 
 def _result(disposition: str, reason: str | None, **fields: Any) -> dict[str, Any]:
@@ -413,6 +440,15 @@ def _result(disposition: str, reason: str | None, **fields: Any) -> dict[str, An
         "disposition": disposition,
         "source": "9router-local-read-only",
     }
+    if "availability" not in fields:
+        if disposition in {"matched", "observed_window"}:
+            fields["availability"] = "partial" if fields.get("excluded_count", 0) else "available"
+        elif reason in {"no_usage_rows", "no_session_rows"}:
+            fields["availability"] = "missing"
+        else:
+            fields["availability"] = "inconclusive"
+    if "coverage" not in fields:
+        fields["coverage"] = "complete" if not fields.get("excluded_count", 0) else "partial"
     if reason:
         result["reason"] = reason
     result.update(fields)
