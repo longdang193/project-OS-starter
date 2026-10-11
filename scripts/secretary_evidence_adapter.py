@@ -115,10 +115,15 @@ def _provider_usage(launcher: Mapping[str, Any], provider: Mapping[str, Any] | N
     if provider_attribution not in {"request", "session", "attempt", "run", "window", "none"}:
         provider_attribution = "session" if provider_session else "none"
     session_bridge = bool(provider_session and receipt_session and provider_session == receipt_session)
-    secretary_attributed = receipt["state"] == "present" and session_bridge and coverage == "complete"
+    secretary_attributed = (
+        receipt["state"] == "present"
+        and join["state"] == "matched"
+        and session_bridge
+        and coverage == "complete"
+    )
     attribution = provider_attribution
     if secretary_attributed:
-        attribution = "run" if _text(receipt_data.get("run_id")) else "attempt"
+        attribution = "run" if join["matching_key"] == "run_id" else "attempt"
     return {
         "state": "observed",
         "secretary_attributed": secretary_attributed,
@@ -128,7 +133,13 @@ def _provider_usage(launcher: Mapping[str, Any], provider: Mapping[str, Any] | N
         "session_bridge": session_bridge,
         "join": join,
         "data": _copy_fields(provider, _PROVIDER_FIELDS),
-        "economics": "run-bound" if secretary_attributed else "partial-unattributed",
+        "economics": (
+            "run-bound"
+            if secretary_attributed and join["matching_key"] == "run_id"
+            else "attempt-bound"
+            if secretary_attributed
+            else "partial-unattributed"
+        ),
     }
 
 

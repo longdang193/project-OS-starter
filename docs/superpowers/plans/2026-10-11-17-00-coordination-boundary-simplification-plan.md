@@ -197,7 +197,7 @@ It does not add a new orchestration service, persistence layer, event bus, Worke
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | isolated | `codex` | none | focused contract tests and source review | `51 passed` in `tests/test_skill_project_secretary.py`, `tests/test_skill_chief_of_staff.py`, and `tests/test_native_personal_local_workflow.py`; checkpoint commit |
-| Task 2 | `pending` | isolated | `unresolved` | Task 1 | attribution regression tests | pending |
+| Task 2 | `completed` | isolated | `codex` | Task 1 | `12 passed` in `tests/test_secretary_evidence_adapter.py`; conflicting run/attempt identifiers remain unpromoted; checkpoint commit |
 | Task 3 | `pending` | isolated | `unresolved` | Task 1 | normal invocation result and safety tests | pending |
 | Task 4 | `pending` | isolated | `unresolved` | Tasks 2–3 | run/probe separation and zero normal-path provider queries | pending |
 | Task 5 | `pending` | isolated | `unresolved` | Tasks 1–4 | variability benchmark and scenario tests | pending |
