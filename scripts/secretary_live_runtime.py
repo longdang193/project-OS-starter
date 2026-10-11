@@ -447,10 +447,38 @@ def _close_herdr_workspace(herdr: str, workspace_id: str, *, env: dict[str, str]
             timeout=30.0,
         )
     except CommandTransportTimeout:
-        return {"state": "unknown", "reason": "transport_timeout"}
+        return {"state": "unknown", "verified": False, "reason": "transport_timeout"}
     if result.returncode:
-        return {"state": "unknown", "reason": "close_failed"}
-    return {"state": "closed"}
+        return {"state": "unknown", "verified": False, "reason": "close_failed"}
+    for output in (result.stdout, result.stderr):
+        try:
+            payload = json.loads(output)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        evidence = payload.get("result") if isinstance(payload, Mapping) else None
+        evidence = evidence if isinstance(evidence, Mapping) else payload
+        if evidence.get("workspace_id") == workspace_id and evidence.get("state") in {"closed", "removed", "absent"}:
+            return {"state": "closed", "verified": True, "authority": "herdr.workspace.close"}
+    try:
+        check = _herdr_run(
+            [herdr, "workspace", "get", workspace_id],
+            env=env,
+            timeout=5.0,
+        )
+    except CommandTransportTimeout:
+        return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
+    if check.returncode:
+        for output in (check.stdout, check.stderr):
+            try:
+                payload = json.loads(output)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            error = payload.get("error") if isinstance(payload, Mapping) else None
+            code = error.get("code") if isinstance(error, Mapping) else None
+            if code in {"workspace_not_found", "workspace_missing", "not_found"}:
+                return {"state": "closed", "verified": True, "authority": "herdr.workspace.get"}
+        return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
+    return {"state": "closed", "verified": False, "reason": "workspace_still_present"}
 
 
 def _release_codex_agent(
@@ -564,6 +592,14 @@ def _observe_submitted_codex(
         "state": "unknown",
         "observation_error": "completion observation deadline expired",
     }
+    saw_activity = False
+    initial_output_fingerprint: tuple[object, ...] | None = None
+    initial_state: object | None = None
+    initial_state_change_seq: object | None = None
+    state_changed = False
+    state_change_seq_changed = False
+    output_changed = False
+    completed = False
     while time.monotonic() < deadline:
         remaining = max(0.01, deadline - time.monotonic())
         snapshot = _codex_completion_snapshot(
@@ -573,31 +609,67 @@ def _observe_submitted_codex(
             env=env,
             timeout_seconds=min(5.0, remaining),
         )
+        if snapshot.get("state") != "idle" or snapshot.get("observation_error"):
+            saw_activity = True
+        if initial_state is None:
+            initial_state = snapshot.get("state")
+        elif snapshot.get("state") != initial_state:
+            state_changed = True
+        if initial_state_change_seq is None:
+            initial_state_change_seq = snapshot.get("state_change_seq")
+        elif (
+            snapshot.get("state_change_seq") is not None
+            and snapshot.get("state_change_seq") != initial_state_change_seq
+        ):
+            state_change_seq_changed = True
+        fingerprint = (
+            snapshot.get("content"),
+            snapshot.get("output_sha256"),
+            snapshot.get("output_chars"),
+        )
+        if initial_output_fingerprint is None:
+            initial_output_fingerprint = fingerprint
+        elif fingerprint != initial_output_fingerprint:
+            output_changed = True
         if (
-            snapshot.get("state") in {"idle", "failed", "stopped"}
+            (
+                snapshot.get("state") in {"done", "failed", "stopped"}
+                or (
+                    snapshot.get("state") == "idle"
+                    and saw_activity
+                    and output_changed
+                    and (state_changed or state_change_seq_changed)
+                )
+            )
             and not snapshot.get("observation_error")
         ):
+            completed = True
             break
         time.sleep(min(_CODEX_OBSERVATION_POLL_SECONDS, remaining))
 
+    if not completed and snapshot.get("state") == "idle":
+        snapshot["observation_error"] = snapshot.get("observation_error") or "completion output not observed"
+
     observation = {
         key: snapshot.get(key)
-        for key in ("state", "state_change_seq", "output_sha256", "output_chars", "observation_error")
+        for key in (
+            "state",
+            "state_change_seq",
+            "content",
+            "output_sha256",
+            "output_chars",
+            "observation_error",
+        )
         if key in snapshot
     }
+    semantic_content = None
+    if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
+        semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+    if semantic_content:
+        observation["semantic_content"] = semantic_content
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
-    if (
-        snapshot.get("state") == "idle"
-        and snapshot.get("observation_error") is None
-        and isinstance(snapshot.get("state_change_seq"), int)
-        and isinstance(snapshot.get("output_chars"), int)
-        and snapshot["output_chars"] > 0
-    ):
-        observation["result_reference"] = (
-            f"herdr://{session}/{agent_name}/{snapshot['state_change_seq']}"
-        )
     cleanup: dict[str, Any] = {"state": "not_attempted"}
-    if snapshot.get("state") == "idle" and not snapshot.get("observation_error"):
+    if snapshot.get("state") in {"idle", "done"}:
         cleanup = _release_codex_agent(
             executable,
             session,
@@ -659,7 +731,7 @@ def _classify_capabilities(
 ) -> dict[str, Any]:
     transport_proven = (
         isinstance(observation, Mapping)
-        and observation.get("state") == "idle"
+        and observation.get("state") in {"idle", "done"}
         and isinstance(observation.get("cleanup"), Mapping)
         and observation["cleanup"].get("state") == "removed"
     )
@@ -723,7 +795,11 @@ def _binding_matches(request: SecretaryLaunchRequest, runtime: Mapping[str, Any]
     for field in ("model", "session_id"):
         if not isinstance(runtime.get(field), str) or not runtime[field].strip():
             return False
-    return not isinstance(assignment, Mapping) or assignment.get("attempt_id") in (None, request.attempt_id)
+    if _identity_conflict(runtime, assignment):
+        return False
+    if isinstance(assignment, Mapping) and assignment.get("attempt_id") not in (None, request.attempt_id):
+        return False
+    return runtime.get("attempt_id") == request.attempt_id
 
 
 def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str, Any] | None) -> bool:
@@ -978,7 +1054,7 @@ def _build_codex_runtime_snapshot(
     finished_at: str,
     provider_telemetry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    if observation.get("state") != "idle":
+    if observation.get("state") not in {"idle", "done"}:
         return None
     cleanup = observation.get("cleanup")
     if not isinstance(cleanup, Mapping) or cleanup.get("state") != "removed":
@@ -1271,11 +1347,139 @@ def _read_only_git_anchor(worktree: Path) -> tuple[Path, str]:
     return Path(lines[0]).resolve(), _required_text(lines[1], "git_revision")
 
 
-def _safe_result_value(value: object) -> str | None:
+def _identity_conflict(*sources: Mapping[str, Any] | None) -> bool:
+    for field in ("assignment_id", "attempt_id"):
+        values = {
+            value.strip()
+            for source in sources
+            if isinstance(source, Mapping)
+            for value in (source.get(field),)
+            if isinstance(value, str) and value.strip()
+        }
+        if len(values) > 1:
+            return True
+    return False
+
+
+def _reduce_resource_evidence(*evidence: Mapping[str, Any] | None) -> dict[str, Any]:
+    state = "unresolved"
+    reuse_blocked = True
+    recovery_required = True
+    for item in evidence:
+        if not isinstance(item, Mapping):
+            continue
+        candidate = item.get("state")
+        verified = item.get("verified") is True
+        if candidate in {"removed", "closed", "settled"} and verified:
+            state = "settled"
+            reuse_blocked = False
+            recovery_required = False
+        elif candidate in {"preserved", "unknown", "unverified", "quarantined", "unresolved"} and state != "settled":
+            state = "quarantined"
+            reuse_blocked = True
+            recovery_required = True
+    return {"state": state, "reuse_blocked": reuse_blocked, "recovery_required": recovery_required}
+
+
+def _owned_resources(
+    payload: Mapping[str, Any] | None,
+    observation: Mapping[str, Any] | None,
+    *,
+    cleanup_state: str | None = None,
+    workspace_id: str | None = None,
+    workspace_close: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
+    herdr = herdr if isinstance(herdr, Mapping) else {}
+    observed = observation if isinstance(observation, Mapping) else {}
+    cleanup = observed.get("cleanup") if isinstance(observed.get("cleanup"), Mapping) else {}
+    effective_cleanup_state = cleanup_state or cleanup.get("state")
+    resources: list[dict[str, Any]] = []
+    if workspace_id:
+        resources.append({
+            "kind": "workspace",
+            "identity": workspace_id,
+            "state": "settled" if workspace_close and workspace_close.get("verified") is True else "quarantined",
+            "authority": "herdr.workspace.close",
+        })
+    for kind, key in (("session", "session"), ("pane", "pane"), ("agent", "agent_name")):
+        identity = _safe_text(herdr.get(key))
+        if identity:
+            resources.append({
+                "kind": kind,
+                "identity": identity,
+                "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
+                "authority": "secretary_live_runtime._release_codex_agent",
+            })
+    process_identity = herdr.get("process_identity") or observed.get("process_identity")
+    if isinstance(process_identity, Mapping):
+        safe_identity = {
+            key: process_identity[key]
+            for key in ("pid", "name", "cwd")
+            if key in process_identity and _safe_text(str(process_identity[key])) is not None
+        }
+        if safe_identity:
+            resources.append({
+                "kind": "process",
+                "identity": safe_identity,
+                "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
+                "authority": "herdr.process-retirement",
+            })
+    return resources
+
+
+def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None:
     text = _safe_text(value)
-    if text is None or len(text) > 4096:
+    if text is None or (not allow_long and len(text) > 4096):
         return None
     return text
+
+
+def _extract_codex_semantic_content(value: object) -> str | None:
+    text = _safe_text(value)
+    if text is None:
+        return None
+    segments = re.split(r"(?m)^\s*Worked for\b.*$", text)
+    candidates: list[str] = []
+    for segment in segments:
+        lines = segment.splitlines()
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith("• "):
+                continue
+            content_lines = [stripped[2:].strip()]
+            for continuation in lines[index + 1:]:
+                continuation = continuation.strip()
+                if not continuation:
+                    continue
+                if continuation.startswith(("› ", "Ask Codex", "combo-")):
+                    break
+                content_lines.append(continuation)
+            content = "\n".join(line for line in content_lines if line)
+            if content:
+                candidates.append(content)
+                break
+    return candidates[-1] if candidates else None
+
+
+def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    reference = None
+    for key in ("result_reference", "reference", "source_ref", "result_ref"):
+        reference = _safe_result_value(source.get(key))
+        if reference:
+            break
+    content = None
+    for key in ("semantic_content", "content", "response", "message", "result_content", "resolved_content"):
+        content = _safe_result_value(source.get(key), allow_long=True)
+        if content:
+            break
+    if content:
+        return reference, content
+    resolver = _safe_text(source.get("result_resolver") or source.get("resolver"))
+    retrieved = source.get("result_retrieved") is True or source.get("retrieved") is True
+    if reference and resolver and retrieved:
+        return reference, None
+    return None, None
 
 
 def _normalize_invocation_outcome(
@@ -1291,6 +1495,10 @@ def _normalize_invocation_outcome(
     assignment = assignment if isinstance(assignment, Mapping) else {}
     execution = assignment.get("execution")
     execution = dict(execution) if isinstance(execution, Mapping) else {}
+    launcher_observation_error = _safe_text(execution.get("observation_error"))
+    if launcher_observation_error:
+        execution["observation_error_scope"] = "launcher"
+        execution["launcher_observation_error"] = launcher_observation_error
     if not isinstance(execution.get("state"), str):
         execution["state"] = "failed" if returncode else "unknown"
     cleanup = assignment.get("cleanup")
@@ -1306,52 +1514,48 @@ def _normalize_invocation_outcome(
 
     references: list[str] = []
     content: str | None = None
-    for source in (task_result, assignment, observed):
-        for key in ("result_reference", "reference", "source_ref", "result_ref"):
-            value = _safe_result_value(source.get(key))
-            if value and value not in references:
-                references.append(value)
-        if content is None:
-            for key in ("content", "response", "message"):
-                content = _safe_result_value(source.get(key))
-                if content:
-                    break
+    observation_reportable = (
+        observed.get("state") in {"idle", "done"}
+        and not observed.get("observation_error")
+    )
+    observed_evidence: Mapping[str, Any] = (
+        {key: value for key, value in observed.items() if key != "content"}
+        if observation_reportable
+        else {}
+    )
+    for source in (task_result, assignment, observed_evidence):
+        reference, source_content = _result_evidence(source)
+        if reference and reference not in references:
+            references.append(reference)
+        if content is None and source_content:
+            content = source_content
 
-    identity_values = {
-        value
-        for source in (task_result, assignment)
-        for value in (
-            _safe_result_value(source.get("attempt_id")),
-            _safe_result_value(source.get("assignment_id")),
-        )
-        if value
-    }
-    ambiguous = bool(task_result.get("ambiguous")) or len(identity_values) > 1
+    ambiguous = bool(task_result.get("ambiguous")) or _identity_conflict(task_result, assignment)
     if len(references) > 1:
         ambiguous = True
-    if result_status is None and references and not ambiguous:
+    if result_status is None and (references or content) and not ambiguous:
         result_status = "failed" if observed.get("state") == "failed" else "completed"
     if ambiguous:
         result = {"state": "ambiguous", "status": None}
-    elif result_status is not None and (references or (content and identity_values)):
+    elif result_status is not None and (references or content):
         result = {"state": "reported", "status": result_status}
         if references:
             result["reference"] = references[0]
-        else:
+        if content:
             result["content"] = content
     else:
         result = {"state": "unavailable", "status": None}
 
-    cleanup_state = cleanup.get("state")
     observed_cleanup = observed.get("cleanup")
-    if not cleanup_state and isinstance(observed_cleanup, Mapping):
-        cleanup_state = observed_cleanup.get("state")
-    if cleanup_state == "removed":
-        resource = {"state": "settled", "reuse_blocked": False}
-    elif cleanup_state in {"preserved", "unknown", "unverified"}:
-        resource = {"state": "quarantined", "reuse_blocked": True}
-    else:
-        resource = {"state": "unresolved", "reuse_blocked": True}
+    cleanup_state = cleanup.get("state")
+    if isinstance(observed_cleanup, Mapping):
+        observed_cleanup_state = observed_cleanup.get("state")
+        if observed_cleanup_state and cleanup_state in {None, "unknown", "not_attempted", "preserved"}:
+            cleanup_state = observed_cleanup_state
+    resource = _reduce_resource_evidence(
+        {"state": cleanup_state, "verified": cleanup_state == "removed"},
+    )
+    owned_resources = _owned_resources(payload, observed, cleanup_state=cleanup_state)
 
     observability_state = (
         "available" if observed and not observed.get("observation_error") else "unavailable"
@@ -1367,13 +1571,16 @@ def _normalize_invocation_outcome(
         "state_change_seq": observed.get("state_change_seq"),
         "output_chars": observed.get("output_chars"),
         "observation_error": observed.get("observation_error"),
+        "launcher_observation_error": launcher_observation_error,
     }
     return {
         "schema_version": "secretary-invocation-v1",
         "invocation_id": invocation_id,
         "execution": execution,
         "result": result,
-        "resource": resource,
+        "resource": {key: resource[key] for key in ("state", "reuse_blocked")},
+        "owned_resources": owned_resources,
+        "recovery_required": resource["recovery_required"],
         "observability": observability,
         "timestamps": {"started": started_at, "finished": finished_at},
     }
@@ -1397,7 +1604,7 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     )
     payload: Mapping[str, Any] | None = None
     observation: Mapping[str, Any] = {}
-    result: dict[str, Any] = {}
+    result: dict[str, Any] | None = None
     try:
         completed = subprocess.run(
             build_normal_launcher_command(launch_request, expected_base=expected_base),
@@ -1419,17 +1626,52 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             started_at=started,
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
+    except Exception as exc:
+        result = _normalize_invocation_outcome(
+            invocation_id=invocation_id,
+            returncode=1,
+            payload=payload,
+            observation=observation,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+        result["execution"]["state"] = "failed"
+        result["execution"]["error"] = type(exc).__name__
+        result["result"] = {"state": "unavailable", "status": None}
     finally:
         if workspace_id is not None:
             preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
-            completion_state = result.get("observability", {}).get("completion_state")
-            if (
-                preflight["workspace_close"].get("state") == "closed"
-                and completion_state in {"idle", "failed", "stopped"}
-            ):
-                result["resource"] = {"state": "settled", "reuse_blocked": False}
-            elif result.get("resource", {}).get("state") == "settled":
-                result["resource"] = {"state": "quarantined", "reuse_blocked": True}
+            if result is None:
+                result = _normalize_invocation_outcome(
+                    invocation_id=invocation_id,
+                    returncode=1,
+                    payload=payload,
+                    observation=observation,
+                    started_at=started,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                result["execution"]["state"] = "failed"
+                result["result"] = {"state": "unavailable", "status": None}
+            cleanup_state = result.get("observability", {}).get("cleanup_state")
+            herdr_identity = payload.get("herdr") if isinstance(payload, Mapping) else None
+            cleanup_verified = cleanup_state == "removed" or not isinstance(herdr_identity, Mapping)
+            close_verified = preflight["workspace_close"].get("verified") is True
+            resource = (
+                {"state": "settled", "reuse_blocked": False, "recovery_required": False}
+                if cleanup_verified and close_verified
+                else _reduce_resource_evidence({"state": "unknown", "verified": False})
+            )
+            result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
+            result["owned_resources"] = _owned_resources(
+                payload,
+                observation,
+                cleanup_state=cleanup_state,
+                workspace_id=workspace_id,
+                workspace_close=preflight["workspace_close"],
+            )
+            result["recovery_required"] = resource["recovery_required"]
+    if result is None:
+        raise RuntimeError("Secretary normal run did not produce a result")
     result["preflight"] = preflight
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -1475,7 +1717,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
             post_submit = _observe_submitted_codex(request, payload, env=environment)
             result["post_submit_observation"] = post_submit
-            if post_submit.get("state") != "idle":
+            if post_submit.get("state") not in {"idle", "done"}:
                 result["failure_kind"] = "runtime_completion_observation_missing"
             elif post_submit.get("cleanup", {}).get("state") != "removed":
                 result["failure_kind"] = "runtime_cleanup_evidence_missing"
@@ -1516,14 +1758,41 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             result["disposition"] = "READY"
             result["failure_kind"] = None
             result.update(_classify_capabilities("READY", result.get("post_submit_observation")))
+    except Exception as exc:
+        result = {
+            "disposition": "BLOCKED_CAPABILITY",
+            "evidence_provenance": "capability-probe",
+            "failure_kind": type(exc).__name__,
+            "missing_capabilities": ["secretary_runtime_receipt"],
+        }
     finally:
         if workspace_id is not None:
             preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
             if result is not None:
                 result["preflight"] = preflight
+                post_submit = result.get("post_submit_observation")
+                cleanup = post_submit.get("cleanup") if isinstance(post_submit, Mapping) else None
+                cleanup_state = cleanup.get("state") if isinstance(cleanup, Mapping) else None
+                herdr_identity = payload.get("herdr") if isinstance(payload, Mapping) else None
+                cleanup_verified = cleanup_state == "removed" or not isinstance(herdr_identity, Mapping)
+                close_verified = preflight["workspace_close"].get("verified") is True
+                resource = (
+                    {"state": "settled", "reuse_blocked": False, "recovery_required": False}
+                    if cleanup_verified and close_verified
+                    else _reduce_resource_evidence({"state": "unknown", "verified": False})
+                )
+                result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
+                result["owned_resources"] = _owned_resources(
+                    payload,
+                    post_submit if isinstance(post_submit, Mapping) else {},
+                    cleanup_state=cleanup_state,
+                    workspace_id=workspace_id,
+                    workspace_close=preflight["workspace_close"],
+                )
+                result["recovery_required"] = resource["recovery_required"]
                 if (
                     result.get("disposition") == "READY"
-                    and preflight["workspace_close"].get("state") != "closed"
+                    and preflight["workspace_close"].get("verified") is not True
                 ):
                     result["disposition"] = "BLOCKED_CAPABILITY"
                     result["evidence_provenance"] = "capability-probe"

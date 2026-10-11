@@ -13,6 +13,8 @@ from scripts.secretary_live_runtime import (
     SecretaryLaunchRequest,
     _safe_runtime_snapshot,
     _build_codex_runtime_snapshot,
+    _extract_codex_semantic_content,
+    _normalize_invocation_outcome,
     _observe_submitted_codex,
     _observe_provider_telemetry,
     _release_codex_agent,
@@ -107,6 +109,7 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
                     "state": "reported_failed",
                     "attempt_id": "attempt-1",
                     "result_reference": "task-result://invoke-1",
+                    "content": "failure details",
                 },
             }
         },
@@ -120,6 +123,7 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
         "state": "reported",
         "status": "failed",
         "reference": "task-result://invoke-1",
+        "content": "failure details",
     }
 
 
@@ -136,6 +140,7 @@ def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() 
                 "task_result": {
                     "state": "reported_completed",
                     "result_reference": "herdr://session/agent/12",
+                    "content": "completed response",
                 },
             }
         },
@@ -147,6 +152,26 @@ def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() 
     assert result["result"]["state"] == "reported"
     assert result["resource"]["state"] == "quarantined"
     assert result["resource"]["reuse_blocked"] is True
+
+
+def test_normal_outcome_prefers_verified_observation_cleanup() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "cleanup": {"state": "unknown"},
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={"state": "done", "cleanup": {"state": "removed"}},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+    assert result["observability"]["cleanup_state"] == "removed"
 
 
 def test_run_smoke_is_strict_probe_alias() -> None:
@@ -182,7 +207,6 @@ def test_run_normal_does_not_observe_provider_telemetry(
         "_observe_submitted_codex",
         lambda *args, **kwargs: {
             "state": "idle",
-            "result_reference": "herdr://session/agent/12",
             "cleanup": {"state": "removed"},
         },
     )
@@ -194,9 +218,81 @@ def test_run_normal_does_not_observe_provider_telemetry(
 
     result = run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
 
-    assert result["result"]["state"] == "reported"
-    assert result["result"]["reference"] == "herdr://session/agent/12"
+    assert result["result"]["state"] == "unavailable"
     assert "provider_telemetry" not in result
+
+
+def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "content": "answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "reported", "status": "completed", "content": "answer"}
+
+
+def test_normal_outcome_marks_same_field_identity_conflict_ambiguous() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-assignment",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "attempt_id": "attempt-result",
+                    "content": "answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "ambiguous", "status": None}
+
+
+def test_normal_outcome_preserves_long_semantic_content() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    content = "x" * 5000
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "task_result": {"state": "reported_completed", "content": content},
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "reported", "status": "completed", "content": content}
 
 
 def structured_runtime(request_value: SecretaryLaunchRequest, *, session_id: str, model: str) -> dict[str, object]:
@@ -354,8 +450,165 @@ def test_observe_submitted_codex_retries_terminal_state_after_read_timeout(
     )
 
     assert observation["state"] == "idle"
-    assert observation["result_reference"] == "herdr://session/agent/2"
+    assert "result_reference" not in observation
     assert observation["cleanup"] == {"state": "removed"}
+
+
+def test_observe_submitted_codex_rejects_recovered_stale_output_without_state_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {
+            "state": "idle",
+            "state_change_seq": 1,
+            "content": None,
+            "output_sha256": "a" * 64,
+            "output_chars": 0,
+            "observation_error": "agent read transport timeout",
+        },
+        {
+            "state": "idle",
+            "state_change_seq": 1,
+            "content": "Previous invocation\n• stale answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 32,
+            "observation_error": None,
+        },
+        {
+            "state": "failed",
+            "state_change_seq": 2,
+            "content": "Previous invocation\n• stale answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 32,
+            "observation_error": None,
+        },
+    ])
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {"herdr": {"executable": "herdr.exe", "session": "session", "pane": "pane", "agent_name": "agent"}},
+        env={},
+    )
+
+    assert observation["state"] == "failed"
+    assert "semantic_content" not in observation
+
+
+def test_normal_outcome_uses_consistent_cleanup_evidence() -> None:
+    payload = {
+        "herdr": {"session": "session", "pane": "pane", "agent_name": "agent"},
+        "assignment": {
+            "execution": {"state": "completed"},
+            "cleanup": {"state": "preserved"},
+            "task_result": {"state": "reported_completed", "content": "answer"},
+        },
+    }
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload=payload,
+        observation={"state": "done", "cleanup": {"state": "removed"}},
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+    assert result["owned_resources"]
+    assert all(item["state"] == "settled" for item in result["owned_resources"])
+
+
+def test_observe_submitted_codex_waits_past_initial_idle_until_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {
+            "state": "idle",
+            "state_change_seq": 1,
+            "content": "Codex prompt screen",
+            "output_sha256": "a" * 64,
+            "output_chars": 18,
+            "observation_error": None,
+        },
+        {
+            "state": "done",
+            "state_change_seq": 2,
+            "content": "Codex screen\n• SECRETARY_PROBE_test\n› Ask Codex to do anything",
+            "output_sha256": "b" * 64,
+            "output_chars": 65,
+            "observation_error": None,
+        },
+    ])
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+            }
+        },
+        env={},
+    )
+
+    assert observation["state"] == "done"
+    assert observation["semantic_content"] == "SECRETARY_PROBE_test"
+    assert observation["cleanup"] == {"state": "removed"}
+
+
+def test_observe_submitted_codex_does_not_capture_unconfirmed_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {
+            "state": "stopped",
+            "state_change_seq": 2,
+            "content": "Codex screen\n• partial answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 30,
+            "observation_error": None,
+        },
+    ])
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "not_attempted"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {"herdr": {"executable": "herdr.exe", "session": "session", "pane": "pane", "agent_name": "agent"}},
+        env={},
+    )
+
+    assert observation["state"] == "stopped"
+    assert "semantic_content" not in observation
+
+
+def test_extract_codex_semantic_content_selects_latest_answer() -> None:
+    assert _extract_codex_semantic_content(
+        "• I will inspect the code first.\nWorked for 9s\n• FAIL: tests failed.\n› Ask Codex to do anything"
+    ) == "FAIL: tests failed."
 
 
 def test_release_codex_agent_interrupts_process_and_verifies_removal(
@@ -492,7 +745,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime._close_herdr_workspace",
-        lambda herdr, workspace_id, **kwargs: events.append("workspace_close") or closed.append((herdr, workspace_id)) or {"state": "closed"},
+        lambda herdr, workspace_id, **kwargs: events.append("workspace_close") or closed.append((herdr, workspace_id)) or {"state": "closed", "verified": True},
     )
     monkeypatch.setattr(
         "scripts.secretary_live_runtime.subprocess.run",
@@ -523,7 +776,7 @@ def test_run_smoke_preserves_ready_result_without_post_submit_downgrade(
 
     assert result["disposition"] == "READY"
     assert result["evidence_provenance"] == "live-attributed"
-    assert result["preflight"] == {"selector_mode": "test", "workspace_close": {"state": "closed"}}
+    assert result["preflight"] == {"selector_mode": "test", "workspace_close": {"state": "closed", "verified": True}}
     assert closed == [("herdr.exe", "w99")]
     assert events == ["workspace_close", "provider_observation"]
 
@@ -562,6 +815,7 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
                             "task_result": {
                                 "state": "reported_completed",
                                 "result_reference": "herdr://default/normal-main-1234/1",
+                                "content": "normal response",
                             },
                         },
                     }
@@ -573,18 +827,201 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
     monkeypatch.setattr(
         runtime,
         "_observe_submitted_codex",
-        lambda *args, **kwargs: {"state": "idle", "cleanup": {"state": "unknown"}},
+        lambda *args, **kwargs: {"state": "idle", "cleanup": {"state": "removed"}},
     )
     monkeypatch.setattr(
         runtime,
         "_close_herdr_workspace",
-        lambda *args, **kwargs: {"state": "closed"},
+        lambda *args, **kwargs: {"state": "closed", "verified": True},
     )
 
     result = runtime.run_normal(request_value, output=tmp_path / "normal.json")
 
     assert result["result"]["state"] == "reported"
     assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+
+
+def test_close_workspace_requires_structured_retirement_proof(monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_herdr_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, '{"result":{"workspace_id":"w1","state":"closed"}}', ""
+        ),
+    )
+    assert runtime._close_herdr_workspace("herdr", "w1", env={}) == {
+        "state": "closed",
+        "verified": True,
+        "authority": "herdr.workspace.close",
+    }
+
+    monkeypatch.setattr(
+        runtime,
+        "_herdr_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+    assert runtime._close_herdr_workspace("herdr", "w1", env={}) == {
+        "state": "closed",
+        "verified": False,
+        "reason": "workspace_still_present",
+    }
+
+
+def test_run_normal_exception_preserves_owned_resource_after_verified_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (
+            request_value,
+            {"selector_mode": "test"},
+            "workspace-1",
+        ),
+    )
+    monkeypatch.setattr(runtime.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(runtime, "_close_herdr_workspace", lambda *args, **kwargs: {"state": "closed", "verified": True})
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert result["execution"]["state"] == "failed"
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+    assert result["recovery_required"] is False
+    assert result["owned_resources"][0]["identity"] == "workspace-1"
+
+
+def test_normal_outcome_reports_captured_observation_content() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={
+            "state": "done",
+            "semantic_content": "SECRETARY_PROBE_test",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "content": "SECRETARY_PROBE_test",
+    }
+
+
+def test_normal_outcome_scopes_launcher_observation_error_without_downgrading_result() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {
+                    "state": "completed",
+                    "observation_error": "not_observed",
+                },
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={
+            "state": "done",
+            "semantic_content": "SECRETARY_PROBE_test",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "content": "SECRETARY_PROBE_test",
+    }
+    assert result["execution"]["observation_error"] == "not_observed"
+    assert result["execution"]["observation_error_scope"] == "launcher"
+    assert result["observability"]["launcher_observation_error"] == "not_observed"
+    assert result["observability"]["observation_error"] is None
+
+
+@pytest.mark.parametrize(
+    ("state", "observation_error"),
+    [("working", None), ("stopped", None), ("idle", "completion output not observed")],
+)
+def test_normal_outcome_rejects_unconfirmed_observation_content(
+    state: str,
+    observation_error: str | None,
+) -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={
+            "state": state,
+            "observation_error": observation_error,
+            "semantic_content": "partial answer",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_does_not_report_terminal_screen_as_semantic_content() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={
+            "state": "done",
+            "content": ">_ OpenAI Codex\n› Return exactly SECRETARY_PROBE_test",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_run_normal_exception_quarantines_when_cleanup_is_unproven(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (request_value, {"selector_mode": "test"}, "workspace-1"),
+    )
+    monkeypatch.setattr(runtime.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(runtime, "_close_herdr_workspace", lambda *args, **kwargs: {"state": "unknown", "verified": False})
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert result["execution"]["state"] == "failed"
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["resource"] == {"state": "quarantined", "reuse_blocked": True}
+    assert result["recovery_required"] is True
+    assert result["owned_resources"][0]["identity"] == "workspace-1"
 
 
 def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(
@@ -1008,6 +1445,20 @@ def test_completed_transport_names_only_remaining_secretary_blocker() -> None:
     result = runtime._classify_capabilities(
         "BLOCKED_CAPABILITY",
         {"state": "idle", "cleanup": {"state": "removed"}},
+    )
+
+    assert result == {
+        "transport_evidence": "proven",
+        "missing_capabilities": ["secretary_runtime_receipt"],
+    }
+
+
+def test_done_transport_names_only_remaining_secretary_blocker() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._classify_capabilities(
+        "BLOCKED_CAPABILITY",
+        {"state": "done", "cleanup": {"state": "removed"}},
     )
 
     assert result == {
@@ -1576,6 +2027,13 @@ def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(
         if command[1:3] == ["workspace", "close"]:
             closed.append(command)
             return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                json.dumps({"error": {"code": "workspace_not_found"}}),
+                "",
+            )
         raise AssertionError(command)
 
     monkeypatch.setattr(runtime, "_herdr_run", fake_run)

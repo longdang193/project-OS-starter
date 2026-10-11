@@ -1394,6 +1394,7 @@ def _codex_completion_snapshot(
     return {
         "state": state,
         "state_change_seq": state_change_seq,
+        "content": output,
         "output_sha256": _sha256_text(output),
         "output_chars": len(output),
         "observation_error": observation_error,
