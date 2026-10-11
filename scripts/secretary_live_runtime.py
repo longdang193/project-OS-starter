@@ -46,9 +46,9 @@ except ModuleNotFoundError:
     )
 
 try:
-    from scripts.observe_9router_usage import observe_run_usage
+    from scripts.observe_9router_usage import observe_run_usage, observe_window_usage
 except ModuleNotFoundError:
-    from observe_9router_usage import observe_run_usage
+    from observe_9router_usage import observe_run_usage, observe_window_usage
 
 
 SECRETARY_PROVIDER = "9router"
@@ -347,18 +347,18 @@ def _observe_provider_telemetry(start: str, end: str, *, expected_session_id: st
             "attribution": "time-window",
             "reason": "database_unavailable",
         }
-    if not isinstance(expected_session_id, str) or not expected_session_id.strip():
-        return {
-            "schema_version": "9router-usage-observation-v1",
-            "disposition": "inconclusive",
-            "source": "9router-local-read-only",
-            "attribution": "session",
-            "reason": "session_binding_missing",
-        }
     start_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
     padded_start = start_at.isoformat()
     try:
-        result = observe_run_usage(database, start=padded_start, end=end, expected_session_id=expected_session_id)
+        if isinstance(expected_session_id, str) and expected_session_id.strip():
+            result = observe_run_usage(
+                database,
+                start=padded_start,
+                end=end,
+                expected_session_id=expected_session_id,
+            )
+        else:
+            result = observe_window_usage(database, start=padded_start, end=end)
         result["observation_window"] = {
             "start": padded_start,
             "end": end,
