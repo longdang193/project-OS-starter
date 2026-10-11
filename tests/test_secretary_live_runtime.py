@@ -13,6 +13,8 @@ from scripts.secretary_live_runtime import (
     SecretaryLaunchRequest,
     _safe_runtime_snapshot,
     _build_codex_runtime_snapshot,
+    _extract_codex_semantic_content,
+    _normalize_invocation_outcome,
     _observe_submitted_codex,
     _observe_provider_telemetry,
     _release_codex_agent,
@@ -150,6 +152,26 @@ def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() 
     assert result["result"]["state"] == "reported"
     assert result["resource"]["state"] == "quarantined"
     assert result["resource"]["reuse_blocked"] is True
+
+
+def test_normal_outcome_prefers_verified_observation_cleanup() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "cleanup": {"state": "unknown"},
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={"state": "done", "cleanup": {"state": "removed"}},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+    assert result["observability"]["cleanup_state"] == "removed"
 
 
 def test_run_smoke_is_strict_probe_alias() -> None:
@@ -429,6 +451,54 @@ def test_observe_submitted_codex_retries_terminal_state_after_read_timeout(
 
     assert observation["state"] == "idle"
     assert "result_reference" not in observation
+    assert observation["cleanup"] == {"state": "removed"}
+
+
+def test_observe_submitted_codex_waits_past_initial_idle_until_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = iter([
+        {
+            "state": "idle",
+            "state_change_seq": 1,
+            "content": "Codex prompt screen",
+            "output_sha256": "a" * 64,
+            "output_chars": 18,
+            "observation_error": None,
+        },
+        {
+            "state": "done",
+            "state_change_seq": 2,
+            "content": "Codex screen\n• SECRETARY_PROBE_test\n› Ask Codex to do anything",
+            "output_sha256": "b" * 64,
+            "output_chars": 65,
+            "observation_error": None,
+        },
+    ])
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: next(snapshots),
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+            }
+        },
+        env={},
+    )
+
+    assert observation["state"] == "done"
+    assert observation["semantic_content"] == "SECRETARY_PROBE_test"
     assert observation["cleanup"] == {"state": "removed"}
 
 
@@ -717,6 +787,49 @@ def test_run_normal_exception_preserves_owned_resource_after_verified_cleanup(
     assert result["resource"] == {"state": "settled", "reuse_blocked": False}
     assert result["recovery_required"] is False
     assert result["owned_resources"][0]["identity"] == "workspace-1"
+
+
+def test_normal_outcome_reports_captured_observation_content() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={
+            "state": "done",
+            "semantic_content": "SECRETARY_PROBE_test",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "content": "SECRETARY_PROBE_test",
+    }
+
+
+def test_normal_outcome_does_not_report_terminal_screen_as_semantic_content() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={
+            "state": "done",
+            "content": ">_ OpenAI Codex\n› Return exactly SECRETARY_PROBE_test",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
 
 
 def test_run_normal_exception_quarantines_when_cleanup_is_unproven(

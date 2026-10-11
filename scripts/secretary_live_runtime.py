@@ -592,6 +592,10 @@ def _observe_submitted_codex(
         "state": "unknown",
         "observation_error": "completion observation deadline expired",
     }
+    saw_activity = False
+    initial_output_fingerprint: tuple[object, ...] | None = None
+    output_changed = False
+    completed = False
     while time.monotonic() < deadline:
         remaining = max(0.01, deadline - time.monotonic())
         snapshot = _codex_completion_snapshot(
@@ -601,21 +605,53 @@ def _observe_submitted_codex(
             env=env,
             timeout_seconds=min(5.0, remaining),
         )
+        if snapshot.get("state") != "idle" or snapshot.get("observation_error"):
+            saw_activity = True
+        fingerprint = (
+            snapshot.get("content"),
+            snapshot.get("output_sha256"),
+            snapshot.get("output_chars"),
+        )
+        if initial_output_fingerprint is None:
+            initial_output_fingerprint = fingerprint
+        elif fingerprint != initial_output_fingerprint:
+            output_changed = True
         if (
-            snapshot.get("state") in {"idle", "failed", "stopped"}
+            (
+                snapshot.get("state") in {"done", "failed", "stopped"}
+                or (
+                    snapshot.get("state") == "idle"
+                    and saw_activity
+                    and output_changed
+                )
+            )
             and not snapshot.get("observation_error")
         ):
+            completed = True
             break
         time.sleep(min(_CODEX_OBSERVATION_POLL_SECONDS, remaining))
 
+    if not completed and snapshot.get("state") == "idle":
+        snapshot["observation_error"] = snapshot.get("observation_error") or "completion output not observed"
+
     observation = {
         key: snapshot.get(key)
-        for key in ("state", "state_change_seq", "output_sha256", "output_chars", "observation_error")
+        for key in (
+            "state",
+            "state_change_seq",
+            "content",
+            "output_sha256",
+            "output_chars",
+            "observation_error",
+        )
         if key in snapshot
     }
+    semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+    if semantic_content:
+        observation["semantic_content"] = semantic_content
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
     cleanup: dict[str, Any] = {"state": "not_attempted"}
-    if snapshot.get("state") == "idle" and not snapshot.get("observation_error"):
+    if snapshot.get("state") in {"idle", "done"}:
         cleanup = _release_codex_agent(
             executable,
             session,
@@ -1379,6 +1415,29 @@ def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None
     return text
 
 
+def _extract_codex_semantic_content(value: object) -> str | None:
+    text = _safe_text(value)
+    if text is None:
+        return None
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("• "):
+            continue
+        content_lines = [stripped[2:].strip()]
+        for continuation in lines[index + 1:]:
+            continuation = continuation.strip()
+            if not continuation:
+                continue
+            if continuation.startswith(("› ", "Ask Codex", "combo-", "Worked for")):
+                break
+            content_lines.append(continuation)
+        content = "\n".join(line for line in content_lines if line)
+        if content:
+            return content
+    return None
+
+
 def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]:
     reference = None
     for key in ("result_reference", "reference", "source_ref", "result_ref"):
@@ -1386,7 +1445,7 @@ def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]
         if reference:
             break
     content = None
-    for key in ("content", "response", "message", "result_content", "resolved_content"):
+    for key in ("semantic_content", "content", "response", "message", "result_content", "resolved_content"):
         content = _safe_result_value(source.get(key), allow_long=True)
         if content:
             break
@@ -1427,7 +1486,10 @@ def _normalize_invocation_outcome(
 
     references: list[str] = []
     content: str | None = None
-    for source in (task_result, assignment, observed):
+    observed_evidence: Mapping[str, Any] = {
+        key: value for key, value in observed.items() if key != "content"
+    }
+    for source in (task_result, assignment, observed_evidence):
         reference, source_content = _result_evidence(source)
         if reference and reference not in references:
             references.append(reference)
@@ -1437,7 +1499,7 @@ def _normalize_invocation_outcome(
     ambiguous = bool(task_result.get("ambiguous")) or _identity_conflict(task_result, assignment)
     if len(references) > 1:
         ambiguous = True
-    if result_status is None and references and not ambiguous:
+    if result_status is None and (references or content) and not ambiguous:
         result_status = "failed" if observed.get("state") == "failed" else "completed"
     if ambiguous:
         result = {"state": "ambiguous", "status": None}
@@ -1450,10 +1512,12 @@ def _normalize_invocation_outcome(
     else:
         result = {"state": "unavailable", "status": None}
 
-    cleanup_state = cleanup.get("state")
     observed_cleanup = observed.get("cleanup")
-    if not cleanup_state and isinstance(observed_cleanup, Mapping):
-        cleanup_state = observed_cleanup.get("state")
+    cleanup_state = cleanup.get("state")
+    if isinstance(observed_cleanup, Mapping):
+        observed_cleanup_state = observed_cleanup.get("state")
+        if observed_cleanup_state and cleanup_state in {None, "unknown", "not_attempted"}:
+            cleanup_state = observed_cleanup_state
     resource = _reduce_resource_evidence(
         {"state": cleanup_state, "verified": cleanup_state == "removed"},
     )
