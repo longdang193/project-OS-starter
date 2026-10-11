@@ -1001,6 +1001,48 @@ def test_provider_telemetry_uses_attributed_9router_run_usage(
     assert observed[0]["expected_session_id"] == "session-1"
 
 
+def test_provider_telemetry_keeps_unattributed_window_usage_without_session_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "data.sqlite"
+    database.write_bytes(b"")
+    observed: list[dict[str, str]] = []
+
+    def fake_observe(path: Path, *, start: str, end: str) -> dict[str, object]:
+        observed.append({"database": str(path), "start": start, "end": end})
+        return {
+            "schema_version": "9router-usage-observation-v1",
+            "disposition": "observed_window",
+            "source": "9router-local-read-only",
+            "attribution": "time-window",
+            "confidence": "unattributed",
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "total_tokens": 110,
+            "cache_read_input_tokens": 80,
+            "cache_write_input_tokens": 0,
+            "cost": 0.01,
+            "cost_provenance": "provider-reported",
+        }
+
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "observe_window_usage", fake_observe, raising=False)
+    monkeypatch.setenv("NINEROUTER_DATABASE", str(database))
+
+    result = runtime._observe_provider_telemetry(
+        "2026-10-10T00:00:00+00:00",
+        "2026-10-10T00:00:01+00:00",
+    )
+
+    assert result["disposition"] == "observed_window"
+    assert result["attribution"] == "time-window"
+    assert result["confidence"] == "unattributed"
+    assert result["cache_read_input_tokens"] == 80
+    assert observed[0]["database"] == str(database)
+
+
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
     payload = select_launcher_payload(
         [
