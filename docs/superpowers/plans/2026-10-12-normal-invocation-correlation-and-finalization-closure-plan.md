@@ -88,8 +88,8 @@ telemetry dependencies.
 - Branch: `codex/normal-invocation-correlation-and-finalization-closure`
 - Base commit: `14b0081c70c7a8f2a87846a827ec3a33b6730e1a` (`origin/main` at plan review)
 - Expected workspace: fresh managed worktree at the recorded base, clean before the plan checkpoint; primary-checkout changes and `docs/superpowers/plans/2026-10-11-normal-coordination-source-truth-convergence-plan.md` remain preserved outside the implementation lane
-- Next action: run preflight, record `HEAD == origin/main` base proof, create the branch/worktree, verify the target symbols, then activate Task 1
-- Blockers: `none`; if `origin/main` moves before activation, stop, re-evaluate the diff, update this base SHA, and rerun the focused baseline
+- Next action: complete final verification, commit the implementation, and hand off for authorized publication/review
+- Blockers: mandatory normal semantic path passed; optional structured receipt/economics qualification is `BLOCKED_CAPABILITY` because the live probe captured the exact semantic answer but no structured runtime receipt was published
 
 Preflight admission requires all of the following before Task 1:
 
@@ -104,11 +104,11 @@ Preflight admission requires all of the following before Task 1:
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `active` | fresh worktree | `codex` | none | fast completion accepted; stale output rejected; fresh output reported | preflight pending |
-| Task 2 | `pending` | fresh worktree | `codex` | Task 1 | result survives cleanup failure; identities retained; closure uncertainty is explicit | pending |
-| Task 3 | `pending` | fresh worktree | `codex` | Task 1 | prose preserved; actual secret values redacted | pending |
-| Task 4 | `pending` | fresh worktree | `codex` | Task 2 | ownership and authoritative resource evidence reconcile; CoS mirrors pass sync/check | pending |
-| Task 5 | `pending` | fresh worktree | `codex` | Tasks 1–4 | incorrect benchmark row exits nonzero; unavailable values are not fabricated | pending |
+| Task 1 | `completed` | fresh worktree | `codex` | none | fast, stale, fresh, partial, and mismatched correlation cases pass | focused runtime and launcher suites pass; 364-test combined suite later passed |
+| Task 2 | `completed` | fresh worktree | `codex` | Task 1 | result survives cleanup failure; identities retained; closure uncertainty is explicit | cleanup transport/malformed-response regressions pass; run_probe acquisition envelope added |
+| Task 3 | `completed` | fresh worktree | `codex` | Task 1 | prose preserved; actual secret values redacted | semantic redaction and metadata tests pass in focused runtime suite |
+| Task 4 | `completed` | fresh worktree | `codex` | Task 2 | ownership and authoritative resource evidence reconcile; CoS mirrors pass sync/check | monotonic reducer, ownership, reconciliation, adapter sync/check, and header validation pass |
+| Task 5 | `completed` | fresh worktree | `codex` | Tasks 1–4 | incorrect benchmark row exits nonzero; unavailable values are not fabricated | completion monitor and secretary benchmark regressions pass; CLI exits nonzero on injected mismatch |
 
 ## Task Breakdown
 
@@ -170,23 +170,23 @@ Preflight admission requires all of the following before Task 1:
 - Stop for: new receipt schemas, launcher API redesign, provider dependency, or any change that weakens stale-output rejection
 
 **Steps:**
-- [ ] Step 1: Trace all callers and tests of `_observe_submitted_codex`,
+- [x] Step 1: Trace all callers and tests of `_observe_submitted_codex`,
   `_normalize_invocation_outcome`, and semantic extraction; record the current
   identity and snapshot fields used by each caller.
-- [ ] Step 2: Capture the pre-submit freshness anchor before dispatch and pass it
+- [x] Step 2: Capture the pre-submit freshness anchor before dispatch and pass it
   through observation without requiring a witnessed `working` transition.
-- [ ] Step 3: Encode the acceptance predicate as identity match AND
+- [x] Step 3: Encode the acceptance predicate as identity match AND
   submission-bound freshness proof AND terminal-complete semantic content; do
   not accept a terminal snapshot by itself.
-- [ ] Step 4: Make the terminal rendering parser the sole boundary that turns a
+- [x] Step 4: Make the terminal rendering parser the sole boundary that turns a
   rendered snapshot into a semantic candidate; keep normalizer logic unaware of
   UI markers.
-- [ ] Step 5: Add regressions for fast completion, stale idle output, read-error
+- [x] Step 5: Add regressions for fast completion, stale idle output, read-error
   recovery with old output, fresh post-submit output, partial/stopped output,
   and unrelated output changes whose assignment/attempt identity does not match.
 
 **Verification:**
-- [ ] `pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py`
+- [x] `pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py`
 - Expected: the first post-submit idle/done observation with matching identity,
   valid freshness evidence, and complete content is `reported` without deadline
   waiting; stale, mismatched, partial, stopped, or read-error-recovered
@@ -262,30 +262,30 @@ Preflight admission requires all of the following before Task 1:
 - Stop for: new cleanup daemon/registry, automatic retry, deletion of shared resources, or treating unknown closure as verified removal
 
 **Steps:**
-- [ ] Step 1: Map every acquisition and cleanup call in `run_normal()` and
+- [x] Step 1: Map every acquisition and cleanup call in `run_normal()` and
   `run_probe()` and identify where an exception can bypass identity recording.
-- [ ] Step 2: Initialize one invocation envelope before acquisition and update
+- [x] Step 2: Initialize one invocation envelope before acquisition and update
   ownership facts immediately after each successful creation.
-- [ ] Step 3: Preserve a creation-side-effect fact when remote creation may have
+- [x] Step 3: Preserve a creation-side-effect fact when remote creation may have
   succeeded but the local response is null, malformed, or unparseable; record
   acquisition as uncertain, ownership as unknown, and finalization as
   `recovery_required` instead of claiming that nothing was created.
-- [ ] Step 4: Convert close and retirement helpers into total result-producing
+- [x] Step 4: Convert close and retirement helpers into total result-producing
   functions; preserve malformed/null responses as explicit unproven evidence.
-- [ ] Step 5: Reconcile `semantic_outcome` before cleanup, then retain it while
+- [x] Step 5: Reconcile `semantic_outcome` before cleanup, then retain it while
   attaching independent `finalization_outcome`, quarantine, and recovery
   evidence. Answer consumers may consume `reported`; invocation/controller
   completion is incomplete when finalization is `recovery_required` or `blocked`.
-- [ ] Step 6: Verify the existing resource-selection/reuse gate rejects a
+- [x] Step 6: Verify the existing resource-selection/reuse gate rejects a
   resource marked `recovery_required`; do not add a quarantine registry.
-- [ ] Step 7: Add regressions for cleanup `OSError`, cleanup timeout, null or
+- [x] Step 7: Add regressions for cleanup `OSError`, cleanup timeout, null or
   malformed close responses, bootstrap failure after known creation,
   creation-success with malformed/null identity response, execution failure
   followed by successful cleanup, and a next invocation attempting to reuse a
   quarantined resource.
 
 **Verification:**
-- [ ] `pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py`
+- [x] `pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py`
 - Expected: `semantic_outcome = reported` remains consumable when cleanup fails
   while `finalization_outcome = recovery_required`; resources with unproven
   closure are rejected by the next reuse decision; resource identities remain
@@ -346,18 +346,18 @@ Preflight admission requires all of the following before Task 1:
 - Stop for: logging raw secrets, broad keyword removal, changing public schema without consumer evidence, or adding a secret store
 
 **Steps:**
-- [ ] Step 1: Trace all callers of `_safe_text`, `_safe_assignment`, and
+- [x] Step 1: Trace all callers of `_safe_text`, `_safe_assignment`, and
   `_extract_codex_semantic_content` and classify metadata versus semantic values.
-- [ ] Step 2: Keep metadata rejection strict while applying redaction only to
+- [x] Step 2: Keep metadata rejection strict while applying redaction only to
   detected secret values in semantic prose.
-- [ ] Step 3: Add tests for `Never put passwords in source code.`,
+- [x] Step 3: Add tests for `Never put passwords in source code.`,
   `Authorization headers should be redacted.`, bearer-token values, configured
   secrets embedded in otherwise valid prose, and URL query token values.
-- [ ] Step 4: Add an idempotency assertion that applying semantic redaction
+- [x] Step 4: Add an idempotency assertion that applying semantic redaction
   twice produces the same output as applying it once.
 
 **Verification:**
-- [ ] `pytest -q tests/test_secretary_live_runtime.py`
+- [x] `pytest -q tests/test_secretary_live_runtime.py`
 - Expected: security explanations remain usable; only actual configured secret,
   bearer-token, and URL-token values are removed; repeated redaction is stable;
   metadata sanitization tests remain green.
@@ -435,28 +435,28 @@ Preflight admission requires all of the following before Task 1:
 - Stop for: GitHub ruleset administration, new local source-of-truth databases, or deleting pre-existing/shared sessions or panes
 
 **Steps:**
-- [ ] Step 1: Trace ownership inputs from acquisition through `_owned_resources`
+- [x] Step 1: Trace ownership inputs from acquisition through `_owned_resources`
   and enumerate shared/pre-existing versus invocation-created resources.
-- [ ] Step 2: Make the ownership list invocation-bound and add conflict handling
+- [x] Step 2: Make the ownership list invocation-bound and add conflict handling
   that preserves authoritative `still present` evidence as quarantine/recovery.
-- [ ] Step 3: Implement and test the monotonic resource-state reduction table;
+- [x] Step 3: Implement and test the monotonic resource-state reduction table;
   ensure a `recovery_required` resource is rejected by the existing next-use
   selection/reuse predicate.
-- [ ] Step 4: Correct the exact-SHA advisory wording in the canonical CoS skill
+- [x] Step 4: Correct the exact-SHA advisory wording in the canonical CoS skill
   without changing the broader Secretary/CoS/Worker model.
-- [ ] Step 5: Run `python scripts/sync_agent_adapters.py --all-platforms` and
+- [x] Step 5: Run `python scripts/sync_agent_adapters.py --all-platforms` and
   verify generated mirrors with `--check`; then compare `git diff --name-only`
   and untracked paths against the declared canonical skill, three expected
   generated mirrors, and task-owned test files. Stop if synchronization touches
   any undeclared generated surface.
-- [ ] Step 6: Add focused regressions for distinct assignment/attempt IDs,
+- [x] Step 6: Add focused regressions for distinct assignment/attempt IDs,
   same-field identity conflict, shared/pre-existing resources, `unknown ->
   removed`, removed versus authoritative still-present evidence, every row of
   the monotonic reduction table, and reuse rejection for quarantined resources.
 
 **Verification:**
-- [ ] `pytest -q tests/test_skill_chief_of_staff.py tests/test_reconciliation.py tests/test_secretary_live_runtime.py`
-- [ ] `python scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `pytest -q tests/test_skill_chief_of_staff.py tests/test_reconciliation.py tests/test_secretary_live_runtime.py`
+- [x] `python scripts/sync_agent_adapters.py --all-platforms --check`
 - Expected: canonical and generated CoS wording agree; shared resources are
   never owned; authoritative conflicts quarantine; the reduction table is
   monotonic; the reuse gate rejects quarantined resources; sync/check reports no
@@ -528,25 +528,25 @@ Preflight admission requires all of the following before Task 1:
 - Stop for: claiming latency/token/provider improvements without observation, private launcher decoupling, or broad benchmark redesign
 
 **Steps:**
-- [ ] Step 1: Keep `benchmark_secretary_architecture.py` labeled as deterministic
+- [x] Step 1: Keep `benchmark_secretary_architecture.py` labeled as deterministic
   contract evidence; do not present its baseline/target rows as observed
   production measurements.
-- [ ] Step 2: In `benchmark_completion_monitoring.py`, classify each emitted
+- [x] Step 2: In `benchmark_completion_monitoring.py`, classify each emitted
   counter as observed by the fake-Herdr harness or unavailable; never copy a
   desired value into an observed field.
-- [ ] Step 3: Add machine-readable `evidence_kind` and
+- [x] Step 3: Add machine-readable `evidence_kind` and
   `measurement_status` fields to benchmark rows/reports so deterministic
   contract values cannot be consumed as production observations.
-- [ ] Step 4: Make the completion-monitoring CLI return nonzero whenever its
+- [x] Step 4: Make the completion-monitoring CLI return nonzero whenever its
   correctness summary contains lifecycle, cleanup, reconciliation, or outcome
   mismatches; add a subprocess-level regression that injects one mismatch.
-- [ ] Step 5: Preserve the current normalizer/reporting benchmark scope and
+- [x] Step 5: Preserve the current normalizer/reporting benchmark scope and
   defer `measure-path`, private launcher decoupling, and broad benchmark
   redesign.
 
 **Verification:**
-- [ ] `pytest -q tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py`
-- [ ] `python scripts/benchmark_completion_monitoring.py --baseline-revision 14b0081c70c7a8f2a87846a827ec3a33b6730e1a --repetitions 1 --output artifacts/completion-monitoring/normal-invocation-finalization.json`
+- [x] `pytest -q tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py`
+- [x] `python scripts/benchmark_completion_monitoring.py --baseline-revision 14b0081c70c7a8f2a87846a827ec3a33b6730e1a --repetitions 1 --output artifacts/completion-monitoring/normal-invocation-finalization-final.json`
 - Expected: deterministic contract rows retain their evidence provenance,
   unobserved fields are unavailable rather than fabricated, and a completion
   monitoring validation result containing an incorrect row exits nonzero.
