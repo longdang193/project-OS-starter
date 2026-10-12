@@ -751,10 +751,7 @@ def _observe_submitted_codex(
             if not completion_identity and anchor_semantic != semantic_content:
                 semantic_content = None
         snapshot_result_owned = _result_source_authoritative(snapshot, assignment)
-        terminal_result_owned = _terminal_result_proven(snapshot, freshness_proven)
-        if semantic_content and not (
-            structured_result_owned or snapshot_result_owned or terminal_result_owned
-        ):
+        if semantic_content and not (structured_result_owned or snapshot_result_owned):
             semantic_content = None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
@@ -800,7 +797,6 @@ def _observe_submitted_codex(
         if semantic_content and not (
             structured_result_owned
             or _result_source_authoritative(snapshot, assignment)
-            or _terminal_result_proven(snapshot, freshness_proven)
         ):
             semantic_content = None
     if semantic_content:
@@ -1802,18 +1798,6 @@ def _extract_codex_completion_marker(value: object) -> str | None:
     return matches[-1].strip() if matches else None
 
 
-def _terminal_result_proven(
-    snapshot: Mapping[str, Any],
-    freshness_proven: bool,
-) -> bool:
-    return bool(
-        freshness_proven
-        and snapshot.get("state") in {"idle", "done"}
-        and not snapshot.get("observation_error")
-        and _extract_codex_completion_marker(snapshot.get("content"))
-    )
-
-
 def _codex_completion_prefix(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -1863,38 +1847,25 @@ def _result_source_authoritative(
 ) -> bool:
     if not isinstance(source, Mapping):
         return False
-    source_identity = {
-        key: source.get(key)
-        for key in ("assignment_id", "attempt_id")
-        if isinstance(source.get(key), str) and source.get(key).strip()
-    }
+    if not isinstance(assignment, Mapping):
+        return False
     assignment_identity = {
         key: assignment.get(key)
         for key in ("assignment_id", "attempt_id")
-        if isinstance(assignment, Mapping)
-        and isinstance(assignment.get(key), str)
-        and assignment.get(key).strip()
     }
-    if not source_identity or not assignment_identity:
-        producer = source.get("producer")
-        if source.get("assistant_owned") is not True:
-            return False
-        if producer is not None and producer not in _ACCEPTED_RESULT_PRODUCERS:
-            return False
-        reference, content = _result_evidence(source)
-        reference = reference or next(
-            (
-                _safe_result_value(source.get(key))
-                for key in ("result_reference", "reference", "source_ref", "result_ref")
-                if _safe_result_value(source.get(key))
-            ),
-            None,
-        )
-        return bool(reference or content)
-    if any(assignment_identity.get(key) != value for key, value in source_identity.items()):
+    source_identity = {
+        key: source.get(key)
+        for key in ("assignment_id", "attempt_id")
+    }
+    if any(
+        not isinstance(value, str) or not value.strip()
+        for value in (*assignment_identity.values(), *source_identity.values())
+    ):
+        return False
+    if source_identity != assignment_identity:
         return False
     producer = source.get("producer")
-    if producer is not None and producer not in _ACCEPTED_RESULT_PRODUCERS:
+    if producer not in _ACCEPTED_RESULT_PRODUCERS:
         return False
     reference, content = _result_evidence(source)
     reference = reference or next(
@@ -1949,11 +1920,7 @@ def _normalize_invocation_outcome(
     observed = observation if isinstance(observation, Mapping) else {}
     task_result = assignment.get("task_result")
     task_result = task_result if isinstance(task_result, Mapping) else {}
-    task_state = task_result.get("state")
-    result_status = {
-        "reported_completed": "completed",
-        "reported_failed": "failed",
-    }.get(task_state)
+    result_status: str | None = None
 
     references: list[str] = []
     content: str | None = None
@@ -1966,14 +1933,24 @@ def _normalize_invocation_outcome(
         if observation_reportable
         else {}
     )
+    authoritative_sources: list[Mapping[str, Any]] = []
     for source in (task_result, observed_evidence):
         if not _result_source_authoritative(source, assignment):
             continue
+        authoritative_sources.append(source)
         reference, source_content = _result_evidence(source)
         if reference and reference not in references:
             references.append(reference)
         if content is None and source_content:
             content = source_content
+
+    for source in authoritative_sources:
+        result_status = {
+            "reported_completed": "completed",
+            "reported_failed": "failed",
+        }.get(source.get("state"))
+        if result_status is not None:
+            break
 
     ambiguous = bool(task_result.get("ambiguous")) or _identity_conflict(task_result, assignment)
     if len(references) > 1:

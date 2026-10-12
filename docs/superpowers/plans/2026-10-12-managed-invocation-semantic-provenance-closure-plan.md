@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: completed
+status: active
 layer: change
 name: managed-invocation-semantic-provenance-closure
 targets:
@@ -107,8 +107,8 @@ or other performance claims.
 - Branch: `codex/managed-invocation-semantic-provenance-closure`
 - Base commit: `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d` (`origin/main` at plan drafting)
 - Expected workspace: `clean implementation worktree`; preserve the primary checkout and all completed historical plans
-- Next action: none; retain the exact candidate and sanitized live receipt as closure evidence
-- Blockers: none
+- Next action: finish deterministic verification, obtain a fresh head-bound review, and keep live semantic closure blocked until structured producer-bound evidence is observable
+- Blockers: current Herdr/Codex live probes expose terminal completion without an accepted structured result producer; terminal-only text is intentionally unavailable under the corrected trust boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -116,7 +116,7 @@ or other performance claims.
 | Task 2 | `completed` | implementation worktree | `codex` | Task 1 | semantic projections agree; observation/finalization errors preserve authoritative work | `tests/test_secretary_live_runtime.py`; focused suite passed |
 | Task 3 | `completed` | implementation worktree | `codex` | Task 2 | contract fixture and fake-boundary measurement modes are distinct; incorrect validation exits nonzero | contract exit `0`; completion-monitor exit `0`; CI measure mode retired |
 | Task 4 | `completed` | implementation worktree | `codex` | Task 3 | existing artifact is classified without performance overclaim; exact-SHA evidence is reconciled | historical JSON parse passed; fake-boundary scope preserved |
-| Task 5 | `completed` | disposable probe worktree | `codex` | Tasks 1–4 | both live probes satisfy semantic, cleanup, ownership, and no-mutation gates | candidate `c250342fefa36154513cf5cfb9c39b7ef13bec34`; Probe A and Probe B passed; sanitized evidence recorded outside repo |
+| Task 5 | `blocked` | disposable probe worktree | `codex` | Tasks 1–4 | both live probes satisfy semantic, cleanup, ownership, and no-mutation gates | prior terminal-only receipt is diagnostic only; fresh structured producer-bound semantic evidence is unavailable |
 
 ## Task Breakdown
 
@@ -395,7 +395,7 @@ or other performance claims.
 - [x] Step 1: Freeze the candidate SHA and verify the disposable worktree is clean and based on that SHA.
 - [x] Step 2: Run Probe A through the existing normal invocation entry point with a unique exact-answer nonce.
 - [x] Step 3: Run Probe B with multiline/bullet user content and a distinct exact-answer nonce.
-- [x] Step 4: Use the bounded PowerShell command contract for each probe, with unique UTC nonces and strict semantic, projection, finalization, ownership, cleanup, and no-mutation gates. Both probes passed; dispatch count was unavailable and was not inferred.
+- [ ] Step 4: Use the bounded PowerShell command contract for each probe, with unique UTC nonces and strict semantic, projection, finalization, ownership, cleanup, and no-mutation gates. The prior terminal-only observations are rejected as semantic evidence; rerun only after the live boundary exposes a complete accepted producer-bound result.
 
   ```powershell
   $probeRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'project-os-managed-invocation-probe'
@@ -481,11 +481,11 @@ inventory, and a comparison showing the accepted evidence refers to the exact
 candidate SHA. The final live evidence must remain outside the repository unless
 the user separately authorizes a sanitized tracked artifact.
 
-Current evidence: candidate `c250342fefa36154513cf5cfb9c39b7ef13bec34`; frozen-baseline fake-boundary harness passed with baseline `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d` and three repetitions; historical artifact remained immutable; sanitized live evidence is at `C:\tmp\project-os-managed-invocation-semantic-provenance-final.json` with SHA-256 `71e3db255a8a8fbfc6ddc4fbfbd9cb1a026118bd30567dd0428fa42d1b16f634`. Probe A nonce SHA-256 is `727b5c12583676c300d0d80c49408bb213b6186824f82583e7d1d8cd604afd1b`; Probe B nonce SHA-256 is `caab04aeb1ba1123df9dbf1dcd8ecdde88aa7bad5e0d630ef37f0ad85ef1f936`.
+Current evidence: implementation fixes are under review; the frozen-baseline fake-boundary harness remains historical evidence with baseline `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d`; the historical artifact remains immutable. The prior sanitized live receipt is retained as diagnostic evidence only and is not accepted for semantic closure because its observations were terminal-screen-derived without complete structured producer binding.
 
-Live closure: both probes returned `reported`/`completed` semantic and compatibility results with matching nonce content, `done` completion, no observation error, settled/reusable resources, removed cleanup state, three settled owned resources, and unchanged disposable repositories. Dispatch count was unavailable and remained explicitly unavailable.
+Live closure: blocked. The probes reached terminal-looking output and cleanup, but the live boundary did not expose complete accepted producer-bound semantic evidence. Terminal output remains diagnostic and cannot establish `reported`/`completed` semantic truth.
 
-Root causes patched: the launcher no longer reads terminal output while Herdr reports `working`; the semantic observer accepts only fresh terminal completions with a captured pre-submit anchor and completion marker when structured TaskResult evidence is absent; and the extractor selects the last completed bullet block so multiline user bullets cannot swallow the assistant answer. Focused and full deterministic suites pass.
+Root causes patched: terminal-only output no longer becomes assistant-owned semantic content; result sources require matching assignment/attempt identities, an accepted producer, and result evidence; rejected TaskResult statuses no longer override accepted observations; and the benchmark checkout fetches the pinned baseline. Focused runtime regressions pass; live semantic closure remains blocked until the boundary provides structured producer-bound evidence.
 
 ## Completion Criteria
 
