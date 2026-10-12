@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: active
 layer: change
 name: managed-invocation-semantic-provenance-closure
 targets:
@@ -107,16 +107,16 @@ or other performance claims.
 - Branch: `codex/managed-invocation-semantic-provenance-closure`
 - Base commit: `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d` (`origin/main` at plan drafting)
 - Expected workspace: `clean implementation worktree`; preserve the primary checkout and all completed historical plans
-- Next action: run preflight and focused baseline tests before changing semantic admission
-- Blockers: `none`; missing live Herdr/Codex capability blocks only live-proof completion and must not be replaced with fabricated evidence
+- Next action: restore a working Herdr/Codex agent-read boundary, then rerun the two bounded live probes against candidate `7d029825e692a7d67443395eccc94c79128bec30`
+- Blockers: live semantic capture is blocked by repeated `agent read transport timeout`; deterministic implementation and cleanup evidence remain valid, and no runtime patch is justified by the current external failure
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | implementation worktree | `codex` | none | prompt/user text is never accepted without assistant provenance; fast attributed completion remains reported | pending |
-| Task 2 | `pending` | implementation worktree | `codex` | Task 1 | semantic projections agree; observation/finalization errors preserve authoritative work | pending |
-| Task 3 | `pending` | implementation worktree | `codex` | Task 2 | contract fixture and fake-boundary measurement modes are distinct; incorrect validation exits nonzero | pending |
-| Task 4 | `pending` | implementation worktree | `codex` | Task 3 | existing artifact is classified without performance overclaim; exact-SHA evidence is reconciled | pending |
-| Task 5 | `pending` | disposable probe worktree | `codex` | Tasks 1–4 | both live probes satisfy semantic, cleanup, ownership, and no-mutation gates | pending |
+| Task 1 | `completed` | implementation worktree | `codex` | none | prompt/user text is never accepted without assistant provenance; fast attributed completion remains reported | `tests/test_secretary_live_runtime.py`; focused suite passed |
+| Task 2 | `completed` | implementation worktree | `codex` | Task 1 | semantic projections agree; observation/finalization errors preserve authoritative work | `tests/test_secretary_live_runtime.py`; focused suite passed |
+| Task 3 | `completed` | implementation worktree | `codex` | Task 2 | contract fixture and fake-boundary measurement modes are distinct; incorrect validation exits nonzero | contract exit `0`; completion-monitor exit `0`; CI measure mode retired |
+| Task 4 | `completed` | implementation worktree | `codex` | Task 3 | existing artifact is classified without performance overclaim; exact-SHA evidence is reconciled | historical JSON parse passed; fake-boundary scope preserved |
+| Task 5 | `blocked` | disposable probe worktree | `codex` | Tasks 1–4 | both live probes satisfy semantic, cleanup, ownership, and no-mutation gates | both bounded probes captured unavailable semantic output; sanitized evidence recorded outside repo |
 
 ## Task Breakdown
 
@@ -166,13 +166,13 @@ or other performance claims.
 - Stop for: a new result schema, provider dependency, prompt-specific special case, or any change that weakens stale-output rejection
 
 **Steps:**
-- [ ] Step 1: Trace every caller and existing test of the observer, semantic extractor, freshness helper, and launcher snapshot; record the current evidence precedence.
-- [ ] Step 2: Add failing tests for `Summarize these notes:` with user bullets, arbitrary multiline prompt text, old completion history, fresh screen without assistant provenance, missing identities, wrong attempts, unaccepted producers, assignment-level prompt content, and fast attributed completion.
-- [ ] Step 3: Implement the assistant-owned/attempt-bound predicate using the provenance hierarchy above, existing structured evidence first, and the terminal adapter only as a proven compatibility fallback.
-- [ ] Step 4: Remove prompt-phrase assumptions and keep the fast-completion path green.
+- [x] Step 1: Trace every caller and existing test of the observer, semantic extractor, freshness helper, and launcher snapshot; record the current evidence precedence.
+- [x] Step 2: Add failing tests for `Summarize these notes:` with user bullets, arbitrary multiline prompt text, old completion history, fresh screen without assistant provenance, missing identities, wrong attempts, unaccepted producers, assignment-level prompt content, and fast attributed completion.
+- [x] Step 3: Implement the assistant-owned/attempt-bound predicate using the provenance hierarchy above, existing structured evidence first, and the terminal adapter only as a proven compatibility fallback.
+- [x] Step 4: Remove prompt-phrase assumptions and keep the fast-completion path green.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py`
+- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py`
 - Expected: new regressions fail before the implementation change, then all focused tests pass with prompt-only content unavailable and attributed fast completion reported.
 
 **Exit Criteria:**
@@ -225,13 +225,13 @@ or other performance claims.
 - Stop for: a new lifecycle state, cleanup redesign, global quarantine registry, or resource ownership broadening
 
 **Steps:**
-- [ ] Step 1: Trace all writers of `semantic_outcome`, `result`, `observability`, `resource`, and `recovery_required` from `run_normal()` through output serialization.
-- [ ] Step 2: Add failing tests for correlated TaskResult plus observation failure, conflicting evidence, cleanup timeout after reported answer, malformed close response, and the CLI exception path producing a consistent canonical failure envelope.
-- [ ] Step 3: Centralize the semantic decision and derive compatibility projections from it without post-normalization mutation; after that decision, no code path may mutate `result` independently of `semantic_outcome`.
-- [ ] Step 4: Preserve independent error scopes and rerun reconciliation/resource tests.
+- [x] Step 1: Trace all writers of `semantic_outcome`, `result`, `observability`, `resource`, and `recovery_required` from `run_normal()` through output serialization.
+- [x] Step 2: Add failing tests for correlated TaskResult plus observation failure, conflicting evidence, cleanup timeout after reported answer, malformed close response, and the CLI exception path producing a consistent canonical failure envelope.
+- [x] Step 3: Centralize the semantic decision and derive compatibility projections from it without post-normalization mutation; after that decision, no code path may mutate `result` independently of `semantic_outcome`.
+- [x] Step 4: Preserve independent error scopes and rerun reconciliation/resource tests.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_reconciliation.py`
+- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_reconciliation.py`
 - Expected: every serialized fixture satisfies semantic equivalence between `result.state` and `semantic_outcome.state`; cleanup uncertainty never erases semantic content or permits reuse.
 - Expected: the normal CLI exception path uses the same canonical projection and includes consistent semantic, execution, observability, and finalization evidence; process exit zero is never treated as live semantic acceptance by itself.
 
@@ -281,15 +281,15 @@ or other performance claims.
 - Stop for: an undiscovered production caller, a required public compatibility consumer, or a benchmark that still derives actual values from expectations
 
 **Steps:**
-- [ ] Step 1: Trace all repository callers of `run_measure_benchmark`, `measure`, and measurement-only fields; record the compatibility conclusion in the plan evidence.
-- [ ] Step 2: Add or retain failing subprocess coverage proving the contract mode remains explicit and the fake-boundary harness exits nonzero on an injected mismatch.
-- [ ] Step 3: Remove the expectation-derived measure path and its CI invocation; keep `contract 30` and completion-monitoring validation in CI.
-- [ ] Step 4: Verify unavailable/unobserved fields are null or explicitly unavailable and never populated from expected dictionaries.
+- [x] Step 1: Trace all repository callers of `run_measure_benchmark`, `measure`, and measurement-only fields; record the compatibility conclusion in the plan evidence.
+- [x] Step 2: Add or retain failing subprocess coverage proving the contract mode remains explicit and the fake-boundary harness exits nonzero on an injected mismatch.
+- [x] Step 3: Remove the expectation-derived measure path and its CI invocation; keep `contract 30` and completion-monitoring validation in CI.
+- [x] Step 4: Verify unavailable/unobserved fields are null or explicitly unavailable and never populated from expected dictionaries.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py`
-- [ ] `$contractOutput = Join-Path ([System.IO.Path]::GetTempPath()) 'secretary-contract.json'; py -B scripts/benchmark_secretary_architecture.py contract 30 > $contractOutput`
-- [ ] `$monitorOutput = Join-Path ([System.IO.Path]::GetTempPath()) 'completion-monitoring.json'; py -B scripts/benchmark_completion_monitoring.py --baseline-revision f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d --repetitions 3 --output $monitorOutput`
+- [x] `py -B -m pytest -q tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py`
+- [x] `$contractOutput = Join-Path ([System.IO.Path]::GetTempPath()) 'secretary-contract.json'; py -B scripts/benchmark_secretary_architecture.py contract 30 > $contractOutput`
+- [x] `$monitorOutput = Join-Path ([System.IO.Path]::GetTempPath()) 'completion-monitoring.json'; py -B scripts/benchmark_completion_monitoring.py --baseline-revision f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d --repetitions 3 --output $monitorOutput`
 - Expected: contract fixture generation exits `0`; the completion-monitoring harness uses the frozen baseline revision and its negative subprocess test exits nonzero on an injected mismatch; no Secretary architecture benchmark claims production performance.
 
 **Exit Criteria:**
@@ -337,13 +337,13 @@ or other performance claims.
 - Stop for: modification or deletion of the historical artifact, a new evidence database, unbound source hashes, or any performance claim not supported by matched runs
 
 **Steps:**
-- [ ] Step 1: Compare the artifact schema, generator output, tests, and current plan evidence; identify whether `evidence_kind` plus source hashes already express the required scope.
-- [ ] Step 2: Add the smallest machine-readable scope assertion in new evidence or the generator/tests if the current schema cannot distinguish fake-boundary correctness from production performance; do not rewrite the historical artifact.
-- [ ] Step 3: Record the exact baseline SHA, candidate SHA, harness, repetition count, and claim limitation in the plan evidence.
+- [x] Step 1: Compare the artifact schema, generator output, tests, and current plan evidence; identify whether `evidence_kind` plus source hashes already express the required scope.
+- [x] Step 2: Add the smallest machine-readable scope assertion in new evidence or the generator/tests if the current schema cannot distinguish fake-boundary correctness from production performance; do not rewrite the historical artifact.
+- [x] Step 3: Record the exact baseline SHA, candidate SHA, harness, repetition count, and claim limitation in the plan evidence.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_benchmark_completion_monitoring.py`
-- [ ] `python -m json.tool artifacts/completion-monitoring/normal-invocation-finalization-final.json`
+- [x] `py -B -m pytest -q tests/test_benchmark_completion_monitoring.py`
+- [x] `python -m json.tool artifacts/completion-monitoring/normal-invocation-finalization-final.json`
 - Expected: artifact is parseable, source-bound, explicitly fake-boundary/correctness-scoped, and contains no unsupported production-performance claim.
 
 **Exit Criteria:**
@@ -392,9 +392,9 @@ or other performance claims.
 - Stop for: missing capability, authentication, ambiguous resource ownership, shared-resource deletion risk, repository mutation, duplicate dispatch, or any live result that contradicts deterministic proof
 
 **Steps:**
-- [ ] Step 1: Freeze the candidate SHA and verify the disposable worktree is clean and based on that SHA.
-- [ ] Step 2: Run Probe A through the existing normal invocation entry point with a unique exact-answer nonce.
-- [ ] Step 3: Run Probe B with multiline/bullet user content and a distinct exact-answer nonce.
+- [x] Step 1: Freeze the candidate SHA and verify the disposable worktree is clean and based on that SHA.
+- [x] Step 2: Run Probe A through the existing normal invocation entry point with a unique exact-answer nonce.
+- [x] Step 3: Run Probe B with multiline/bullet user content and a distinct exact-answer nonce.
 - [ ] Step 4: Use the following bounded PowerShell command contract for each probe, with `$probeTask`, `$nonce`, and `$outputPath` set to the declared Probe A or Probe B values:
 
   ```powershell
@@ -455,17 +455,17 @@ Return exactly $nonceB. Do not edit the repository or create child workers.
   }
   ```
 
-- [ ] Step 5: Sanitize and keep raw probe output ephemeral. Record the sanitized evidence in the OS temp directory resolved by `$env:TEMP` on Windows or `tempfile.gettempdir()` in Python, and record durable facts in the plan ledger: candidate SHA, nonce or nonce digest, semantic verdict, projection-equivalence verdict, resource-retirement verdict, repository-unchanged verdict, elapsed duration, evidence-file digest, and unavailable capabilities.
-- [ ] Step 6: On timeout or any unavailable acceptance predicate, retain the disposable worktree and invocation-owned resource identities, run the existing ownership-safe reconciliation/close path, and record the live proof as `blocked`; never delete shared or ambiguous resources.
+- [x] Step 5: Sanitize and keep raw probe output ephemeral. Record the sanitized evidence in the OS temp directory resolved by `$env:TEMP` on Windows or `tempfile.gettempdir()` in Python, and record durable facts in the plan ledger: candidate SHA, nonce or nonce digest, semantic verdict, projection-equivalence verdict, resource-retirement verdict, repository-unchanged verdict, elapsed duration, evidence-file digest, and unavailable capabilities.
+- [x] Step 6: On timeout or any unavailable acceptance predicate, retain the disposable worktree and invocation-owned resource identities, run the existing ownership-safe reconciliation/close path, and record the live proof as `blocked`; never delete shared or ambiguous resources.
 - [ ] Step 7: Invoke `skill-verification-before-completion`; update this plan to `completed` only after deterministic proof and both live gates are verified.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py tests/test_skill_chief_of_staff.py tests/test_reconciliation.py`
-- [ ] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
-- [ ] `py -B scripts/validate_planning_lifecycle.py --repo-root .`
-- [ ] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
-- [ ] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
-- [ ] `git diff --check`
+- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py tests/test_skill_chief_of_staff.py tests/test_reconciliation.py` (`396 passed`)
+- [x] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
+- [x] `py -B scripts/validate_planning_lifecycle.py --repo-root .`
+- [x] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
+- [x] `git diff --check`
 - Expected: all deterministic checks pass; both live probes meet the matrix or the plan remains explicitly blocked; accepted evidence is bound to the exact candidate SHA.
 - Expected: each live command is bounded by the declared deadline, checks the semantic, projection, finalization, ownership, and repository predicates directly, and treats missing evidence or process exit zero alone as a failed/blocked acceptance.
 
@@ -480,6 +480,10 @@ repository validators listed there, `git diff --check`, a clean/untracked-file
 inventory, and a comparison showing the accepted evidence refers to the exact
 candidate SHA. The final live evidence must remain outside the repository unless
 the user separately authorizes a sanitized tracked artifact.
+
+Current evidence: candidate `7d029825e692a7d67443395eccc94c79128bec30`; frozen-baseline fake-boundary harness passed with baseline `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d` and three repetitions; historical artifact remained immutable; sanitized blocked live evidence is at `C:\tmp\project-os-managed-invocation-semantic-provenance-final.json` with SHA-256 `619f40f4e29ce0f1815df59675de2db3297057f32c3591b79bfd3fc1ee90150d`.
+
+Live root cause: both bounded probes reached Herdr workspace/agent cleanup, but the shared `herdr_main_launcher._codex_completion_snapshot()` boundary returned `agent read transport timeout`. The callers correctly projected `semantic_outcome` and `result` as `unavailable`, preserved settled resource state, and exited nonzero. No runtime patch is justified; restoring the external agent-read capability is the unblock condition.
 
 ## Completion Criteria
 
