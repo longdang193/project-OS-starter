@@ -696,10 +696,10 @@ def _observe_submitted_codex(
     completed = False
     task_result = assignment.get("task_result") if assignment else None
     structured_result_owned = _result_source_authoritative(task_result, assignment)
-    _, structured_result_content = (
-        _result_evidence(task_result)
+    structured_result_content = (
+        _result_source_content(task_result)
         if structured_result_owned and isinstance(task_result, Mapping)
-        else (None, None)
+        else None
     )
     freshness_proven = False
     legacy_first_snapshot: dict[str, Any] | None = None
@@ -741,9 +741,25 @@ def _observe_submitted_codex(
             )
         freshness_anchor = anchor or legacy_first_snapshot
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
-        semantic_content = structured_result_content or _extract_codex_semantic_content(snapshot.get("content"))
+        snapshot_result_owned = _result_source_authoritative(snapshot, assignment)
+        snapshot_explicit_content = _safe_semantic_result_value(
+            snapshot.get("semantic_content"),
+            allow_long=True,
+        )
+        terminal_semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+        snapshot_semantic_content = (
+            snapshot_explicit_content or terminal_semantic_content
+            if snapshot_result_owned
+            else None
+        )
+        semantic_content = structured_result_content or snapshot_semantic_content
         initial_prompt_content = _codex_initial_prompt_bullet(snapshot.get("content"))
-        if structured_result_content is None and semantic_content and initial_prompt_content == semantic_content:
+        if (
+            structured_result_content is None
+            and snapshot_explicit_content is None
+            and terminal_semantic_content
+            and initial_prompt_content == terminal_semantic_content
+        ):
             completion_identity = any(
                 snapshot.get(key) not in (None, "")
                 for key in ("result_id", "result_reference", "completion_id")
@@ -753,11 +769,9 @@ def _observe_submitted_codex(
                 if isinstance(anchor, Mapping)
                 else None
             )
-            if not completion_identity and anchor_semantic != semantic_content:
-                semantic_content = None
-        snapshot_result_owned = _result_source_authoritative(snapshot, assignment)
-        if semantic_content and structured_result_content is None and not snapshot_result_owned:
-            semantic_content = None
+            if not completion_identity and anchor_semantic != terminal_semantic_content:
+                snapshot_semantic_content = None
+                semantic_content = structured_result_content
         if snapshot.get("state") in {"failed", "stopped"}:
             break
         if (
@@ -797,21 +811,27 @@ def _observe_submitted_codex(
         )
         if key in snapshot
     }
-    semantic_content = None
+    selected_source, semantic_content = _select_authoritative_result_source(
+        task_result,
+        snapshot,
+        assignment,
+    )
     if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
-        semantic_content = structured_result_content or _extract_codex_semantic_content(snapshot.get("content"))
-        if semantic_content and structured_result_content is None and not _result_source_authoritative(snapshot, assignment):
-            semantic_content = None
-    if semantic_content:
-        observation["semantic_content"] = semantic_content
-        observation["assistant_owned"] = True
-        for key in ("result_id", "result_reference", "completion_id"):
-            if snapshot.get(key) not in (None, ""):
-                observation[key] = snapshot[key]
-        if structured_result_owned and isinstance(task_result, Mapping):
-            for key in ("producer", "result_id", "result_reference", "completion_id"):
-                if task_result.get(key) not in (None, ""):
-                    observation[key] = task_result[key]
+        if semantic_content:
+            observation["semantic_content"] = semantic_content
+            observation["assistant_owned"] = True
+            if isinstance(selected_source, Mapping):
+                for key in (
+                    "producer",
+                    "result_id",
+                    "result_reference",
+                    "reference",
+                    "source_ref",
+                    "result_ref",
+                    "completion_id",
+                ):
+                    if selected_source.get(key) not in (None, ""):
+                        observation[key] = selected_source[key]
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
     if assignment_id is not None:
         observation["assignment_id"] = assignment_id
@@ -1848,6 +1868,36 @@ def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]
     return None, None
 
 
+def _result_source_content(source: Mapping[str, Any]) -> str | None:
+    _, content = _result_evidence(source)
+    return content
+
+
+def _snapshot_result_content(source: Mapping[str, Any]) -> str | None:
+    explicit_content = _safe_semantic_result_value(source.get("semantic_content"), allow_long=True)
+    return explicit_content or _extract_codex_semantic_content(source.get("content"))
+
+
+def _select_authoritative_result_source(
+    task_result: Mapping[str, Any],
+    snapshot: Mapping[str, Any],
+    assignment: Mapping[str, Any],
+) -> tuple[Mapping[str, Any] | None, str | None]:
+    task_result_owned = _result_source_authoritative(task_result, assignment)
+    snapshot_owned = _result_source_authoritative(snapshot, assignment)
+    task_result_content = _result_source_content(task_result) if task_result_owned else None
+    snapshot_content = _snapshot_result_content(snapshot) if snapshot_owned else None
+    if task_result_owned and task_result_content:
+        return task_result, task_result_content
+    if snapshot_owned and snapshot_content:
+        return snapshot, snapshot_content
+    if task_result_owned:
+        return task_result, task_result_content
+    if snapshot_owned:
+        return snapshot, snapshot_content
+    return None, None
+
+
 def _result_source_authoritative(
     source: object,
     assignment: Mapping[str, Any] | None,
@@ -1872,7 +1922,7 @@ def _result_source_authoritative(
     if source_identity != assignment_identity:
         return False
     producer = source.get("producer")
-    if producer not in _ACCEPTED_RESULT_PRODUCERS:
+    if not isinstance(producer, str) or producer not in _ACCEPTED_RESULT_PRODUCERS:
         return False
     reference, content = _result_evidence(source)
     reference = reference or next(

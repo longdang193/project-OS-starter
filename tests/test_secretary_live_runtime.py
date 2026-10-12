@@ -225,6 +225,48 @@ def test_normal_outcome_ignores_rejected_task_result_status_for_bound_observatio
     }
 
 
+@pytest.mark.parametrize("producer", [{"name": "malformed"}, ["malformed"]])
+def test_normal_outcome_ignores_malformed_task_result_producer(
+    producer: object,
+) -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": producer,
+                    "result_reference": "task-result://malformed",
+                    "content": "malformed answer",
+                },
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "source_ref": "task-result://trusted",
+            "semantic_content": "trusted answer",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "task-result://trusted",
+        "content": "trusted answer",
+    }
+
+
 def test_normal_outcome_accepts_correlated_task_result_with_accepted_provenance() -> None:
     result = _normalize_invocation_outcome(
         invocation_id="invoke-1",
@@ -1071,6 +1113,138 @@ def test_observe_submitted_codex_uses_bound_structured_content_over_terminal_tex
 
     assert observation["semantic_content"] == "structured answer"
     assert "USER-INJECTED TERMINAL TEXT" not in observation["semantic_content"]
+
+
+def test_observe_submitted_codex_uses_bound_snapshot_semantic_content_without_terminal_bullet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "semantic_content": "accepted snapshot answer",
+            "source_ref": "task-result://snapshot",
+            "content": "Codex screen without a semantic bullet",
+            "output_sha256": "b" * 64,
+            "output_chars": 36,
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"] = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "accepted snapshot answer"
+    assert observation["source_ref"] == "task-result://snapshot"
+
+
+def test_observe_submitted_codex_does_not_publish_unrelated_terminal_bullet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_content = "Codex screen\n• unrelated terminal text\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "semantic_content": "accepted snapshot answer",
+            "source_ref": "task-result://snapshot",
+            "content": terminal_content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(terminal_content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"] = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "accepted snapshot answer"
+    assert "unrelated terminal text" not in observation["semantic_content"]
+
+
+def test_observe_submitted_codex_keeps_task_result_source_ref_over_rejected_snapshot_ref(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_content = "Codex screen\n• unrelated terminal text\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "producer": "terminal-screen",
+            "result_reference": "task-result://unrelated",
+            "content": terminal_content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(terminal_content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"]["task_result"] = {
+        "state": "reported_completed",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "producer": "dcode-project",
+        "source_ref": "task-result://trusted",
+        "content": "trusted answer",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload=payload,
+        observation=observation,
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "task-result://trusted",
+        "content": "trusted answer",
+    }
 
 
 def test_observe_submitted_codex_rejects_stale_idle_output(
