@@ -918,6 +918,12 @@ def test_extract_codex_semantic_content_ignores_prompt_echo_after_completion_mar
     ) == "OLD ANSWER"
 
 
+def test_extract_codex_semantic_content_ignores_initial_prompt_echo_bullet() -> None:
+    assert _extract_codex_semantic_content(
+        "› Please echo this input:\n• USER PROMPT TEXT\n› Ask Codex to do anything"
+    ) is None
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -941,6 +947,12 @@ def test_semantic_redaction_removes_values_and_is_idempotent() -> None:
     assert "query-secret" not in redacted
     assert "fixture-secret" not in redacted
     assert _redact_semantic_content(redacted, ("fixture-secret",)) == redacted
+
+
+def test_semantic_redaction_removes_query_secret_with_apostrophe_suffix() -> None:
+    assert _redact_semantic_content(
+        "https://example.test/?token=PREFIX'SUFFIX"
+    ) == "https://example.test/?token=[REDACTED]"
 
 
 def test_release_codex_agent_interrupts_process_and_verifies_removal(

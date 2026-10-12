@@ -125,7 +125,7 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
         redacted,
     )
     redacted = re.sub(
-        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)[^&#\s\"']+",
+        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)([^&#\s\"']+(?:[\"'](?![&#\s,;}\]])[^&#\s\"']+)*)",
         r"\1[REDACTED]",
         redacted,
     )
@@ -1699,13 +1699,17 @@ def _extract_codex_semantic_content(value: object) -> str | None:
     for segment_index, segment in enumerate(segments):
         lines = segment.splitlines()
         saw_prompt = False
+        prompt_echo = False
         found_candidate = False
         for index, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith("› "):
                 saw_prompt = True
+                prompt_echo = prompt_echo or stripped.casefold().startswith(
+                    "› please echo this input:"
+                )
                 continue
-            if prompt_boundary or (segment_index > 0 and saw_prompt):
+            if prompt_boundary or prompt_echo or (segment_index > 0 and saw_prompt):
                 continue
             if not stripped.startswith("• "):
                 continue
@@ -1722,7 +1726,9 @@ def _extract_codex_semantic_content(value: object) -> str | None:
                 candidates.append(content)
                 found_candidate = True
                 break
-        if segment_index > 0 and saw_prompt and not found_candidate:
+        if (segment_index > 0 and saw_prompt and not found_candidate) or (
+            prompt_echo and not found_candidate
+        ):
             prompt_boundary = True
         elif found_candidate:
             prompt_boundary = False
