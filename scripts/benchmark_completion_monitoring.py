@@ -154,7 +154,18 @@ def run_case(module: Any, case: dict[str, Any]) -> dict[str, Any]:
     reconciliation = "not-required" if isinstance(receipt, dict) and receipt.get("recovery_required") is False else "receipt-fallback"
     if not isinstance(receipt, dict) or receipt.get("state") != "confirmed":
         cleanup = "missing-receipt-fallback"
+    measurements = {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed" if time_to_receipt is not None else "unavailable",
+        "receipt_to_completion_return_ms": "observed" if receipt_to_return is not None else "unavailable",
+        "elapsed_seconds": "observed",
+    }
     return {
+        "evidence_kind": "fake_boundary_observation",
+        "measurement_status": measurements,
         "subprocess_counts": fake.counts,
         "subprocess_total": sum(fake.counts.values()),
         "timeout_count": fake.timeout_count,
@@ -179,6 +190,8 @@ def percentile(values: list[float], fraction: float) -> float | None:
 
 def stats(rows: list[dict[str, Any]], field: str) -> dict[str, float | None]:
     values = sorted(float(row[field]) for row in rows if row.get(field) is not None)
+    if not values:
+        return {"median": None, "p95": None}
     return {"median": median(values), "p95": percentile(values, 0.95)}
 
 
@@ -241,6 +254,22 @@ def main(argv: list[str] | None = None) -> int:
             "receipt_case_max_elapsed_seconds": max(
                 row["elapsed_seconds"] for row in mode_rows if CASES[row["case"]]["receipt_at"] is not None
             ),
+            "measurement_status": {
+                field: (
+                    "observed"
+                    if any(row.get("measurement_status", {}).get(field) == "observed" for row in mode_rows)
+                    else "unavailable"
+                )
+                for field in (
+                    "subprocess_total",
+                    "timeout_count",
+                    "receipt_checks",
+                    "diagnostic_probe_count",
+                    "time_to_receipt_ms",
+                    "receipt_to_completion_return_ms",
+                    "elapsed_seconds",
+                )
+            },
         }
     output = {
         "schema": "completion-monitoring-evidence/v2",
@@ -253,10 +282,12 @@ def main(argv: list[str] | None = None) -> int:
         "candidate_source_sha256": hashlib.sha256(candidate_source.encode()).hexdigest(),
         "harness": "stdlib deterministic fake-Herdr command/receipt seam",
         "harness_digest": harness_digest,
+        "evidence_kind": "fake_boundary_observation",
         "fixed_budgets": harness_payload["budgets"],
         "cases": list(CASES),
         "repetitions_per_case_and_side": args.repetitions,
         "summary": summary,
+        "rows": rows,
         "correctness": {
             "lifecycle_mismatches": sum(not pair["lifecycle_match"] for pair in pairs),
             "cleanup_mismatches": sum(not pair["cleanup_match"] for pair in pairs),
@@ -267,7 +298,11 @@ def main(argv: list[str] | None = None) -> int:
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
-    return 0
+    correctness = output["correctness"]
+    return 0 if correctness["all_outcomes_match"] and all(
+        correctness[key] == 0
+        for key in ("lifecycle_mismatches", "cleanup_mismatches", "reconciliation_mismatches")
+    ) else 1
 
 
 if __name__ == "__main__":

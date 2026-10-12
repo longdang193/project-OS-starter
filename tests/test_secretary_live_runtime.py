@@ -17,6 +17,7 @@ from scripts.secretary_live_runtime import (
     _normalize_invocation_outcome,
     _observe_submitted_codex,
     _observe_provider_telemetry,
+    _redact_semantic_content,
     _release_codex_agent,
     _smoke_receipt,
     build_launcher_command,
@@ -172,6 +173,30 @@ def test_normal_outcome_prefers_verified_observation_cleanup() -> None:
 
     assert result["resource"] == {"state": "settled", "reuse_blocked": False}
     assert result["observability"]["cleanup_state"] == "removed"
+
+
+@pytest.mark.parametrize(
+    ("evidence", "expected_state", "expected_evidence_state"),
+    [
+        ([{"state": "unknown"}, {"state": "removed", "verified": True}], "settled", "removed"),
+        ([{"state": "unknown"}, {"state": "present"}], "quarantined", "present"),
+        ([{"state": "present"}, {"state": "removed", "verified": True}], "settled", "removed"),
+        ([{"state": "removed", "verified": True}, {"state": "removed", "verified": True}], "settled", "removed"),
+        ([{"state": "removed", "verified": True}, {"state": "present"}], "quarantined", "conflict"),
+        ([{"state": "unknown"}, {"state": "unavailable"}], "quarantined", "unknown"),
+    ],
+)
+def test_resource_evidence_reduction_is_monotonic(
+    evidence: list[dict[str, object]],
+    expected_state: str,
+    expected_evidence_state: str,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._reduce_resource_evidence(*evidence)
+
+    assert result["state"] == expected_state
+    assert result["evidence_state"] == expected_evidence_state
 
 
 def test_run_smoke_is_strict_probe_alias() -> None:
@@ -653,10 +678,251 @@ def test_observe_submitted_codex_does_not_capture_unconfirmed_output(
     assert "semantic_content" not in observation
 
 
+def _submission_anchor() -> dict[str, object]:
+    return {
+        "state": "idle",
+        "state_change_seq": 1,
+        "content": "Codex prompt screen",
+        "output_sha256": "a" * 64,
+        "output_chars": 18,
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    }
+
+
+def _correlated_payload() -> dict[str, object]:
+    return {
+        "herdr": {
+            "executable": "herdr.exe",
+            "session": "session",
+            "pane": "pane",
+            "agent_name": "agent",
+            "ownership": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+            },
+        },
+        "assignment": {
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+        },
+    }
+
+
+def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "state_change_seq": 2,
+            "content": "Codex screen\n• SECRETARY_PROBE_fast\n› Ask Codex to do anything",
+            "output_sha256": "b" * 64,
+            "output_chars": 66,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["state"] == "idle"
+    assert observation["semantic_content"] == "SECRETARY_PROBE_fast"
+
+
+def test_observe_submitted_codex_rejects_stale_idle_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["state"] == "idle"
+    assert observation["observation_error"] == "submission freshness not proven"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_rejects_read_error_recovery_with_old_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    snapshot_values = [
+        {**_submission_anchor(), "observation_error": "agent read transport timeout"},
+        {**_submission_anchor(), "observation_error": None},
+    ]
+    snapshots = iter(snapshot_values)
+    last_snapshot = snapshot_values[-1]
+
+    def next_snapshot(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal last_snapshot
+        try:
+            last_snapshot = next(snapshots)
+        except StopIteration:
+            pass
+        return last_snapshot
+
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        next_snapshot,
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["state"] == "idle"
+    assert observation["observation_error"] == "submission freshness not proven"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_accepts_fresh_post_submit_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "done",
+            "state_change_seq": 2,
+            "content": "Codex screen\n• fresh answer\n› Ask Codex to do anything",
+            "output_sha256": "b" * 64,
+            "output_chars": 55,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["state"] == "done"
+    assert observation["semantic_content"] == "fresh answer"
+
+
+def test_observe_submitted_codex_rejects_partial_or_stopped_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "stopped",
+            "state_change_seq": 2,
+            "content": "Codex screen\n• partial answer",
+            "output_sha256": "b" * 64,
+            "output_chars": 30,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["state"] == "stopped"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_rejects_mismatched_attempt_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "done",
+            "state_change_seq": 2,
+            "attempt_id": "attempt-other",
+            "content": "Codex screen\n• unrelated answer\n› Ask Codex to do anything",
+            "output_sha256": "b" * 64,
+            "output_chars": 61,
+            "observation_error": None,
+        },
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["state"] == "unknown"
+    assert observation["observation_error"] == "completion identity mismatch"
+    assert "semantic_content" not in observation
+
+
 def test_extract_codex_semantic_content_selects_latest_answer() -> None:
     assert _extract_codex_semantic_content(
         "• I will inspect the code first.\nWorked for 9s\n• FAIL: tests failed.\n› Ask Codex to do anything"
     ) == "FAIL: tests failed."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Never put passwords in source code.",
+        "Authorization headers should be redacted.",
+    ],
+)
+def test_semantic_redaction_preserves_security_explanations(text: str) -> None:
+    assert _redact_semantic_content(text) == text
+
+
+def test_semantic_redaction_removes_values_and_is_idempotent() -> None:
+    text = (
+        "Bearer abc.def-123 https://example.test/?token=query-secret "
+        "configured=fixture-secret"
+    )
+
+    redacted = _redact_semantic_content(text, ("fixture-secret",))
+
+    assert "abc.def-123" not in redacted
+    assert "query-secret" not in redacted
+    assert "fixture-secret" not in redacted
+    assert _redact_semantic_content(redacted, ("fixture-secret",)) == redacted
 
 
 def test_release_codex_agent_interrupts_process_and_verifies_removal(
@@ -724,6 +990,77 @@ def test_release_codex_agent_does_not_treat_transport_failure_as_removal(
         "w1:p1",
         env={},
     )["state"] == "unknown"
+
+
+def test_release_codex_agent_never_raises_for_null_retirement_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        return None
+
+    monkeypatch.setattr("scripts.secretary_live_runtime._herdr_run", fake_run)
+
+    result = _release_codex_agent("herdr", "session", "agent", "pane", env={})
+
+    assert result["state"] == "unknown"
+    assert calls == 2
+
+
+@pytest.mark.parametrize("response", [None, subprocess.CompletedProcess([], 0, "null", "")])
+def test_close_workspace_never_raises_for_null_transport_response(
+    monkeypatch: pytest.MonkeyPatch,
+    response: object,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_herdr_run", lambda *args, **kwargs: response)
+
+    result = runtime._close_herdr_workspace("herdr", "workspace-1", env={})
+
+    assert result["verified"] is False
+
+
+def test_run_probe_preserves_workspace_identity_when_acquisition_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    request_value = request(worktree=tmp_path)
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: SECRETARY_PROVIDER)
+    monkeypatch.setattr(runtime, "_configured_model", lambda _: "gpt-test")
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+
+    error = runtime.LaunchBlocked("pane bootstrap failed")
+    error.workspace_id = "workspace-1"
+    error.workspace_close = {"state": "unknown", "verified": False}
+
+    def fail_prepare(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(runtime, "_prepare_herdr_target", fail_prepare)
+    monkeypatch.setattr(
+        runtime,
+        "_close_herdr_workspace",
+        lambda *args, **kwargs: {"state": "closed", "verified": True},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_observe_provider_telemetry",
+        lambda *args, **kwargs: {"disposition": "unavailable"},
+    )
+
+    result = runtime.run_probe(request_value, output=tmp_path / "probe.json")
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["preflight"]["workspace_close"]["verified"] is True
+    assert result["owned_resources"][0]["identity"] == "workspace-1"
 
 
 def test_release_codex_agent_treats_already_retired_agent_as_removed(
@@ -2092,6 +2429,198 @@ def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(
     assert closed == [["herdr", "workspace", "close", "w99"]]
 
 
+def test_create_herdr_workspace_preserves_identity_on_cwd_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    def fake_run(command, **kwargs):
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"root_pane": {"cwd": "C:/wrong-worktree/", "pane_id": "w99:p1", "workspace_id": "w99"}}}),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"workspace_id": "w99", "state": "present"}}), "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    with pytest.raises(runtime.LaunchBlocked) as raised:
+        runtime._create_herdr_workspace(request(worktree=Path("C:/worktree")), "herdr", env={})
+
+    assert raised.value.workspace_id == "w99"
+    assert raised.value.workspace_close["verified"] is False
+
+
+def test_create_herdr_workspace_preserves_top_level_identity_on_malformed_root_pane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    closed: list[str] = []
+
+    def fake_run(command, **kwargs):
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "result": {
+                            "workspace_id": "owned-workspace",
+                            "root_pane": {
+                                "cwd": "C:/worktree/",
+                                "pane_id": "owned-workspace:p1",
+                                "workspace_id": None,
+                            },
+                        }
+                    }
+                ),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            closed.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                json.dumps({"error": {"code": "workspace_not_found"}}),
+                "",
+            )
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    with pytest.raises(runtime.LaunchBlocked) as raised:
+        runtime._create_herdr_workspace(request(worktree=Path("C:/worktree")), "herdr", env={})
+
+    assert raised.value.workspace_id == "owned-workspace"
+    assert closed == ["owned-workspace"]
+
+
+def test_create_herdr_workspace_rejects_conflicting_root_pane_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    closed: list[str] = []
+
+    def fake_run(command, **kwargs):
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "result": {
+                            "workspace_id": "owned-workspace",
+                            "root_pane": {
+                                "cwd": "C:/worktree/",
+                                "pane_id": "other-workspace:p1",
+                                "workspace_id": "other-workspace",
+                            },
+                        }
+                    }
+                ),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            closed.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                json.dumps({"error": {"code": "workspace_not_found"}}),
+                "",
+            )
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    with pytest.raises(runtime.LaunchBlocked) as raised:
+        runtime._create_herdr_workspace(request(worktree=Path("C:/worktree")), "herdr", env={})
+
+    assert raised.value.workspace_id == "owned-workspace"
+    assert closed == ["owned-workspace"]
+
+
+def test_create_herdr_workspace_preserves_identity_for_non_object_root_pane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    closed: list[str] = []
+
+    def fake_run(command, **kwargs):
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"workspace_id": "owned-workspace", "root_pane": None}}),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            closed.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                json.dumps({"error": {"code": "workspace_not_found"}}),
+                "",
+            )
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    with pytest.raises(runtime.LaunchBlocked):
+        runtime._create_herdr_workspace(request(worktree=Path("C:/worktree")), "herdr", env={})
+
+    assert closed == ["owned-workspace"]
+
+
+def test_prepare_herdr_target_preserves_workspace_after_pane_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    closed: list[str] = []
+
+    def fake_run(command, **kwargs):
+        if command[1:] == ["status", "server"]:
+            return subprocess.CompletedProcess(command, 0, "status: running\n", "")
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"root_pane": {"cwd": "C:/worktree/", "pane_id": "w99:p1", "workspace_id": "w99"}}}),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            closed.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(command, 1, json.dumps({"error": {"code": "workspace_not_found"}}), "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+    monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("pane read failed")))
+
+    with pytest.raises(OSError) as raised:
+        runtime._prepare_herdr_target(request(worktree=Path("C:/worktree")), herdr="herdr", env={})
+
+    assert getattr(raised.value, "workspace_id") == "w99"
+    assert getattr(raised.value, "workspace_close")["verified"] is True
+    assert closed == ["w99"]
+
+
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
     payload = select_launcher_payload(
         [
@@ -2120,4 +2649,208 @@ def test_runtime_script_runs_directly_from_repository_root() -> None:
     assert completed.returncode == 0
     assert "run" in completed.stdout
     assert "probe" in completed.stdout
-    assert "smoke" in completed.stdout
+
+
+def test_observe_submitted_codex_rejects_old_answer_with_unrelated_terminal_churn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stale = "Codex screen\n• OLD ANSWER\n› Ask Codex to do anything"
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": stale + "\nnew prompt echo",
+            "output_sha256": "b" * 64,
+            "output_chars": len(stale) + 16,
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": stale},
+        env={},
+    )
+
+    assert observation["observation_error"] == "submission freshness not proven"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_accepts_repeated_answer_with_terminal_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answer = "Codex screen\n• SAME ANSWER\nWorked for 1s\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": answer,
+            "output_sha256": "b" * 64,
+            "output_chars": len(answer),
+            "state_change_seq": 3,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": answer},
+        env={},
+    )
+
+    assert observation["semantic_content"] == "SAME ANSWER"
+
+
+def test_observe_submitted_codex_rejects_stale_answer_with_historical_completion_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stale = "Codex screen\n• OLD ANSWER\nWorked for 1s\n› Ask Codex to do anything"
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": stale + "\nnew prompt echo",
+            "output_sha256": "b" * 64,
+            "output_chars": len(stale) + 16,
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": stale},
+        env={},
+    )
+
+    assert observation["observation_error"] == "submission freshness not proven"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_ignores_prompt_echo_bullets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "Codex screen\nWorked for 1s\n"
+        "\u203a Please echo this input:\n\u2022 USER PROMPT TEXT\n"
+        "\u203a Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={
+            **_submission_anchor(),
+            "content": "Codex screen\nWorked for 1s\n\u203a Ask Codex to do anything",
+        },
+        env={},
+    )
+
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_accepts_repeated_answer_with_new_completion_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor = "Codex screen\n• SAME ANSWER\nWorked for 1s\n› Ask Codex to do anything"
+    snapshot = "Codex screen\n• SAME ANSWER\nWorked for 2s\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": snapshot,
+            "output_sha256": "b" * 64,
+            "output_chars": len(snapshot),
+            "state_change_seq": 3,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": anchor},
+        env={},
+    )
+
+    assert observation["semantic_content"] == "SAME ANSWER"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "Never put passwords in source code.",
+        "Authorization headers should be redacted.",
+        "Bearer [REDACTED] is safe to display.",
+    ],
+)
+def test_normal_outcome_preserves_safe_security_prose(content: str) -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={"state": "done", "semantic_content": content, "cleanup": {"state": "removed"}},
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "reported", "status": "completed", "content": content}
+
+
+def test_normal_outcome_redacts_quoted_secret_values() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={
+            "state": "done",
+            "semantic_content": '{"api_key": "SYNTHETIC first second"}',
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"]["content"] == '{"api_key": "[REDACTED]"}'

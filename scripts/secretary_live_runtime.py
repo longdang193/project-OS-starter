@@ -112,6 +112,41 @@ def _safe_text(value: object) -> str | None:
     return None
 
 
+def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] = ()) -> str | None:
+    if not isinstance(value, str):
+        return None
+    redacted = value
+    for secret in configured_secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    redacted = re.sub(
+        r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+",
+        "Bearer [REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)[^&#\s]+",
+        r"\1[REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)\"(?:\\.|[^\"\\])*\"",
+        r'\1"[REDACTED]"',
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)'(?:\\.|[^'\\])*'",
+        r"\1'[REDACTED]'",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)([^\"'\s,;}]+)",
+        r"\1[REDACTED]",
+        redacted,
+    )
+    return redacted
+
+
 def _safe_assignment(assignment: Mapping[str, Any] | None) -> dict[str, Any]:
     if not isinstance(assignment, Mapping):
         return {}
@@ -353,21 +388,47 @@ def _create_herdr_workspace(
     workspace_id: str | None = None
     try:
         payload = json.loads(result.stdout)
-        root_pane = payload["result"]["root_pane"]
-        workspace_id = root_pane["workspace_id"]
+        result_payload = payload.get("result") if isinstance(payload, Mapping) else None
+        if isinstance(result_payload, Mapping):
+            workspace_id = _safe_text(result_payload.get("workspace_id"))
+        if not isinstance(result_payload, Mapping):
+            raise TypeError("workspace creation result is not an object")
+        root_pane = result_payload.get("root_pane")
+        if not isinstance(root_pane, Mapping):
+            raise TypeError("workspace root pane is not an object")
+        root_workspace_id = _safe_text(root_pane.get("workspace_id"))
+        if root_workspace_id is None:
+            raise ValueError("root pane workspace identity missing")
+        if workspace_id is not None and workspace_id != root_workspace_id:
+            raise ValueError("root pane workspace identity mismatch")
+        workspace_id = root_workspace_id
         pane_id = root_pane["pane_id"]
         pane_cwd = Path(root_pane["cwd"]).resolve()
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        if workspace_id:
+        workspace_close = (
             _close_herdr_workspace(herdr, workspace_id, env=env)
-        raise LaunchBlocked("Herdr workspace bootstrap returned invalid root pane data") from exc
+            if workspace_id
+            else None
+        )
+        error = LaunchBlocked("Herdr workspace bootstrap returned invalid root pane data")
+        error.workspace_id = workspace_id
+        error.workspace_close = workspace_close
+        raise error from exc
     if not all(isinstance(value, str) and value.strip() for value in (workspace_id, pane_id)):
         if isinstance(workspace_id, str) and workspace_id.strip():
-            _close_herdr_workspace(herdr, workspace_id, env=env)
-        raise LaunchBlocked("Herdr workspace bootstrap returned incomplete root pane data")
+            workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
+        else:
+            workspace_close = None
+        error = LaunchBlocked("Herdr workspace bootstrap returned incomplete root pane data")
+        error.workspace_id = workspace_id
+        error.workspace_close = workspace_close
+        raise error
     if pane_cwd != request.worktree.resolve():
-        _close_herdr_workspace(herdr, workspace_id, env=env)
-        raise LaunchBlocked(f"Herdr workspace cwd mismatch: expected {request.worktree}, got {pane_cwd}")
+        workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
+        error = LaunchBlocked(f"Herdr workspace cwd mismatch: expected {request.worktree}, got {pane_cwd}")
+        error.workspace_id = workspace_id
+        error.workspace_close = workspace_close
+        raise error
     return workspace_id, pane_id
 
 
@@ -424,8 +485,9 @@ def _prepare_herdr_target(
     )
     try:
         _verify_herdr_pane(request, herdr, pane, env=env)
-    except LaunchBlocked:
-        _close_herdr_workspace(herdr, workspace_id, env=env)
+    except Exception as exc:
+        exc.workspace_id = workspace_id
+        exc.workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
         raise
     return replace(request, session=_HERDR_DEFAULT_SESSION, pane=pane), {
         "server": server["state"],
@@ -446,18 +508,20 @@ def _close_herdr_workspace(herdr: str, workspace_id: str, *, env: dict[str, str]
             env=env,
             timeout=30.0,
         )
-    except CommandTransportTimeout:
+    except (CommandTransportTimeout, OSError):
         return {"state": "unknown", "verified": False, "reason": "transport_timeout"}
+    if result is None or not isinstance(getattr(result, "returncode", None), int):
+        return {"state": "unknown", "verified": False, "reason": "malformed_close_response"}
     if result.returncode:
         return {"state": "unknown", "verified": False, "reason": "close_failed"}
-    for output in (result.stdout, result.stderr):
+    for output in (getattr(result, "stdout", ""), getattr(result, "stderr", "")):
         try:
             payload = json.loads(output)
         except (TypeError, json.JSONDecodeError):
             continue
         evidence = payload.get("result") if isinstance(payload, Mapping) else None
         evidence = evidence if isinstance(evidence, Mapping) else payload
-        if evidence.get("workspace_id") == workspace_id and evidence.get("state") in {"closed", "removed", "absent"}:
+        if isinstance(evidence, Mapping) and evidence.get("workspace_id") == workspace_id and evidence.get("state") in {"closed", "removed", "absent"}:
             return {"state": "closed", "verified": True, "authority": "herdr.workspace.close"}
     try:
         check = _herdr_run(
@@ -465,10 +529,12 @@ def _close_herdr_workspace(herdr: str, workspace_id: str, *, env: dict[str, str]
             env=env,
             timeout=5.0,
         )
-    except CommandTransportTimeout:
+    except (CommandTransportTimeout, OSError):
+        return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
+    if check is None or not isinstance(getattr(check, "returncode", None), int):
         return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
     if check.returncode:
-        for output in (check.stdout, check.stderr):
+        for output in (getattr(check, "stdout", ""), getattr(check, "stderr", "")):
             try:
                 payload = json.loads(output)
             except (TypeError, json.JSONDecodeError):
@@ -503,8 +569,10 @@ def _release_codex_agent(
             env=env,
             timeout=5.0,
         )
-    except CommandTransportTimeout:
+    except (CommandTransportTimeout, OSError):
         return {"state": "unknown", "error": "release-agent transport timeout"}
+    if result is None or not isinstance(getattr(result, "returncode", None), int):
+        return {"state": "unknown", "error": "malformed agent interruption response"}
     if result.returncode:
         try:
             get_result = _herdr_run(
@@ -512,10 +580,12 @@ def _release_codex_agent(
                 env=env,
                 timeout=1.0,
             )
-        except CommandTransportTimeout:
+        except (CommandTransportTimeout, OSError):
             return {"state": "unknown", "error": "agent interruption failed"}
+        if get_result is None or not isinstance(getattr(get_result, "returncode", None), int):
+            return {"state": "unknown", "error": "malformed agent observation response"}
         if get_result.returncode:
-            for output in (get_result.stdout, get_result.stderr):
+            for output in (getattr(get_result, "stdout", ""), getattr(get_result, "stderr", "")):
                 try:
                     payload = json.loads(output)
                 except (TypeError, json.JSONDecodeError):
@@ -532,11 +602,13 @@ def _release_codex_agent(
                 env=env,
                 timeout=1.0,
             )
-        except CommandTransportTimeout:
+        except (CommandTransportTimeout, OSError):
             return {"state": "unknown", "error": "agent retirement observation timed out"}
+        if get_result is None or not isinstance(getattr(get_result, "returncode", None), int):
+            return {"state": "unknown", "error": "malformed agent observation response"}
         if get_result.returncode:
             error_code = None
-            for output in (get_result.stdout, get_result.stderr):
+            for output in (getattr(get_result, "stdout", ""), getattr(get_result, "stderr", "")):
                 try:
                     payload = json.loads(output)
                 except (TypeError, json.JSONDecodeError):
@@ -557,9 +629,11 @@ def _release_codex_agent(
                 env=env,
                 timeout=1.0,
             )
-        except CommandTransportTimeout:
+        except (CommandTransportTimeout, OSError):
             return {"state": "unknown", "error": "agent retirement observation timed out"}
-        for output in (get_result.stdout, get_result.stderr):
+        if get_result is None or not isinstance(getattr(get_result, "returncode", None), int):
+            return {"state": "unknown", "error": "malformed agent observation response"}
+        for output in (getattr(get_result, "stdout", ""), getattr(get_result, "stderr", "")):
             try:
                 payload = json.loads(output)
             except (TypeError, json.JSONDecodeError):
@@ -575,6 +649,7 @@ def _observe_submitted_codex(
     request: SecretaryLaunchRequest | SecretaryNormalRequest,
     payload: Mapping[str, Any],
     *,
+    pre_submit: Mapping[str, Any] | None = None,
     env: dict[str, str],
 ) -> dict[str, Any]:
     herdr = payload.get("herdr")
@@ -587,19 +662,43 @@ def _observe_submitted_codex(
     if not all(isinstance(value, str) and value.strip() for value in (executable, session, pane, agent_name)):
         return {"state": "unknown", "error": "launcher Codex identity incomplete"}
 
+    assignment = payload.get("assignment")
+    assignment = assignment if isinstance(assignment, Mapping) else None
+    ownership = herdr.get("ownership")
+    ownership = ownership if isinstance(ownership, Mapping) else None
+    assignment_id = assignment.get("assignment_id") if assignment else None
+    attempt_id = assignment.get("attempt_id") if assignment else None
+    if assignment is not None and not isinstance(attempt_id, str):
+        return {"state": "unknown", "error": "launcher assignment identity incomplete"}
+    if ownership is not None:
+        for key in ("assignment_id", "attempt_id"):
+            owned_value = ownership.get(key)
+            assignment_value = assignment.get(key) if assignment else None
+            if (
+                owned_value is not None
+                and assignment_value is not None
+                and owned_value != assignment_value
+            ):
+                return {"state": "unknown", "error": "completion identity mismatch"}
+
+    anchor = pre_submit
+    if not isinstance(anchor, Mapping):
+        anchor = payload.get("pre_submit")
+    if not isinstance(anchor, Mapping):
+        anchor = None
+
     deadline = time.monotonic() + _CODEX_OBSERVATION_TIMEOUT_SECONDS
     snapshot: dict[str, Any] = {
         "state": "unknown",
         "observation_error": "completion observation deadline expired",
     }
-    saw_activity = False
-    initial_output_fingerprint: tuple[object, ...] | None = None
-    initial_state: object | None = None
-    initial_state_change_seq: object | None = None
-    state_changed = False
-    state_change_seq_changed = False
-    output_changed = False
     completed = False
+    freshness_proven = False
+    legacy_first_snapshot: dict[str, Any] | None = None
+    legacy_output_changed = False
+    legacy_state_changed = False
+    legacy_state_seq_changed = False
+    legacy_activity = False
     while time.monotonic() < deadline:
         remaining = max(0.01, deadline - time.monotonic())
         snapshot = _codex_completion_snapshot(
@@ -609,39 +708,46 @@ def _observe_submitted_codex(
             env=env,
             timeout_seconds=min(5.0, remaining),
         )
-        if snapshot.get("state") == "working" or (
-            snapshot.get("state") == "idle" and snapshot.get("observation_error")
-        ):
-            saw_activity = True
-        if initial_state is None:
-            initial_state = snapshot.get("state")
-        elif snapshot.get("state") != initial_state:
-            state_changed = True
-        if initial_state_change_seq is None:
-            initial_state_change_seq = snapshot.get("state_change_seq")
-        elif (
-            snapshot.get("state_change_seq") is not None
-            and snapshot.get("state_change_seq") != initial_state_change_seq
-        ):
-            state_change_seq_changed = True
-        fingerprint = (
-            snapshot.get("content"),
-            snapshot.get("output_sha256"),
-            snapshot.get("output_chars"),
-        )
-        if initial_output_fingerprint is None:
-            initial_output_fingerprint = fingerprint
-        elif fingerprint != initial_output_fingerprint:
-            output_changed = True
+        if any(key in snapshot for key in ("assignment_id", "attempt_id")):
+            if (
+                (assignment_id is not None and snapshot.get("assignment_id") not in (None, assignment_id))
+                or (attempt_id is not None and snapshot.get("attempt_id") not in (None, attempt_id))
+            ):
+                snapshot["observation_error"] = "completion identity mismatch"
+                snapshot["state"] = "unknown"
+                break
+        if anchor is None and legacy_first_snapshot is None:
+            legacy_first_snapshot = dict(snapshot)
+            legacy_activity = snapshot.get("state") == "working" or (
+                snapshot.get("state") == "idle" and bool(snapshot.get("observation_error"))
+            )
+        elif anchor is None and legacy_first_snapshot is not None:
+            legacy_output_changed = any(
+                snapshot.get(key) != legacy_first_snapshot.get(key)
+                for key in ("content", "output_sha256", "output_chars")
+            )
+            legacy_state_changed = snapshot.get("state") != legacy_first_snapshot.get("state")
+            legacy_state_seq_changed = (
+                snapshot.get("state_change_seq") is not None
+                and snapshot.get("state_change_seq") != legacy_first_snapshot.get("state_change_seq")
+            )
+        freshness_anchor = anchor or legacy_first_snapshot
+        freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
+        semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+        if snapshot.get("state") in {"failed", "stopped"}:
+            break
         if (
             (
-                snapshot.get("state") in {"done", "failed", "stopped"}
-                or (
-                    snapshot.get("state") == "idle"
-                    and saw_activity
-                    and output_changed
-                    and (state_changed or state_change_seq_changed)
-                )
+                snapshot.get("state") in {"idle", "done"}
+                and freshness_proven
+                and semantic_content
+            )
+            or (
+                anchor is None
+                and legacy_activity
+                and snapshot.get("state") in {"idle", "done", "failed", "stopped"}
+                and legacy_output_changed
+                and (legacy_state_changed or legacy_state_seq_changed)
             )
             and not snapshot.get("observation_error")
         ):
@@ -649,8 +755,10 @@ def _observe_submitted_codex(
             break
         time.sleep(min(_CODEX_OBSERVATION_POLL_SECONDS, remaining))
 
-    if not completed and snapshot.get("state") == "idle":
-        snapshot["observation_error"] = snapshot.get("observation_error") or "completion output not observed"
+    if not completed and snapshot.get("state") in {"idle", "done"}:
+        snapshot["observation_error"] = snapshot.get("observation_error") or (
+            "submission freshness not proven" if not freshness_proven else "completion output not observed"
+        )
 
     observation = {
         key: snapshot.get(key)
@@ -670,6 +778,11 @@ def _observe_submitted_codex(
     if semantic_content:
         observation["semantic_content"] = semantic_content
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
+    if assignment_id is not None:
+        observation["assignment_id"] = assignment_id
+    if attempt_id is not None:
+        observation["attempt_id"] = attempt_id
+    observation["freshness_proven"] = freshness_proven
     cleanup: dict[str, Any] = {"state": "not_attempted"}
     if snapshot.get("state") in {"idle", "done"}:
         cleanup = _release_codex_agent(
@@ -682,6 +795,100 @@ def _observe_submitted_codex(
     observation["cleanup"] = cleanup
     observation["observed_at"] = datetime.now(timezone.utc).isoformat()
     return observation
+
+
+def _submission_freshness_proven(
+    anchor: Mapping[str, Any] | None,
+    snapshot: Mapping[str, Any],
+) -> bool:
+    if not isinstance(anchor, Mapping):
+        return False
+    identity_changed = False
+    for key in ("result_id", "result_reference", "completion_id"):
+        if snapshot.get(key) not in (None, "") and snapshot.get(key) != anchor.get(key):
+            identity_changed = True
+            break
+    anchor_semantic = _extract_codex_semantic_content(anchor.get("content"))
+    snapshot_semantic = _extract_codex_semantic_content(snapshot.get("content"))
+    if anchor_semantic and snapshot_semantic and anchor_semantic == snapshot_semantic and not identity_changed:
+        anchor_completion = _extract_codex_completion_marker(anchor.get("content"))
+        snapshot_completion = _extract_codex_completion_marker(snapshot.get("content"))
+        if snapshot_completion is None:
+            return False
+        if snapshot.get("content") != anchor.get("content") and (
+            snapshot_completion == anchor_completion
+            or _without_codex_completion_markers(snapshot.get("content"))
+            != _without_codex_completion_markers(anchor.get("content"))
+        ):
+            return False
+    anchor_seq = anchor.get("state_change_seq")
+    snapshot_seq = snapshot.get("state_change_seq")
+    if anchor_seq is not None and snapshot_seq is not None and anchor_seq != snapshot_seq:
+        return True
+    anchor_digest = anchor.get("output_sha256")
+    snapshot_digest = snapshot.get("output_sha256")
+    if isinstance(anchor_digest, str) and isinstance(snapshot_digest, str) and anchor_digest != snapshot_digest:
+        return True
+    anchor_chars = anchor.get("output_chars")
+    snapshot_chars = snapshot.get("output_chars")
+    if isinstance(anchor_chars, int) and isinstance(snapshot_chars, int) and anchor_chars != snapshot_chars:
+        return True
+    for key in ("result_id", "result_reference", "completion_id"):
+        if snapshot.get(key) not in (None, "") and snapshot.get(key) != anchor.get(key):
+            return True
+    return False
+
+
+def _capture_submission_anchor(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    try:
+        result = _herdr_run(
+            [
+                herdr,
+                "--session",
+                session,
+                "pane",
+                "read",
+                pane,
+                "--source",
+                "recent-unwrapped",
+                "--lines",
+                "200",
+                "--format",
+                "text",
+            ],
+            env=env,
+            timeout=5.0,
+        )
+    except (CommandTransportTimeout, OSError):
+        return {"state": "unknown", "observation_error": "submission anchor read timed out"}
+    if result.returncode:
+        return {"state": "unknown", "observation_error": "submission anchor read failed"}
+    content = result.stdout.strip()
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, Mapping):
+        result_value = parsed.get("result")
+        if isinstance(result_value, str):
+            content = result_value.strip()
+        elif isinstance(result_value, Mapping):
+            for key in ("text", "output", "content"):
+                if isinstance(result_value.get(key), str):
+                    content = result_value[key].strip()
+                    break
+    return {
+        "state": "idle",
+        "content": content,
+        "output_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "output_chars": len(content),
+    }
 
 
 def _observe_provider_telemetry(start: str, end: str, *, expected_session_id: str | None = None) -> dict[str, Any]:
@@ -1364,23 +1571,44 @@ def _identity_conflict(*sources: Mapping[str, Any] | None) -> bool:
 
 
 def _reduce_resource_evidence(*evidence: Mapping[str, Any] | None) -> dict[str, Any]:
-    state = "unresolved"
-    reuse_blocked = True
-    recovery_required = True
+    state = "unknown"
     for item in evidence:
         if not isinstance(item, Mapping):
             continue
         candidate = item.get("state")
         verified = item.get("verified") is True
         if candidate in {"removed", "closed", "settled"} and verified:
-            state = "settled"
-            reuse_blocked = False
-            recovery_required = False
-        elif candidate in {"preserved", "unknown", "unverified", "quarantined", "unresolved"} and state != "settled":
-            state = "quarantined"
-            reuse_blocked = True
-            recovery_required = True
-    return {"state": state, "reuse_blocked": reuse_blocked, "recovery_required": recovery_required}
+            if state in {"unknown", "present"}:
+                state = "removed"
+        elif candidate in {"present", "preserved"}:
+            if state == "removed":
+                return {
+                    "state": "quarantined",
+                    "evidence_state": "conflict",
+                    "reuse_blocked": True,
+                    "recovery_required": True,
+                }
+            state = "present"
+    if state == "present":
+        return {
+            "state": "quarantined",
+            "evidence_state": "present",
+            "reuse_blocked": True,
+            "recovery_required": True,
+        }
+    if state == "removed":
+        return {
+            "state": "settled",
+            "evidence_state": "removed",
+            "reuse_blocked": False,
+            "recovery_required": False,
+        }
+    return {
+        "state": "quarantined",
+        "evidence_state": "unknown",
+        "reuse_blocked": True,
+        "recovery_required": True,
+    }
 
 
 def _owned_resources(
@@ -1396,6 +1624,8 @@ def _owned_resources(
     observed = observation if isinstance(observation, Mapping) else {}
     cleanup = observed.get("cleanup") if isinstance(observed.get("cleanup"), Mapping) else {}
     effective_cleanup_state = cleanup_state or cleanup.get("state")
+    ownership = herdr.get("ownership")
+    ownership = ownership if isinstance(ownership, Mapping) else {}
     resources: list[dict[str, Any]] = []
     if workspace_id:
         resources.append({
@@ -1404,15 +1634,29 @@ def _owned_resources(
             "state": "settled" if workspace_close and workspace_close.get("verified") is True else "quarantined",
             "authority": "herdr.workspace.close",
         })
-    for kind, key in (("session", "session"), ("pane", "pane"), ("agent", "agent_name")):
-        identity = _safe_text(herdr.get(key))
-        if identity:
-            resources.append({
-                "kind": kind,
-                "identity": identity,
-                "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
-                "authority": "secretary_live_runtime._release_codex_agent",
-            })
+    pane_identity = _safe_text(herdr.get("pane"))
+    if workspace_id and pane_identity:
+        resources.append({
+            "kind": "pane",
+            "identity": pane_identity,
+            "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
+            "authority": "herdr.workspace.close",
+        })
+    agent_identity = _safe_text(herdr.get("agent_name"))
+    agent_owned = (
+        agent_identity
+        and (
+            ownership.get("agent") == agent_identity
+            or effective_cleanup_state == "removed"
+        )
+    )
+    if agent_owned:
+        resources.append({
+            "kind": "agent",
+            "identity": agent_identity,
+            "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
+            "authority": "secretary_live_runtime._release_codex_agent",
+        })
     process_identity = herdr.get("process_identity") or observed.get("process_identity")
     if isinstance(process_identity, Mapping):
         safe_identity = {
@@ -1420,7 +1664,7 @@ def _owned_resources(
             for key in ("pid", "name", "cwd")
             if key in process_identity and _safe_text(str(process_identity[key])) is not None
         }
-        if safe_identity:
+        if safe_identity and agent_owned:
             resources.append({
                 "kind": "process",
                 "identity": safe_identity,
@@ -1437,16 +1681,29 @@ def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None
     return text
 
 
+def _safe_semantic_result_value(value: object, *, allow_long: bool = False) -> str | None:
+    text = _redact_semantic_content(value, _configured_semantic_secrets())
+    if text is None or (not allow_long and len(text) > 4096):
+        return None
+    return text
+
+
 def _extract_codex_semantic_content(value: object) -> str | None:
-    text = _safe_text(value)
-    if text is None:
+    text = _redact_semantic_content(value, _configured_semantic_secrets())
+    if text is None or "› Ask Codex" not in text:
         return None
     segments = re.split(r"(?m)^\s*Worked for\b.*$", text)
     candidates: list[str] = []
     for segment in segments:
         lines = segment.splitlines()
+        prompt_boundary = False
         for index, line in enumerate(lines):
             stripped = line.strip()
+            if stripped.startswith("› "):
+                prompt_boundary = True
+                continue
+            if prompt_boundary:
+                continue
             if not stripped.startswith("• "):
                 continue
             content_lines = [stripped[2:].strip()]
@@ -1464,6 +1721,24 @@ def _extract_codex_semantic_content(value: object) -> str | None:
     return candidates[-1] if candidates else None
 
 
+def _extract_codex_completion_marker(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    matches = re.findall(r"(?m)^\s*Worked for\b.*$", value)
+    return matches[-1].strip() if matches else None
+
+
+def _without_codex_completion_markers(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return re.sub(r"(?m)^\s*Worked for\b.*$\n?", "", value).strip()
+
+
+def _configured_semantic_secrets() -> tuple[str, ...]:
+    configured = os.environ.get("SECRETARY_SEMANTIC_SECRETS", "")
+    return tuple(value for value in configured.split(",") if value)
+
+
 def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]:
     reference = None
     for key in ("result_reference", "reference", "source_ref", "result_ref"):
@@ -1472,7 +1747,7 @@ def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]
             break
     content = None
     for key in ("semantic_content", "content", "response", "message", "result_content", "resolved_content"):
-        content = _safe_result_value(source.get(key), allow_long=True)
+        content = _safe_semantic_result_value(source.get(key), allow_long=True)
         if content:
             break
     if content:
@@ -1580,6 +1855,19 @@ def _normalize_invocation_outcome(
         "invocation_id": invocation_id,
         "execution": execution,
         "result": result,
+        "semantic_outcome": {
+            "state": (
+                "failed"
+                if result.get("state") == "reported" and result.get("status") == "failed"
+                else result.get("state")
+            ),
+            "reference": result.get("reference"),
+            "content": result.get("content"),
+        },
+        "finalization_outcome": {
+            "state": "settled" if resource["state"] == "settled" else "recovery_required",
+            "recovery_required": resource["recovery_required"],
+        },
         "resource": {key: resource[key] for key in ("state", "reuse_blocked")},
         "owned_resources": owned_resources,
         "recovery_required": resource["recovery_required"],
@@ -1598,16 +1886,27 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     herdr = shutil.which("herdr")
     if not herdr:
         raise LaunchBlocked("Required executable unavailable on PATH: herdr")
-    launch_request, preflight, workspace_id = _prepare_herdr_target(
-        request,
-        herdr=herdr,
-        env=environment,
-        invocation_id=invocation_id,
-    )
+    launch_request = request
+    preflight: dict[str, Any] = {}
+    workspace_id: str | None = None
+    workspace_close: Mapping[str, Any] | None = None
     payload: Mapping[str, Any] | None = None
     observation: Mapping[str, Any] = {}
+    submission_anchor: Mapping[str, Any] | None = None
     result: dict[str, Any] | None = None
     try:
+        launch_request, preflight, workspace_id = _prepare_herdr_target(
+            request,
+            herdr=herdr,
+            env=environment,
+            invocation_id=invocation_id,
+        )
+        submission_anchor = _capture_submission_anchor(
+            herdr,
+            launch_request.session,
+            launch_request.pane,
+            env=environment,
+        )
         completed = subprocess.run(
             build_normal_launcher_command(launch_request, expected_base=expected_base),
             cwd=launch_request.worktree,
@@ -1619,7 +1918,12 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
         payload = select_launcher_payload(payloads) if payloads else None
         if completed.returncode == 0 and isinstance(payload, Mapping):
-            observation = _observe_submitted_codex(launch_request, payload, env=environment)
+            observation = _observe_submitted_codex(
+                launch_request,
+                payload,
+                pre_submit=submission_anchor,
+                env=environment,
+            )
         result = _normalize_invocation_outcome(
             invocation_id=invocation_id,
             returncode=completed.returncode,
@@ -1629,6 +1933,10 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
     except Exception as exc:
+        workspace_id = getattr(exc, "workspace_id", workspace_id)
+        workspace_close = getattr(exc, "workspace_close", None)
+        if isinstance(workspace_close, Mapping):
+            preflight["workspace_close"] = dict(workspace_close)
         result = _normalize_invocation_outcome(
             invocation_id=invocation_id,
             returncode=1,
@@ -1642,7 +1950,9 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         result["result"] = {"state": "unavailable", "status": None}
     finally:
         if workspace_id is not None:
-            preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
+            if not isinstance(workspace_close, Mapping) or workspace_close.get("verified") is not True:
+                workspace_close = _close_herdr_workspace(herdr, workspace_id, env=environment)
+                preflight["workspace_close"] = dict(workspace_close)
             if result is None:
                 result = _normalize_invocation_outcome(
                     invocation_id=invocation_id,
@@ -1657,7 +1967,7 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             cleanup_state = result.get("observability", {}).get("cleanup_state")
             herdr_identity = payload.get("herdr") if isinstance(payload, Mapping) else None
             cleanup_verified = cleanup_state == "removed" or not isinstance(herdr_identity, Mapping)
-            close_verified = preflight["workspace_close"].get("verified") is True
+            close_verified = preflight.get("workspace_close", {}).get("verified") is True
             resource = (
                 {"state": "settled", "reuse_blocked": False, "recovery_required": False}
                 if cleanup_verified and close_verified
@@ -1672,6 +1982,10 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
                 workspace_close=preflight["workspace_close"],
             )
             result["recovery_required"] = resource["recovery_required"]
+            result["finalization_outcome"] = {
+                "state": "settled" if resource["state"] == "settled" else "recovery_required",
+                "recovery_required": resource["recovery_required"],
+            }
     if result is None:
         raise RuntimeError("Secretary normal run did not produce a result")
     result["preflight"] = preflight
@@ -1681,23 +1995,35 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
 
 
 def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any]:
-    _configured_provider(request.codex_home)
-    configured_model = _configured_model(request)
     started = datetime.now(timezone.utc).isoformat()
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(request.codex_home.resolve())
     herdr = shutil.which("herdr")
-    if not herdr:
-        raise LaunchBlocked("Required executable unavailable on PATH: herdr")
-    launch_request, preflight, workspace_id = _prepare_herdr_target(
-        request,
-        herdr=herdr,
-        env=environment,
-    )
+    launch_request = request
+    preflight: dict[str, Any] = {}
+    workspace_id: str | None = None
+    workspace_close: Mapping[str, Any] | None = None
+    configured_model = "unknown"
     result: dict[str, Any] | None = None
     payload: Mapping[str, Any] | None = None
+    submission_anchor: Mapping[str, Any] | None = None
     provider_session_id: str | None = None
     try:
+        _configured_provider(request.codex_home)
+        configured_model = _configured_model(request)
+        if not herdr:
+            raise LaunchBlocked("Required executable unavailable on PATH: herdr")
+        launch_request, preflight, workspace_id = _prepare_herdr_target(
+            request,
+            herdr=herdr,
+            env=environment,
+        )
+        submission_anchor = _capture_submission_anchor(
+            herdr,
+            launch_request.session,
+            launch_request.pane,
+            env=environment,
+        )
         completed = subprocess.run(
             build_launcher_command(launch_request),
             cwd=request.worktree,
@@ -1717,7 +2043,12 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
         if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
-            post_submit = _observe_submitted_codex(request, payload, env=environment)
+            post_submit = _observe_submitted_codex(
+                request,
+                payload,
+                pre_submit=submission_anchor,
+                env=environment,
+            )
             result["post_submit_observation"] = post_submit
             if post_submit.get("state") not in {"idle", "done"}:
                 result["failure_kind"] = "runtime_completion_observation_missing"
@@ -1761,6 +2092,10 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             result["failure_kind"] = None
             result.update(_classify_capabilities("READY", result.get("post_submit_observation")))
     except Exception as exc:
+        workspace_id = getattr(exc, "workspace_id", workspace_id)
+        workspace_close = getattr(exc, "workspace_close", None)
+        if isinstance(workspace_close, Mapping):
+            preflight["workspace_close"] = dict(workspace_close)
         result = {
             "disposition": "BLOCKED_CAPABILITY",
             "evidence_provenance": "capability-probe",
@@ -1768,8 +2103,10 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             "missing_capabilities": ["secretary_runtime_receipt"],
         }
     finally:
-        if workspace_id is not None:
-            preflight["workspace_close"] = _close_herdr_workspace(herdr, workspace_id, env=environment)
+        if workspace_id is not None and herdr:
+            if not isinstance(workspace_close, Mapping) or workspace_close.get("verified") is not True:
+                workspace_close = _close_herdr_workspace(herdr, workspace_id, env=environment)
+                preflight["workspace_close"] = dict(workspace_close)
             if result is not None:
                 result["preflight"] = preflight
                 post_submit = result.get("post_submit_observation")

@@ -1,0 +1,476 @@
+{
+  "schema": "completion-monitoring-evidence/v2",
+  "generated_at": "2026-10-11T23:54:57.928310+00:00",
+  "python": "3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]",
+  "os": "Windows-10-10.0.19045-SP0",
+  "baseline_revision": "14b0081c70c7a8f2a87846a827ec3a33b6730e1a",
+  "candidate_revision": "2908ba335efa46606d92acecccb27a27c5210726",
+  "baseline_source_sha256": "fc56511406c10e2e57736dbdcd4d875915c0c7fbb22b6a6c0106582b00e94153",
+  "candidate_source_sha256": "fc56511406c10e2e57736dbdcd4d875915c0c7fbb22b6a6c0106582b00e94153",
+  "harness": "stdlib deterministic fake-Herdr command/receipt seam",
+  "harness_digest": "f1741a14dbb0d63641ed983395644056ee8603648e9ea67cee53bc27687104ff",
+  "evidence_kind": "fake_boundary_observation",
+  "fixed_budgets": {
+    "diagnostic_timeout_seconds": 0.5,
+    "receipt_poll_seconds": 0.1,
+    "diagnostic_poll_seconds": 2.0
+  },
+  "cases": [
+    "process_info_stall_receipt",
+    "pane_read_stall_receipt",
+    "both_diagnostics_timeout_no_receipt",
+    "diagnostic_error_late_receipt",
+    "normal_success",
+    "terminal_process_without_receipt"
+  ],
+  "repetitions_per_case_and_side": 1,
+  "summary": {
+    "baseline": {
+      "subprocess_total": {
+        "median": 2.0,
+        "p95": 2.0
+      },
+      "time_to_receipt_ms": {
+        "median": 400.0,
+        "p95": 650.0
+      },
+      "receipt_to_completion_return_ms": {
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "timeout_count": 4,
+      "lifecycle_mismatches": 0,
+      "max_elapsed_seconds": 32.0,
+      "receipt_case_max_elapsed_seconds": 0.65,
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      }
+    },
+    "candidate": {
+      "subprocess_total": {
+        "median": 2.0,
+        "p95": 2.0
+      },
+      "time_to_receipt_ms": {
+        "median": 400.0,
+        "p95": 650.0
+      },
+      "receipt_to_completion_return_ms": {
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "timeout_count": 4,
+      "lifecycle_mismatches": 0,
+      "max_elapsed_seconds": 32.0,
+      "receipt_case_max_elapsed_seconds": 0.65,
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      }
+    }
+  },
+  "rows": [
+    {
+      "mode": "baseline",
+      "case": "process_info_stall_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "candidate",
+      "case": "process_info_stall_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 0
+      },
+      "subprocess_total": 1,
+      "timeout_count": 1,
+      "receipt_checks": 2,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 500.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.5
+    },
+    {
+      "mode": "baseline",
+      "case": "pane_read_stall_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "candidate",
+      "case": "pane_read_stall_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 1,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 650.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.65
+    },
+    {
+      "mode": "baseline",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "unavailable",
+        "receipt_to_completion_return_ms": "unavailable",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "candidate",
+      "case": "both_diagnostics_timeout_no_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "unavailable",
+        "receipt_to_completion_return_ms": "unavailable",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 2,
+      "receipt_checks": 311,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "no-report",
+      "expected_lifecycle": "no-report",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 32.0
+    },
+    {
+      "mode": "baseline",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "candidate",
+      "case": "diagnostic_error_late_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 4,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 300.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.3
+    },
+    {
+      "mode": "baseline",
+      "case": "normal_success",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "candidate",
+      "case": "normal_success",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "observed",
+        "receipt_to_completion_return_ms": "observed",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 3,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": 200.0,
+      "receipt_to_completion_return_ms": 0.0,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "removed",
+      "reconciliation": "not-required",
+      "elapsed_seconds": 0.2
+    },
+    {
+      "mode": "baseline",
+      "case": "terminal_process_without_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "unavailable",
+        "receipt_to_completion_return_ms": "unavailable",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    },
+    {
+      "mode": "candidate",
+      "case": "terminal_process_without_receipt",
+      "repetition": 1,
+      "evidence_kind": "fake_boundary_observation",
+      "measurement_status": {
+        "subprocess_total": "observed",
+        "timeout_count": "observed",
+        "receipt_checks": "observed",
+        "diagnostic_probe_count": "observed",
+        "time_to_receipt_ms": "unavailable",
+        "receipt_to_completion_return_ms": "unavailable",
+        "elapsed_seconds": "observed"
+      },
+      "subprocess_counts": {
+        "wait-output": 0,
+        "process-info": 1,
+        "read": 1
+      },
+      "subprocess_total": 2,
+      "timeout_count": 0,
+      "receipt_checks": 301,
+      "diagnostic_probe_count": 1,
+      "time_to_receipt_ms": null,
+      "receipt_to_completion_return_ms": null,
+      "lifecycle": "completed",
+      "expected_lifecycle": "completed",
+      "outcome_match": true,
+      "cleanup": "missing-receipt-fallback",
+      "reconciliation": "receipt-fallback",
+      "elapsed_seconds": 30.1
+    }
+  ],
+  "correctness": {
+    "lifecycle_mismatches": 0,
+    "cleanup_mismatches": 0,
+    "reconciliation_mismatches": 0,
+    "all_outcomes_match": true
+  },
+  "receipt_availability": "harness control data; not production receipt-publication evidence"
+}

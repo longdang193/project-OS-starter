@@ -191,9 +191,10 @@ reports recommendations; the resolved external owner accepts them.
 
 ### Repository Snapshot Advisory Binding
 
-For advisory work, bind repository identity, exact commit SHA, scoped target,
-and evidence authority before inspection. Commit-bound Git evidence remains
-valid while its anchor is unchanged. Runtime evidence uses
+For exact audit evidence, bind repository identity, exact commit SHA, scoped
+target, and evidence authority before inspection. Advisory answers may use the
+current repository snapshot when an exact audit claim is not being made.
+Commit-bound Git evidence remains valid while its anchor is unchanged. Runtime evidence uses
 `fresh-this-turn`; external mutable evidence follows its own freshness boundary.
 Do not reuse runtime evidence across explicit turns unless its anchor is
 independently revalidated.

@@ -24,28 +24,28 @@ SCENARIOS = (
 MEASURE_EXPECTATIONS = {
     "captured_result": {
         "semantic_result": "reported",
-        "outcome": "unresolved",
+        "outcome": "recovery_required",
         "failure_classification": "none",
         "blocker": "none",
         "duplicate_effects": 0,
     },
     "missing_optional_evidence": {
         "semantic_result": "reported",
-        "outcome": "unresolved",
+        "outcome": "recovery_required",
         "failure_classification": "none",
         "blocker": "optional_observability",
         "duplicate_effects": 0,
     },
     "cleanup_quarantine": {
         "semantic_result": "reported",
-        "outcome": "quarantined",
+        "outcome": "recovery_required",
         "failure_classification": "none",
         "blocker": "none",
         "duplicate_effects": 0,
     },
     "ambiguous_identity": {
         "semantic_result": "ambiguous",
-        "outcome": "unresolved",
+        "outcome": "recovery_required",
         "failure_classification": "ambiguous_result",
         "blocker": "none",
         "duplicate_effects": 1,
@@ -59,6 +59,7 @@ class ContractMetric:
     run_id: int
     architecture: str
     evidence_provenance: str
+    evidence_kind: str
     live: bool
     correct: bool
     outcome: str
@@ -123,6 +124,7 @@ def _metric(
     messages: int = 0,
     duplicate_effects: int = 0,
     evidence_provenance: str = "deterministic-fake",
+    evidence_kind: str = "deterministic_contract",
     live: bool = False,
     latency_ms: float | None = None,
     measurement_status: str = "not_attempted",
@@ -139,6 +141,7 @@ def _metric(
         run_id=run_id,
         architecture=architecture,
         evidence_provenance=evidence_provenance,
+        evidence_kind=evidence_kind,
         live=live,
         correct=correct,
         outcome=outcome,
@@ -318,7 +321,12 @@ def run_measure_benchmark(iterations: int = 1) -> list[ContractMetric]:
             )
             latency_ms = (time.perf_counter() - started) * 1000
             semantic_result = str(outcome["result"].get("state"))
-            outcome_state = str(outcome["resource"].get("state"))
+            finalization = outcome.get("finalization_outcome")
+            outcome_state = str(
+                finalization.get("state")
+                if isinstance(finalization, dict)
+                else outcome["resource"].get("state")
+            )
             failure_classification = "ambiguous_result" if semantic_result == "ambiguous" else "none"
             expected = MEASURE_EXPECTATIONS[scenario_id]
             actual = {
