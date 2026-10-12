@@ -834,6 +834,11 @@ def _elapsed_ms(started: float) -> float:
     return round(max(0.0, time.monotonic() - started) * 1000, 3)
 
 
+def _remaining_deepagents_timeout(attempt_deadline: float, *, now: float | None = None) -> float:
+    current = time.monotonic() if now is None else now
+    return min(_DEEPAGENTS_RUN_TIMEOUT, max(0.0, attempt_deadline - current))
+
+
 def _metrics_snapshot() -> dict[str, Any]:
     metrics = _ACTIVE_METRICS.get()
     if metrics is None:
@@ -3262,7 +3267,7 @@ def _main_body(args: argparse.Namespace) -> int:
                             command,
                             environment,
                         (
-                            max(0.01, attempt_deadline - time.monotonic())
+                            max(0.01, _remaining_deepagents_timeout(attempt_deadline))
                             if args.executor == "deepagents"
                             else _CODEX_START_TIMEOUT
                         ),
@@ -3645,7 +3650,8 @@ def _main_body(args: argparse.Namespace) -> int:
                 if isinstance(requested_wait, int)
                 else max(
                     0.0,
-                    attempt_deadline - time.monotonic() - _DEEPAGENTS_RECEIPT_GRACE_SECONDS,
+                    _remaining_deepagents_timeout(attempt_deadline)
+                    - _DEEPAGENTS_RECEIPT_GRACE_SECONDS,
                 )
             ),
             attempt_deadline=attempt_deadline,

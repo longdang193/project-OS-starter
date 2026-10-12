@@ -1886,8 +1886,7 @@ def _result_source_content(source: Mapping[str, Any]) -> str | None:
 
 
 def _snapshot_result_content(source: Mapping[str, Any]) -> str | None:
-    explicit_content = _safe_semantic_result_value(source.get("semantic_content"), allow_long=True)
-    return explicit_content or _extract_codex_semantic_content(source.get("content"))
+    return _safe_semantic_result_value(source.get("semantic_content"), allow_long=True)
 
 
 def _select_authoritative_result_source(
@@ -2135,11 +2134,35 @@ def _normalize_invocation_outcome(
     }
 
 
+def _normal_managed_result_capability_available() -> bool:
+    return False
+
+
 def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
     invocation_id = uuid.uuid4().hex
+    started = datetime.now(timezone.utc).isoformat()
+    if not _normal_managed_result_capability_available():
+        result = _normalize_invocation_outcome(
+            invocation_id=invocation_id,
+            returncode=1,
+            payload=None,
+            observation=None,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+        result["execution"].update({"state": "blocked", "error": "BLOCKED_CAPABILITY"})
+        result["failure_kind"] = "BLOCKED_CAPABILITY"
+        result["capability_state"] = "BLOCKED_CAPABILITY"
+        result["preflight"] = {
+            "disposition": "BLOCKED_CAPABILITY",
+            "reason": "codex normal adapter does not publish an attributable structured result",
+        }
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return result
+
     worktree, expected_base = _read_only_git_anchor(request.worktree)
     request = replace(request, worktree=worktree)
-    started = datetime.now(timezone.utc).isoformat()
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(request.codex_home.resolve())
     herdr = shutil.which("herdr")

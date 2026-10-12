@@ -19,6 +19,7 @@ from scripts.secretary_live_runtime import (
     _observe_provider_telemetry,
     _redact_semantic_content,
     _release_codex_agent,
+    _snapshot_result_content,
     _smoke_receipt,
     build_launcher_command,
     build_normal_launcher_command,
@@ -639,6 +640,35 @@ def test_run_normal_does_not_observe_provider_telemetry(
     assert "provider_telemetry" not in result
 
 
+def test_run_normal_blocks_before_launch_without_structured_result_capability(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda *args, **kwargs: pytest.fail("normal managed dispatch must be blocked before Herdr setup"),
+    )
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("normal managed dispatch must not launch an executor"),
+    )
+
+    result = run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert result["failure_kind"] == "BLOCKED_CAPABILITY"
+    assert result["capability_state"] == "BLOCKED_CAPABILITY"
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["preflight"] == {
+        "disposition": "BLOCKED_CAPABILITY",
+        "reason": "codex normal adapter does not publish an attributable structured result",
+    }
+
+
 def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -1032,7 +1062,7 @@ def test_normal_outcome_uses_consistent_cleanup_evidence() -> None:
     assert all(item["state"] == "settled" for item in result["owned_resources"])
 
 
-def test_observe_submitted_codex_waits_past_initial_idle_until_done(
+def test_observe_submitted_codex_waits_past_initial_idle_without_semantic_promotion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     snapshots = iter([
@@ -1091,7 +1121,7 @@ def test_observe_submitted_codex_waits_past_initial_idle_until_done(
     )
 
     assert observation["state"] == "done"
-    assert observation["semantic_content"] == "SECRETARY_PROBE_test"
+    assert "semantic_content" not in observation
     assert observation["cleanup"] == {"state": "removed"}
 
 
@@ -1166,7 +1196,7 @@ def _correlated_payload() -> dict[str, object]:
     }
 
 
-def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
+def test_observe_submitted_codex_keeps_fast_idle_terminal_answer_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -1197,7 +1227,7 @@ def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
     )
 
     assert observation["state"] == "idle"
-    assert observation["semantic_content"] == "SECRETARY_PROBE_fast"
+    assert "semantic_content" not in observation
     assert observation["producer"] == "dcode-project"
 
 
@@ -1543,7 +1573,7 @@ def test_observe_submitted_codex_rejects_read_error_recovery_with_old_output(
     assert "semantic_content" not in observation
 
 
-def test_observe_submitted_codex_accepts_fresh_post_submit_output(
+def test_observe_submitted_codex_keeps_fresh_terminal_output_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -1574,7 +1604,7 @@ def test_observe_submitted_codex_accepts_fresh_post_submit_output(
     )
 
     assert observation["state"] == "done"
-    assert observation["semantic_content"] == "fresh answer"
+    assert "semantic_content" not in observation
 
 
 def test_observe_submitted_codex_accepts_fresh_terminal_completion_without_structured_result(
@@ -2051,6 +2081,7 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
     import scripts.secretary_live_runtime as runtime
 
     request_value = normal_request(worktree=tmp_path)
+    monkeypatch.setattr(runtime, "_normal_managed_result_capability_available", lambda: True)
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
     monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
     monkeypatch.setattr(
@@ -2143,6 +2174,7 @@ def test_run_normal_exception_preserves_owned_resource_after_verified_cleanup(
 ) -> None:
     import scripts.secretary_live_runtime as runtime
 
+    monkeypatch.setattr(runtime, "_normal_managed_result_capability_available", lambda: True)
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
     monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
     monkeypatch.setattr(
@@ -2196,6 +2228,14 @@ def test_normal_outcome_reports_captured_observation_content() -> None:
         "status": "completed",
         "content": "SECRETARY_PROBE_test",
     }
+
+
+def test_snapshot_result_content_rejects_terminal_content_without_structured_field() -> None:
+    assert _snapshot_result_content(
+        {
+            "content": "Codex screen\n• terminal-only answer\nWorked for 1s",
+        }
+    ) is None
 
 
 def test_normal_outcome_scopes_launcher_observation_error_without_downgrading_result() -> None:
@@ -2285,6 +2325,7 @@ def test_run_normal_exception_quarantines_when_cleanup_is_unproven(
 ) -> None:
     import scripts.secretary_live_runtime as runtime
 
+    monkeypatch.setattr(runtime, "_normal_managed_result_capability_available", lambda: True)
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
     monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
     monkeypatch.setattr(
@@ -3580,7 +3621,7 @@ def test_observe_submitted_codex_rejects_old_answer_with_unrelated_terminal_chur
     assert "semantic_content" not in observation
 
 
-def test_observe_submitted_codex_accepts_repeated_answer_with_terminal_completion(
+def test_observe_submitted_codex_keeps_repeated_terminal_answer_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     answer = "Codex screen\n• SAME ANSWER\nWorked for 1s\n› Ask Codex to do anything"
@@ -3609,7 +3650,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_terminal_completio
         env={},
     )
 
-    assert observation["semantic_content"] == "SAME ANSWER"
+    assert "semantic_content" not in observation
 
 
 def test_observe_submitted_codex_reports_untrusted_terminal_content_as_provenance_gap(
@@ -3787,7 +3828,7 @@ def test_observe_submitted_codex_rejects_initial_prompt_bullet_with_marker(
     assert "semantic_content" not in observation
 
 
-def test_observe_submitted_codex_accepts_single_bullet_exact_answer(
+def test_observe_submitted_codex_keeps_single_bullet_terminal_answer_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     content = (
@@ -3821,10 +3862,10 @@ def test_observe_submitted_codex_accepts_single_bullet_exact_answer(
         env={},
     )
 
-    assert observation["semantic_content"] == "PROBE_OK"
+    assert "semantic_content" not in observation
 
 
-def test_observe_submitted_codex_accepts_final_answer_after_prompt_commentary(
+def test_observe_submitted_codex_keeps_prompt_commentary_terminal_answer_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     content = (
@@ -3858,10 +3899,10 @@ def test_observe_submitted_codex_accepts_final_answer_after_prompt_commentary(
         env={},
     )
 
-    assert observation["semantic_content"] == "PROBE_OK"
+    assert "semantic_content" not in observation
 
 
-def test_observe_submitted_codex_accepts_later_answer_after_previous_completion(
+def test_observe_submitted_codex_keeps_later_terminal_answer_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     content = (
@@ -3899,10 +3940,10 @@ def test_observe_submitted_codex_accepts_later_answer_after_previous_completion(
         env={},
     )
 
-    assert observation["semantic_content"] == "PROBE_OK"
+    assert "semantic_content" not in observation
 
 
-def test_observe_submitted_codex_accepts_repeated_answer_with_new_completion_marker(
+def test_observe_submitted_codex_keeps_repeated_terminal_answer_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     anchor = "Codex screen\n• SAME ANSWER\nWorked for 1s\n› Ask Codex to do anything"
@@ -3932,10 +3973,10 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_new_completion_mar
         env={},
     )
 
-    assert observation["semantic_content"] == "SAME ANSWER"
+    assert "semantic_content" not in observation
 
 
-def test_observe_submitted_codex_accepts_repeated_answer_with_prompt_suffix_and_new_marker(
+def test_observe_submitted_codex_keeps_repeated_prompt_suffix_terminal_answer_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     anchor = "› Original request\n• SAME ANSWER\nWorked for 1s\n› Ask Codex to do anything"
@@ -3965,7 +4006,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_prompt_suffix_and_
         env={},
     )
 
-    assert observation["semantic_content"] == "SAME ANSWER"
+    assert "semantic_content" not in observation
 
 
 def test_observe_submitted_codex_rejects_prompt_echo_with_completion_marker(
