@@ -96,6 +96,291 @@ def test_normal_outcome_requires_correlated_result_reference() -> None:
     assert result["resource"]["state"] == "settled"
 
 
+def test_normal_outcome_rejects_task_result_without_attempt_provenance() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "result_reference": "task-result://unbound",
+                    "content": "unbound answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_rejects_unaccepted_task_result_producer() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "terminal-screen",
+                    "result_reference": "task-result://untrusted",
+                    "content": "untrusted answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_rejects_partially_bound_task_result() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "content": "partially bound answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_rejects_unbound_assistant_owned_observation() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}}},
+        observation={
+            "state": "done",
+            "semantic_content": "unbound answer",
+            "assistant_owned": True,
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_rejects_explicitly_non_assistant_observation() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "assistant_owned": False,
+            "semantic_content": "user-authored message",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_ignores_rejected_task_result_status_for_bound_observation() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_failed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "terminal-screen",
+                    "content": "rejected failure",
+                },
+            }
+        },
+        observation={
+            "state": "done",
+            "semantic_content": "accepted answer",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "assistant_owned": True,
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "content": "accepted answer",
+    }
+
+
+@pytest.mark.parametrize("producer", [{"name": "malformed"}, ["malformed"]])
+def test_normal_outcome_ignores_malformed_task_result_producer(
+    producer: object,
+) -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": producer,
+                    "result_reference": "task-result://malformed",
+                    "content": "malformed answer",
+                },
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "source_ref": "task-result://trusted",
+            "semantic_content": "trusted answer",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "task-result://trusted",
+        "content": "trusted answer",
+    }
+
+
+def test_normal_outcome_accepts_correlated_task_result_with_accepted_provenance() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "source_ref": "task-result://invoke-1",
+                    "source_digest": "a" * 64,
+                    "content": "correlated answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "task-result://invoke-1",
+        "content": "correlated answer",
+    }
+
+
+def test_normal_outcome_does_not_mix_reference_and_content_from_different_sources() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "result_reference": "task-result://A",
+                    "result_resolver": "secretary",
+                    "result_retrieved": True,
+                },
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "semantic_content": "answer from B",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "ambiguous", "status": None}
+
+
+def test_normal_outcome_rejects_assignment_level_prompt_content() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "content": "user prompt bullets",
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
 def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -106,9 +391,13 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
             "assignment": {
                 "execution": {"state": "failed", "worker_exit_code": 7},
                 "cleanup": {"state": "removed"},
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
                 "task_result": {
                     "state": "reported_failed",
+                    "assignment_id": "assignment-1",
                     "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
                     "result_reference": "task-result://invoke-1",
                     "content": "failure details",
                 },
@@ -128,6 +417,35 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
     }
 
 
+def test_main_exception_path_uses_canonical_failure_projection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    def fail_run(*args: object, **kwargs: object) -> dict[str, object]:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(runtime, "run_normal", fail_run)
+    output = tmp_path / "normal.json"
+
+    assert runtime.main(["run", "--output", str(output), "--cwd", str(tmp_path), "--task", "read-only"]) == 2
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["semantic_outcome"] == {
+        "state": "unavailable",
+        "status": None,
+        "reference": None,
+        "content": None,
+    }
+    assert result["execution"] == {"state": "failed", "error": "RuntimeError"}
+    assert result["finalization_outcome"] == {
+        "state": "recovery_required",
+        "recovery_required": True,
+    }
+
+
 def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -138,8 +456,13 @@ def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() 
             "assignment": {
                 "execution": {"state": "completed"},
                 "cleanup": {"state": "unknown"},
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
                 "task_result": {
                     "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
                     "result_reference": "herdr://session/agent/12",
                     "content": "completed response",
                 },
@@ -262,6 +585,7 @@ def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
                     "state": "reported_completed",
                     "assignment_id": "assignment-1",
                     "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
                     "content": "answer",
                 },
             }
@@ -282,21 +606,34 @@ def test_normal_outcome_marks_same_field_identity_conflict_ambiguous() -> None:
         returncode=0,
         payload={
             "assignment": {
+                "assignment_id": "assignment-1",
                 "attempt_id": "attempt-assignment",
                 "execution": {"state": "completed"},
                 "task_result": {
                     "state": "reported_completed",
+                    "assignment_id": "assignment-1",
                     "attempt_id": "attempt-result",
+                    "producer": "terminal-screen",
                     "content": "answer",
                 },
-            }
+            },
         },
-        observation={},
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-assignment",
+            "producer": "dcode-project",
+            "semantic_content": "accepted answer",
+        },
         started_at="2026-10-11T10:00:00+00:00",
         finished_at="2026-10-11T10:00:01+00:00",
     )
 
-    assert result["result"] == {"state": "ambiguous", "status": None}
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "content": "accepted answer",
+    }
 
 
 def test_normal_outcome_preserves_long_semantic_content() -> None:
@@ -309,7 +646,15 @@ def test_normal_outcome_preserves_long_semantic_content() -> None:
         payload={
             "assignment": {
                 "execution": {"state": "completed"},
-                "task_result": {"state": "reported_completed", "content": content},
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "content": content,
+                },
             }
         },
         observation={},
@@ -469,7 +814,18 @@ def test_observe_submitted_codex_retries_terminal_state_after_read_timeout(
                 "session": "session",
                 "pane": "pane",
                 "agent_name": "agent",
-            }
+                },
+                "assignment": {
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "task_result": {
+                        "state": "reported_completed",
+                        "assignment_id": "assignment-1",
+                        "attempt_id": "attempt-1",
+                        "producer": "dcode-project",
+                        "result_reference": "task-result://attempt-1",
+                    },
+                },
         },
         env={},
     )
@@ -579,9 +935,17 @@ def test_normal_outcome_uses_consistent_cleanup_evidence() -> None:
     payload = {
         "herdr": {"session": "session", "pane": "pane", "agent_name": "agent"},
         "assignment": {
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
             "execution": {"state": "completed"},
             "cleanup": {"state": "preserved"},
-            "task_result": {"state": "reported_completed", "content": "answer"},
+            "task_result": {
+                "state": "reported_completed",
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "producer": "dcode-project",
+                "content": "answer",
+            },
         },
     }
     result = _normalize_invocation_outcome(
@@ -613,10 +977,14 @@ def test_observe_submitted_codex_waits_past_initial_idle_until_done(
         {
             "state": "done",
             "state_change_seq": 2,
-            "content": "Codex screen\n• SECRETARY_PROBE_test\n› Ask Codex to do anything",
+            "content": "Codex screen\n• SECRETARY_PROBE_test\nWorked for 1s\n› Ask Codex to do anything",
             "output_sha256": "b" * 64,
             "output_chars": 65,
             "observation_error": None,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "assistant_owned": True,
         },
     ])
     monkeypatch.setattr(
@@ -636,7 +1004,18 @@ def test_observe_submitted_codex_waits_past_initial_idle_until_done(
                 "session": "session",
                 "pane": "pane",
                 "agent_name": "agent",
-            }
+            },
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "result_reference": "task-result://attempt-1",
+                },
+            },
         },
         env={},
     )
@@ -687,6 +1066,7 @@ def _submission_anchor() -> dict[str, object]:
         "output_chars": 18,
         "assignment_id": "assignment-1",
         "attempt_id": "attempt-1",
+        "producer": "dcode-project",
     }
 
 
@@ -705,6 +1085,13 @@ def _correlated_payload() -> dict[str, object]:
         "assignment": {
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-1",
+            "task_result": {
+                "state": "reported_completed",
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "producer": "dcode-project",
+                "result_reference": "task-result://attempt-1",
+            },
         },
     }
 
@@ -721,6 +1108,10 @@ def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
             "output_sha256": "b" * 64,
             "output_chars": 66,
             "observation_error": None,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "assistant_owned": True,
         },
     )
     monkeypatch.setattr(
@@ -737,6 +1128,283 @@ def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
 
     assert observation["state"] == "idle"
     assert observation["semantic_content"] == "SECRETARY_PROBE_fast"
+    assert observation["producer"] == "dcode-project"
+
+
+def test_observe_submitted_codex_uses_bound_structured_content_over_terminal_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_content = "Codex screen\n• USER-INJECTED TERMINAL TEXT\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": terminal_content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(terminal_content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            **_correlated_payload(),
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "result_reference": "task-result://attempt-1",
+                    "content": "structured answer",
+                },
+            },
+        },
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "structured answer"
+    assert "USER-INJECTED TERMINAL TEXT" not in observation["semantic_content"]
+
+
+def test_observe_submitted_codex_uses_bound_snapshot_semantic_content_without_terminal_bullet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "assistant_owned": True,
+            "semantic_content": "accepted snapshot answer",
+            "source_ref": "task-result://snapshot",
+            "content": "Codex screen without a semantic bullet",
+            "output_sha256": "b" * 64,
+            "output_chars": 36,
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"] = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "accepted snapshot answer"
+    assert observation["source_ref"] == "task-result://snapshot"
+
+
+def test_observe_submitted_codex_rejects_terminal_content_without_snapshot_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "Previous completion\nWorked for 1s\n"
+        "› Summarize these notes:\n• USER PROMPT TEXT\n"
+        "› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"] = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "task_result": {"state": "unknown"},
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["observation_error"] == "completion output not observed"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_preserves_snapshot_conflict_for_normalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "assistant_owned": True,
+            "result_reference": "task-result://B",
+            "semantic_content": "answer from B",
+            "content": "Codex structured result",
+            "output_sha256": "b" * 64,
+            "output_chars": 24,
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"]["task_result"] = {
+        "state": "reported_completed",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "producer": "dcode-project",
+        "result_reference": "task-result://A",
+        "content": "answer from A",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload=payload,
+        observation=observation,
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert observation["semantic_content"] == "answer from B"
+    assert observation["result_reference"] == "task-result://B"
+    assert result["result"] == {"state": "ambiguous", "status": None}
+
+
+def test_observe_submitted_codex_does_not_publish_unrelated_terminal_bullet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_content = "Codex screen\n• unrelated terminal text\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "assistant_owned": True,
+            "semantic_content": "accepted snapshot answer",
+            "source_ref": "task-result://snapshot",
+            "content": terminal_content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(terminal_content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"] = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "accepted snapshot answer"
+    assert "unrelated terminal text" not in observation["semantic_content"]
+
+
+def test_observe_submitted_codex_keeps_task_result_source_ref_over_rejected_snapshot_ref(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_content = "Codex screen\n• unrelated terminal text\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "producer": "terminal-screen",
+            "result_reference": "task-result://unrelated",
+            "content": terminal_content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(terminal_content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"]["task_result"] = {
+        "state": "reported_completed",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "producer": "dcode-project",
+        "source_ref": "task-result://trusted",
+        "content": "trusted answer",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload=payload,
+        observation=observation,
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "task-result://trusted",
+        "content": "trusted answer",
+    }
 
 
 def test_observe_submitted_codex_rejects_stale_idle_output(
@@ -817,6 +1485,10 @@ def test_observe_submitted_codex_accepts_fresh_post_submit_output(
             "output_sha256": "b" * 64,
             "output_chars": 55,
             "observation_error": None,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "assistant_owned": True,
         },
     )
     monkeypatch.setattr(
@@ -833,6 +1505,98 @@ def test_observe_submitted_codex_accepts_fresh_post_submit_output(
 
     assert observation["state"] == "done"
     assert observation["semantic_content"] == "fresh answer"
+
+
+def test_observe_submitted_codex_accepts_fresh_terminal_completion_without_structured_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "Codex screen\n"
+        "› Reply with exactly SECRETARY_CLOSURE_INSTRUMENTED_20261012.\n"
+        "\n"
+        "• SECRETARY_CLOSURE_INSTRUMENTED_20261012\n"
+        "\n"
+        "Worked for 16s • 11:16\n"
+        "› Ask Codex to do anything"
+    )
+    payload = _correlated_payload()
+    assignment = payload["assignment"]
+    assert isinstance(assignment, dict)
+    assignment["task_result"] = {"state": "unverified"}
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "done",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_selects_last_completed_bullet_after_multiline_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nonce = "SECRETARY_PROBE_B_TEST"
+    content = (
+        "Codex screen\n"
+        "› User notes:\n"
+        "• The bullets are user-provided content.\n"
+        "• Do not echo these notes as the answer.\n"
+        f"Return exactly {nonce}. Do not edit the repository or create child workers.\n"
+        "Secretary normal-mode boundary: inspect, reason, prioritize, route, or summarize only.\n"
+        "• "
+        f"{nonce}\n"
+        "Worked for 16s • 11:16\n"
+        "› Ask Codex to do anything"
+    )
+    payload = _correlated_payload()
+    assignment = payload["assignment"]
+    assert isinstance(assignment, dict)
+    assignment["task_result"] = {"state": "unverified"}
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "done",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert "semantic_content" not in observation
 
 
 def test_observe_submitted_codex_rejects_partial_or_stopped_answer(
@@ -1240,9 +2004,14 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
                             "agent_name": "normal-main-1234",
                         },
                         "assignment": {
+                            "assignment_id": "assignment-1",
+                            "attempt_id": "attempt-1",
                             "execution": {"state": "completed"},
                             "task_result": {
                                 "state": "reported_completed",
+                                "assignment_id": "assignment-1",
+                                "attempt_id": "attempt-1",
+                                "producer": "dcode-project",
                                 "result_reference": "herdr://default/normal-main-1234/1",
                                 "content": "normal response",
                             },
@@ -1333,6 +2102,8 @@ def test_normal_outcome_reports_captured_observation_content() -> None:
         returncode=0,
         payload={
             "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
                 "execution": {"state": "completed"},
                 "task_result": {"state": "unknown"},
             }
@@ -1340,6 +2111,10 @@ def test_normal_outcome_reports_captured_observation_content() -> None:
         observation={
             "state": "done",
             "semantic_content": "SECRETARY_PROBE_test",
+            "assistant_owned": True,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",
@@ -1359,6 +2134,8 @@ def test_normal_outcome_scopes_launcher_observation_error_without_downgrading_re
         returncode=0,
         payload={
             "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
                 "execution": {
                     "state": "completed",
                     "observation_error": "not_observed",
@@ -1369,6 +2146,10 @@ def test_normal_outcome_scopes_launcher_observation_error_without_downgrading_re
         observation={
             "state": "done",
             "semantic_content": "SECRETARY_PROBE_test",
+            "assistant_owned": True,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",
@@ -2738,6 +3519,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_terminal_completio
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": answer,
             "output_sha256": "b" * 64,
             "output_chars": len(answer),
@@ -2868,7 +3650,7 @@ def test_observe_submitted_codex_rejects_initial_prompt_bullet_with_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     content = (
-        "› Summarize these notes:\n• USER PROMPT TEXT\n"
+        "› Please echo this input:\n• USER PROMPT TEXT\n"
         "Worked for 2s\n› Ask Codex to do anything"
     )
     monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
@@ -2901,6 +3683,43 @@ def test_observe_submitted_codex_rejects_initial_prompt_bullet_with_marker(
     assert "semantic_content" not in observation
 
 
+def test_observe_submitted_codex_accepts_single_bullet_exact_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "› Reply with exactly PROBE_OK.\n• PROBE_OK\n"
+        "Worked for 1s\n› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "assistant_owned": True,
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "PROBE_OK"
+
+
 def test_observe_submitted_codex_accepts_final_answer_after_prompt_commentary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2915,6 +3734,7 @@ def test_observe_submitted_codex_accepts_final_answer_after_prompt_commentary(
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": content,
             "output_sha256": "b" * 64,
             "output_chars": len(content),
@@ -2952,6 +3772,7 @@ def test_observe_submitted_codex_accepts_later_answer_after_previous_completion(
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": content,
             "output_sha256": "b" * 64,
             "output_chars": len(content),
@@ -2987,6 +3808,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_new_completion_mar
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": snapshot,
             "output_sha256": "b" * 64,
             "output_chars": len(snapshot),
@@ -3019,6 +3841,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_prompt_suffix_and_
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": snapshot,
             "output_sha256": "b" * 64,
             "output_chars": len(snapshot),
@@ -3092,8 +3915,8 @@ def test_normal_outcome_preserves_safe_security_prose(content: str) -> None:
     result = _normalize_invocation_outcome(
         invocation_id="invoke-1",
         returncode=0,
-        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
-        observation={"state": "done", "semantic_content": content, "cleanup": {"state": "removed"}},
+        payload={"assignment": {"assignment_id": "assignment-1", "attempt_id": "attempt-1", "execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={"state": "done", "semantic_content": content, "assistant_owned": True, "assignment_id": "assignment-1", "attempt_id": "attempt-1", "producer": "dcode-project", "cleanup": {"state": "removed"}},
         started_at="2026-10-11T00:00:00+00:00",
         finished_at="2026-10-11T00:00:01+00:00",
     )
@@ -3105,10 +3928,14 @@ def test_normal_outcome_redacts_quoted_secret_values() -> None:
     result = _normalize_invocation_outcome(
         invocation_id="invoke-1",
         returncode=0,
-        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        payload={"assignment": {"assignment_id": "assignment-1", "attempt_id": "attempt-1", "execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
         observation={
             "state": "done",
             "semantic_content": '{"api_key": "SYNTHETIC first second"}',
+            "assistant_owned": True,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",
@@ -3122,10 +3949,14 @@ def test_normal_outcome_redacts_query_secret_inside_quoted_value() -> None:
     result = _normalize_invocation_outcome(
         invocation_id="invoke-1",
         returncode=0,
-        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        payload={"assignment": {"assignment_id": "assignment-1", "attempt_id": "attempt-1", "execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
         observation={
             "state": "done",
             "semantic_content": '{"api_key": "SYNTHETIC-prefix?token=SYNTHETIC-suffix"}',
+            "assistant_owned": True,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",

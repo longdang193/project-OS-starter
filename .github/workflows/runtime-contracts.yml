@@ -54,6 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -61,4 +63,4 @@ jobs:
       - run: python -m pytest tests/test_worker_contract_benchmark.py -q
       - run: python -m pytest tests/test_secretary_benchmark.py -q
       - run: python scripts/benchmark_secretary_architecture.py contract 30 > secretary-benchmark.json
-      - run: python scripts/benchmark_secretary_architecture.py measure > secretary-measurement.json
+      - run: python scripts/benchmark_completion_monitoring.py --baseline-revision f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d --repetitions 3 --output "$RUNNER_TEMP/secretary-completion-monitoring.json"
