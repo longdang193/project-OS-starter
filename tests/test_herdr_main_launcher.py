@@ -608,6 +608,67 @@ def test_codex_completion_snapshot_skips_terminal_read_while_working(
     assert calls == [["herdr.exe", "--session", "session", "agent", "get", "xhigh-main"]]
 
 
+def test_codex_completion_snapshot_prefers_authoritative_pane_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle","state_change_seq":8,"pane_id":"w1:p1"}}}',
+                "",
+            )
+        if command[3:5] == ["agent", "read"]:
+            return subprocess.CompletedProcess(command, 1, "", "agent read failed")
+        return subprocess.CompletedProcess(command, 0, '{"result":"fresh pane output"}', "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    snapshot = LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={},
+    )
+
+    assert snapshot["content"] == "fresh pane output"
+    assert snapshot["observation_error"] is None
+    assert calls[-1] == [
+        "herdr.exe", "--session", "session", "pane", "read", "w1:p1",
+        "--source", "recent-unwrapped", "--lines", "200", "--format", "text",
+    ]
+
+
+def test_codex_completion_snapshot_uses_bound_pane_when_agent_metadata_omits_pane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle","state_change_seq":8}}}',
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, '{"result":"bound pane output"}', "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    snapshot = LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={}, pane="w1:p1",
+    )
+
+    assert snapshot["content"] == "bound pane output"
+    assert snapshot["observation_error"] is None
+    assert calls[-1][:7] == [
+        "herdr.exe", "--session", "session", "pane", "read", "w1:p1", "--source",
+    ]
+
+
 def test_codex_completion_snapshot_preserves_semantic_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

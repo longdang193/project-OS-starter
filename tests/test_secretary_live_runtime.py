@@ -1157,6 +1157,31 @@ def test_observe_submitted_codex_does_not_capture_unconfirmed_output(
     assert "semantic_content" not in observation
 
 
+def test_observe_submitted_codex_passes_bound_pane_to_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.01)
+    seen: dict[str, object] = {}
+
+    def snapshot(*args: object, **kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {"state": "working", "observation_error": None}
+
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        snapshot,
+    )
+
+    _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert seen["pane"] == "pane"
+
+
 def _submission_anchor() -> dict[str, object]:
     return {
         "state": "idle",

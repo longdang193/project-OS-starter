@@ -714,6 +714,7 @@ def _observe_submitted_codex(
             session,
             agent_name,
             env=env,
+            pane=pane,
             timeout_seconds=min(5.0, remaining),
         )
         if any(key in snapshot for key in ("assignment_id", "attempt_id")):
