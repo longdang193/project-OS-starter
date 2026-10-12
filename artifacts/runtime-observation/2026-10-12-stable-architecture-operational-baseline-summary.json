@@ -25,21 +25,21 @@
   "phase_stats_ms": {
     "preflight": {
       "count": 20,
-      "median": 142.354,
+      "median": 142.52,
       "max": 439.466,
       "p95_descriptive": 212.793,
       "min": 130.903
     },
     "target_discovery": {
       "count": 20,
-      "median": 85.772,
+      "median": 86.644,
       "max": 179.243,
       "p95_descriptive": 124.577,
       "min": 58.43
     },
     "launch_preparation": {
       "count": 20,
-      "median": 47.026,
+      "median": 47.2795,
       "max": 159.742,
       "p95_descriptive": 62.102,
       "min": 40.379
@@ -49,7 +49,7 @@
     },
     "observation": {
       "count": 20,
-      "median": 69290.148,
+      "median": 69353.313,
       "max": 85527.659,
       "p95_descriptive": 85003.998,
       "min": 40827.307
@@ -63,14 +63,14 @@
   },
   "total_duration_ms": {
     "count": 20,
-    "median": 69776.767,
+    "median": 69793.8125,
     "max": 85939.712,
     "p95_descriptive": 85436.841,
     "min": 41258.993
   },
   "non_worker_duration_ms": {
     "count": 20,
-    "median": 431.6860000000015,
+    "median": 432.2645,
     "max": 1051.4429999999993,
     "p95_descriptive": 486.61900000000605,
     "min": 346.77999999999884
