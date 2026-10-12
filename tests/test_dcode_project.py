@@ -477,6 +477,48 @@ def test_bounded_task_context_requires_worker_owned_task_result(
     assert "read the result path back before reporting completion" in argv[1].lower()
 
 
+def test_encoded_task_transport_receives_direct_publication_instructions(
+    tmp_path: Path,
+) -> None:
+    encoded = base64.b64encode(b"task").decode("ascii")
+    child, _, _, _, _, _, _, _, _, _, _, _ = LAUNCHER._controller_options(
+        [
+            "--role",
+            "normal",
+            "--task-base64",
+            encoded,
+            "--result-file",
+            str(tmp_path / "result.json"),
+            "--attempt-id",
+            "attempt-1",
+            "--assignment-id",
+            "assignment-1",
+            "--repository-identity",
+            "repo-1",
+            "--task-sha256",
+            "a" * 64,
+            "--grant-digest",
+            "b" * 64,
+        ]
+    )
+
+    LAUNCHER._append_bounded_task_context(
+        child,
+        tmp_path,
+        task_result_file=tmp_path / "task-result.json",
+        attempt_binding={
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "task_sha256": "a" * 64,
+            "grant_digest": "b" * 64,
+        },
+    )
+
+    assert "Run one direct `py -c` publication command" in child[1]
+    assert "publish_task_result" in child[1]
+    assert "task-result.json" in child[1]
+
+
 def test_deepagents_main_preserves_valid_worker_task_result(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

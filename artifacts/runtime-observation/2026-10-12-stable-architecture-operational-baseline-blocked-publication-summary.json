@@ -1,0 +1,83 @@
+{
+  "schema": "runtime-observation-summary/v1",
+  "generated_at_utc": "2026-10-12T19:19:45.594Z",
+  "git_revision": "7196983549392a5780f80b060daba5b05dd04d10",
+  "sample_count": 3,
+  "required_managed_sample_count": 20,
+  "sample_status": "blocked",
+  "blocked_reason": "Current shared dcode-project runtime requires a valid deepagents-worker task-result publication. Three current managed probes exited with worker_exit_code=0 and confirmed cleanup/retirement, but no valid worker task-result was published; the launcher therefore returned task_result_unverified and reconciliation_required=true. A 20-run collector was stopped after it stalled without producing additional completed rows.",
+  "phase_stats_ms": {
+    "status": "unavailable_from_blocked_sample",
+    "preflight": {
+      "count": 3
+    },
+    "target_discovery": {
+      "count": 3
+    },
+    "launch_preparation": {
+      "count": 3
+    },
+    "observation": {
+      "count": 3
+    }
+  },
+  "total_duration_ms": {
+    "status": "unavailable_from_blocked_sample"
+  },
+  "non_worker_duration_ms": {
+    "status": "unavailable_from_blocked_sample"
+  },
+  "subprocess_counts": {
+    "status": "unavailable_from_blocked_sample"
+  },
+  "outcomes": {
+    "worker_exit_code": {
+      "0": 3
+    },
+    "cleanup_state": {
+      "removed": 3
+    },
+    "task_result_state": {
+      "unverified": 3
+    },
+    "reconciliation_required": {
+      "true": 3
+    },
+    "launcher_exit_code": {
+      "2": 3
+    }
+  },
+  "decision": {
+    "outcome": "freeze_project_os_runtime",
+    "runtime_optimization": "deferred",
+    "reason": "The measured evidence is blocked on managed task-result publication and does not establish a material pane-validation cost. Existing smoke evidence also shows pane_run_duration_ms near 100ms while worker/observation dominates.",
+    "ci_cache": "proceed",
+    "evidence_quality": "blocked current managed sample; not a performance benchmark"
+  },
+  "probes": [
+    {
+      "slug": "managed-ops-baseline-01",
+      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline-blocked-publication.jsonl",
+      "status": "task_result_unverified",
+      "worker_exit_code": 0,
+      "cleanup": "removed",
+      "retirement": "proven"
+    },
+    {
+      "slug": "managed-ops-diagnosis-02",
+      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline-blocked-publication.jsonl",
+      "status": "task_result_unverified",
+      "worker_exit_code": 0,
+      "cleanup": "removed",
+      "retirement": "proven"
+    },
+    {
+      "slug": "managed-ops-publication-probe-03",
+      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline-blocked-publication.jsonl",
+      "status": "task_result_unverified",
+      "worker_exit_code": 0,
+      "cleanup": "removed",
+      "retirement": "proven"
+    }
+  ]
+}

@@ -1338,6 +1338,7 @@ def _codex_completion_snapshot(
     agent_name: str,
     *,
     env: dict[str, str],
+    pane: str | None = None,
     timeout_seconds: float = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     started = time.monotonic()
@@ -1349,6 +1350,7 @@ def _codex_completion_snapshot(
     read_result: subprocess.CompletedProcess[str] | None = None
     state = "unknown"
     state_change_seq: int | None = None
+    pane_id: str | None = pane if isinstance(pane, str) and pane.strip() else None
     observation_error: str | None = None
     try:
         get_result = _run(
@@ -1370,32 +1372,37 @@ def _codex_completion_snapshot(
             raw_seq = agent.get("state_change_seq")
             if isinstance(raw_seq, int):
                 state_change_seq = raw_seq
+            raw_pane_id = agent.get("pane_id")
+            if isinstance(raw_pane_id, str) and raw_pane_id.strip():
+                pane_id = raw_pane_id
         except (LaunchBlocked, json.JSONDecodeError) as exc:
             observation_error = str(exc)
     if state != "working":
+        read_command = [
+            herdr,
+            "--session",
+            session,
+            "pane" if pane_id else "agent",
+            "read",
+            pane_id or agent_name,
+            "--source",
+            "recent-unwrapped",
+            "--lines",
+            "200",
+            "--format",
+            "text",
+        ]
+        read_kind = "pane" if pane_id else "agent"
         try:
             read_result = _run(
-                [
-                    herdr,
-                    "--session",
-                    session,
-                    "agent",
-                    "read",
-                    agent_name,
-                    "--source",
-                    "recent-unwrapped",
-                    "--lines",
-                    "200",
-                    "--format",
-                    "text",
-                ],
+                read_command,
                 env=env,
                 timeout=remaining_timeout(),
             )
         except CommandTransportTimeout:
-            observation_error = observation_error or "agent read transport timeout"
+            observation_error = observation_error or f"{read_kind} read transport timeout"
         if read_result is not None and read_result.returncode:
-            observation_error = observation_error or "agent read failed"
+            observation_error = observation_error or f"{read_kind} read failed"
     output = _pane_output(read_result) if read_result is not None else ""
     return {
         "state": state,
