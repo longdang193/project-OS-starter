@@ -924,6 +924,12 @@ def test_extract_codex_semantic_content_ignores_initial_prompt_echo_bullet() -> 
     ) is None
 
 
+def test_extract_codex_semantic_content_rejects_initial_prompt_bullet_without_marker() -> None:
+    assert _extract_codex_semantic_content(
+        "› Summarize these notes:\n• USER PROMPT TEXT\n› Ask Codex to do anything"
+    ) is None
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -949,9 +955,17 @@ def test_semantic_redaction_removes_values_and_is_idempotent() -> None:
     assert _redact_semantic_content(redacted, ("fixture-secret",)) == redacted
 
 
-def test_semantic_redaction_removes_query_secret_with_apostrophe_suffix() -> None:
+@pytest.mark.parametrize(
+    "text",
+    [
+        "https://example.test/?token=PREFIX'SUFFIX",
+        "https://example.test/?token=PREFIX''SUFFIX",
+        "https://example.test/?token=PREFIX',SUFFIX",
+    ],
+)
+def test_semantic_redaction_removes_query_secret_with_apostrophe_suffix(text: str) -> None:
     assert _redact_semantic_content(
-        "https://example.test/?token=PREFIX'SUFFIX"
+        text
     ) == "https://example.test/?token=[REDACTED]"
 
 
@@ -2813,6 +2827,40 @@ def test_observe_submitted_codex_ignores_prompt_echo_bullets(
         env={},
     )
 
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_rejects_initial_prompt_bullet_without_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = "› Summarize these notes:\n• USER PROMPT TEXT\n› Ask Codex to do anything"
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["observation_error"] == "completion output not observed"
     assert "semantic_content" not in observation
 
 

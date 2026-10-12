@@ -125,11 +125,6 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
         redacted,
     )
     redacted = re.sub(
-        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)([^&#\s\"']+(?:[\"'](?![&#\s,;}\]])[^&#\s\"']+)*)",
-        r"\1[REDACTED]",
-        redacted,
-    )
-    redacted = re.sub(
         r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)\"(?:\\.|[^\"\\])*\"",
         r'\1"[REDACTED]"',
         redacted,
@@ -137,6 +132,11 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
     redacted = re.sub(
         r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)'(?:\\.|[^'\\])*'",
         r"\1'[REDACTED]'",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)[^&#\s]+",
+        r"\1[REDACTED]",
         redacted,
     )
     redacted = re.sub(
@@ -1694,6 +1694,7 @@ def _extract_codex_semantic_content(value: object) -> str | None:
     if text is None or "› Ask Codex" not in text:
         return None
     segments = re.split(r"(?m)^\s*Worked for\b.*$", text)
+    has_completion_marker = bool(re.search(r"(?m)^\s*Worked for\b.*$", text))
     candidates: list[str] = []
     prompt_boundary = False
     for segment_index, segment in enumerate(segments):
@@ -1709,7 +1710,12 @@ def _extract_codex_semantic_content(value: object) -> str | None:
                     "› please echo this input:"
                 )
                 continue
-            if prompt_boundary or prompt_echo or (segment_index > 0 and saw_prompt):
+            if (
+                prompt_boundary
+                or prompt_echo
+                or (segment_index > 0 and saw_prompt)
+                or (saw_prompt and not has_completion_marker)
+            ):
                 continue
             if not stripped.startswith("• "):
                 continue
