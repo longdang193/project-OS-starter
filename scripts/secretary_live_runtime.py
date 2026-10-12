@@ -799,7 +799,15 @@ def _observe_submitted_codex(
 
     if not completed and snapshot.get("state") in {"idle", "done"}:
         snapshot["observation_error"] = snapshot.get("observation_error") or (
-            "submission freshness not proven" if not freshness_proven else "completion output not observed"
+            "submission freshness not proven"
+            if not freshness_proven
+            else (
+                "completion provenance not established"
+                if snapshot.get("state") == "done"
+                and terminal_semantic_content
+                and terminal_semantic_content != initial_prompt_content
+                else "completion output not observed"
+            )
         )
 
     observation = {

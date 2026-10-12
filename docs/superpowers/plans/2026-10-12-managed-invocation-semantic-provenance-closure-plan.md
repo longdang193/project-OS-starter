@@ -485,6 +485,8 @@ Current evidence: implementation fixes are under review; the frozen-baseline fak
 
 Live closure: blocked. The probes reached terminal-looking output and cleanup, but the live boundary did not expose complete accepted producer-bound semantic evidence. Terminal output remains diagnostic and cannot establish `reported`/`completed` semantic truth.
 
+The updated probe on Herdr `0.9.3` and Codex `0.162.1` reproduced the same boundary gap: the terminal reached `done`, emitted the exact nonce, and was cleaned up, but no accepted producer-bound receipt was available. A focused regression now verifies that this case reports `completion provenance not established` while preserving the fail-closed `unavailable` result; terminal text is still never promoted to semantic truth.
+
 Root causes patched: terminal-only output no longer becomes assistant-owned semantic content; result sources require matching assignment/attempt identities, an accepted producer, and result evidence; rejected TaskResult statuses no longer override accepted observations; and the benchmark checkout fetches the pinned baseline. Focused runtime regressions pass; live semantic closure remains blocked until the boundary provides structured producer-bound evidence.
 
 ## Completion Criteria
