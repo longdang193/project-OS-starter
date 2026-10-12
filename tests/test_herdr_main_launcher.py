@@ -5597,6 +5597,12 @@ def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
     assert assignment["task_accepted"] is None
 
 
+def test_remaining_deepagents_timeout_never_exceeds_configured_ceiling() -> None:
+    assert LAUNCHER._remaining_deepagents_timeout(1800.0, now=0.0) == 1800.0
+    assert LAUNCHER._remaining_deepagents_timeout(1900.0, now=0.0) == 1800.0
+    assert LAUNCHER._remaining_deepagents_timeout(1000.0, now=1000.0) == 0.0
+
+
 def test_deepagents_snapshot_orders_marker_wait_before_final_reads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
