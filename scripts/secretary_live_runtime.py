@@ -125,7 +125,7 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
         redacted,
     )
     redacted = re.sub(
-        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)[^&#\s]+",
+        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)[^&#\s\"']+",
         r"\1[REDACTED]",
         redacted,
     )
@@ -817,8 +817,9 @@ def _submission_freshness_proven(
             return False
         if snapshot.get("content") != anchor.get("content") and (
             snapshot_completion == anchor_completion
-            or _without_codex_completion_markers(snapshot.get("content"))
-            != _without_codex_completion_markers(anchor.get("content"))
+            or _codex_has_post_completion_bullet(snapshot.get("content"))
+            or _codex_completion_prefix(snapshot.get("content"))
+            != _codex_completion_prefix(anchor.get("content"))
         ):
             return False
     anchor_seq = anchor.get("state_change_seq")
@@ -1694,15 +1695,17 @@ def _extract_codex_semantic_content(value: object) -> str | None:
         return None
     segments = re.split(r"(?m)^\s*Worked for\b.*$", text)
     candidates: list[str] = []
-    for segment in segments:
+    prompt_boundary = False
+    for segment_index, segment in enumerate(segments):
         lines = segment.splitlines()
-        prompt_boundary = False
+        saw_prompt = False
+        found_candidate = False
         for index, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith("› "):
-                prompt_boundary = True
+                saw_prompt = True
                 continue
-            if prompt_boundary:
+            if prompt_boundary or (segment_index > 0 and saw_prompt):
                 continue
             if not stripped.startswith("• "):
                 continue
@@ -1717,7 +1720,12 @@ def _extract_codex_semantic_content(value: object) -> str | None:
             content = "\n".join(line for line in content_lines if line)
             if content:
                 candidates.append(content)
+                found_candidate = True
                 break
+        if segment_index > 0 and saw_prompt and not found_candidate:
+            prompt_boundary = True
+        elif found_candidate:
+            prompt_boundary = False
     return candidates[-1] if candidates else None
 
 
@@ -1728,10 +1736,22 @@ def _extract_codex_completion_marker(value: object) -> str | None:
     return matches[-1].strip() if matches else None
 
 
-def _without_codex_completion_markers(value: object) -> str | None:
+def _codex_completion_prefix(value: object) -> str | None:
     if not isinstance(value, str):
         return None
-    return re.sub(r"(?m)^\s*Worked for\b.*$\n?", "", value).strip()
+    matches = list(re.finditer(r"(?m)^\s*Worked for\b.*$", value))
+    if not matches:
+        return value.strip()
+    return value[: matches[-1].start()].strip()
+
+
+def _codex_has_post_completion_bullet(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    matches = list(re.finditer(r"(?m)^\s*Worked for\b.*$", value))
+    if not matches:
+        return False
+    return re.search(r"(?m)^\s*• ", value[matches[-1].end() :]) is not None
 
 
 def _configured_semantic_secrets() -> tuple[str, ...]:

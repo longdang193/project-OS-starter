@@ -473,6 +473,8 @@ def test_bounded_task_context_requires_worker_owned_task_result(
     assert "producer `deepagents-worker`" in argv[1]
     assert "assignment-1" in argv[1]
     assert "attempt-1" in argv[1]
+    assert "do not recompute or substitute the hash of the augmented task" in argv[1]
+    assert "read the result path back before reporting completion" in argv[1].lower()
 
 
 def test_deepagents_main_preserves_valid_worker_task_result(
