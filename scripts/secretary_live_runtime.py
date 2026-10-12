@@ -2007,9 +2007,16 @@ def _normalize_invocation_outcome(
         if observation_reportable
         else {}
     )
+    authoritative_task_result = (
+        task_result if _result_source_authoritative(task_result, assignment) else {}
+    )
     authoritative_sources: list[tuple[Mapping[str, Any], str | None, str | None]] = []
     for source in (task_result, observed_evidence):
-        if not _result_source_authoritative(source, assignment):
+        if not _result_source_authoritative(
+            source,
+            assignment,
+            require_assistant_provenance=source is observed_evidence,
+        ):
             continue
         reference, source_content = _result_evidence(source)
         authoritative_sources.append((source, reference, source_content))
@@ -2042,9 +2049,8 @@ def _normalize_invocation_outcome(
             "reported_failed": "failed",
         }.get(selected_source.get("state"))
 
-    authoritative_task_result = (
-        task_result if _result_source_authoritative(task_result, assignment) else {}
-    )
+    if authoritative_task_result.get("state") == "reported_failed":
+        result_status = "failed"
     ambiguous = bool(authoritative_task_result.get("ambiguous")) or _identity_conflict(
         authoritative_task_result,
         assignment,

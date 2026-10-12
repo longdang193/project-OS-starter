@@ -251,6 +251,73 @@ def test_normal_outcome_ignores_rejected_task_result_status_for_bound_observatio
     }
 
 
+def test_normal_outcome_preserves_authoritative_failure_with_richer_observation() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_failed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "result_reference": "task-result://failed",
+                    "result_resolver": "herdr",
+                    "result_retrieved": True,
+                },
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "assistant_owned": True,
+            "result_reference": "task-result://failed",
+            "semantic_content": "failure details",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "failed",
+        "reference": "task-result://failed",
+        "content": "failure details",
+    }
+
+
+def test_normal_outcome_rejects_bound_observation_without_assistant_provenance() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "semantic_content": "unowned answer",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
 @pytest.mark.parametrize("producer", [{"name": "malformed"}, ["malformed"]])
 def test_normal_outcome_ignores_malformed_task_result_producer(
     producer: object,
@@ -278,6 +345,7 @@ def test_normal_outcome_ignores_malformed_task_result_producer(
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-1",
             "producer": "dcode-project",
+            "assistant_owned": True,
             "source_ref": "task-result://trusted",
             "semantic_content": "trusted answer",
         },
@@ -351,6 +419,7 @@ def test_normal_outcome_does_not_mix_reference_and_content_from_different_source
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-1",
             "producer": "dcode-project",
+            "assistant_owned": True,
             "semantic_content": "answer from B",
         },
         started_at="2026-10-11T10:00:00+00:00",
@@ -623,6 +692,7 @@ def test_normal_outcome_marks_same_field_identity_conflict_ambiguous() -> None:
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-assignment",
             "producer": "dcode-project",
+            "assistant_owned": True,
             "semantic_content": "accepted answer",
         },
         started_at="2026-10-11T10:00:00+00:00",
