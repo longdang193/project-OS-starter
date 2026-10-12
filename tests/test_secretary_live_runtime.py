@@ -187,6 +187,32 @@ def test_normal_outcome_rejects_unbound_assistant_owned_observation() -> None:
     assert result["result"] == {"state": "unavailable", "status": None}
 
 
+def test_normal_outcome_rejects_explicitly_non_assistant_observation() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "assistant_owned": False,
+            "semantic_content": "user-authored message",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
 def test_normal_outcome_ignores_rejected_task_result_status_for_bound_observation() -> None:
     result = _normalize_invocation_outcome(
         invocation_id="invoke-1",
@@ -298,6 +324,40 @@ def test_normal_outcome_accepts_correlated_task_result_with_accepted_provenance(
         "reference": "task-result://invoke-1",
         "content": "correlated answer",
     }
+
+
+def test_normal_outcome_does_not_mix_reference_and_content_from_different_sources() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "result_reference": "task-result://A",
+                    "result_resolver": "secretary",
+                    "result_retrieved": True,
+                },
+            }
+        },
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
+            "semantic_content": "answer from B",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "ambiguous", "status": None}
 
 
 def test_normal_outcome_rejects_assignment_level_prompt_content() -> None:

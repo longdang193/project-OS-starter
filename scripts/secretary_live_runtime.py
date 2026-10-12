@@ -1924,6 +1924,8 @@ def _result_source_authoritative(
     producer = source.get("producer")
     if not isinstance(producer, str) or producer not in _ACCEPTED_RESULT_PRODUCERS:
         return False
+    if "assistant_owned" in source and source.get("assistant_owned") is not True:
+        return False
     reference, content = _result_evidence(source)
     reference = reference or next(
         (
@@ -1979,7 +1981,7 @@ def _normalize_invocation_outcome(
     task_result = task_result if isinstance(task_result, Mapping) else {}
     result_status: str | None = None
 
-    references: list[str] = []
+    reference: str | None = None
     content: str | None = None
     observation_reportable = (
         observed.get("state") in {"idle", "done"}
@@ -1990,24 +1992,40 @@ def _normalize_invocation_outcome(
         if observation_reportable
         else {}
     )
-    authoritative_sources: list[Mapping[str, Any]] = []
+    authoritative_sources: list[tuple[Mapping[str, Any], str | None, str | None]] = []
     for source in (task_result, observed_evidence):
         if not _result_source_authoritative(source, assignment):
             continue
-        authoritative_sources.append(source)
         reference, source_content = _result_evidence(source)
-        if reference and reference not in references:
-            references.append(reference)
-        if content is None and source_content:
-            content = source_content
+        authoritative_sources.append((source, reference, source_content))
 
-    for source in authoritative_sources:
+    evidence_conflict = False
+    selected_source: Mapping[str, Any] | None = None
+    if authoritative_sources:
+        for index, (_, left_reference, left_content) in enumerate(authoritative_sources):
+            for _, right_reference, right_content in authoritative_sources[index + 1:]:
+                shared_evidence = False
+                if left_reference and right_reference:
+                    shared_evidence = True
+                    if left_reference != right_reference:
+                        evidence_conflict = True
+                if left_content and right_content:
+                    shared_evidence = True
+                    if left_content != right_content:
+                        evidence_conflict = True
+                if not shared_evidence:
+                    evidence_conflict = True
+        if not evidence_conflict:
+            selected_source, reference, content = max(
+                authoritative_sources,
+                key=lambda item: int(item[1] is not None) + int(item[2] is not None),
+            )
+
+    if selected_source is not None:
         result_status = {
             "reported_completed": "completed",
             "reported_failed": "failed",
-        }.get(source.get("state"))
-        if result_status is not None:
-            break
+        }.get(selected_source.get("state"))
 
     authoritative_task_result = (
         task_result if _result_source_authoritative(task_result, assignment) else {}
@@ -2016,9 +2034,9 @@ def _normalize_invocation_outcome(
         authoritative_task_result,
         assignment,
     )
-    if len(references) > 1:
+    if evidence_conflict:
         ambiguous = True
-    if result_status is None and (references or content) and not ambiguous:
+    if result_status is None and (reference or content) and not ambiguous:
         result_status = "failed" if observed.get("state") == "failed" else "completed"
     if ambiguous:
         semantic_outcome = {
@@ -2027,11 +2045,11 @@ def _normalize_invocation_outcome(
             "reference": None,
             "content": None,
         }
-    elif result_status is not None and (references or content):
+    elif result_status is not None and (reference or content):
         semantic_outcome = {
             "state": "reported",
             "status": result_status,
-            "reference": references[0] if references else None,
+            "reference": reference,
             "content": content,
         }
     else:
@@ -2062,7 +2080,7 @@ def _normalize_invocation_outcome(
     )
     observability = {
         "state": observability_state,
-        "reference": references[0] if references else None,
+        "reference": reference,
         "completion_state": observed.get("state"),
         "cleanup_state": cleanup_state or observed_cleanup_state,
         "state_change_seq": observed.get("state_change_seq"),
