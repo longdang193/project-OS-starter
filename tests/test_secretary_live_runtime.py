@@ -96,6 +96,109 @@ def test_normal_outcome_requires_correlated_result_reference() -> None:
     assert result["resource"]["state"] == "settled"
 
 
+def test_normal_outcome_rejects_task_result_without_attempt_provenance() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "result_reference": "task-result://unbound",
+                    "content": "unbound answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_rejects_unaccepted_task_result_producer() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "terminal-screen",
+                    "result_reference": "task-result://untrusted",
+                    "content": "untrusted answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_accepts_correlated_task_result_with_accepted_provenance() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "source_ref": "task-result://invoke-1",
+                    "source_digest": "a" * 64,
+                    "content": "correlated answer",
+                },
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "task-result://invoke-1",
+        "content": "correlated answer",
+    }
+
+
+def test_normal_outcome_rejects_assignment_level_prompt_content() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "execution": {"state": "completed"},
+                "content": "user prompt bullets",
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation={},
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
 def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -106,9 +209,13 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
             "assignment": {
                 "execution": {"state": "failed", "worker_exit_code": 7},
                 "cleanup": {"state": "removed"},
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
                 "task_result": {
                     "state": "reported_failed",
+                    "assignment_id": "assignment-1",
                     "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
                     "result_reference": "task-result://invoke-1",
                     "content": "failure details",
                 },
@@ -128,6 +235,35 @@ def test_normal_outcome_reports_failed_result_even_when_execution_failed() -> No
     }
 
 
+def test_main_exception_path_uses_canonical_failure_projection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    def fail_run(*args: object, **kwargs: object) -> dict[str, object]:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(runtime, "run_normal", fail_run)
+    output = tmp_path / "normal.json"
+
+    assert runtime.main(["run", "--output", str(output), "--cwd", str(tmp_path), "--task", "read-only"]) == 2
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["semantic_outcome"] == {
+        "state": "unavailable",
+        "status": None,
+        "reference": None,
+        "content": None,
+    }
+    assert result["execution"] == {"state": "failed", "error": "RuntimeError"}
+    assert result["finalization_outcome"] == {
+        "state": "recovery_required",
+        "recovery_required": True,
+    }
+
+
 def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -138,8 +274,13 @@ def test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined() 
             "assignment": {
                 "execution": {"state": "completed"},
                 "cleanup": {"state": "unknown"},
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
                 "task_result": {
                     "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
                     "result_reference": "herdr://session/agent/12",
                     "content": "completed response",
                 },
@@ -262,6 +403,7 @@ def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
                     "state": "reported_completed",
                     "assignment_id": "assignment-1",
                     "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
                     "content": "answer",
                 },
             }
@@ -309,7 +451,15 @@ def test_normal_outcome_preserves_long_semantic_content() -> None:
         payload={
             "assignment": {
                 "execution": {"state": "completed"},
-                "task_result": {"state": "reported_completed", "content": content},
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "content": content,
+                },
             }
         },
         observation={},
@@ -469,7 +619,18 @@ def test_observe_submitted_codex_retries_terminal_state_after_read_timeout(
                 "session": "session",
                 "pane": "pane",
                 "agent_name": "agent",
-            }
+                },
+                "assignment": {
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "task_result": {
+                        "state": "reported_completed",
+                        "assignment_id": "assignment-1",
+                        "attempt_id": "attempt-1",
+                        "producer": "dcode-project",
+                        "result_reference": "task-result://attempt-1",
+                    },
+                },
         },
         env={},
     )
@@ -579,9 +740,17 @@ def test_normal_outcome_uses_consistent_cleanup_evidence() -> None:
     payload = {
         "herdr": {"session": "session", "pane": "pane", "agent_name": "agent"},
         "assignment": {
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
             "execution": {"state": "completed"},
             "cleanup": {"state": "preserved"},
-            "task_result": {"state": "reported_completed", "content": "answer"},
+            "task_result": {
+                "state": "reported_completed",
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "producer": "dcode-project",
+                "content": "answer",
+            },
         },
     }
     result = _normalize_invocation_outcome(
@@ -636,7 +805,18 @@ def test_observe_submitted_codex_waits_past_initial_idle_until_done(
                 "session": "session",
                 "pane": "pane",
                 "agent_name": "agent",
-            }
+            },
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "result_reference": "task-result://attempt-1",
+                },
+            },
         },
         env={},
     )
@@ -705,6 +885,14 @@ def _correlated_payload() -> dict[str, object]:
         "assignment": {
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-1",
+            "task_result": {
+                "state": "reported_completed",
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "producer": "dcode-project",
+                "result_reference": "task-result://attempt-1",
+                "content": "structured answer",
+            },
         },
     }
 
@@ -1240,9 +1428,14 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
                             "agent_name": "normal-main-1234",
                         },
                         "assignment": {
+                            "assignment_id": "assignment-1",
+                            "attempt_id": "attempt-1",
                             "execution": {"state": "completed"},
                             "task_result": {
                                 "state": "reported_completed",
+                                "assignment_id": "assignment-1",
+                                "attempt_id": "attempt-1",
+                                "producer": "dcode-project",
                                 "result_reference": "herdr://default/normal-main-1234/1",
                                 "content": "normal response",
                             },
@@ -1340,6 +1533,7 @@ def test_normal_outcome_reports_captured_observation_content() -> None:
         observation={
             "state": "done",
             "semantic_content": "SECRETARY_PROBE_test",
+            "assistant_owned": True,
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",
@@ -1369,6 +1563,7 @@ def test_normal_outcome_scopes_launcher_observation_error_without_downgrading_re
         observation={
             "state": "done",
             "semantic_content": "SECRETARY_PROBE_test",
+            "assistant_owned": True,
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",
@@ -3093,7 +3288,7 @@ def test_normal_outcome_preserves_safe_security_prose(content: str) -> None:
         invocation_id="invoke-1",
         returncode=0,
         payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
-        observation={"state": "done", "semantic_content": content, "cleanup": {"state": "removed"}},
+        observation={"state": "done", "semantic_content": content, "assistant_owned": True, "cleanup": {"state": "removed"}},
         started_at="2026-10-11T00:00:00+00:00",
         finished_at="2026-10-11T00:00:01+00:00",
     )
@@ -3109,6 +3304,7 @@ def test_normal_outcome_redacts_quoted_secret_values() -> None:
         observation={
             "state": "done",
             "semantic_content": '{"api_key": "SYNTHETIC first second"}',
+            "assistant_owned": True,
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",
@@ -3126,6 +3322,7 @@ def test_normal_outcome_redacts_query_secret_inside_quoted_value() -> None:
         observation={
             "state": "done",
             "semantic_content": '{"api_key": "SYNTHETIC-prefix?token=SYNTHETIC-suffix"}',
+            "assistant_owned": True,
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",

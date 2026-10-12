@@ -94,6 +94,7 @@ _PROVIDER_TELEMETRY_LOOKBACK_SECONDS = 0.0
 _HERDR_SERVER_START_TIMEOUT_SECONDS = 10.0
 _HERDR_PREFLIGHT_RECHECK_SECONDS = 0.25
 _SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
+_ACCEPTED_RESULT_PRODUCERS = frozenset({"dcode-project", "deepagents-worker"})
 _SAFE_SOURCE_VALUE = re.compile(
     r"(?:bearer\s|api[_-]?key|authorization|password|credentials?|cookies?|\bsecret\b|raw(?:[_-]?)(?:body|bodies|header|headers|prompt|prompts|response|responses|transport(?:[_-]?)(?:body|bodies)))",
     re.IGNORECASE,
@@ -693,6 +694,8 @@ def _observe_submitted_codex(
         "observation_error": "completion observation deadline expired",
     }
     completed = False
+    task_result = assignment.get("task_result") if assignment else None
+    structured_result_owned = _result_source_authoritative(task_result, assignment)
     freshness_proven = False
     legacy_first_snapshot: dict[str, Any] | None = None
     legacy_output_changed = False
@@ -747,6 +750,9 @@ def _observe_submitted_codex(
             )
             if not completion_identity and anchor_semantic != semantic_content:
                 semantic_content = None
+        snapshot_result_owned = _result_source_authoritative(snapshot, assignment)
+        if semantic_content and not (structured_result_owned or snapshot_result_owned):
+            semantic_content = None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
         if (
@@ -788,8 +794,16 @@ def _observe_submitted_codex(
     semantic_content = None
     if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
         semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+        if semantic_content and not (
+            structured_result_owned or _result_source_authoritative(snapshot, assignment)
+        ):
+            semantic_content = None
     if semantic_content:
         observation["semantic_content"] = semantic_content
+        observation["assistant_owned"] = True
+        for key in ("result_id", "result_reference", "completion_id"):
+            if snapshot.get(key) not in (None, ""):
+                observation[key] = snapshot[key]
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
     if assignment_id is not None:
         observation["assignment_id"] = assignment_id
@@ -1827,6 +1841,74 @@ def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]
     return None, None
 
 
+def _result_source_authoritative(
+    source: object,
+    assignment: Mapping[str, Any] | None,
+) -> bool:
+    if not isinstance(source, Mapping):
+        return False
+    source_identity = {
+        key: source.get(key)
+        for key in ("assignment_id", "attempt_id")
+        if isinstance(source.get(key), str) and source.get(key).strip()
+    }
+    assignment_identity = {
+        key: assignment.get(key)
+        for key in ("assignment_id", "attempt_id")
+        if isinstance(assignment, Mapping)
+        and isinstance(assignment.get(key), str)
+        and assignment.get(key).strip()
+    }
+    if not source_identity or not assignment_identity:
+        producer = source.get("producer")
+        if source.get("assistant_owned") is not True:
+            return False
+        if producer is not None and producer not in _ACCEPTED_RESULT_PRODUCERS:
+            return False
+        reference, content = _result_evidence(source)
+        reference = reference or next(
+            (
+                _safe_result_value(source.get(key))
+                for key in ("result_reference", "reference", "source_ref", "result_ref")
+                if _safe_result_value(source.get(key))
+            ),
+            None,
+        )
+        return bool(reference or content)
+    if any(assignment_identity.get(key) != value for key, value in source_identity.items()):
+        return False
+    producer = source.get("producer")
+    if producer is not None and producer not in _ACCEPTED_RESULT_PRODUCERS:
+        return False
+    reference, content = _result_evidence(source)
+    reference = reference or next(
+        (
+            _safe_result_value(source.get(key))
+            for key in ("result_reference", "reference", "source_ref", "result_ref")
+            if _safe_result_value(source.get(key))
+        ),
+        None,
+    )
+    return bool(reference or content)
+
+
+def _project_semantic_result(outcome: Mapping[str, Any]) -> dict[str, Any]:
+    result = {
+        "state": outcome.get("state"),
+        "status": outcome.get("status"),
+    }
+    for key in ("reference", "content"):
+        value = outcome.get(key)
+        if value:
+            result[key] = value
+    return result
+    resolver = _safe_text(source.get("result_resolver") or source.get("resolver"))
+    retrieved = source.get("result_retrieved") is True or source.get("retrieved") is True
+    if reference and resolver and retrieved:
+        return reference, None
+    return None, None
+
+
 def _normalize_invocation_outcome(
     *,
     invocation_id: str,
@@ -1868,7 +1950,9 @@ def _normalize_invocation_outcome(
         if observation_reportable
         else {}
     )
-    for source in (task_result, assignment, observed_evidence):
+    for source in (task_result, observed_evidence):
+        if not _result_source_authoritative(source, assignment):
+            continue
         reference, source_content = _result_evidence(source)
         if reference and reference not in references:
             references.append(reference)
@@ -1881,15 +1965,27 @@ def _normalize_invocation_outcome(
     if result_status is None and (references or content) and not ambiguous:
         result_status = "failed" if observed.get("state") == "failed" else "completed"
     if ambiguous:
-        result = {"state": "ambiguous", "status": None}
+        semantic_outcome = {
+            "state": "ambiguous",
+            "status": None,
+            "reference": None,
+            "content": None,
+        }
     elif result_status is not None and (references or content):
-        result = {"state": "reported", "status": result_status}
-        if references:
-            result["reference"] = references[0]
-        if content:
-            result["content"] = content
+        semantic_outcome = {
+            "state": "reported",
+            "status": result_status,
+            "reference": references[0] if references else None,
+            "content": content,
+        }
     else:
-        result = {"state": "unavailable", "status": None}
+        semantic_outcome = {
+            "state": "unavailable",
+            "status": None,
+            "reference": None,
+            "content": None,
+        }
+    result = _project_semantic_result(semantic_outcome)
 
     observed_cleanup = observed.get("cleanup")
     cleanup_state = cleanup.get("state")
@@ -1923,15 +2019,7 @@ def _normalize_invocation_outcome(
         "invocation_id": invocation_id,
         "execution": execution,
         "result": result,
-        "semantic_outcome": {
-            "state": (
-                "failed"
-                if result.get("state") == "reported" and result.get("status") == "failed"
-                else result.get("state")
-            ),
-            "reference": result.get("reference"),
-            "content": result.get("content"),
-        },
+        "semantic_outcome": dict(semantic_outcome),
         "finalization_outcome": {
             "state": "settled" if resource["state"] == "settled" else "recovery_required",
             "recovery_required": resource["recovery_required"],
@@ -2015,7 +2103,6 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         )
         result["execution"]["state"] = "failed"
         result["execution"]["error"] = type(exc).__name__
-        result["result"] = {"state": "unavailable", "status": None}
     finally:
         if workspace_id is not None:
             if not isinstance(workspace_close, Mapping) or workspace_close.get("verified") is not True:
@@ -2031,7 +2118,6 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
                     finished_at=datetime.now(timezone.utc).isoformat(),
                 )
                 result["execution"]["state"] = "failed"
-                result["result"] = {"state": "unavailable", "status": None}
             cleanup_state = result.get("observability", {}).get("cleanup_state")
             herdr_identity = payload.get("herdr") if isinstance(payload, Mapping) else None
             cleanup_verified = cleanup_state == "removed" or not isinstance(herdr_identity, Mapping)
@@ -2264,7 +2350,17 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = run_normal(request, output=args.output)
         except (OSError, RuntimeError, ValueError, LaunchBlocked) as exc:
-            result = {"schema_version": "secretary-invocation-v1", "result": {"state": "unavailable", "status": None}, "error": type(exc).__name__, "error_detail": str(exc)}
+            result = _normalize_invocation_outcome(
+                invocation_id=uuid.uuid4().hex,
+                returncode=1,
+                payload=None,
+                observation=None,
+                started_at=datetime.now(timezone.utc).isoformat(),
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            result["execution"]["error"] = type(exc).__name__
+            result["error"] = type(exc).__name__
+            result["error_detail"] = str(exc)
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(json.dumps(result, sort_keys=True))

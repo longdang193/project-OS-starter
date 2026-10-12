@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -20,38 +19,6 @@ SCENARIOS = (
     "cleanup_quarantine",
     "multi_workstream_escalation",
 )
-
-MEASURE_EXPECTATIONS = {
-    "captured_result": {
-        "semantic_result": "reported",
-        "outcome": "recovery_required",
-        "failure_classification": "none",
-        "blocker": "none",
-        "duplicate_effects": 0,
-    },
-    "missing_optional_evidence": {
-        "semantic_result": "reported",
-        "outcome": "recovery_required",
-        "failure_classification": "none",
-        "blocker": "optional_observability",
-        "duplicate_effects": 0,
-    },
-    "cleanup_quarantine": {
-        "semantic_result": "reported",
-        "outcome": "recovery_required",
-        "failure_classification": "none",
-        "blocker": "none",
-        "duplicate_effects": 0,
-    },
-    "ambiguous_identity": {
-        "semantic_result": "ambiguous",
-        "outcome": "recovery_required",
-        "failure_classification": "ambiguous_result",
-        "blocker": "none",
-        "duplicate_effects": 1,
-    },
-}
-
 
 @dataclass(frozen=True)
 class ContractMetric:
@@ -265,103 +232,11 @@ def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
     return results
 
 
-def run_measure_benchmark(iterations: int = 1) -> list[ContractMetric]:
-    if iterations < 1:
-        raise ValueError("iterations must be positive")
-    from scripts.secretary_live_runtime import _normalize_invocation_outcome
-
-    fixtures = {
-        "captured_result": {
-            "assignment": {
-                "execution": {"state": "completed"},
-                "task_result": {"state": "reported_completed", "content": "answer"},
-            },
-            "observation": {},
-        },
-        "missing_optional_evidence": {
-            "assignment": {
-                "execution": {"state": "completed"},
-                "task_result": {"state": "reported_completed", "content": "answer"},
-            },
-            "observation": {"observation_error": "receipt unavailable"},
-        },
-        "cleanup_quarantine": {
-            "assignment": {
-                "execution": {"state": "completed"},
-                "cleanup": {"state": "unknown"},
-                "task_result": {"state": "reported_completed", "content": "answer"},
-            },
-            "observation": {"cleanup": {"state": "unknown"}},
-        },
-        "ambiguous_identity": {
-            "assignment": {
-                "attempt_id": "attempt-a",
-                "execution": {"state": "completed"},
-                "task_result": {
-                    "state": "reported_completed",
-                    "attempt_id": "attempt-b",
-                    "content": "answer",
-                },
-            },
-            "observation": {},
-        },
-    }
-    results: list[ContractMetric] = []
-    source = "secretary_live_runtime._normalize_invocation_outcome(fake-boundary)"
-    for run_id in range(1, iterations + 1):
-        for scenario_id, fixture in fixtures.items():
-            started = time.perf_counter()
-            outcome = _normalize_invocation_outcome(
-                invocation_id=f"measure-{run_id}-{scenario_id}",
-                returncode=0,
-                payload=fixture,
-                observation=fixture["observation"],
-                started_at="2026-10-11T10:00:00+00:00",
-                finished_at="2026-10-11T10:00:01+00:00",
-            )
-            latency_ms = (time.perf_counter() - started) * 1000
-            semantic_result = str(outcome["result"].get("state"))
-            finalization = outcome.get("finalization_outcome")
-            outcome_state = str(
-                finalization.get("state")
-                if isinstance(finalization, dict)
-                else outcome["resource"].get("state")
-            )
-            failure_classification = "ambiguous_result" if semantic_result == "ambiguous" else "none"
-            expected = MEASURE_EXPECTATIONS[scenario_id]
-            actual = {
-                "semantic_result": semantic_result,
-                "outcome": outcome_state,
-                "failure_classification": failure_classification,
-                "blocker": expected["blocker"],
-                "duplicate_effects": expected["duplicate_effects"],
-            }
-            results.append(_metric(
-                scenario_id,
-                run_id,
-                "measure",
-                correct=(actual == expected),
-                outcome=outcome_state,
-                semantic_result=semantic_result,
-                failure_classification=failure_classification,
-                blocker=expected["blocker"],
-                duplicate_effects=expected["duplicate_effects"],
-                evidence_provenance="production-function-fake-boundary",
-                latency_ms=latency_ms,
-                measurement_status="measured",
-                measurement_source=source,
-                sample_count=iterations,
-            ))
-    return results
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="mode")
     contract = subparsers.add_parser("contract")
     contract.add_argument("iterations", nargs="?", type=int, default=1)
-    measure = subparsers.add_parser("measure")
-    measure.add_argument("iterations", nargs="?", type=int, default=1)
     return parser
 
 
@@ -372,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(raw_argv)
     mode = args.mode or "contract"
     iterations = getattr(args, "iterations", 1)
-    results = run_measure_benchmark(iterations) if mode == "measure" else run_contract_benchmark(iterations)
+    results = run_contract_benchmark(iterations)
     print(json.dumps([asdict(item) for item in results], sort_keys=True))
     return 0
 
