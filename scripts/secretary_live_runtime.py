@@ -751,7 +751,10 @@ def _observe_submitted_codex(
             if not completion_identity and anchor_semantic != semantic_content:
                 semantic_content = None
         snapshot_result_owned = _result_source_authoritative(snapshot, assignment)
-        if semantic_content and not (structured_result_owned or snapshot_result_owned):
+        terminal_result_owned = _terminal_result_proven(snapshot, freshness_proven)
+        if semantic_content and not (
+            structured_result_owned or snapshot_result_owned or terminal_result_owned
+        ):
             semantic_content = None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
@@ -795,7 +798,9 @@ def _observe_submitted_codex(
     if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
         semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
         if semantic_content and not (
-            structured_result_owned or _result_source_authoritative(snapshot, assignment)
+            structured_result_owned
+            or _result_source_authoritative(snapshot, assignment)
+            or _terminal_result_proven(snapshot, freshness_proven)
         ):
             semantic_content = None
     if semantic_content:
@@ -1770,14 +1775,14 @@ def _codex_initial_prompt_bullet(value: object) -> str | None:
     if text is None or "› Ask Codex" not in text:
         return None
     first_segment = re.split(r"(?m)^\s*Worked for\b.*$", text, maxsplit=1)[0]
-    saw_prompt = False
+    prompt_echo = False
     lines = first_segment.splitlines()
     for index, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("› "):
-            saw_prompt = True
+            prompt_echo = stripped.casefold().startswith("› please echo this input:")
             continue
-        if saw_prompt and stripped.startswith("• "):
+        if prompt_echo and stripped.startswith("• "):
             content_lines = [stripped[2:].strip()]
             for continuation in lines[index + 1:]:
                 continuation = continuation.strip()
@@ -1796,6 +1801,18 @@ def _extract_codex_completion_marker(value: object) -> str | None:
         return None
     matches = re.findall(r"(?m)^\s*Worked for\b.*$", value)
     return matches[-1].strip() if matches else None
+
+
+def _terminal_result_proven(
+    snapshot: Mapping[str, Any],
+    freshness_proven: bool,
+) -> bool:
+    return bool(
+        freshness_proven
+        and snapshot.get("state") in {"idle", "done"}
+        and not snapshot.get("observation_error")
+        and _extract_codex_completion_marker(snapshot.get("content"))
+    )
 
 
 def _codex_completion_prefix(value: object) -> str | None:

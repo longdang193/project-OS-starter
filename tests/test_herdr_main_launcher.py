@@ -559,7 +559,7 @@ def test_codex_completion_snapshot_reads_status_and_output(
             return subprocess.CompletedProcess(
                 command,
                 0,
-                '{"result":{"agent":{"agent_status":"working","state_change_seq":7}}}',
+                '{"result":{"agent":{"agent_status":"idle","state_change_seq":7}}}',
                 "",
             )
         return subprocess.CompletedProcess(command, 0, '{"result":"work output"}', "")
@@ -570,7 +570,7 @@ def test_codex_completion_snapshot_reads_status_and_output(
         "herdr.exe", "session", "xhigh-main", env={},
     )
 
-    assert snapshot["state"] == "working"
+    assert snapshot["state"] == "idle"
     assert snapshot["state_change_seq"] == 7
     assert snapshot["output_chars"] == len("work output")
     assert snapshot["observation_error"] is None
@@ -581,6 +581,31 @@ def test_codex_completion_snapshot_reads_status_and_output(
             "--source", "recent-unwrapped", "--lines", "200", "--format", "text",
         ],
     ]
+
+
+def test_codex_completion_snapshot_skips_terminal_read_while_working(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"working","state_change_seq":7}}}',
+                "",
+            )
+        raise AssertionError("working agents must not use the terminal read boundary")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={},
+    )
+
+    assert calls == [["herdr.exe", "--session", "session", "agent", "get", "xhigh-main"]]
 
 
 def test_codex_completion_snapshot_preserves_semantic_output(

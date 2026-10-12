@@ -1367,29 +1367,30 @@ def _codex_completion_snapshot(
                 state_change_seq = raw_seq
         except (LaunchBlocked, json.JSONDecodeError) as exc:
             observation_error = str(exc)
-    try:
-        read_result = _run(
-            [
-                herdr,
-                "--session",
-                session,
-                "agent",
-                "read",
-                agent_name,
-                "--source",
-                "recent-unwrapped",
-                "--lines",
-                "200",
-                "--format",
-                "text",
-            ],
-            env=env,
-            timeout=remaining_timeout(),
-        )
-    except CommandTransportTimeout:
-        observation_error = observation_error or "agent read transport timeout"
-    if read_result is not None and read_result.returncode:
-        observation_error = observation_error or "agent read failed"
+    if state != "working":
+        try:
+            read_result = _run(
+                [
+                    herdr,
+                    "--session",
+                    session,
+                    "agent",
+                    "read",
+                    agent_name,
+                    "--source",
+                    "recent-unwrapped",
+                    "--lines",
+                    "200",
+                    "--format",
+                    "text",
+                ],
+                env=env,
+                timeout=remaining_timeout(),
+            )
+        except CommandTransportTimeout:
+            observation_error = observation_error or "agent read transport timeout"
+        if read_result is not None and read_result.returncode:
+            observation_error = observation_error or "agent read failed"
     output = _pane_output(read_result) if read_result is not None else ""
     return {
         "state": state,

@@ -1023,6 +1023,50 @@ def test_observe_submitted_codex_accepts_fresh_post_submit_output(
     assert observation["semantic_content"] == "fresh answer"
 
 
+def test_observe_submitted_codex_accepts_fresh_terminal_completion_without_structured_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "Codex screen\n"
+        "› Reply with exactly SECRETARY_CLOSURE_INSTRUMENTED_20261012.\n"
+        "\n"
+        "• SECRETARY_CLOSURE_INSTRUMENTED_20261012\n"
+        "\n"
+        "Worked for 16s • 11:16\n"
+        "› Ask Codex to do anything"
+    )
+    payload = _correlated_payload()
+    assignment = payload["assignment"]
+    assert isinstance(assignment, dict)
+    assignment["task_result"] = {"state": "unverified"}
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "done",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "SECRETARY_CLOSURE_INSTRUMENTED_20261012"
+
+
 def test_observe_submitted_codex_rejects_partial_or_stopped_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3063,7 +3107,7 @@ def test_observe_submitted_codex_rejects_initial_prompt_bullet_with_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     content = (
-        "› Summarize these notes:\n• USER PROMPT TEXT\n"
+        "› Please echo this input:\n• USER PROMPT TEXT\n"
         "Worked for 2s\n› Ask Codex to do anything"
     )
     monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
@@ -3094,6 +3138,42 @@ def test_observe_submitted_codex_rejects_initial_prompt_bullet_with_marker(
 
     assert observation["observation_error"] == "completion output not observed"
     assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_accepts_single_bullet_exact_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "› Reply with exactly PROBE_OK.\n• PROBE_OK\n"
+        "Worked for 1s\n› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "PROBE_OK"
 
 
 def test_observe_submitted_codex_accepts_final_answer_after_prompt_commentary(
