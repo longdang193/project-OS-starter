@@ -125,11 +125,6 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
         redacted,
     )
     redacted = re.sub(
-        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)[^&#\s]+",
-        r"\1[REDACTED]",
-        redacted,
-    )
-    redacted = re.sub(
         r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)\"(?:\\.|[^\"\\])*\"",
         r'\1"[REDACTED]"',
         redacted,
@@ -137,6 +132,11 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
     redacted = re.sub(
         r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)'(?:\\.|[^'\\])*'",
         r"\1'[REDACTED]'",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([?&](?:token|access_token|api[_-]?key|apikey|authorization|key|secret)=)[^&#\s]+",
+        r"\1[REDACTED]",
         redacted,
     )
     redacted = re.sub(
@@ -734,6 +734,19 @@ def _observe_submitted_codex(
         freshness_anchor = anchor or legacy_first_snapshot
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
         semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+        initial_prompt_content = _codex_initial_prompt_bullet(snapshot.get("content"))
+        if semantic_content and initial_prompt_content == semantic_content:
+            completion_identity = any(
+                snapshot.get(key) not in (None, "")
+                for key in ("result_id", "result_reference", "completion_id")
+            )
+            anchor_semantic = (
+                _extract_codex_semantic_content(anchor.get("content"))
+                if isinstance(anchor, Mapping)
+                else None
+            )
+            if not completion_identity and anchor_semantic != semantic_content:
+                semantic_content = None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
         if (
@@ -817,8 +830,9 @@ def _submission_freshness_proven(
             return False
         if snapshot.get("content") != anchor.get("content") and (
             snapshot_completion == anchor_completion
-            or _without_codex_completion_markers(snapshot.get("content"))
-            != _without_codex_completion_markers(anchor.get("content"))
+            or _codex_has_post_completion_bullet(snapshot.get("content"))
+            or _codex_completion_prefix(snapshot.get("content"))
+            != _codex_completion_prefix(anchor.get("content"))
         ):
             return False
     anchor_seq = anchor.get("state_change_seq")
@@ -1693,16 +1707,27 @@ def _extract_codex_semantic_content(value: object) -> str | None:
     if text is None or "› Ask Codex" not in text:
         return None
     segments = re.split(r"(?m)^\s*Worked for\b.*$", text)
+    has_completion_marker = bool(re.search(r"(?m)^\s*Worked for\b.*$", text))
     candidates: list[str] = []
-    for segment in segments:
+    prompt_boundary = False
+    for segment_index, segment in enumerate(segments):
         lines = segment.splitlines()
-        prompt_boundary = False
+        saw_prompt = False
+        prompt_echo = False
+        found_candidate = False
         for index, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith("› "):
-                prompt_boundary = True
+                saw_prompt = True
+                prompt_echo = prompt_echo or stripped.casefold().startswith(
+                    "› please echo this input:"
+                )
                 continue
-            if prompt_boundary:
+            if (
+                prompt_boundary
+                or prompt_echo
+                or (saw_prompt and not has_completion_marker)
+            ):
                 continue
             if not stripped.startswith("• "):
                 continue
@@ -1717,8 +1742,39 @@ def _extract_codex_semantic_content(value: object) -> str | None:
             content = "\n".join(line for line in content_lines if line)
             if content:
                 candidates.append(content)
+                found_candidate = True
                 break
+        if prompt_echo and not found_candidate:
+            prompt_boundary = True
+        elif found_candidate:
+            prompt_boundary = False
     return candidates[-1] if candidates else None
+
+
+def _codex_initial_prompt_bullet(value: object) -> str | None:
+    text = _redact_semantic_content(value, _configured_semantic_secrets())
+    if text is None or "› Ask Codex" not in text:
+        return None
+    first_segment = re.split(r"(?m)^\s*Worked for\b.*$", text, maxsplit=1)[0]
+    saw_prompt = False
+    lines = first_segment.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("› "):
+            saw_prompt = True
+            continue
+        if saw_prompt and stripped.startswith("• "):
+            content_lines = [stripped[2:].strip()]
+            for continuation in lines[index + 1:]:
+                continuation = continuation.strip()
+                if not continuation:
+                    continue
+                if continuation.startswith(("› ", "Ask Codex", "combo-")):
+                    break
+                content_lines.append(continuation)
+            content = "\n".join(line for line in content_lines if line)
+            return content or None
+    return None
 
 
 def _extract_codex_completion_marker(value: object) -> str | None:
@@ -1728,10 +1784,22 @@ def _extract_codex_completion_marker(value: object) -> str | None:
     return matches[-1].strip() if matches else None
 
 
-def _without_codex_completion_markers(value: object) -> str | None:
+def _codex_completion_prefix(value: object) -> str | None:
     if not isinstance(value, str):
         return None
-    return re.sub(r"(?m)^\s*Worked for\b.*$\n?", "", value).strip()
+    matches = list(re.finditer(r"(?m)^\s*Worked for\b.*$", value))
+    if not matches:
+        return value.strip()
+    return value[: matches[-1].start()].strip()
+
+
+def _codex_has_post_completion_bullet(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    matches = list(re.finditer(r"(?m)^\s*Worked for\b.*$", value))
+    if not matches:
+        return False
+    return re.search(r"(?m)^\s*• ", value[matches[-1].end() :]) is not None
 
 
 def _configured_semantic_secrets() -> tuple[str, ...]:

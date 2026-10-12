@@ -900,6 +900,36 @@ def test_extract_codex_semantic_content_selects_latest_answer() -> None:
     ) == "FAIL: tests failed."
 
 
+def test_extract_codex_semantic_content_accepts_prompt_before_answer() -> None:
+    assert _extract_codex_semantic_content(
+        "› Return exactly PROBE_OK.\n• PROBE_OK\nWorked for 1s\n› Ask Codex to do anything"
+    ) == "PROBE_OK"
+
+
+def test_extract_codex_semantic_content_ignores_prompt_echo_after_completion_marker() -> None:
+    assert _extract_codex_semantic_content(
+        "› Original request\n"
+        "• OLD ANSWER\n"
+        "Worked for 1s\n"
+        "› Please echo this input:\n"
+        "Worked for 2s\n"
+        "• USER PROMPT TEXT\n"
+        "› Ask Codex to do anything"
+    ) == "OLD ANSWER"
+
+
+def test_extract_codex_semantic_content_ignores_initial_prompt_echo_bullet() -> None:
+    assert _extract_codex_semantic_content(
+        "› Please echo this input:\n• USER PROMPT TEXT\n› Ask Codex to do anything"
+    ) is None
+
+
+def test_extract_codex_semantic_content_rejects_initial_prompt_bullet_without_marker() -> None:
+    assert _extract_codex_semantic_content(
+        "› Summarize these notes:\n• USER PROMPT TEXT\n› Ask Codex to do anything"
+    ) is None
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -923,6 +953,20 @@ def test_semantic_redaction_removes_values_and_is_idempotent() -> None:
     assert "query-secret" not in redacted
     assert "fixture-secret" not in redacted
     assert _redact_semantic_content(redacted, ("fixture-secret",)) == redacted
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "https://example.test/?token=PREFIX'SUFFIX",
+        "https://example.test/?token=PREFIX''SUFFIX",
+        "https://example.test/?token=PREFIX',SUFFIX",
+    ],
+)
+def test_semantic_redaction_removes_query_secret_with_apostrophe_suffix(text: str) -> None:
+    assert _redact_semantic_content(
+        text
+    ) == "https://example.test/?token=[REDACTED]"
 
 
 def test_release_codex_agent_interrupts_process_and_verifies_removal(
@@ -2786,6 +2830,153 @@ def test_observe_submitted_codex_ignores_prompt_echo_bullets(
     assert "semantic_content" not in observation
 
 
+def test_observe_submitted_codex_rejects_initial_prompt_bullet_without_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = "› Summarize these notes:\n• USER PROMPT TEXT\n› Ask Codex to do anything"
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["observation_error"] == "completion output not observed"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_rejects_initial_prompt_bullet_with_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "› Summarize these notes:\n• USER PROMPT TEXT\n"
+        "Worked for 2s\n› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["observation_error"] == "completion output not observed"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_accepts_final_answer_after_prompt_commentary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "› Summarize these notes:\n• I will inspect the code first.\n"
+        "Worked for 1s\n• PROBE_OK\n› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "PROBE_OK"
+
+
+def test_observe_submitted_codex_accepts_later_answer_after_previous_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "› Original request\n• OLD ANSWER\nWorked for 1s\n"
+        "› Summarize these notes:\n• I will inspect the code first.\n"
+        "Worked for 2s\n• PROBE_OK\n› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 3,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={
+            **_submission_anchor(),
+            "content": "› Original request\n• OLD ANSWER\nWorked for 1s\n› Ask Codex to do anything",
+        },
+        env={},
+    )
+
+    assert observation["semantic_content"] == "PROBE_OK"
+
+
 def test_observe_submitted_codex_accepts_repeated_answer_with_new_completion_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2818,6 +3009,77 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_new_completion_mar
     assert observation["semantic_content"] == "SAME ANSWER"
 
 
+def test_observe_submitted_codex_accepts_repeated_answer_with_prompt_suffix_and_new_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor = "› Original request\n• SAME ANSWER\nWorked for 1s\n› Ask Codex to do anything"
+    snapshot = "› Original request\n• SAME ANSWER\nWorked for 2s\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": snapshot,
+            "output_sha256": "b" * 64,
+            "output_chars": len(snapshot),
+            "state_change_seq": 3,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": anchor},
+        env={},
+    )
+
+    assert observation["semantic_content"] == "SAME ANSWER"
+
+
+def test_observe_submitted_codex_rejects_prompt_echo_with_completion_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor = "› Original request\n• OLD ANSWER\nWorked for 1s\n› Ask Codex to do anything"
+    snapshot = (
+        "› Original request\n• OLD ANSWER\nWorked for 1s\n"
+        "› Please echo this input:\nWorked for 2s\n• USER PROMPT TEXT\n"
+        "› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": snapshot,
+            "output_sha256": "b" * 64,
+            "output_chars": len(snapshot),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": anchor},
+        env={},
+    )
+
+    assert observation["observation_error"] == "submission freshness not proven"
+    assert "semantic_content" not in observation
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -2847,6 +3109,23 @@ def test_normal_outcome_redacts_quoted_secret_values() -> None:
         observation={
             "state": "done",
             "semantic_content": '{"api_key": "SYNTHETIC first second"}',
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"]["content"] == '{"api_key": "[REDACTED]"}'
+
+
+def test_normal_outcome_redacts_query_secret_inside_quoted_value() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={
+            "state": "done",
+            "semantic_content": '{"api_key": "SYNTHETIC-prefix?token=SYNTHETIC-suffix"}',
             "cleanup": {"state": "removed"},
         },
         started_at="2026-10-11T00:00:00+00:00",
