@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: final-normal-coordination-convergence-sequence
 targets:
@@ -99,11 +99,11 @@ result, resource, observation, and timeout boundaries independently.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `codex/final-normal-coordination-convergence-sequence`
+- Branch: `codex/final-normal-coordination-convergence`
 - Base commit: `origin/main` exact SHA recorded at activation
 - Expected workspace: `fresh managed worktree`; preserve unrelated primary-checkout changes
-- Next action: obtain authorization to push the frozen candidate SHA and create or update the exact-candidate PR for remote checks
-- Blockers: local convergence is verified; remote exact-SHA proof is blocked on explicit push/PR authorization and the Codex adapter remains `BLOCKED_CAPABILITY` for managed semantic publication
+- Next action: none; exact-SHA remote proof is complete
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -114,7 +114,7 @@ result, resource, observation, and timeout boundaries independently.
 | Task 5 | `completed` | same worktree | `codex` | Task 4 | docs and predecessor plan are reconciled after final code shape | maintained docs already aligned; predecessor remains explicitly blocked on its live structured-result acceptance gate |
 | Task 6 | `completed` | same worktree | `codex` | Tasks 1–5 | workflow checkout policy is included before local verification and candidate freeze | both workflows now check out and assert the immutable PR-head SHA |
 | Task 7 | `completed` | same worktree | `codex` | Task 6 | local final matrix passes and candidate SHA is frozen | final local `HEAD`; focused runtime/launcher suites, validators, adapter sync/drift checks, and `git diff --check` passed |
-| Task 8 | `blocked` | same worktree | `codex` | Task 7 | exact-SHA GitHub checks pass or plan is blocked on authorization | explicit push/PR authorization not supplied |
+| Task 8 | `completed` | same worktree | `codex` | Task 7 | exact-SHA GitHub checks pass or plan is blocked on authorization | PR #89 at `3c5ab246ddb58169f5c98eb615530a6689397e91`; Repository contracts, Runtime contracts (Ubuntu/Windows), and benchmark all passed; workflow logs verified immutable checkout/assertion |
 
 ## Task Breakdown
 
@@ -668,24 +668,24 @@ result, resource, observation, and timeout boundaries independently.
 - Stop for: absent push/PR authorization, SHA mismatch, failed required check, or any request to merge/alter branch protection outside explicit approval
 
 **Steps:**
-- [ ] Step 1: Present the frozen candidate SHA and request/obtain explicit
+- [x] Step 1: Present the frozen candidate SHA and request/obtain explicit
   authorization to push the candidate and create or update the PR for remote
   verification.
-- [ ] Step 2: Push only that candidate and, after explicit authorization, create
+- [x] Step 2: Push only that candidate and, after explicit authorization, create
   or update one PR targeting `main`; verify its `head.sha` equals the frozen SHA.
-- [ ] Step 3: Wait for and record the PR number, check run IDs, check names,
+- [x] Step 3: Wait for and record the PR number, check run IDs, check names,
   conclusions, and head SHA for Repository, Windows, Ubuntu, and benchmark
   results; do not substitute a different commit or branch-triggered run.
 
 **Verification:**
-- [ ] `git ls-remote origin <candidate-ref>` matches the frozen SHA
-- [ ] PR head SHA matches the frozen SHA
-- [ ] Repository and Runtime workflow logs show checkout of the expected frozen
+- [x] `git ls-remote origin <candidate-ref>` matches the frozen SHA
+- [x] PR head SHA matches the frozen SHA
+- [x] Repository and Runtime workflow logs show checkout of the expected frozen
   SHA and a passing `git rev-parse HEAD` assertion in every required job
-- [ ] GitHub Repository contracts check passes for the frozen SHA
-- [ ] GitHub Runtime contracts Windows check passes for the frozen SHA
-- [ ] GitHub Runtime contracts Ubuntu check passes for the frozen SHA
-- [ ] GitHub benchmark check passes for the frozen SHA
+- [x] GitHub Repository contracts check passes for the frozen SHA
+- [x] GitHub Runtime contracts Windows check passes for the frozen SHA
+- [x] GitHub Runtime contracts Ubuntu check passes for the frozen SHA
+- [x] GitHub benchmark check passes for the frozen SHA
 - Expected: exact-SHA remote proof is complete; otherwise the plan is explicitly
   blocked or failed with the immutable check evidence recorded.
 
