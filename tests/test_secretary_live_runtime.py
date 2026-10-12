@@ -984,6 +984,7 @@ def test_observe_submitted_codex_waits_past_initial_idle_until_done(
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-1",
             "producer": "dcode-project",
+            "assistant_owned": True,
         },
     ])
     monkeypatch.setattr(
@@ -1110,6 +1111,7 @@ def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-1",
             "producer": "dcode-project",
+            "assistant_owned": True,
         },
     )
     monkeypatch.setattr(
@@ -1183,6 +1185,7 @@ def test_observe_submitted_codex_uses_bound_snapshot_semantic_content_without_te
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "semantic_content": "accepted snapshot answer",
             "source_ref": "task-result://snapshot",
             "content": "Codex screen without a semantic bullet",
@@ -1213,6 +1216,102 @@ def test_observe_submitted_codex_uses_bound_snapshot_semantic_content_without_te
     assert observation["source_ref"] == "task-result://snapshot"
 
 
+def test_observe_submitted_codex_rejects_terminal_content_without_snapshot_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        "Previous completion\nWorked for 1s\n"
+        "› Summarize these notes:\n• USER PROMPT TEXT\n"
+        "› Ask Codex to do anything"
+    )
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"] = {
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "task_result": {"state": "unknown"},
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["observation_error"] == "completion output not observed"
+    assert "semantic_content" not in observation
+
+
+def test_observe_submitted_codex_preserves_snapshot_conflict_for_normalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "assistant_owned": True,
+            "result_reference": "task-result://B",
+            "semantic_content": "answer from B",
+            "content": "Codex structured result",
+            "output_sha256": "b" * 64,
+            "output_chars": 24,
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    payload = _correlated_payload()
+    payload["assignment"]["task_result"] = {
+        "state": "reported_completed",
+        "assignment_id": "assignment-1",
+        "attempt_id": "attempt-1",
+        "producer": "dcode-project",
+        "result_reference": "task-result://A",
+        "content": "answer from A",
+    }
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload=payload,
+        observation=observation,
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:01+00:00",
+    )
+
+    assert observation["semantic_content"] == "answer from B"
+    assert observation["result_reference"] == "task-result://B"
+    assert result["result"] == {"state": "ambiguous", "status": None}
+
+
 def test_observe_submitted_codex_does_not_publish_unrelated_terminal_bullet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1222,6 +1321,7 @@ def test_observe_submitted_codex_does_not_publish_unrelated_terminal_bullet(
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "semantic_content": "accepted snapshot answer",
             "source_ref": "task-result://snapshot",
             "content": terminal_content,
@@ -1388,6 +1488,7 @@ def test_observe_submitted_codex_accepts_fresh_post_submit_output(
             "assignment_id": "assignment-1",
             "attempt_id": "attempt-1",
             "producer": "dcode-project",
+            "assistant_owned": True,
         },
     )
     monkeypatch.setattr(
@@ -3418,6 +3519,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_terminal_completio
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": answer,
             "output_sha256": "b" * 64,
             "output_chars": len(answer),
@@ -3595,6 +3697,7 @@ def test_observe_submitted_codex_accepts_single_bullet_exact_answer(
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": content,
             "output_sha256": "b" * 64,
             "output_chars": len(content),
@@ -3631,6 +3734,7 @@ def test_observe_submitted_codex_accepts_final_answer_after_prompt_commentary(
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": content,
             "output_sha256": "b" * 64,
             "output_chars": len(content),
@@ -3668,6 +3772,7 @@ def test_observe_submitted_codex_accepts_later_answer_after_previous_completion(
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": content,
             "output_sha256": "b" * 64,
             "output_chars": len(content),
@@ -3703,6 +3808,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_new_completion_mar
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": snapshot,
             "output_sha256": "b" * 64,
             "output_chars": len(snapshot),
@@ -3735,6 +3841,7 @@ def test_observe_submitted_codex_accepts_repeated_answer_with_prompt_suffix_and_
         lambda *args, **kwargs: {
             **_submission_anchor(),
             "state": "idle",
+            "assistant_owned": True,
             "content": snapshot,
             "output_sha256": "b" * 64,
             "output_chars": len(snapshot),

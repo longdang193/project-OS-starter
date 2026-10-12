@@ -741,7 +741,11 @@ def _observe_submitted_codex(
             )
         freshness_anchor = anchor or legacy_first_snapshot
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
-        snapshot_result_owned = _result_source_authoritative(snapshot, assignment)
+        snapshot_result_owned = _result_source_authoritative(
+            snapshot,
+            assignment,
+            require_assistant_provenance=True,
+        )
         snapshot_explicit_content = _safe_semantic_result_value(
             snapshot.get("semantic_content"),
             allow_long=True,
@@ -752,7 +756,7 @@ def _observe_submitted_codex(
             if snapshot_result_owned
             else None
         )
-        semantic_content = structured_result_content or snapshot_semantic_content
+        semantic_content = snapshot_semantic_content or structured_result_content
         initial_prompt_content = _codex_initial_prompt_bullet(snapshot.get("content"))
         if (
             structured_result_content is None
@@ -1884,13 +1888,17 @@ def _select_authoritative_result_source(
     assignment: Mapping[str, Any],
 ) -> tuple[Mapping[str, Any] | None, str | None]:
     task_result_owned = _result_source_authoritative(task_result, assignment)
-    snapshot_owned = _result_source_authoritative(snapshot, assignment)
+    snapshot_owned = _result_source_authoritative(
+        snapshot,
+        assignment,
+        require_assistant_provenance=True,
+    )
     task_result_content = _result_source_content(task_result) if task_result_owned else None
     snapshot_content = _snapshot_result_content(snapshot) if snapshot_owned else None
-    if task_result_owned and task_result_content:
-        return task_result, task_result_content
     if snapshot_owned and snapshot_content:
         return snapshot, snapshot_content
+    if task_result_owned and task_result_content:
+        return task_result, task_result_content
     if task_result_owned:
         return task_result, task_result_content
     if snapshot_owned:
@@ -1901,6 +1909,8 @@ def _select_authoritative_result_source(
 def _result_source_authoritative(
     source: object,
     assignment: Mapping[str, Any] | None,
+    *,
+    require_assistant_provenance: bool = False,
 ) -> bool:
     if not isinstance(source, Mapping):
         return False
@@ -1925,6 +1935,11 @@ def _result_source_authoritative(
     if not isinstance(producer, str) or producer not in _ACCEPTED_RESULT_PRODUCERS:
         return False
     if "assistant_owned" in source and source.get("assistant_owned") is not True:
+        return False
+    if require_assistant_provenance and source.get("assistant_owned") is not True and not any(
+        source.get(key) not in (None, "")
+        for key in ("result_id", "result_reference", "completion_id")
+    ):
         return False
     reference, content = _result_evidence(source)
     reference = reference or next(
