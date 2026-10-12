@@ -391,10 +391,16 @@ def _create_herdr_workspace(
         result_payload = payload.get("result") if isinstance(payload, Mapping) else None
         if isinstance(result_payload, Mapping):
             workspace_id = _safe_text(result_payload.get("workspace_id"))
-        root_pane = result_payload["root_pane"]
+        if not isinstance(result_payload, Mapping):
+            raise TypeError("workspace creation result is not an object")
+        root_pane = result_payload.get("root_pane")
+        if not isinstance(root_pane, Mapping):
+            raise TypeError("workspace root pane is not an object")
         root_workspace_id = _safe_text(root_pane.get("workspace_id"))
         if root_workspace_id is None:
             raise ValueError("root pane workspace identity missing")
+        if workspace_id is not None and workspace_id != root_workspace_id:
+            raise ValueError("root pane workspace identity mismatch")
         workspace_id = root_workspace_id
         pane_id = root_pane["pane_id"]
         pane_cwd = Path(root_pane["cwd"]).resolve()
@@ -805,9 +811,15 @@ def _submission_freshness_proven(
     anchor_semantic = _extract_codex_semantic_content(anchor.get("content"))
     snapshot_semantic = _extract_codex_semantic_content(snapshot.get("content"))
     if anchor_semantic and snapshot_semantic and anchor_semantic == snapshot_semantic and not identity_changed:
-        if _extract_codex_completion_marker(snapshot.get("content")) is None:
+        anchor_completion = _extract_codex_completion_marker(anchor.get("content"))
+        snapshot_completion = _extract_codex_completion_marker(snapshot.get("content"))
+        if snapshot_completion is None:
             return False
-        if snapshot.get("content") != anchor.get("content"):
+        if snapshot.get("content") != anchor.get("content") and (
+            snapshot_completion == anchor_completion
+            or _without_codex_completion_markers(snapshot.get("content"))
+            != _without_codex_completion_markers(anchor.get("content"))
+        ):
             return False
     anchor_seq = anchor.get("state_change_seq")
     snapshot_seq = snapshot.get("state_change_seq")
@@ -1684,8 +1696,14 @@ def _extract_codex_semantic_content(value: object) -> str | None:
     candidates: list[str] = []
     for segment in segments:
         lines = segment.splitlines()
+        prompt_boundary = False
         for index, line in enumerate(lines):
             stripped = line.strip()
+            if stripped.startswith("› "):
+                prompt_boundary = True
+                continue
+            if prompt_boundary:
+                continue
             if not stripped.startswith("• "):
                 continue
             content_lines = [stripped[2:].strip()]
@@ -1708,6 +1726,12 @@ def _extract_codex_completion_marker(value: object) -> str | None:
         return None
     matches = re.findall(r"(?m)^\s*Worked for\b.*$", value)
     return matches[-1].strip() if matches else None
+
+
+def _without_codex_completion_markers(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return re.sub(r"(?m)^\s*Worked for\b.*$\n?", "", value).strip()
 
 
 def _configured_semantic_secrets() -> tuple[str, ...]:
