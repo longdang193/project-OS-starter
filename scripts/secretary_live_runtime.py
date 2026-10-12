@@ -734,6 +734,18 @@ def _observe_submitted_codex(
         freshness_anchor = anchor or legacy_first_snapshot
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
         semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+        if semantic_content and _codex_has_initial_prompt_bullet(snapshot.get("content")):
+            completion_identity = any(
+                snapshot.get(key) not in (None, "")
+                for key in ("result_id", "result_reference", "completion_id")
+            )
+            anchor_semantic = (
+                _extract_codex_semantic_content(anchor.get("content"))
+                if isinstance(anchor, Mapping)
+                else None
+            )
+            if not completion_identity and anchor_semantic != semantic_content:
+                semantic_content = None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
         if (
@@ -1739,6 +1751,22 @@ def _extract_codex_semantic_content(value: object) -> str | None:
         elif found_candidate:
             prompt_boundary = False
     return candidates[-1] if candidates else None
+
+
+def _codex_has_initial_prompt_bullet(value: object) -> bool:
+    text = _redact_semantic_content(value, _configured_semantic_secrets())
+    if text is None or "› Ask Codex" not in text:
+        return False
+    first_segment = re.split(r"(?m)^\s*Worked for\b.*$", text, maxsplit=1)[0]
+    saw_prompt = False
+    for line in first_segment.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("› "):
+            saw_prompt = True
+            continue
+        if saw_prompt and stripped.startswith("• "):
+            return True
+    return False
 
 
 def _extract_codex_completion_marker(value: object) -> str | None:
