@@ -57,7 +57,7 @@
   "probes": [
     {
       "slug": "managed-ops-baseline-01",
-      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline.jsonl",
+      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline-blocked-publication.jsonl",
       "status": "task_result_unverified",
       "worker_exit_code": 0,
       "cleanup": "removed",
@@ -65,7 +65,7 @@
     },
     {
       "slug": "managed-ops-diagnosis-02",
-      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline.jsonl",
+      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline-blocked-publication.jsonl",
       "status": "task_result_unverified",
       "worker_exit_code": 0,
       "cleanup": "removed",
@@ -73,7 +73,7 @@
     },
     {
       "slug": "managed-ops-publication-probe-03",
-      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline.jsonl",
+      "source": "artifacts/runtime-observation/2026-10-12-stable-architecture-operational-baseline-blocked-publication.jsonl",
       "status": "task_result_unverified",
       "worker_exit_code": 0,
       "cleanup": "removed",
