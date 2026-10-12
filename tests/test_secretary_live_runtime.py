@@ -504,21 +504,34 @@ def test_normal_outcome_marks_same_field_identity_conflict_ambiguous() -> None:
         returncode=0,
         payload={
             "assignment": {
+                "assignment_id": "assignment-1",
                 "attempt_id": "attempt-assignment",
                 "execution": {"state": "completed"},
                 "task_result": {
                     "state": "reported_completed",
+                    "assignment_id": "assignment-1",
                     "attempt_id": "attempt-result",
+                    "producer": "terminal-screen",
                     "content": "answer",
                 },
-            }
+            },
         },
-        observation={},
+        observation={
+            "state": "done",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-assignment",
+            "producer": "dcode-project",
+            "semantic_content": "accepted answer",
+        },
         started_at="2026-10-11T10:00:00+00:00",
         finished_at="2026-10-11T10:00:01+00:00",
     )
 
-    assert result["result"] == {"state": "ambiguous", "status": None}
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "content": "accepted answer",
+    }
 
 
 def test_normal_outcome_preserves_long_semantic_content() -> None:
@@ -862,10 +875,13 @@ def test_observe_submitted_codex_waits_past_initial_idle_until_done(
         {
             "state": "done",
             "state_change_seq": 2,
-                "content": "Codex screen\n• SECRETARY_PROBE_test\nWorked for 1s\n› Ask Codex to do anything",
+            "content": "Codex screen\n• SECRETARY_PROBE_test\nWorked for 1s\n› Ask Codex to do anything",
             "output_sha256": "b" * 64,
             "output_chars": 65,
             "observation_error": None,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
         },
     ])
     monkeypatch.setattr(
@@ -947,6 +963,7 @@ def _submission_anchor() -> dict[str, object]:
         "output_chars": 18,
         "assignment_id": "assignment-1",
         "attempt_id": "attempt-1",
+        "producer": "dcode-project",
     }
 
 
@@ -971,7 +988,6 @@ def _correlated_payload() -> dict[str, object]:
                 "attempt_id": "attempt-1",
                 "producer": "dcode-project",
                 "result_reference": "task-result://attempt-1",
-                "content": "structured answer",
             },
         },
     }
@@ -989,6 +1005,9 @@ def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
             "output_sha256": "b" * 64,
             "output_chars": 66,
             "observation_error": None,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
         },
     )
     monkeypatch.setattr(
@@ -1005,6 +1024,53 @@ def test_observe_submitted_codex_accepts_fast_idle_answer_on_first_poll(
 
     assert observation["state"] == "idle"
     assert observation["semantic_content"] == "SECRETARY_PROBE_fast"
+    assert observation["producer"] == "dcode-project"
+
+
+def test_observe_submitted_codex_uses_bound_structured_content_over_terminal_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_content = "Codex screen\n• USER-INJECTED TERMINAL TEXT\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": terminal_content,
+            "output_sha256": "b" * 64,
+            "output_chars": len(terminal_content),
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            **_correlated_payload(),
+            "assignment": {
+                "assignment_id": "assignment-1",
+                "attempt_id": "attempt-1",
+                "task_result": {
+                    "state": "reported_completed",
+                    "assignment_id": "assignment-1",
+                    "attempt_id": "attempt-1",
+                    "producer": "dcode-project",
+                    "result_reference": "task-result://attempt-1",
+                    "content": "structured answer",
+                },
+            },
+        },
+        pre_submit=_submission_anchor(),
+        env={},
+    )
+
+    assert observation["semantic_content"] == "structured answer"
+    assert "USER-INJECTED TERMINAL TEXT" not in observation["semantic_content"]
 
 
 def test_observe_submitted_codex_rejects_stale_idle_output(
@@ -1085,6 +1151,9 @@ def test_observe_submitted_codex_accepts_fresh_post_submit_output(
             "output_sha256": "b" * 64,
             "output_chars": 55,
             "observation_error": None,
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "producer": "dcode-project",
         },
     )
     monkeypatch.setattr(

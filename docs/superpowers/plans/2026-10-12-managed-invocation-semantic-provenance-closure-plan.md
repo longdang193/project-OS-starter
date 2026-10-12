@@ -457,7 +457,7 @@ Return exactly $nonceB. Do not edit the repository or create child workers.
 
 - [x] Step 5: Sanitize and keep raw probe output ephemeral. Record the sanitized evidence in the OS temp directory resolved by `$env:TEMP` on Windows or `tempfile.gettempdir()` in Python, and record durable facts in the plan ledger: candidate SHA, nonce or nonce digest, semantic verdict, projection-equivalence verdict, resource-retirement verdict, repository-unchanged verdict, elapsed duration, evidence-file digest, and unavailable capabilities.
 - [x] Step 6: On timeout or any unavailable acceptance predicate, retain the disposable worktree and invocation-owned resource identities, run the existing ownership-safe reconciliation/close path, and record the live proof as `blocked`; never delete shared or ambiguous resources.
-- [x] Step 7: Invoke `skill-verification-before-completion`; deterministic proof and both live gates verified, then update this plan to `completed`.
+- [ ] Step 7: Invoke `skill-verification-before-completion` after structured producer-bound live evidence is available; deterministic proof is complete, but live semantic closure remains blocked and the plan must stay non-completed.
 
 **Verification:**
 - [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py tests/test_skill_chief_of_staff.py tests/test_reconciliation.py` (`400 passed`)

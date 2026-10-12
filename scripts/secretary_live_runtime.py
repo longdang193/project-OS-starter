@@ -696,6 +696,11 @@ def _observe_submitted_codex(
     completed = False
     task_result = assignment.get("task_result") if assignment else None
     structured_result_owned = _result_source_authoritative(task_result, assignment)
+    _, structured_result_content = (
+        _result_evidence(task_result)
+        if structured_result_owned and isinstance(task_result, Mapping)
+        else (None, None)
+    )
     freshness_proven = False
     legacy_first_snapshot: dict[str, Any] | None = None
     legacy_output_changed = False
@@ -736,9 +741,9 @@ def _observe_submitted_codex(
             )
         freshness_anchor = anchor or legacy_first_snapshot
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
-        semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
+        semantic_content = structured_result_content or _extract_codex_semantic_content(snapshot.get("content"))
         initial_prompt_content = _codex_initial_prompt_bullet(snapshot.get("content"))
-        if semantic_content and initial_prompt_content == semantic_content:
+        if structured_result_content is None and semantic_content and initial_prompt_content == semantic_content:
             completion_identity = any(
                 snapshot.get(key) not in (None, "")
                 for key in ("result_id", "result_reference", "completion_id")
@@ -751,7 +756,7 @@ def _observe_submitted_codex(
             if not completion_identity and anchor_semantic != semantic_content:
                 semantic_content = None
         snapshot_result_owned = _result_source_authoritative(snapshot, assignment)
-        if semantic_content and not (structured_result_owned or snapshot_result_owned):
+        if semantic_content and structured_result_content is None and not snapshot_result_owned:
             semantic_content = None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
@@ -788,16 +793,14 @@ def _observe_submitted_codex(
             "output_sha256",
             "output_chars",
             "observation_error",
+            "producer",
         )
         if key in snapshot
     }
     semantic_content = None
     if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
-        semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
-        if semantic_content and not (
-            structured_result_owned
-            or _result_source_authoritative(snapshot, assignment)
-        ):
+        semantic_content = structured_result_content or _extract_codex_semantic_content(snapshot.get("content"))
+        if semantic_content and structured_result_content is None and not _result_source_authoritative(snapshot, assignment):
             semantic_content = None
     if semantic_content:
         observation["semantic_content"] = semantic_content
@@ -805,6 +808,10 @@ def _observe_submitted_codex(
         for key in ("result_id", "result_reference", "completion_id"):
             if snapshot.get(key) not in (None, ""):
                 observation[key] = snapshot[key]
+        if structured_result_owned and isinstance(task_result, Mapping):
+            for key in ("producer", "result_id", "result_reference", "completion_id"):
+                if task_result.get(key) not in (None, ""):
+                    observation[key] = task_result[key]
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
     if assignment_id is not None:
         observation["assignment_id"] = assignment_id
@@ -1952,7 +1959,13 @@ def _normalize_invocation_outcome(
         if result_status is not None:
             break
 
-    ambiguous = bool(task_result.get("ambiguous")) or _identity_conflict(task_result, assignment)
+    authoritative_task_result = (
+        task_result if _result_source_authoritative(task_result, assignment) else {}
+    )
+    ambiguous = bool(authoritative_task_result.get("ambiguous")) or _identity_conflict(
+        authoritative_task_result,
+        assignment,
+    )
     if len(references) > 1:
         ambiguous = True
     if result_status is None and (references or content) and not ambiguous:
