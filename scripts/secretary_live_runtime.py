@@ -1755,14 +1755,13 @@ def _extract_codex_semantic_content(value: object) -> str | None:
                 continuation = continuation.strip()
                 if not continuation:
                     continue
-                if continuation.startswith(("› ", "Ask Codex", "combo-")):
+                if continuation.startswith(("• ", "› ", "Ask Codex", "combo-")):
                     break
                 content_lines.append(continuation)
             content = "\n".join(line for line in content_lines if line)
             if content:
                 candidates.append(content)
                 found_candidate = True
-                break
         if prompt_echo and not found_candidate:
             prompt_boundary = True
         elif found_candidate:
