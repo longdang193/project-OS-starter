@@ -3,7 +3,6 @@ from collections import defaultdict
 import pytest
 
 from scripts.benchmark_secretary_architecture import SCENARIOS, run_contract_benchmark
-from scripts.benchmark_secretary_architecture import run_measure_benchmark
 
 
 def test_contract_benchmark_runs_six_paired_deterministic_scenarios() -> None:
@@ -66,53 +65,3 @@ def test_benchmark_does_not_claim_latency_or_token_improvement() -> None:
         assert item.latency_ms is None
         assert item.time_to_first_result_ms is None
         assert item.token_usage is None
-
-
-def test_measure_mode_uses_production_function_with_explicit_provenance() -> None:
-    results = run_measure_benchmark(2)
-
-    assert len(results) == 8
-    assert {item.architecture for item in results} == {"measure"}
-    assert {item.evidence_provenance for item in results} == {"production-function-fake-boundary"}
-    assert all(item.live is False for item in results)
-    assert all(item.measurement_status == "measured" for item in results)
-    assert all(item.measurement_source for item in results)
-    assert all(item.sample_count == 2 for item in results)
-    assert all(item.latency_ms is not None for item in results)
-    assert all(item.correct is True for item in results)
-
-
-def test_measure_mode_marks_wrong_normalizer_output_incorrect(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "scripts.secretary_live_runtime._normalize_invocation_outcome",
-        lambda **kwargs: {
-            "result": {"state": "reported"},
-            "resource": {"state": "settled"},
-        },
-    )
-
-    results = run_measure_benchmark()
-
-    ambiguous = next(item for item in results if item.scenario_id == "ambiguous_identity")
-    cleanup = next(item for item in results if item.scenario_id == "cleanup_quarantine")
-    assert ambiguous.correct is False
-    assert cleanup.correct is False
-
-
-def test_contract_cli_mode_is_explicit_and_preserves_fixture_provenance() -> None:
-    from pathlib import Path
-    import subprocess
-    import sys
-
-    script = Path(__file__).parents[1] / "scripts" / "benchmark_secretary_architecture.py"
-    result = subprocess.run(
-        [sys.executable, str(script), "contract", "2"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 0
-    assert '"measurement_status": "not_attempted"' in result.stdout

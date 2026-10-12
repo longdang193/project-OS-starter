@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import argparse
 import json
 import sys
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -20,37 +18,6 @@ SCENARIOS = (
     "cleanup_quarantine",
     "multi_workstream_escalation",
 )
-
-MEASURE_EXPECTATIONS = {
-    "captured_result": {
-        "semantic_result": "reported",
-        "outcome": "unresolved",
-        "failure_classification": "none",
-        "blocker": "none",
-        "duplicate_effects": 0,
-    },
-    "missing_optional_evidence": {
-        "semantic_result": "reported",
-        "outcome": "unresolved",
-        "failure_classification": "none",
-        "blocker": "optional_observability",
-        "duplicate_effects": 0,
-    },
-    "cleanup_quarantine": {
-        "semantic_result": "reported",
-        "outcome": "quarantined",
-        "failure_classification": "none",
-        "blocker": "none",
-        "duplicate_effects": 0,
-    },
-    "ambiguous_identity": {
-        "semantic_result": "ambiguous",
-        "outcome": "unresolved",
-        "failure_classification": "ambiguous_result",
-        "blocker": "none",
-        "duplicate_effects": 1,
-    },
-}
 
 
 @dataclass(frozen=True)
@@ -70,41 +37,9 @@ class ContractMetric:
     provider_queries: int
     messages: int
     duplicate_effects: int
-    time_to_first_result_ms: float | None = None
-    latency_ms: float | None = None
-    token_usage: int | None = None
-    measurement_status: str = "not_attempted"
-    measurement_source: str | None = None
-    sample_count: int = 0
-    percentile_status: str = "unavailable"
-    percentile_reason: str = "not_attempted"
-
-
-def _measurement_fields(
-    *,
-    status: str = "not_attempted",
-    source: str | None = None,
-    sample_count: int = 0,
-) -> dict[str, object]:
-    if status not in {"measured", "unavailable", "not_attempted"}:
-        raise ValueError("measurement status must be measured, unavailable, or not_attempted")
-    if sample_count < 0:
-        raise ValueError("sample_count must be non-negative")
-    if status == "measured" and (not source or sample_count < 1):
-        raise ValueError("measured metrics require a source and positive sample_count")
-    if status != "measured" and source is not None:
-        raise ValueError("unmeasured metrics cannot claim a measurement source")
-    percentile_status = "available" if status == "measured" and sample_count >= 20 else "unavailable"
-    percentile_reason = None if percentile_status == "available" else (
-        "insufficient_sample" if status == "measured" else status
-    )
-    return {
-        "measurement_status": status,
-        "measurement_source": source,
-        "sample_count": sample_count,
-        "percentile_status": percentile_status,
-        "percentile_reason": percentile_reason,
-    }
+    time_to_first_result_ms: None = None
+    latency_ms: None = None
+    token_usage: None = None
 
 
 def _metric(
@@ -122,24 +57,13 @@ def _metric(
     provider_queries: int = 0,
     messages: int = 0,
     duplicate_effects: int = 0,
-    evidence_provenance: str = "deterministic-fake",
-    live: bool = False,
-    latency_ms: float | None = None,
-    measurement_status: str = "not_attempted",
-    measurement_source: str | None = None,
-    sample_count: int = 0,
 ) -> ContractMetric:
-    measurement = _measurement_fields(
-        status=measurement_status,
-        source=measurement_source,
-        sample_count=sample_count,
-    )
     return ContractMetric(
         scenario_id=scenario_id,
         run_id=run_id,
         architecture=architecture,
-        evidence_provenance=evidence_provenance,
-        live=live,
+        evidence_provenance="deterministic-fake",
+        live=False,
         correct=correct,
         outcome=outcome,
         semantic_result=semantic_result,
@@ -150,8 +74,6 @@ def _metric(
         provider_queries=provider_queries,
         messages=messages,
         duplicate_effects=duplicate_effects,
-        latency_ms=latency_ms,
-        **measurement,
     )
 
 
@@ -262,110 +184,9 @@ def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
     return results
 
 
-def run_measure_benchmark(iterations: int = 1) -> list[ContractMetric]:
-    if iterations < 1:
-        raise ValueError("iterations must be positive")
-    from scripts.secretary_live_runtime import _normalize_invocation_outcome
-
-    fixtures = {
-        "captured_result": {
-            "assignment": {
-                "execution": {"state": "completed"},
-                "task_result": {"state": "reported_completed", "content": "answer"},
-            },
-            "observation": {},
-        },
-        "missing_optional_evidence": {
-            "assignment": {
-                "execution": {"state": "completed"},
-                "task_result": {"state": "reported_completed", "content": "answer"},
-            },
-            "observation": {"observation_error": "receipt unavailable"},
-        },
-        "cleanup_quarantine": {
-            "assignment": {
-                "execution": {"state": "completed"},
-                "cleanup": {"state": "unknown"},
-                "task_result": {"state": "reported_completed", "content": "answer"},
-            },
-            "observation": {"cleanup": {"state": "unknown"}},
-        },
-        "ambiguous_identity": {
-            "assignment": {
-                "attempt_id": "attempt-a",
-                "execution": {"state": "completed"},
-                "task_result": {
-                    "state": "reported_completed",
-                    "attempt_id": "attempt-b",
-                    "content": "answer",
-                },
-            },
-            "observation": {},
-        },
-    }
-    results: list[ContractMetric] = []
-    source = "secretary_live_runtime._normalize_invocation_outcome(fake-boundary)"
-    for run_id in range(1, iterations + 1):
-        for scenario_id, fixture in fixtures.items():
-            started = time.perf_counter()
-            outcome = _normalize_invocation_outcome(
-                invocation_id=f"measure-{run_id}-{scenario_id}",
-                returncode=0,
-                payload=fixture,
-                observation=fixture["observation"],
-                started_at="2026-10-11T10:00:00+00:00",
-                finished_at="2026-10-11T10:00:01+00:00",
-            )
-            latency_ms = (time.perf_counter() - started) * 1000
-            semantic_result = str(outcome["result"].get("state"))
-            outcome_state = str(outcome["resource"].get("state"))
-            failure_classification = "ambiguous_result" if semantic_result == "ambiguous" else "none"
-            expected = MEASURE_EXPECTATIONS[scenario_id]
-            actual = {
-                "semantic_result": semantic_result,
-                "outcome": outcome_state,
-                "failure_classification": failure_classification,
-                "blocker": expected["blocker"],
-                "duplicate_effects": expected["duplicate_effects"],
-            }
-            results.append(_metric(
-                scenario_id,
-                run_id,
-                "measure",
-                correct=(actual == expected),
-                outcome=outcome_state,
-                semantic_result=semantic_result,
-                failure_classification=failure_classification,
-                blocker=expected["blocker"],
-                duplicate_effects=expected["duplicate_effects"],
-                evidence_provenance="production-function-fake-boundary",
-                latency_ms=latency_ms,
-                measurement_status="measured",
-                measurement_source=source,
-                sample_count=iterations,
-            ))
-    return results
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    subparsers = parser.add_subparsers(dest="mode")
-    contract = subparsers.add_parser("contract")
-    contract.add_argument("iterations", nargs="?", type=int, default=1)
-    measure = subparsers.add_parser("measure")
-    measure.add_argument("iterations", nargs="?", type=int, default=1)
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    raw_argv = list(sys.argv[1:] if argv is None else argv)
-    if raw_argv and raw_argv[0].isdigit():
-        raw_argv.insert(0, "contract")
-    args = build_parser().parse_args(raw_argv)
-    mode = args.mode or "contract"
-    iterations = getattr(args, "iterations", 1)
-    results = run_measure_benchmark(iterations) if mode == "measure" else run_contract_benchmark(iterations)
-    print(json.dumps([asdict(item) for item in results], sort_keys=True))
+def main() -> int:
+    iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    print(json.dumps([asdict(item) for item in run_contract_benchmark(iterations)], sort_keys=True))
     return 0
 
 

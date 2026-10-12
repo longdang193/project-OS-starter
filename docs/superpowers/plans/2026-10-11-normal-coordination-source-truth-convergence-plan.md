@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: completed
+status: proposed
 layer: change
 name: normal-coordination-source-truth-convergence
 targets:
@@ -58,7 +58,6 @@ The verdict is narrowed before execution in four ways:
 | --- | --- |
 | Historical predecessor | `docs/superpowers/plans/2026-10-11-19-46-normal-coordination-result-and-resource-convergence-plan.md` completed at `88a46f25ba8d9ffe80c5f60823911ef3a6c41158` |
 | Current source baseline | `HEAD = origin/main = 0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f` |
-| Candidate implementation checkpoint | `72f2583e2d14b8b33fd8caf9bc6a05509ff44c9a` |
 | Inconsistent claims | `_observe_submitted_codex` can synthesize a `herdr://` reference from idle/output metadata; `_normalize_invocation_outcome` pools assignment and attempt identities; `_close_herdr_workspace` treats close success as settled without an absence proof; `run_contract_benchmark` emits deterministic six-scenario pairs rather than live measurements |
 | Current correction | This plan is the corrective source for the discrepancies; the completed predecessor remains unchanged historical evidence |
 
@@ -137,16 +136,16 @@ sweeper, retry manager, or coordination authority is introduced.
 - Branch: `codex/normal-coordination-source-truth-convergence`
 - Base commit: `0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f` (`HEAD` = `origin/main`)
 - Expected workspace: `clean task-specific worktree created from the base commit; preserve unrelated files outside the worktree`
-- Next action: `final plan checkpoint`
+- Next action: `create the task-specific worktree/branch, then complete Task 1 source/test reconciliation`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | task-specific | `codex` | none | exact revision, baseline tests, current-plan source-truth record | `HEAD=origin/main=0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f`; focused baseline `340 passed`; current generator returns `360` rows for `30` iterations (`6 scenarios × 2 architectures × 30`); no exact-shape readers for `secretary-invocation-v1` found outside the producer/tests; additive `owned_resources[]` and `recovery_required` are therefore consumer-compatible |
-| Task 2 | `completed` | task-specific | `codex` | Task 1 | semantic-result and field-aware identity matrix; local checkpoint | `86 passed` in `tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py`; synthetic Herdr references removed; long semantic content retained; same-field conflicts are ambiguous |
-| Task 3 | `completed` | task-specific | `codex` | Task 2 | cleanup precedence, exception envelope, workspace-settlement matrix; local checkpoint | `287 passed` in `tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`; verified workspace close required for settlement; exception paths retain `owned_resources` and `recovery_required` |
-| Task 4 | `completed` | task-specific | `codex` | Tasks 2–3 | canonical policy tests and generated-surface drift check | `37 passed`; `sync_agent_adapters.py --all-platforms --check` reports all adapter outputs up to date; no source wording change required |
-| Task 5 | `completed` | task-specific | `codex` | Tasks 2–4 | separate contract/measure modes, consolidated CI, final checkpoint | `348 passed`; `contract 30` emits `360` deterministic rows; `measure` reports production-function-fake-boundary provenance with sample-aware unavailable percentiles; benchmark test has one CI owner |
+| Task 1 | `pending` | task-specific | `unresolved` | none | exact revision, baseline tests, current-plan source-truth record | baseline focused suite: `340 passed` on `0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f` |
+| Task 2 | `pending` | task-specific | `unresolved` | Task 1 | semantic-result and field-aware identity matrix; local checkpoint | pending |
+| Task 3 | `pending` | task-specific | `unresolved` | Task 2 | cleanup precedence, exception envelope, workspace-settlement matrix; local checkpoint | pending |
+| Task 4 | `pending` | task-specific | `unresolved` | Tasks 2–3 | canonical policy tests and generated-surface drift check | pending |
+| Task 5 | `pending` | task-specific | `unresolved` | Tasks 2–4 | separate contract/measure modes, consolidated CI, final checkpoint | pending |
 
 ## Task Breakdown
 
@@ -191,15 +190,15 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `the checked-out revision changes, the workspace becomes dirty for an unrelated reason, or the required behavior belongs to a different active owner`
 
 **Steps:**
-- [x] Step 1: Create the clean task-specific worktree and branch from `0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f`; confirm its `HEAD`, branch, and clean-state assumptions.
-- [x] Step 2: Run the focused baseline suite and inspect the current normal result, identity, cleanup, CoS wording, and benchmark assertions.
-- [x] Step 3: Confirm the deterministic generator's actual row count and provenance; do not preserve stale claims such as `780` when the current implementation produces `6 × 2 × 30 = 360` rows.
-- [x] Step 4: Record in this plan the predecessor path, completion SHA, inconsistent claims, exact source symbols, and disposition that this plan's proof supersedes those claims; leave the predecessor unchanged.
-- [x] Step 5: Record whether invocation consumers tolerate additive `owned_resources[]` and `recovery_required` fields before Task 3 changes the output contract.
+- [ ] Step 1: Create the clean task-specific worktree and branch from `0bba4777df5f5a4ad5d6d4946a2b1488eb1da34f`; confirm its `HEAD`, branch, and clean-state assumptions.
+- [ ] Step 2: Run the focused baseline suite and inspect the current normal result, identity, cleanup, CoS wording, and benchmark assertions.
+- [ ] Step 3: Confirm the deterministic generator's actual row count and provenance; do not preserve stale claims such as `780` when the current implementation produces `6 × 2 × 30 = 360` rows.
+- [ ] Step 4: Record in this plan the predecessor path, completion SHA, inconsistent claims, exact source symbols, and disposition that this plan's proof supersedes those claims; leave the predecessor unchanged.
+- [ ] Step 5: Record whether invocation consumers tolerate additive `owned_resources[]` and `recovery_required` fields before Task 3 changes the output contract.
 
 **Verification:**
-- [x] `git rev-parse HEAD origin/main` shows the planned exact revision relationship.
-- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_benchmark.py tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
+- [ ] `git rev-parse HEAD origin/main` shows the planned exact revision relationship.
+- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_benchmark.py tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
 - Expected: the baseline is recorded, the predecessor note is explicit, and no unrelated file changes are introduced.
 
 **Exit Criteria:**
@@ -243,16 +242,16 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `captured result ownership requires a new durable schema, raw transport output would need to be persisted, or a retry/dispatch authority must be redesigned`
 
 **Steps:**
-- [x] Step 1: Add failing cases for idle plus nonempty output, output hash, sequence number, exit code, cleanup success, and synthetic references with no semantic payload; each must yield `result.state=unavailable`.
-- [x] Step 2: Define a verified retrievable reference as current-invocation attributable, resolved by a named resolver, successfully retrieved before publication, and either resolvable after cleanup or materialized into caller-owned output before cleanup. An ephemeral pane/agent reference that is deleted is not final evidence.
-- [x] Step 3: Add passing cases for actual correlated content or a verified retrievable result reference; preserve failed-but-reported results independently from execution state.
-- [x] Step 4: Keep semantic content separate from the existing 4096-character metadata guard; long valid content must be materialized in caller-owned output or fail explicitly with a reason, never silently become unavailable.
-- [x] Step 5: Validate `assignment_id` against `assignment_id` and `attempt_id` against `attempt_id`; accept distinct valid values and mark same-field conflicts ambiguous.
-- [x] Step 6: Assert ambiguous delivery never authorizes a second launch and keep provider economics attribution as a separate receipt/session/coverage decision.
-- [x] Step 7: Keep strict probe readiness dependent on its required receipt/telemetry evidence without allowing probe-only blocking to change normal semantic results.
+- [ ] Step 1: Add failing cases for idle plus nonempty output, output hash, sequence number, exit code, cleanup success, and synthetic references with no semantic payload; each must yield `result.state=unavailable`.
+- [ ] Step 2: Define a verified retrievable reference as current-invocation attributable, resolved by a named resolver, successfully retrieved before publication, and either resolvable after cleanup or materialized into caller-owned output before cleanup. An ephemeral pane/agent reference that is deleted is not final evidence.
+- [ ] Step 3: Add passing cases for actual correlated content or a verified retrievable result reference; preserve failed-but-reported results independently from execution state.
+- [ ] Step 4: Keep semantic content separate from the existing 4096-character metadata guard; long valid content must be materialized in caller-owned output or fail explicitly with a reason, never silently become unavailable.
+- [ ] Step 5: Validate `assignment_id` against `assignment_id` and `attempt_id` against `attempt_id`; accept distinct valid values and mark same-field conflicts ambiguous.
+- [ ] Step 6: Assert ambiguous delivery never authorizes a second launch and keep provider economics attribution as a separate receipt/session/coverage decision.
+- [ ] Step 7: Keep strict probe readiness dependent on its required receipt/telemetry evidence without allowing probe-only blocking to change normal semantic results.
 
 **Verification:**
-- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py`
+- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py`
 - Expected: normal results are reported only from semantic evidence, distinct valid IDs pass, same-field conflicts are ambiguous, and missing optional receipts/provider telemetry do not erase a normal result.
 
 **Exit Criteria:**
@@ -296,16 +295,16 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `workspace closure cannot be proven without a new daemon/registry, ownership would cross into unrelated resources, or cleanup would require destructive recovery approval`
 
 **Steps:**
-- [x] Step 1: Define the same-resource precedence as `verified removed > verified quarantined/preserved > provisional unknown > absent`, with explicit authoritative-conflict handling.
-- [x] Step 2: Ensure later verified removal can upgrade earlier unknown evidence and cannot be downgraded by a weaker launcher observation.
-- [x] Step 3: Treat `owned_resources[]` as additive invocation evidence, not a registry, durable ownership authority, or new lifecycle state machine. Retain `secretary-invocation-v1` when consumers tolerate additive fields; otherwise update exact-shape consumers explicitly before publication.
-- [x] Step 4: Make every exception after workspace/agent acquisition retain owned resource identities, current state, and `recovery_required`; preserve `result` independently. Cover both `cleanup succeeds → settled/recovery_required=false` and `cleanup unproven → quarantined/recovery_required=true`.
-- [x] Step 5: Reuse authoritative launcher/Herdr retirement evidence for pane/process/descendant proof. Secretary only reduces evidence; it does not become a second process-lifecycle owner.
-- [x] Step 6: Prove workspace closure either from an existing Herdr guarantee or with one bounded post-close check for the captured workspace/pane/process identities; return quarantined/unresolved when proof is unavailable.
-- [x] Step 7: Verify agent, pane, workspace, and process ownership remain local to the creating owner; do not add a global resource manager or retry permission after ambiguous delivery.
+- [ ] Step 1: Define the same-resource precedence as `verified removed > verified quarantined/preserved > provisional unknown > absent`, with explicit authoritative-conflict handling.
+- [ ] Step 2: Ensure later verified removal can upgrade earlier unknown evidence and cannot be downgraded by a weaker launcher observation.
+- [ ] Step 3: Treat `owned_resources[]` as additive invocation evidence, not a registry, durable ownership authority, or new lifecycle state machine. Retain `secretary-invocation-v1` when consumers tolerate additive fields; otherwise update exact-shape consumers explicitly before publication.
+- [ ] Step 4: Make every exception after workspace/agent acquisition retain owned resource identities, current state, and `recovery_required`; preserve `result` independently. Cover both `cleanup succeeds → settled/recovery_required=false` and `cleanup unproven → quarantined/recovery_required=true`.
+- [ ] Step 5: Reuse authoritative launcher/Herdr retirement evidence for pane/process/descendant proof. Secretary only reduces evidence; it does not become a second process-lifecycle owner.
+- [ ] Step 6: Prove workspace closure either from an existing Herdr guarantee or with one bounded post-close check for the captured workspace/pane/process identities; return quarantined/unresolved when proof is unavailable.
+- [ ] Step 7: Verify agent, pane, workspace, and process ownership remain local to the creating owner; do not add a global resource manager or retry permission after ambiguous delivery.
 
 **Verification:**
-- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
+- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
 - Expected: unknown→removed converges to settled, close failure is quarantined, exceptions preserve recovery identity, and result content remains available after cleanup.
 
 **Exit Criteria:**
@@ -351,14 +350,14 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `a generated file requires direct editing, wording would grant Secretary/CoS acceptance or lifecycle authority, or a new durable coordination state is proposed`
 
 **Steps:**
-- [x] Step 1: Change repository snapshot binding so advisory reasoning may state uncertainty/freshness without exact SHA, while exact audit, acceptance, mutation, and merge claims retain exact binding.
-- [x] Step 2: Reconcile wording for optional receipts, provider telemetry, Herdr, runtime sessions, and event hints so they remain evidence/capability gates only for claims that consume them.
-- [x] Step 3: Preserve the existing Secretary→CoS→Worker decision boundary and decision-delta handoff; do not add mesh communication, full-history handoffs, or routine Worker→Secretary progress.
-- [x] Step 4: Regenerate all declared agent views from canonical sources and update only tests that assert the corrected contract.
+- [ ] Step 1: Change repository snapshot binding so advisory reasoning may state uncertainty/freshness without exact SHA, while exact audit, acceptance, mutation, and merge claims retain exact binding.
+- [ ] Step 2: Reconcile wording for optional receipts, provider telemetry, Herdr, runtime sessions, and event hints so they remain evidence/capability gates only for claims that consume them.
+- [ ] Step 3: Preserve the existing Secretary→CoS→Worker decision boundary and decision-delta handoff; do not add mesh communication, full-history handoffs, or routine Worker→Secretary progress.
+- [ ] Step 4: Regenerate all declared agent views from canonical sources and update only tests that assert the corrected contract.
 
 **Verification:**
-- [x] `py -B -m pytest -q tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py`
-- [x] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
+- [ ] `py -B -m pytest -q tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py`
+- [ ] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
 - Expected: canonical and generated wording agree; advisory reasoning remains useful without exact SHA, while exact claims remain strict.
 
 **Exit Criteria:**
@@ -403,17 +402,17 @@ sweeper, retry manager, or coordination authority is introduced.
 - Stop for: `a new telemetry database, provider write, live credential requirement, statistical claim from insufficient samples, or unrelated CI change`
 
 **Steps:**
-- [x] Step 1: Add explicit `contract` and `measure` CLI modes. `contract` emits deterministic expected architecture cases; `measure` exercises production functions with fake external boundaries and reports measured/unavailable/not-attempted evidence.
-- [x] Step 2: Keep deterministic baseline/target scenarios as a contract fixture and label every row `deterministic-fake`, `live=false`, with unavailable latency/token fields; do not call this an empirical before/after improvement without running both exact historical and candidate SHAs through the same harness.
-- [x] Step 3: Add production-path instrumentation for launches, commands, provider queries, subprocesses, messages, retries, duplicate effects, and remaining resources without hardcoding those values in fixture rows.
-- [x] Step 4: Add the normal/probe/resource matrix to benchmark assertions, including result preservation under missing optional evidence and no duplicate retry after ambiguity.
-- [x] Step 5: Emit measured, unavailable, and not-attempted states with provenance and sample count; emit percentiles only when the declared sample threshold is met.
-- [x] Step 6: Move `tests/test_secretary_benchmark.py` from the two-OS `runtime` job to the existing Ubuntu `benchmark` job, keep one workflow owner, and preserve no-live-capability execution.
+- [ ] Step 1: Add explicit `contract` and `measure` CLI modes. `contract` emits deterministic expected architecture cases; `measure` exercises production functions with fake external boundaries and reports measured/unavailable/not-attempted evidence.
+- [ ] Step 2: Keep deterministic baseline/target scenarios as a contract fixture and label every row `deterministic-fake`, `live=false`, with unavailable latency/token fields; do not call this an empirical before/after improvement without running both exact historical and candidate SHAs through the same harness.
+- [ ] Step 3: Add production-path instrumentation for launches, commands, provider queries, subprocesses, messages, retries, duplicate effects, and remaining resources without hardcoding those values in fixture rows.
+- [ ] Step 4: Add the normal/probe/resource matrix to benchmark assertions, including result preservation under missing optional evidence and no duplicate retry after ambiguity.
+- [ ] Step 5: Emit measured, unavailable, and not-attempted states with provenance and sample count; emit percentiles only when the declared sample threshold is met.
+- [ ] Step 6: Move `tests/test_secretary_benchmark.py` from the two-OS `runtime` job to the existing Ubuntu `benchmark` job, keep one workflow owner, and preserve no-live-capability execution.
 
 **Verification:**
-- [x] `py -B -m pytest -q tests/test_secretary_benchmark.py tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_validate_repo_contracts.py`
-- [x] `py -B scripts/benchmark_secretary_architecture.py contract 30`
-- [x] `py -B scripts/benchmark_secretary_architecture.py measure`
+- [ ] `py -B -m pytest -q tests/test_secretary_benchmark.py tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_validate_repo_contracts.py`
+- [ ] `py -B scripts/benchmark_secretary_architecture.py contract 30`
+- [ ] `py -B scripts/benchmark_secretary_architecture.py measure`
 - Expected: contract rows remain honest fixtures; measured rows identify their production boundary and sample support; no latency/token claim appears without evidence; exactly one workflow owns the Secretary benchmark test.
 
 **Exit Criteria:**
@@ -423,31 +422,31 @@ sweeper, retry manager, or coordination authority is introduced.
 
 Final artifact verification runs only after all tasks are complete:
 
-- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_benchmark.py tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py` (`348 passed`)
-- [x] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
-- [x] `py -B scripts/validate_planning_lifecycle.py --repo-root .`
-- [x] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
-- [x] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
-- [x] `git diff --check`
-- [x] Confirm `git status --short --untracked-files=all` contains only declared plan/task changes and no unrelated mutation.
-- [x] Confirm every CI result used for acceptance is bound to the exact candidate head SHA; no remote CI result was used, so no stale remote evidence was accepted.
-- [x] Confirm proof-gated local checkpoint commits exist after Tasks 2 and 3 and at final verification, with no push or merge performed by this plan; implementation checkpoint is `72f2583e2d14b8b33fd8caf9bc6a05509ff44c9a`, and the final plan checkpoint follows this verification.
+- [ ] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_benchmark.py tests/test_skill_chief_of_staff.py tests/test_skill_project_secretary.py tests/test_herdr_main_launcher.py tests/test_reconciliation.py`
+- [ ] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
+- [ ] `py -B scripts/validate_planning_lifecycle.py --repo-root .`
+- [ ] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
+- [ ] `py -B scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`
+- [ ] `git diff --check`
+- [ ] Confirm `git status --short --untracked-files=all` contains only declared plan/task changes and no unrelated mutation.
+- [ ] Confirm every CI result used for acceptance is bound to the exact candidate head SHA; stale or unavailable remote evidence is recorded as such.
+- [ ] Confirm proof-gated local checkpoint commits exist after Tasks 2 and 3 and at final verification, with no push or merge performed by this plan.
 
 ### Required deterministic probe matrix
 
-- [x] Idle plus output but no semantic response → `result=unavailable`.
-- [x] Captured semantic response → `result=reported`.
-- [x] Different valid assignment/attempt IDs → accepted.
-- [x] Conflicting values for one identity field → rejected or `ambiguous`.
-- [x] Cleanup unknown followed by authoritative removal → `settled`.
-- [x] Workspace close failure → `quarantined` with recovery required.
-- [x] Exception after workspace creation, cleanup succeeds → `execution=failed`, `result=unavailable`, `resource=settled`, `recovery_required=false`.
-- [x] Exception after workspace creation, cleanup unproven → `execution=failed`, `result=unavailable`, `resource=quarantined`, resource identity retained, `recovery_required=true`.
-- [x] Provider or structured receipt unavailable → normal reasoning/result unaffected.
-- [x] Ambiguous delivery → exactly one launch and reconciliation before retry.
-- [x] Captured result followed by cleanup → result remains accessible.
-- [x] Direct advisory CoS without exact SHA → useful answer with uncertainty.
-- [x] Exact audit without exact SHA → blocked or explicitly qualified.
+- [ ] Idle plus output but no semantic response → `result=unavailable`.
+- [ ] Captured semantic response → `result=reported`.
+- [ ] Different valid assignment/attempt IDs → accepted.
+- [ ] Conflicting values for one identity field → rejected or `ambiguous`.
+- [ ] Cleanup unknown followed by authoritative removal → `settled`.
+- [ ] Workspace close failure → `quarantined` with recovery required.
+- [ ] Exception after workspace creation, cleanup succeeds → `execution=failed`, `result=unavailable`, `resource=settled`, `recovery_required=false`.
+- [ ] Exception after workspace creation, cleanup unproven → `execution=failed`, `result=unavailable`, `resource=quarantined`, resource identity retained, `recovery_required=true`.
+- [ ] Provider or structured receipt unavailable → normal reasoning/result unaffected.
+- [ ] Ambiguous delivery → exactly one launch and reconciliation before retry.
+- [ ] Captured result followed by cleanup → result remains accessible.
+- [ ] Direct advisory CoS without exact SHA → useful answer with uncertainty.
+- [ ] Exact audit without exact SHA → blocked or explicitly qualified.
 
 ### Required bounded live proof
 
@@ -472,15 +471,6 @@ Run strict receipt qualification separately. If strict probing returns
 that as the expected graceful-degradation outcome. If Herdr/provider/receipt
 capability is unavailable, preserve the normal source/test proof and record the
 live gate as unavailable rather than fabricating a result.
-
-**Final live-gate record:** The disposable normal invocation using nonce
-`SECRETARY_PROBE_20261011-0130` reached Herdr and created workspace `w5V` with
-pane `w5V:p1` and agent `normal-main-5f5be649`. `herdr.workspace.get` proved the
-workspace absent after close, and the owned workspace, session, pane, and agent
-were all recorded as settled. The normal semantic response was not captured;
-the final envelope was `result=unavailable`, `resource=quarantined`, and
-`recovery_required=true`. This is a managed-capability observation, not a
-failure of direct Secretary/CoS reasoning, and no live success claim is made.
 
 ## Completion Criteria
 

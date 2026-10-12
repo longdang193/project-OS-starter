@@ -583,28 +583,6 @@ def test_codex_completion_snapshot_reads_status_and_output(
     ]
 
 
-def test_codex_completion_snapshot_preserves_semantic_output(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_run(command, **kwargs):
-        if command[3:5] == ["agent", "get"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                '{"result":{"agent":{"agent_status":"idle","state_change_seq":8}}}',
-                "",
-            )
-        return subprocess.CompletedProcess(command, 0, '{"result":"SECRETARY_PROBE_test"}', "")
-
-    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-
-    snapshot = LAUNCHER._codex_completion_snapshot(
-        "herdr.exe", "session", "xhigh-main", env={},
-    )
-
-    assert snapshot["content"] == "SECRETARY_PROBE_test"
-
-
 def test_codex_observation_timeout_preserves_unknown_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
