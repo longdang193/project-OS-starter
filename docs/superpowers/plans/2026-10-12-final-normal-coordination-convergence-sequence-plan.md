@@ -45,7 +45,7 @@ does not reopen their task ledgers.
 | Evidence | Recorded fact |
 | --- | --- |
 | Current implementation baseline | `cbe684edd29897bf92625b25358ee1436b65b52a` (`origin/main` at activation) |
-| Frozen local candidate | final local `HEAD` after Task 7 reconciliation; exact SHA is recorded in the Git handoff |
+| Frozen local candidate | `e965756dcf6ba3c0f9f77e728a9b822ead6cdda5` (final plan-ledger checkpoint) |
 | Known blocker | At the cited `cbe684e` baseline, Windows runtime assertion observes `1800.0000000000002 <= 1800.0` in `test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending` |
 | Architectural mismatch | Codex managed observation supplies lifecycle/terminal diagnostics but no trusted attributable structured semantic result boundary |
 | Current safety rule | Terminal/pane output is diagnostic only unless authorship and current-attempt attribution are proven by an accepted structured source |
@@ -114,7 +114,7 @@ result, resource, observation, and timeout boundaries independently.
 | Task 5 | `completed` | same worktree | `codex` | Task 4 | docs and predecessor plan are reconciled after final code shape | maintained docs already aligned; predecessor remains explicitly blocked on its live structured-result acceptance gate |
 | Task 6 | `completed` | same worktree | `codex` | Tasks 1–5 | workflow checkout policy is included before local verification and candidate freeze | both workflows now check out and assert the immutable PR-head SHA |
 | Task 7 | `completed` | same worktree | `codex` | Task 6 | local final matrix passes and candidate SHA is frozen | final local `HEAD`; focused runtime/launcher suites, validators, adapter sync/drift checks, and `git diff --check` passed |
-| Task 8 | `completed` | same worktree | `codex` | Task 7 | exact-SHA GitHub checks pass or plan is blocked on authorization | PR #89 at `3c5ab246ddb58169f5c98eb615530a6689397e91`; Repository contracts, Runtime contracts (Ubuntu/Windows), and benchmark all passed; workflow logs verified immutable checkout/assertion |
+| Task 8 | `completed` | same worktree | `codex` | Task 7 | exact-SHA GitHub checks pass or plan is blocked on authorization | PR #89 at `e965756dcf6ba3c0f9f77e728a9b822ead6cdda5`; Repository contracts job `114867282296`, Runtime contracts Ubuntu job `114867281333`, Runtime contracts Windows job `114867281158`, and benchmark job `114867281441` all passed; workflow logs verified immutable checkout/assertion |
 
 ## Task Breakdown
 
