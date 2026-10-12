@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: managed-invocation-semantic-provenance-closure
 targets:
@@ -107,8 +107,8 @@ or other performance claims.
 - Branch: `codex/managed-invocation-semantic-provenance-closure`
 - Base commit: `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d` (`origin/main` at plan drafting)
 - Expected workspace: `clean implementation worktree`; preserve the primary checkout and all completed historical plans
-- Next action: restore a working Herdr/Codex agent-read boundary, then rerun the two bounded live probes against candidate `7d029825e692a7d67443395eccc94c79128bec30`
-- Blockers: live semantic capture is blocked by repeated `agent read transport timeout`; deterministic implementation and cleanup evidence remain valid, and no runtime patch is justified by the current external failure
+- Next action: none; retain the exact candidate and sanitized live receipt as closure evidence
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -116,7 +116,7 @@ or other performance claims.
 | Task 2 | `completed` | implementation worktree | `codex` | Task 1 | semantic projections agree; observation/finalization errors preserve authoritative work | `tests/test_secretary_live_runtime.py`; focused suite passed |
 | Task 3 | `completed` | implementation worktree | `codex` | Task 2 | contract fixture and fake-boundary measurement modes are distinct; incorrect validation exits nonzero | contract exit `0`; completion-monitor exit `0`; CI measure mode retired |
 | Task 4 | `completed` | implementation worktree | `codex` | Task 3 | existing artifact is classified without performance overclaim; exact-SHA evidence is reconciled | historical JSON parse passed; fake-boundary scope preserved |
-| Task 5 | `blocked` | disposable probe worktree | `codex` | Tasks 1–4 | both live probes satisfy semantic, cleanup, ownership, and no-mutation gates | both bounded probes captured unavailable semantic output; sanitized evidence recorded outside repo |
+| Task 5 | `completed` | disposable probe worktree | `codex` | Tasks 1–4 | both live probes satisfy semantic, cleanup, ownership, and no-mutation gates | candidate `c250342fefa36154513cf5cfb9c39b7ef13bec34`; Probe A and Probe B passed; sanitized evidence recorded outside repo |
 
 ## Task Breakdown
 
@@ -395,7 +395,7 @@ or other performance claims.
 - [x] Step 1: Freeze the candidate SHA and verify the disposable worktree is clean and based on that SHA.
 - [x] Step 2: Run Probe A through the existing normal invocation entry point with a unique exact-answer nonce.
 - [x] Step 3: Run Probe B with multiline/bullet user content and a distinct exact-answer nonce.
-- [ ] Step 4: Use the following bounded PowerShell command contract for each probe, with `$probeTask`, `$nonce`, and `$outputPath` set to the declared Probe A or Probe B values:
+- [x] Step 4: Use the bounded PowerShell command contract for each probe, with unique UTC nonces and strict semantic, projection, finalization, ownership, cleanup, and no-mutation gates. Both probes passed; dispatch count was unavailable and was not inferred.
 
   ```powershell
   $probeRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'project-os-managed-invocation-probe'
@@ -457,10 +457,10 @@ Return exactly $nonceB. Do not edit the repository or create child workers.
 
 - [x] Step 5: Sanitize and keep raw probe output ephemeral. Record the sanitized evidence in the OS temp directory resolved by `$env:TEMP` on Windows or `tempfile.gettempdir()` in Python, and record durable facts in the plan ledger: candidate SHA, nonce or nonce digest, semantic verdict, projection-equivalence verdict, resource-retirement verdict, repository-unchanged verdict, elapsed duration, evidence-file digest, and unavailable capabilities.
 - [x] Step 6: On timeout or any unavailable acceptance predicate, retain the disposable worktree and invocation-owned resource identities, run the existing ownership-safe reconciliation/close path, and record the live proof as `blocked`; never delete shared or ambiguous resources.
-- [ ] Step 7: Invoke `skill-verification-before-completion`; update this plan to `completed` only after deterministic proof and both live gates are verified.
+- [x] Step 7: Invoke `skill-verification-before-completion`; deterministic proof and both live gates verified, then update this plan to `completed`.
 
 **Verification:**
-- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py tests/test_skill_chief_of_staff.py tests/test_reconciliation.py` (`396 passed`)
+- [x] `py -B -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_main_launcher.py tests/test_secretary_benchmark.py tests/test_benchmark_completion_monitoring.py tests/test_skill_chief_of_staff.py tests/test_reconciliation.py` (`400 passed`)
 - [x] `py -B scripts/validate_repo_contracts.py --repo-root . --fast`
 - [x] `py -B scripts/validate_planning_lifecycle.py --repo-root .`
 - [x] `py -B scripts/sync_agent_adapters.py --all-platforms --check`
@@ -481,9 +481,11 @@ inventory, and a comparison showing the accepted evidence refers to the exact
 candidate SHA. The final live evidence must remain outside the repository unless
 the user separately authorizes a sanitized tracked artifact.
 
-Current evidence: candidate `7d029825e692a7d67443395eccc94c79128bec30`; frozen-baseline fake-boundary harness passed with baseline `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d` and three repetitions; historical artifact remained immutable; sanitized blocked live evidence is at `C:\tmp\project-os-managed-invocation-semantic-provenance-final.json` with SHA-256 `619f40f4e29ce0f1815df59675de2db3297057f32c3591b79bfd3fc1ee90150d`.
+Current evidence: candidate `c250342fefa36154513cf5cfb9c39b7ef13bec34`; frozen-baseline fake-boundary harness passed with baseline `f6f0bcf0bd5e4289eb872e1cce43038bcf7ece7d` and three repetitions; historical artifact remained immutable; sanitized live evidence is at `C:\tmp\project-os-managed-invocation-semantic-provenance-final.json` with SHA-256 `71e3db255a8a8fbfc6ddc4fbfbd9cb1a026118bd30567dd0428fa42d1b16f634`. Probe A nonce SHA-256 is `727b5c12583676c300d0d80c49408bb213b6186824f82583e7d1d8cd604afd1b`; Probe B nonce SHA-256 is `caab04aeb1ba1123df9dbf1dcd8ecdde88aa7bad5e0d630ef37f0ad85ef1f936`.
 
-Live root cause: both bounded probes reached Herdr workspace/agent cleanup, but the shared `herdr_main_launcher._codex_completion_snapshot()` boundary returned `agent read transport timeout`. The callers correctly projected `semantic_outcome` and `result` as `unavailable`, preserved settled resource state, and exited nonzero. No runtime patch is justified; restoring the external agent-read capability is the unblock condition.
+Live closure: both probes returned `reported`/`completed` semantic and compatibility results with matching nonce content, `done` completion, no observation error, settled/reusable resources, removed cleanup state, three settled owned resources, and unchanged disposable repositories. Dispatch count was unavailable and remained explicitly unavailable.
+
+Root causes patched: the launcher no longer reads terminal output while Herdr reports `working`; the semantic observer accepts only fresh terminal completions with a captured pre-submit anchor and completion marker when structured TaskResult evidence is absent; and the extractor selects the last completed bullet block so multiline user bullets cannot swallow the assistant answer. Focused and full deterministic suites pass.
 
 ## Completion Criteria
 
