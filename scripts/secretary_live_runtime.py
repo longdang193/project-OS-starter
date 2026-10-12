@@ -130,13 +130,18 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
         redacted,
     )
     redacted = re.sub(
-        r"(?i)\b(password|authorization|api[_-]?key|secret)\s*[:=]\s*[^\s,;]+",
-        r"\1=[REDACTED]",
+        r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)\"(?:\\.|[^\"\\])*\"",
+        r'\1"[REDACTED]"',
         redacted,
     )
     redacted = re.sub(
-        r"(?i)([\"']?(?:password|authorization|api[_-]?key|secret|token|access_token)[\"']?\s*[:=]\s*[\"']?)([^\"'\s,;}]+)([\"']?)",
-        r"\1[REDACTED]\3",
+        r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)'(?:\\.|[^'\\])*'",
+        r"\1'[REDACTED]'",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([\"']?(?:password|authorization|api[_-]?key|apikey|secret|token|access_token)[\"']?\s*[:=]\s*)([^\"'\s,;}]+)",
+        r"\1[REDACTED]",
         redacted,
     )
     return redacted
@@ -387,7 +392,10 @@ def _create_herdr_workspace(
         if isinstance(result_payload, Mapping):
             workspace_id = _safe_text(result_payload.get("workspace_id"))
         root_pane = result_payload["root_pane"]
-        workspace_id = root_pane["workspace_id"]
+        root_workspace_id = _safe_text(root_pane.get("workspace_id"))
+        if root_workspace_id is None:
+            raise ValueError("root pane workspace identity missing")
+        workspace_id = root_workspace_id
         pane_id = root_pane["pane_id"]
         pane_cwd = Path(root_pane["cwd"]).resolve()
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -797,7 +805,9 @@ def _submission_freshness_proven(
     anchor_semantic = _extract_codex_semantic_content(anchor.get("content"))
     snapshot_semantic = _extract_codex_semantic_content(snapshot.get("content"))
     if anchor_semantic and snapshot_semantic and anchor_semantic == snapshot_semantic and not identity_changed:
-        if not re.search(r"(?m)^\s*Worked for\b", str(snapshot.get("content") or "")):
+        if _extract_codex_completion_marker(snapshot.get("content")) is None:
+            return False
+        if snapshot.get("content") != anchor.get("content"):
             return False
     anchor_seq = anchor.get("state_change_seq")
     snapshot_seq = snapshot.get("state_change_seq")
@@ -1691,6 +1701,13 @@ def _extract_codex_semantic_content(value: object) -> str | None:
                 candidates.append(content)
                 break
     return candidates[-1] if candidates else None
+
+
+def _extract_codex_completion_marker(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    matches = re.findall(r"(?m)^\s*Worked for\b.*$", value)
+    return matches[-1].strip() if matches else None
 
 
 def _configured_semantic_secrets() -> tuple[str, ...]:
