@@ -134,6 +134,11 @@ def _redact_semantic_content(value: object, configured_secrets: tuple[str, ...] 
         r"\1=[REDACTED]",
         redacted,
     )
+    redacted = re.sub(
+        r"(?i)([\"']?(?:password|authorization|api[_-]?key|secret|token|access_token)[\"']?\s*[:=]\s*[\"']?)([^\"'\s,;}]+)([\"']?)",
+        r"\1[REDACTED]\3",
+        redacted,
+    )
     return redacted
 
 
@@ -405,8 +410,11 @@ def _create_herdr_workspace(
         error.workspace_close = workspace_close
         raise error
     if pane_cwd != request.worktree.resolve():
-        _close_herdr_workspace(herdr, workspace_id, env=env)
-        raise LaunchBlocked(f"Herdr workspace cwd mismatch: expected {request.worktree}, got {pane_cwd}")
+        workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
+        error = LaunchBlocked(f"Herdr workspace cwd mismatch: expected {request.worktree}, got {pane_cwd}")
+        error.workspace_id = workspace_id
+        error.workspace_close = workspace_close
+        raise error
     return workspace_id, pane_id
 
 
@@ -789,7 +797,8 @@ def _submission_freshness_proven(
     anchor_semantic = _extract_codex_semantic_content(anchor.get("content"))
     snapshot_semantic = _extract_codex_semantic_content(snapshot.get("content"))
     if anchor_semantic and snapshot_semantic and anchor_semantic == snapshot_semantic and not identity_changed:
-        return False
+        if not re.search(r"(?m)^\s*Worked for\b", str(snapshot.get("content") or "")):
+            return False
     anchor_seq = anchor.get("state_change_seq")
     snapshot_seq = snapshot.get("state_change_seq")
     if anchor_seq is not None and snapshot_seq is not None and anchor_seq != snapshot_seq:

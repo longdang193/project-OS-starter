@@ -2429,6 +2429,34 @@ def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(
     assert closed == [["herdr", "workspace", "close", "w99"]]
 
 
+def test_create_herdr_workspace_preserves_identity_on_cwd_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    def fake_run(command, **kwargs):
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"root_pane": {"cwd": "C:/wrong-worktree/", "pane_id": "w99:p1", "workspace_id": "w99"}}}),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"result": {"workspace_id": "w99", "state": "present"}}), "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    with pytest.raises(runtime.LaunchBlocked) as raised:
+        runtime._create_herdr_workspace(request(worktree=Path("C:/worktree")), "herdr", env={})
+
+    assert raised.value.workspace_id == "w99"
+    assert raised.value.workspace_close["verified"] is False
+
+
 def test_prepare_herdr_target_preserves_workspace_after_pane_oserror(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2528,6 +2556,37 @@ def test_observe_submitted_codex_rejects_old_answer_with_unrelated_terminal_chur
     assert "semantic_content" not in observation
 
 
+def test_observe_submitted_codex_accepts_repeated_answer_with_terminal_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answer = "Codex screen\n• SAME ANSWER\nWorked for 1s\n› Ask Codex to do anything"
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": answer,
+            "output_sha256": "b" * 64,
+            "output_chars": len(answer),
+            "state_change_seq": 3,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": answer},
+        env={},
+    )
+
+    assert observation["semantic_content"] == "SAME ANSWER"
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -2547,3 +2606,20 @@ def test_normal_outcome_preserves_safe_security_prose(content: str) -> None:
     )
 
     assert result["result"] == {"state": "reported", "status": "completed", "content": content}
+
+
+def test_normal_outcome_redacts_quoted_secret_values() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={
+            "state": "done",
+            "semantic_content": '{"api_key": "SYNTHETIC_SECRET_CANARY"}',
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"]["content"] == '{"api_key": "[REDACTED]"}'
