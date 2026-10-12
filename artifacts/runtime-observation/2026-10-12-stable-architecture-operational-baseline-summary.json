@@ -1,0 +1,400 @@
+{
+  "schema": "runtime-observation-summary/v1",
+  "generated_at_utc": "2026-10-12T20:38:47.175Z",
+  "git_revision": "7196983549392a5780f80b060daba5b05dd04d10",
+  "sample_count": 20,
+  "required_managed_sample_count": 20,
+  "sample_status": "measured",
+  "sample_homogeneity": {
+    "executor": [
+      "deepagents"
+    ],
+    "profile": [
+      "normal"
+    ],
+    "grant_wall_clock_seconds": [
+      120
+    ],
+    "task_sha256": [
+      "7bcd2fdf1e4ad6dfefae836196338cdce391afca8d9927934c60d6a522926b82"
+    ],
+    "producer": [
+      "deepagents-worker"
+    ]
+  },
+  "phase_stats_ms": {
+    "preflight": {
+      "count": 20,
+      "median": 142.354,
+      "max": 439.466,
+      "p95_descriptive": 212.793,
+      "min": 130.903
+    },
+    "target_discovery": {
+      "count": 20,
+      "median": 85.772,
+      "max": 179.243,
+      "p95_descriptive": 124.577,
+      "min": 58.43
+    },
+    "launch_preparation": {
+      "count": 20,
+      "median": 47.026,
+      "max": 159.742,
+      "p95_descriptive": 62.102,
+      "min": 40.379
+    },
+    "delivery": {
+      "status": "unavailable"
+    },
+    "observation": {
+      "count": 20,
+      "median": 69290.148,
+      "max": 85527.659,
+      "p95_descriptive": 85003.998,
+      "min": 40827.307
+    },
+    "retirement": {
+      "status": "unavailable"
+    },
+    "worker_initialization": {
+      "status": "unavailable"
+    }
+  },
+  "total_duration_ms": {
+    "count": 20,
+    "median": 69776.767,
+    "max": 85939.712,
+    "p95_descriptive": 85436.841,
+    "min": 41258.993
+  },
+  "non_worker_duration_ms": {
+    "count": 20,
+    "median": 431.6860000000015,
+    "max": 1051.4429999999993,
+    "p95_descriptive": 486.61900000000605,
+    "min": 346.77999999999884
+  },
+  "worker_provider_duration_ms": {
+    "status": "unavailable",
+    "reason": "launcher does not separately attribute provider/worker initialization duration"
+  },
+  "subprocess_counts": {
+    "total": 1606,
+    "by_executable": {
+      "git": 60,
+      "herdr.exe": 1546
+    }
+  },
+  "outcomes": {
+    "launcher_exit_code": {
+      "0": 20
+    },
+    "worker_exit_code": {
+      "0": 20
+    },
+    "task_result_state": {
+      "reported_completed": 20
+    },
+    "producer": {
+      "deepagents-worker": 20
+    },
+    "cleanup_state": {
+      "removed": 20
+    },
+    "retirement_proven": 20,
+    "reconciliation_required": {
+      "false": 20
+    },
+    "receipt_authoritative": 20
+  },
+  "decision": {
+    "outcome": "freeze_project_os_runtime",
+    "runtime_optimization": "deferred",
+    "reason": "The homogeneous current sample shows target discovery and launch preparation below 0.2 seconds each while observation dominates total duration; no material recurring non-worker cost is established for the pane-validation reduction.",
+    "ci_cache": "proceed",
+    "evidence_quality": "20 homogeneous managed read-only attempts with valid worker-owned task results; descriptive p95 only, not an SLO"
+  },
+  "probes": [
+    {
+      "index": 1,
+      "assignment_id": "stable-architecture-baseline-assignment-07",
+      "attempt_id": "27f83216198b4561b5b0ac4a0842729c",
+      "total_duration_ms": 75097.442,
+      "observation_duration_ms": 74675.525,
+      "target_discovery_ms": 87.516,
+      "launch_preparation_ms": 44.591,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 2,
+      "assignment_id": "stable-architecture-baseline-assignment-08",
+      "attempt_id": "151b806fe7db4f32bd118512a616cc33",
+      "total_duration_ms": 59466.472,
+      "observation_duration_ms": 59065.329,
+      "target_discovery_ms": 84.145,
+      "launch_preparation_ms": 47.533,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 3,
+      "assignment_id": "stable-architecture-baseline-assignment-09",
+      "attempt_id": "47b9a6a0c3014c2ca8aceff35bed9c83",
+      "total_duration_ms": 69776.767,
+      "observation_duration_ms": 69290.148,
+      "target_discovery_ms": 79.472,
+      "launch_preparation_ms": 40.979,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 4,
+      "assignment_id": "stable-architecture-baseline-assignment-10",
+      "attempt_id": "6e5f366b09db4c5c84ddd23a7b660765",
+      "total_duration_ms": 73533.587,
+      "observation_duration_ms": 72482.144,
+      "target_discovery_ms": 179.243,
+      "launch_preparation_ms": 159.742,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 5,
+      "assignment_id": "stable-architecture-baseline-assignment-11",
+      "attempt_id": "7f2ea5e959f049c39c95a16c2aa1fb62",
+      "total_duration_ms": 78693.884,
+      "observation_duration_ms": 78239.382,
+      "target_discovery_ms": 95.128,
+      "launch_preparation_ms": 57.234,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 6,
+      "assignment_id": "stable-architecture-baseline-assignment-12",
+      "attempt_id": "0f878160aa6048379290beed54a28b14",
+      "total_duration_ms": 64844.679,
+      "observation_duration_ms": 64370.635,
+      "target_discovery_ms": 87.73,
+      "launch_preparation_ms": 47.026,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 7,
+      "assignment_id": "stable-architecture-baseline-assignment-13",
+      "attempt_id": "714c631469ba4f54ad2cbc07794753ee",
+      "total_duration_ms": 85939.712,
+      "observation_duration_ms": 85527.659,
+      "target_discovery_ms": 87.988,
+      "launch_preparation_ms": 43.355,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 8,
+      "assignment_id": "stable-architecture-baseline-assignment-14",
+      "attempt_id": "c0819a368e924f11a2ad00d538332ea7",
+      "total_duration_ms": 79945.227,
+      "observation_duration_ms": 79466.816,
+      "target_discovery_ms": 88.358,
+      "launch_preparation_ms": 42.051,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 9,
+      "assignment_id": "stable-architecture-baseline-assignment-15",
+      "attempt_id": "a3e2374e84114b1a9c81a420358f9c85",
+      "total_duration_ms": 65879.971,
+      "observation_duration_ms": 65396.241,
+      "target_discovery_ms": 124.577,
+      "launch_preparation_ms": 54.777,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 10,
+      "assignment_id": "stable-architecture-baseline-assignment-16",
+      "attempt_id": "229d8f5b4c5e4e50a19f42e432a18c76",
+      "total_duration_ms": 60376.492,
+      "observation_duration_ms": 59962.723,
+      "target_discovery_ms": 90.042,
+      "launch_preparation_ms": 40.379,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 11,
+      "assignment_id": "stable-architecture-baseline-assignment-17",
+      "attempt_id": "e23abed7a9a445eb9d68daaf90ce9581",
+      "total_duration_ms": 79502.335,
+      "observation_duration_ms": 79068.121,
+      "target_discovery_ms": 85.772,
+      "launch_preparation_ms": 41.833,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 12,
+      "assignment_id": "stable-architecture-baseline-assignment-18",
+      "attempt_id": "4e35fd6b58344c479d2cf2f2f4a197f2",
+      "total_duration_ms": 41258.993,
+      "observation_duration_ms": 40827.307,
+      "target_discovery_ms": 94.453,
+      "launch_preparation_ms": 43.972,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 13,
+      "assignment_id": "stable-architecture-baseline-assignment-19",
+      "attempt_id": "48b6fd86774545cd89d33ab974360012",
+      "total_duration_ms": 64067.653,
+      "observation_duration_ms": 63663.25,
+      "target_discovery_ms": 80.751,
+      "launch_preparation_ms": 43.697,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 14,
+      "assignment_id": "stable-architecture-baseline-assignment-20",
+      "attempt_id": "174f8c6f8d654fddb930d5352f52fb34",
+      "total_duration_ms": 64419.17,
+      "observation_duration_ms": 63932.92,
+      "target_discovery_ms": 106.397,
+      "launch_preparation_ms": 52.144,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 15,
+      "assignment_id": "stable-architecture-baseline-assignment-21",
+      "attempt_id": "ce4b26c9e2654801b589b926f10fa6bd",
+      "total_duration_ms": 59900.873,
+      "observation_duration_ms": 59490.314,
+      "target_discovery_ms": 63.525,
+      "launch_preparation_ms": 47.84,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 16,
+      "assignment_id": "stable-architecture-baseline-assignment-22",
+      "attempt_id": "dbaa039757f84062b380c7f46d099706",
+      "total_duration_ms": 71163.54,
+      "observation_duration_ms": 70698.307,
+      "target_discovery_ms": 78.148,
+      "launch_preparation_ms": 62.102,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 17,
+      "assignment_id": "stable-architecture-baseline-assignment-23",
+      "attempt_id": "4af3c9bdcca7470b94f2003bad5eb3f1",
+      "total_duration_ms": 65587.469,
+      "observation_duration_ms": 65200.414,
+      "target_discovery_ms": 63.987,
+      "launch_preparation_ms": 49.74,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 18,
+      "assignment_id": "stable-architecture-baseline-assignment-24",
+      "attempt_id": "2224d1f6501b4680a328c95faf2b01b0",
+      "total_duration_ms": 85436.841,
+      "observation_duration_ms": 85003.998,
+      "target_discovery_ms": 58.599,
+      "launch_preparation_ms": 47.98,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 19,
+      "assignment_id": "stable-architecture-baseline-assignment-25",
+      "attempt_id": "5667a8c393e14415b20c5102ae98d978",
+      "total_duration_ms": 82620.031,
+      "observation_duration_ms": 82273.251,
+      "target_discovery_ms": 58.43,
+      "launch_preparation_ms": 42.042,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    },
+    {
+      "index": 20,
+      "assignment_id": "stable-architecture-baseline-assignment-26",
+      "attempt_id": "ec2c214d72a7460a80f5b40641778cb8",
+      "total_duration_ms": 69810.858,
+      "observation_duration_ms": 69416.478,
+      "target_discovery_ms": 73.944,
+      "launch_preparation_ms": 48.102,
+      "task_result_state": "reported_completed",
+      "producer": "deepagents-worker",
+      "cleanup": "removed",
+      "retirement": true,
+      "reconciliation_required": false
+    }
+  ]
+}
