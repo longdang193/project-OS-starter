@@ -1726,7 +1726,6 @@ def _extract_codex_semantic_content(value: object) -> str | None:
             if (
                 prompt_boundary
                 or prompt_echo
-                or (segment_index > 0 and saw_prompt)
                 or (saw_prompt and not has_completion_marker)
             ):
                 continue
@@ -1745,9 +1744,7 @@ def _extract_codex_semantic_content(value: object) -> str | None:
                 candidates.append(content)
                 found_candidate = True
                 break
-        if (segment_index > 0 and saw_prompt and not found_candidate) or (
-            prompt_echo and not found_candidate
-        ):
+        if prompt_echo and not found_candidate:
             prompt_boundary = True
         elif found_candidate:
             prompt_boundary = False
