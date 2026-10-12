@@ -751,6 +751,10 @@ def test_observe_submitted_codex_rejects_stale_idle_output(
             "observation_error": None,
         },
     )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
 
     observation = _observe_submitted_codex(
         request(session="session", pane="pane"),
@@ -845,6 +849,10 @@ def test_observe_submitted_codex_rejects_partial_or_stopped_answer(
             "output_chars": 30,
             "observation_error": None,
         },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
     )
 
     observation = _observe_submitted_codex(
@@ -982,6 +990,26 @@ def test_release_codex_agent_does_not_treat_transport_failure_as_removal(
         "w1:p1",
         env={},
     )["state"] == "unknown"
+
+
+def test_release_codex_agent_never_raises_for_null_retirement_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        return None
+
+    monkeypatch.setattr("scripts.secretary_live_runtime._herdr_run", fake_run)
+
+    result = _release_codex_agent("herdr", "session", "agent", "pane", env={})
+
+    assert result["state"] == "unknown"
+    assert calls == 2
 
 
 @pytest.mark.parametrize("response", [None, subprocess.CompletedProcess([], 0, "null", "")])
@@ -2401,6 +2429,41 @@ def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(
     assert closed == [["herdr", "workspace", "close", "w99"]]
 
 
+def test_prepare_herdr_target_preserves_workspace_after_pane_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    closed: list[str] = []
+
+    def fake_run(command, **kwargs):
+        if command[1:] == ["status", "server"]:
+            return subprocess.CompletedProcess(command, 0, "status: running\n", "")
+        if command[1:3] == ["workspace", "create"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"result": {"root_pane": {"cwd": "C:/worktree/", "pane_id": "w99:p1", "workspace_id": "w99"}}}),
+                "",
+            )
+        if command[1:3] == ["workspace", "close"]:
+            closed.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workspace", "get"]:
+            return subprocess.CompletedProcess(command, 1, json.dumps({"error": {"code": "workspace_not_found"}}), "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+    monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("pane read failed")))
+
+    with pytest.raises(OSError) as raised:
+        runtime._prepare_herdr_target(request(worktree=Path("C:/worktree")), herdr="herdr", env={})
+
+    assert getattr(raised.value, "workspace_id") == "w99"
+    assert getattr(raised.value, "workspace_close")["verified"] is True
+    assert closed == ["w99"]
+
+
 def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
     payload = select_launcher_payload(
         [
@@ -2429,4 +2492,58 @@ def test_runtime_script_runs_directly_from_repository_root() -> None:
     assert completed.returncode == 0
     assert "run" in completed.stdout
     assert "probe" in completed.stdout
-    assert "smoke" in completed.stdout
+
+
+def test_observe_submitted_codex_rejects_old_answer_with_unrelated_terminal_churn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stale = "Codex screen\n• OLD ANSWER\n› Ask Codex to do anything"
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr("scripts.secretary_live_runtime._CODEX_OBSERVATION_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            **_submission_anchor(),
+            "state": "idle",
+            "content": stale + "\nnew prompt echo",
+            "output_sha256": "b" * 64,
+            "output_chars": len(stale) + 16,
+            "state_change_seq": 2,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "content": stale},
+        env={},
+    )
+
+    assert observation["observation_error"] == "submission freshness not proven"
+    assert "semantic_content" not in observation
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "Never put passwords in source code.",
+        "Authorization headers should be redacted.",
+        "Bearer [REDACTED] is safe to display.",
+    ],
+)
+def test_normal_outcome_preserves_safe_security_prose(content: str) -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"execution": {"state": "completed"}, "task_result": {"state": "unknown"}}},
+        observation={"state": "done", "semantic_content": content, "cleanup": {"state": "removed"}},
+        started_at="2026-10-11T00:00:00+00:00",
+        finished_at="2026-10-11T00:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "reported", "status": "completed", "content": content}

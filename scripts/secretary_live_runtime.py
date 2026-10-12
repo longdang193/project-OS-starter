@@ -463,7 +463,7 @@ def _prepare_herdr_target(
     )
     try:
         _verify_herdr_pane(request, herdr, pane, env=env)
-    except LaunchBlocked as exc:
+    except Exception as exc:
         exc.workspace_id = workspace_id
         exc.workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
         raise
@@ -582,10 +582,10 @@ def _release_codex_agent(
             )
         except (CommandTransportTimeout, OSError):
             return {"state": "unknown", "error": "agent retirement observation timed out"}
+        if get_result is None or not isinstance(getattr(get_result, "returncode", None), int):
+            return {"state": "unknown", "error": "malformed agent observation response"}
         if get_result.returncode:
             error_code = None
-            if get_result is None or not isinstance(getattr(get_result, "returncode", None), int):
-                return {"state": "unknown", "error": "malformed agent observation response"}
             for output in (getattr(get_result, "stdout", ""), getattr(get_result, "stderr", "")):
                 try:
                     payload = json.loads(output)
@@ -780,6 +780,15 @@ def _submission_freshness_proven(
     snapshot: Mapping[str, Any],
 ) -> bool:
     if not isinstance(anchor, Mapping):
+        return False
+    identity_changed = False
+    for key in ("result_id", "result_reference", "completion_id"):
+        if snapshot.get(key) not in (None, "") and snapshot.get(key) != anchor.get(key):
+            identity_changed = True
+            break
+    anchor_semantic = _extract_codex_semantic_content(anchor.get("content"))
+    snapshot_semantic = _extract_codex_semantic_content(snapshot.get("content"))
+    if anchor_semantic and snapshot_semantic and anchor_semantic == snapshot_semantic and not identity_changed:
         return False
     anchor_seq = anchor.get("state_change_seq")
     snapshot_seq = snapshot.get("state_change_seq")
@@ -1641,6 +1650,13 @@ def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None
     return text
 
 
+def _safe_semantic_result_value(value: object, *, allow_long: bool = False) -> str | None:
+    text = _redact_semantic_content(value, _configured_semantic_secrets())
+    if text is None or (not allow_long and len(text) > 4096):
+        return None
+    return text
+
+
 def _extract_codex_semantic_content(value: object) -> str | None:
     text = _redact_semantic_content(value, _configured_semantic_secrets())
     if text is None or "› Ask Codex" not in text:
@@ -1681,7 +1697,7 @@ def _result_evidence(source: Mapping[str, Any]) -> tuple[str | None, str | None]
             break
     content = None
     for key in ("semantic_content", "content", "response", "message", "result_content", "resolved_content"):
-        content = _safe_result_value(source.get(key), allow_long=True)
+        content = _safe_semantic_result_value(source.get(key), allow_long=True)
         if content:
             break
     if content:
