@@ -30,6 +30,12 @@ tests. Shared Project OS docs, scripts, and skills remain upstream-authored and
 user-global. Private factory maintenance, adapter generation, and starter rebuild
 workflows remain upstream concerns and are not downstream operating instructions.
 
+The starter kit is an internal, pre-provisioned consumer package. It intentionally
+omits the canonical root `AGENTS.md`; deploy the global runtime before using the
+kit. The factory repository remains the authoring source for `AGENTS.md` and its
+provider adapter mappings, while deployment materializes the provider-specific
+global projections under `~/.codex`, `~/.claude`, and `~/.gemini/antigravity`.
+
 ### Public Repository
 
 Public repository receives curated product-facing output through publication procedure. It is not a mirror of private repository.

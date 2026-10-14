@@ -80,8 +80,8 @@ Rules:
   surfaces on purpose when they are part of the clone-ready starter contract
 - public publication must still exclude those private-only surfaces unless they
   are intentionally rewritten for public use
-- adapter regeneration stays source-only even when the starter kit ships final
-  `AGENTS.md`, `GEMINI.md`, and `CLAUDE.md`
+- adapter regeneration stays source-only; the starter kit ships provider
+  projections but omits the canonical `AGENTS.md`
 
 Treat these as separate procedures:
 

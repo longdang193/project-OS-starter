@@ -15,6 +15,13 @@ creating or refreshing consumer projects:
 py -3 scripts/deploy_agent_runtime.py --target all
 ```
 
+This deployment is mandatory before using the generated starter kit. The kit
+is an internal, pre-provisioned consumer package rather than a standalone
+runtime distribution; it intentionally does not include the canonical root
+`AGENTS.md`. The factory keeps that file as the authoring source and continues
+to generate the provider-specific global projections under `~/.codex`,
+`~/.claude`, and `~/.gemini/antigravity`.
+
 This writes marker-owned files under `~/.agents/project-os` and
 `~/.agents/skills`. Consumer projects keep only project state and local
 contracts. Do not copy `docs/operating_system`, shared scripts, or
@@ -79,7 +86,10 @@ py -3 -m pytest tests/test_starter_kit_generation.py tests/test_validate_repo_co
 
 Before treating a rebuild as ready, confirm:
 
-- generated root contains shipped `AGENTS.md`, `GEMINI.md`, and `CLAUDE.md`
+- generated root does not contain `AGENTS.md`
+- generated root contains the provider-specific `GEMINI.md` and `CLAUDE.md`
+  projections that remain in the manifest
+- global runtime deployment has completed before the kit is used
 - required starter directories exist under `docs/superpowers/`
 - shared docs/scripts are absent from generated kit output and present in the global installation
 - local `.agents/skills/` is absent from generated kit output and shared skills are present under `~/.agents/skills`
@@ -101,5 +111,7 @@ Keep these procedures separate:
 - private runtime-bundle procedures -> maintain local provider/runtime deployment
   surfaces outside starter output
 
-The starter kit ships final root instruction files for downstream use, but it
-must not ship downstream adapter-regeneration machinery.
+The starter kit ships provider-specific root instruction projections for
+downstream use, but it does not ship the canonical `AGENTS.md` or downstream
+adapter-regeneration machinery. Global runtime deployment is therefore a
+bootstrap prerequisite, not an optional enhancement.

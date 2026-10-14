@@ -9,6 +9,7 @@ covers:
   - Starter-kit verification catches forbidden shipped paths and missing required surfaces
   - Starter-kit generation supports omitted copied subpaths and required empty directories
   - Starter-kit build fails fast when expected generated provider root instruction files are missing
+  - Starter-kit output omits the canonical AGENTS.md and requires global runtime deployment
   - Starter-kit validation can detect parity drift between generated export and synced sibling repo trees
 tags:
   - fast
@@ -85,8 +86,11 @@ def test_starter_onboarding_matches_optional_intent_and_atomic_kit() -> None:
     assert "Shared operating-system docs, reusable scripts, and skills stay under" in readme
     assert "create `docs/intent/` when durable project purpose needs more than `README.md`" in readme
     assert "Use this optional layer" in intent
-    assert "Bootstrap shared runtime before adopting generated Starter kit" in adoption
+    assert "Bootstrap the shared runtime before adopting the generated Starter kit" in adoption
     assert adoption.index("Deploy shared Project OS runtime") < adoption.index("Build and validate generated Starter kit")
+    assert "py -3 scripts/deploy_agent_runtime.py --target all" in adoption
+    assert "not standalone on a fresh machine" in " ".join(adoption.split())
+    assert "omits" in adoption and "AGENTS.md" in adoption
     assert "manual file-by-file copying" in adoption
     assert '"docs/intent"' not in manifest
 
@@ -172,6 +176,14 @@ def test_canonical_manifest_excludes_consumer_tests() -> None:
     assert "tests" in manifest["forbiddenPaths"]
 
 
+def test_canonical_manifest_omits_canonical_root_instructions_from_consumer_kit() -> None:
+    manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
+
+    assert "AGENTS.md" not in manifest["copyPaths"]
+    assert "AGENTS.md" not in manifest["requiredPaths"]
+    assert "AGENTS.md" in manifest["forbiddenPaths"]
+
+
 def test_canonical_manifest_excludes_local_consumer_skills() -> None:
     manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
     assert not any(path == ".agents/skills" or path.startswith(".agents/skills/") for path in manifest["copyPaths"])
@@ -186,7 +198,6 @@ def make_manifest(repo_root: Path) -> Path:
             "outputRoot": "project-OS-starter-kit",
             "requiredPaths": [
                 ".gitignore",
-                "AGENTS.md",
                 "agents",
                 "GEMINI.md",
                 "CLAUDE.md",
@@ -195,6 +206,7 @@ def make_manifest(repo_root: Path) -> Path:
                 "docs/superpowers/plans",
             ],
             "forbiddenPaths": [
+                "AGENTS.md",
                 ".codex",
                 "adapters",
                 "scripts/sync_agent_adapters.py",
@@ -204,7 +216,6 @@ def make_manifest(repo_root: Path) -> Path:
             ],
             "copyPaths": [
                 ".gitignore",
-                "AGENTS.md",
                 "agents",
                 "generated_agents/antigravity/GEMINI.md",
                 "generated_agents/claude/CLAUDE.md",
@@ -298,7 +309,7 @@ def test_build_starter_kit_copies_required_and_excludes_forbidden(tmp_path: Path
     BUILD.build_starter_kit(repo_root=repo_root, manifest_path=manifest_path, output_root=output_root)
 
     kit_root = output_root / "project-OS-starter-kit"
-    assert (kit_root / "AGENTS.md").exists()
+    assert not (kit_root / "AGENTS.md").exists()
     assert not (kit_root / "README.md").exists()
     assert (kit_root / "agents" / "normal.toml").exists()
     assert not (kit_root / "scripts" / "dcode_project.py").exists()
@@ -333,6 +344,7 @@ def test_validate_starter_kit_reports_missing_required_and_present_forbidden(tmp
     assert any("Missing required path" in error for error in errors)
     assert any("Forbidden path present" in error for error in errors)
     assert "Forbidden path present: tests" in errors
+    assert "Forbidden path present: AGENTS.md" in errors
     assert "Shared path copied into starter kit: .agents/skills" in errors
     assert any("Shared path copied into starter kit" in error for error in errors)
 
@@ -353,7 +365,7 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
     manifest_path = make_manifest(repo_root)
     kit_root = repo_root / "out" / "project-OS-starter-kit"
     write_text(
-        kit_root / "AGENTS.md",
+        kit_root / "GEMINI.md",
         "\n".join(
             [
                 "see scripts/build_starter_kit.py",
@@ -365,7 +377,6 @@ def test_validate_starter_kit_reports_forbidden_content_reference(tmp_path: Path
         )
         + "\n",
     )
-    write_text(kit_root / "GEMINI.md", "# gemini\n")
     write_text(kit_root / "CLAUDE.md", "# claude\n")
     write_text(kit_root / ".agents" / "skills" / "skill-spec-drafting" / "SKILL.md", "# skill\n")
     write_text(kit_root / "repo_config" / "planning_artifact_schema.yaml", "schema_version: 1\n")
@@ -385,11 +396,10 @@ def test_build_rewrites_root_headers_and_preserves_instruction_bodies(tmp_path: 
         "-->\n\n"
     )
     bodies = {
-        "AGENTS.md": "# Agents\n\nKeep this body.\n",
         "GEMINI.md": "# Gemini\n\nKeep this body too.\n",
         "CLAUDE.md": "# Claude\n\nKeep this body as well.\n",
     }
-    write_text(repo_root / "AGENTS.md", generated_header + bodies["AGENTS.md"])
+    write_text(repo_root / "AGENTS.md", "# canonical factory instructions\n")
     write_text(repo_root / "generated_agents" / "antigravity" / "GEMINI.md", generated_header + bodies["GEMINI.md"])
     write_text(repo_root / "generated_agents" / "claude" / "CLAUDE.md", generated_header + bodies["CLAUDE.md"])
     write_text(repo_root / "agents" / "normal.toml", 'name = "normal"\n')
@@ -414,6 +424,7 @@ def test_build_rewrites_root_headers_and_preserves_instruction_bodies(tmp_path: 
         assert content == expected_header + body
         assert "GENERATED FILE - DO NOT EDIT" not in content
         assert "scripts/sync_agent_adapters.py" not in content
+    assert not (repo_root / "out" / "project-OS-starter-kit" / "AGENTS.md").exists()
 
 
 @pytest.mark.parametrize(
