@@ -3,7 +3,6 @@
   "copyPaths": [
     "agents",
     ".gitignore",
-    "AGENTS.md",
     "generated_agents/antigravity/GEMINI.md",
     "generated_agents/claude/CLAUDE.md",
     "requirements.txt",
@@ -16,7 +15,6 @@
   ],
   "requiredPaths": [
     ".gitignore",
-    "AGENTS.md",
     "GEMINI.md",
     "CLAUDE.md",
     "agents",
@@ -27,6 +25,7 @@
     "requirements.txt"
   ],
   "forbiddenPaths": [
+    "AGENTS.md",
     ".codex",
     "adapters",
     "generated_agents/antigravity",
