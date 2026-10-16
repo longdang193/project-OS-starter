@@ -1,0 +1,147 @@
+{
+  "arms": {
+    "cos_two_lane": {
+      "cold": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "cos_two_lane:cold:2",
+          "cos_two_lane:cold:1",
+          "cos_two_lane:cold:3"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      },
+      "warm": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "cos_two_lane:warm:1",
+          "cos_two_lane:warm:2",
+          "cos_two_lane:warm:3"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      }
+    },
+    "direct_controller": {
+      "cold": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "direct_controller:cold:3",
+          "direct_controller:cold:1",
+          "direct_controller:cold:2"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      },
+      "warm": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "direct_controller:warm:2",
+          "direct_controller:warm:3",
+          "direct_controller:warm:1"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      }
+    },
+    "single_worker": {
+      "cold": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "single_worker:cold:1",
+          "single_worker:cold:3",
+          "single_worker:cold:2"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      },
+      "warm": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "single_worker:warm:1",
+          "single_worker:warm:2",
+          "single_worker:warm:3"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      }
+    }
+  },
+  "decision": {
+    "disposition": "inconclusive",
+    "reason": "No production optimization decision is made by the passive aggregator; the report must apply the evidence gate."
+  },
+  "observed_row_count": 0,
+  "protocol_digest": "a1cfd3dd3f897cb6dd157a2b357bdd6d3c90d3847cf1d9d8c2aab502deccab7d",
+  "protocol_id": "topology-economics-2026-10-16",
+  "schema": "topology-economics-summary/v1",
+  "status_counts": {
+    "BLOCKED_CAPABILITY": 18,
+    "INCONCLUSIVE": 0,
+    "invalid": 0,
+    "observed": 0,
+    "unavailable": 0
+  },
+  "validation": {
+    "invalid_row_count": 0,
+    "invalid_rows": [],
+    "missing_trials": [],
+    "protocol_errors": [],
+    "valid": true,
+    "valid_row_count": 18
+  }
+}
