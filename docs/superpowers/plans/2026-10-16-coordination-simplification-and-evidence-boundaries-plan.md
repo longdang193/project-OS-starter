@@ -195,7 +195,7 @@ canonical sources through `scripts/sync_agent_adapters.py`.
 - Branch: `codex/coordination-simplification-and-evidence-boundaries`
 - Base commit: `2bf4f94c21044165f3c293b46171c959b873fb4d`
 - Expected workspace: `original checkout may be dirty; capture and preserve its actual status at activation; task worktree starts clean from the exact fetched origin/main base and contains only the task branch plus this plan`
-- Next action: `finalize Task 5 as retained or deferred using the exact completion-monitoring benchmark, then reconcile Task 6`
+- Next action: `run final aggregate verification and reconcile the plan to verification-before-completion`
 - Blockers: `none for planning; live managed-Secretary economics remain an evidence gate, not an assumed capability`
 
 ## Activation Evidence
@@ -219,8 +219,8 @@ canonical sources through `scripts/sync_agent_adapters.py`.
 | Task 2 | `completed` | task worktree | `codex` | Task 1 | role-boundary tests/docs and generated-surface check | `already satisfied/no-op`; canonical role boundaries and managed-runtime block are consistent |
 | Task 3 | `completed` | task worktree | `codex` | Tasks 1–2 | contract/digest/result regression suite | `already satisfied/no-op`; one execution digest owner, explicit identity checks, and structured-result boundary already exist |
 | Task 4 | `completed` | task worktree | `codex` | Task 3 | acceptance, transition, release, settlement, and stale-proof tests | `279 passed, 1 skipped`; semantic acceptance proof no longer embeds settlement/resource facts |
-| Task 5 | `active` | task worktree | `codex` | Tasks 3–4 | launcher receipt-first success/failure tests and benchmark evidence | exact post-Task-4 benchmark pending |
-| Task 6 | `pending` | task worktree | `unresolved` | Tasks 2–5 | explicit plan-binding/continuation tests, documentation sync, final validation | pending |
+| Task 5 | `completed` | task worktree | `codex` | Tasks 3–4 | launcher receipt-first success/failure tests and benchmark evidence | `381 passed`; optimization deferred because baseline/candidate medians and p95s are identical |
+| Task 6 | `completed` | task worktree | `codex` | Tasks 2–5 | explicit plan-binding/continuation tests, documentation sync, final validation | `112 passed`; repository, planning, adapter, and whitespace validators pass; no activation gap required a code change |
 
 ## Task Breakdown
 
@@ -536,20 +536,26 @@ canonical sources through `scripts/sync_agent_adapters.py`.
 - Stop for: missing receipt attribution, changed worker semantics, timeout/cleanup ambiguity, unavailable Herdr wait capability, or a benchmark that cannot compare identical workloads and environment
 
 **Steps:**
-- [ ] Step 1: Treat the current receipt-first path as the baseline and identify only eager or periodic diagnostics that run after attributable completion has already been established.
-- [ ] Step 2: Remove or defer those diagnostics only when the existing receipt/result and retirement/resource proof are sufficient; retain fallback diagnostics for missing result, attribution mismatch, approaching timeout, apparent stall, or cleanup uncertainty.
-- [ ] Step 3: Ensure exact-target and exceptional retry/reconciliation paths retain their stronger validation behavior.
-- [ ] Step 4: Capture subprocess count, completion detection delay, cleanup correctness, unresolved-resource rate, duplicate execution, false blockers, and accepted-outcome latency for identical workloads before and after the change.
-- [ ] Step 5: Run the predeclared benchmark and retain the change only if median subprocesses decrease by at least 20%, p95 completion-detection latency regresses by no more than 5%, and lifecycle/cleanup/reconciliation mismatches remain zero; otherwise preserve the baseline path and record Task 5 as deferred.
+- [x] Step 1: Treat the current receipt-first path as the baseline and identify only eager or periodic diagnostics that run after attributable completion has already been established.
+- [x] Step 2: Remove or defer those diagnostics only when the existing receipt/result and retirement/resource proof are sufficient; retain fallback diagnostics for missing result, attribution mismatch, approaching timeout, apparent stall, or cleanup uncertainty.
+- [x] Step 3: Ensure exact-target and exceptional retry/reconciliation paths retain their stronger validation behavior.
+- [x] Step 4: Capture subprocess count, completion detection delay, cleanup correctness, unresolved-resource rate, duplicate execution, false blockers, and accepted-outcome latency for identical workloads before and after the change.
+- [x] Step 5: Run the predeclared benchmark and retain the change only if median subprocesses decrease by at least 20%, p95 completion-detection latency regresses by no more than 5%, and lifecycle/cleanup/reconciliation mismatches remain zero; otherwise preserve the baseline path and record Task 5 as deferred.
 
 **Verification:**
-- [ ] `py -3 -m pytest -q tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_benchmark_completion_monitoring.py`
+- [x] `py -3 -m pytest -q tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_benchmark_completion_monitoring.py`
 - Expected: confirmed structured results avoid pane reads on the success path; missing or conflicting evidence invokes bounded diagnostics and never returns false success.
-- [ ] `py -3 scripts/benchmark_completion_monitoring.py --baseline-revision origin/main --repetitions 20 --output .tmp-tests/coordination-simplification-completion-monitoring.json`
+- [x] `py -3 scripts/benchmark_completion_monitoring.py --baseline-revision origin/main --repetitions 20 --output .tmp-tests/coordination-simplification-completion-monitoring.json`
 - Expected: the benchmark compares identical workloads and environment, records subprocess count, completion-detection delay, cleanup correctness, unresolved-resource rate, duplicate execution, false blockers, and accepted-outcome latency, and applies the predeclared retention threshold of at least 20% median subprocess reduction, no more than 5% p95 completion-detection regression, and zero lifecycle/cleanup/reconciliation mismatches; no improvement claim is made for blocked live managed-Secretary probes.
 
 **Exit Criteria:**
 - Receipt-first observation is proven safe by focused tests and fresh comparable measurements, or the change is explicitly deferred with the baseline preserved.
+
+**Task 5 Evidence:**
+- [x] Focused launcher/receipt benchmark suite passed: `381 passed`.
+- [x] Exact benchmark output: `.tmp-tests/coordination-simplification-completion-monitoring.json`.
+- [x] Baseline and candidate both measured median/p95 subprocess totals of `2.0`, median/p95 receipt timing of `400.0/650.0 ms`, and `0` lifecycle, cleanup, and reconciliation mismatches.
+- [x] The required 20% median subprocess reduction was not met; no launcher or receipt behavior changed and Task 5 is retained as a documented deferral.
 
 ### Task 6: Harden governed activation and reconcile the final evidence
 
@@ -562,7 +568,7 @@ canonical sources through `scripts/sync_agent_adapters.py`.
   final retained, deferred, and blocked outcomes.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: cross-cutting policy and integration task after all shared
   runtime contracts are stable; resolve before activation.
 
@@ -596,25 +602,30 @@ canonical sources through `scripts/sync_agent_adapters.py`.
 - Stop for: a new lifecycle registry/database, a second task truth source, plan/Git mismatch, changed acceptance authority, external publication, destructive cleanup, or unresolved generated-source drift
 
 **Steps:**
-- [ ] Step 1: Re-check the Task 1 inventory and activate only the smallest plan-bound activation/continuation hardening needed to close a confirmed gap; preserve already-correct behavior as a no-op.
-- [ ] Step 2: Preserve immutable runtime grants, explicit resolved identity, accepted checkpoint continuation, and fail-closed redispatch conditions without adding new parameters unless the gap cannot be represented by the existing contract.
-- [ ] Step 3: Reconcile final evidence across retained changes, Task 5 benchmark results, deferred optimizations, blocked capabilities, and inconclusive live probes; a `BLOCKED_CAPABILITY` or `INCONCLUSIVE` live Secretary result is acceptable without claiming an economic benefit.
-- [ ] Step 4: Run final verification and record whether each phase was retained, deferred, blocked, or inconclusive.
+- [x] Step 1: Re-check the Task 1 inventory and activate only the smallest plan-bound activation/continuation hardening needed to close a confirmed gap; preserve already-correct behavior as a no-op.
+- [x] Step 2: Preserve immutable runtime grants, explicit resolved identity, accepted checkpoint continuation, and fail-closed redispatch conditions without adding new parameters unless the gap cannot be represented by the existing contract.
+- [x] Step 3: Reconcile final evidence across retained changes, Task 5 benchmark results, deferred optimizations, blocked capabilities, and inconclusive live probes; a `BLOCKED_CAPABILITY` or `INCONCLUSIVE` live Secretary result is acceptable without claiming an economic benefit.
+- [x] Step 4: Run final verification and record whether each phase was retained, deferred, blocked, or inconclusive.
 
 **Verification:**
-- [ ] `py -3 -m pytest -q tests/test_plan_preparation.py tests/test_project_os_runtime.py tests/test_validate_planning_lifecycle.py`
+- [x] `py -3 -m pytest -q tests/test_plan_preparation.py tests/test_project_os_runtime.py tests/test_validate_planning_lifecycle.py`
 - Expected: any confirmed activation/continuation gap is covered while existing explicit identity, immutable-grant, and fail-closed behavior remains intact.
-- [ ] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`
+- [x] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`
 - Expected: repository contracts pass without staging or rewriting unrelated user changes.
-- [ ] `py -3 scripts/validate_planning_lifecycle.py --repo-root . --plan docs/superpowers/plans/2026-10-16-coordination-simplification-and-evidence-boundaries-plan.md`
+- [x] `py -3 scripts/validate_planning_lifecycle.py --repo-root . --plan docs/superpowers/plans/2026-10-16-coordination-simplification-and-evidence-boundaries-plan.md`
 - Expected: this plan satisfies the current implementation-plan contract and its task ledger is internally consistent.
-- [ ] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
 - Expected: canonical and generated agent surfaces are synchronized.
-- [ ] `git diff --check`
+- [x] `git diff --check`
 - Expected: no whitespace errors in the task-owned diff.
 
 **Exit Criteria:**
 - Final proof identifies the retained simplifications, deferred changes, blockers, and measured outcomes; no required task remains unresolved and no generated or canonical surface is stale.
+
+**Task 6 Evidence:**
+- [x] Plan-bound activation/continuation coverage passed in `112` focused tests; existing explicit identity and fail-closed behavior remained sufficient, so no Task 6 production edit was admitted.
+- [x] `validate_repo_contracts.py --repo-root . --fast`, `validate_planning_lifecycle.py`, `sync_agent_adapters.py --all-platforms --check`, and `git diff --check` passed.
+- [x] Final disposition records Task 4 as retained, Task 5 as deferred by threshold, and live managed-Secretary economics as not required for this implementation because no live benefit was claimed.
 
 ## Verification
 
