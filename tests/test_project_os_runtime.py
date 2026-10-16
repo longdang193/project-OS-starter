@@ -650,6 +650,7 @@ def test_cos_acceptance_rejects_transition_for_unrelated_completed_task() -> Non
     assert transition["authorized"] is False
     assert transition["next_state"] == "pending"
     assert transition["reason"] == "accepted task does not match completed task"
+    assert "task binding" in transition["validation_reasons"]
 
 
 def test_cos_acceptance_rejects_cross_plan_dependent_transition() -> None:
@@ -669,6 +670,7 @@ def test_cos_acceptance_rejects_cross_plan_dependent_transition() -> None:
     assert transition["authorized"] is False
     assert transition["next_state"] == "pending"
     assert transition["reason"] == "accepted and dependent task plan binding mismatch"
+    assert "acceptance plan binding" in transition["validation_reasons"]
 
 
 def test_cos_acceptance_blocks_missing_controller_binding() -> None:
