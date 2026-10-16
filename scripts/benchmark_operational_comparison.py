@@ -151,9 +151,9 @@ def _validate_stage_timestamps(row: dict[str, Any], protocol: dict[str, Any]) ->
 
 
 def _validate_intervals(row: dict[str, Any]) -> list[str]:
-    intervals = row.get("useful_intervals_ms")
-    if intervals is None:
+    if "useful_intervals_ms" not in row:
         return []
+    intervals = row["useful_intervals_ms"]
     if not isinstance(intervals, list):
         return ["useful_intervals_ms must be a list"]
     errors: list[str] = []
@@ -243,8 +243,9 @@ def validate_row(row: dict[str, Any], protocol: dict[str, Any], expected: dict[s
                     errors.append(f"observed rows require accepted lifecycle field: {field}")
             if row.get("capability_state") != "confirmed":
                 errors.append("observed rows require capability_state=confirmed")
-            accepted_metric = row.get("metrics", {}).get("accepted_outcome_wall_time_ms", {})
-            if accepted_metric.get("status") != "observed":
+            metrics = row.get("metrics")
+            accepted_metric = metrics.get("accepted_outcome_wall_time_ms") if isinstance(metrics, dict) else None
+            if not isinstance(accepted_metric, dict) or accepted_metric.get("status") != "observed":
                 errors.append("observed rows require accepted outcome wall time")
     return errors
 
@@ -326,10 +327,11 @@ def summarize(protocol: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str,
         for condition in protocol["trial_design"]["conditions"]:
             subset = [row for row in valid_rows if row.get("arm") == arm and row.get("condition") == condition]
             observed = [row for row in subset if row.get("status") == "observed"]
-            per_trial_union = [
-                _union_duration(row.get("useful_intervals_ms", []))
-                for row in observed
-            ]
+            interval_values = [row.get("useful_intervals_ms") for row in observed]
+            per_trial_union = [_union_duration(intervals) for intervals in interval_values]
+            interval_union = None
+            if observed and all(isinstance(intervals, list) for intervals in interval_values):
+                interval_union = sum(value or 0.0 for value in per_trial_union)
             arms[arm][condition] = {
                 "row_count": len(subset),
                 "observed_count": len(observed),
@@ -340,7 +342,7 @@ def summarize(protocol: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str,
                 "useful_interval_sum_ms": sum(
                     end - start for row in observed for start, end in row.get("useful_intervals_ms", [])
                 ) if observed else None,
-                "useful_interval_union_ms": sum(value for value in per_trial_union if value is not None) if observed else None,
+                "useful_interval_union_ms": interval_union,
                 "trace_trial_ids": [row["trial_id"] for row in subset],
             }
     return {

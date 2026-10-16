@@ -147,6 +147,28 @@ def test_invalid_intervals_are_rejected() -> None:
     assert result["valid"] is False
     assert any("ends before it starts" in error for item in result["invalid_rows"] for error in item["errors"])
 
+    row["useful_intervals_ms"] = None
+    result = validate_rows(protocol, [row])
+    assert result["valid"] is False
+    assert any("must be a list" in error for item in result["invalid_rows"] for error in item["errors"])
+
+
+def test_missing_intervals_remain_unavailable() -> None:
+    protocol = _protocol()
+    row = _row(protocol, protocol["trial_design"]["order"][0])
+    row.pop("useful_intervals_ms")
+    summary = summarize(protocol, [row])
+    assert summary["arms"][row["arm"]][row["condition"]]["useful_interval_union_ms"] is None
+
+
+def test_malformed_metrics_are_reported_without_crashing() -> None:
+    protocol = _protocol()
+    row = _row(protocol, protocol["trial_design"]["order"][0])
+    row["metrics"] = None
+    result = validate_rows(protocol, [row])
+    assert result["valid"] is False
+    assert any("metrics must be an object" in error for item in result["invalid_rows"] for error in item["errors"])
+
 
 def test_rejected_or_unsettled_rows_do_not_count_as_observed() -> None:
     protocol = _protocol()
