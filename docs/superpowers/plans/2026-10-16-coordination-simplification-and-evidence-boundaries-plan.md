@@ -671,5 +671,4 @@ The plan is ready for completion verification when:
 7. all task-local and final verification evidence is recorded in this plan;
 8. deviations, blockers, and deferrals are explicit; and
 9. `skill-verification-before-completion` returns `verified` before this plan
-   changes from `proposed`/`active` to `completed`.
-
+  changes from `proposed`/`active` to `completed`.
