@@ -225,6 +225,9 @@ def validate_row(row: dict[str, Any], protocol: dict[str, Any], expected: dict[s
             metric_status = _metric_status(metric)
             if metric_status not in {"observed", "unavailable", "blocked"}:
                 errors.append(f"unsupported metric status: {metric_name}")
+            if not isinstance(metric, dict):
+                errors.append(f"metric must be an object: {metric_name}")
+                continue
             if metric_status == "observed" and not isinstance(metric.get("value"), (int, float)):
                 errors.append(f"observed metric has no numeric value: {metric_name}")
             if metric_status != "observed" and metric.get("value") is not None:
@@ -330,8 +333,14 @@ def summarize(protocol: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str,
             interval_values = [row.get("useful_intervals_ms") for row in observed]
             per_trial_union = [_union_duration(intervals) for intervals in interval_values]
             interval_union = None
+            interval_sum = None
             if observed and all(isinstance(intervals, list) for intervals in interval_values):
                 interval_union = sum(value or 0.0 for value in per_trial_union)
+                interval_sum = sum(
+                    end - start
+                    for intervals in interval_values
+                    for start, end in intervals
+                )
             arms[arm][condition] = {
                 "row_count": len(subset),
                 "observed_count": len(observed),
@@ -339,9 +348,7 @@ def summarize(protocol: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str,
                 "unavailable_count": sum(row.get("status") == "unavailable" for row in subset),
                 "inconclusive_count": sum(row.get("status") == "INCONCLUSIVE" for row in subset),
                 "wall_time_ms": _metric_aggregate(observed, "accepted_outcome_wall_time_ms"),
-                "useful_interval_sum_ms": sum(
-                    end - start for row in observed for start, end in row.get("useful_intervals_ms", [])
-                ) if observed else None,
+                "useful_interval_sum_ms": interval_sum,
                 "useful_interval_union_ms": interval_union,
                 "trace_trial_ids": [row["trial_id"] for row in subset],
             }

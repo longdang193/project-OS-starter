@@ -158,7 +158,15 @@ def test_missing_intervals_remain_unavailable() -> None:
     row = _row(protocol, protocol["trial_design"]["order"][0])
     row.pop("useful_intervals_ms")
     summary = summarize(protocol, [row])
-    assert summary["arms"][row["arm"]][row["condition"]]["useful_interval_union_ms"] is None
+    aggregate = summary["arms"][row["arm"]][row["condition"]]
+    assert aggregate["useful_interval_union_ms"] is None
+    assert aggregate["useful_interval_sum_ms"] is None
+
+    second = _row(protocol, "direct_controller:cold:3")
+    second.pop("useful_intervals_ms")
+    summary = summarize(protocol, [row, second])
+    aggregate = summary["arms"]["direct_controller"]["cold"]
+    assert aggregate["useful_interval_sum_ms"] is None
 
 
 def test_malformed_metrics_are_reported_without_crashing() -> None:
@@ -168,6 +176,12 @@ def test_malformed_metrics_are_reported_without_crashing() -> None:
     result = validate_rows(protocol, [row])
     assert result["valid"] is False
     assert any("metrics must be an object" in error for item in result["invalid_rows"] for error in item["errors"])
+
+    row = _row(protocol, protocol["trial_design"]["order"][0])
+    row["metrics"]["provider_tokens"] = None
+    result = validate_rows(protocol, [row])
+    assert result["valid"] is False
+    assert any("metric must be an object" in error for item in result["invalid_rows"] for error in item["errors"])
 
 
 def test_rejected_or_unsettled_rows_do_not_count_as_observed() -> None:
