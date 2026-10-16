@@ -6,13 +6,13 @@ import sys
 from scripts.benchmark_dispatch import benchmark_dispatch
 
 
-def test_dispatch_benchmark_reports_bounded_refill(tmp_path):
+def test_dispatch_benchmark_reports_supported_bounded_dispatch(tmp_path):
     manifest = tmp_path / "lanes.json"
     manifest.write_text('{"lane_count": 3, "workload_seconds": 0}', encoding="utf-8")
 
-    result = benchmark_dispatch(manifest, repetitions=1, mode="refill")
+    result = benchmark_dispatch(manifest, repetitions=1, mode="baseline")
 
-    assert result["completed_per_run"] == 3
+    assert result["completed_per_run"] == 2
     assert result["max_concurrency"] == 2
 
 
@@ -31,7 +31,7 @@ def test_dispatch_benchmark_script_runs_directly(tmp_path: Path) -> None:
             "--repetitions",
             "1",
             "--mode",
-            "refill",
+            "baseline",
         ],
         capture_output=True,
         text=True,

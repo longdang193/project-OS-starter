@@ -347,7 +347,7 @@ def test_run_parallel_starts_both_lanes_before_either_finishes(tmp_path: Path, m
     assert {item["lane_id"] for item in result["results"]} == {"a", "b"}
 
 
-def test_run_parallel_refills_capacity_deferred_lanes(tmp_path: Path, monkeypatch) -> None:
+def test_run_parallel_rejects_retired_refill_option(tmp_path: Path, monkeypatch) -> None:
     def fake_run_lane(item, **kwargs):
         return {
             "lane_id": item["lane_id"],
@@ -361,10 +361,8 @@ def test_run_parallel_refills_capacity_deferred_lanes(tmp_path: Path, monkeypatc
     monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
     lanes = [lane("a", tmp_path), lane("b", tmp_path), lane("c", tmp_path)]
 
-    result = dispatcher.run_parallel(lanes, enable_refill=True)
-
-    assert len(result["results"]) == 3
-    assert [item["lane_id"] for item in result["refilled"]] == ["c"]
+    with pytest.raises(TypeError, match="enable_refill is no longer supported"):
+        dispatcher.run_parallel(lanes, enable_refill=True)
 
 
 def test_run_parallel_emits_admission_and_terminal_events_once(tmp_path: Path, monkeypatch) -> None:

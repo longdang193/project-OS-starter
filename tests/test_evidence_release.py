@@ -42,12 +42,28 @@ def _acceptance_decision() -> dict:
     binding = _binding()
     return {
         "decision": "PASS",
-        "controller": {"authority": "cos"},
-        "task": {"task_id": binding["task_id"]},
-        "task_transition": {"authorized": True, "current_state": "active", "next_state": "completed"},
+        "controller": {
+            "identity": "native-cos",
+            "authority": "cos",
+            "plan_identity": binding["plan_ref"],
+            "task_id": binding["task_id"],
+        },
+        "task": {
+            "task_id": binding["task_id"],
+            "plan_identity": binding["plan_ref"],
+            "state": "active",
+            "attempt_id": binding["attempt_id"],
+        },
+        "task_transition": {
+            "authorized": True,
+            "current_state": "active",
+            "next_state": "completed",
+            "accepted_candidate_sha": binding["candidate_sha"],
+        },
         "acceptance_proof": {
             "plan_identity": binding["plan_ref"],
             "task_id": binding["task_id"],
+            "task_state": "active",
             "attempt_id": binding["attempt_id"],
             "checkpoint_sha": binding["acceptance_checkpoint_sha"],
             "repository_identity": "repo",
@@ -55,6 +71,7 @@ def _acceptance_decision() -> dict:
             "required_conditions": {"tests": True},
             "artifact_conditions": {"tests": True},
             "git": {
+                "repository_identity": "repo",
                 "plan_identity": binding["plan_ref"],
                 "candidate_sha": binding["candidate_sha"],
                 "acceptance_checkpoint_sha": binding["acceptance_checkpoint_sha"],
@@ -183,6 +200,17 @@ def test_release_uses_fresh_same_attempt_runtime_settlement(tmp_path: Path):
 def test_release_requires_exact_acceptance(tmp_path: Path):
     result = _release(tmp_path, decision={})
     assert result["authorized"] is False
+    assert (tmp_path / "task-result.json").exists()
+
+
+def test_release_rejects_incomplete_common_acceptance_decision(tmp_path: Path):
+    decision = _acceptance_decision()
+    decision["controller"]["identity"] = ""
+
+    result = _release(tmp_path, decision=decision)
+
+    assert result["authorized"] is False
+    assert "controller identity" in result["reasons"]
     assert (tmp_path / "task-result.json").exists()
 
 
