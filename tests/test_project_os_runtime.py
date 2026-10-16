@@ -506,6 +506,7 @@ def test_cos_acceptance_passes_and_authorizes_only_ready_dependent() -> None:
 
     assert decision["decision"] == "PASS"
     assert decision["task_transition"]["next_state"] == "completed"
+    assert "settlement" not in decision["acceptance_proof"]
     assert transition["authorized"] is True
     assert transition["next_state"] == "active"
     assert transition["accepted_candidate_sha"] == "candidate-1"
@@ -600,6 +601,7 @@ def test_cos_acceptance_ignores_unrelated_unsettled_resources() -> None:
     decision = evaluate_acceptance(**inputs)
 
     assert decision["decision"] == "PASS"
+    assert "settlement" not in decision["acceptance_proof"]
 
 
 def test_cos_acceptance_passes_immutable_candidate_without_settlement() -> None:
@@ -611,6 +613,7 @@ def test_cos_acceptance_passes_immutable_candidate_without_settlement() -> None:
     decision = evaluate_acceptance(**inputs, attempt_id="attempt-1")
 
     assert decision["decision"] == "PASS"
+    assert "settlement" not in decision["acceptance_proof"]
     assert decision["acceptance_proof"]["git"]["candidate_sha"] == "candidate-1"
 
 

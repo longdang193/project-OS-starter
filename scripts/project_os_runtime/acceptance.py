@@ -171,10 +171,6 @@ def evaluate_acceptance(
             "assignment_id": git.get("assignment_id"),
             "attempt_id": git.get("attempt_id"),
         },
-        "settlement": {
-            "settlement_proven": settlement.get("settlement_proven"),
-            "resource_settled": settlement.get("resource_settled"),
-        },
     }
     return {
         "decision": decision,

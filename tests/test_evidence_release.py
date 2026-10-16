@@ -54,7 +54,6 @@ def _acceptance_decision() -> dict:
             "freshness": {"head_matches": True, "write_scope_matches": True},
             "required_conditions": {"tests": True},
             "artifact_conditions": {"tests": True},
-            "settlement": {"settlement_proven": True, "resource_settled": True},
             "git": {
                 "plan_identity": binding["plan_ref"],
                 "candidate_sha": binding["candidate_sha"],
@@ -166,7 +165,7 @@ def _release(
 
 def test_release_uses_fresh_same_attempt_runtime_settlement(tmp_path: Path):
     decision = _acceptance_decision()
-    decision["acceptance_proof"]["settlement"] = {}
+    assert "settlement" not in decision["acceptance_proof"]
 
     result = _release(
         tmp_path,
