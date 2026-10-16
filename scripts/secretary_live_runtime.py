@@ -1971,11 +1971,6 @@ def _project_semantic_result(outcome: Mapping[str, Any]) -> dict[str, Any]:
         if value:
             result[key] = value
     return result
-    resolver = _safe_text(source.get("result_resolver") or source.get("resolver"))
-    retrieved = source.get("result_retrieved") is True or source.get("retrieved") is True
-    if reference and resolver and retrieved:
-        return reference, None
-    return None, None
 
 
 def _normalize_invocation_outcome(

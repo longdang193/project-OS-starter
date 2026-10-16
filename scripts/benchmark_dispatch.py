@@ -1,4 +1,4 @@
-"""Measure bounded dispatcher coordination with and without capacity refill."""
+"""Measure supported bounded dispatcher coordination."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def benchmark_dispatch(
 ) -> dict[str, Any]:
     if repetitions < 1:
         raise ValueError("repetitions must be positive")
-    if mode not in {"baseline", "refill", "four_lane"}:
+    if mode != "baseline":
         raise ValueError(f"unsupported benchmark mode: {mode}")
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     count = int(manifest.get("lane_count", 8))
@@ -84,7 +84,6 @@ def benchmark_dispatch(
             result = dispatcher.run_parallel(
                 lanes,
                 max_concurrency=max_concurrency,
-                enable_refill=mode != "baseline",
             )
             durations.append(time.perf_counter() - started)
             completed_counts.append(len(result["results"]))
@@ -114,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--manifest", type=Path, required=True)
     run.add_argument("--repetitions", type=int, default=30)
     run.add_argument("--max-concurrency", type=int, default=dispatcher.MAX_CONCURRENCY)
-    run.add_argument("--mode", choices=("baseline", "refill", "four_lane"), default="baseline")
+    run.add_argument("--mode", choices=("baseline",), default="baseline")
     return parser
 
 

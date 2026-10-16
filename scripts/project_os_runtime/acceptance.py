@@ -42,6 +42,139 @@ def _required_bool(mapping: Mapping[str, Any], field: str, label: str) -> tuple[
     return None, value
 
 
+def _validate_acceptance_decision_contract(
+    decision: Mapping[str, Any],
+    *,
+    expected_task_id: str | None = None,
+    expected_plan_identity: str | None = None,
+    expected_candidate_sha: str | None = None,
+    expected_acceptance_checkpoint_sha: str | None = None,
+    expected_assignment_id: str | None = None,
+    expected_attempt_id: str | None = None,
+    expected_task_state: str = ELIGIBLE_TASK_STATE,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+
+    def add(reason: str) -> None:
+        if reason not in reasons:
+            reasons.append(reason)
+
+    if decision.get("decision") != "PASS":
+        add("CoS acceptance")
+    controller = decision.get("controller")
+    task = decision.get("task")
+    task_transition = decision.get("task_transition")
+    proof = decision.get("acceptance_proof")
+    if not isinstance(controller, Mapping):
+        add("controller identity")
+    else:
+        for field, label in (
+            ("identity", "controller identity"),
+            ("plan_identity", "controller plan binding"),
+            ("task_id", "controller task binding"),
+        ):
+            if _missing_text(controller, field, label):
+                add(label)
+        if controller.get("authority") != ACCEPTANCE_AUTHORITY:
+            add("CoS acceptance authority")
+    if not isinstance(task, Mapping):
+        add("task identity")
+    else:
+        for field, label in (("task_id", "task identity"), ("plan_identity", "task plan binding")):
+            if _missing_text(task, field, label):
+                add(label)
+        if task.get("state") != expected_task_state:
+            add("task state eligibility")
+        if not isinstance(task.get("attempt_id"), str) or not task.get("attempt_id", "").strip():
+            add("attempt binding")
+    if not isinstance(task_transition, Mapping):
+        add("task transition")
+    else:
+        if (
+            task_transition.get("authorized") is not True
+            or task_transition.get("current_state") != expected_task_state
+            or task_transition.get("next_state") != "completed"
+        ):
+            add("task transition")
+    if not isinstance(proof, Mapping):
+        add("acceptance proof")
+    else:
+        if _missing_text(proof, "task_id", "acceptance task binding"):
+            add("acceptance task binding")
+        if _missing_text(proof, "plan_identity", "acceptance plan binding"):
+            add("acceptance plan binding")
+        if proof.get("task_state") != expected_task_state:
+            add("acceptance task state")
+        if not isinstance(proof.get("attempt_id"), str) or not proof.get("attempt_id", "").strip():
+            add("attempt binding")
+        required_conditions = proof.get("required_conditions")
+        artifact_conditions = proof.get("artifact_conditions")
+        if (
+            not isinstance(required_conditions, Mapping)
+            or not required_conditions
+            or not isinstance(artifact_conditions, Mapping)
+            or set(required_conditions) != set(artifact_conditions)
+            or any(value is not True for value in artifact_conditions.values())
+        ):
+            add("acceptance condition coverage")
+        freshness = proof.get("freshness")
+        if (
+            not isinstance(freshness, Mapping)
+            or freshness.get("head_matches") is not True
+            or freshness.get("write_scope_matches") is not True
+        ):
+            add("acceptance freshness")
+        git = proof.get("git")
+        if not isinstance(git, Mapping):
+            add("canonical Git proof")
+        else:
+            for field, label in (
+                ("repository_identity", "Git repository binding"),
+                ("plan_identity", "plan binding"),
+                ("candidate_sha", "candidate binding"),
+                ("acceptance_checkpoint_sha", "acceptance checkpoint binding"),
+                ("assignment_id", "assignment binding"),
+                ("attempt_id", "attempt binding"),
+            ):
+                if _missing_text(git, field, label):
+                    add(label)
+            if proof.get("checkpoint_sha") != git.get("acceptance_checkpoint_sha"):
+                add("acceptance checkpoint binding")
+            if isinstance(task_transition, Mapping) and task_transition.get("accepted_candidate_sha") != git.get("candidate_sha"):
+                add("accepted candidate binding")
+            if isinstance(task, Mapping) and task.get("attempt_id") != git.get("attempt_id"):
+                add("attempt binding")
+    if isinstance(controller, Mapping) and isinstance(task, Mapping):
+        if controller.get("plan_identity") != task.get("plan_identity"):
+            add("controller and task plan binding mismatch")
+        if controller.get("task_id") != task.get("task_id"):
+            add("controller and task identity mismatch")
+    if isinstance(task, Mapping) and isinstance(proof, Mapping):
+        if task.get("task_id") != proof.get("task_id"):
+            add("task and proof identity mismatch")
+        if task.get("plan_identity") != proof.get("plan_identity"):
+            add("task and proof plan binding mismatch")
+    if expected_task_id is not None:
+        if not isinstance(task, Mapping) or task.get("task_id") != expected_task_id:
+            add("task binding")
+    if expected_plan_identity is not None:
+        if not isinstance(task, Mapping) or task.get("plan_identity") != expected_plan_identity:
+            add("acceptance plan binding")
+    if isinstance(proof, Mapping):
+        git = proof.get("git")
+        if isinstance(git, Mapping):
+            expected_values = (
+                (expected_candidate_sha, git.get("candidate_sha"), "candidate binding"),
+                (expected_acceptance_checkpoint_sha, git.get("acceptance_checkpoint_sha"), "acceptance checkpoint binding"),
+                (expected_assignment_id, git.get("assignment_id"), "assignment binding"),
+                (expected_attempt_id, git.get("attempt_id"), "attempt binding"),
+            )
+            for expected, actual, label in expected_values:
+                if expected is not None and actual != expected:
+                    add(label)
+    return tuple(reasons)
+
+
 def evaluate_acceptance(
     *,
     controller: Mapping[str, Any],
@@ -50,9 +183,10 @@ def evaluate_acceptance(
     artifact_conditions: Mapping[str, Any],
     git: Mapping[str, Any],
     verification: Mapping[str, Any],
-    settlement: Mapping[str, Any],
+    settlement: Mapping[str, Any] | None = None,
     attempt_id: str | None = None,
 ) -> dict[str, Any]:
+    del settlement
     reasons: list[str] = []
     for mapping, fields in (
         (controller, (("identity", "controller identity"), ("plan_identity", "controller plan binding"), ("task_id", "controller task binding"))),
@@ -184,6 +318,8 @@ def evaluate_acceptance(
         "task": {
             "task_id": task.get("task_id"),
             "plan_identity": task.get("plan_identity"),
+            "state": current_state,
+            "attempt_id": task.get("attempt_id"),
         },
         "task_transition": task_transition,
         "acceptance_proof": acceptance_proof,
@@ -203,73 +339,24 @@ def authorize_evidence_release(
     recovery_required: bool = False,
     runtime_settlement: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    reasons: list[str] = []
-    if decision.get("decision") != "PASS":
-        reasons.append("CoS acceptance")
-    controller = decision.get("controller")
-    if not isinstance(controller, Mapping) or controller.get("authority") != ACCEPTANCE_AUTHORITY:
-        reasons.append("CoS release authority")
-    accepted_task = decision.get("task")
-    if not isinstance(accepted_task, Mapping):
-        reasons.append("accepted task")
-    elif accepted_task.get("task_id") != binding.get("task_id"):
-        reasons.append("task binding")
-    proof = decision.get("acceptance_proof")
-    if not isinstance(proof, Mapping):
-        reasons.append("acceptance proof")
-    else:
-        if proof.get("task_id") != binding.get("task_id"):
-            reasons.append("acceptance task binding")
-        if proof.get("plan_identity") != binding.get("plan_ref"):
-            reasons.append("acceptance plan binding")
-        task_transition = decision.get("task_transition")
-        if (
-            not isinstance(task_transition, Mapping)
-            or task_transition.get("authorized") is not True
-            or task_transition.get("current_state") != "active"
-            or task_transition.get("next_state") != "completed"
-        ):
-            reasons.append("task transition")
-        freshness = proof.get("freshness")
-        if (
-            not isinstance(freshness, Mapping)
-            or freshness.get("head_matches") is not True
-            or freshness.get("write_scope_matches") is not True
-        ):
-            reasons.append("acceptance freshness")
-        required_conditions = proof.get("required_conditions")
-        artifact_conditions = proof.get("artifact_conditions")
-        if (
-            not isinstance(required_conditions, Mapping)
-            or not required_conditions
-            or not isinstance(artifact_conditions, Mapping)
-            or not artifact_conditions
-            or set(required_conditions) != set(artifact_conditions)
-            or any(value is not True for value in artifact_conditions.values())
-        ):
-            reasons.append("acceptance condition coverage")
-        settlement = runtime_settlement
-        if (
-            not isinstance(settlement, Mapping)
-            or settlement.get("settlement_proven") is not True
-            or settlement.get("resource_settled") is not True
-            or settlement.get("attempt_id") != binding.get("attempt_id")
-        ):
-            reasons.append("acceptance settlement")
-        git = proof.get("git")
-        if not isinstance(git, Mapping):
-            reasons.append("canonical Git proof")
-        else:
-            if git.get("plan_identity") != binding.get("plan_ref"):
-                reasons.append("plan binding")
-            if git.get("candidate_sha") != binding.get("candidate_sha"):
-                reasons.append("candidate binding")
-            if git.get("acceptance_checkpoint_sha") != binding.get("acceptance_checkpoint_sha"):
-                reasons.append("acceptance checkpoint binding")
-            if git.get("assignment_id") != binding.get("assignment_id"):
-                reasons.append("assignment binding")
-            if git.get("attempt_id") != binding.get("attempt_id"):
-                reasons.append("attempt binding")
+    reasons = list(
+        _validate_acceptance_decision_contract(
+            decision,
+            expected_task_id=binding.get("task_id"),
+            expected_plan_identity=binding.get("plan_ref"),
+            expected_candidate_sha=binding.get("candidate_sha"),
+            expected_acceptance_checkpoint_sha=binding.get("acceptance_checkpoint_sha"),
+            expected_assignment_id=binding.get("assignment_id"),
+            expected_attempt_id=binding.get("attempt_id"),
+        )
+    )
+    if (
+        not isinstance(runtime_settlement, Mapping)
+        or runtime_settlement.get("settlement_proven") is not True
+        or runtime_settlement.get("resource_settled") is not True
+        or runtime_settlement.get("attempt_id") != binding.get("attempt_id")
+    ):
+        reasons.append("acceptance settlement")
     for field in RELEASE_BINDING_FIELDS:
         value = binding.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -791,43 +878,19 @@ def authorize_dependent_transition(
             "next_state": current_state,
             "reason": "accepted and dependent task plan binding mismatch",
         }
-    if (
-        task_transition.get("authorized") is not True
-        or task_transition.get("current_state") != ELIGIBLE_TASK_STATE
-        or task_transition.get("next_state") != "completed"
-        or proof.get("task_id") != accepted_task_id
-        or proof.get("plan_identity") != accepted_plan_identity
-        or proof.get("task_state") != ELIGIBLE_TASK_STATE
-    ):
+    common_reasons = _validate_acceptance_decision_contract(
+        decision,
+        expected_task_id=completed_task_id,
+        expected_plan_identity=dependent_plan_identity,
+    )
+    if common_reasons:
         return {
             "authorized": False,
             "current_state": current_state,
             "next_state": current_state,
             "reason": "acceptance decision incomplete",
         }
-    required_conditions = proof.get("required_conditions")
-    artifact_conditions = proof.get("artifact_conditions")
-    freshness = proof.get("freshness")
     git_proof = proof.get("git")
-    if (
-        not isinstance(required_conditions, Mapping)
-        or not required_conditions
-        or not isinstance(artifact_conditions, Mapping)
-        or set(artifact_conditions) != set(required_conditions)
-        or any(value is not True for value in artifact_conditions.values())
-        or not isinstance(freshness, Mapping)
-        or freshness.get("head_matches") is not True
-        or freshness.get("write_scope_matches") is not True
-        or not isinstance(git_proof, Mapping)
-        or not isinstance(git_proof.get("candidate_sha"), str)
-        or not git_proof.get("candidate_sha").strip()
-    ):
-        return {
-            "authorized": False,
-            "current_state": current_state,
-            "next_state": current_state,
-            "reason": "acceptance decision incomplete",
-        }
     if completed_task_id not in dependencies:
         return {
             "authorized": False,

@@ -14,7 +14,7 @@ import tempfile
 from typing import Any
 
 from .attempt import execution_binding_digest, normalize_runtime_grant, same_attempt_binding
-from .acceptance import release_authorized_evidence
+from .acceptance import _validate_acceptance_decision_contract, release_authorized_evidence
 try:
     from ..planning_dependencies import (
         DependencyContractError,
@@ -420,57 +420,22 @@ def apply_accepted_plan_transitions(
     task = decision.get("task")
     task_transition = decision.get("task_transition")
     proof = decision.get("acceptance_proof")
-    if (
-        decision.get("decision") != "PASS"
-        or not all(isinstance(value, Mapping) for value in (controller, task, task_transition, proof))
-        or not isinstance(controller.get("identity"), str)
-        or not controller.get("identity").strip()
-        or controller.get("authority") != "cos"
-        or not isinstance(controller.get("plan_identity"), str)
-        or not controller.get("plan_identity").strip()
-        or not isinstance(controller.get("task_id"), str)
-        or not controller.get("task_id").strip()
-        or not isinstance(task.get("task_id"), str)
-        or not task.get("task_id").strip()
-        or not isinstance(task.get("plan_identity"), str)
-        or not task.get("plan_identity").strip()
-        or controller.get("plan_identity") != task.get("plan_identity")
-        or controller.get("task_id") != task.get("task_id")
-        or task_transition.get("authorized") is not True
-        or task_transition.get("current_state") != "active"
-        or task_transition.get("next_state") != "completed"
-    ):
-        return {"authorized": False, "reason": "acceptance decision incomplete"}
-    required_conditions = proof.get("required_conditions")
-    artifact_conditions = proof.get("artifact_conditions")
-    freshness = proof.get("freshness")
-    git_proof = proof.get("git")
-    if (
-        not isinstance(required_conditions, Mapping)
-        or not required_conditions
-        or not isinstance(artifact_conditions, Mapping)
-        or set(artifact_conditions) != set(required_conditions)
-        or any(value is not True for value in artifact_conditions.values())
-        or proof.get("task_id") != task.get("task_id")
-        or proof.get("plan_identity") != task.get("plan_identity")
-        or proof.get("task_state") != "active"
-        or not isinstance(freshness, Mapping)
-        or freshness.get("head_matches") is not True
-        or freshness.get("write_scope_matches") is not True
-        or not isinstance(git_proof, Mapping)
-        or not isinstance(git_proof.get("repository_identity"), str)
-        or not git_proof.get("repository_identity").strip()
-        or not isinstance(git_proof.get("candidate_sha"), str)
-        or not git_proof.get("candidate_sha").strip()
-        or git_proof.get("plan_identity") != task.get("plan_identity")
-    ):
-        return {"authorized": False, "reason": "acceptance decision incomplete"}
-    if task_transition.get("accepted_candidate_sha") != git_proof.get("candidate_sha"):
-        return {"authorized": False, "reason": "acceptance candidate binding mismatch"}
     try:
         target_plan_identity = _source_parts(source)[2]
     except (OSError, ValueError):
         return {"authorized": False, "reason": "acceptance decision incomplete"}
+    common_reasons = _validate_acceptance_decision_contract(
+        decision,
+        expected_task_id=task.get("task_id") if isinstance(task, Mapping) else None,
+        expected_plan_identity=target_plan_identity,
+    )
+    if common_reasons:
+        return {"authorized": False, "reason": "acceptance decision incomplete"}
+    git_proof = proof.get("git") if isinstance(proof, Mapping) else None
+    if not isinstance(task, Mapping) or not isinstance(task_transition, Mapping) or not isinstance(git_proof, Mapping):
+        return {"authorized": False, "reason": "acceptance decision incomplete"}
+    if task_transition.get("accepted_candidate_sha") != git_proof.get("candidate_sha"):
+        return {"authorized": False, "reason": "acceptance candidate binding mismatch"}
     if target_plan_identity != task.get("plan_identity"):
         return {"authorized": False, "reason": "acceptance decision incomplete"}
     accepted_task_id = task.get("task_id")

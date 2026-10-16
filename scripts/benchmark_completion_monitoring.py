@@ -17,12 +17,69 @@ from typing import Any
 
 
 CASES: dict[str, dict[str, Any]] = {
-    "process_info_stall_receipt": {"receipt_at": 0.25, "stall": "process-info", "expected": "completed"},
-    "pane_read_stall_receipt": {"receipt_at": 0.25, "stall": "read", "expected": "completed"},
-    "both_diagnostics_timeout_no_receipt": {"receipt_at": None, "stall": "both", "expected": "no-report"},
-    "diagnostic_error_late_receipt": {"receipt_at": 0.25, "error": "process-info", "expected": "completed"},
-    "normal_success": {"receipt_at": 0.2, "expected": "completed"},
-    "terminal_process_without_receipt": {"receipt_at": None, "terminal": True, "expected": "completed"},
+    "process_info_stall_receipt": {
+        "receipt_at": 0.25,
+        "stall": "process-info",
+        "completion_wait_seconds": 2.0,
+        "diagnostic_poll_seconds": 2.0,
+        "expected": "completed",
+    },
+    "pane_read_stall_receipt": {
+        "receipt_at": 0.25,
+        "stall": "read",
+        "completion_wait_seconds": 2.0,
+        "diagnostic_poll_seconds": 2.0,
+        "expected": "completed",
+    },
+    "both_diagnostics_timeout_no_receipt": {
+        "receipt_at": None,
+        "stall": "both",
+        "completion_wait_seconds": 2.0,
+        "diagnostic_poll_seconds": 2.0,
+        "expected": "no-report",
+    },
+    "diagnostic_error_late_receipt": {
+        "receipt_at": 0.25,
+        "error": "process-info",
+        "completion_wait_seconds": 2.0,
+        "diagnostic_poll_seconds": 2.0,
+        "expected": "completed",
+    },
+    "normal_success": {
+        "receipt_at": 0.2,
+        "completion_wait_seconds": 2.0,
+        "diagnostic_poll_seconds": 2.0,
+        "expected": "completed",
+    },
+    "terminal_process_without_receipt": {
+        "receipt_at": None,
+        "terminal": True,
+        "completion_wait_seconds": 2.0,
+        "diagnostic_poll_seconds": 2.0,
+        "expected": "completed",
+    },
+    "busy_worker_three_intervals_late_receipt": {
+        "receipt_at": 6.5,
+        "busy_until": 6.0,
+        "completion_wait_seconds": 8.0,
+        "diagnostic_poll_seconds": 2.0,
+        "expected": "completed",
+    },
+    "diagnostic_stall_late_receipt": {
+        "receipt_at": 1.2,
+        "stall": "both",
+        "completion_wait_seconds": 2.0,
+        "diagnostic_poll_seconds": 0.5,
+        "expected": "completed",
+    },
+    "unresolved_retirement": {
+        "receipt_at": 0.0,
+        "receipt_state": "unresolved",
+        "stall": "both",
+        "completion_wait_seconds": 1.0,
+        "diagnostic_poll_seconds": 0.25,
+        "expected": "no-report",
+    },
 }
 
 
@@ -47,11 +104,18 @@ class FakeHerdr:
         self.clock = clock
         self.counts = {"wait-output": 0, "process-info": 0, "read": 0}
         self.timeout_count = 0
+        self.busy_process_observations = 0
 
     def receipt(self) -> dict[str, Any]:
         receipt_at = self.case["receipt_at"]
         if receipt_at is None or self.clock.now < receipt_at:
             return {"state": "unknown", "detail": "harness-controlled unavailable"}
+        if self.case.get("receipt_state") == "unresolved":
+            return {
+                "state": "unresolved",
+                "recovery_required": True,
+                "reason": "deterministic retirement proof unavailable",
+            }
         return {
             "state": "confirmed",
             "worker_state": "exited",
@@ -82,7 +146,14 @@ class FakeHerdr:
             raise self.module.CommandTransportTimeout("deterministic diagnostic stall")
         self.clock.sleep(0.05)
         if action == "process-info":
-            foreground = [] if self.case.get("terminal") else []
+            busy_until = float(self.case.get("busy_until", 0.0))
+            foreground = (
+                [{"pid": 123, "name": "dcode.exe"}]
+                if self.clock.now < busy_until
+                else []
+            )
+            if foreground:
+                self.busy_process_observations += 1
             payload = {"result": {"process_info": {"foreground_processes": foreground}}}
             return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
         if action == "read":
@@ -135,8 +206,8 @@ def run_case(module: Any, case: dict[str, Any]) -> dict[str, Any]:
             expected_marker="MARKER",
             receipt_file=Path("harness-receipt.json"),
             attempt_id="harness-attempt",
-            completion_wait_seconds=2.0,
-            diagnostic_poll_seconds=2.0,
+            completion_wait_seconds=case["completion_wait_seconds"],
+            diagnostic_poll_seconds=case["diagnostic_poll_seconds"],
         )
     finally:
         module.time = original_time
@@ -169,6 +240,7 @@ def run_case(module: Any, case: dict[str, Any]) -> dict[str, Any]:
         "subprocess_counts": fake.counts,
         "subprocess_total": sum(fake.counts.values()),
         "timeout_count": fake.timeout_count,
+        "busy_process_observations": fake.busy_process_observations,
         "receipt_checks": monitoring.get("receipt_checks", 0),
         "diagnostic_probe_count": monitoring.get("diagnostic_probe_count", 0),
         "time_to_receipt_ms": time_to_receipt,
@@ -205,7 +277,7 @@ def median(values: list[float]) -> float:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-revision", required=True)
-    parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -239,7 +311,24 @@ def main(argv: list[str] | None = None) -> int:
                 "cleanup_match": base["cleanup"] == cand["cleanup"],
                 "reconciliation_match": base["reconciliation"] == cand["reconciliation"],
             })
-    harness_payload = {"cases": CASES, "budgets": {"diagnostic_timeout_seconds": 0.5, "receipt_poll_seconds": 0.1, "diagnostic_poll_seconds": 2.0}}
+    baseline_source_sha256 = hashlib.sha256(baseline_source.encode()).hexdigest()
+    candidate_source_sha256 = hashlib.sha256(candidate_source.encode()).hexdigest()
+    source_hashes_identical = baseline_source_sha256 == candidate_source_sha256
+    implementation_delta = {
+        "status": "characterization_only" if source_hashes_identical else "before_after",
+        "source_hashes_identical": source_hashes_identical,
+        "optimization_claim_allowed": not source_hashes_identical,
+        "reason": (
+            "baseline and candidate launcher sources are identical"
+            if source_hashes_identical
+            else "baseline and candidate launcher sources differ"
+        ),
+    }
+    harness_payload = {
+        "cases": CASES,
+        "diagnostic_timeout_seconds": 0.5,
+        "receipt_poll_seconds": 0.1,
+    }
     harness_digest = hashlib.sha256(json.dumps(harness_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     summary = {}
     for mode in ("baseline", "candidate"):
@@ -265,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
                     "timeout_count",
                     "receipt_checks",
                     "diagnostic_probe_count",
+                    "busy_process_observations",
                     "time_to_receipt_ms",
                     "receipt_to_completion_return_ms",
                     "elapsed_seconds",
@@ -278,12 +368,19 @@ def main(argv: list[str] | None = None) -> int:
         "os": platform.platform(),
         "baseline_revision": args.baseline_revision,
         "candidate_revision": revision(),
-        "baseline_source_sha256": hashlib.sha256(baseline_source.encode()).hexdigest(),
-        "candidate_source_sha256": hashlib.sha256(candidate_source.encode()).hexdigest(),
+        "baseline_source_sha256": baseline_source_sha256,
+        "candidate_source_sha256": candidate_source_sha256,
+        "implementation_delta": implementation_delta,
         "harness": "stdlib deterministic fake-Herdr command/receipt seam",
         "harness_digest": harness_digest,
         "evidence_kind": "fake_boundary_observation",
-        "fixed_budgets": harness_payload["budgets"],
+        "case_budgets": {
+            name: {
+                "completion_wait_seconds": case["completion_wait_seconds"],
+                "diagnostic_poll_seconds": case["diagnostic_poll_seconds"],
+            }
+            for name, case in CASES.items()
+        },
         "cases": list(CASES),
         "repetitions_per_case_and_side": args.repetitions,
         "summary": summary,
@@ -295,6 +392,12 @@ def main(argv: list[str] | None = None) -> int:
             "all_outcomes_match": all(row["outcome_match"] for row in rows),
         },
         "receipt_availability": "harness control data; not production receipt-publication evidence",
+        "retention_gate": {
+            "median_subprocess_reduction_minimum": 0.20,
+            "p95_completion_detection_regression_maximum": 0.05,
+            "lifecycle_cleanup_reconciliation_mismatches_maximum": 0,
+            "status": "not_evaluated" if source_hashes_identical else "eligible_for_before_after",
+        },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
