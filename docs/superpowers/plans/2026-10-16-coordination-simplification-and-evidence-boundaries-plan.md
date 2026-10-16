@@ -195,7 +195,7 @@ canonical sources through `scripts/sync_agent_adapters.py`.
 - Branch: `codex/coordination-simplification-and-evidence-boundaries`
 - Base commit: `2bf4f94c21044165f3c293b46171c959b873fb4d`
 - Expected workspace: `original checkout may be dirty; capture and preserve its actual status at activation; task worktree starts clean from the exact fetched origin/main base and contains only the task branch plus this plan`
-- Next action: `complete Task 4 by separating semantic acceptance proof from settlement/resource proof, then run its focused regression suite`
+- Next action: `finalize Task 5 as retained or deferred using the exact completion-monitoring benchmark, then reconcile Task 6`
 - Blockers: `none for planning; live managed-Secretary economics remain an evidence gate, not an assumed capability`
 
 ## Activation Evidence
@@ -218,8 +218,8 @@ canonical sources through `scripts/sync_agent_adapters.py`.
 | Task 1 | `completed` | task worktree | `codex` | none | source inventory, focused baseline tests, current Git/base proof | `639 passed, 1 skipped`; inventory and admission decision recorded below |
 | Task 2 | `completed` | task worktree | `codex` | Task 1 | role-boundary tests/docs and generated-surface check | `already satisfied/no-op`; canonical role boundaries and managed-runtime block are consistent |
 | Task 3 | `completed` | task worktree | `codex` | Tasks 1–2 | contract/digest/result regression suite | `already satisfied/no-op`; one execution digest owner, explicit identity checks, and structured-result boundary already exist |
-| Task 4 | `active` | task worktree | `codex` | Task 3 | acceptance, transition, release, settlement, and stale-proof tests | acceptance proof currently embeds settlement fields; implementation pending |
-| Task 5 | `pending` | task worktree | `codex` | Tasks 3–4 | launcher receipt-first success/failure tests and benchmark evidence | preliminary deferral evidence recorded; finalize after Task 4 |
+| Task 4 | `completed` | task worktree | `codex` | Task 3 | acceptance, transition, release, settlement, and stale-proof tests | `279 passed, 1 skipped`; semantic acceptance proof no longer embeds settlement/resource facts |
+| Task 5 | `active` | task worktree | `codex` | Tasks 3–4 | launcher receipt-first success/failure tests and benchmark evidence | exact post-Task-4 benchmark pending |
 | Task 6 | `pending` | task worktree | `unresolved` | Tasks 2–5 | explicit plan-binding/continuation tests, documentation sync, final validation | pending |
 
 ## Task Breakdown
@@ -469,20 +469,26 @@ canonical sources through `scripts/sync_agent_adapters.py`.
 - Stop for: any acceptance bypass, automatic acceptance from exit/pane/terminal text, deletion without exact artifact proof, or a cleanup failure being converted into semantic task failure without an explicit task condition
 
 **Steps:**
-- [ ] Step 1: Define the canonical semantic acceptance proof from `TaskResult`, Git state, verification outcomes, and required task conditions; remove settlement/resource fields from `acceptance_proof` and make its normalized representation immutable to consumers.
-- [ ] Step 2: Make plan advancement validate the semantic acceptance proof once, then check only dependency state and expected plan revision.
-- [ ] Step 3: Keep settlement/resource proof independently supplied to release, reuse, and retirement paths; those consumers validate only their additional facts, including retirement/resource proof, retention policy, consumer acknowledgement, and physical artifact identity.
-- [ ] Step 4: Keep runtime settlement and resource reuse fail-closed when descendants or owned resources are not positively retired.
-- [ ] Step 5: Remove duplicated mismatch guards only after the focused tests demonstrate equivalent or stronger rejection behavior.
+- [x] Step 1: Define the canonical semantic acceptance proof from `TaskResult`, Git state, verification outcomes, and required task conditions; remove settlement/resource fields from `acceptance_proof` and make its normalized representation immutable to consumers.
+- [x] Step 2: Make plan advancement validate the semantic acceptance proof once, then check only dependency state and expected plan revision.
+- [x] Step 3: Keep settlement/resource proof independently supplied to release, reuse, and retirement paths; those consumers validate only their additional facts, including retirement/resource proof, retention policy, consumer acknowledgement, and physical artifact identity.
+- [x] Step 4: Keep runtime settlement and resource reuse fail-closed when descendants or owned resources are not positively retired.
+- [x] Step 5: Remove duplicated mismatch guards only after the focused tests demonstrate equivalent or stronger rejection behavior.
 
 **Verification:**
-- [ ] `py -3 -m pytest -q tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_dcode_project.py`
+- [x] `py -3 -m pytest -q tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_evidence_release.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_dcode_project.py`
 - Expected: acceptance PASS/FAIL/BLOCKED decisions remain stable; dependent transitions require a valid semantic acceptance proof; release and settlement separately require valid retirement/resource proof; release rejects stale, replaced, missing, symlinked, or mismatched evidence; cleanup remains independently represented.
-- [ ] Run direct boundary cases for accepted implementation with pending cleanup, failed verification, stale candidate SHA, dependency mismatch, and replaced evidence artifact.
+- [x] Run direct boundary cases for accepted implementation with pending cleanup, failed verification, stale candidate SHA, dependency mismatch, and replaced evidence artifact.
 - Expected: each case returns the owning proof decision and does not overwrite unrelated lifecycle facts.
 
 **Exit Criteria:**
 - One acceptance owner exists, downstream consumers check only their additional concerns, and no release or settlement path reimplements semantic acceptance.
+
+**Task 4 Evidence:**
+- [x] `scripts/project_os_runtime/acceptance.py:evaluate_acceptance` no longer emits a `settlement` member inside `acceptance_proof`; the existing compatibility input remains accepted but is not part of semantic proof.
+- [x] `tests/test_project_os_runtime.py` proves acceptance can pass without settlement proof and that the semantic proof omits settlement facts.
+- [x] `tests/test_evidence_release.py` proves release consumes the independently supplied same-attempt runtime settlement and does not depend on an embedded acceptance settlement field.
+- [x] Focused verification passed: `279 passed, 1 skipped`.
 
 ### Task 5: Reduce observation overhead behind a receipt-first gate
 
