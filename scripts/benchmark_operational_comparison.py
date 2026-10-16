@@ -150,6 +150,29 @@ def _validate_stage_timestamps(row: dict[str, Any], protocol: dict[str, Any]) ->
     return errors
 
 
+def _validate_intervals(row: dict[str, Any]) -> list[str]:
+    intervals = row.get("useful_intervals_ms")
+    if intervals is None:
+        return []
+    if not isinstance(intervals, list):
+        return ["useful_intervals_ms must be a list"]
+    errors: list[str] = []
+    for index, interval in enumerate(intervals):
+        if not isinstance(interval, list) or len(interval) != 2:
+            errors.append(f"useful interval {index} must contain exactly two endpoints")
+            continue
+        start, end = interval
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in interval):
+            errors.append(f"useful interval {index} endpoints must be numeric")
+            continue
+        if not math.isfinite(float(start)) or not math.isfinite(float(end)):
+            errors.append(f"useful interval {index} endpoints must be finite")
+            continue
+        if end < start:
+            errors.append(f"useful interval {index} ends before it starts")
+    return errors
+
+
 def validate_row(row: dict[str, Any], protocol: dict[str, Any], expected: dict[str, dict[str, Any]]) -> list[str]:
     status = row.get("status")
     if status not in STATUS_VALUES:
@@ -189,6 +212,7 @@ def validate_row(row: dict[str, Any], protocol: dict[str, Any], expected: dict[s
     if row.get("capability_state") not in {"confirmed", "unavailable", "blocked"}:
         errors.append("unsupported capability_state")
     errors.extend(_validate_stage_timestamps(row, protocol))
+    errors.extend(_validate_intervals(row))
     metrics = row.get("metrics")
     if not isinstance(metrics, dict):
         errors.append("metrics must be an object")
@@ -212,6 +236,16 @@ def validate_row(row: dict[str, Any], protocol: dict[str, Any], expected: dict[s
         for field in ("accepted_outcome", "review", "integration", "retirement", "cleanup", "reconciliation"):
             if field not in lifecycle:
                 errors.append(f"missing lifecycle field: {field}")
+        if status == "observed":
+            requirements = protocol["evidence_rules"]["accepted_lifecycle"]
+            for field, allowed in requirements.items():
+                if lifecycle.get(field) not in allowed:
+                    errors.append(f"observed rows require accepted lifecycle field: {field}")
+            if row.get("capability_state") != "confirmed":
+                errors.append("observed rows require capability_state=confirmed")
+            accepted_metric = row.get("metrics", {}).get("accepted_outcome_wall_time_ms", {})
+            if accepted_metric.get("status") != "observed":
+                errors.append("observed rows require accepted outcome wall time")
     return errors
 
 
@@ -292,7 +326,10 @@ def summarize(protocol: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str,
         for condition in protocol["trial_design"]["conditions"]:
             subset = [row for row in valid_rows if row.get("arm") == arm and row.get("condition") == condition]
             observed = [row for row in subset if row.get("status") == "observed"]
-            worker_intervals = [interval for row in observed for interval in row.get("useful_intervals_ms", [])]
+            per_trial_union = [
+                _union_duration(row.get("useful_intervals_ms", []))
+                for row in observed
+            ]
             arms[arm][condition] = {
                 "row_count": len(subset),
                 "observed_count": len(observed),
@@ -303,7 +340,7 @@ def summarize(protocol: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str,
                 "useful_interval_sum_ms": sum(
                     end - start for row in observed for start, end in row.get("useful_intervals_ms", [])
                 ) if observed else None,
-                "useful_interval_union_ms": _union_duration(worker_intervals),
+                "useful_interval_union_ms": sum(value for value in per_trial_union if value is not None) if observed else None,
                 "trace_trial_ids": [row["trial_id"] for row in subset],
             }
     return {
@@ -360,12 +397,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate":
         result = validate_rows(protocol, rows)
         print(json.dumps(_public_validation(result), indent=2, sort_keys=True))
-        return 0 if not result["protocol_errors"] and not result["missing_trials"] else 1
+        return 0 if not result["protocol_errors"] and not result["missing_trials"] and not result["invalid_rows"] else 1
     result = summarize(protocol, rows)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"output": str(args.output), "observed_row_count": result["observed_row_count"]}, sort_keys=True))
-    return 0
+    return 0 if result["validation"]["valid"] else 1
 
 
 if __name__ == "__main__":

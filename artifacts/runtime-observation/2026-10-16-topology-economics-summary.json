@@ -126,7 +126,7 @@
     "reason": "No production optimization decision is made by the passive aggregator; the report must apply the evidence gate."
   },
   "observed_row_count": 0,
-  "protocol_digest": "a1cfd3dd3f897cb6dd157a2b357bdd6d3c90d3847cf1d9d8c2aab502deccab7d",
+  "protocol_digest": "581a0227c0bb6cd593c0eff2c1687d2fc594b15edc1468c7c598accab955238d",
   "protocol_id": "topology-economics-2026-10-16",
   "schema": "topology-economics-summary/v1",
   "status_counts": {

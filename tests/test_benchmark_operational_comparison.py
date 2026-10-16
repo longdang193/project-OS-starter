@@ -129,6 +129,41 @@ def test_overlapping_intervals_are_not_double_counted() -> None:
     assert aggregate["wall_time_ms"]["observed_count"] == 2
 
 
+def test_interval_union_is_calculated_per_trial_clock() -> None:
+    protocol = _protocol()
+    first = _row(protocol, "cos_two_lane:cold:2")
+    first["useful_intervals_ms"] = [[0, 100]]
+    second = _row(protocol, "cos_two_lane:cold:3")
+    second["useful_intervals_ms"] = [[0, 100]]
+    summary = summarize(protocol, [first, second])
+    assert summary["arms"]["cos_two_lane"]["cold"]["useful_interval_union_ms"] == 200.0
+
+
+def test_invalid_intervals_are_rejected() -> None:
+    protocol = _protocol()
+    row = _row(protocol, protocol["trial_design"]["order"][0])
+    row["useful_intervals_ms"] = [[100, 0]]
+    result = validate_rows(protocol, [row])
+    assert result["valid"] is False
+    assert any("ends before it starts" in error for item in result["invalid_rows"] for error in item["errors"])
+
+
+def test_rejected_or_unsettled_rows_do_not_count_as_observed() -> None:
+    protocol = _protocol()
+    row = _row(protocol, protocol["trial_design"]["order"][0])
+    row["lifecycle"].update({
+        "accepted_outcome": "rejected",
+        "review": "failed",
+        "cleanup": "unresolved",
+        "reconciliation": "pending",
+    })
+    row["capability_state"] = "blocked"
+    result = validate_rows(protocol, [row])
+    assert result["valid"] is False
+    assert any("accepted lifecycle" in error for item in result["invalid_rows"] for error in item["errors"])
+    assert summarize(protocol, [row])["observed_row_count"] == 0
+
+
 def test_cli_validate_and_summarize(tmp_path: Path) -> None:
     protocol = _protocol()
     rows = [_row(protocol, trial_id, status="BLOCKED_CAPABILITY") for trial_id in protocol["trial_design"]["order"]]
@@ -169,3 +204,28 @@ def test_cli_validate_and_summarize(tmp_path: Path) -> None:
     )
     assert summarized.returncode == 0, summarized.stderr
     assert json.loads(summary_path.read_text(encoding="utf-8"))["observed_row_count"] == 0
+
+
+def test_cli_fails_for_invalid_evidence(tmp_path: Path) -> None:
+    protocol = _protocol()
+    rows = [_row(protocol, trial_id) for trial_id in protocol["trial_design"]["order"]]
+    rows[0]["base_identity"] = "wrong-base"
+    raw = tmp_path / "invalid.jsonl"
+    raw.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    summary_path = tmp_path / "summary.json"
+    validate = subprocess.run(
+        [sys.executable, "scripts/benchmark_operational_comparison.py", "validate", "--protocol", str(PROTOCOL_PATH), "--input", str(raw)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert validate.returncode == 1
+    summarized = subprocess.run(
+        [sys.executable, "scripts/benchmark_operational_comparison.py", "summarize", "--protocol", str(PROTOCOL_PATH), "--input", str(raw), "--output", str(summary_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert summarized.returncode == 1
