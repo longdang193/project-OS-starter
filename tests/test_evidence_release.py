@@ -214,6 +214,18 @@ def test_release_rejects_incomplete_common_acceptance_decision(tmp_path: Path):
     assert (tmp_path / "task-result.json").exists()
 
 
+def test_release_preserves_common_validation_reasons(tmp_path: Path):
+    decision = _acceptance_decision()
+    decision["acceptance_proof"]["repository_identity"] = "other-repository"
+
+    result = _release(tmp_path, decision=decision)
+
+    assert result["authorized"] is False
+    assert result["validation_reasons"] == ["acceptance proof and Git repository binding mismatch"]
+    assert "acceptance proof and Git repository binding mismatch" in result["reasons"]
+    assert (tmp_path / "task-result.json").exists()
+
+
 def test_release_requires_retirement_proof(tmp_path: Path):
     result = _release(tmp_path, retirement_proof={})
     assert result["authorized"] is False

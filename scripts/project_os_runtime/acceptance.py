@@ -42,7 +42,7 @@ def _required_bool(mapping: Mapping[str, Any], field: str, label: str) -> tuple[
     return None, value
 
 
-def _validate_acceptance_decision_contract(
+def validate_acceptance_decision(
     decision: Mapping[str, Any],
     *,
     expected_task_id: str | None = None,
@@ -144,6 +144,14 @@ def _validate_acceptance_decision_contract(
                 add("accepted candidate binding")
             if isinstance(task, Mapping) and task.get("attempt_id") != git.get("attempt_id"):
                 add("attempt binding")
+            if proof.get("repository_identity") != git.get("repository_identity"):
+                add("acceptance proof and Git repository binding mismatch")
+            if proof.get("plan_identity") != git.get("plan_identity"):
+                add("acceptance proof and Git plan binding mismatch")
+            if proof.get("attempt_id") != git.get("attempt_id"):
+                add("acceptance proof and Git attempt binding mismatch")
+            if proof.get("checkpoint_sha") != git.get("acceptance_checkpoint_sha"):
+                add("acceptance proof and Git checkpoint binding mismatch")
     if isinstance(controller, Mapping) and isinstance(task, Mapping):
         if controller.get("plan_identity") != task.get("plan_identity"):
             add("controller and task plan binding mismatch")
@@ -183,10 +191,8 @@ def evaluate_acceptance(
     artifact_conditions: Mapping[str, Any],
     git: Mapping[str, Any],
     verification: Mapping[str, Any],
-    settlement: Mapping[str, Any] | None = None,
     attempt_id: str | None = None,
 ) -> dict[str, Any]:
-    del settlement
     reasons: list[str] = []
     for mapping, fields in (
         (controller, (("identity", "controller identity"), ("plan_identity", "controller plan binding"), ("task_id", "controller task binding"))),
@@ -206,13 +212,18 @@ def evaluate_acceptance(
     if controller.get("task_id") != task.get("task_id"):
         reasons.append("controller and task identity mismatch")
     task_attempt_id = task.get("attempt_id")
-    accepted_attempt_id = attempt_id if attempt_id is not None else task_attempt_id
+    git_attempt_id = git.get("attempt_id")
+    accepted_attempt_id = attempt_id if attempt_id is not None else (
+        task_attempt_id if isinstance(task_attempt_id, str) and task_attempt_id.strip() else git_attempt_id
+    )
     if not isinstance(accepted_attempt_id, str) or not accepted_attempt_id.strip():
         reasons.append("attempt binding")
-    elif isinstance(task_attempt_id, str) and task_attempt_id.strip() and task_attempt_id != accepted_attempt_id:
-        reasons.append("attempt binding")
-    elif git.get("attempt_id") != accepted_attempt_id:
-        reasons.append("attempt binding")
+    else:
+        for source_attempt_id in (task_attempt_id, git_attempt_id):
+            if isinstance(source_attempt_id, str) and source_attempt_id.strip() and source_attempt_id != accepted_attempt_id:
+                reasons.append("attempt binding")
+        if not isinstance(git_attempt_id, str) or not git_attempt_id.strip():
+            reasons.append("attempt binding")
     if not isinstance(git.get("lane_head_sha"), str) or not git.get("lane_head_sha").strip():
         reasons.append("immutable candidate identity")
     required_conditions = task.get("required_conditions")
@@ -319,7 +330,7 @@ def evaluate_acceptance(
             "task_id": task.get("task_id"),
             "plan_identity": task.get("plan_identity"),
             "state": current_state,
-            "attempt_id": task.get("attempt_id"),
+            "attempt_id": accepted_attempt_id,
         },
         "task_transition": task_transition,
         "acceptance_proof": acceptance_proof,
@@ -339,8 +350,8 @@ def authorize_evidence_release(
     recovery_required: bool = False,
     runtime_settlement: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    reasons = list(
-        _validate_acceptance_decision_contract(
+    validation_reasons = list(
+        validate_acceptance_decision(
             decision,
             expected_task_id=binding.get("task_id"),
             expected_plan_identity=binding.get("plan_ref"),
@@ -350,13 +361,14 @@ def authorize_evidence_release(
             expected_attempt_id=binding.get("attempt_id"),
         )
     )
+    reasons = list(validation_reasons)
     if (
         not isinstance(runtime_settlement, Mapping)
         or runtime_settlement.get("settlement_proven") is not True
         or runtime_settlement.get("resource_settled") is not True
         or runtime_settlement.get("attempt_id") != binding.get("attempt_id")
     ):
-        reasons.append("acceptance settlement")
+        reasons.append("runtime settlement")
     for field in RELEASE_BINDING_FIELDS:
         value = binding.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -427,6 +439,7 @@ def authorize_evidence_release(
             reasons.append(f"retention active: {consumer}")
     return {
         "authorized": not reasons,
+        "validation_reasons": list(validation_reasons),
         "reasons": reasons or ["evidence release authorized"],
         "payload_released": False,
         "tombstone_released": False,
@@ -829,13 +842,16 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "dependent task dependencies unavailable",
+            "validation_reasons": [],
         }
     if decision.get("decision") != "PASS":
+        validation_reasons = list(validate_acceptance_decision(decision))
         return {
             "authorized": False,
             "current_state": current_state,
             "next_state": current_state,
             "reason": "acceptance did not pass",
+            "validation_reasons": validation_reasons,
         }
     controller = decision.get("controller")
     accepted_task = decision.get("task")
@@ -847,13 +863,7 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "acceptance decision incomplete",
-        }
-    if controller.get("authority") != ACCEPTANCE_AUTHORITY or _missing_text(controller, "identity", "controller identity") is not None:
-        return {
-            "authorized": False,
-            "current_state": current_state,
-            "next_state": current_state,
-            "reason": "acceptance decision incomplete",
+            "validation_reasons": list(validate_acceptance_decision(decision)),
         }
     accepted_task_id = accepted_task.get("task_id") if isinstance(accepted_task, Mapping) else None
     if accepted_task_id != completed_task_id:
@@ -862,6 +872,7 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "accepted task does not match completed task",
+            "validation_reasons": [],
         }
     accepted_plan_identity = accepted_task.get("plan_identity") if isinstance(accepted_task, Mapping) else None
     dependent_plan_identity = dependent_task.get("plan_identity")
@@ -877,8 +888,9 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "accepted and dependent task plan binding mismatch",
+            "validation_reasons": [],
         }
-    common_reasons = _validate_acceptance_decision_contract(
+    common_reasons = validate_acceptance_decision(
         decision,
         expected_task_id=completed_task_id,
         expected_plan_identity=dependent_plan_identity,
@@ -889,6 +901,7 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "acceptance decision incomplete",
+            "validation_reasons": list(common_reasons),
         }
     git_proof = proof.get("git")
     if completed_task_id not in dependencies:
@@ -897,6 +910,7 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "accepted task is not a dependency",
+            "validation_reasons": [],
         }
     if any(dependency_states.get(str(task_id)) != "completed" for task_id in dependencies):
         return {
@@ -904,6 +918,7 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "dependent prerequisites incomplete",
+            "validation_reasons": [],
         }
     if current_state != "pending":
         return {
@@ -911,6 +926,7 @@ def authorize_dependent_transition(
             "current_state": current_state,
             "next_state": current_state,
             "reason": "dependent task is not pending",
+            "validation_reasons": [],
         }
     return {
         "authorized": True,
@@ -920,12 +936,14 @@ def authorize_dependent_transition(
         "next_state": "active",
         "accepted_candidate_sha": git_proof["candidate_sha"],
         "reason": "accepted dependency permits advancement",
+        "validation_reasons": [],
     }
 
 
 __all__ = [
     "ACCEPTANCE_AUTHORITY",
     "ACCEPTANCE_DECISIONS",
+    "validate_acceptance_decision",
     "authorize_evidence_release",
     "release_authorized_evidence",
     "authorize_dependent_transition",

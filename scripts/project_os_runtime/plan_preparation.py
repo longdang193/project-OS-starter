@@ -14,7 +14,7 @@ import tempfile
 from typing import Any
 
 from .attempt import execution_binding_digest, normalize_runtime_grant, same_attempt_binding
-from .acceptance import _validate_acceptance_decision_contract, release_authorized_evidence
+from .acceptance import release_authorized_evidence, validate_acceptance_decision
 try:
     from ..planning_dependencies import (
         DependencyContractError,
@@ -424,13 +424,17 @@ def apply_accepted_plan_transitions(
         target_plan_identity = _source_parts(source)[2]
     except (OSError, ValueError):
         return {"authorized": False, "reason": "acceptance decision incomplete"}
-    common_reasons = _validate_acceptance_decision_contract(
+    common_reasons = validate_acceptance_decision(
         decision,
         expected_task_id=task.get("task_id") if isinstance(task, Mapping) else None,
         expected_plan_identity=target_plan_identity,
     )
     if common_reasons:
-        return {"authorized": False, "reason": "acceptance decision incomplete"}
+        return {
+            "authorized": False,
+            "reason": "acceptance decision incomplete",
+            "validation_reasons": list(common_reasons),
+        }
     git_proof = proof.get("git") if isinstance(proof, Mapping) else None
     if not isinstance(task, Mapping) or not isinstance(task_transition, Mapping) or not isinstance(git_proof, Mapping):
         return {"authorized": False, "reason": "acceptance decision incomplete"}
