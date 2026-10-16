@@ -222,7 +222,6 @@ def test_apply_accepted_plan_transitions_rejects_tampered_proof(tmp_path: Path) 
             "write_scope_matches": True,
         },
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     decision = evaluate_acceptance(**inputs)
     decision["controller"]["identity"] = ""
@@ -239,6 +238,35 @@ def test_apply_accepted_plan_transitions_rejects_tampered_proof(tmp_path: Path) 
 
     assert result["authorized"] is False
     assert result["reason"] == "acceptance decision incomplete"
+    assert plan_path.read_text(encoding="utf-8") == plan
+
+
+def test_apply_accepted_plan_transitions_preserves_validation_reasons(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan = PLAN.replace("| Task 1 | `completed` |", "| Task 1 | `active` |")
+    plan_path.write_text(plan, encoding="utf-8")
+    inputs = {
+        "controller": {"identity": "native-cos", "authority": "cos", "plan_identity": "plan-1", "task_id": "Task 1"},
+        "task": {"task_id": "Task 1", "plan_identity": "plan-1", "attempt_id": "attempt-1", "required_proof": "artifact proof", "required_conditions": {"artifact": "proof"}, "evidence": "evidence-1", "state": "active"},
+        "evidence": {"publication_valid": True, "task_completed": True, "task_identity_matches": True},
+        "artifact_conditions": {"artifact": True},
+        "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
+        "verification": {"passed": True},
+    }
+    decision = evaluate_acceptance(**inputs)
+    decision["acceptance_proof"]["repository_identity"] = "other-repository"
+    revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
+
+    result = apply_accepted_plan_transitions(
+        plan_path,
+        decision,
+        [{"task_id": "Task 1", "expected_state": "active", "next_state": "completed"}],
+        expected_revision=revision,
+    )
+
+    assert result["authorized"] is False
+    assert result["reason"] == "acceptance decision incomplete"
+    assert result["validation_reasons"] == ["acceptance proof and Git repository binding mismatch"]
     assert plan_path.read_text(encoding="utf-8") == plan
 
 
@@ -261,7 +289,6 @@ def test_apply_accepted_plan_transitions_rejects_unapproved_batch_task(tmp_path:
         "artifact_conditions": {"required artifact exists": True},
         "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     decision = evaluate_acceptance(**inputs)
     revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
@@ -301,7 +328,6 @@ def test_apply_accepted_plan_transitions_rejects_cross_plan_replay(tmp_path: Pat
         "artifact_conditions": {"required artifact exists": True},
         "git": {"repository_identity": "repo", "plan_identity": "plan-a", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     decision = evaluate_acceptance(**inputs)
     original = plan_path.read_text(encoding="utf-8")
@@ -386,7 +412,6 @@ def test_native_cos_negative_to_positive_plan_cycle(tmp_path: Path) -> None:
             "write_scope_matches": True,
         },
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     rejected = evaluate_acceptance(**inputs)
     assert rejected["decision"] == "FAIL"
@@ -444,7 +469,6 @@ def test_apply_accepted_plan_transitions_rejects_replay_for_different_candidate(
         "artifact_conditions": {"artifact": True},
         "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     decision = evaluate_acceptance(**inputs)
     revision = hashlib.sha256(plan.encode("utf-8")).hexdigest()
@@ -496,7 +520,6 @@ def test_apply_accepted_plan_transitions_replays_release_after_transition_commit
         "artifact_conditions": {"artifact": True},
         "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     decision = evaluate_acceptance(**inputs)
     dependent = authorize_dependent_transition(
@@ -559,7 +582,6 @@ def test_apply_accepted_plan_transitions_prefers_current_attempt_resources(
         "artifact_conditions": {"artifact": True},
         "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     decision = evaluate_acceptance(**inputs)
     dependent = authorize_dependent_transition(
@@ -745,7 +767,6 @@ def test_accepted_transition_keeps_pending_release_until_checkpoint(
         "artifact_conditions": {"artifact": True},
         "git": {"repository_identity": "repo", "plan_identity": "plan-1", "lane_head_sha": "candidate-1", "checkpoint_sha": "checkpoint-1", "assignment_id": "assignment-1", "attempt_id": "attempt-1", "head_matches": True, "write_scope_matches": True},
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
     decision = evaluate_acceptance(**inputs)
     dependent = authorize_dependent_transition(

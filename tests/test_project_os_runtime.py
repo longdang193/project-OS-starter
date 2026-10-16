@@ -190,8 +190,101 @@ def _acceptance_inputs() -> dict[str, dict[str, object]]:
             "write_scope_matches": True,
         },
         "verification": {"passed": True},
-        "settlement": {"settlement_proven": True, "resource_settled": True},
     }
+
+
+def test_cos_acceptance_projects_one_resolved_attempt_identity() -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["task"].pop("attempt_id")
+
+    decision = evaluate_acceptance(**inputs, attempt_id="attempt-1")
+
+    assert decision["decision"] == "PASS"
+    assert decision["task"]["attempt_id"] == "attempt-1"
+    assert decision["acceptance_proof"]["attempt_id"] == "attempt-1"
+    assert decision["acceptance_proof"]["git"]["attempt_id"] == "attempt-1"
+
+
+@pytest.mark.parametrize("mutation", [
+    "controller_task",
+    "controller_plan",
+    "git_plan",
+    "task_attempt",
+    "git_attempt",
+    "explicit_attempt",
+])
+def test_cos_acceptance_blocks_producer_input_identity_contradictions(mutation: str) -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    explicit_attempt = None
+    if mutation == "controller_task":
+        inputs["controller"]["task_id"] = "Task 2"
+    elif mutation == "controller_plan":
+        inputs["controller"]["plan_identity"] = "plan-2"
+    elif mutation == "git_plan":
+        inputs["git"]["plan_identity"] = "plan-2"
+    elif mutation == "task_attempt":
+        inputs["task"]["attempt_id"] = "attempt-2"
+    elif mutation == "git_attempt":
+        inputs["git"]["attempt_id"] = "attempt-2"
+    else:
+        explicit_attempt = "attempt-2"
+
+    decision = evaluate_acceptance(**inputs, attempt_id=explicit_attempt)
+
+    assert decision["decision"] == "BLOCKED"
+    assert decision["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "reason"),
+    [
+        ("acceptance_proof", "repository_identity", "other-repository", "acceptance proof and Git repository binding mismatch"),
+        ("acceptance_proof", "plan_identity", "plan-2", "acceptance proof and Git plan binding mismatch"),
+        ("acceptance_proof", "attempt_id", "attempt-2", "acceptance proof and Git attempt binding mismatch"),
+        ("acceptance_proof", "checkpoint_sha", "checkpoint-2", "acceptance proof and Git checkpoint binding mismatch"),
+        ("task_transition", "accepted_candidate_sha", "candidate-2", "accepted candidate binding"),
+    ],
+)
+def test_acceptance_validator_rejects_post_production_identity_tampering(
+    section: str,
+    field: str,
+    value: str,
+    reason: str,
+) -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance, validate_acceptance_decision
+
+    decision = evaluate_acceptance(**_acceptance_inputs())
+    decision[section][field] = value
+
+    assert reason in validate_acceptance_decision(decision)
+
+
+def test_acceptance_validator_rejects_tampered_repository_identity_with_consumer_reasons() -> None:
+    from scripts.project_os_runtime.acceptance import (
+        authorize_dependent_transition,
+        evaluate_acceptance,
+        validate_acceptance_decision,
+    )
+
+    decision = evaluate_acceptance(**_acceptance_inputs())
+    decision["acceptance_proof"]["repository_identity"] = "other-repository"
+
+    validation_reasons = validate_acceptance_decision(decision)
+    transition = authorize_dependent_transition(
+        decision,
+        completed_task_id="Task 1",
+        dependent_task={"task_id": "Task 2", "plan_identity": "plan-1", "state": "pending", "dependencies": ["Task 1"]},
+        dependency_states={"Task 1": "completed"},
+    )
+
+    assert validation_reasons == ("acceptance proof and Git repository binding mismatch",)
+    assert transition["authorized"] is False
+    assert transition["reason"] == "acceptance decision incomplete"
+    assert transition["validation_reasons"] == list(validation_reasons)
 
 
 def test_cos_acceptance_rejects_false_artifact_and_keeps_dependent_pending() -> None:
@@ -495,7 +588,6 @@ def test_cos_acceptance_passes_and_authorizes_only_ready_dependent() -> None:
     )
 
     inputs = _acceptance_inputs()
-    inputs["settlement"] = {}
     decision = evaluate_acceptance(**inputs)
     transition = authorize_dependent_transition(
         decision,
@@ -558,6 +650,7 @@ def test_cos_acceptance_rejects_transition_for_unrelated_completed_task() -> Non
     assert transition["authorized"] is False
     assert transition["next_state"] == "pending"
     assert transition["reason"] == "accepted task does not match completed task"
+    assert "task binding" in transition["validation_reasons"]
 
 
 def test_cos_acceptance_rejects_cross_plan_dependent_transition() -> None:
@@ -577,6 +670,7 @@ def test_cos_acceptance_rejects_cross_plan_dependent_transition() -> None:
     assert transition["authorized"] is False
     assert transition["next_state"] == "pending"
     assert transition["reason"] == "accepted and dependent task plan binding mismatch"
+    assert "acceptance plan binding" in transition["validation_reasons"]
 
 
 def test_cos_acceptance_blocks_missing_controller_binding() -> None:
@@ -596,8 +690,6 @@ def test_cos_acceptance_ignores_unrelated_unsettled_resources() -> None:
     from scripts.project_os_runtime.acceptance import evaluate_acceptance
 
     inputs = _acceptance_inputs()
-    inputs["settlement"] = {"settlement_proven": True, "resource_settled": False}
-
     decision = evaluate_acceptance(**inputs)
 
     assert decision["decision"] == "PASS"
@@ -608,8 +700,6 @@ def test_cos_acceptance_passes_immutable_candidate_without_settlement() -> None:
     from scripts.project_os_runtime.acceptance import evaluate_acceptance
 
     inputs = _acceptance_inputs()
-    inputs["settlement"] = {}
-
     decision = evaluate_acceptance(**inputs, attempt_id="attempt-1")
 
     assert decision["decision"] == "PASS"
