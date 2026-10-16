@@ -82,6 +82,13 @@ Codex consume its `config.toml` and `auth.json`, require provider `9router`,
 and retain only sanitized runtime receipts. Missing Secretary launch,
 attribution, or observed completion remains `BLOCKED_CAPABILITY`; deterministic
 contract fixtures cannot establish live efficiency.
+The same evidence rule applies to topology economics: use
+`artifacts/runtime-observation/2026-10-16-topology-economics-protocol.json`
+and the passive `benchmark_operational_comparison.py` validator for one fixed
+workload across direct controller, single Worker, and two-lane CoS arms. If an
+approved producer cannot provide attributable accepted-outcome records, stop
+at `BLOCKED_CAPABILITY` or `INCONCLUSIVE`; do not install a provider, request
+credentials, infer a zero, or treat fixture timings as live benefit.
 When response usage is available, record input/output/total tokens as observed
 evidence. Published pricing may produce `estimated` cost only with source,
 effective date, and model resolution; absent model or rate attribution keeps

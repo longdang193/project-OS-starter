@@ -252,6 +252,18 @@ resources remain caller-owned through `runtime.json`.
   members; combo membership is route state, not a stable repository rate card.
   Pilot comparison reports paired input/output/total token deltas even when
   estimated cost is unavailable.
+- Operational topology comparisons use the versioned protocol and passive
+  aggregator in `scripts/benchmark_operational_comparison.py`. The supported
+  comparison arms are direct controller execution, one bounded Worker, and
+  exactly two predeclared CoS lanes over one identical workload. The utility
+  consumes controller-owned records; it never launches work, dispatches
+  Workers, owns retries, accepts outcomes, or mutates Plan state.
+- A missing protocol-conforming producer, attribution, or accepted-outcome
+  evidence is recorded as `BLOCKED_CAPABILITY`, `INCONCLUSIVE`, or
+  `unavailable`; it is never converted to a zero or synthetic success. A
+  topology result may justify one separately approved follow-up measurement,
+  but it does not authorize production optimization or managed Secretary
+  enablement by itself.
 - Secretary event hints use canonical identity `(source, workstream, event_type,
   observed_identity)`. `observed_anchor` identifies canonical evidence and
   optional `source_sequence` orders observations within one source. Coalescing
