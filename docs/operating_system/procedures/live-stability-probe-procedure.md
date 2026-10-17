@@ -6,8 +6,10 @@
 2. Confirm the protocol digest and workload digests are unchanged.
 3. Confirm the recorder is evidence-only and receives results from existing
    controller, Worker, or CoS owners.
-4. Run the focused protocol and recorder tests before sealing the checkpoint.
-5. Record the sealed checkpoint commit, protocol digest, recorder/test digest,
+4. Validate the protocol schema and canonical digest before accepting any
+   owner result or writing any evidence row.
+5. Run the focused protocol and recorder tests before sealing the checkpoint.
+6. Record the sealed checkpoint commit, protocol digest, recorder/test digest,
    environment identity, and base revision.
 
 ## Evidence Streams
@@ -23,8 +25,9 @@
   recorder compares these owner-bound values with the pinned protocol before
   constructing a row.
 - Validate the constructed row with the canonical passive row validator before
-  writing it. Malformed metrics, timestamps, intervals, lifecycle, or
-  provenance fail without creating an output row.
+  writing it. Malformed metrics, timestamps, intervals, lifecycle, provenance,
+  non-finite numeric values, or invalid containers fail without creating an
+  output row.
 - Write exactly six fail-closed records to
   `artifacts/runtime-observation/2026-10-17-live-stability-failclosed.jsonl`.
   Each record names the exact regression test that proves its expected owner

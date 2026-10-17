@@ -184,6 +184,21 @@ def test_malformed_metrics_are_reported_without_crashing() -> None:
     assert any("metric must be an object" in error for item in result["invalid_rows"] for error in item["errors"])
 
 
+def test_malformed_shapes_and_nonfinite_metrics_are_rejected() -> None:
+    protocol = _protocol()
+    row = _row(protocol, protocol["trial_design"]["order"][0])
+    row["stage_timestamps"] = {}
+    result = validate_rows(protocol, [row])
+    assert result["valid"] is False
+    assert any("stage_timestamps must be a list" in error for item in result["invalid_rows"] for error in item["errors"])
+
+    row = _row(protocol, protocol["trial_design"]["order"][0])
+    row["metrics"]["accepted_outcome_wall_time_ms"]["value"] = float("nan")
+    result = validate_rows(protocol, [row])
+    assert result["valid"] is False
+    assert any("finite numeric value" in error for item in result["invalid_rows"] for error in item["errors"])
+
+
 def test_rejected_or_unsettled_rows_do_not_count_as_observed() -> None:
     protocol = _protocol()
     row = _row(protocol, protocol["trial_design"]["order"][0])

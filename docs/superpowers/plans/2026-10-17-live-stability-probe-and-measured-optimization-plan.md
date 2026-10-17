@@ -195,9 +195,9 @@ Review boundaries are intentionally consolidated:
 | Task 1 | `completed` | task worktree | `codex` | none | current-base protocol and preflight baseline pass | `2254a699` base pin; protocol validation; 12 benchmark tests; repo config/contracts pass |
 | Task 2 | `completed` | task worktree | `codex` | Task 1 | recorder and adapter contract tests pass | owner-bound identities and canonical pre-write validation; focused recorder tests pass; evidence-only modes; no external provider launch |
 | Task 3 | `completed` | sealed task worktree | `codex` | Task 2 | 18 attributable topology rows or explicit inconclusive/blocked rows | `18 BLOCKED_CAPABILITY`; no producer launch; topology validation passed |
-| Task 4 | `completed` | sealed task worktree | `codex` | Task 2 | six negative probes fail closed at expected owners | `6` separate records bound to exact regression tests; focused lifecycle/receipt/plan tests pass |
+| Task 4 | `completed` | sealed task worktree | `codex` | Task 2 | six negative probes fail closed at expected owners | `6` separate records bound to exact regression tests; `233` affected lifecycle/receipt/plan/recorder tests pass |
 | Task 5 | `completed` | sealed task worktree | `codex` | Tasks 3–4 | passive validation, summary, report, and one disposition | `18-row topology validation passed`; three verdicts recorded; six fail-closed records separate |
-| Task 6 | `completed` | sealed task worktree | `codex` | Task 5 | final repository, plan, adapter, and kit verification | `1361 passed, 2 skipped`; contracts/planning/adapter/starter-kit/artifact checks passed |
+| Task 6 | `completed` | sealed task worktree | `codex` | Task 5 | final repository, plan, adapter, and kit verification | `1371 passed, 2 skipped`; contracts/planning/adapter/starter-kit/artifact checks passed |
 
 ## Task Breakdown
 
@@ -279,6 +279,7 @@ Review boundaries are intentionally consolidated:
 - Inspect: `scripts/project_os_runtime/plan_preparation.py:prepare_plan_lanes`, `prepare_task`
 - Inspect: `scripts/secretary_live_runtime.py:run_probe`, `_normal_managed_result_capability_available`
 - Modify: `scripts/run_live_stability_probe.py:main`, `record_direct`, `record_worker_result`, `record_cos_result`, `record_blocked`, `validate_owner_result`, `sanitize_record`, `write_row`
+- Modify: `scripts/benchmark_operational_comparison.py:validate_protocol`, `validate_row`, `_validate_stage_timestamps`
 - Modify: `tests/test_live_stability_probe.py`
 - Verify: `scripts/benchmark_operational_comparison.py` remains unchanged unless a focused contract test proves an existing schema gap.
 

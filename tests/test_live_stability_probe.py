@@ -163,46 +163,85 @@ def test_cli_rejects_malformed_owner_result_without_writing(tmp_path: Path) -> N
     assert not output.exists()
 
 
+def test_cli_rejects_integrity_invalid_protocol_without_writing(tmp_path: Path) -> None:
+    protocol = _protocol()
+    protocol["base_revision"] = "wrong-base"
+    protocol_path = tmp_path / "protocol.json"
+    protocol_path.write_text(json.dumps(protocol), encoding="utf-8")
+    owner_path = tmp_path / "owner.json"
+    owner_path.write_text(json.dumps(_owner_result(protocol)), encoding="utf-8")
+    output = tmp_path / "rows.jsonl"
+    from scripts.run_live_stability_probe import main
+
+    with pytest.raises(ValueError, match="protocol is invalid"):
+        main([
+            "record-direct",
+            "--protocol",
+            str(protocol_path),
+            "--result",
+            str(owner_path),
+            "--trial-id",
+            "direct_controller:warm:2",
+            "--output",
+            str(output),
+        ])
+    assert not output.exists()
+
+
 def test_failclosed_evidence_is_bound_to_expected_tests() -> None:
     expected = {
         "stale_plan_revision": (
             "plan_preparation",
             "plan_revision_changed",
             "tests/test_plan_preparation.py::test_prepare_plan_lanes_rejects_plan_revision_changed_after_admission",
+            "removed",
+            "deterministic",
         ),
         "wrong_base_head": (
             "base_identity_guard",
             "base_drift_blocked",
             "tests/test_live_stability_probe.py::test_owner_identity_and_acceptance_are_validated",
+            "not_started",
+            "deterministic",
         ),
         "attempt_receipt_mismatch": (
             "receipt_validation",
             "receipt_rejected",
-            "tests/test_secretary_live_pilot.py::test_validate_receipt_rejects_live_receipt_identity_mismatch",
+            "tests/test_secretary_live_pilot.py::test_validate_receipt_rejects_cross_attempt_replay",
+            "removed",
+            "deterministic",
         ),
         "timeout_silence": (
             "observation_boundary",
             "timeout_not_retirement",
-            "tests/test_secretary_live_runtime.py::test_observe_submitted_codex_retries_terminal_state_after_read_timeout",
+            "tests/test_secretary_live_runtime.py::test_normal_outcome_timeout_without_cleanup_proof_blocks_reuse",
+            "unresolved_until_receipt",
+            "deterministic",
         ),
         "execution_failure_retired": (
             "worker_lifecycle",
             "execution_failed_retirement_confirmed",
             "tests/test_secretary_live_runtime.py::test_run_normal_exception_preserves_owned_resource_after_verified_cleanup",
+            "removed",
+            "deterministic",
         ),
         "cleanup_failure": (
             "cleanup_reconciliation",
             "recovery_required",
             "tests/test_secretary_live_runtime.py::test_run_normal_exception_quarantines_when_cleanup_is_unproven",
+            "unresolved",
+            "deterministic",
         ),
     }
     rows = [json.loads(line) for line in FAILCLOSED_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert {row["probe_id"] for row in rows} == set(expected)
     for row in rows:
-        owner, state, verification = expected[row["probe_id"]]
+        owner, state, verification, cleanup_state, evidence_class = expected[row["probe_id"]]
         assert row["expected_owner"] == owner
         assert row["observed_state"] == state
         assert row["verification"] == verification
+        assert row["cleanup_state"] == cleanup_state
+        assert row["evidence_class"] == evidence_class
         test_path, _, test_name = verification.partition("::")
         source = (ROOT / test_path).read_text(encoding="utf-8")
         assert f"def {test_name}(" in source

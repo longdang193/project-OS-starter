@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from scripts.benchmark_operational_comparison import load_json, sha256_json, validate_row
+    from scripts.benchmark_operational_comparison import load_json, sha256_json, validate_protocol, validate_row
 except ModuleNotFoundError:
-    from benchmark_operational_comparison import load_json, sha256_json, validate_row
+    from benchmark_operational_comparison import load_json, sha256_json, validate_protocol, validate_row
 
 
 SENSITIVE_KEYS = {
@@ -56,6 +56,12 @@ def sanitize_record(value: Any) -> Any:
     if isinstance(value, list):
         return [sanitize_record(item) for item in value]
     return value
+
+
+def _validate_protocol_or_raise(protocol: dict[str, Any]) -> None:
+    errors = validate_protocol(protocol)
+    if errors:
+        raise ValueError(f"protocol is invalid: {'; '.join(errors)}")
 
 
 def _expected_trial(protocol: dict[str, Any], trial_id: str) -> dict[str, Any]:
@@ -180,6 +186,7 @@ def validate_owner_result(protocol: dict[str, Any], owner_result: dict[str, Any]
 
 
 def _record_owner_result(protocol: dict[str, Any], owner_result: dict[str, Any], *, trial_id: str, expected_arm: str) -> dict[str, Any]:
+    _validate_protocol_or_raise(protocol)
     return validate_owner_result(protocol, owner_result, trial_id=trial_id, expected_arm=expected_arm)
 
 
@@ -196,6 +203,7 @@ def record_cos_result(protocol: dict[str, Any], owner_result: dict[str, Any], *,
 
 
 def record_blocked(protocol: dict[str, Any], *, trial_id: str, reason: str, source_producer: str = "capability-preflight") -> dict[str, Any]:
+    _validate_protocol_or_raise(protocol)
     expected = _expected_trial(protocol, trial_id)
     owner_result = {
         "attempted": False,
@@ -245,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-producer", default="capability-preflight")
     args = parser.parse_args(argv)
     protocol = load_json(args.protocol)
+    _validate_protocol_or_raise(protocol)
     if args.mode == "record-blocked":
         if not args.reason:
             parser.error("--reason is required for record-blocked")
