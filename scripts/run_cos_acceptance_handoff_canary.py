@@ -203,11 +203,32 @@ def run(output: Path) -> dict[str, Any]:
         temp_root = Path(temporary)
         plan_path = temp_root / "plan.md"
         plan_path.write_text(PLAN, encoding="utf-8")
-        artifact = temp_root / "worker-result.json"
-        artifact.write_text('{"attempt_id":"canary-attempt-1","settled":true}\n', encoding="utf-8")
+        artifact_a = temp_root / "worker-result-a.json"
+        artifact_b = temp_root / "worker-result-b.json"
+        artifact_a.write_text('{"attempt_id":"canary-attempt-1","lane":"a","settled":true}\n', encoding="utf-8")
+        artifact_b.write_text('{"attempt_id":"canary-attempt-1","lane":"b","settled":true}\n', encoding="utf-8")
         record_path = temp_root / "acceptance.json"
         binding = _binding()
-        accepted = _handoff(plan_path, record_path, artifact, binding)
+        accepted = _handoff(
+            plan_path,
+            record_path,
+            artifact_a,
+            binding,
+            required_conditions={
+                "lane a artifact exists": "controller lane-a artifact proof",
+                "lane b artifact exists": "controller lane-b artifact proof",
+            },
+            artifact_specs={
+                "lane a artifact exists": {
+                    "path": artifact_a,
+                    "expected_sha256": hashlib.sha256(artifact_a.read_bytes()).hexdigest(),
+                },
+                "lane b artifact exists": {
+                    "path": artifact_b,
+                    "expected_sha256": hashlib.sha256(artifact_b.read_bytes()).hexdigest(),
+                },
+            },
+        )
         graph_after_acceptance = load_plan(plan_path)
         replay = replay_acceptance(plan_path, record_path)
         graph_after_replay = load_plan(plan_path)
@@ -327,6 +348,10 @@ def run(output: Path) -> dict[str, Any]:
                 "dependent_task_state_after_replay": graph_after_replay.tasks["Task 2"].state,
                 "worker_launch_count": 1,
                 "attempt_id": binding["attempt_id"],
+                "lane_observations": [
+                    {"lane_id": "canary-lane-a", "artifact": "worker-result-a.json", "settled": True},
+                    {"lane_id": "canary-lane-b", "artifact": "worker-result-b.json", "settled": True},
+                ],
                 "record_schema": json.loads(record_path.read_text(encoding="utf-8"))["schema"],
                 "probe_row": {
                     "status": cos_row["status"],
