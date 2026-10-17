@@ -803,13 +803,11 @@ def _normalize_secretary_runtime_binding(
     *,
     task_id: str | None,
     plan_revision: str | None,
-    attempt_id: str | None,
     run_id: str | None,
 ) -> dict[str, str] | None:
     values = {
         "task_id": task_id,
         "plan_revision": plan_revision,
-        "attempt_id": attempt_id,
         "run_id": run_id,
     }
     supplied = [value for value in values.values() if value is not None]
@@ -818,7 +816,7 @@ def _normalize_secretary_runtime_binding(
     if len(supplied) != len(values) or any(
         not isinstance(value, str) or not value.strip() for value in values.values()
     ):
-        raise LaunchBlocked("Secretary runtime binding requires all four identity fields.")
+        raise LaunchBlocked("Secretary runtime binding requires all three stable identity fields.")
     return {name: str(value).strip() for name, value in values.items()}
 
 
@@ -975,7 +973,7 @@ def _finalize_performance(
 def _build_assignment_result(
     *,
     dispatch_id: str | None,
-    attempt_id: str,
+    attempt_id: str | None,
     agent_name: str,
     delivery: dict[str, Any],
     execution: dict[str, Any],
@@ -2827,7 +2825,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan-identity")
     parser.add_argument("--secretary-task-id")
     parser.add_argument("--secretary-plan-revision")
-    parser.add_argument("--secretary-attempt-id")
     parser.add_argument("--secretary-run-id")
     parser.add_argument("--task-sha256")
     parser.add_argument("--grant-digest")
@@ -2865,7 +2862,6 @@ def _main_body(args: argparse.Namespace) -> int:
     secretary_runtime = _normalize_secretary_runtime_binding(
         task_id=args.secretary_task_id,
         plan_revision=args.secretary_plan_revision,
-        attempt_id=args.secretary_attempt_id,
         run_id=args.secretary_run_id,
     )
 
@@ -2926,7 +2922,7 @@ def _main_body(args: argparse.Namespace) -> int:
             legacy["grant_digest"] = attempt_context["grant_digest"]
         result = _build_assignment_result(
             dispatch_id=dispatch_id,
-            attempt_id=(current_attempt_id if has_attempt else uuid.uuid4().hex),
+            attempt_id=(current_attempt_id if has_attempt else None),
             agent_name=(current_agent_name if isinstance(current_agent_name, str) else args.profile + "-main"),
             delivery=delivery,
             execution=execution,
@@ -2968,17 +2964,8 @@ def _main_body(args: argparse.Namespace) -> int:
         )
         if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
             raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")
-        attempt_id = uuid.uuid4().hex
-        attempt_context.update(
-            {
-                "attempt_id": attempt_id,
-                "agent_name": evidence.get("herdr", {}).get("agent_name", args.profile + "-main"),
-            }
-        )
         registry_evidence = evidence.setdefault("registry_launcher", {})
         observation_evidence = evidence.setdefault("observation", {})
-        if secretary_runtime is not None:
-            evidence["secretary_runtime"] = dict(secretary_runtime)
         if not isinstance(registry_evidence, dict) or not isinstance(observation_evidence, dict):
             raise LaunchBlocked("Launcher evidence has invalid lifecycle sections.")
         performance_evidence = evidence.setdefault("performance", preparation_performance)
@@ -2988,6 +2975,25 @@ def _main_body(args: argparse.Namespace) -> int:
         for key in ("assignment_id", "repository_identity", "plan_identity"):
             if registry_evidence.get(key) is not None:
                 attempt_context[key] = registry_evidence[key]
+
+        if args.dry_run:
+            performance_evidence.pop("_last_monotonic", None)
+            performance_evidence.pop("_phase_intervals", None)
+            print(json.dumps(evidence, sort_keys=True), flush=True)
+            return 0
+
+        attempt_id = uuid.uuid4().hex
+        attempt_context.update(
+            {
+                "attempt_id": attempt_id,
+                "agent_name": evidence.get("herdr", {}).get("agent_name", args.profile + "-main"),
+            }
+        )
+        if secretary_runtime is not None:
+            evidence["secretary_runtime"] = {
+                **secretary_runtime,
+                "attempt_id": attempt_id,
+            }
         receipt_file: Path | None = None
         task_result_file: Path | None = None
         task_option = _task_transport_option(command)
@@ -3223,8 +3229,6 @@ def _main_body(args: argparse.Namespace) -> int:
             performance_evidence.pop("_last_monotonic", None)
             performance_evidence.pop("_phase_intervals", None)
         print(json.dumps(evidence, sort_keys=True), flush=True)
-        if args.dry_run:
-            return 0
         try:
             resolved_session = str(evidence["herdr"]["session"])
             resolved_pane = str(evidence["herdr"]["pane"])

@@ -35,7 +35,6 @@ def request(**overrides: object) -> SecretaryLaunchRequest:
     values: dict[str, object] = {
         "task_id": "task-1",
         "plan_revision": "plan-rev-1",
-        "attempt_id": "attempt-1",
         "run_id": "run-1",
         "repository_identity": "repo/example",
         "plan_identity": "plan/example",
@@ -805,7 +804,7 @@ def structured_runtime(request_value: SecretaryLaunchRequest, *, session_id: str
         "pair_id": request_value.run_id,
         "arm": "candidate",
         "run_id": request_value.run_id,
-        "attempt_id": request_value.attempt_id,
+        "attempt_id": "attempt-1",
         "task_id": request_value.task_id,
         "plan_revision": request_value.plan_revision,
         "repository_identity": request_value.repository_identity,
@@ -864,7 +863,26 @@ def test_launch_request_requires_secretary_provider() -> None:
         request(provider="other-provider")
 
 
-def test_launcher_command_binds_ids_and_configured_codex_home() -> None:
+def test_launch_request_does_not_require_caller_attempt_id() -> None:
+    values = {
+        "task_id": "task-1",
+        "plan_revision": "plan-rev-1",
+        "run_id": "run-1",
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "git_revision": "581844d",
+        "worktree": Path("C:/worktree"),
+        "expected_base": "581844d",
+        "task": "Read-only Secretary attention probe.",
+        "codex_home": Path("C:/Users/example/.codex"),
+    }
+
+    request_value = SecretaryLaunchRequest(**values)
+
+    assert request_value.task_id == "task-1"
+
+
+def test_launcher_command_keeps_machine_binding_out_of_worker_task() -> None:
     command = build_launcher_command(request())
 
     assert "--executor" in command
@@ -872,15 +890,14 @@ def test_launcher_command_binds_ids_and_configured_codex_home() -> None:
     assert "--codex-home" in command
     assert command[command.index("--codex-home") + 1] == str(Path("C:/Users/example/.codex"))
     task = command[command.index("--task") + 1]
-    for value in ("task-1", "plan-rev-1", "attempt-1", "run-1"):
-        assert value in task
+    assert task == "Read-only Secretary attention probe."
     for option, value in (
         ("--secretary-task-id", "task-1"),
         ("--secretary-plan-revision", "plan-rev-1"),
-        ("--secretary-attempt-id", "attempt-1"),
         ("--secretary-run-id", "run-1"),
     ):
         assert command[command.index(option) + 1] == value
+    assert "--secretary-attempt-id" not in command
     assert "--assignment-id" not in command
 
 
@@ -2453,7 +2470,7 @@ def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(
             "model_provider": SECRETARY_PROVIDER,
             "model": "gpt-test",
         },
-        "assignment": {"status": "submitted", "attempt_id": request_value.attempt_id},
+        "assignment": {"status": "submitted", "attempt_id": "attempt-1"},
     }
     monkeypatch.setattr("scripts.secretary_live_runtime._configured_provider", lambda _: SECRETARY_PROVIDER)
     monkeypatch.setattr("scripts.secretary_live_runtime._configured_model", lambda _: "gpt-test")
@@ -2923,7 +2940,7 @@ def test_completed_codex_transport_produces_bound_runtime_snapshot() -> None:
     assert snapshot["metrics"]["token_usage"] == "unknown"
     assert snapshot["metrics"]["cost"] == "unknown"
     assert set(snapshot["sources"]) == {"launch", "secretary", "task_result", "settlement", "acceptance"}
-    assert all(source["attempt_id"] == request_value.attempt_id for source in snapshot["sources"].values())
+    assert all(source["attempt_id"] == "attempt-1" for source in snapshot["sources"].values())
 
 
 def test_runtime_snapshot_uses_provider_session_not_herdr_control_session() -> None:
@@ -3110,7 +3127,7 @@ def test_smoke_receipt_preserves_required_source_bindings() -> None:
         "pair_id": request_value.run_id,
         "arm": "candidate",
         "run_id": request_value.run_id,
-        "attempt_id": request_value.attempt_id,
+        "attempt_id": "attempt-1",
         "task_id": request_value.task_id,
         "plan_revision": request_value.plan_revision,
         "repository_identity": request_value.repository_identity,

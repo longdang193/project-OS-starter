@@ -72,7 +72,7 @@ _SAFE_ASSIGNMENT_KEYS = {
     "failure_kind",
     "reconciliation_required",
 }
-_RUNTIME_BINDING_KEYS = ("task_id", "plan_revision", "attempt_id", "run_id")
+_RUNTIME_BINDING_KEYS = ("task_id", "plan_revision", "run_id")
 _OBSERVED_TIMESTAMP_KEYS = (
     "run_started", "cos_entry", "secretary_entry", "worker_entry", "publication",
     "settlement", "acceptance", "secretary_exit", "cos_exit", "run_finished",
@@ -188,7 +188,6 @@ def _launcher_failure_kind(assignment: Mapping[str, Any]) -> str | None:
 class SecretaryLaunchRequest:
     task_id: str
     plan_revision: str
-    attempt_id: str
     run_id: str
     repository_identity: str
     plan_identity: str
@@ -206,7 +205,6 @@ class SecretaryLaunchRequest:
         for field in (
             "task_id",
             "plan_revision",
-            "attempt_id",
             "run_id",
             "repository_identity",
             "plan_identity",
@@ -275,15 +273,7 @@ def build_normal_launcher_command(
 
 
 def _bound_task(request: SecretaryLaunchRequest) -> str:
-    return (
-        f"{request.task}\n\n"
-        "Secretary runtime binding (do not modify):\n"
-        f"task_id={request.task_id}\n"
-        f"plan_revision={request.plan_revision}\n"
-        f"attempt_id={request.attempt_id}\n"
-        f"run_id={request.run_id}\n"
-        f"provider={request.provider}"
-    )
+    return request.task
 
 
 def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = False) -> list[str]:
@@ -315,8 +305,6 @@ def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = F
         request.task_id,
         "--secretary-plan-revision",
         request.plan_revision,
-        "--secretary-attempt-id",
-        request.attempt_id,
         "--secretary-run-id",
         request.run_id,
     ]
@@ -1049,6 +1037,23 @@ def select_launcher_payload(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     return selected
 
 
+def _launcher_attempt_id(payload: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(payload, Mapping):
+        return None
+    values = {
+        str(value).strip()
+        for source in (
+            payload.get("assignment"),
+            payload.get("registry_launcher"),
+            payload.get("secretary_runtime"),
+        )
+        if isinstance(source, Mapping)
+        for value in (source.get("attempt_id"),)
+        if isinstance(value, str) and value.strip()
+    }
+    return next(iter(values)) if len(values) == 1 else None
+
+
 def _observed_runtime(payload: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
     runtime = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
     if not isinstance(runtime, Mapping) or runtime.get("observed") is not True:
@@ -1076,9 +1081,10 @@ def _binding_matches(request: SecretaryLaunchRequest, runtime: Mapping[str, Any]
             return False
     if _identity_conflict(runtime, assignment):
         return False
-    if isinstance(assignment, Mapping) and assignment.get("attempt_id") not in (None, request.attempt_id):
+    attempt_id = _launcher_attempt_id({"assignment": assignment, "secretary_runtime": runtime})
+    if attempt_id is None or runtime.get("attempt_id") != attempt_id:
         return False
-    return runtime.get("attempt_id") == request.attempt_id
+    return True
 
 
 def _completion_observed(payload: Mapping[str, Any] | None, runtime: Mapping[str, Any] | None) -> bool:
@@ -1127,7 +1133,8 @@ def _launcher_facts_match(
         return False
     if registry.get("plan_identity") != request.plan_identity:
         return False
-    if registry.get("attempt_id") != request.attempt_id:
+    attempt_id = _launcher_attempt_id({"registry_launcher": registry, "secretary_runtime": runtime})
+    if attempt_id is None or registry.get("attempt_id") != attempt_id or runtime.get("attempt_id") != attempt_id:
         return False
     if registry.get("model_provider") != request.provider:
         return False
@@ -1239,6 +1246,7 @@ def _safe_runtime_snapshot(
     expected_values: Mapping[str, str],
 ) -> dict[str, Any]:
     identity_fields = _RUNTIME_BINDING_KEYS + (
+        "attempt_id",
         "repository_identity", "plan_identity", "git_revision", "worktree",
         "provider", "model", "controller_id", "session_id",
     )
@@ -1282,14 +1290,15 @@ def _safe_runtime_snapshot(
 def _validated_runtime_receipt(
     request: SecretaryLaunchRequest,
     runtime: Mapping[str, Any] | None,
+    attempt_id: str | None,
 ) -> dict[str, Any] | None:
-    if not isinstance(runtime, Mapping):
+    if not isinstance(runtime, Mapping) or not isinstance(attempt_id, str) or not attempt_id.strip():
         return None
     binding = {
         "pair_id": request.run_id,
         "arm": "candidate",
         "run_id": request.run_id,
-        "attempt_id": request.attempt_id,
+        "attempt_id": attempt_id,
         "task_id": request.task_id,
         "plan_revision": request.plan_revision,
         "repository_identity": request.repository_identity,
@@ -1378,6 +1387,9 @@ def _build_codex_runtime_snapshot(
         return None
     if configured_model is not None and registry.get("model") != configured_model:
         return None
+    attempt_id = _launcher_attempt_id(payload)
+    if attempt_id is None:
+        return None
 
     expected_values = {
         **{key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS},
@@ -1393,9 +1405,10 @@ def _build_codex_runtime_snapshot(
         "arm": "candidate",
         "workstream": "secretary-live-runtime",
         "checkpoint": f"{request.plan_revision}:{request.task_id}",
+        "attempt_id": attempt_id,
     }
     identity_fields = _RUNTIME_BINDING_KEYS + (
-        "repository_identity", "plan_identity", "git_revision", "worktree",
+        "attempt_id", "repository_identity", "plan_identity", "git_revision", "worktree",
         "provider", "model", "controller_id", "session_id",
     )
     if any(raw_runtime.get(key) != expected_values.get(key) for key in identity_fields):
@@ -1421,7 +1434,7 @@ def _build_codex_runtime_snapshot(
     metrics = _safe_metrics(existing.get("metrics"))
     existing["metrics"] = metrics
     existing["session_id"] = session_id
-    validated = _validated_runtime_receipt(request, existing)
+    validated = _validated_runtime_receipt(request, existing, attempt_id)
     if validated is None:
         return None
     runtime_identity = {
@@ -1458,6 +1471,7 @@ def sanitize_launcher_result(
     herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
     raw_runtime = payload.get("secretary_runtime") if isinstance(payload, Mapping) else None
     observed_runtime = _observed_runtime(payload)
+    observed_attempt_id = _launcher_attempt_id(payload)
     expected_values = {
         **{key: getattr(request, key) for key in _RUNTIME_BINDING_KEYS},
         "repository_identity": request.repository_identity,
@@ -1471,6 +1485,8 @@ def sanitize_launcher_result(
         "workstream": "secretary-live-runtime",
         "checkpoint": f"{request.plan_revision}:{request.task_id}",
     }
+    if observed_attempt_id is not None:
+        expected_values["attempt_id"] = observed_attempt_id
     if configured_model is not None:
         expected_values["model"] = configured_model
     if isinstance(raw_runtime, Mapping):
@@ -1490,7 +1506,7 @@ def sanitize_launcher_result(
         and _launcher_identity_matches(observed_runtime, herdr if isinstance(herdr, Mapping) else None)
         and _launcher_facts_match(request, payload, observed_runtime, configured_model)
         and _completion_observed(payload, observed_runtime)
-        and _validated_runtime_receipt(request, structured_binding) is not None
+        and _validated_runtime_receipt(request, structured_binding, observed_attempt_id) is not None
     )
     observed_metrics = structured_binding.get("metrics") if isinstance(structured_binding, Mapping) else None
     failure_kind = _launcher_failure_kind(safe_assignment)
@@ -1500,7 +1516,7 @@ def sanitize_launcher_result(
         "provider": request.provider,
         "task_id": request.task_id,
         "plan_revision": request.plan_revision,
-        "attempt_id": request.attempt_id,
+        "attempt_id": observed_attempt_id,
         "run_id": request.run_id,
         "repository_identity": request.repository_identity,
         "plan_identity": request.plan_identity,
@@ -1569,11 +1585,17 @@ def _smoke_receipt(
     runtime_identity = result.get("runtime_identity")
     if not isinstance(runtime_identity, Mapping):
         runtime_identity = {}
+    attempt_id = _safe_text(result.get("attempt_id"))
+    structured_runtime = runtime_identity.get("secretary_runtime")
+    if attempt_id is None and isinstance(structured_runtime, Mapping):
+        attempt_id = _safe_text(structured_runtime.get("attempt_id"))
+    if attempt_id is None:
+        raise RuntimeError("live Secretary receipt missing launcher attempt identity")
     binding = {
         "pair_id": request.run_id,
         "arm": "candidate",
         "run_id": request.run_id,
-        "attempt_id": request.attempt_id,
+        "attempt_id": attempt_id,
         "task_id": request.task_id,
         "plan_revision": request.plan_revision,
         "repository_identity": request.repository_identity,
@@ -1589,7 +1611,6 @@ def _smoke_receipt(
         "controller_id": runtime_identity.get("controller_id"),
         "session_id": runtime_identity.get("session_id"),
     }
-    structured_runtime = runtime_identity.get("secretary_runtime") if isinstance(runtime_identity, Mapping) else None
     timestamps = structured_runtime.get("timestamps") if isinstance(structured_runtime, Mapping) else None
     if not isinstance(timestamps, Mapping):
         raise RuntimeError("live Secretary receipt missing observed timestamps")
@@ -2542,7 +2563,6 @@ def main(argv: list[str] | None = None) -> int:
         probe.add_argument("--output", type=Path, required=True)
         probe.add_argument("--task-id", required=True)
         probe.add_argument("--plan-revision", required=True)
-        probe.add_argument("--attempt-id", required=True)
         probe.add_argument("--run-id", required=True)
         probe.add_argument("--repository-identity", required=True)
         probe.add_argument("--plan-identity", required=True)
@@ -2596,7 +2616,6 @@ def main(argv: list[str] | None = None) -> int:
         request = SecretaryLaunchRequest(
             task_id=args.task_id,
             plan_revision=args.plan_revision,
-            attempt_id=args.attempt_id,
             run_id=args.run_id,
             repository_identity=args.repository_identity,
             plan_identity=args.plan_identity,
