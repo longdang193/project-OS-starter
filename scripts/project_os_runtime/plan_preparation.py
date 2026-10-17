@@ -67,7 +67,6 @@ _REQUIRED_BINDING_FIELDS = frozenset(
         "local_capabilities",
         "remaining_authorized_task_allowance",
         "attempt_deadline",
-        "accepted_prerequisites",
     }
 )
 _OPTIONAL_BINDING_FIELDS = frozenset({"prior_attempt_known", "codex_home", "target", "name"})
@@ -848,31 +847,6 @@ def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
     )
 
 
-def prepare_lane_inputs(
-    source: str | os.PathLike[str] | PlanGraph,
-    selected_task_ids: Sequence[str],
-    runtime_inputs_by_task: Mapping[str, Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    graph = source if isinstance(source, PlanGraph) else load_plan(source)
-    bindings: dict[str, dict[str, Any]] = {}
-    for selected_task_id in selected_task_ids:
-        prepared = prepare_task(graph, selected_task_id)
-        runtime = runtime_inputs_by_task.get(prepared.task_id)
-        if not isinstance(runtime, Mapping):
-            raise ValueError(f"resolved runtime inputs missing for {prepared.task_id}")
-        for field in ("lane_id", "plan_identity", "task", "executor", "profile", "dependencies", "dependency_ready", "structurally_ready"):
-            if field in runtime:
-                if field == "plan_identity":
-                    raise ValueError(f"runtime input conflicts with plan identity for {prepared.task_id}")
-                raise ValueError(f"runtime input conflicts with plan-derived {field} for {prepared.task_id}")
-        bindings[prepared.task_id] = _canonical_runtime_binding(runtime)
-    text, graph, plan_identity, plan_source = _source_parts(source)
-    status = _frontmatter_value(text, "status") if text is not None else None
-    if status is not None and status.casefold() != "active":
-        raise ValueError("plan must be active before dispatch")
-    return _prepare_plan_lanes(text, graph, plan_identity, plan_source, tuple(selected_task_ids), bindings)
-
-
 def _frontmatter_value(text: str, name: str) -> str | None:
     match = re.match(r"(?ms)^---\s*\n(.*?)\n---\s*\n", text)
     if match is None:
@@ -917,7 +891,6 @@ def _worker_brief(
         binding = accepted[dependency]
         prerequisites.append(
             f"- {dependency}: accepted_revision={binding['accepted_revision']}"
-            + (f"; artifact_ref={binding['artifact_ref']}" if binding.get("artifact_ref") else "")
         )
     parts = []
     if plan_goal and plan_goal.strip() not in selected:
@@ -955,41 +928,28 @@ def _accepted_consequence_from_evidence(evidence: str) -> dict[str, str]:
 def _accepted_prerequisites(
     graph: PlanGraph,
     task: PlanTask,
-    value: object,
     *,
     plan_identity: str,
 ) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
-        raise ValueError("accepted_prerequisites must be a mapping")
-    accepted = {str(key): item for key, item in value.items()}
+    accepted: dict[str, Any] = {}
     for dependency in task.dependencies:
-        binding = accepted.get(dependency)
-        if not isinstance(binding, Mapping):
-            raise ValueError(f"missing accepted prerequisite binding: {dependency}")
-        if not isinstance(binding.get("accepted_revision"), str) or not binding["accepted_revision"].strip():
-            raise ValueError(f"missing accepted revision: {dependency}")
-        candidate_sha = binding.get("accepted_candidate_sha")
-        if not isinstance(candidate_sha, str) or not candidate_sha.strip():
-            raise ValueError(f"missing accepted candidate: {dependency}")
-        if candidate_sha != binding["accepted_revision"]:
-            raise ValueError(f"accepted candidate and revision mismatch: {dependency}")
         source_task = graph.tasks.get(dependency)
         persisted = _accepted_consequence_from_evidence(source_task.evidence) if source_task else {}
-        if (
-            persisted.get("accepted_candidate_sha") != candidate_sha
-            or persisted.get("accepted_plan_identity") != plan_identity
-            or persisted.get("accepted_task_id") not in {None, dependency}
-        ):
+        if persisted.get("accepted_task_id") not in {None, dependency}:
             raise ValueError(f"accepted consequence mismatch: {dependency}")
+        if persisted.get("accepted_plan_identity") != plan_identity:
+            raise ValueError(f"accepted consequence mismatch: {dependency}")
+        candidate_sha = persisted.get("accepted_candidate_sha")
+        if not isinstance(candidate_sha, str) or not candidate_sha.strip():
+            raise ValueError(f"missing accepted revision: {dependency}")
+        binding = {
+            "accepted_revision": candidate_sha,
+            "accepted_candidate_sha": candidate_sha,
+        }
         for field in ("accepted_assignment_id", "accepted_attempt_id", "accepted_checkpoint_sha"):
-            supplied = binding.get(field)
-            if supplied is not None and supplied != persisted.get(field):
-                raise ValueError(f"accepted consequence mismatch: {dependency}")
-        artifact_ref = binding.get("artifact_ref")
-        if artifact_ref is not None and (not isinstance(artifact_ref, str) or not artifact_ref.strip()):
-            raise ValueError(f"invalid artifact reference: {dependency}")
-        if "artifact_available" in binding:
-            raise ValueError("artifact_available is not an accepted prerequisite input")
+            if persisted.get(field) is not None:
+                binding[field] = persisted[field]
+        accepted[dependency] = binding
     return accepted
 
 
@@ -1003,23 +963,6 @@ def _source_parts(source: str | os.PathLike[str] | PlanGraph) -> tuple[str | Non
     text = path.read_text(encoding="utf-8")
     graph = load_plan(path)
     return text, graph, graph.plan_identity, str(path.resolve())
-
-
-def _canonical_runtime_binding(runtime: Mapping[str, Any]) -> dict[str, Any]:
-    binding = dict(runtime)
-    if "runtime_grant" not in binding:
-        grant_fields = {"grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"}
-        if grant_fields.issubset(binding):
-            binding["runtime_grant"] = {
-                "turns": binding.pop("grant_turns"),
-                "wall_clock_seconds": binding.pop("grant_wall_clock_seconds"),
-                "delegation": {"child_agents": binding.pop("grant_child_agents")},
-                "mcp_select": binding.pop("mcp_select"),
-            }
-    else:
-        for field in ("grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"):
-            binding.pop(field, None)
-    return binding
 
 
 def _prepare_plan_lanes(
@@ -1058,7 +1001,6 @@ def _prepare_plan_lanes(
         accepted = _accepted_prerequisites(
             graph,
             task,
-            binding["accepted_prerequisites"],
             plan_identity=plan_identity,
         )
         grant = _runtime_grant(binding["runtime_grant"])
@@ -1125,7 +1067,6 @@ __all__ = [
     "PreparedTask",
     "load_plan",
     "parse_plan",
-    "prepare_lane_inputs",
     "prepare_plan_lanes",
     "prepare_task",
 ]

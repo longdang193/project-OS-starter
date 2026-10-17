@@ -1724,7 +1724,7 @@ def test_main_blocks_codex_prompt_when_started_process_is_gone(
     assert result["attempt_id"] == initial
     assert result["agent_name"] == "xhigh-main"
     assert result["execution"]["state"] == "unknown"
-    assert result["task_result"] == {"state": "unverified", "accepted": None}
+    assert result["task_result"] == {"state": "unverified"}
     assert result["reconciliation_required"] is True
 
 
@@ -2366,7 +2366,7 @@ def test_main_preserves_replacement_attempt_when_start_confirmation_fails(
     assert result["agent_name"].startswith("normal-main-")
     assert result["delivery_state"] == "not_attempted"
     assert result["execution"]["state"] == "unknown"
-    assert result["task_result"] == {"state": "unverified", "accepted": None}
+    assert result["task_result"] == {"state": "unverified"}
     assert result["reconciliation_required"] is True
 
 
@@ -2862,7 +2862,7 @@ def test_deepagents_main_blocks_delivery_without_completion_report(
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
     assert assignment["delivery_state"] == "delivered"
     assert assignment["status"] == "unknown"
-    assert assignment["task_accepted"] is None
+    assert "task_accepted" not in assignment
     assert assignment["reconciliation_required"] is True
 
 
@@ -3092,7 +3092,7 @@ def test_deepagents_zero_exit_failed_report_is_not_completion() -> None:
     )
 
     assert result["execution"]["state"] == "completed"
-    assert result["task_result"] == {"state": "unverified", "accepted": None}
+    assert result["task_result"] == {"state": "unverified"}
     assert result["status"] == "completed"
     assert result["failure_kind"] == "task_result_unverified"
     assert result["launcher_exit_code"] == 2
@@ -3145,7 +3145,7 @@ def test_deepagents_main_rejects_completion_with_observer_error(
     ) == 2
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
     assert assignment["status"] == "unknown"
-    assert assignment["task_accepted"] is None
+    assert "task_accepted" not in assignment
     assert assignment["reconciliation_required"] is True
 
 
@@ -3360,10 +3360,9 @@ def test_deepagents_main_reports_terminal_failure_verdict(
     assert assignment["status"] == "failed"
     assert assignment["task_result"] == {
         "state": "reported_failed",
-        "accepted": None,
         "status": "failed",
     }
-    assert assignment["task_accepted"] is None
+    assert "task_accepted" not in assignment
     assert assignment["execution"]["worker_exit_code"] == 0
     assert assignment["exit_code"] == assignment["launcher_exit_code"] == 2
     assert assignment["reconciliation_required"] is True
@@ -5334,7 +5333,7 @@ def test_assignment_result_builder_derives_compatibility_from_structured_facts()
         delivery={"state": "confirmed"},
         execution={"state": "failed", "worker_exit_code": 7},
         observation={"state": "observed"},
-        task_result={"state": "reported_failed", "accepted": False},
+        task_result={"state": "reported_failed"},
         cleanup={"state": "removed"},
         performance={"status": "measured"},
         launcher_exit_code=2,
@@ -5354,7 +5353,7 @@ def test_assignment_result_builder_marks_incomplete_structured_facts_for_reconci
         delivery={"state": "confirmed"},
         execution={"state": "unknown"},
         observation={"state": "timed_out"},
-        task_result={"state": "unverified", "accepted": None},
+        task_result={"state": "unverified"},
         cleanup={"state": "unknown"},
         performance={"status": "measured"},
         launcher_exit_code=2,
@@ -5652,10 +5651,9 @@ def test_deepagents_main_bounds_native_attempt_and_keeps_acceptance_pending(
     assignment = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
     assert assignment["task_result"] == {
         "state": "reported_completed",
-        "accepted": None,
         "status": "completed",
     }
-    assert assignment["task_accepted"] is None
+    assert "task_accepted" not in assignment
 
 
 def test_remaining_deepagents_timeout_never_exceeds_configured_ceiling() -> None:

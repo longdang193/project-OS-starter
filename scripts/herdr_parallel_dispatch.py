@@ -239,7 +239,6 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="binding_missing", detail=f"missing accepted prerequisite binding: {dependency}"))
             continue
         revision = binding.get("accepted_revision")
-        artifact_ref = binding.get("artifact_ref")
         if not isinstance(revision, str) or not revision.strip():
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_missing", detail=f"missing accepted revision: {dependency}"))
             continue
@@ -252,25 +251,6 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
         if revision_check.returncode != 0:
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_not_contained", detail=f"accepted revision is not contained in worktree: {dependency}"))
             continue
-        if artifact_ref is not None:
-            if not isinstance(artifact_ref, str) or not artifact_ref.strip():
-                prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="artifact_ref_invalid", detail=f"invalid artifact reference: {dependency}"))
-                continue
-            artifact_path = Path(artifact_ref)
-            if not artifact_path.is_absolute():
-                artifact_path = worktree / artifact_path
-            artifact_exists = artifact_path.exists()
-            if not artifact_exists and artifact_ref != revision:
-                artifact_check = subprocess.run(
-                    ["git", "-C", str(worktree), "rev-parse", "--verify", artifact_ref],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                artifact_exists = artifact_check.returncode == 0
-            if not artifact_exists and artifact_ref != revision:
-                prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="artifact_ref_unavailable", detail=f"artifact reference is unavailable: {dependency}"))
-                continue
         prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "PASS"))
     checks.extend(prerequisite_checks or [LaunchCheck("prerequisites", "NOT_APPLICABLE", code="none")])
     dispatch = reconcile(
@@ -753,10 +733,6 @@ def _receipt_correlation_matches(lane: Mapping[str, Any], parsed: Mapping[str, A
     )
 
 
-def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:
-    return record.get("status") == "reported_completed" and record.get("accepted") is not True
-
-
 def run_lane(
     lane: Mapping[str, Any],
     *,
@@ -998,14 +974,20 @@ def run_lane(
         if isinstance(retirement, Mapping) and retirement.get("state") != "removed":
             return "occupied", True, "runtime retirement unresolved", False
         task_result = assignment.get("task_result")
+        if isinstance(task_result, Mapping) and "accepted" in task_result:
+            task_result = {
+                key: value for key, value in task_result.items() if key != "accepted"
+            }
+            assignment["task_result"] = task_result
+        if "task_accepted" in assignment:
+            assignment.pop("task_accepted", None)
+        if isinstance(task_result, Mapping) and task_result.get("state") == "reported_completed":
+            return "retired", False, "acceptance pending", True
         task_uncertain = not isinstance(task_result, Mapping) or (
-            task_result.get("accepted") is None
-            or task_result.get("state") in {"unknown", "running", "preserved", "unverified"}
+            task_result.get("state") in {"unknown", "running", "preserved", "unverified"}
             or task_result.get("status") in {"unknown", "running", "preserved", "unverified"}
         )
         if task_uncertain:
-            if isinstance(task_result, Mapping) and task_result.get("state") == "reported_completed" and task_result.get("accepted") is None:
-                return "retired", False, "acceptance pending", True
             return "retired", True, "task result unresolved", False
         return "retired", False, "settled", False
 

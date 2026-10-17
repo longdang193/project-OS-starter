@@ -84,7 +84,24 @@ def test_task_result_round_trip_is_identity_bound(tmp_path: Path) -> None:
         task_sha256="a" * 64,
         grant_digest="b" * 64,
     )["state"] == "confirmed"
-    assert json.loads(path.read_text(encoding="utf-8"))["accepted"] is None
+    assert "accepted" not in json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_task_result_ignores_legacy_acceptance_metadata(tmp_path: Path) -> None:
+    path = tmp_path / "task-result.json"
+    publish_task_result(path, task_result(accepted="not-a-semantic-result"))
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    parsed = parse_task_result(
+        path,
+        assignment_id="assignment-1",
+        attempt_id="attempt-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+    )
+
+    assert "accepted" not in payload
+    assert "accepted" not in parsed
 
 
 def test_task_result_rejects_identity_mismatch() -> None:
@@ -111,12 +128,10 @@ def test_task_result_parse_unknown_does_not_authorize_continuation(tmp_path: Pat
 def test_result_receipt_preserves_canonical_capability_evidence(tmp_path: Path) -> None:
     path = tmp_path / "result.json"
     canonical = capability_evidence()
-    compatibility = {"requested": ["git"], "available": ["git"], "effective": ["git"]}
     path.write_text(
         json.dumps(
             lifecycle_receipt(
                 capabilities=canonical,
-                shell_capabilities=compatibility,
             )
         ),
         encoding="utf-8",
@@ -126,7 +141,7 @@ def test_result_receipt_preserves_canonical_capability_evidence(tmp_path: Path) 
 
     assert result["capability_state"] == "confirmed"
     assert result["capabilities"] == canonical
-    assert result["shell_capabilities"] == compatibility
+    assert "shell_capabilities" not in result
 
 
 def test_result_receipt_keeps_lifecycle_proof_without_capability_proof(tmp_path: Path) -> None:
@@ -155,17 +170,12 @@ def test_result_receipt_requires_explicit_recovery_flag(tmp_path: Path) -> None:
 def test_result_receipt_rejects_disagreeing_or_invalid_capability_evidence(
     tmp_path: Path,
 ) -> None:
-    compatibility = {"requested": ["git"], "available": ["git"], "effective": ["git"]}
-    for name, canonical in (
-        ("disagree.json", capability_evidence(requested=["py"])),
-        ("bad-digest.json", capability_evidence(digest="0" * 64)),
-    ):
+    for name, canonical in (("bad-digest.json", capability_evidence(digest="0" * 64)),):
         path = tmp_path / name
         path.write_text(
             json.dumps(
                 lifecycle_receipt(
                     capabilities=canonical,
-                    shell_capabilities=compatibility,
                 )
             ),
             encoding="utf-8",
@@ -176,3 +186,25 @@ def test_result_receipt_rejects_disagreeing_or_invalid_capability_evidence(
         assert result["state"] == "confirmed"
         assert result["capability_state"] == "unavailable"
         assert result["capabilities"] is None
+
+
+def test_result_receipt_ignores_legacy_shell_capability_projection(tmp_path: Path) -> None:
+    path = tmp_path / "result.json"
+    path.write_text(
+        json.dumps(
+            lifecycle_receipt(
+                shell_capabilities={
+                    "requested": ["git"],
+                    "available": ["git"],
+                    "effective": ["git"],
+                }
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    result = contract.parse_result_receipt(path, "attempt-1")
+
+    assert result["state"] == "confirmed"
+    assert result["capability_state"] == "unavailable"
+    assert result["capabilities"] is None

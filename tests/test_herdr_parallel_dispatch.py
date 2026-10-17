@@ -795,7 +795,7 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
                                             "cleanup_state": "removed",
                                             "recovery_required": False,
                                         },
-                                    "task_result": {"state": "unverified", "accepted": None},
+                                    "task_result": {"state": "unverified"},
                                     "cleanup": {"state": "removed", "recovery_required": False},
                                     "reconciliation_required": True,
                                 }
@@ -1310,7 +1310,7 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
     result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["assignment"]["task_result"]["state"] == "reported_completed"
-    assert result["assignment"]["task_result"]["accepted"] is None
+    assert "accepted" not in result["assignment"]["task_result"]
     assert result["capacity"] == "retired"
     assert result["unresolved"] is False
     assert result["acceptance_pending"] is True
@@ -1352,10 +1352,6 @@ def test_finish_timed_out_process_drains_closes_and_reaps() -> None:
     assert process.calls == 1
     assert process.stdout.closed is True
     assert process.stderr.closed is True
-
-
-def test_runtime_completion_does_not_equal_acceptance() -> None:
-    assert dispatcher.runtime_completion_is_not_acceptance({"status": "reported_completed"})
 
 
 def test_timeout_owner_is_worker_runtime() -> None:
@@ -1689,9 +1685,6 @@ def test_run_parallel_from_plan_reuses_existing_admission(tmp_path: Path, monkey
         "mcp_select": [],
     }
     runtime["local_capabilities"] = {"requested": []}
-    runtime["accepted_prerequisites"] = {
-        "Task 1": {"accepted_revision": "c086339c08bb396d32be44a2b848b1ab473fa52c", "accepted_candidate_sha": "c086339c08bb396d32be44a2b848b1ab473fa52c"}
-    }
     for field in ("grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"):
         runtime.pop(field, None)
     for field in ("lane_id", "task", "executor", "profile", "dependencies", "dependency_ready", "plan_identity"):

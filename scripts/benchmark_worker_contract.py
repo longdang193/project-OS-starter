@@ -108,9 +108,6 @@ def _task_scoped_reconstructed_plan(text: str, task_id: str) -> str:
 def _binding(task: Mapping[str, Any], manifest: Mapping[str, Any], fixture_root: Path) -> dict[str, Any]:
     task_id = str(task["task_id"])
     source_revision = str(manifest["source_revision"])
-    custom = task.get("runtime_binding")
-    if not isinstance(custom, Mapping):
-        raise ValueError(f"runtime_binding missing for {task_id}")
     return {
         "repository_identity": "worker-contract-benchmark",
         "worktree": str(fixture_root.resolve()),
@@ -129,7 +126,6 @@ def _binding(task: Mapping[str, Any], manifest: Mapping[str, Any], fixture_root:
             "delegation": {"child_agents": "deny"},
             "mcp_select": [],
         },
-        "accepted_prerequisites": dict(custom["accepted_prerequisites"]),
     }
 
 

@@ -724,15 +724,6 @@ def release_authorized_evidence(
                 evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
             },
         }
-    if mismatch is not None:
-        return {
-            **result,
-            "authorized": False,
-            "reasons": [f"binding_mismatch: {mismatch}"],
-            "resources": {
-                evidence_ref: {**dict(recorded_resource), "state": "unverified", "reason": mismatch}
-            },
-        }
     expected_digest = recorded_resource.get("content_sha256") or recorded_resource.get("artifact_digest")
     quarantine_path = _quarantine_path(path, str(expected_digest))
     if not path.exists() and quarantine_path.exists():

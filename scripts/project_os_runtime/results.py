@@ -66,13 +66,11 @@ def _capability_list(value: object, name: str) -> list[str]:
 
 def _capability_evidence(payload: dict[str, Any]) -> dict[str, Any]:
     canonical = payload.get("capabilities")
-    compatibility = payload.get("shell_capabilities")
     unavailable = {
         "capability_state": "unavailable",
         "capabilities": None,
-        "shell_capabilities": compatibility if isinstance(compatibility, dict) else None,
     }
-    if canonical is None and compatibility is None:
+    if canonical is None:
         return unavailable
     if not isinstance(canonical, dict):
         return {**unavailable, "capability_detail": "canonical capability evidence missing"}
@@ -93,18 +91,6 @@ def _capability_evidence(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(validation_error or "worker capability validation failed")
         if digest != _capability_digest(normalized["validated_available"]):
             raise ValueError("receipt capability digest mismatch")
-        if isinstance(compatibility, dict):
-            shell_requested = _capability_list(compatibility.get("requested"), "requested")
-            shell_available = _capability_list(compatibility.get("available"), "available")
-            shell_effective = _capability_list(compatibility.get("effective"), "effective")
-            if (
-                shell_requested != normalized["requested"]
-                or shell_effective != normalized["passed_to_worker"]
-                or shell_available != normalized["validated_available"]
-            ):
-                raise ValueError("receipt capability evidence disagreement")
-        elif compatibility is not None:
-            raise ValueError("receipt shell capability evidence invalid")
     except ValueError as exc:
         return {**unavailable, "capability_detail": str(exc)}
     return {
@@ -114,7 +100,6 @@ def _capability_evidence(payload: dict[str, Any]) -> dict[str, Any]:
             "digest": digest,
             "validation_error": None,
         },
-        "shell_capabilities": compatibility if isinstance(compatibility, dict) else None,
     }
 
 def _validate_payload(payload: object) -> dict[str, Any]:
@@ -249,15 +234,13 @@ def validate_task_result(payload: object) -> dict[str, Any]:
             raise ValueError(f"task result {name} invalid")
     if not all(isinstance(item, str) and item for item in payload["remaining_work"]):
         raise ValueError("task result remaining_work invalid")
-    accepted = payload.get("accepted")
-    if accepted is not None and not isinstance(accepted, bool):
-        raise ValueError("task result accepted invalid")
-    return dict(payload)
+    normalized = dict(payload)
+    normalized.pop("accepted", None)
+    return normalized
 
 
 def encode_task_result(payload: dict[str, Any]) -> bytes:
     normalized = validate_task_result(payload)
-    normalized.setdefault("accepted", None)
     encoded = (json.dumps(normalized, sort_keys=True, separators=(",", ":")) + "\n").encode(
         "utf-8"
     )
@@ -326,5 +309,4 @@ def parse_task_result(
         "verification": payload["verification"],
         "continuation": payload["continuation"],
         "continuation_eligible": False,
-        "accepted": payload.get("accepted"),
     }

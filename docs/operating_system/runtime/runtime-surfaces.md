@@ -33,11 +33,12 @@ py scripts/herdr_parallel_dispatch.py `
 `runtime.json` is keyed by task ID and contains only runtime-owned fields:
 `repository_identity`, `worktree`, `expected_base`, `session`, `pane`,
 `runtime_grant`, `allowed_write_set`, `fixed_contracts`, `mutable_resources`,
-`local_capabilities`, `remaining_authorized_task_allowance`, `attempt_deadline`,
-and `accepted_prerequisites`. Optional launcher-owned fields may pass through
+`local_capabilities`, `remaining_authorized_task_allowance`, and
+`attempt_deadline`. Accepted prerequisite identities are derived from persisted
+Plan acceptance consequences during preparation, not supplied in `runtime.json`.
+Optional launcher-owned fields may pass through
 without plan-derived defaults. `prepare_plan_lanes()` is the single
-execution-eligible preparation owner; `prepare_lane_inputs()` is a compatibility
-adapter to that owner. Plan mode is mutually exclusive with `--lanes-file`;
+execution-eligible preparation owner. Plan mode is mutually exclusive with `--lanes-file`;
 both modes share admission, launch-bound freshness verification, and
 `run_parallel()`.
 
