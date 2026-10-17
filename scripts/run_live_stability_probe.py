@@ -7,7 +7,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from scripts.benchmark_operational_comparison import load_json, sha256_json
+try:
+    from scripts.benchmark_operational_comparison import load_json, sha256_json
+except ModuleNotFoundError:
+    from benchmark_operational_comparison import load_json, sha256_json
 
 
 SENSITIVE_KEYS = {

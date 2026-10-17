@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -123,3 +125,15 @@ def test_cli_record_mode_writes_one_row(tmp_path: Path) -> None:
         str(output),
     ]) == 0
     assert len(output.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_direct_script_invocation_supports_help() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "run_live_stability_probe.py"), "--help"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "record-direct" in completed.stdout

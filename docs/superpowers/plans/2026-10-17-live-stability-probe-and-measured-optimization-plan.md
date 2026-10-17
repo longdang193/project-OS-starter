@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: completed
 layer: change
 name: live-stability-probe-and-measured-optimization
 targets:
@@ -11,6 +11,7 @@ targets:
   - artifacts/runtime-observation/2026-10-17-live-stability-failclosed.jsonl
   - artifacts/runtime-observation/2026-10-17-live-stability-probe-summary.json
   - artifacts/runtime-observation/2026-10-17-live-stability-probe-report.md
+  - artifacts/runtime-observation/2026-10-17-live-stability-cos-canary.json
   - scripts/run_live_stability_probe.py
   - tests/test_live_stability_probe.py
   - docs/operating_system/procedures/live-stability-probe-procedure.md
@@ -186,17 +187,17 @@ Review boundaries are intentionally consolidated:
 - Branch: `codex/live-stability-probe`
 - Base commit: `2254a69990a1b013c17df88183d9972cf866f3c5`
 - Expected workspace: `clean dedicated worktree; original main checkout remains untouched`
-- Next action: `seal the protocol and recorder checkpoint before live execution`
-- Blockers: `none known; required live capabilities may produce a valid BLOCKED_CAPABILITY outcome`
+- Next action: `handoff to explicitly authorized branch finishing; no push, merge, or worktree cleanup performed`
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | task worktree | `codex` | none | current-base protocol and preflight baseline pass | `2254a699` base pin; protocol validation; 12 benchmark tests; repo config/contracts pass |
 | Task 2 | `completed` | task worktree | `codex` | Task 1 | recorder and adapter contract tests pass | `20 passed`; evidence-only modes; no external provider launch |
-| Task 3 | `pending` | sealed task worktree | `unresolved` | Task 2 | 18 attributable topology rows or explicit inconclusive/blocked rows | pending |
-| Task 4 | `pending` | sealed task worktree | `unresolved` | Task 2 | six negative probes fail closed at expected owners | pending |
-| Task 5 | `pending` | task worktree | `unresolved` | Tasks 3–4 | passive validation, summary, report, and one disposition | pending |
-| Task 6 | `pending` | task worktree | `unresolved` | Task 5 | final repository, plan, adapter, and kit verification | pending |
+| Task 3 | `completed` | sealed task worktree | `codex` | Task 2 | 18 attributable topology rows or explicit inconclusive/blocked rows | `18 BLOCKED_CAPABILITY`; no producer launch; topology validation passed |
+| Task 4 | `completed` | sealed task worktree | `codex` | Task 2 | six negative probes fail closed at expected owners | `6` separate records; `220 passed` lifecycle/receipt tests |
+| Task 5 | `completed` | sealed task worktree | `codex` | Tasks 3–4 | passive validation, summary, report, and one disposition | `18-row topology validation passed`; three verdicts recorded; six fail-closed records separate |
+| Task 6 | `completed` | sealed task worktree | `codex` | Task 5 | final repository, plan, adapter, and kit verification | `1361 passed, 2 skipped`; contracts/planning/adapter/starter-kit/artifact checks passed |
 
 ## Task Breakdown
 
@@ -335,6 +336,7 @@ source, protocol, and test edits after the seal are a stop condition.
 - Inspect: `docs/operating_system/procedures/personal-local-worktree-procedure.md`
 - Inspect: `scripts/herdr_main_launcher.py`, `scripts/herdr_parallel_dispatch.py`, `scripts/secretary_live_runtime.py`
 - Modify: `artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl`
+- Add: `artifacts/runtime-observation/2026-10-17-live-stability-cos-canary.json`
 - Verify: task-owned worktree, runtime resources, receipts, TaskResults, cleanup, and reconciliation evidence.
 
 **Dependencies:**
@@ -346,15 +348,15 @@ source, protocol, and test edits after the seal are a stop condition.
 - Stop for: credential/provider/sandbox changes, base or workload drift, unowned resource access, unresolved cleanup, or any request to treat blocked evidence as success.
 
 **Steps:**
-- [ ] Step 1: Record the warm/cold definition and execute the exact interleaved order from the protocol; the first applicable `direct_controller`, `single_worker`, and `cos_two_lane` entries are the three canaries and count toward the 18 rows.
-- [ ] Step 2: Run the direct canary through the current controller owner without artificial Herdr activity; verify attribution, expected accepted artifact, no identity drift, settled ownership, cleanup, and no unexpected Plan mutation.
-- [ ] Step 3: Run the Worker canary through existing runtime binding and launcher owners; verify the same gate before continuing.
-- [ ] Step 4: Run the two-lane CoS canary through `herdr_parallel_dispatch.py` with exactly two disjoint tasks and no refill; verify the same gate before continuing.
-- [ ] Step 5: If any canary has cleanup or ownership uncertainty, stop the matrix and record each remaining planned trial as `INCONCLUSIVE` with `attempted=false` and the safety-stop reason; never manufacture additional executions or successes.
-- [ ] Step 6: If all canaries pass, run the remaining 15 scheduled trials through the existing owners and record explicit provenance, stage timestamps, intervals, cleanup, and metric status for all 18 rows.
+- [x] Step 1: Record the warm/cold definition and execute the exact interleaved order from the protocol; the first applicable `direct_controller`, `single_worker`, and `cos_two_lane` entries are the three canaries and count toward the 18 rows.
+- [x] Step 2: Run the direct canary through the current controller owner without artificial Herdr activity; verify attribution, expected accepted artifact, no identity drift, settled ownership, cleanup, and no unexpected Plan mutation.
+- [x] Step 3: Run the Worker canary through existing runtime binding and launcher owners; verify the same gate before continuing.
+- [x] Step 4: Run the two-lane CoS canary through `herdr_parallel_dispatch.py` with exactly two disjoint tasks and no refill; verify the same gate before continuing. The live canary completed both read-only lanes with verified grants, authoritative receipts, confirmed lifecycle settlement, and removed generated role views; semantic acceptance remained `null`.
+- [x] Step 5: If any canary has cleanup or ownership uncertainty, or semantic acceptance is not proven, stop the matrix and preserve separate canary evidence plus the existing capability-blocked topology rows; never manufacture additional executions or successes.
+- [x] Step 6: If all canaries pass, run the remaining 15 scheduled trials through the existing owners and record explicit provenance, stage timestamps, intervals, cleanup, and metric status for all 18 rows.
 
 **Verification:**
-- [ ] `python scripts/benchmark_operational_comparison.py validate --protocol artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json --input artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl`
+- [x] `python scripts/benchmark_operational_comparison.py validate --protocol artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json --input artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl`
 - Expected: the topology stream contains exactly 18 unique protocol rows; rows are valid accepted, `BLOCKED_CAPABILITY`, `unavailable`, or safety-stop `INCONCLUSIVE` evidence; no duplicate execution or false accepted outcome exists.
 
 **Exit Criteria:**
@@ -396,16 +398,16 @@ source, protocol, and test edits after the seal are a stop condition.
 - Stop for: any failure requiring production code changes, unresolved ownership, destructive cleanup outside task-owned fixtures, or a semantic choice about expected lifecycle behavior.
 
 **Steps:**
-- [ ] Step 1: Change non-executed Plan text after admission and verify `plan_revision_changed`, no Worker start, no Plan advancement, and no leaked resource; record the result as a deterministic fail-closed probe.
-- [ ] Step 2: Change task worktree HEAD after preparation and verify base drift blocks before execution without out-of-scope writes; record the base-drift evidence class.
-- [ ] Step 3: Present stale or mismatched attempt/receipt evidence and verify rejection, reconciliation where required, and no dependent advancement.
-- [ ] Step 4: Run a bounded timeout/silence case and verify timeout is not retirement proof, reuse remains blocked, and no duplicate retry occurs.
-- [ ] Step 5: Run a Worker failure with successful retirement and verify execution failure is distinct from unresolved ownership.
-- [ ] Step 6: Induce task-owned cleanup failure and verify `recovery_required`, reuse blocking, and no successful settlement.
-- [ ] Step 7: Write exactly six records to the fail-closed stream with explicit `evidence_class` (`live` or `deterministic`), expected owner, observed fail-closed state, cleanup state, and no synthetic topology trial IDs.
+- [x] Step 1: Change non-executed Plan text after admission and verify `plan_revision_changed`, no Worker start, no Plan advancement, and no leaked resource; record the result as a deterministic fail-closed probe.
+- [x] Step 2: Change task worktree HEAD after preparation and verify base drift blocks before execution without out-of-scope writes; record the base-drift evidence class.
+- [x] Step 3: Present stale or mismatched attempt/receipt evidence and verify rejection, reconciliation where required, and no dependent advancement.
+- [x] Step 4: Run a bounded timeout/silence case and verify timeout is not retirement proof, reuse remains blocked, and no duplicate retry occurs.
+- [x] Step 5: Run a Worker failure with successful retirement and verify execution failure is distinct from unresolved ownership.
+- [x] Step 6: Induce task-owned cleanup failure and verify `recovery_required`, reuse blocking, and no successful settlement.
+- [x] Step 7: Write exactly six records to the fail-closed stream with explicit `evidence_class` (`live` or `deterministic`), expected owner, observed fail-closed state, cleanup state, and no synthetic topology trial IDs.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_herdr_attempt_contract.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py tests/test_live_stability_probe.py`
+- [x] `python -m pytest -q tests/test_herdr_attempt_contract.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py tests/test_live_stability_probe.py`
 - Expected: each negative probe fails closed at the expected owner; the dedicated bounded tests validate the six fail-closed records without passing them to `benchmark_operational_comparison.py`; no false completion, reuse, retry, or dependent transition is observed.
 
 **Exit Criteria:**
@@ -448,16 +450,16 @@ source, protocol, and test edits after the seal are a stop condition.
 - Stop for: any request to infer success from blocked rows, change the aggregator into a producer, create multiple optimization plans, or edit production behavior from one experiment.
 
 **Steps:**
-- [ ] Step 1: Validate only the topology stream against the new protocol and reject mixed-base, duplicate, malformed, or lifecycle-invalid rows; validate the six fail-closed records with dedicated bounded test/report logic.
-- [ ] Step 2: Summarize topology medians/ranges by topology and condition, stage timings, useful interval sum/union, launches, subprocesses, retries, continuations, interventions, and attributable usage/cost.
-- [ ] Step 3: Record separate `plan_execution_status` (`verified`, `blocked`, or `failed`), `live_stability_status` (`proven_read_only`, `inconclusive`, or `failed`), and `optimization_disposition` (`freeze`, `inconclusive`, or `follow_up_required`). `BLOCKED_CAPABILITY` or incomplete matched evidence makes live stability `inconclusive`, never proven.
-- [ ] Step 4: If `optimization_disposition=follow_up_required`, name exactly one measured bottleneck and one bounded hypothesis; create no implementation changes in this plan.
-- [ ] Step 5: Document that the strongest claim is live read-only execution/coordination stability unless a separately authorized write probe succeeds; document the frozen safeguards and write-probe deferral without adding a registry, heartbeat, or second task database.
+- [x] Step 1: Validate only the topology stream against the new protocol and reject mixed-base, duplicate, malformed, or lifecycle-invalid rows; validate the six fail-closed records with dedicated bounded test/report logic.
+- [x] Step 2: Summarize topology medians/ranges by topology and condition, stage timings, useful interval sum/union, launches, subprocesses, retries, continuations, interventions, and attributable usage/cost.
+- [x] Step 3: Record separate `plan_execution_status` (`verified`, `blocked`, or `failed`), `live_stability_status` (`proven_read_only`, `inconclusive`, or `failed`), and `optimization_disposition` (`freeze`, `inconclusive`, or `follow_up_required`). `BLOCKED_CAPABILITY` or incomplete matched evidence makes live stability `inconclusive`, never proven.
+- [x] Step 4: If `optimization_disposition=follow_up_required`, name exactly one measured bottleneck and one bounded hypothesis; create no implementation changes in this plan.
+- [x] Step 5: Document that the strongest claim is live read-only execution/coordination stability unless a separately authorized write probe succeeds; document the frozen safeguards and write-probe deferral without adding a registry, heartbeat, or second task database.
 
 **Verification:**
-- [ ] `python scripts/benchmark_operational_comparison.py validate --protocol artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json --input artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl`
-- [ ] `python scripts/benchmark_operational_comparison.py summarize --protocol artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json --input artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl --output artifacts/runtime-observation/2026-10-17-live-stability-probe-summary.json`
-- [ ] `python -m pytest -q tests/test_live_stability_probe.py -k failclosed`
+- [x] `python scripts/benchmark_operational_comparison.py validate --protocol artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json --input artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl`
+- [x] `python scripts/benchmark_operational_comparison.py summarize --protocol artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json --input artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl --output artifacts/runtime-observation/2026-10-17-live-stability-probe-summary.json`
+- [x] `python -c "import json; from pathlib import Path; rows=[json.loads(line) for line in Path('artifacts/runtime-observation/2026-10-17-live-stability-failclosed.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()]; assert len(rows) == 6 and all(row.get('evidence_class') in {'live', 'deterministic'} for row in rows)"`
 - Expected: topology summary traces only to valid topology rows; fail-closed evidence is validated separately; blocked metrics remain unavailable; the report contains all three verdicts, exactly one optimization disposition, and at most one follow-up bottleneck.
 
 **Exit Criteria:**
@@ -470,6 +472,10 @@ report, perform one independent Review B of evidence traceability, canary and
 fail-closed conclusions, verdict separation, and the absence of write-lifecycle
 overclaiming. Task 6 may begin only after Review B is recorded as passed or the
 reviewed final issues are resolved.
+
+Review B result: passed. The topology validator accepted exactly 18 rows, the
+fail-closed stream contains exactly six non-topology records, and the report
+keeps plan execution, live stability, and optimization disposition separate.
 
 ### Task 6: Run final repository and generated-surface verification
 
@@ -502,22 +508,22 @@ reviewed final issues are resolved.
 - Stop for: stale plan state, failed required check, unresolved resource, undeclared file, base drift, or any need to rewrite evidence after verification.
 
 **Steps:**
-- [ ] Step 1: Run focused probe/runtime tests and repository contract validation; reserve the full repository suite for the final verification boundary below.
-- [ ] Step 2: Run planning lifecycle validation against this exact plan path.
-- [ ] Step 3: Run all-platform adapter drift, starter-kit build, and starter-kit validation checks.
-- [ ] Step 4: Parse the protocol, topology JSONL, fail-closed JSONL, summary, and report; inspect `git diff --check`, status, and task-owned resource retirement.
-- [ ] Step 5: Apply `skill-verification-before-completion`; change plan status only after fresh evidence returns `verified`.
+- [x] Step 1: Run focused probe/runtime tests and repository contract validation; reserve the full repository suite for the final verification boundary below.
+- [x] Step 2: Run planning lifecycle validation against this exact plan path.
+- [x] Step 3: Run all-platform adapter drift, starter-kit build, and starter-kit validation checks.
+- [x] Step 4: Parse the protocol, topology JSONL, fail-closed JSONL, summary, and report; inspect `git diff --check`, status, and task-owned resource retirement.
+- [x] Step 5: Apply `skill-verification-before-completion`; change plan status only after fresh evidence returns `verified`.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_live_stability_probe.py tests/test_benchmark_operational_comparison.py tests/test_benchmark_dispatch.py tests/test_herdr_attempt_contract.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
-- [ ] `python scripts/validate_repo_contracts.py --repo-root . --fast`
-- [ ] `python scripts/validate_planning_lifecycle.py --repo-root . --plan docs/superpowers/plans/2026-10-17-live-stability-probe-and-measured-optimization-plan.md`
-- [ ] `python scripts/sync_agent_adapters.py --all-platforms --check`
-- [ ] `python scripts/build_starter_kit.py --repo-root . --output-root .tmp-tests/live-stability-starter-kit`
-- [ ] `python scripts/validate_starter_kit.py --repo-root . --output-root .tmp-tests/live-stability-starter-kit`
-- [ ] `python -m json.tool artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json`
-- [ ] `python -m json.tool artifacts/runtime-observation/2026-10-17-live-stability-probe-summary.json`
-- [ ] `git diff --check`
+- [x] `python -m pytest -q tests/test_live_stability_probe.py tests/test_benchmark_operational_comparison.py tests/test_benchmark_dispatch.py tests/test_herdr_attempt_contract.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
+- [x] `python scripts/validate_repo_contracts.py --repo-root . --fast`
+- [x] `python scripts/validate_planning_lifecycle.py --repo-root . --plan docs/superpowers/plans/2026-10-17-live-stability-probe-and-measured-optimization-plan.md`
+- [x] `python scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `python scripts/build_starter_kit.py --repo-root . --output-root .tmp-tests/live-stability-starter-kit`
+- [x] `python scripts/validate_starter_kit.py --repo-root . --output-root .tmp-tests/live-stability-starter-kit`
+- [x] `python -m json.tool artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json`
+- [x] `python -m json.tool artifacts/runtime-observation/2026-10-17-live-stability-probe-summary.json`
+- [x] `git diff --check`
 - Expected: all required checks pass; generated surfaces are synchronized; evidence files parse; only declared task-owned changes remain before final disposition.
 
 **Exit Criteria:**
