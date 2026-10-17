@@ -160,6 +160,7 @@ def _handoff(
         "evidence": _evidence(),
         "artifact_specs": {"artifact exists": {"path": artifact, "expected_sha256": expected_digest}},
         "verification": {"passed": True},
+        "git_proof": {"head_matches": True, "write_scope_matches": True},
         "dependent_task": {
             "task_id": "Task 2",
             "plan_identity": "cos-acceptance-handoff-canary",
@@ -237,6 +238,14 @@ def run(output: Path) -> dict[str, Any]:
             protocol,
             _owner_result(protocol, acceptance_decision),
             trial_id="cos_two_lane:warm:1",
+            expected_acceptance_binding={
+                "task_id": acceptance_decision["task"]["task_id"],
+                "plan_identity": acceptance_decision["task"]["plan_identity"],
+                "candidate_sha": acceptance_decision["acceptance_proof"]["git"]["candidate_sha"],
+                "acceptance_checkpoint_sha": acceptance_decision["acceptance_proof"]["git"]["acceptance_checkpoint_sha"],
+                "assignment_id": acceptance_decision["acceptance_proof"]["git"]["assignment_id"],
+                "attempt_id": acceptance_decision["acceptance_proof"]["git"]["attempt_id"],
+            },
         )
         row_validation = validate_rows(protocol, [cos_row])
         resources = canonical_resource_inventory(
@@ -277,14 +286,14 @@ def run(output: Path) -> dict[str, Any]:
                 temp_root,
             ),
             _negative_case(
-                "timeout",
+                "verification-failure",
                 lambda plan, record, item, current: _handoff(
                     plan, record, item, current, verification={"passed": False}
                 ),
                 temp_root,
             ),
             _negative_case(
-                "cleanup-failure",
+                "artifact-freshness-mismatch",
                 lambda plan, record, item, current: _handoff(
                     plan,
                     record,
@@ -319,7 +328,12 @@ def run(output: Path) -> dict[str, Any]:
             ),
         ]
         try:
-            record_cos_result(protocol, _owner_result(protocol, {}), trial_id="cos_two_lane:warm:1")
+            record_cos_result(
+                protocol,
+                _owner_result(protocol, {}),
+                trial_id="cos_two_lane:warm:1",
+                expected_acceptance_binding={},
+            )
         except ValueError as exc:
             absent_producer = {"authorized": False, "reason": str(exc)}
         else:
@@ -346,7 +360,6 @@ def run(output: Path) -> dict[str, Any]:
                 "replay": replay,
                 "plan_task_state_after_replay": graph_after_replay.tasks["Task 1"].state,
                 "dependent_task_state_after_replay": graph_after_replay.tasks["Task 2"].state,
-                "worker_launch_count": 1,
                 "attempt_id": binding["attempt_id"],
                 "lane_observations": [
                     {"lane_id": "canary-lane-a", "artifact": "worker-result-a.json", "settled": True},
@@ -368,6 +381,8 @@ def run(output: Path) -> dict[str, Any]:
                 "runtime_settlement_owner": "runtime",
                 "worker_acceptance_field_used": False,
                 "synthetic_acceptance_used": False,
+                "provider_execution_proven": False,
+                "physical_cleanup_proven": False,
             },
         }
     output.parent.mkdir(parents=True, exist_ok=True)

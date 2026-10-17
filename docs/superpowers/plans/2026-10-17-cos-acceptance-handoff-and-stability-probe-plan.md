@@ -61,10 +61,11 @@ performance optimization before accepted-outcome evidence exists.
 
 Make one real CoS/controller acceptance handoff operational from settled
 Worker evidence through the existing `AcceptanceDecision` boundary and into
-the existing Plan-transition API. Prove the handoff with positive and
-fail-closed end-to-end probes, make probe resource accounting authoritative and
-reconcilable, and leave later write-lifecycle and topology measurement to
-separate plans bound to this correctness result.
+the existing Plan-transition API. Prove that controller boundary with a
+bounded fixture-backed read-only canary and fail-closed probes, make probe
+resource observations authoritative and reconcilable, and leave provider/
+Herdr execution, physical cleanup, write-lifecycle qualification, and topology
+measurement to separately approved plans.
 
 ## Non-Goals
 
@@ -81,6 +82,8 @@ separate plans bound to this correctness result.
   proven.
 - Do not treat operational completion, settlement, cleanup, or process exit as
   semantic acceptance.
+- Do not claim provider execution, physical cleanup, or process-level restart
+  from fixture-backed controller-boundary evidence.
 
 ## Implementation Outcomes
 
@@ -110,7 +113,7 @@ Successful cleanup requires every probe-owned resource to be observed as
 removed or already absent; unresolved, preserved, or unverified resources keep
 reuse blocked and fail the positive probe.
 
-### One accepted lifecycle proof
+### One accepted controller-boundary proof
 
 The probe records one exact-bound path:
 
@@ -121,8 +124,7 @@ settled Worker evidence
   -> validated AcceptanceDecision(PASS)
   -> apply_accepted_plan_transitions()
   -> dependent-task preparation
-  -> evidence release and cleanup
-  -> idempotent recovery/replay
+  -> persisted acceptance replay
 ```
 
 It also records negative cases for stale identity, missing evidence,
@@ -132,11 +134,12 @@ acceptance producer. No synthetic accepted row is permitted.
 ### Follow-up handoff instead of speculative optimization
 
 This plan records the prerequisites for later measurement but does not run the
-18-trial topology experiment. A later plan may bind a new protocol to the
-merged correctness revision only after this plan proves a genuine accepted
-read-only lifecycle. A separate write-lifecycle plan may qualify disposable
-candidate creation, release, cleanup, and recovery. Neither follow-up may
-count capability-blocked or acceptance-pending trials as successful evidence.
+18-trial topology experiment or provider-backed execution. A later plan may
+bind a new protocol to the merged correctness revision only after it supplies
+the missing provider and physical-resource evidence. A separate write-lifecycle
+plan may qualify disposable candidate creation, release, cleanup, and recovery.
+Neither follow-up may count capability-blocked or acceptance-pending trials as
+successful evidence.
 
 ## Execution Approach
 
@@ -422,8 +425,9 @@ count capability-blocked or acceptance-pending trials as successful evidence.
 ### Task 5: Prove one accepted read-only lifecycle and fail-closed negatives
 
 **Purpose:**
-- Produce a deterministic end-to-end canary that reaches real CoS PASS and
-  Plan consequence, then prove invalid states do not advance the Plan.
+- Produce a deterministic controller-boundary canary that reaches real CoS
+  PASS and Plan consequence over settled artifacts, then prove invalid states
+  do not advance the Plan.
 
 **Task Function:**
 - Representative-operation trace and backend lifecycle verification.
@@ -438,10 +442,11 @@ count capability-blocked or acceptance-pending trials as successful evidence.
 - Selection basis: inspect emitted evidence and replay behavior independently.
 
 **Specification Coverage:**
-- Accepted outcome requires actual CoS decision, exact identity/freshness,
-  required/artifact conditions, Plan transition, dependent preparation, and
-  cleanup proof. A missing or unexercisable real producer blocks completion;
-  acceptance-pending is not a successful lifecycle.
+- Accepted boundary proof requires an actual CoS decision, exact
+  identity/freshness, required/artifact conditions, Plan transition, dependent
+  preparation, persisted replay, and observed-resource reconciliation. It does
+  not prove provider execution or physical cleanup; acceptance-pending is not
+  a successful controller-boundary result.
 
 **Required Skills:**
 - `skill-backend-verification`, `skill-verification-before-completion`
@@ -467,34 +472,34 @@ count capability-blocked or acceptance-pending trials as successful evidence.
   candidate/checkpoint, required conditions, and two independent lanes.
 - [x] Step 2: Execute, settle, assemble controller evidence, obtain real CoS
   PASS, apply the accepted Plan transition, and prepare one dependent task.
-- [x] Step 3: Restart or reconstruct the controller from persisted acceptance
-  and Plan evidence, recover the accepted consequence, and prove no duplicate
-  Worker launch, attempt, or Plan transition occurs.
-- [x] Step 4: Reconcile the actual probe-owned resource inventory after the
-  accepted lifecycle; prove every resource is removed or already absent and
-  unresolved/quarantined resources remain blocked from reuse.
+- [x] Step 3: Reconstruct the controller from persisted acceptance and Plan
+  evidence, recover the accepted consequence, and prove no duplicate Plan
+  transition occurs.
+- [x] Step 4: Reconcile the supplied attempt-bound resource observations;
+  prove settled observations unblock reuse and unresolved or conflicting
+  observations keep reuse blocked.
 - [x] Step 5: Inject stale Plan/task/attempt/candidate identities, missing or
-  false conditions, receipt mismatch, timeout, cleanup failure, and absent CoS
-  producer; record each as fail-closed. If the real producer is absent, stop
-  the plan as `blocked` rather than completing with deferred live verification.
+  false conditions, receipt mismatch, verification failure, artifact freshness
+  mismatch, and absent CoS producer; record each as fail-closed. Provider and
+  physical-cleanup execution remain explicit follow-up capability gates.
 
 **Verification:**
 - [x] `py -B -m pytest -q tests/test_live_stability_probe.py tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_secretary_live_runtime.py`
-- Expected: one genuine accepted lifecycle is recorded through the real
-  producer; controller restart recovers persisted state without duplicate
-  work; all injected invalid states produce zero unauthorized transitions and
-  zero leaked probe-owned resources. Missing producer capability stops the
-  plan as `blocked`.
+- Expected: one genuine controller acceptance boundary is recorded through the
+  real producer; persisted replay produces no duplicate Plan transition; all
+  injected invalid states produce zero unauthorized transitions; conflicting
+  resource observations block reuse. Provider execution and physical cleanup
+  are not claimed by this fixture-backed canary.
 
 **Exit Criteria:**
-- The report proves accepted, fail-closed, recovery, and resource-disposition
-  outcomes with exact source and binding provenance. It cannot claim completion
-  from capability-blocked or acceptance-pending evidence.
+- The report proves accepted controller-boundary, fail-closed, replay, and
+  resource-observation outcomes with exact source and binding provenance. It
+  cannot claim provider execution or physical cleanup from fixture evidence.
 
 **Recorded Evidence:**
 - `artifacts/runtime-observation/2026-10-17-cos-acceptance-handoff-canary.json`
   records `PASS`, two settled lane artifacts, dependent-task preparation,
-  persisted replay, one attempt/launch identity, settled resource inventory,
+  persisted replay, one attempt identity, settled resource observations,
   quarantined conflict, and seven fail-closed handoff cases plus absent CoS
   producer rejection.
 - `artifacts/runtime-observation/2026-10-17-cos-acceptance-handoff-report.md`
@@ -597,10 +602,11 @@ The plan is ready for completion verification when:
    and controller checks remain enforced;
 3. resource disposition is derived from one observed attempt-bound inventory,
    with no cleanup false-positive or unresolved-resource reuse;
-4. at least one genuine accepted read-only lifecycle is proved, or the exact
-   missing-provider capability gate is recorded without synthetic acceptance;
-5. negative binding, freshness, condition, receipt, settlement, timeout,
-   cleanup, and replay cases fail closed with no unauthorized Plan transition;
+4. one genuine accepted controller-boundary canary is proved over settled
+   artifacts, with provider execution and physical cleanup explicitly not
+   inferred from fixture evidence;
+5. negative binding, freshness, condition, receipt, verification, artifact
+   mismatch, and replay cases fail closed with no unauthorized Plan transition;
 6. recovery and replay evidence is persisted, idempotent, and reconciled to the
    same attempt-bound identity and resource inventory;
 7. documentation, tests, artifacts, task ledger, and final verification are

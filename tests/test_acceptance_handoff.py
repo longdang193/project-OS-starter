@@ -95,6 +95,7 @@ def test_handoff_inspects_artifact_applies_dependent_transition_and_replays(tmp_
         evidence=_evidence(),
         artifact_specs={"artifact exists": {"path": artifact, "expected_sha256": digest}},
         verification={"passed": True},
+        git_proof={"head_matches": True, "write_scope_matches": True},
         dependent_task={
             "task_id": "Task 2",
             "plan_identity": "handoff-plan",
@@ -136,11 +137,36 @@ def test_handoff_fails_closed_when_controller_observation_does_not_match(tmp_pat
         evidence=_evidence(),
         artifact_specs={"artifact exists": {"path": artifact, "expected_sha256": "0" * 64}},
         verification={"passed": True},
+        git_proof={"head_matches": True, "write_scope_matches": True},
     )
 
     assert result["authorized"] is False
     assert result["decision"]["decision"] == "FAIL"
     assert result["validation_reasons"]
+    assert load_plan(plan_path).tasks["Task 1"].state == "active"
+
+
+def test_handoff_fails_closed_when_git_freshness_is_missing(tmp_path: Path) -> None:
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(PLAN, encoding="utf-8")
+    artifact = tmp_path / "worker-result.json"
+    artifact.write_text("worker output", encoding="utf-8")
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+    result = handoff_acceptance(
+        plan_path,
+        controller_identity="cos-controller-1",
+        task_id="Task 1",
+        binding=_binding(),
+        required_conditions={"artifact exists": "artifact proof"},
+        evidence=_evidence(),
+        artifact_specs={"artifact exists": {"path": artifact, "expected_sha256": digest}},
+        verification={"passed": True},
+    )
+
+    assert result["authorized"] is False
+    assert result["decision"]["decision"] == "BLOCKED"
+    assert "acceptance freshness" in result["validation_reasons"]
     assert load_plan(plan_path).tasks["Task 1"].state == "active"
 
 

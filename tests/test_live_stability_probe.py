@@ -122,7 +122,19 @@ def test_explicit_modes_bind_to_their_owner_arm() -> None:
     worker = record_worker_result(protocol, _owner_result(protocol, trial_id="single_worker:warm:1"), trial_id="single_worker:warm:1")
     cos_result = _owner_result(protocol, trial_id="cos_two_lane:warm:1")
     cos_result["acceptance_decision"] = _acceptance_decision()
-    cos = record_cos_result(protocol, cos_result, trial_id="cos_two_lane:warm:1")
+    cos = record_cos_result(
+        protocol,
+        cos_result,
+        trial_id="cos_two_lane:warm:1",
+        expected_acceptance_binding={
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "candidate_sha": "candidate-1",
+            "acceptance_checkpoint_sha": "checkpoint-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+        },
+    )
     assert worker["arm"] == "single_worker"
     assert cos["arm"] == "cos_two_lane"
     with pytest.raises(ValueError, match="arm mismatch"):
@@ -133,12 +145,43 @@ def test_cos_record_requires_validated_acceptance_decision() -> None:
     protocol = _protocol()
     result = _owner_result(protocol, trial_id="cos_two_lane:warm:1")
     with pytest.raises(ValueError, match="real AcceptanceDecision"):
-        record_cos_result(protocol, result, trial_id="cos_two_lane:warm:1")
+        record_cos_result(
+            protocol,
+            result,
+            trial_id="cos_two_lane:warm:1",
+            expected_acceptance_binding={},
+        )
+
+
+def test_cos_record_rejects_unrelated_acceptance_binding() -> None:
+    protocol = _protocol()
+    result = _owner_result(protocol, trial_id="cos_two_lane:warm:1")
+    result["acceptance_decision"] = _acceptance_decision()
+
+    with pytest.raises(ValueError, match="acceptance plan binding"):
+        record_cos_result(
+            protocol,
+            result,
+            trial_id="cos_two_lane:warm:1",
+            expected_acceptance_binding={
+                "task_id": "Task 1",
+                "plan_identity": "other-plan",
+                "candidate_sha": "other-candidate",
+                "acceptance_checkpoint_sha": "other-checkpoint",
+                "assignment_id": "other-assignment",
+                "attempt_id": "other-attempt",
+            },
+        )
 
     result["acceptance_decision"] = _acceptance_decision()
     result["acceptance_decision"]["decision"] = "FAIL"
     with pytest.raises(ValueError, match="real AcceptanceDecision"):
-        record_cos_result(protocol, result, trial_id="cos_two_lane:warm:1")
+        record_cos_result(
+            protocol,
+            result,
+            trial_id="cos_two_lane:warm:1",
+            expected_acceptance_binding={},
+        )
 
 
 def test_owner_identity_and_acceptance_are_validated() -> None:

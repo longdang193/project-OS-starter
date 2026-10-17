@@ -202,11 +202,25 @@ def record_worker_result(protocol: dict[str, Any], owner_result: dict[str, Any],
     return _record_owner_result(protocol, owner_result, trial_id=trial_id, expected_arm="single_worker")
 
 
-def record_cos_result(protocol: dict[str, Any], owner_result: dict[str, Any], *, trial_id: str) -> dict[str, Any]:
+def record_cos_result(
+    protocol: dict[str, Any],
+    owner_result: dict[str, Any],
+    *,
+    trial_id: str,
+    expected_acceptance_binding: dict[str, Any],
+) -> dict[str, Any]:
     acceptance_decision = owner_result.get("acceptance_decision")
     if not isinstance(acceptance_decision, dict) or acceptance_decision.get("decision") != "PASS":
         raise ValueError("CoS owner result requires a real AcceptanceDecision(PASS)")
-    validation_reasons = validate_acceptance_decision(acceptance_decision)
+    validation_reasons = validate_acceptance_decision(
+        acceptance_decision,
+        expected_task_id=expected_acceptance_binding.get("task_id"),
+        expected_plan_identity=expected_acceptance_binding.get("plan_identity"),
+        expected_candidate_sha=expected_acceptance_binding.get("candidate_sha"),
+        expected_acceptance_checkpoint_sha=expected_acceptance_binding.get("acceptance_checkpoint_sha"),
+        expected_assignment_id=expected_acceptance_binding.get("assignment_id"),
+        expected_attempt_id=expected_acceptance_binding.get("attempt_id"),
+    )
     if validation_reasons:
         raise ValueError(
             "CoS owner result acceptance decision is invalid: "

@@ -102,8 +102,8 @@ def _build_git_proof(
         "acceptance_checkpoint_sha": checkpoint_sha,
         "assignment_id": _binding_value(binding, "assignment_id"),
         "attempt_id": _binding_value(binding, "attempt_id"),
-        "head_matches": True,
-        "write_scope_matches": True,
+        "head_matches": None,
+        "write_scope_matches": None,
     }
     if git_proof is not None:
         result.update(dict(git_proof))
