@@ -265,3 +265,17 @@ def test_cli_fails_for_invalid_evidence(tmp_path: Path) -> None:
         check=False,
     )
     assert summarized.returncode == 1
+
+
+def test_current_base_row_is_rejected_by_historical_protocol() -> None:
+    historical = _protocol()
+    current = dict(historical)
+    current["base_revision"] = "2254a69990a1b013c17df88183d9972cf866f3c5"
+    row = _row(current, current["trial_design"]["order"][0])
+    result = validate_rows(historical, [row])
+    assert result["valid"] is False
+    assert any(
+        "base_identity does not match protocol base_revision" in error
+        for item in result["invalid_rows"]
+        for error in item["errors"]
+    )
