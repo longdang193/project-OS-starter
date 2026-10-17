@@ -3,7 +3,7 @@
 ## Result
 
 - Status: `PASS` for the bounded local read-only controller boundary.
-- Implementation checkpoint: `07fe73c4c8ecd206b1cdd96471125828a5125fd9`.
+- Implementation checkpoint: `292806e6f4fc0cbd204e2c91de4d4e07908ee6e5`.
 - Evidence: `artifacts/runtime-observation/2026-10-17-cos-acceptance-handoff-canary.json`.
 - Protocol: `artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json`.
 - Protocol digest: `6b542222c09a9a4dafaf3a543c8f0fbc1c1607d22a675405d5c59a7f2a2102e0`.

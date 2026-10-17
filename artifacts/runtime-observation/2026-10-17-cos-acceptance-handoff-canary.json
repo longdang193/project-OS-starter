@@ -26,11 +26,11 @@
     },
     "record_schema": "cos-acceptance-handoff/v1",
     "replay": {
-      "accepted_candidate_sha": "07fe73c4c8ecd206b1cdd96471125828a5125fd9",
+      "accepted_candidate_sha": "292806e4ea8f0c9ab3fa8466d84370d0853fc700",
       "authorized": true,
       "reason": "task state changed",
       "replayed": true,
-      "revision": "a4304de81b4065abd18576d5980f4f1a17e3aa4584642d667527f677624b3303"
+      "revision": "04e618a8d9893563236721ba8ed0eb027bcd6920b8ba889e0aeff40ab3e5ac27"
     }
   },
   "claims": {
@@ -47,7 +47,7 @@
     "producer": "scripts/project_os_runtime/acceptance_handoff.py:handoff_acceptance"
   },
   "evidence_class": "local-read-only",
-  "implementation_commit": "07fe73c4c8ecd206b1cdd96471125828a5125fd9",
+  "implementation_commit": "292806e4ea8f0c9ab3fa8466d84370d0853fc700",
   "negative_cases": [
     {
       "authorized": false,
