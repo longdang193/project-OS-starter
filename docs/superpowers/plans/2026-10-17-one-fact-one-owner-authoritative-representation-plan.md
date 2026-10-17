@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: one-fact-one-owner-authoritative-representation
 targets:
@@ -178,8 +178,8 @@ acceptance decision is required before topology rows are promoted.
 - Branch: `codex/one-fact-one-owner`
 - Base commit: `ef536b25a6b6ffa02410233937d718385cc38f2d`
 - Expected workspace: `dedicated task-owned worktree from the reviewed base; leave local main untouched`
-- Next action: `execute Task 4 proven compatibility-layer cleanup and generated-surface reconciliation`
-- Blockers: `none; Task 1 acceptance boundary gate resolved through the existing lead-controller procedure`
+- Next action: `complete Task 6 independent review and final repository verification; then hand off the explicit Task 5 acceptance-producer blocker`
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -187,8 +187,8 @@ acceptance decision is required before topology rows are promoted.
 | Task 2 | `completed` | task worktree | `codex` | Task 1 | TaskResult/settlement contract tests | 581 passed, 1 skipped; legacy acceptance ignored and stripped; dispatcher pending-acceptance path preserved |
 | Task 3 | `completed` | task worktree | `codex` | Task 1 | Plan-derived prerequisite and launch-preflight tests | 131 passed; runtime callers cannot supply accepted prerequisite graph; artifact branch removed |
 | Task 4 | `completed` | task worktree | `codex` | Tasks 2–3 | compatibility deletion, manifest, validator, and doc checks | 347 focused tests passed, 1 skipped; repo contracts and starter-kit validation passed |
-| Task 5 | `pending` | sealed task worktree | `codex` | Task 4 | CoS canary with explicit acceptance decision or recorded gate stop | pending |
-| Task 6 | `pending` | task worktree | `codex` | Task 5 | independent review and final repository verification | pending |
+| Task 5 | `completed` | sealed task worktree | `codex` | Task 4 | CoS canary with explicit acceptance decision or recorded gate stop | operational canary passed; semantic acceptance producer unavailable, acceptance_pending recorded as external handoff |
+| Task 6 | `completed` | task worktree | `codex` | Task 5 | independent review and final repository verification | review passed after evidence reconciliation; full suite and validators passed |
 
 ## Task Breakdown
 
@@ -238,7 +238,7 @@ acceptance decision is required before topology rows are promoted.
 - [x] Step 1: Verify the worktree is based on `ef536b25a6b6ffa02410233937d718385cc38f2d` and preserve unrelated changes outside the task worktree.
 - [x] Step 2: Run the focused baseline suite: `py -B -m pytest -q tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_herdr_parallel_dispatch.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py` (`335 passed in 16.89s`).
 - [x] Step 3: Build a caller matrix for `accepted`, `accepted_prerequisites`, `prepare_lane_inputs`, `shell_capabilities`, `runtime_completion_is_not_acceptance`, and `scripts/herdr_attempt_contract.py`, including starter-kit and validator consumers.
-- [x] Step 4: Confirm `evaluate_acceptance()` has no in-repo production caller, identify an exercisable supported CoS/controller invocation boundary for Task 5, and record the exact handoff; do not assign acceptance to the dispatcher. The existing native lead-controller procedure is the supported boundary, and its disposable acceptance-to-Plan proof passed with `3 passed`.
+- [x] Step 4: Confirm `evaluate_acceptance()` has no in-repo production caller, identify an exercisable supported CoS/controller invocation boundary for Task 5, and record the exact handoff; do not assign acceptance to the dispatcher. The existing native lead-controller procedure remains the supported boundary and its disposable acceptance-to-Plan proof passed with `3 passed`; the live canary separately records that no real producer was available for this checkpoint.
 - [x] Step 5: Confirm no active production `artifact_ref` or `artifact_available` consumer requires preserving a second prerequisite identity graph.
 
 **Verification:**
@@ -447,16 +447,16 @@ acceptance decision is required before topology rows are promoted.
 - [x] Step 5: Update canonical documentation and validate a fresh starter-kit build using the inspected CLI flags.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_plan_preparation.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_validate_repo_contracts.py tests/test_deploy_agent_runtime.py tests/test_project_os_runtime.py tests/test_evidence_release.py`
+- [x] `py -B -m pytest -q tests/test_plan_preparation.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_validate_repo_contracts.py tests/test_deploy_agent_runtime.py tests/test_project_os_runtime.py tests/test_evidence_release.py`
 - Expected: migrated consumers pass; deleted files/symbols are not imported; evidence release remains fail-closed, same-attempt, digest-checked, and idempotent.
-- [ ] `py -B scripts/validate_repo_contracts.py --repo-root .`
+- [x] `py -B scripts/validate_repo_contracts.py --repo-root .`
 - Expected: runtime ownership, dependency, manifest, and generated-surface contracts pass; any retained compatibility candidate has a named active consumer and retention reason recorded.
-- [ ] `py -B scripts/build_starter_kit.py --help` and `py -B scripts/validate_starter_kit.py --help`
+- [x] `py -B scripts/build_starter_kit.py --help` and `py -B scripts/validate_starter_kit.py --help`
 - Expected: exact current CLI flags are recorded before the build/validation commands are run.
-- [ ] Run `py -B scripts/build_starter_kit.py --repo-root . --output-root <task-owned-temp>` and `py -B scripts/validate_starter_kit.py --repo-root . --output-root <task-owned-temp>` using the inspected flags.
+- [x] Run `py -B scripts/build_starter_kit.py --repo-root . --output-root <task-owned-temp>` and `py -B scripts/validate_starter_kit.py --repo-root . --output-root <task-owned-temp>` using the inspected flags.
 - Expected: the built starter-kit output validates against the canonical manifest and contains no stale deleted compatibility surface.
-- [ ] If `scripts/herdr_attempt_contract.py` is removed, run the supported Windows and Ubuntu `runtime-contracts.yml` CI matrix after publication.
-- [ ] `git diff --check`
+- [x] If `scripts/herdr_attempt_contract.py` is removed, run the supported Windows and Ubuntu `runtime-contracts.yml` CI matrix after publication. Not applicable because the active wrapper was retained.
+- [x] `git diff --check`
 - Expected: no whitespace errors.
 
 **Task 4 Evidence:**
@@ -512,18 +512,23 @@ acceptance decision is required before topology rows are promoted.
 - Stop for: missing provider/target/credential capability, absent real CoS acceptance producer, unresolved cleanup or retirement, stale identity, or any need to manufacture an accepted row or alter external state
 
 **Steps:**
-- [ ] Step 1: Pin the canary protocol to the implementation checkpoint and record provider/profile identity without credentials or raw provider output.
-- [ ] Step 2: Run exactly two predeclared independent read-only lanes with no refill and preserve separate task-result, settlement, and acceptance sources.
-- [ ] Step 3: Confirm each lane can reach `execution completed`, `resource settled`, `capacity retired`, and `TaskResult reported_completed` without a Worker `accepted` field.
-- [ ] Step 4: Supply result evidence to the existing CoS/controller acceptance boundary and record the returned `PASS`, `FAIL`, or `BLOCKED` `AcceptanceDecision` with exact attempt, candidate, Plan, and evidence bindings.
-- [ ] Step 5: If no real acceptance producer is available, record `acceptance_pending` and stop the matrix; do not convert runtime completion into semantic acceptance.
-- [ ] Step 6: Validate sanitized evidence, prove retirement/cleanup, and remove task-owned disposable resources only after positive retirement evidence.
+- [x] Step 1: Pin the canary protocol to checkpoint `c7dc1cf39d27a49d42f9a3c9641f8391c6806e5c` and record provider/profile identity without credentials or raw provider output.
+- [x] Step 2: Run exactly two predeclared independent read-only lanes with no refill and preserve separate task-result, settlement, and acceptance sources.
+- [x] Step 3: Confirm each lane reached `execution completed`, `resource settled`, `capacity retired`, and `TaskResult reported_completed` without a Worker `accepted` field.
+- [x] Step 4: Supply result evidence to the existing CoS/controller acceptance boundary and record the returned `PASS`, `FAIL`, or `BLOCKED` `AcceptanceDecision` with exact attempt, candidate, Plan, and evidence bindings; the gate stopped at `acceptance_pending` because no real producer was available in this run, and no synthetic decision was created.
+- [x] Step 5: Record `acceptance_pending` and stop the matrix; runtime completion was not converted into semantic acceptance.
+- [x] Step 6: Validate sanitized evidence, prove retirement/cleanup, and remove task-owned disposable resources only after positive retirement evidence.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_live_stability_probe.py tests/test_secretary_live_pilot.py tests/test_secretary_receipts.py`
+- [x] `py -B -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_live_stability_probe.py tests/test_secretary_live_pilot.py tests/test_secretary_receipts.py`
 - Expected: pending acceptance is represented separately from settled execution; accepted rows require a real CoS decision and exact source binding; blocked or incomplete canaries remain non-observed.
-- [ ] `py -B scripts/validate_repo_contracts.py --repo-root .`
+- [x] `py -B scripts/validate_repo_contracts.py --repo-root .`
 - Expected: live/runtime boundary guidance and contract validators pass.
+
+**Task 5 Evidence:**
+- Live dispatcher run at `c7dc1cf39d27a49d42f9a3c9641f8391c6806e5c`: two lanes, exit `0`, grant `verified`, lifecycle `confirmed`, cleanup `removed`, capacity `retired`, and `acceptance_pending=true` for both lanes.
+- `artifacts/runtime-observation/2026-10-17-one-fact-one-owner-cos-canary.json` records sanitized provider identity, exact attempt IDs, checkpoint binding, and absence of the Worker `accepted` field.
+- `artifacts/runtime-observation/2026-10-17-one-fact-one-owner-report.md` records the explicit acceptance-producer blocker and no synthetic acceptance.
 
 **Exit Criteria:**
 - A sanitized canary proves the post-change boundary, or the evidence records
@@ -568,23 +573,32 @@ acceptance decision is required before topology rows are promoted.
 - Stop for: unresolved high-risk review finding, changed base or scope, missing fresh proof, or any claim that depends on unmeasured topology economics
 
 **Steps:**
-- [ ] Step 1: Request one independent review focused on ownership boundaries, stale-result protection, settlement/cleanup safety, Plan-derived prerequisite identity, and compatibility deletion.
-- [ ] Step 2: Resolve actionable findings without expanding the plan; rerun affected focused proof.
-- [ ] Step 3: Run final repository, planning, starter-kit, and full test validation.
-- [ ] Step 4: Record all deviations, blockers, and deferred performance/Secretary questions in the plan before any branch disposition.
+- [x] Step 1: Request one independent review focused on ownership boundaries, stale-result protection, settlement/cleanup safety, Plan-derived prerequisite identity, and compatibility deletion.
+- [x] Step 2: Resolve actionable findings without expanding the plan; rerun affected focused proof. The reviewer’s evidence-binding and coordination-state findings were reconciled in the canary artifacts and this plan.
+- [x] Step 3: Run final repository, planning, starter-kit, and full test validation.
+- [x] Step 4: Record all deviations, blockers, and deferred performance/Secretary questions in the plan before any branch disposition.
 
 **Verification:**
-- [ ] `py -B -m pytest -q`
+- [x] `py -B -m pytest -q`
 - Expected: full repository suite passes, or every unrelated pre-existing failure is recorded with its command and scope.
-- [ ] `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-17-one-fact-one-owner-authoritative-representation-plan.md`
+- [x] `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-17-one-fact-one-owner-authoritative-representation-plan.md`
 - Expected: the plan satisfies the implementation-plan contract and task ledger rules.
-- [ ] `git diff --check` and `git status --short --branch`
+- [x] `git diff --check` and `git status --short --branch`
 - Expected: clean diff formatting and explicit final workspace state.
 
 **Exit Criteria:**
 - Independent review and fresh verification confirm the implementation removes
   duplicated semantic representations without weakening acceptance, settlement,
   identity, freshness, cleanup, or release safety.
+
+**Task 6 Evidence:**
+- Independent review: no implementation regression found; two P2 evidence/coordination findings were resolved by adding bound source projections, qualifying normalized acceptance metadata, and reconciling Coordination State.
+- `py -B -m pytest -q` — 1,373 passed, 2 skipped in 76.14s.
+- `py -B -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_live_stability_probe.py tests/test_secretary_live_pilot.py tests/test_secretary_receipts.py` — 140 passed.
+- `py -B scripts/validate_repo_contracts.py --repo-root .` — passed.
+- `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-17-one-fact-one-owner-authoritative-representation-plan.md` — passed after final reconciliation.
+- Starter-kit build and validation — passed at the Task 4 checkpoint; no canonical source changed afterward.
+- `git diff --check` — passed.
 
 ## Deferred Measurement Handoff
 

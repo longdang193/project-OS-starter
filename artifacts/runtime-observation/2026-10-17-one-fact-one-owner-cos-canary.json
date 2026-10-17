@@ -1,0 +1,99 @@
+{
+  "schema": "one-fact-one-owner-cos-canary/v1",
+  "evidence_class": "live",
+  "protocol_id": "one-fact-one-owner-cos-canary-2026-10-17",
+  "protocol_digest": "bb1f8e7c5eca765123b06cc8394c7f07d306d4f65526cfaa509138a0209f21a6",
+  "base_revision": "c7dc1cf39d27a49d42f9a3c9641f8391c6806e5c",
+  "provider": {
+    "name": "9router",
+    "model": "combo-normal",
+    "wire_api": "responses",
+    "config_source": "C:\\Users\\HOANG PHI LONG DANG\\.codex\\config.toml",
+    "credential_source": "C:\\Users\\HOANG PHI LONG DANG\\.codex\\auth.json",
+    "credential_value_recorded": false
+  },
+  "runner": {
+    "dispatcher": "scripts/herdr_parallel_dispatch.py",
+    "session": "one-fact-one-owner-canary-a",
+    "concurrency": 2,
+    "refill": false,
+    "task": "Read-only git status and HEAD observation; no file or Plan mutation."
+  },
+  "status": "operational_canary_completed_acceptance_pending",
+  "matrix_gate": "stopped",
+  "acceptance_boundary": "The existing dispatcher and runtime produced settled execution evidence only. No real CoS/controller AcceptanceDecision producer was supplied for this run, so semantic acceptance remains pending and no Plan transition or accepted row was created.",
+  "lanes": [
+    {
+      "lane_id": "cos-canary-a",
+      "attempt_id": "24cc006754e54e95a1f9f6d37c0d7b18",
+      "exit_code": 0,
+      "unresolved": false,
+      "capacity": "retired",
+      "grant_verification": "verified",
+      "execution": "completed",
+      "lifecycle": "confirmed",
+      "cleanup": "removed",
+      "task_result_state": "reported_completed",
+      "task_result_status": "completed",
+      "task_result_accepted_field_present_after_normalization": false,
+      "task_result_acceptance_metadata": "canonical TaskResult writer omitted accepted; parser strips legacy accepted fields",
+      "source_producer": "deepagents-worker",
+      "source_digest": "aa4dce56e9762967c6e7b6d4dc9f57f14fd5a231303c246c8edc70f6372ff196",
+      "source_bindings": {
+        "assignment_id": "4b9e777a28c72e571564fe6d990eb2da0ff788a6a3a8e3368d656926e396155e",
+        "task_sha256": "7a0ea9d8fdad614a17e44a6f454721351d48dea3acaf4bb34c71d0d1300ba1a6",
+        "grant_digest": "07de542594b29692196227848439c0c4fa7e8f9946d5e6c62fc22596f8566ef8",
+        "capability_digest": "cf0e8f547c0817dcfc1396afa796d1167f0364aefef6bd2b3721aecb584fbd9b",
+        "lifecycle_receipt": {
+          "state": "confirmed",
+          "worker_state": "exited",
+          "worker_exit_code": 0,
+          "descendant_state": "terminated",
+          "cleanup_state": "removed",
+          "recovery_required": false
+        },
+        "retirement": "removed",
+        "source_refs": ["dispatcher lane_result/final_assignment", "dispatcher capacity"]
+      },
+      "checkpoint_head": "c7dc1cf39d27a49d42f9a3c9641f8391c6806e5c",
+      "observation_duration_ms": 70316.932
+    },
+    {
+      "lane_id": "cos-canary-b",
+      "attempt_id": "ccb6e17e9e794cdc909622d86b224716",
+      "exit_code": 0,
+      "unresolved": false,
+      "capacity": "retired",
+      "grant_verification": "verified",
+      "execution": "completed",
+      "lifecycle": "confirmed",
+      "cleanup": "removed",
+      "task_result_state": "reported_completed",
+      "task_result_status": "completed",
+      "task_result_accepted_field_present_after_normalization": false,
+      "task_result_acceptance_metadata": "canonical TaskResult writer omitted accepted; parser strips legacy accepted fields",
+      "source_producer": "deepagents-worker",
+      "source_digest": "a133b4672f2d95ca4e0850a632fa92c7c1b959ef5c662a68756cfd135beadfba",
+      "source_bindings": {
+        "assignment_id": "abdb4bee3b40a435bfe000da584dae508e80c2d97081f15d5ad5a9535ed62850",
+        "task_sha256": "7a0ea9d8fdad614a17e44a6f454721351d48dea3acaf4bb34c71d0d1300ba1a6",
+        "grant_digest": "07de542594b29692196227848439c0c4fa7e8f9946d5e6c62fc22596f8566ef8",
+        "capability_digest": "cf0e8f547c0817dcfc1396afa796d1167f0364aefef6bd2b3721aecb584fbd9b",
+        "lifecycle_receipt": {
+          "state": "confirmed",
+          "worker_state": "exited",
+          "worker_exit_code": 0,
+          "descendant_state": "terminated",
+          "cleanup_state": "removed",
+          "recovery_required": false
+        },
+        "retirement": "removed",
+        "source_refs": ["dispatcher lane_result/final_assignment", "dispatcher capacity"]
+      },
+      "checkpoint_head": "c7dc1cf39d27a49d42f9a3c9641f8391c6806e5c",
+      "observation_duration_ms": 43309.152
+    }
+  ],
+  "session_cleanup": "task-owned worktrees and Herdr sessions are pending positive-retirement cleanup",
+  "raw_output_retained": false
+}
