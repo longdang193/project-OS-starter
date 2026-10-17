@@ -847,31 +847,6 @@ def prepare_task(graph: PlanGraph, task_id: str) -> PreparedTask:
     )
 
 
-def prepare_lane_inputs(
-    source: str | os.PathLike[str] | PlanGraph,
-    selected_task_ids: Sequence[str],
-    runtime_inputs_by_task: Mapping[str, Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    graph = source if isinstance(source, PlanGraph) else load_plan(source)
-    bindings: dict[str, dict[str, Any]] = {}
-    for selected_task_id in selected_task_ids:
-        prepared = prepare_task(graph, selected_task_id)
-        runtime = runtime_inputs_by_task.get(prepared.task_id)
-        if not isinstance(runtime, Mapping):
-            raise ValueError(f"resolved runtime inputs missing for {prepared.task_id}")
-        for field in ("lane_id", "plan_identity", "task", "executor", "profile", "dependencies", "dependency_ready", "structurally_ready"):
-            if field in runtime:
-                if field == "plan_identity":
-                    raise ValueError(f"runtime input conflicts with plan identity for {prepared.task_id}")
-                raise ValueError(f"runtime input conflicts with plan-derived {field} for {prepared.task_id}")
-        bindings[prepared.task_id] = _canonical_runtime_binding(runtime)
-    text, graph, plan_identity, plan_source = _source_parts(source)
-    status = _frontmatter_value(text, "status") if text is not None else None
-    if status is not None and status.casefold() != "active":
-        raise ValueError("plan must be active before dispatch")
-    return _prepare_plan_lanes(text, graph, plan_identity, plan_source, tuple(selected_task_ids), bindings)
-
-
 def _frontmatter_value(text: str, name: str) -> str | None:
     match = re.match(r"(?ms)^---\s*\n(.*?)\n---\s*\n", text)
     if match is None:
@@ -990,23 +965,6 @@ def _source_parts(source: str | os.PathLike[str] | PlanGraph) -> tuple[str | Non
     return text, graph, graph.plan_identity, str(path.resolve())
 
 
-def _canonical_runtime_binding(runtime: Mapping[str, Any]) -> dict[str, Any]:
-    binding = dict(runtime)
-    if "runtime_grant" not in binding:
-        grant_fields = {"grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"}
-        if grant_fields.issubset(binding):
-            binding["runtime_grant"] = {
-                "turns": binding.pop("grant_turns"),
-                "wall_clock_seconds": binding.pop("grant_wall_clock_seconds"),
-                "delegation": {"child_agents": binding.pop("grant_child_agents")},
-                "mcp_select": binding.pop("mcp_select"),
-            }
-    else:
-        for field in ("grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"):
-            binding.pop(field, None)
-    return binding
-
-
 def _prepare_plan_lanes(
     text: str | None,
     graph: PlanGraph,
@@ -1109,7 +1067,6 @@ __all__ = [
     "PreparedTask",
     "load_plan",
     "parse_plan",
-    "prepare_lane_inputs",
     "prepare_plan_lanes",
     "prepare_task",
 ]

@@ -108,11 +108,7 @@ def test_result_receipt_keeps_capability_and_lifecycle_evidence(tmp_path: Path) 
     )
 
     payload = json.loads(result_file.read_text(encoding="utf-8"))
-    assert payload["shell_capabilities"] == {
-        "requested": ["git"],
-        "available": ["git"],
-        "effective": ["git"],
-    }
+    assert "shell_capabilities" not in payload
     assert payload["capabilities"] == {
         "requested": ["git"],
         "passed_to_worker": ["git"],

@@ -18,7 +18,6 @@ from scripts.project_os_runtime.plan_preparation import (
     apply_accepted_plan_transitions,
     apply_plan_transitions,
     parse_plan,
-    prepare_lane_inputs,
     prepare_plan_lanes,
     prepare_task,
 )
@@ -910,7 +909,7 @@ def test_prepare_plan_lanes_rejects_ineligible_selected_task(tmp_path: Path, sta
         prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": _binding(tmp_path)})
 
 
-def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
+def test_prepare_plan_lanes_merges_plan_and_runtime_ownership() -> None:
     runtime = {
         "repository_identity": "project-OS-starter",
         "worktree": "C:/work/task-3",
@@ -920,16 +919,18 @@ def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
         "allowed_write_set": ["src/task3.py"],
         "fixed_contracts": ["contract-v1"],
         "mutable_resources": ["resource-3"],
-        "grant_turns": "native",
-        "grant_wall_clock_seconds": "native",
-        "grant_child_agents": "deny",
-        "mcp_select": [],
+        "runtime_grant": {
+            "turns": {"requested": "native", "effective": "native"},
+            "wall_clock_seconds": {"requested": "native", "effective": "native"},
+            "delegation": {"child_agents": "deny"},
+            "mcp_select": [],
+        },
         "remaining_authorized_task_allowance": 10,
         "attempt_deadline": 100.0,
         "local_capabilities": {"requested": ["py"]},
     }
 
-    lanes = prepare_lane_inputs(PLAN, ["Task 3"], {"Task 3": runtime})
+    lanes = prepare_plan_lanes(PLAN, ["Task 3"], {"Task 3": runtime})
 
     assert lanes[0]["executor"] == "deepagents"
     assert lanes[0]["profile"] == "normal"
@@ -944,16 +945,16 @@ def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
     assert lanes[0]["attempt_deadline"] == 100.0
 
 
-def test_prepare_lane_inputs_rejects_conflicting_runtime_task() -> None:
-    with pytest.raises(ValueError, match="plan-derived task"):
-        prepare_lane_inputs(
+def test_prepare_plan_lanes_rejects_conflicting_runtime_task() -> None:
+    with pytest.raises(ValueError, match="plan-owned fields"):
+        prepare_plan_lanes(
             PLAN,
             ["Task 2"],
             {"Task 2": {"task": "different task"}},
         )
 
 
-def test_prepare_lane_inputs_rejects_caller_supplied_prerequisite_graph() -> None:
+def test_prepare_plan_lanes_rejects_caller_supplied_prerequisite_graph() -> None:
     runtime = _binding(Path("."))
     runtime["accepted_prerequisites"] = {
         "Task 1": {
@@ -968,9 +969,9 @@ def test_prepare_lane_inputs_rejects_caller_supplied_prerequisite_graph() -> Non
 
 
 
-def test_prepare_lane_inputs_rejects_stale_plan_identity() -> None:
-    with pytest.raises(ValueError, match="plan identity"):
-        prepare_lane_inputs(
+def test_prepare_plan_lanes_rejects_stale_plan_identity() -> None:
+    with pytest.raises(ValueError, match="plan-owned fields"):
+        prepare_plan_lanes(
             PLAN,
             ["Task 2"],
             {"Task 2": {"plan_identity": "stale-plan"}},

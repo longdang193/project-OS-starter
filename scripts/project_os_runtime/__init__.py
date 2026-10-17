@@ -38,7 +38,6 @@ from .plan_preparation import (
     apply_plan_transitions,
     load_plan,
     parse_plan,
-    prepare_lane_inputs,
     prepare_plan_lanes,
     prepare_task,
 )
@@ -131,7 +130,6 @@ __all__ = [
     "parse_task_result",
     "parse_plan",
     "load_plan",
-    "prepare_lane_inputs",
     "prepare_plan_lanes",
     "prepare_task",
     "prepare_lane",

@@ -453,7 +453,6 @@ def _publish_result_receipt(
         "recovery_required": recovery_required,
     }
     if shell_capabilities is not None:
-        payload["shell_capabilities"] = shell_capabilities
         payload["capabilities"] = {
             "requested": list(shell_capabilities.get("requested", [])),
             "passed_to_worker": list(

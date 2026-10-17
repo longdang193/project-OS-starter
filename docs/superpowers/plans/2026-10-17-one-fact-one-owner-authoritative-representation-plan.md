@@ -186,9 +186,9 @@ acceptance decision is required before topology rows are promoted.
 | Task 1 | `completed` | dedicated task worktree | `codex` | none | baseline tests, caller inventory, and CoS boundary gate | 335 baseline passed; native CoS boundary exercised with 3 focused acceptance/Plan tests |
 | Task 2 | `completed` | task worktree | `codex` | Task 1 | TaskResult/settlement contract tests | 581 passed, 1 skipped; legacy acceptance ignored and stripped; dispatcher pending-acceptance path preserved |
 | Task 3 | `completed` | task worktree | `codex` | Task 1 | Plan-derived prerequisite and launch-preflight tests | 131 passed; runtime callers cannot supply accepted prerequisite graph; artifact branch removed |
-| Task 4 | `pending` | task worktree | `unresolved` | Tasks 2–3 | compatibility deletion, manifest, validator, and doc checks | pending |
-| Task 5 | `pending` | sealed task worktree | `unresolved` | Task 4 | CoS canary with explicit acceptance decision or recorded gate stop | pending |
-| Task 6 | `pending` | task worktree | `unresolved` | Task 5 | independent review and final repository verification | pending |
+| Task 4 | `completed` | task worktree | `codex` | Tasks 2–3 | compatibility deletion, manifest, validator, and doc checks | 347 focused tests passed, 1 skipped; repo contracts and starter-kit validation passed |
+| Task 5 | `pending` | sealed task worktree | `codex` | Task 4 | CoS canary with explicit acceptance decision or recorded gate stop | pending |
+| Task 6 | `pending` | task worktree | `codex` | Task 5 | independent review and final repository verification | pending |
 
 ## Task Breakdown
 
@@ -341,7 +341,7 @@ acceptance decision is required before topology rows are promoted.
   identities.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: contract migration across preparation, lane normalization,
   attempt digest, dispatcher preflight, fixtures, and tests.
 
@@ -403,7 +403,7 @@ acceptance decision is required before topology rows are promoted.
 - Perform bounded deletion and source/generated-surface reconciliation.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: deletion-heavy cross-surface change with starter-kit and validator impact.
 
 **Validator Profile (optional):**
@@ -440,11 +440,11 @@ acceptance decision is required before topology rows are promoted.
 - Stop for: any unclassified caller, required public/starter-kit compatibility promise, generated-output drift, or a validator change that weakens rather than removes stale architecture
 
 **Steps:**
-- [ ] Step 1: Migrate repository imports and tests from `scripts/herdr_attempt_contract.py` to `scripts.project_os_runtime.attempt`; remove the wrapper and its manifest/validator/CI assertions only if its independent caller inventory is empty, otherwise retain it and record the named consumer.
-- [ ] Step 2: Migrate `prepare_lane_inputs()` tests and exports to `prepare_plan_lanes()`; remove the adapter and its runtime-surface documentation only if its independent caller inventory is empty, otherwise retain it and record the named consumer.
-- [ ] Step 3: Make canonical `capabilities` the only receipt capability projection; remove `shell_capabilities` emission, comparison, compatibility parsing, and tests only after its independent supported-consumer inventory passes, otherwise retain the projection with the named consumer and reason.
-- [ ] Step 4: Delete the unreachable duplicate `if mismatch is not None` branch in `release_authorized_evidence()` without changing release binding, quarantine, digest, or idempotency behavior.
-- [ ] Step 5: Update only canonical repository docs and configuration; inspect `py -B scripts/build_starter_kit.py --help` and `py -B scripts/validate_starter_kit.py --help`, then rebuild and validate generated starter-kit output with the exact current flags through existing commands rather than editing generated output directly.
+- [x] Step 1: Retain `scripts/herdr_attempt_contract.py` because its manifest, validator, deployment, CI, and test consumers remain active; no wrapper deletion is authorized.
+- [x] Step 2: Migrate `prepare_lane_inputs()` tests and exports to `prepare_plan_lanes()`; remove the adapter and its runtime-surface documentation.
+- [x] Step 3: Make canonical `capabilities` the only receipt capability projection; remove `shell_capabilities` emission, comparison, and compatibility parsing while retaining internal capability resolution for worker launch.
+- [x] Step 4: Delete the unreachable duplicate `if mismatch is not None` branch in `release_authorized_evidence()` without changing release binding, quarantine, digest, or idempotency behavior.
+- [x] Step 5: Update canonical documentation and validate a fresh starter-kit build using the inspected CLI flags.
 
 **Verification:**
 - [ ] `py -B -m pytest -q tests/test_plan_preparation.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_validate_repo_contracts.py tests/test_deploy_agent_runtime.py tests/test_project_os_runtime.py tests/test_evidence_release.py`
@@ -458,6 +458,13 @@ acceptance decision is required before topology rows are promoted.
 - [ ] If `scripts/herdr_attempt_contract.py` is removed, run the supported Windows and Ubuntu `runtime-contracts.yml` CI matrix after publication.
 - [ ] `git diff --check`
 - Expected: no whitespace errors.
+
+**Task 4 Evidence:**
+- `py -B -m pytest -q tests/test_plan_preparation.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_validate_repo_contracts.py tests/test_deploy_agent_runtime.py tests/test_project_os_runtime.py tests/test_evidence_release.py` — 347 passed, 1 skipped.
+- `py -B scripts/validate_repo_contracts.py --repo-root .` — passed, including planning lifecycle and generated-surface checks.
+- `py -B scripts/build_starter_kit.py --help` and `py -B scripts/validate_starter_kit.py --help` — current flags inspected.
+- Fresh build and validation under `C:\tmp\project-os-one-fact-one-owner-starter-kit-2adb2cecada549238f1623f1c1a806fd` — passed.
+- `git diff --check` — passed.
 
 **Exit Criteria:**
 - Compatibility-only surfaces are gone or explicitly retained with a named
@@ -475,7 +482,7 @@ acceptance decision is required before topology rows are promoted.
   evidence.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: live runtime execution requires environment-specific capability and explicit runtime authority.
 
 **Validator Profile (optional):**
@@ -533,7 +540,7 @@ acceptance decision is required before topology rows are promoted.
 - Perform independent change review and final evidence reconciliation.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 - Selection basis: independent review scope is determined after the implementation diff exists.
 
 **Validator Profile (optional):**

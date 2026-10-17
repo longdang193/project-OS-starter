@@ -38,8 +38,7 @@ py scripts/herdr_parallel_dispatch.py `
 Plan acceptance consequences during preparation, not supplied in `runtime.json`.
 Optional launcher-owned fields may pass through
 without plan-derived defaults. `prepare_plan_lanes()` is the single
-execution-eligible preparation owner; `prepare_lane_inputs()` is a compatibility
-adapter to that owner. Plan mode is mutually exclusive with `--lanes-file`;
+execution-eligible preparation owner. Plan mode is mutually exclusive with `--lanes-file`;
 both modes share admission, launch-bound freshness verification, and
 `run_parallel()`.
 
