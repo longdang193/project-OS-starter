@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import json
 from pathlib import Path
 from typing import Any
@@ -202,24 +203,50 @@ def record_worker_result(protocol: dict[str, Any], owner_result: dict[str, Any],
     return _record_owner_result(protocol, owner_result, trial_id=trial_id, expected_arm="single_worker")
 
 
+_ACCEPTANCE_BINDING_FIELDS = (
+    "task_id",
+    "plan_identity",
+    "candidate_sha",
+    "acceptance_checkpoint_sha",
+    "assignment_id",
+    "attempt_id",
+)
+
+
+def _require_acceptance_binding(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("expected acceptance binding must be an object")
+    missing = [
+        field
+        for field in _ACCEPTANCE_BINDING_FIELDS
+        if not isinstance(value.get(field), str) or not value.get(field, "").strip()
+    ]
+    if missing:
+        raise ValueError(
+            "expected acceptance binding is incomplete: " + ", ".join(missing)
+        )
+    return value
+
+
 def record_cos_result(
     protocol: dict[str, Any],
     owner_result: dict[str, Any],
     *,
     trial_id: str,
-    expected_acceptance_binding: dict[str, Any],
+    expected_acceptance_binding: Mapping[str, Any],
 ) -> dict[str, Any]:
     acceptance_decision = owner_result.get("acceptance_decision")
     if not isinstance(acceptance_decision, dict) or acceptance_decision.get("decision") != "PASS":
         raise ValueError("CoS owner result requires a real AcceptanceDecision(PASS)")
+    expected_binding = _require_acceptance_binding(expected_acceptance_binding)
     validation_reasons = validate_acceptance_decision(
         acceptance_decision,
-        expected_task_id=expected_acceptance_binding.get("task_id"),
-        expected_plan_identity=expected_acceptance_binding.get("plan_identity"),
-        expected_candidate_sha=expected_acceptance_binding.get("candidate_sha"),
-        expected_acceptance_checkpoint_sha=expected_acceptance_binding.get("acceptance_checkpoint_sha"),
-        expected_assignment_id=expected_acceptance_binding.get("assignment_id"),
-        expected_attempt_id=expected_acceptance_binding.get("attempt_id"),
+        expected_task_id=expected_binding["task_id"],
+        expected_plan_identity=expected_binding["plan_identity"],
+        expected_candidate_sha=expected_binding["candidate_sha"],
+        expected_acceptance_checkpoint_sha=expected_binding["acceptance_checkpoint_sha"],
+        expected_assignment_id=expected_binding["assignment_id"],
+        expected_attempt_id=expected_binding["attempt_id"],
     )
     if validation_reasons:
         raise ValueError(
@@ -278,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--trial-id", required=True)
     parser.add_argument("--result", type=Path)
+    parser.add_argument("--acceptance-binding", type=Path)
     parser.add_argument("--reason")
     parser.add_argument("--source-producer", default="capability-preflight")
     args = parser.parse_args(argv)
@@ -291,12 +319,21 @@ def main(argv: list[str] | None = None) -> int:
         if not args.result:
             parser.error("--result is required for owner-result modes")
         owner_result = _load_result(args.result)
-        recorders = {
-            "record-direct": record_direct,
-            "record-worker-result": record_worker_result,
-            "record-cos-result": record_cos_result,
-        }
-        row = recorders[args.mode](protocol, owner_result, trial_id=args.trial_id)
+        if args.mode == "record-cos-result":
+            if not args.acceptance_binding:
+                parser.error("--acceptance-binding is required for record-cos-result")
+            row = record_cos_result(
+                protocol,
+                owner_result,
+                trial_id=args.trial_id,
+                expected_acceptance_binding=_load_result(args.acceptance_binding),
+            )
+        else:
+            recorders = {
+                "record-direct": record_direct,
+                "record-worker-result": record_worker_result,
+            }
+            row = recorders[args.mode](protocol, owner_result, trial_id=args.trial_id)
     write_row(args.output, row)
     return 0
 

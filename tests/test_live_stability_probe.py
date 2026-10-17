@@ -389,6 +389,45 @@ def test_cli_record_mode_writes_one_row(tmp_path: Path) -> None:
     assert len(output.read_text(encoding="utf-8").splitlines()) == 1
 
 
+def test_cli_cos_record_mode_requires_and_uses_acceptance_binding(tmp_path: Path) -> None:
+    protocol = _protocol()
+    owner = _owner_result(protocol, trial_id="cos_two_lane:warm:1")
+    owner["acceptance_decision"] = _acceptance_decision()
+    owner_path = tmp_path / "owner.json"
+    owner_path.write_text(json.dumps(owner), encoding="utf-8")
+    binding_path = tmp_path / "binding.json"
+    binding_path.write_text(
+        json.dumps({
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "candidate_sha": "candidate-1",
+            "acceptance_checkpoint_sha": "checkpoint-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+        }),
+        encoding="utf-8",
+    )
+    output = tmp_path / "rows.jsonl"
+
+    from scripts.run_live_stability_probe import main
+
+    assert main([
+        "record-cos-result",
+        "--protocol",
+        str(PROTOCOL_PATH),
+        "--result",
+        str(owner_path),
+        "--acceptance-binding",
+        str(binding_path),
+        "--trial-id",
+        "cos_two_lane:warm:1",
+        "--output",
+        str(output),
+    ]) == 0
+    row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+    assert row["status"] == "observed"
+
+
 def test_direct_script_invocation_supports_help() -> None:
     completed = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "run_live_stability_probe.py"), "--help"],
