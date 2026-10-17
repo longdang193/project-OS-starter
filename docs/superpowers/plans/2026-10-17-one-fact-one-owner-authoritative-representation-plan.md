@@ -280,8 +280,8 @@ acceptance decision is required before topology rows are promoted.
   acceptance owner.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: material cross-module backend contract change; resolve through Planning Dispatch before activation.
+- Controller-selected: `none (lead controller)`
+- Selection basis: material cross-module backend contract change executed inline by the lead controller.
 
 **Validator Profile (optional):**
 - Controller-selected: `none`
@@ -626,6 +626,3 @@ The plan may be marked `completed` only after
 `skill-verification-before-completion` returns verified evidence. Branch
 disposition, push, merge, publication, and worktree cleanup remain separately
 authorized actions.
-
-
-
