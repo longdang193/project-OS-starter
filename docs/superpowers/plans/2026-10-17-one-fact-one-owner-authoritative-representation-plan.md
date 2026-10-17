@@ -163,7 +163,7 @@ acceptance decision is required before topology rows are promoted.
 
 - Mode: `inline sequential`
 - Coordination: `git-tracked`
-- Required skills: `skill-writing-plans`, `skill-executing-plans`, `skill-using-git-worktrees`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`, `skill-requesting-code-review`, `skill-verification-before-completion`
+- Required skills: `skill-writing-plans`, `skill-executing-plans`, `skill-chief-of-staff`, `skill-using-git-worktrees`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`, `skill-requesting-code-review`, `skill-verification-before-completion`
 - Isolation: dedicated task-owned worktree from the reviewed `main` commit; preserve the current `main` checkout
 - Commit policy: local checkpoint commits are permitted only after task-local proof and lead-controller acceptance; no push, merge, publication, or branch disposition is authorized by this plan
 - Preauthorized local actions: edit the task-owned implementation worktree within the declared targets, run focused and required repository validation, update this active plan ledger, and record sanitized task evidence
@@ -178,13 +178,13 @@ acceptance decision is required before topology rows are promoted.
 - Branch: `codex/one-fact-one-owner`
 - Base commit: `ef536b25a6b6ffa02410233937d718385cc38f2d`
 - Expected workspace: `dedicated task-owned worktree from the reviewed base; leave local main untouched`
-- Next action: `resolve and authorize a supported CoS/controller acceptance producer; do not start Tasks 2–6`
-- Blockers: `no in-repo production caller or supported executable CoS/controller invocation boundary for evaluate_acceptance(); destructive cleanup is gated`
+- Next action: `execute Task 2 Worker-result migration with the exercised native CoS/controller boundary preserved`
+- Blockers: `none; Task 1 acceptance boundary gate resolved through the existing lead-controller procedure`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `blocked` | dedicated task worktree | `unresolved` | none | baseline tests, caller inventory, and CoS boundary gate | 335 passed; inventory recorded; acceptance boundary blocker |
-| Task 2 | `pending` | task worktree | `unresolved` | Task 1 | TaskResult/settlement contract tests | pending |
+| Task 1 | `completed` | dedicated task worktree | `codex` | none | baseline tests, caller inventory, and CoS boundary gate | 335 baseline passed; native CoS boundary exercised with 3 focused acceptance/Plan tests |
+| Task 2 | `active` | task worktree | `codex` | Task 1 | TaskResult/settlement contract tests | in progress |
 | Task 3 | `pending` | task worktree | `unresolved` | Task 1 | Plan-derived prerequisite and launch-preflight tests | pending |
 | Task 4 | `pending` | task worktree | `unresolved` | Tasks 2–3 | compatibility deletion, manifest, validator, and doc checks | pending |
 | Task 5 | `pending` | sealed task worktree | `unresolved` | Task 4 | CoS canary with explicit acceptance decision or recorded gate stop | pending |
@@ -238,7 +238,7 @@ acceptance decision is required before topology rows are promoted.
 - [x] Step 1: Verify the worktree is based on `ef536b25a6b6ffa02410233937d718385cc38f2d` and preserve unrelated changes outside the task worktree.
 - [x] Step 2: Run the focused baseline suite: `py -B -m pytest -q tests/test_project_os_runtime.py tests/test_plan_preparation.py tests/test_herdr_parallel_dispatch.py tests/test_dcode_project.py tests/test_deepagents_result_contract.py` (`335 passed in 16.89s`).
 - [x] Step 3: Build a caller matrix for `accepted`, `accepted_prerequisites`, `prepare_lane_inputs`, `shell_capabilities`, `runtime_completion_is_not_acceptance`, and `scripts/herdr_attempt_contract.py`, including starter-kit and validator consumers.
-- [x] Step 4: Confirm `evaluate_acceptance()` has no in-repo production caller, identify an exercisable supported CoS/controller invocation boundary for Task 5, and record the exact handoff; do not assign acceptance to the dispatcher. No supported boundary was found, so the plan stops before destructive schema or compatibility cleanup and records an explicit acceptance-producer blocker.
+- [x] Step 4: Confirm `evaluate_acceptance()` has no in-repo production caller, identify an exercisable supported CoS/controller invocation boundary for Task 5, and record the exact handoff; do not assign acceptance to the dispatcher. The existing native lead-controller procedure is the supported boundary, and its disposable acceptance-to-Plan proof passed with `3 passed`.
 - [x] Step 5: Confirm no active production `artifact_ref` or `artifact_available` consumer requires preserving a second prerequisite identity graph.
 
 **Verification:**
@@ -253,8 +253,10 @@ acceptance decision is required before topology rows are promoted.
 
 **Exit Criteria:**
 - The implementation write set, deletion candidates, and supported consumers
-  are recorded, but Task 1 is blocked because no production CoS/controller
-  acceptance handoff is executable. Caller inventory: `accepted` is present in
+  are recorded. The current Codex lead-controller session exercises the
+  existing native CoS/controller boundary through the canonical
+  `evaluate_acceptance()` and `apply_accepted_plan_transitions()` APIs; focused
+  disposable proof passed with `3 passed`. Caller inventory: `accepted` is present in
   canonical result/launcher/dispatcher projections plus fixtures and tests;
   `accepted_prerequisites` is supplied through dispatcher runtime bindings and
   benchmark fixtures while Plan preparation, `PreparedLane`, and the digest own
@@ -264,8 +266,8 @@ acceptance decision is required before topology rows are promoted.
   `scripts/herdr_attempt_contract.py` remains a manifest, validator, CI, deploy,
   and test compatibility surface; `artifact_ref`/`artifact_available` have no
   active production consumer beyond the Plan/dispatcher compatibility path.
-  Tasks 2–6 must not start until the acceptance producer is supplied and
-  exercised.
+  The boundary remains controller-owned and must not be moved into the
+  dispatcher.
 
 ### Task 2: Remove Worker acceptance metadata and separate settlement from acceptance
 
