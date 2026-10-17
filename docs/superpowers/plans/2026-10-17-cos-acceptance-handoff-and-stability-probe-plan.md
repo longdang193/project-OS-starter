@@ -505,7 +505,7 @@ successful evidence.
 - `artifacts/runtime-observation/2026-10-17-cos-acceptance-handoff-report.md`
   summarizes the bounded local read-only proof without provider credentials or
   raw output.
-- Source checkpoint: `8afef3f0f1405ceb0dd153fd431a80455bff142e`.
+- Source checkpoint: `8f8af4ddf39df3fc7f9b44253defedfd2d6110f7`.
 
 ### Task 6: Reconcile documentation and complete verification
 
@@ -564,7 +564,8 @@ successful evidence.
 - Workspace: `C:\Users\HOANG PHI LONG DANG\repos\project-OS-starter`.
 - Branch: `codex/cos-acceptance-handoff`; base: `origin/main` at
   `a60fa47183ceb40171522e6babf870bc636e5887`.
-- Implementation checkpoints: `4b6a472` and `1b99e2e`.
+- Implementation checkpoints: `4b6a472`, `1b99e2e`, `07fe73c`, `8afef3f`, and
+  `8f8af4d`.
 - Full suite: `1379 passed, 2 skipped`.
 - Repository contracts, planning lifecycle, starter-kit help/validation, and
   `git diff --check`: passed.
