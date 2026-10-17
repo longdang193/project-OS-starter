@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: launch-context-and-attempt-identity-convergence
 targets:
@@ -122,8 +122,9 @@ satisfy attempt B.
 - Branch: `codex/launch-context-attempt-identity`
 - Base commit: `02c3625a357c63a06c427bcbd5a1fee9c4b2fb50`
 - Expected workspace: clean task-owned worktree from `origin/main`; leave the current checkout and its four untracked runtime-observation JSON files untouched
-- Next action: complete final verification and record the capability-blocked strict probe outcome
-- Blockers: the normal Codex adapter currently lacks an attributable structured Secretary runtime receipt; retain `BLOCKED_CAPABILITY` rather than promoting pane text, exit status, provider telemetry, or cleanup into completion evidence
+- Next action: branch disposition after verified completion; push, PR, self-review, and merge remain separately authorized actions
+- Blockers: none
+- Approved deferrals: strict provider probe remains non-blocking `BLOCKED_CAPABILITY` because transport completion/cleanup and an attributable structured Secretary receipt are unavailable; no synthetic success is claimed
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -131,7 +132,7 @@ satisfy attempt B.
 | Task 2 | `completed` | current | `codex` | Task 1 | one launcher-owned attempt binding | focused launcher and contract tests passed; pre-attempt outcomes contain no execution attempt |
 | Task 3 | `completed` | current | `codex` | Task 2 | Secretary uses existing result channel | focused Secretary, evidence-adapter, receipt, and pilot tests passed |
 | Task 4 | `completed` | current | `codex` | Task 3 | recovery/settlement/acceptance proof | 427 lifecycle tests passed; acceptance canary PASS/replay and negative stale/mismatch/resource cases passed |
-| Task 5 | `active` | current | `codex` | Task 4 | fresh focused/full/live verification | package and contract checks in progress; strict provider receipt remains capability-blocked |
+| Task 5 | `completed` | current | `codex` | Task 4 | fresh focused/full/live verification | validators, Starter Kit build/validation, focused suite, full suite, and strict probe classification passed |
 
 ## Task Breakdown
 
@@ -330,20 +331,20 @@ satisfy attempt B.
 - [x] Confirm the generated Starter Kit contains the manifest-approved changed runtime surfaces and no forbidden factory-only files; `--help` checks are supplementary only.
 - [x] Run the existing strict Secretary probe against configured 9router only after core verification and record `READY` only for an attributable structured receipt.
 - [x] Record the probe as `BLOCKED_CAPABILITY` with `runtime_completion_observation_missing`; the probe returned no structured Secretary receipt, transport completion was unproven, and 9router telemetry was `inconclusive` with `missing_usage`. Preserve this as a capability diagnostic, not a core Worker correctness failure.
-- [ ] Run the full suite from the committed checkpoint and planning validation; record deviations before branch disposition.
+- [x] Run the full suite from the committed checkpoint and planning validation; record deviations before branch disposition.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py tests/test_secretary_live_pilot.py tests/test_acceptance_handoff.py tests/test_project_os_runtime.py tests/test_starter_kit_generation.py`
+- [x] `py -B -m pytest -q tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_dcode_project.py tests/test_secretary_live_runtime.py tests/test_secretary_evidence_adapter.py tests/test_secretary_receipts.py tests/test_secretary_live_pilot.py tests/test_acceptance_handoff.py tests/test_project_os_runtime.py tests/test_starter_kit_generation.py` — `697 passed`.
 - Expected: focused suite passes with no new failures.
-- [ ] `py -B scripts/validate_repo_contracts.py --repo-root .`
+- [x] `py -B scripts/validate_repo_contracts.py --repo-root .`
 - Expected: repository contract validation passes.
-- [ ] `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-17-launch-context-and-attempt-identity-convergence-plan.md`
+- [x] `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-17-launch-context-and-attempt-identity-convergence-plan.md`
 - Expected: plan satisfies the modern planning contract.
-- [ ] `New-Item -ItemType Directory -Force .tmp/starter-kit-plan-verification | Out-Null; py -B scripts/build_starter_kit.py --repo-root . --output-root .tmp/starter-kit-plan-verification; py -B scripts/validate_starter_kit.py --repo-root . --output-root .tmp/starter-kit-plan-verification; Remove-Item -Recurse -Force .tmp/starter-kit-plan-verification`
+- [x] `New-Item -ItemType Directory -Force .tmp/starter-kit-plan-verification | Out-Null; py -B scripts/build_starter_kit.py --repo-root . --output-root .tmp/starter-kit-plan-verification; py -B scripts/validate_starter_kit.py --repo-root . --output-root .tmp/starter-kit-plan-verification; Remove-Item -Recurse -Force .tmp/starter-kit-plan-verification`
 - Expected: the temporary built output is created from `repo_config/starter-kit-manifest.json`, validates successfully, contains every required path, and contains no forbidden path. Run both `--help` commands only as supplementary CLI-availability checks.
-- [ ] `py -B -m pytest -q`
+- [x] `py -B -m pytest -q` — `1384 passed, 2 skipped` from committed checkpoint `8342d80`.
 - Expected: full suite passes, or unrelated pre-existing failures are recorded with command and scope.
-- [ ] `git diff --check`
+- [x] `git diff --check`
 - Expected: no whitespace errors.
 
 **Exit Criteria:** Fresh evidence proves the simplification and preserves authority and cleanup guards; live status is truthful `READY` or `BLOCKED_CAPABILITY`.
@@ -354,6 +355,7 @@ satisfy attempt B.
 - Acceptance, lifecycle, recovery, settlement, and launcher guard suite: `427 passed`.
 - Controller-owned acceptance canary: `PASS`; replay remained authorized without a duplicate Plan transition; stale-attempt, artifact, mismatch, and resource-conflict cases remained blocked.
 - Starter Kit build and validation: passed from `repo_config/starter-kit-manifest.json`.
+- Full suite from clean committed checkpoint `8342d80`: `1384 passed, 2 skipped`.
 - 9router/local-patch-hub review: README and versioned overlays already require exact-base, conflict-safe, verify-only application; no source patch was justified by the current work.
 - Strict Secretary provider probe: `BLOCKED_CAPABILITY` with `runtime_completion_observation_missing`; launcher-owned attempt identity was emitted, but transport completion/cleanup and an attributable structured Secretary receipt were unavailable. 9router telemetry remained `inconclusive` with `missing_usage`.
 
@@ -367,7 +369,7 @@ satisfy attempt B.
 - `py -B scripts/validate_starter_kit.py --help`
 - `py -B -m pytest -q`
 - `git diff --check`
-- Existing strict live Secretary probe evidence, classified from launcher-owned attempt binding and structured receipt; current known fallback is `BLOCKED_CAPABILITY` with `runtime_structured_receipt_missing`.
+- Existing strict live Secretary probe evidence: `BLOCKED_CAPABILITY` with `runtime_completion_observation_missing`; launcher-owned attempt identity was emitted, but transport completion/cleanup and an attributable structured Secretary receipt were unavailable. 9router telemetry remained `inconclusive` with `missing_usage`.
 
 ## Completion Criteria
 
