@@ -70,6 +70,45 @@ def _owner_result(
     }
 
 
+def _acceptance_decision() -> dict:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    return evaluate_acceptance(
+        controller={
+            "identity": "cos-controller-1",
+            "authority": "cos",
+            "plan_identity": "plan-1",
+            "task_id": "Task 1",
+        },
+        task={
+            "task_id": "Task 1",
+            "plan_identity": "plan-1",
+            "attempt_id": "attempt-1",
+            "required_proof": "artifact proof",
+            "required_conditions": {"artifact exists": "artifact proof"},
+            "evidence": "evidence-1",
+            "state": "active",
+        },
+        evidence={
+            "publication_valid": True,
+            "task_completed": True,
+            "task_identity_matches": True,
+        },
+        artifact_conditions={"artifact exists": True},
+        git={
+            "repository_identity": "repo",
+            "plan_identity": "plan-1",
+            "lane_head_sha": "candidate-1",
+            "checkpoint_sha": "checkpoint-1",
+            "assignment_id": "assignment-1",
+            "attempt_id": "attempt-1",
+            "head_matches": True,
+            "write_scope_matches": True,
+        },
+        verification={"passed": True},
+    )
+
+
 def test_direct_record_is_valid_topology_evidence() -> None:
     protocol = _protocol()
     row = record_direct(protocol, _owner_result(protocol), trial_id="direct_controller:warm:2")
@@ -81,11 +120,25 @@ def test_direct_record_is_valid_topology_evidence() -> None:
 def test_explicit_modes_bind_to_their_owner_arm() -> None:
     protocol = _protocol()
     worker = record_worker_result(protocol, _owner_result(protocol, trial_id="single_worker:warm:1"), trial_id="single_worker:warm:1")
-    cos = record_cos_result(protocol, _owner_result(protocol, trial_id="cos_two_lane:warm:1"), trial_id="cos_two_lane:warm:1")
+    cos_result = _owner_result(protocol, trial_id="cos_two_lane:warm:1")
+    cos_result["acceptance_decision"] = _acceptance_decision()
+    cos = record_cos_result(protocol, cos_result, trial_id="cos_two_lane:warm:1")
     assert worker["arm"] == "single_worker"
     assert cos["arm"] == "cos_two_lane"
     with pytest.raises(ValueError, match="arm mismatch"):
         record_worker_result(protocol, _owner_result(protocol), trial_id="direct_controller:warm:2")
+
+
+def test_cos_record_requires_validated_acceptance_decision() -> None:
+    protocol = _protocol()
+    result = _owner_result(protocol, trial_id="cos_two_lane:warm:1")
+    with pytest.raises(ValueError, match="real AcceptanceDecision"):
+        record_cos_result(protocol, result, trial_id="cos_two_lane:warm:1")
+
+    result["acceptance_decision"] = _acceptance_decision()
+    result["acceptance_decision"]["decision"] = "FAIL"
+    with pytest.raises(ValueError, match="real AcceptanceDecision"):
+        record_cos_result(protocol, result, trial_id="cos_two_lane:warm:1")
 
 
 def test_owner_identity_and_acceptance_are_validated() -> None:

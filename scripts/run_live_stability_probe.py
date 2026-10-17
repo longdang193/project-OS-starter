@@ -11,6 +11,10 @@ try:
     from scripts.benchmark_operational_comparison import load_json, sha256_json, validate_protocol, validate_row
 except ModuleNotFoundError:
     from benchmark_operational_comparison import load_json, sha256_json, validate_protocol, validate_row
+try:
+    from scripts.project_os_runtime.acceptance import validate_acceptance_decision
+except ModuleNotFoundError:
+    from project_os_runtime.acceptance import validate_acceptance_decision
 
 
 SENSITIVE_KEYS = {
@@ -199,7 +203,18 @@ def record_worker_result(protocol: dict[str, Any], owner_result: dict[str, Any],
 
 
 def record_cos_result(protocol: dict[str, Any], owner_result: dict[str, Any], *, trial_id: str) -> dict[str, Any]:
-    return _record_owner_result(protocol, owner_result, trial_id=trial_id, expected_arm="cos_two_lane")
+    acceptance_decision = owner_result.get("acceptance_decision")
+    if not isinstance(acceptance_decision, dict) or acceptance_decision.get("decision") != "PASS":
+        raise ValueError("CoS owner result requires a real AcceptanceDecision(PASS)")
+    validation_reasons = validate_acceptance_decision(acceptance_decision)
+    if validation_reasons:
+        raise ValueError(
+            "CoS owner result acceptance decision is invalid: "
+            + "; ".join(validation_reasons)
+        )
+    row = _record_owner_result(protocol, owner_result, trial_id=trial_id, expected_arm="cos_two_lane")
+    row["acceptance_decision"] = sanitize_record(acceptance_decision)
+    return row
 
 
 def record_blocked(protocol: dict[str, Any], *, trial_id: str, reason: str, source_producer: str = "capability-preflight") -> dict[str, Any]:

@@ -17,6 +17,7 @@ import time
 import sqlite3
 import tomllib
 import uuid
+from collections.abc import Sequence
 from typing import Any, Mapping
 
 try:
@@ -1743,6 +1744,68 @@ def _owned_resources(
     return resources
 
 
+def canonical_resource_inventory(
+    resources: Sequence[Mapping[str, Any]],
+    *,
+    attempt_id: str | None = None,
+) -> dict[str, Any]:
+    """Deduplicate attempt-bound resource observations and fail closed on conflict."""
+
+    entries: dict[str, dict[str, Any]] = {}
+    invalid = False
+    for resource in resources:
+        if not isinstance(resource, Mapping):
+            invalid = True
+            continue
+        kind = _safe_text(resource.get("kind"))
+        identity = resource.get("identity")
+        state = _safe_text(resource.get("state"))
+        if kind is None or identity is None or state is None:
+            invalid = True
+            continue
+        observed_attempt = resource.get("attempt_id")
+        if attempt_id is not None and observed_attempt not in (None, attempt_id):
+            invalid = True
+        normalized = dict(resource)
+        if attempt_id is not None:
+            normalized["attempt_id"] = attempt_id
+        identity_key = json.dumps(identity, sort_keys=True, separators=(",", ":"), default=str)
+        key = f"{kind}:{identity_key}"
+        previous = entries.get(key)
+        if previous is None:
+            entries[key] = normalized
+            continue
+        comparable = {name: value for name, value in previous.items() if name not in {"state", "authority"}}
+        current_comparable = {name: value for name, value in normalized.items() if name not in {"state", "authority"}}
+        if comparable != current_comparable or previous.get("state") != normalized.get("state"):
+            invalid = True
+            previous["state"] = "quarantined"
+            normalized["state"] = "quarantined"
+        entries[key] = normalized
+    ordered = [entries[key] for key in sorted(entries)]
+    if invalid:
+        for item in ordered:
+            item["state"] = "quarantined"
+    unresolved = invalid or any(
+        item.get("state") not in {"removed", "already_absent", "settled"}
+        for item in ordered
+    )
+    if not ordered:
+        state = "unknown"
+    elif unresolved:
+        state = "quarantined"
+    else:
+        state = "settled"
+    return {
+        "schema": "secretary-resource-inventory/v1",
+        "attempt_id": attempt_id,
+        "resources": ordered,
+        "state": state,
+        "reuse_blocked": state != "settled",
+        "recovery_required": state != "settled",
+    }
+
+
 def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None:
     text = _safe_text(value)
     if text is None or (not allow_long and len(text) > 4096):
@@ -2095,6 +2158,18 @@ def _normalize_invocation_outcome(
         {"state": cleanup_state, "verified": cleanup_state == "removed"},
     )
     owned_resources = _owned_resources(payload, observed, cleanup_state=cleanup_state)
+    attempt_id = assignment.get("attempt_id")
+    resource_inventory = canonical_resource_inventory(
+        owned_resources,
+        attempt_id=attempt_id if isinstance(attempt_id, str) else None,
+    )
+    if resource_inventory["resources"]:
+        resource = {
+            "state": resource_inventory["state"],
+            "reuse_blocked": resource_inventory["reuse_blocked"],
+            "recovery_required": resource_inventory["recovery_required"],
+        }
+        owned_resources = resource_inventory["resources"]
 
     observability_state = (
         "available" if observed and not observed.get("observation_error") else "unavailable"
@@ -2124,6 +2199,7 @@ def _normalize_invocation_outcome(
         },
         "resource": {key: resource[key] for key in ("state", "reuse_blocked")},
         "owned_resources": owned_resources,
+        "resource_inventory": resource_inventory,
         "recovery_required": resource["recovery_required"],
         "observability": observability,
         "timestamps": {"started": started_at, "finished": finished_at},
@@ -2249,7 +2325,6 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
                 if cleanup_verified and close_verified
                 else _reduce_resource_evidence({"state": "unknown", "verified": False})
             )
-            result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
             result["owned_resources"] = _owned_resources(
                 payload,
                 observation,
@@ -2257,6 +2332,21 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
                 workspace_id=workspace_id,
                 workspace_close=preflight["workspace_close"],
             )
+            assignment_payload = payload.get("assignment") if isinstance(payload, Mapping) else None
+            attempt_id = assignment_payload.get("attempt_id") if isinstance(assignment_payload, Mapping) else None
+            resource_inventory = canonical_resource_inventory(
+                result["owned_resources"],
+                attempt_id=attempt_id if isinstance(attempt_id, str) else None,
+            )
+            if resource_inventory["resources"]:
+                resource = {
+                    "state": resource_inventory["state"],
+                    "reuse_blocked": resource_inventory["reuse_blocked"],
+                    "recovery_required": resource_inventory["recovery_required"],
+                }
+                result["owned_resources"] = resource_inventory["resources"]
+            result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
+            result["resource_inventory"] = resource_inventory
             result["recovery_required"] = resource["recovery_required"]
             result["finalization_outcome"] = {
                 "state": "settled" if resource["state"] == "settled" else "recovery_required",
@@ -2396,7 +2486,6 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                     if cleanup_verified and close_verified
                     else _reduce_resource_evidence({"state": "unknown", "verified": False})
                 )
-                result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
                 result["owned_resources"] = _owned_resources(
                     payload,
                     post_submit if isinstance(post_submit, Mapping) else {},
@@ -2404,6 +2493,21 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                     workspace_id=workspace_id,
                     workspace_close=preflight["workspace_close"],
                 )
+                assignment_payload = payload.get("assignment") if isinstance(payload, Mapping) else None
+                attempt_id = assignment_payload.get("attempt_id") if isinstance(assignment_payload, Mapping) else None
+                resource_inventory = canonical_resource_inventory(
+                    result["owned_resources"],
+                    attempt_id=attempt_id if isinstance(attempt_id, str) else None,
+                )
+                if resource_inventory["resources"]:
+                    resource = {
+                        "state": resource_inventory["state"],
+                        "reuse_blocked": resource_inventory["reuse_blocked"],
+                        "recovery_required": resource_inventory["recovery_required"],
+                    }
+                    result["owned_resources"] = resource_inventory["resources"]
+                result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
+                result["resource_inventory"] = resource_inventory
                 result["recovery_required"] = resource["recovery_required"]
                 if (
                     result.get("disposition") == "READY"
