@@ -60,24 +60,42 @@ def test_secretary_runtime_binding_requires_all_identity_fields() -> None:
     binding = LAUNCHER._normalize_secretary_runtime_binding(
         task_id="task-1",
         plan_revision="plan-1",
-        attempt_id="attempt-1",
         run_id="run-1",
     )
 
     assert binding == {
         "task_id": "task-1",
         "plan_revision": "plan-1",
-        "attempt_id": "attempt-1",
         "run_id": "run-1",
     }
 
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="all four"):
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="all three"):
         LAUNCHER._normalize_secretary_runtime_binding(
             task_id="task-1",
-            plan_revision="plan-1",
-            attempt_id=None,
+            plan_revision=None,
             run_id="run-1",
         )
+
+
+def test_prelaunch_failure_does_not_fabricate_execution_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    error = LAUNCHER.TargetResolutionBlocked(
+        "target_resolution=not_found; eligible candidates=0",
+        {"status": "not_found", "mode": "auto", "candidate_count": 0, "candidates": []},
+    )
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (_ for _ in ()).throw(error))
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "auto", "--pane", "auto",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 2
+
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert result["assignment"].get("attempt_id") is None
 
 
 def test_deepagents_classification_ignores_pane_failure_after_structured_success() -> None:
@@ -4799,7 +4817,10 @@ def test_main_dry_run_emits_json_and_does_not_start(monkeypatch: pytest.MonkeyPa
             "--dry-run",
         ]
     ) == 0
-    assert json.loads(capsys.readouterr().out) == evidence
+    result = json.loads(capsys.readouterr().out)
+    assert result == evidence
+    assert result["registry_launcher"].get("attempt_id") is None
+    assert result["observation"].get("attempt_id") is None
 
 
 def test_terminate_codex_lane_blocks_empty_preclose_process_info(
