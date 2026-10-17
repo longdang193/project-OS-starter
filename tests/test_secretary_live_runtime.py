@@ -2370,6 +2370,29 @@ def test_run_normal_exception_quarantines_when_cleanup_is_unproven(
     assert result["owned_resources"][0]["identity"] == "workspace-1"
 
 
+def test_normal_outcome_timeout_without_cleanup_proof_blocks_reuse() -> None:
+    result = _normalize_invocation_outcome(
+        invocation_id="invoke-timeout",
+        returncode=0,
+        payload={
+            "assignment": {
+                "execution": {"state": "running"},
+                "cleanup": {"state": "unknown"},
+            }
+        },
+        observation={
+            "state": "unknown",
+            "observation_error": "completion observation deadline expired",
+        },
+        started_at="2026-10-11T10:00:00+00:00",
+        finished_at="2026-10-11T10:00:02+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+    assert result["resource"] == {"state": "quarantined", "reuse_blocked": True}
+    assert result["recovery_required"] is True
+
+
 def test_run_smoke_does_not_promote_cleanup_without_structured_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

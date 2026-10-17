@@ -128,10 +128,13 @@ def _metric_status(metric: Any) -> str:
 
 def _validate_stage_timestamps(row: dict[str, Any], protocol: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    timestamps = row.get("stage_timestamps")
+    if not isinstance(timestamps, list):
+        return ["stage_timestamps must be a list"]
     stages = protocol.get("stages", [])
     allowed = {item.get("name") for item in stages if isinstance(item, dict)}
     previous_end: float | None = None
-    for item in row.get("stage_timestamps", []):
+    for item in timestamps:
         if not isinstance(item, dict) or item.get("stage") not in allowed:
             errors.append("stage_timestamps contains an unknown stage")
             continue
@@ -139,7 +142,14 @@ def _validate_stage_timestamps(row: dict[str, Any], protocol: dict[str, Any]) ->
         ended = item.get("ended_at_ms")
         if started is None or ended is None:
             continue
-        if not isinstance(started, (int, float)) or not isinstance(ended, (int, float)):
+        if (
+            isinstance(started, bool)
+            or isinstance(ended, bool)
+            or not isinstance(started, (int, float))
+            or not isinstance(ended, (int, float))
+            or not math.isfinite(float(started))
+            or not math.isfinite(float(ended))
+        ):
             errors.append(f"stage {item['stage']} timestamps must be numeric or null")
             continue
         if ended < started:
@@ -228,8 +238,14 @@ def validate_row(row: dict[str, Any], protocol: dict[str, Any], expected: dict[s
             if not isinstance(metric, dict):
                 errors.append(f"metric must be an object: {metric_name}")
                 continue
-            if metric_status == "observed" and not isinstance(metric.get("value"), (int, float)):
-                errors.append(f"observed metric has no numeric value: {metric_name}")
+            if metric_status == "observed":
+                value = metric.get("value")
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                ):
+                    errors.append(f"observed metric must have a finite numeric value: {metric_name}")
             if metric_status != "observed" and metric.get("value") is not None:
                 errors.append(f"unavailable metric has a value: {metric_name}")
     lifecycle = row.get("lifecycle")

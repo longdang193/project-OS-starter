@@ -1,0 +1,57 @@
+{
+  "schema": "live-stability-canary/v1",
+  "evidence_class": "live",
+  "protocol_id": "live-stability-probe-2026-10-17",
+  "protocol_digest": "6b542222c09a9a4dafaf3a543c8f0fbc1c1607d22a675405d5c59a7f2a2102e0",
+  "base_revision": "2254a69990a1b013c17df88183d9972cf866f3c5",
+  "provider": {
+    "name": "9router",
+    "model": "combo-normal",
+    "wire_api": "responses",
+    "config_source": "C:\\Users\\HOANG PHI LONG DANG\\.codex\\config.toml",
+    "credential_source": "C:\\Users\\HOANG PHI LONG DANG\\.codex\\auth.json",
+    "credential_value_recorded": false
+  },
+  "runner": {
+    "dispatcher": "scripts/herdr_parallel_dispatch.py",
+    "session": "live-stability-cos",
+    "concurrency": 2,
+    "refill": false
+  },
+  "status": "operational_canary_completed_acceptance_pending",
+  "matrix_gate": "stopped",
+  "acceptance_boundary": "The workers completed the read-only observations and published settled task results, but semantic acceptance was null; no topology row was promoted to observed/accepted.",
+  "lanes": [
+    {
+      "lane_id": "cos-canary-a",
+      "attempt_id": "c1ecfe59a85049d6a78baecaf50e44f6",
+      "exit_code": 0,
+      "unresolved": false,
+      "capacity": "retired",
+      "grant_verification": "verified",
+      "execution": "completed",
+      "lifecycle": "confirmed",
+      "cleanup": "removed",
+      "task_result_state": "reported_completed",
+      "task_result_accepted": null,
+      "protocol_reference": "artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json"
+    },
+    {
+      "lane_id": "cos-canary-b",
+      "attempt_id": "efbda33c10f24e388974ff45d5ad5108",
+      "exit_code": 0,
+      "unresolved": false,
+      "capacity": "retired",
+      "grant_verification": "verified",
+      "execution": "completed",
+      "lifecycle": "confirmed",
+      "cleanup": "removed",
+      "task_result_state": "reported_completed",
+      "task_result_accepted": null,
+      "protocol_reference": "artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json"
+    }
+  ],
+  "session_cleanup": "named Herdr session stopped and deleted; two task-owned worktrees removed",
+  "raw_output_retained": false
+}
+

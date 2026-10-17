@@ -1,0 +1,163 @@
+{
+  "arms": {
+    "cos_two_lane": {
+      "cold": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "cos_two_lane:cold:2",
+          "cos_two_lane:cold:1",
+          "cos_two_lane:cold:3"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      },
+      "warm": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "cos_two_lane:warm:1",
+          "cos_two_lane:warm:2",
+          "cos_two_lane:warm:3"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      }
+    },
+    "direct_controller": {
+      "cold": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "direct_controller:cold:3",
+          "direct_controller:cold:1",
+          "direct_controller:cold:2"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      },
+      "warm": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "direct_controller:warm:2",
+          "direct_controller:warm:3",
+          "direct_controller:warm:1"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      }
+    },
+    "single_worker": {
+      "cold": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "single_worker:cold:1",
+          "single_worker:cold:3",
+          "single_worker:cold:2"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      },
+      "warm": {
+        "blocked_count": 3,
+        "inconclusive_count": 0,
+        "observed_count": 0,
+        "row_count": 3,
+        "trace_trial_ids": [
+          "single_worker:warm:1",
+          "single_worker:warm:2",
+          "single_worker:warm:3"
+        ],
+        "unavailable_count": 0,
+        "useful_interval_sum_ms": null,
+        "useful_interval_union_ms": null,
+        "wall_time_ms": {
+          "observed_count": 0,
+          "status": "unavailable",
+          "value": null
+        }
+      }
+    }
+  },
+  "decision": {
+    "disposition": "inconclusive",
+    "reason": "All 18 topology trials were valid BLOCKED_CAPABILITY admissions; no synthetic success or production optimization decision is permitted."
+  },
+  "evidence_boundary": {
+    "claim": "live read-only execution/coordination stability was not proven because all 18 topology admissions were BLOCKED_CAPABILITY",
+    "failclosed_raw": "artifacts/runtime-observation/2026-10-17-live-stability-failclosed.jsonl",
+    "topology_raw": "artifacts/runtime-observation/2026-10-17-live-stability-topology-raw.jsonl",
+    "write_probe": "deferred and separately authorized"
+  },
+  "failclosed_evidence_class_counts": {
+    "deterministic": 6,
+    "live": 0
+  },
+  "failclosed_probe_count": 6,
+  "observed_row_count": 0,
+  "protocol_digest": "6b542222c09a9a4dafaf3a543c8f0fbc1c1607d22a675405d5c59a7f2a2102e0",
+  "protocol_id": "live-stability-probe-2026-10-17",
+  "schema": "topology-economics-summary/v1",
+  "status_counts": {
+    "BLOCKED_CAPABILITY": 18,
+    "INCONCLUSIVE": 0,
+    "invalid": 0,
+    "observed": 0,
+    "unavailable": 0
+  },
+  "validation": {
+    "invalid_row_count": 0,
+    "invalid_rows": [],
+    "missing_trials": [],
+    "protocol_errors": [],
+    "valid": true,
+    "valid_row_count": 18
+  },
+  "verdicts": {
+    "live_stability_status": "inconclusive",
+    "optimization_disposition": "inconclusive",
+    "plan_execution_status": "verified"
+  }
+}

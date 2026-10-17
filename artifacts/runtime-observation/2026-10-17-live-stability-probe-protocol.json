@@ -1,0 +1,149 @@
+{
+  "schema": "topology-economics-protocol/v1",
+  "protocol_id": "live-stability-probe-2026-10-17",
+  "protocol_version": 1,
+  "base_revision": "2254a69990a1b013c17df88183d9972cf866f3c5",
+  "arms": [
+    {
+      "id": "direct_controller",
+      "description": "one controller completes the whole workload",
+      "lane_count": 0
+    },
+    {
+      "id": "single_worker",
+      "description": "one bounded Worker completes the whole workload",
+      "lane_count": 1
+    },
+    {
+      "id": "cos_two_lane",
+      "description": "exactly two predeclared independent lanes complete the workload",
+      "lane_count": 2
+    }
+  ],
+  "workload": {
+    "workload_id": "representative-read-only-topology-comparison",
+    "objective": "complete one decomposable read-only repository observation workload and produce the same accepted artifact",
+    "workload_digest": "a8e2c77b14f9e8b3d37af3a6b9dd46b8d965b3bf5c5e7f5bdf1f2c9c6d0a3d7e",
+    "final_artifact_digest": "c8cc5a6caeb8e35d8f72c7b0e25d6c2c16a9e2642dc0f31c9eb2c1f8c0f02a25",
+    "acceptance_criteria_digest": "5cc5b62ddf97e7d6d3b5e9e6a7f874e3e6e3e09d7cf5e4885c7f8c6bc4a04dd8",
+    "verification_commands_digest": "e9cf1329e7b4f1d96d79f5ce4c4c59dff2f42d75e1c1cfd44d72d4ef2e4b6e6c",
+    "configuration_digest": "76b6b93809b2db7e2e6a7b4ac0fbd19425db0d7e4f5d9e27b0d3cb8eb5c2093a",
+    "matching_fields": [
+      "workload_digest",
+      "final_artifact_digest",
+      "acceptance_criteria_digest",
+      "verification_commands_digest",
+      "configuration_digest"
+    ]
+  },
+  "trial_design": {
+    "seed": 20261017,
+    "conditions": [
+      "cold",
+      "warm"
+    ],
+    "repetitions_per_arm_per_condition": 3,
+    "attempted_trials": 18,
+    "order": [
+      "direct_controller:warm:2",
+      "direct_controller:cold:3",
+      "cos_two_lane:cold:2",
+      "single_worker:warm:1",
+      "direct_controller:cold:1",
+      "cos_two_lane:warm:1",
+      "direct_controller:warm:3",
+      "direct_controller:cold:2",
+      "cos_two_lane:warm:2",
+      "direct_controller:warm:1",
+      "single_worker:cold:1",
+      "cos_two_lane:cold:1",
+      "single_worker:cold:3",
+      "cos_two_lane:warm:3",
+      "cos_two_lane:cold:3",
+      "single_worker:warm:2",
+      "single_worker:warm:3",
+      "single_worker:cold:2"
+    ]
+  },
+  "stages": [
+    {
+      "name": "admission"
+    },
+    {
+      "name": "controller_preparation"
+    },
+    {
+      "name": "lane_acquisition"
+    },
+    {
+      "name": "execution"
+    },
+    {
+      "name": "observation"
+    },
+    {
+      "name": "acceptance"
+    },
+    {
+      "name": "review_integration"
+    },
+    {
+      "name": "retirement_cleanup"
+    },
+    {
+      "name": "reconciliation"
+    }
+  ],
+  "metric_names": [
+    "accepted_outcome_wall_time_ms",
+    "controller_preparation_ms",
+    "lane_acquisition_ms",
+    "useful_execution_ms",
+    "observation_ms",
+    "acceptance_ms",
+    "review_integration_ms",
+    "retirement_cleanup_ms",
+    "retry_count",
+    "continuation_count",
+    "intervention_count",
+    "subprocess_count",
+    "provider_tokens",
+    "provider_cost_usd"
+  ],
+  "evidence_rules": {
+    "no_synthetic_fallback": true,
+    "minimum_valid_trials_per_arm_per_condition": 3,
+    "required_provenance_fields": [
+      "source_producer",
+      "source_digest",
+      "run_identity",
+      "base_identity"
+    ],
+    "blocked_statuses_are_not_success": true,
+    "unavailable_metrics_are_not_zero": true,
+    "accepted_lifecycle": {
+      "accepted_outcome": [
+        "accepted"
+      ],
+      "review": [
+        "not_required",
+        "passed"
+      ],
+      "integration": [
+        "not_required",
+        "passed"
+      ],
+      "retirement": [
+        "confirmed",
+        "removed"
+      ],
+      "cleanup": [
+        "removed"
+      ],
+      "reconciliation": [
+        "confirmed"
+      ]
+    }
+  },
+  "protocol_digest": "6b542222c09a9a4dafaf3a543c8f0fbc1c1607d22a675405d5c59a7f2a2102e0"
+}
