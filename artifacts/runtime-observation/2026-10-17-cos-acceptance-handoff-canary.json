@@ -26,15 +26,16 @@
     },
     "record_schema": "cos-acceptance-handoff/v1",
     "replay": {
-      "accepted_candidate_sha": "1b99e2eb13b4b870cacf5956e45b57da7d4d6535",
+      "accepted_candidate_sha": "07fe73c4c8ecd206b1cdd96471125828a5125fd9",
       "authorized": true,
       "reason": "task state changed",
       "replayed": true,
-      "revision": "eca16fadafa07c0cdff9d947a7a47d45ea800e701cf642c5d13b0b715712fe4d"
-    },
-    "worker_launch_count": 1
+      "revision": "a4304de81b4065abd18576d5980f4f1a17e3aa4584642d667527f677624b3303"
+    }
   },
   "claims": {
+    "physical_cleanup_proven": false,
+    "provider_execution_proven": false,
     "runtime_settlement_owner": "runtime",
     "semantic_acceptance_owner": "cos",
     "synthetic_acceptance_used": false,
@@ -46,11 +47,11 @@
     "producer": "scripts/project_os_runtime/acceptance_handoff.py:handoff_acceptance"
   },
   "evidence_class": "local-read-only",
-  "implementation_commit": "1b99e2eb13b4b870cacf5956e45b57da7d4d6535",
+  "implementation_commit": "07fe73c4c8ecd206b1cdd96471125828a5125fd9",
   "negative_cases": [
     {
       "authorized": false,
-      "decision": "FAIL",
+      "decision": "BLOCKED",
       "name": "stale-head",
       "reason": "acceptance decision incomplete",
       "task_state_after": "active",
@@ -75,7 +76,7 @@
     {
       "authorized": false,
       "decision": "FAIL",
-      "name": "timeout",
+      "name": "verification-failure",
       "reason": "acceptance decision incomplete",
       "task_state_after": "active",
       "transition_applied": false
@@ -83,7 +84,7 @@
     {
       "authorized": false,
       "decision": "FAIL",
-      "name": "cleanup-failure",
+      "name": "artifact-freshness-mismatch",
       "reason": "acceptance decision incomplete",
       "task_state_after": "active",
       "transition_applied": false

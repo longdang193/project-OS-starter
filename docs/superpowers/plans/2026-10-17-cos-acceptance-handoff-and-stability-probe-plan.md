@@ -505,7 +505,7 @@ successful evidence.
 - `artifacts/runtime-observation/2026-10-17-cos-acceptance-handoff-report.md`
   summarizes the bounded local read-only proof without provider credentials or
   raw output.
-- Source checkpoint: `1b99e2eb13b4b870cacf5956e45b57da7d4d6535`.
+- Source checkpoint: `07fe73c4c8ecd206b1cdd96471125828a5125fd9`.
 
 ### Task 6: Reconcile documentation and complete verification
 
