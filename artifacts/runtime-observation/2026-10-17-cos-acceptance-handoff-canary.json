@@ -1,0 +1,157 @@
+{
+  "accepted_lifecycle": {
+    "attempt_id": "canary-attempt-1",
+    "decision": "PASS",
+    "dependent_task_state_after_acceptance": "active",
+    "dependent_task_state_after_replay": "active",
+    "lane_observations": [
+      {
+        "artifact": "worker-result-a.json",
+        "lane_id": "canary-lane-a",
+        "settled": true
+      },
+      {
+        "artifact": "worker-result-b.json",
+        "lane_id": "canary-lane-b",
+        "settled": true
+      }
+    ],
+    "plan_task_state_after_acceptance": "completed",
+    "plan_task_state_after_replay": "completed",
+    "probe_row": {
+      "acceptance_decision": "PASS",
+      "arm": "cos_two_lane",
+      "status": "observed",
+      "validation_errors": []
+    },
+    "record_schema": "cos-acceptance-handoff/v1",
+    "replay": {
+      "accepted_candidate_sha": "8f8af4ddf39df3fc7f9b44253defedfd2d6110f7",
+      "authorized": true,
+      "reason": "task state changed",
+      "replayed": true,
+      "revision": "8fdbdd6cccc7c0ec4f99479505552eddafd5535c7a3e9bb0a6bb722343ad7ded"
+    }
+  },
+  "claims": {
+    "physical_cleanup_proven": false,
+    "provider_execution_proven": false,
+    "runtime_settlement_owner": "runtime",
+    "semantic_acceptance_owner": "cos",
+    "synthetic_acceptance_used": false,
+    "worker_acceptance_field_used": false
+  },
+  "controller": {
+    "authority": "cos",
+    "identity": "cos-controller-canary",
+    "producer": "scripts/project_os_runtime/acceptance_handoff.py:handoff_acceptance"
+  },
+  "evidence_class": "local-read-only",
+  "implementation_commit": "8f8af4ddf39df3fc7f9b44253defedfd2d6110f7",
+  "negative_cases": [
+    {
+      "authorized": false,
+      "decision": "BLOCKED",
+      "name": "stale-head",
+      "reason": "acceptance decision incomplete",
+      "task_state_after": "active",
+      "transition_applied": false
+    },
+    {
+      "authorized": false,
+      "decision": "FAIL",
+      "name": "missing-evidence",
+      "reason": "acceptance decision incomplete",
+      "task_state_after": "active",
+      "transition_applied": false
+    },
+    {
+      "authorized": false,
+      "decision": "FAIL",
+      "name": "receipt-mismatch",
+      "reason": "acceptance decision incomplete",
+      "task_state_after": "active",
+      "transition_applied": false
+    },
+    {
+      "authorized": false,
+      "decision": "FAIL",
+      "name": "verification-failure",
+      "reason": "acceptance decision incomplete",
+      "task_state_after": "active",
+      "transition_applied": false
+    },
+    {
+      "authorized": false,
+      "decision": "FAIL",
+      "name": "artifact-freshness-mismatch",
+      "reason": "acceptance decision incomplete",
+      "task_state_after": "active",
+      "transition_applied": false
+    },
+    {
+      "authorized": false,
+      "decision": "BLOCKED",
+      "name": "stale-attempt",
+      "reason": "acceptance decision incomplete",
+      "task_state_after": "active",
+      "transition_applied": false
+    },
+    {
+      "authorized": false,
+      "decision": "PASS",
+      "name": "dependent-plan-mismatch",
+      "reason": "accepted and dependent task plan binding mismatch",
+      "task_state_after": "active",
+      "transition_applied": false
+    },
+    {
+      "authorized": false,
+      "name": "absent-cos-producer",
+      "reason": "CoS owner result requires a real AcceptanceDecision(PASS)"
+    }
+  ],
+  "protocol": {
+    "path": "artifacts/runtime-observation/2026-10-17-live-stability-probe-protocol.json",
+    "protocol_digest": "6b542222c09a9a4dafaf3a543c8f0fbc1c1607d22a675405d5c59a7f2a2102e0",
+    "protocol_id": "live-stability-probe-2026-10-17",
+    "source_digest": "41335b7d671963847fe4da616e813ea592338c353a63e7a45cea8fb377b062e9"
+  },
+  "resource_conflict_negative": {
+    "attempt_id": "canary-attempt-1",
+    "recovery_required": true,
+    "resources": [
+      {
+        "attempt_id": "canary-attempt-1",
+        "identity": "canary-workspace",
+        "kind": "workspace",
+        "state": "quarantined"
+      }
+    ],
+    "reuse_blocked": true,
+    "schema": "secretary-resource-inventory/v1",
+    "state": "quarantined"
+  },
+  "resource_inventory": {
+    "attempt_id": "canary-attempt-1",
+    "recovery_required": false,
+    "resources": [
+      {
+        "attempt_id": "canary-attempt-1",
+        "identity": "canary-pane",
+        "kind": "pane",
+        "state": "already_absent"
+      },
+      {
+        "attempt_id": "canary-attempt-1",
+        "identity": "canary-workspace",
+        "kind": "workspace",
+        "state": "removed"
+      }
+    ],
+    "reuse_blocked": false,
+    "schema": "secretary-resource-inventory/v1",
+    "state": "settled"
+  },
+  "schema": "cos-acceptance-handoff-canary/v1"
+}

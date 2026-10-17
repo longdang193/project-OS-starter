@@ -592,6 +592,41 @@ def test_resource_evidence_reduction_is_monotonic(
     assert result["evidence_state"] == expected_evidence_state
 
 
+def test_canonical_resource_inventory_deduplicates_same_attempt() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime.canonical_resource_inventory(
+        [
+            {"kind": "workspace", "identity": "workspace-1", "state": "settled"},
+            {"kind": "workspace", "identity": "workspace-1", "state": "settled"},
+        ],
+        attempt_id="attempt-1",
+    )
+
+    assert result["state"] == "settled"
+    assert result["reuse_blocked"] is False
+    assert len(result["resources"]) == 1
+    assert result["resources"][0]["attempt_id"] == "attempt-1"
+
+
+def test_canonical_resource_inventory_quarantines_conflicting_or_cross_attempt_entries() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime.canonical_resource_inventory(
+        [
+            {"kind": "workspace", "identity": "workspace-1", "state": "settled"},
+            {"kind": "workspace", "identity": "workspace-1", "state": "quarantined"},
+            {"kind": "pane", "identity": "pane-1", "state": "settled", "attempt_id": "attempt-2"},
+        ],
+        attempt_id="attempt-1",
+    )
+
+    assert result["state"] == "quarantined"
+    assert result["reuse_blocked"] is True
+    assert result["recovery_required"] is True
+    assert all(item["state"] == "quarantined" for item in result["resources"])
+
+
 def test_run_smoke_is_strict_probe_alias() -> None:
     import scripts.secretary_live_runtime as runtime
 
