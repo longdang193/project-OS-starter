@@ -927,10 +927,6 @@ def test_prepare_lane_inputs_merges_plan_and_runtime_ownership() -> None:
         "remaining_authorized_task_allowance": 10,
         "attempt_deadline": 100.0,
         "local_capabilities": {"requested": ["py"]},
-        "accepted_prerequisites": {
-            "Task 1": {"accepted_revision": "revision-1", "accepted_candidate_sha": "revision-1"},
-            "Task 2": {"accepted_revision": "revision-2", "accepted_candidate_sha": "revision-2"},
-        },
     }
 
     lanes = prepare_lane_inputs(PLAN, ["Task 3"], {"Task 3": runtime})
@@ -957,7 +953,7 @@ def test_prepare_lane_inputs_rejects_conflicting_runtime_task() -> None:
         )
 
 
-def test_prepare_lane_inputs_rejects_candidate_revision_substitution() -> None:
+def test_prepare_lane_inputs_rejects_caller_supplied_prerequisite_graph() -> None:
     runtime = _binding(Path("."))
     runtime["accepted_prerequisites"] = {
         "Task 1": {
@@ -966,7 +962,7 @@ def test_prepare_lane_inputs_rejects_candidate_revision_substitution() -> None:
         }
     }
 
-    with pytest.raises(ValueError, match="accepted candidate and revision mismatch"):
+    with pytest.raises(ValueError, match="plan-owned fields"):
         prepare_plan_lanes(_active_plan(), ["Task 2"], {"Task 2": runtime})
 
 
@@ -1075,9 +1071,6 @@ def _binding(tmp_path: Path) -> dict[str, object]:
         "local_capabilities": {"requested": ["py"]},
         "remaining_authorized_task_allowance": 10,
         "attempt_deadline": 100.0,
-        "accepted_prerequisites": {
-            "Task 1": {"accepted_revision": head, "accepted_candidate_sha": head}
-        },
     }
 
 
@@ -1101,6 +1094,15 @@ def test_prepare_plan_lanes_bounds_worker_text_and_binding_digest(tmp_path: Path
     assert "Task 2 proof is recorded." in lane["task"]
     assert "This section must not enter worker task text" not in lane["task"]
     assert lane["execution_binding_digest"] == prepare_lane(lane)["execution_binding_digest"]
+    assert lane["accepted_prerequisites"] == {
+        "Task 1": {
+            "accepted_revision": lane["accepted_prerequisites"]["Task 1"]["accepted_revision"],
+            "accepted_candidate_sha": lane["accepted_prerequisites"]["Task 1"]["accepted_candidate_sha"],
+            "accepted_assignment_id": "assignment-1",
+            "accepted_attempt_id": "attempt-1",
+            "accepted_checkpoint_sha": "checkpoint-1",
+        }
+    }
 
 
 def test_launcher_task_argument_contains_complete_selected_contract(tmp_path: Path) -> None:
@@ -1198,7 +1200,9 @@ def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Pa
         "local_capabilities": runtime["local_capabilities"],
         "remaining_authorized_task_allowance": runtime["remaining_authorized_task_allowance"],
         "attempt_deadline": runtime["attempt_deadline"],
-        "accepted_prerequisites": runtime["accepted_prerequisites"],
+            "accepted_prerequisites": {
+                "Task 1": {"accepted_revision": head, "accepted_candidate_sha": head},
+            },
     }
 
     counters = {"source_parts": 0, "parse_plan": 0, "prepare_task": 0}
@@ -1333,7 +1337,6 @@ def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Pa
         "dependencies",
         "dependency_ready",
         "structurally_ready",
-        "accepted_prerequisites",
     )
     manual_prepared = dispatcher.prepare_lane(manual_lane).to_dict()
     plan_prepared = dispatcher.prepare_lane(plan_lane).to_dict()
@@ -1374,7 +1377,7 @@ def test_prepare_plan_lanes_rejects_plan_owned_runtime_fields(tmp_path: Path) ->
     plan_path = tmp_path / "plan.md"
     plan_path.write_text(_active_plan(), encoding="utf-8")
     binding = _binding(tmp_path)
-    binding["artifact_available"] = True  # type: ignore[index]
+    binding["accepted_prerequisites"] = {}  # type: ignore[index]
 
     with pytest.raises(ValueError, match="plan-owned fields"):
         prepare_plan_lanes(plan_path, ["Task 2"], {"Task 2": binding})

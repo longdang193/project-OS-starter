@@ -67,7 +67,6 @@ _REQUIRED_BINDING_FIELDS = frozenset(
         "local_capabilities",
         "remaining_authorized_task_allowance",
         "attempt_deadline",
-        "accepted_prerequisites",
     }
 )
 _OPTIONAL_BINDING_FIELDS = frozenset({"prior_attempt_known", "codex_home", "target", "name"})
@@ -917,7 +916,6 @@ def _worker_brief(
         binding = accepted[dependency]
         prerequisites.append(
             f"- {dependency}: accepted_revision={binding['accepted_revision']}"
-            + (f"; artifact_ref={binding['artifact_ref']}" if binding.get("artifact_ref") else "")
         )
     parts = []
     if plan_goal and plan_goal.strip() not in selected:
@@ -955,41 +953,28 @@ def _accepted_consequence_from_evidence(evidence: str) -> dict[str, str]:
 def _accepted_prerequisites(
     graph: PlanGraph,
     task: PlanTask,
-    value: object,
     *,
     plan_identity: str,
 ) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
-        raise ValueError("accepted_prerequisites must be a mapping")
-    accepted = {str(key): item for key, item in value.items()}
+    accepted: dict[str, Any] = {}
     for dependency in task.dependencies:
-        binding = accepted.get(dependency)
-        if not isinstance(binding, Mapping):
-            raise ValueError(f"missing accepted prerequisite binding: {dependency}")
-        if not isinstance(binding.get("accepted_revision"), str) or not binding["accepted_revision"].strip():
-            raise ValueError(f"missing accepted revision: {dependency}")
-        candidate_sha = binding.get("accepted_candidate_sha")
-        if not isinstance(candidate_sha, str) or not candidate_sha.strip():
-            raise ValueError(f"missing accepted candidate: {dependency}")
-        if candidate_sha != binding["accepted_revision"]:
-            raise ValueError(f"accepted candidate and revision mismatch: {dependency}")
         source_task = graph.tasks.get(dependency)
         persisted = _accepted_consequence_from_evidence(source_task.evidence) if source_task else {}
-        if (
-            persisted.get("accepted_candidate_sha") != candidate_sha
-            or persisted.get("accepted_plan_identity") != plan_identity
-            or persisted.get("accepted_task_id") not in {None, dependency}
-        ):
+        if persisted.get("accepted_task_id") not in {None, dependency}:
             raise ValueError(f"accepted consequence mismatch: {dependency}")
+        if persisted.get("accepted_plan_identity") != plan_identity:
+            raise ValueError(f"accepted consequence mismatch: {dependency}")
+        candidate_sha = persisted.get("accepted_candidate_sha")
+        if not isinstance(candidate_sha, str) or not candidate_sha.strip():
+            raise ValueError(f"missing accepted revision: {dependency}")
+        binding = {
+            "accepted_revision": candidate_sha,
+            "accepted_candidate_sha": candidate_sha,
+        }
         for field in ("accepted_assignment_id", "accepted_attempt_id", "accepted_checkpoint_sha"):
-            supplied = binding.get(field)
-            if supplied is not None and supplied != persisted.get(field):
-                raise ValueError(f"accepted consequence mismatch: {dependency}")
-        artifact_ref = binding.get("artifact_ref")
-        if artifact_ref is not None and (not isinstance(artifact_ref, str) or not artifact_ref.strip()):
-            raise ValueError(f"invalid artifact reference: {dependency}")
-        if "artifact_available" in binding:
-            raise ValueError("artifact_available is not an accepted prerequisite input")
+            if persisted.get(field) is not None:
+                binding[field] = persisted[field]
+        accepted[dependency] = binding
     return accepted
 
 
@@ -1058,7 +1043,6 @@ def _prepare_plan_lanes(
         accepted = _accepted_prerequisites(
             graph,
             task,
-            binding["accepted_prerequisites"],
             plan_identity=plan_identity,
         )
         grant = _runtime_grant(binding["runtime_grant"])

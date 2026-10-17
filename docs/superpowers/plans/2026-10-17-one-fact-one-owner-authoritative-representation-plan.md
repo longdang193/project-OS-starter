@@ -178,14 +178,14 @@ acceptance decision is required before topology rows are promoted.
 - Branch: `codex/one-fact-one-owner`
 - Base commit: `ef536b25a6b6ffa02410233937d718385cc38f2d`
 - Expected workspace: `dedicated task-owned worktree from the reviewed base; leave local main untouched`
-- Next action: `execute Task 3 Plan-derived prerequisite identity migration`
+- Next action: `execute Task 4 proven compatibility-layer cleanup and generated-surface reconciliation`
 - Blockers: `none; Task 1 acceptance boundary gate resolved through the existing lead-controller procedure`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | dedicated task worktree | `codex` | none | baseline tests, caller inventory, and CoS boundary gate | 335 baseline passed; native CoS boundary exercised with 3 focused acceptance/Plan tests |
 | Task 2 | `completed` | task worktree | `codex` | Task 1 | TaskResult/settlement contract tests | 581 passed, 1 skipped; legacy acceptance ignored and stripped; dispatcher pending-acceptance path preserved |
-| Task 3 | `pending` | task worktree | `unresolved` | Task 1 | Plan-derived prerequisite and launch-preflight tests | pending |
+| Task 3 | `completed` | task worktree | `codex` | Task 1 | Plan-derived prerequisite and launch-preflight tests | 131 passed; runtime callers cannot supply accepted prerequisite graph; artifact branch removed |
 | Task 4 | `pending` | task worktree | `unresolved` | Tasks 2–3 | compatibility deletion, manifest, validator, and doc checks | pending |
 | Task 5 | `pending` | sealed task worktree | `unresolved` | Task 4 | CoS canary with explicit acceptance decision or recorded gate stop | pending |
 | Task 6 | `pending` | task worktree | `unresolved` | Task 5 | independent review and final repository verification | pending |
@@ -377,16 +377,16 @@ acceptance decision is required before topology rows are promoted.
 - Stop for: missing persisted accepted consequence, changed dependency readiness semantics, any need for a new registry/digest/state store, or an active artifact reference that cannot be derived from Plan truth
 
 **Steps:**
-- [ ] Step 1: Remove `accepted_prerequisites` from required runtime binding fields and from the documented `runtime.json` contract.
-- [ ] Step 2: Change `_accepted_prerequisites()` to derive each dependency binding from the selected Plan graph and persisted accepted consequence; retain exact candidate/revision/Plan checks.
-- [ ] Step 3: Remove the unused `artifact_ref`/`artifact_available` compatibility branch after Task 1 confirms no active consumer; retain revision reachability as the launch-bound Git proof.
-- [ ] Step 4: Keep the derived accepted prerequisite identity in `PreparedLane` and in the execution-binding digest input; remove only the caller-supplied runtime copy while retaining the Plan revision/source and task/dependency inputs that protect freshness.
-- [ ] Step 5: Migrate benchmark fixtures and tests to pass only runtime-owned launch facts and assert that callers cannot override derived prerequisite identities.
+- [x] Step 1: Remove `accepted_prerequisites` from required runtime binding fields and from the documented `runtime.json` contract.
+- [x] Step 2: Change `_accepted_prerequisites()` to derive each dependency binding from the selected Plan graph and persisted accepted consequence; retain exact candidate/revision/Plan checks.
+- [x] Step 3: Remove the unused `artifact_ref`/`artifact_available` compatibility branch after Task 1 confirms no active consumer; retain revision reachability as the launch-bound Git proof.
+- [x] Step 4: Keep the derived accepted prerequisite identity in `PreparedLane` and in the execution-binding digest input; remove only the caller-supplied runtime copy while retaining the Plan revision/source and task/dependency inputs that protect freshness.
+- [x] Step 5: Migrate benchmark fixtures and tests to pass only runtime-owned launch facts and assert that callers cannot override derived prerequisite identities.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_plan_preparation.py tests/test_herdr_parallel_dispatch.py tests/test_worker_contract_benchmark.py`
+- [x] `py -B -m pytest -q tests/test_plan_preparation.py tests/test_herdr_parallel_dispatch.py tests/test_worker_contract_benchmark.py`
 - Expected: dependent lanes receive the exact accepted prerequisite derived from Plan evidence; missing, stale, contradictory, or unreachable consequences block before launch; zero-prerequisite lanes remain valid.
-- [ ] `rg -n "accepted_prerequisites|artifact_ref|artifact_available" scripts tests docs/operating_system/runtime/runtime-surfaces.md -g '*.py' -g '*.md' -g '*.json'`
+- [x] `rg -n "accepted_prerequisites|artifact_ref|artifact_available" scripts tests docs/operating_system/runtime/runtime-surfaces.md -g '*.py' -g '*.md' -g '*.json'`
 - Expected: no runtime caller supplies the removed graph; any remaining accepted-prerequisite text is a derived internal projection or explicit historical plan evidence.
 
 **Exit Criteria:**

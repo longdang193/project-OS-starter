@@ -1685,9 +1685,6 @@ def test_run_parallel_from_plan_reuses_existing_admission(tmp_path: Path, monkey
         "mcp_select": [],
     }
     runtime["local_capabilities"] = {"requested": []}
-    runtime["accepted_prerequisites"] = {
-        "Task 1": {"accepted_revision": "c086339c08bb396d32be44a2b848b1ab473fa52c", "accepted_candidate_sha": "c086339c08bb396d32be44a2b848b1ab473fa52c"}
-    }
     for field in ("grant_turns", "grant_wall_clock_seconds", "grant_child_agents", "mcp_select"):
         runtime.pop(field, None)
     for field in ("lane_id", "task", "executor", "profile", "dependencies", "dependency_ready", "plan_identity"):

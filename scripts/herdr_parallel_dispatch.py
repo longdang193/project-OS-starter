@@ -239,7 +239,6 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="binding_missing", detail=f"missing accepted prerequisite binding: {dependency}"))
             continue
         revision = binding.get("accepted_revision")
-        artifact_ref = binding.get("artifact_ref")
         if not isinstance(revision, str) or not revision.strip():
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_missing", detail=f"missing accepted revision: {dependency}"))
             continue
@@ -252,25 +251,6 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
         if revision_check.returncode != 0:
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_not_contained", detail=f"accepted revision is not contained in worktree: {dependency}"))
             continue
-        if artifact_ref is not None:
-            if not isinstance(artifact_ref, str) or not artifact_ref.strip():
-                prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="artifact_ref_invalid", detail=f"invalid artifact reference: {dependency}"))
-                continue
-            artifact_path = Path(artifact_ref)
-            if not artifact_path.is_absolute():
-                artifact_path = worktree / artifact_path
-            artifact_exists = artifact_path.exists()
-            if not artifact_exists and artifact_ref != revision:
-                artifact_check = subprocess.run(
-                    ["git", "-C", str(worktree), "rev-parse", "--verify", artifact_ref],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                artifact_exists = artifact_check.returncode == 0
-            if not artifact_exists and artifact_ref != revision:
-                prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="artifact_ref_unavailable", detail=f"artifact reference is unavailable: {dependency}"))
-                continue
         prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "PASS"))
     checks.extend(prerequisite_checks or [LaunchCheck("prerequisites", "NOT_APPLICABLE", code="none")])
     dispatch = reconcile(
