@@ -18,10 +18,19 @@
 - Preserve live canary summaries separately in
   `artifacts/runtime-observation/2026-10-17-live-stability-cos-canary.json`;
   do not promote operational completion to topology acceptance.
+- Require each observed owner result to carry the protocol ID/digest, exact
+  trial ID/arm/condition/repetition, and every workload matching digest. The
+  recorder compares these owner-bound values with the pinned protocol before
+  constructing a row.
+- Validate the constructed row with the canonical passive row validator before
+  writing it. Malformed metrics, timestamps, intervals, lifecycle, or
+  provenance fail without creating an output row.
 - Write exactly six fail-closed records to
   `artifacts/runtime-observation/2026-10-17-live-stability-failclosed.jsonl`.
-  Validate these with bounded lifecycle tests and report logic; do not widen
-  the passive topology aggregator to accept them.
+  Each record names the exact regression test that proves its expected owner
+  and observed state. The focused evidence test consumes this stream and
+  validates those bindings; do not widen the passive topology aggregator to
+  accept them.
 
 ## Execution Gate
 

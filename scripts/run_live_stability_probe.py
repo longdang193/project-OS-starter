@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from scripts.benchmark_operational_comparison import load_json, sha256_json
+    from scripts.benchmark_operational_comparison import load_json, sha256_json, validate_row
 except ModuleNotFoundError:
-    from benchmark_operational_comparison import load_json, sha256_json
+    from benchmark_operational_comparison import load_json, sha256_json, validate_row
 
 
 SENSITIVE_KEYS = {
@@ -35,6 +35,14 @@ OWNER_FIELDS = {
     "source_producer",
     "stage_timestamps",
     "useful_intervals_ms",
+}
+OWNER_BOUND_FIELDS = {
+    "protocol_id",
+    "protocol_digest",
+    "trial_id",
+    "arm",
+    "condition",
+    "repetition",
 }
 
 
@@ -112,6 +120,14 @@ def _base_row(protocol: dict[str, Any], trial_id: str, *, status: str, arm: str,
     }
 
 
+def _validate_row_or_raise(protocol: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    trial_id = row["trial_id"]
+    errors = validate_row(row, protocol, {trial_id: _expected_trial(protocol, trial_id)})
+    if errors:
+        raise ValueError(f"owner result evidence is invalid: {'; '.join(errors)}")
+    return row
+
+
 def validate_owner_result(protocol: dict[str, Any], owner_result: dict[str, Any], *, trial_id: str, expected_arm: str) -> dict[str, Any]:
     if not isinstance(owner_result, dict):
         raise ValueError("owner result must be an object")
@@ -119,9 +135,23 @@ def validate_owner_result(protocol: dict[str, Any], owner_result: dict[str, Any]
     if expected["arm"] != expected_arm:
         raise ValueError(f"record mode arm mismatch: expected {expected_arm}, protocol has {expected['arm']}")
     sanitized = sanitize_record(owner_result)
-    missing = sorted(OWNER_FIELDS - sanitized.keys())
+    matching_fields = set(protocol["workload"]["matching_fields"])
+    required_fields = OWNER_FIELDS | OWNER_BOUND_FIELDS | matching_fields
+    missing = sorted(required_fields - sanitized.keys())
     if missing:
         raise ValueError(f"owner result missing fields: {', '.join(missing)}")
+    expected_fields = {
+        "protocol_id": protocol["protocol_id"],
+        "protocol_digest": protocol["protocol_digest"],
+        "trial_id": trial_id,
+        "arm": expected["arm"],
+        "condition": expected["condition"],
+        "repetition": expected["repetition"],
+        **{field: protocol["workload"][field] for field in matching_fields},
+    }
+    for field, expected_value in expected_fields.items():
+        if sanitized[field] != expected_value:
+            raise ValueError(f"owner result {field} does not match protocol")
     if sanitized["base_identity"] != protocol["base_revision"]:
         raise ValueError("owner result base_identity does not match protocol base_revision")
     if sanitized["attempted"] is not True:
@@ -138,7 +168,7 @@ def validate_owner_result(protocol: dict[str, Any], owner_result: dict[str, Any]
             raise ValueError(f"owner result lifecycle field is not accepted: {field}")
     if sanitized.get("runtime_status") in {"completed", "succeeded"} and lifecycle.get("accepted_outcome") != "accepted":
         raise ValueError("runtime completion is not semantic acceptance")
-    return _base_row(
+    return _validate_row_or_raise(protocol, _base_row(
         protocol,
         trial_id,
         status="observed",
@@ -146,7 +176,7 @@ def validate_owner_result(protocol: dict[str, Any], owner_result: dict[str, Any]
         condition=expected["condition"],
         repetition=expected["repetition"],
         owner_result=sanitized,
-    )
+    ))
 
 
 def _record_owner_result(protocol: dict[str, Any], owner_result: dict[str, Any], *, trial_id: str, expected_arm: str) -> dict[str, Any]:
@@ -187,7 +217,7 @@ def record_blocked(protocol: dict[str, Any], *, trial_id: str, reason: str, sour
         owner_result=owner_result,
     )
     row["blocked_reason"] = reason
-    return row
+    return _validate_row_or_raise(protocol, row)
 
 
 def write_row(path: str | Path, row: dict[str, Any]) -> None:

@@ -193,9 +193,9 @@ Review boundaries are intentionally consolidated:
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | task worktree | `codex` | none | current-base protocol and preflight baseline pass | `2254a699` base pin; protocol validation; 12 benchmark tests; repo config/contracts pass |
-| Task 2 | `completed` | task worktree | `codex` | Task 1 | recorder and adapter contract tests pass | `20 passed`; evidence-only modes; no external provider launch |
+| Task 2 | `completed` | task worktree | `codex` | Task 1 | recorder and adapter contract tests pass | owner-bound identities and canonical pre-write validation; focused recorder tests pass; evidence-only modes; no external provider launch |
 | Task 3 | `completed` | sealed task worktree | `codex` | Task 2 | 18 attributable topology rows or explicit inconclusive/blocked rows | `18 BLOCKED_CAPABILITY`; no producer launch; topology validation passed |
-| Task 4 | `completed` | sealed task worktree | `codex` | Task 2 | six negative probes fail closed at expected owners | `6` separate records; `220 passed` lifecycle/receipt tests |
+| Task 4 | `completed` | sealed task worktree | `codex` | Task 2 | six negative probes fail closed at expected owners | `6` separate records bound to exact regression tests; focused lifecycle/receipt/plan tests pass |
 | Task 5 | `completed` | sealed task worktree | `codex` | Tasks 3–4 | passive validation, summary, report, and one disposition | `18-row topology validation passed`; three verdicts recorded; six fail-closed records separate |
 | Task 6 | `completed` | sealed task worktree | `codex` | Task 5 | final repository, plan, adapter, and kit verification | `1361 passed, 2 skipped`; contracts/planning/adapter/starter-kit/artifact checks passed |
 
@@ -297,6 +297,7 @@ Review boundaries are intentionally consolidated:
 
 **Verification:**
 - [x] `python -m pytest -q tests/test_live_stability_probe.py tests/test_benchmark_operational_comparison.py tests/test_benchmark_dispatch.py`
+- [x] `python -m pytest -q tests/test_live_stability_probe.py::test_failclosed_evidence_is_bound_to_expected_tests`
 - Expected: recorder tests pass; no test launches an external provider; blocked and accepted states remain distinct; the recorder has no generic `run_arm()` or arm adapter; the passive aggregator remains the only summarizer.
 
 **Exit Criteria:**
@@ -407,7 +408,7 @@ source, protocol, and test edits after the seal are a stop condition.
 - [x] Step 7: Write exactly six records to the fail-closed stream with explicit `evidence_class` (`live` or `deterministic`), expected owner, observed fail-closed state, cleanup state, and no synthetic topology trial IDs.
 
 **Verification:**
-- [x] `python -m pytest -q tests/test_herdr_attempt_contract.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py tests/test_live_stability_probe.py`
+- [x] `python -m pytest -q tests/test_herdr_attempt_contract.py tests/test_plan_preparation.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py tests/test_live_stability_probe.py`
 - Expected: each negative probe fails closed at the expected owner; the dedicated bounded tests validate the six fail-closed records without passing them to `benchmark_operational_comparison.py`; no false completion, reuse, retry, or dependent transition is observed.
 
 **Exit Criteria:**
