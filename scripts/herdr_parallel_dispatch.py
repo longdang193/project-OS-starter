@@ -753,10 +753,6 @@ def _receipt_correlation_matches(lane: Mapping[str, Any], parsed: Mapping[str, A
     )
 
 
-def runtime_completion_is_not_acceptance(record: Mapping[str, Any]) -> bool:
-    return record.get("status") == "reported_completed" and record.get("accepted") is not True
-
-
 def run_lane(
     lane: Mapping[str, Any],
     *,
@@ -998,14 +994,20 @@ def run_lane(
         if isinstance(retirement, Mapping) and retirement.get("state") != "removed":
             return "occupied", True, "runtime retirement unresolved", False
         task_result = assignment.get("task_result")
+        if isinstance(task_result, Mapping) and "accepted" in task_result:
+            task_result = {
+                key: value for key, value in task_result.items() if key != "accepted"
+            }
+            assignment["task_result"] = task_result
+        if "task_accepted" in assignment:
+            assignment.pop("task_accepted", None)
+        if isinstance(task_result, Mapping) and task_result.get("state") == "reported_completed":
+            return "retired", False, "acceptance pending", True
         task_uncertain = not isinstance(task_result, Mapping) or (
-            task_result.get("accepted") is None
-            or task_result.get("state") in {"unknown", "running", "preserved", "unverified"}
+            task_result.get("state") in {"unknown", "running", "preserved", "unverified"}
             or task_result.get("status") in {"unknown", "running", "preserved", "unverified"}
         )
         if task_uncertain:
-            if isinstance(task_result, Mapping) and task_result.get("state") == "reported_completed" and task_result.get("accepted") is None:
-                return "retired", False, "acceptance pending", True
             return "retired", True, "task result unresolved", False
         return "retired", False, "settled", False
 

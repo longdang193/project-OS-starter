@@ -249,15 +249,13 @@ def validate_task_result(payload: object) -> dict[str, Any]:
             raise ValueError(f"task result {name} invalid")
     if not all(isinstance(item, str) and item for item in payload["remaining_work"]):
         raise ValueError("task result remaining_work invalid")
-    accepted = payload.get("accepted")
-    if accepted is not None and not isinstance(accepted, bool):
-        raise ValueError("task result accepted invalid")
-    return dict(payload)
+    normalized = dict(payload)
+    normalized.pop("accepted", None)
+    return normalized
 
 
 def encode_task_result(payload: dict[str, Any]) -> bytes:
     normalized = validate_task_result(payload)
-    normalized.setdefault("accepted", None)
     encoded = (json.dumps(normalized, sort_keys=True, separators=(",", ":")) + "\n").encode(
         "utf-8"
     )
@@ -326,5 +324,4 @@ def parse_task_result(
         "verification": payload["verification"],
         "continuation": payload["continuation"],
         "continuation_eligible": False,
-        "accepted": payload.get("accepted"),
     }

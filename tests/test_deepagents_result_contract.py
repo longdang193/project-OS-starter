@@ -84,7 +84,24 @@ def test_task_result_round_trip_is_identity_bound(tmp_path: Path) -> None:
         task_sha256="a" * 64,
         grant_digest="b" * 64,
     )["state"] == "confirmed"
-    assert json.loads(path.read_text(encoding="utf-8"))["accepted"] is None
+    assert "accepted" not in json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_task_result_ignores_legacy_acceptance_metadata(tmp_path: Path) -> None:
+    path = tmp_path / "task-result.json"
+    publish_task_result(path, task_result(accepted="not-a-semantic-result"))
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    parsed = parse_task_result(
+        path,
+        assignment_id="assignment-1",
+        attempt_id="attempt-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+    )
+
+    assert "accepted" not in payload
+    assert "accepted" not in parsed
 
 
 def test_task_result_rejects_identity_mismatch() -> None:

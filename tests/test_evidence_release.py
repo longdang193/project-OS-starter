@@ -5,7 +5,7 @@ import pytest
 
 from scripts.project_os_runtime import acceptance as acceptance_module
 from scripts.project_os_runtime.acceptance import release_authorized_evidence
-from scripts.project_os_runtime.results import publish_task_result
+from scripts.project_os_runtime.results import parse_task_result, publish_task_result
 
 
 def _payload(*, accepted: bool, checkpoint_sha: str) -> dict:
@@ -719,6 +719,24 @@ def test_release_preserves_worker_claim_without_canonical_acceptance(tmp_path: P
     result = _release(tmp_path, decision={})
     assert result["authorized"] is False
     assert (tmp_path / "task-result.json").exists()
+
+
+def test_legacy_worker_acceptance_cannot_authorize_evidence_release(tmp_path: Path):
+    task_result = tmp_path / "task-result.json"
+    publish_task_result(task_result, _payload(accepted=True, checkpoint_sha="c"))
+
+    payload = parse_task_result(
+        task_result,
+        assignment_id="assignment-1",
+        attempt_id="attempt-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+    )
+
+    result = _release(tmp_path, decision={})
+
+    assert "accepted" not in payload
+    assert result["authorized"] is False
 
 
 def test_release_preserves_cross_plan_acceptance_proof(tmp_path: Path):

@@ -987,9 +987,11 @@ def _build_assignment_result(
     legacy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     legacy_values = legacy or {}
+    task_result = {
+        key: value for key, value in task_result.items() if key != "accepted"
+    }
     delivery_state = delivery.get("state", "unknown")
     delivery_certainty = delivery.get("certainty", "unknown")
-    task_accepted = task_result.get("accepted")
     task_state = task_result.get("state", "unknown")
     execution_state = execution.get("state", "unknown")
     observation_state = observation.get("state", "unknown")
@@ -1058,11 +1060,10 @@ def _build_assignment_result(
         "session": legacy_values.get("session"),
         "status": status,
         "submission": delivery.get("submission"),
-        "task_accepted": task_accepted,
         "task_sha256": legacy_values.get("task_sha256"),
     }
     for key, value in legacy_values.items():
-        if key not in assignment:
+        if key not in assignment and key != "task_accepted":
             assignment[key] = value
     return {"assignment": assignment}
 
@@ -1077,9 +1078,11 @@ def _classify_deepagents_outcome(
 ) -> dict[str, Any]:
     execution = {"state": "unknown", "worker_exit_code": None}
     cleanup = {"state": "unknown"}
-    task_result = {"state": "unverified", "accepted": None}
+    task_result = {"state": "unverified"}
     if isinstance(task_result_evidence, dict) and task_result_evidence.get("state") == "confirmed":
-        task_result = dict(task_result_evidence)
+        task_result = {
+            key: value for key, value in task_result_evidence.items() if key != "accepted"
+        }
         task_result["state"] = {
             "completed": "reported_completed",
             "failed": "reported_failed",
@@ -1094,7 +1097,6 @@ def _classify_deepagents_outcome(
             )
         ):
             task_result["state"] = "unverified"
-        task_result["accepted"] = None
     status = "unknown"
     failure_kind = fallback_failure_kind
     reconciliation_required = True
@@ -1147,7 +1149,6 @@ def _classify_deepagents_outcome(
                 elif observation.get("state") == "failed" and report_observed:
                     task_result = {
                         "state": "reported_failed",
-                        "accepted": False,
                         "source": "herdr_pane",
                         "authoritative": False,
                     }
@@ -1157,7 +1158,6 @@ def _classify_deepagents_outcome(
                     if task_result["state"] not in {"reported_completed", "reported_failed"}:
                         task_result = {
                             "state": "reported_completed" if report_observed else "unverified",
-                            "accepted": None,
                         }
                     if report_observed and task_result.get("source") is None:
                         task_result.update({"source": "herdr_pane", "authoritative": False})
@@ -2891,9 +2891,9 @@ def _main_body(args: argparse.Namespace) -> int:
             observation = {"state": "unknown" if started else "not_attempted"}
         if not isinstance(task_result, dict):
             task_result = (
-                {"state": "unverified", "accepted": None}
+                {"state": "unverified"}
                 if started
-                else {"state": "not_attempted", "accepted": False}
+                else {"state": "not_attempted"}
             )
         if not isinstance(cleanup, dict):
             cleanup = {"state": "unknown" if started else "not_attempted"}
@@ -3059,7 +3059,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 observation = {"state": "unknown"}
             task_result = assignment.get("task_result")
             if not isinstance(task_result, dict):
-                task_result = {"state": "unknown", "accepted": assignment.get("task_accepted")}
+                task_result = {"state": "unknown"}
             cleanup = assignment.get("cleanup")
             if not isinstance(cleanup, dict):
                 cleanup = {"state": "unknown"}
@@ -3128,7 +3128,6 @@ def _main_body(args: argparse.Namespace) -> int:
                         "reconciliation_required": classified["reconciliation_required"],
                         "exit_code": classified["launcher_exit_code"],
                         "prompt_accepted": delivery.get("prompt_accepted"),
-                        "task_accepted": task_result.get("accepted"),
                     }
                 )
                 lifecycle_settled = (
@@ -3597,7 +3596,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     "delivery_task_sha256": delivery_task_sha256,
                     "execution": execution,
                     "observation": observation,
-                    "task_result": {"state": "unknown", "accepted": False},
+                    "task_result": {"state": "unknown"},
                     "cleanup": {"state": "unknown"},
                     "exit_code": 0,
                     "failure_kind": None,
@@ -3672,7 +3671,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 "completion": completion,
                 "execution": {"state": "unknown", "worker_exit_code": None},
                 "observation": completion,
-                "task_result": {"state": "unknown", "accepted": None},
+                "task_result": {"state": "unknown"},
                 "cleanup": {"state": "unknown"},
                 "delivery_state": "delivered",
                 "delivery_certainty": "confirmed",
@@ -3684,7 +3683,6 @@ def _main_body(args: argparse.Namespace) -> int:
                 "reconciliation_required": True,
                 "session": resolved_session,
                 "status": "unknown",
-                "task_accepted": None,
                 "task_sha256": assignment_task_sha256,
             }
         })

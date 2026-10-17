@@ -2495,7 +2495,6 @@ def main(argv: list[str]) -> int:
                                 "remaining_work": [publication_diagnostic],
                                 "verification": {"references": []},
                                 "continuation": {"requested": False},
-                                "accepted": None,
                             },
                         )
                 except (OSError, RuntimeError, ValueError):

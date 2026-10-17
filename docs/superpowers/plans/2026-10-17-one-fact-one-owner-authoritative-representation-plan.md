@@ -178,13 +178,13 @@ acceptance decision is required before topology rows are promoted.
 - Branch: `codex/one-fact-one-owner`
 - Base commit: `ef536b25a6b6ffa02410233937d718385cc38f2d`
 - Expected workspace: `dedicated task-owned worktree from the reviewed base; leave local main untouched`
-- Next action: `execute Task 2 Worker-result migration with the exercised native CoS/controller boundary preserved`
+- Next action: `execute Task 3 Plan-derived prerequisite identity migration`
 - Blockers: `none; Task 1 acceptance boundary gate resolved through the existing lead-controller procedure`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | dedicated task worktree | `codex` | none | baseline tests, caller inventory, and CoS boundary gate | 335 baseline passed; native CoS boundary exercised with 3 focused acceptance/Plan tests |
-| Task 2 | `active` | task worktree | `codex` | Task 1 | TaskResult/settlement contract tests | in progress |
+| Task 2 | `completed` | task worktree | `codex` | Task 1 | TaskResult/settlement contract tests | 581 passed, 1 skipped; legacy acceptance ignored and stripped; dispatcher pending-acceptance path preserved |
 | Task 3 | `pending` | task worktree | `unresolved` | Task 1 | Plan-derived prerequisite and launch-preflight tests | pending |
 | Task 4 | `pending` | task worktree | `unresolved` | Tasks 2–3 | compatibility deletion, manifest, validator, and doc checks | pending |
 | Task 5 | `pending` | sealed task worktree | `unresolved` | Task 4 | CoS canary with explicit acceptance decision or recorded gate stop | pending |
@@ -313,17 +313,17 @@ acceptance decision is required before topology rows are promoted.
 - Stop for: any attempt to infer CoS `PASS` from exit code or settlement, a required external TaskResult v1 consumer that cannot tolerate the migration, changed attempt identity, or unresolved cleanup/reuse behavior
 
 **Steps:**
-- [ ] Step 1: Make new TaskResult writers omit `accepted`; make readers tolerate and discard legacy `accepted` without validation, branching, or semantic projection, and introduce no v2 unless repository evidence requires a versioned breaking migration.
-- [ ] Step 2: Remove `task_accepted` and Worker-owned acceptance projections from launcher assignments; retain authoritative task status, verification, attempt identity, and settlement evidence.
-- [ ] Step 3: Change dispatcher classification so a completed, settled, retired attempt has reusable capacity with a non-authoritative acceptance-pending handoff, while unresolved or malformed result evidence remains fail-closed and occupied; preserve controller-owned retry, continuation, acceptance, and Plan advancement.
-- [ ] Step 4: Preserve `evaluate_acceptance()` and `apply_accepted_plan_transitions()` as the only semantic acceptance-to-Plan path; add no dispatcher-owned acceptance decision.
-- [ ] Step 5: Update focused tests for completed/settled/pending, failed/settled, malformed, stale identity, timeout, and cleanup-recovery cases.
+- [x] Step 1: Make new TaskResult writers omit `accepted`; make readers tolerate and discard legacy `accepted` without validation, branching, or semantic projection, and introduce no v2 unless repository evidence requires a versioned breaking migration.
+- [x] Step 2: Remove `task_accepted` and Worker-owned acceptance projections from launcher assignments; retain authoritative task status, verification, attempt identity, and settlement evidence.
+- [x] Step 3: Change dispatcher classification so a completed, settled, retired attempt has reusable capacity with a non-authoritative acceptance-pending handoff, while unresolved or malformed result evidence remains fail-closed and occupied; preserve controller-owned retry, continuation, acceptance, and Plan advancement.
+- [x] Step 4: Preserve `evaluate_acceptance()` and `apply_accepted_plan_transitions()` as the only semantic acceptance-to-Plan path; add no dispatcher-owned acceptance decision.
+- [x] Step 5: Update focused tests for completed/settled/pending, failed/settled, malformed, stale identity, timeout, and cleanup-recovery cases.
 
 **Verification:**
-- [ ] `py -B -m pytest -q tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_herdr_parallel_dispatch.py tests/test_project_os_runtime.py tests/test_evidence_release.py`
+- [x] `py -B -m pytest -q tests/test_dcode_project.py tests/test_deepagents_result_contract.py tests/test_herdr_parallel_dispatch.py tests/test_herdr_main_launcher.py tests/test_project_os_runtime.py tests/test_evidence_release.py tests/test_plan_preparation.py`
 - Expected: no Worker result contains `accepted`; settled failures retire only after existing cleanup/descendant proof; incomplete ownership remains occupied; CoS acceptance APIs remain unchanged and authoritative.
-- [ ] Add or retain a regression in `tests/test_evidence_release.py` proving a legacy `TaskResult` with `accepted=true` cannot authorize evidence release and has no semantic effect.
-- [ ] `rg -n "task_result.*accepted|task_accepted|accepted.*task_result|runtime_completion_is_not_acceptance" scripts tests -g '*.py'`
+- [x] Add or retain a regression in `tests/test_evidence_release.py` proving a legacy `TaskResult` with `accepted=true` cannot authorize evidence release and has no semantic effect.
+- [x] `rg -n "task_result.*accepted|task_accepted|accepted.*task_result|runtime_completion_is_not_acceptance" scripts tests -g '*.py'`
 - Expected: no active runtime or test consumer remains; accepted Plan-consequence fields remain only in acceptance/Plan-preparation paths.
 
 **Exit Criteria:**

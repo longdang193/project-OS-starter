@@ -1255,7 +1255,7 @@ def test_manual_and_plan_inputs_record_equivalent_dispatch_evidence(tmp_path: Pa
                     "cleanup_state": "removed",
                     "recovery_required": False,
                 },
-                "task_result": {"state": "reported_completed", "accepted": None},
+                "task_result": {"state": "reported_completed"},
             }
             output = {
                 "registry_launcher": {
