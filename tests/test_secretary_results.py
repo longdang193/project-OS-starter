@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,10 @@ import pytest
 from scripts.project_os_runtime.secretary_results import (
     NATIVE_RESULT_AUTHORITY,
     NATIVE_RESULT_PRODUCER,
+    NATIVE_RESULT_MAX_BYTES,
+    native_binding_path,
+    parse_native_binding,
+    publish_native_binding,
     NativeResultConflictError,
     native_result_path,
     parse_native_result,
@@ -22,8 +27,10 @@ def payload(content: str = "native answer") -> dict[str, object]:
         "agent_name": "agent",
         "native_authority": NATIVE_RESULT_AUTHORITY,
         "native_session_id": "session",
-        "native_turn_id": "turn-1",
-        "content_source": "native_completed_turn",
+        "native_turn_id": "session:t1",
+        "content_source": "lightrsi_completed_turn",
+        "turn_seq": 1,
+        "semantic_complete": True,
         "completion_seq": 8,
         "semantic_content": content,
         "freshness_proven": True,
@@ -56,6 +63,94 @@ def test_native_result_replay_is_idempotent_and_conflict_fails_closed(tmp_path: 
         publish_native_result(path, payload("different answer"))
 
 
+def test_native_result_replay_preserves_first_observation_metadata(tmp_path: Path) -> None:
+    path = tmp_path / "native-result.json"
+    first = payload()
+    publish_native_result(path, first)
+
+    replay = payload()
+    replay["observed_at"] = "2026-10-18T11:00:00+00:00"
+    publication = publish_native_result(path, replay)
+
+    assert publication["state"] == "idempotent"
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert persisted["observed_at"] == first["observed_at"]
+
+
+def test_native_result_does_not_require_transport_session_to_equal_native_session(
+    tmp_path: Path,
+) -> None:
+    value = payload()
+    value["session"] = "herdr-session"
+    value["native_session_id"] = "lightrsi-session"
+    value["native_turn_id"] = "lightrsi-session:t1"
+
+    publication = publish_native_result(tmp_path / "native-result.json", value)
+
+    assert publication["state"] == "published"
+
+
+def test_native_result_redacts_secret_values_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SECRETARY_SEMANTIC_SECRETS", "configured-secret")
+    value = payload(
+        "Authorization: Bearer abc123 configured-secret https://example.test/?token=url-secret"
+    )
+
+    publish_native_result(tmp_path / "native-result.json", value)
+    persisted = json.loads((tmp_path / "native-result.json").read_text(encoding="utf-8"))
+
+    assert "abc123" not in persisted["semantic_content"]
+    assert "configured-secret" not in persisted["semantic_content"]
+    assert "url-secret" not in persisted["semantic_content"]
+    assert persisted["semantic_content"] != value["semantic_content"]
+
+
+def test_native_result_rejects_missing_new_semantic_contract_fields(tmp_path: Path) -> None:
+    value = payload()
+    value.pop("turn_seq")
+
+    with pytest.raises(ValueError, match="turn_seq"):
+        publish_native_result(tmp_path / "native-result.json", value)
+
+
+def test_native_result_requires_canonical_lightrsi_turn_id(tmp_path: Path) -> None:
+    value = payload()
+    value["native_turn_id"] = "arbitrary-turn-id"
+
+    with pytest.raises(ValueError, match="canonical turn id"):
+        publish_native_result(tmp_path / "native-result.json", value)
+
+
+def test_native_result_rejects_oversized_encoded_payload(tmp_path: Path) -> None:
+    value = payload("x" * NATIVE_RESULT_MAX_BYTES)
+
+    with pytest.raises(ValueError, match="exceeds"):
+        publish_native_result(tmp_path / "native-result.json", value)
+
+
+def test_native_binding_is_atomic_attempt_bound_and_immutable(tmp_path: Path) -> None:
+    path = native_binding_path(tmp_path / "normal.json")
+    value = {
+        "schema": "secretary-native-binding.v1",
+        "attempt_id": "attempt-1",
+        "native_session_id": "session",
+        "pre_submit_cursor": "cursor",
+        "lightrsi_cli_path": "C:/pinned/cli.js",
+        "created_at": "2026-10-18T10:00:00+00:00",
+        "transport": {"session": "herdr", "pane": "pane", "agent_name": "agent"},
+    }
+
+    first = publish_native_binding(path, value)
+    parsed = parse_native_binding(path, attempt_id="attempt-1")
+    assert first["state"] == "published"
+    assert parsed["state"] == "confirmed"
+    assert parsed["created_at"] == value["created_at"]
+    with pytest.raises(NativeResultConflictError):
+        publish_native_binding(path, {**value, "created_at": "2026-10-18T11:00:00+00:00"})
+
+
 
 def test_native_result_rejects_conflicting_content_digest(tmp_path: Path) -> None:
     path = tmp_path / "native-result.json"
@@ -78,7 +173,7 @@ def test_native_result_rejects_wrong_attempt(tmp_path: Path) -> None:
     ("field", "value"),
     [
         ("native_authority", "terminal-screen"),
-        ("native_session_id", "other-session"),
+        ("native_session_id", ""),
         ("native_turn_id", ""),
         ("content_source", "agent"),
     ],

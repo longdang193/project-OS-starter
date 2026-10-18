@@ -206,6 +206,28 @@ def test_adapter_reports_valid_session_only_evidence_without_promoting_it() -> N
     assert bundle["provider_usage"]["economics"] == "partial-unattributed"
 
 
+def test_adapter_keeps_confirmed_semantic_result_when_probe_evidence_is_missing() -> None:
+    bundle = build_evidence_bundle(
+        launcher(
+            disposition="READY",
+            evidence_provenance="live-attributed",
+            result={
+                "state": "reported",
+                "status": "completed",
+                "reference": "C:/tmp/native-result.json",
+                "content": "native answer",
+            },
+            observability={"state": "available"},
+        )
+    )
+
+    assert bundle["semantic_result"]["state"] == "reported"
+    assert bundle["semantic_result"]["content"] == "native answer"
+    assert bundle["observability"]["state"] == "available"
+    assert bundle["provider_usage"]["state"] == "inconclusive"
+    assert bundle["probe_readiness"] == "BLOCKED_CAPABILITY"
+
+
 def test_adapter_does_not_promote_valid_receipt_without_session_bridge() -> None:
     bundle = build_evidence_bundle(
         launcher(

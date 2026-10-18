@@ -4716,6 +4716,73 @@ def test_confirm_codex_start_rejects_unrelated_new_process(
         )
 
 
+def test_discover_codex_native_handoff_requires_exactly_one_new_rollout(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    rollout_dir = codex_home / "sessions" / "2026" / "10" / "18"
+    rollout_dir.mkdir(parents=True)
+    rollout = rollout_dir / "rollout-2026-10-18T00-00-00-session-1.jsonl"
+    rollout.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {
+                    "session_id": "session-1",
+                    "cwd": str(tmp_path),
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    handoff = LAUNCHER._discover_codex_native_handoff(
+        codex_home,
+        before_rollout_paths=set(),
+        expected_cwd=tmp_path,
+    )
+
+    assert handoff["native_session_id"] == "session-1"
+    cursor = json.loads(base64.urlsafe_b64decode(handoff["pre_submit_cursor"] + "=="))
+    assert cursor == {
+        "schema": "lightrsi.codex.cursor/v1",
+        "sessionId": "session-1",
+        "turnSeq": 0,
+    }
+
+
+@pytest.mark.parametrize("rollout_count", [0, 2])
+def test_discover_codex_native_handoff_fails_closed_without_exactly_one_rollout(
+    tmp_path: Path,
+    rollout_count: int,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    rollout_dir = codex_home / "sessions" / "2026" / "10" / "18"
+    rollout_dir.mkdir(parents=True)
+    for index in range(rollout_count):
+        (rollout_dir / f"rollout-2026-10-18T00-00-0{index}-session-{index}.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "session_id": f"session-{index}",
+                        "cwd": str(tmp_path),
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="exactly one"):
+        LAUNCHER._discover_codex_native_handoff(
+            codex_home,
+            before_rollout_paths=set(),
+            expected_cwd=tmp_path,
+        )
+
+
 def test_confirm_codex_start_accepts_matching_process_identity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

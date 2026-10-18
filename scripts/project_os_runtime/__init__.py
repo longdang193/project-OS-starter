@@ -75,6 +75,12 @@ from .results import (
     publish_task_result,
     validate_task_result,
 )
+from .lightrsi_reader import (
+    LIGHTRSI_AUTHORITY,
+    LIGHTRSI_COMPLETED_TURN_SCHEMA,
+    LIGHTRSI_MAX_OUTPUT_BYTES,
+    LightRSIResultReader,
+)
 
 __all__ = [
     "ADMISSION_RESULTS",
@@ -105,6 +111,10 @@ __all__ = [
     "PlanTask",
     "PreparedTask",
     "WORKER_STATES",
+    "LIGHTRSI_AUTHORITY",
+    "LIGHTRSI_COMPLETED_TURN_SCHEMA",
+    "LIGHTRSI_MAX_OUTPUT_BYTES",
+    "LightRSIResultReader",
     "assignment_id",
     "authorize_dependent_transition",
     "authorize_evidence_release",
